@@ -48,6 +48,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
+  static const String _homeFontFamily = 'Microsoft YaHei';
   final PageController _bannerController = PageController();
   int _currentBannerIndex = 0;
   Timer? _bannerTimer;
@@ -573,14 +574,30 @@ class _HomePageState extends State<HomePage>
   @override
   Widget build(BuildContext context) {
     super.build(context); // 必须调用以支持 AutomaticKeepAliveClientMixin
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
     final bool showTabs = _isNeteaseBound; // 绑定网易云后显示 Tabs
 
     if (_themeManager.isFluentFramework) {
-      return _buildFluentHome(context, colorScheme, showTabs);
+      return Theme(
+        data: _materialHomeThemeWithFont(theme),
+        child: Builder(
+          builder: (context) {
+            final fluentColorScheme = Theme.of(context).colorScheme;
+            return _buildFluentHome(context, fluentColorScheme, showTabs);
+          },
+        ),
+      );
     }
 
-    return _buildMaterialHome(context, colorScheme, showTabs);
+    return Theme(
+      data: _materialHomeThemeWithFont(theme),
+      child: Builder(
+        builder: (context) {
+          final materialColorScheme = Theme.of(context).colorScheme;
+          return _buildMaterialHome(context, materialColorScheme, showTabs);
+        },
+      ),
+    );
   }
 
   Widget _buildMaterialHome(
@@ -589,7 +606,7 @@ class _HomePageState extends State<HomePage>
     bool showTabs,
   ) {
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: Colors.transparent,
       body: _buildSlidingSwitcher(
         _buildMaterialContentArea(context, colorScheme, showTabs),
       ),
@@ -636,8 +653,8 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _initialSearchKeyword =
           (normalizedKeyword == null || normalizedKeyword.isEmpty)
-              ? null
-              : normalizedKeyword;
+          ? null
+          : normalizedKeyword;
       _showSearch = true;
     });
     _syncGlobalBackHandler();
@@ -683,7 +700,9 @@ class _HomePageState extends State<HomePage>
                 if (_showSearch)
                   Positioned.fill(
                     child: SearchWidget(
-                      key: ValueKey('fluent_search_${_initialSearchKeyword ?? ''}'),
+                      key: ValueKey(
+                        'fluent_search_${_initialSearchKeyword ?? ''}',
+                      ),
                       onClose: () {
                         if (!mounted) return;
                         setState(() {
@@ -726,7 +745,7 @@ class _HomePageState extends State<HomePage>
     if (_showDailyDetail) {
       return Material(
         key: const ValueKey('material_daily_detail'),
-        color: colorScheme.surface,
+        color: Colors.transparent,
         child: SafeArea(
           child: DailyRecommendDetailPage(
             tracks: _dailyTracks,
@@ -740,7 +759,7 @@ class _HomePageState extends State<HomePage>
     if (_showDiscoverDetail && _discoverPlaylistId != null) {
       return Material(
         key: ValueKey('material_playlist_${_discoverPlaylistId!}'),
-        color: colorScheme.surface,
+        color: Colors.transparent,
         child: SafeArea(
           child: Column(
             children: [
@@ -840,7 +859,10 @@ class _HomePageState extends State<HomePage>
     return SliverAppBar(
       floating: true,
       snap: true,
-      backgroundColor: colorScheme.surface,
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
       title: Text(
         '首页',
         style: TextStyle(
@@ -1228,6 +1250,26 @@ class _HomePageState extends State<HomePage>
     }
 
     _homeOverlayController.setBackHandler(null);
+  }
+
+  ThemeData _materialHomeThemeWithFont(ThemeData base) {
+    final textTheme = base.textTheme.apply(fontFamily: _homeFontFamily);
+    final primaryTextTheme = base.primaryTextTheme.apply(
+      fontFamily: _homeFontFamily,
+    );
+    final appBarTheme = base.appBarTheme.copyWith(
+      titleTextStyle: (base.appBarTheme.titleTextStyle ?? textTheme.titleLarge)
+          ?.copyWith(fontFamily: _homeFontFamily),
+      toolbarTextStyle:
+          (base.appBarTheme.toolbarTextStyle ?? textTheme.titleMedium)
+              ?.copyWith(fontFamily: _homeFontFamily),
+    );
+
+    return base.copyWith(
+      textTheme: textTheme,
+      primaryTextTheme: primaryTextTheme,
+      appBarTheme: appBarTheme,
+    );
   }
 }
 

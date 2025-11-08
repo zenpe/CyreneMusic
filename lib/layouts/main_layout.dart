@@ -27,7 +27,8 @@ class MainLayout extends StatefulWidget {
   State<MainLayout> createState() => _MainLayoutState();
 }
 
-class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateMixin {
+class _MainLayoutState extends State<MainLayout>
+    with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
   // NavigationDrawer 固定宽度与 NavigationRail 展开状态一致（Material 3 默认 256）
   static const double _drawerWidth = 256.0;
@@ -44,12 +45,12 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
       const MyPage(), // 我的（歌单+听歌统计）
       const SettingsPage(),
     ];
-    
+
     // 如果开发者模式启用，添加开发者页面
     if (DeveloperModeService().isDeveloperMode) {
       pages.add(const DeveloperPage());
     }
-    
+
     return pages;
   }
 
@@ -118,7 +119,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
     LayoutPreferenceService().addListener(_onLayoutPreferenceChanged);
     // 监听开发者模式变化
     DeveloperModeService().addListener(_onDeveloperModeChanged);
-    
+
     // 初始化系统主题色（在 build 完成后执行）
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -164,7 +165,8 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         if (mounted) {
           setState(() {
             // 如果当前选中的是开发者页面但模式被关闭，切换到首页
-            if (_selectedIndex >= 6 && !DeveloperModeService().isDeveloperMode) {
+            if (_selectedIndex >= 6 &&
+                !DeveloperModeService().isDeveloperMode) {
               _selectedIndex = 0;
             }
           });
@@ -253,9 +255,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
             onPressed: () {
               AuthService().logout();
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已退出登录')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('已退出登录')));
             },
             child: const Text('退出'),
           ),
@@ -277,7 +279,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         builder: (context, child) {
           final isDesktop = LayoutPreferenceService().isDesktopLayout;
           print('🖥️ [MainLayout] 当前布局模式: ${isDesktop ? "桌面模式" : "移动模式"}');
-          
+
           return isDesktop
               ? _buildDesktopLayout(context)
               : _buildMobileLayout(context);
@@ -292,14 +294,18 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   /// 构建桌面端布局（Windows/Linux/macOS）
   Widget _buildDesktopLayout(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+    final isHomePage = _selectedIndex == 0;
+    final scaffoldBackground = isHomePage
+        ? Colors.transparent
+        : colorScheme.surface;
+
     return Scaffold(
+      backgroundColor: scaffoldBackground,
       body: Column(
         children: [
           // Windows 平台显示自定义标题栏
-          if (Platform.isWindows)
-            const CustomTitleBar(),
-          
+          if (Platform.isWindows) const CustomTitleBar(),
+
           // 主要内容区域
           Expanded(
             child: AnimatedBuilder(
@@ -313,9 +319,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                         // 侧边导航栏
                         _buildNavigationDrawer(colorScheme),
                         // 内容区域
-                        Expanded(
-                          child: _pages[_selectedIndex],
-                        ),
+                        Expanded(child: _pages[_selectedIndex]),
                       ],
                     ),
                     if (overlay.isVisible)
@@ -324,7 +328,11 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                         child: Row(
                           children: [
                             // 占位侧栏宽度
-                            SizedBox(width: _isDrawerCollapsed ? _collapsedWidth : _drawerWidth),
+                            SizedBox(
+                              width: _isDrawerCollapsed
+                                  ? _collapsedWidth
+                                  : _drawerWidth,
+                            ),
                             // 右侧内容覆盖
                             Expanded(
                               child: Material(
@@ -335,14 +343,19 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                       Align(
                                         alignment: Alignment.centerLeft,
                                         child: IconButton(
-                                          icon: const Icon(Icons.arrow_back_rounded),
-                                          onPressed: () => AuthOverlayService().hide(false),
+                                          icon: const Icon(
+                                            Icons.arrow_back_rounded,
+                                          ),
+                                          onPressed: () =>
+                                              AuthOverlayService().hide(false),
                                           tooltip: '返回',
                                         ),
                                       ),
                                       Expanded(
                                         child: PrimaryScrollController.none(
-                                          child: AuthPage(initialTab: overlay.initialTab),
+                                          child: AuthPage(
+                                            initialTab: overlay.initialTab,
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -358,7 +371,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
               },
             ),
           ),
-          
+
           // 迷你播放器
           const MiniPlayer(),
         ],
@@ -368,14 +381,17 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
 
   /// 构建移动端布局（Android/iOS）
   Widget _buildMobileLayout(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isHomePage = _selectedIndex == 0;
+
     return Scaffold(
+      backgroundColor: isHomePage ? Colors.transparent : colorScheme.surface,
       body: Stack(
         children: [
           // 主内容层
           Column(
             children: [
-              if (Platform.isWindows)
-                const CustomTitleBar(),
+              if (Platform.isWindows) const CustomTitleBar(),
               Expanded(child: _pages[_selectedIndex]),
             ],
           ),
@@ -387,7 +403,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
             child: AnimatedBuilder(
               animation: PlayerService(),
               builder: (context, child) {
-                final hasMiniPlayer = PlayerService().currentTrack != null || PlayerService().currentSong != null;
+                final hasMiniPlayer =
+                    PlayerService().currentTrack != null ||
+                    PlayerService().currentSong != null;
                 if (!hasMiniPlayer) return const SizedBox.shrink();
                 return const MiniPlayer();
               },
@@ -401,7 +419,8 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
 
   Widget _buildGlassBottomNavigationBar(BuildContext context) {
     final orientation = MediaQuery.of(context).orientation;
-    final bool useGlass = Platform.isAndroid || orientation == Orientation.portrait;
+    final bool useGlass =
+        Platform.isAndroid || orientation == Orientation.portrait;
     final baseNav = NavigationBar(
       selectedIndex: () {
         if (_selectedIndex == 0) return 0; // 首页
@@ -473,7 +492,10 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
           ],
         ),
         child: ClipRRect(
-          borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
           child: Stack(
             children: [
               // 毛玻璃模糊层
@@ -500,7 +522,10 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                       stops: const [0.0, 0.45, 1.0],
                     ),
                     border: Border(
-                      top: BorderSide(color: Colors.white.withOpacity(0.18), width: 1),
+                      top: BorderSide(
+                        color: Colors.white.withOpacity(0.18),
+                        width: 1,
+                      ),
                     ),
                   ),
                 ),
@@ -568,7 +593,8 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
               duration: const Duration(milliseconds: 200),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+              transitionBuilder: (child, animation) =>
+                  FadeTransition(opacity: animation, child: child),
               child: isCollapsed
                   ? KeyedSubtree(
                       key: const ValueKey('collapsed'),
@@ -578,10 +604,11 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                       key: const ValueKey('expanded'),
                       child: Theme(
                         data: Theme.of(context).copyWith(
-                          navigationDrawerTheme: const NavigationDrawerThemeData(
-                            backgroundColor: Colors.transparent,
-                            surfaceTintColor: Colors.transparent,
-                          ),
+                          navigationDrawerTheme:
+                              const NavigationDrawerThemeData(
+                                backgroundColor: Colors.transparent,
+                                surfaceTintColor: Colors.transparent,
+                              ),
                         ),
                         child: NavigationDrawer(
                           selectedIndex: _selectedIndex,
@@ -668,15 +695,45 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   /// 折叠状态下仅显示图标的目的地列表
   Widget _buildCollapsedDestinations(ColorScheme colorScheme) {
     final List<_CollapsedItem> items = [
-      _CollapsedItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: '首页'),
-      _CollapsedItem(icon: Icons.explore_outlined, selectedIcon: Icons.explore, label: '发现'),
-      _CollapsedItem(icon: Icons.history_outlined, selectedIcon: Icons.history, label: '历史'),
-      _CollapsedItem(icon: Icons.folder_open, selectedIcon: Icons.folder, label: '本地'),
-      _CollapsedItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: '我的'),
-      _CollapsedItem(icon: Icons.settings_outlined, selectedIcon: Icons.settings, label: '设置'),
+      _CollapsedItem(
+        icon: Icons.home_outlined,
+        selectedIcon: Icons.home,
+        label: '首页',
+      ),
+      _CollapsedItem(
+        icon: Icons.explore_outlined,
+        selectedIcon: Icons.explore,
+        label: '发现',
+      ),
+      _CollapsedItem(
+        icon: Icons.history_outlined,
+        selectedIcon: Icons.history,
+        label: '历史',
+      ),
+      _CollapsedItem(
+        icon: Icons.folder_open,
+        selectedIcon: Icons.folder,
+        label: '本地',
+      ),
+      _CollapsedItem(
+        icon: Icons.person_outlined,
+        selectedIcon: Icons.person,
+        label: '我的',
+      ),
+      _CollapsedItem(
+        icon: Icons.settings_outlined,
+        selectedIcon: Icons.settings,
+        label: '设置',
+      ),
     ];
     if (DeveloperModeService().isDeveloperMode) {
-      items.add(_CollapsedItem(icon: Icons.code, selectedIcon: Icons.code, label: 'Dev'));
+      items.add(
+        _CollapsedItem(
+          icon: Icons.code,
+          selectedIcon: Icons.code,
+          label: 'Dev',
+        ),
+      );
     }
 
     return ListView.builder(
@@ -690,7 +747,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
           child: Tooltip(
             message: item.label,
             child: Material(
-              color: isSelected ? colorScheme.primaryContainer : Colors.transparent,
+              color: isSelected
+                  ? colorScheme.primaryContainer
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(16),
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
@@ -708,7 +767,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                   child: Center(
                     child: Icon(
                       isSelected ? item.selectedIcon : item.icon,
-                      color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurfaceVariant,
+                      color: isSelected
+                          ? colorScheme.onPrimaryContainer
+                          : colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -723,7 +784,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   /// 构建用户头像
   Widget _buildUserAvatar({double size = 24}) {
     final user = AuthService().currentUser;
-    
+
     if (user == null || !AuthService().isLoggedIn) {
       return Icon(Icons.account_circle_outlined, size: size);
     }
@@ -756,5 +817,9 @@ class _CollapsedItem {
   final IconData icon;
   final IconData selectedIcon;
   final String label;
-  const _CollapsedItem({required this.icon, required this.selectedIcon, required this.label});
+  const _CollapsedItem({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+  });
 }

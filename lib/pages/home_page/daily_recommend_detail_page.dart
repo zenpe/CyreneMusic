@@ -34,208 +34,231 @@ class DailyRecommendDetailPage extends StatelessWidget {
       );
     }
 
-    final colorScheme = Theme.of(context).colorScheme;
+    final baseTheme = Theme.of(context);
 
-    if (embedded) {
-      // 覆盖层嵌入模式：与歌单详情覆盖层保持一致的层级与二级菜单
-      return SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            if (showHeader) ...[
-              // 顶部栏：返回 + 标题
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      onPressed: () {
-                        if (onClose != null) {
-                          onClose!();
-                        } else {
-                          Navigator.of(context).pop();
-                        }
-                      },
-                      tooltip: '返回',
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '每日推荐',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
+    return Theme(
+      data: _dailyRecommendFontTheme(baseTheme),
+      child: Builder(
+        builder: (context) {
+          final colorScheme = Theme.of(context).colorScheme;
+
+          if (embedded) {
+            // 覆盖层嵌入模式：与歌单详情覆盖层保持一致的层级与二级菜单
+            return SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  if (showHeader) ...[
+                    // 顶部栏：返回 + 标题
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back_rounded),
+                            onPressed: () {
+                              if (onClose != null) {
+                                onClose!();
+                              } else {
+                                Navigator.of(context).pop();
+                              }
+                            },
+                            tooltip: '返回',
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '每日推荐',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                    const Divider(height: 1),
                   ],
-                ),
-              ),
-              const Divider(height: 1),
-            ],
-            Expanded(
-              child: PrimaryScrollController.none(
-                child: tracks.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.music_note_outlined,
-                              size: 64,
-                              color: colorScheme.onSurface.withOpacity(0.3),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              '暂无推荐',
-                              style: TextStyle(
-                                color: colorScheme.onSurface.withOpacity(0.6),
+                  Expanded(
+                    child: PrimaryScrollController.none(
+                      child: tracks.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.music_note_outlined,
+                                    size: 64,
+                                    color: colorScheme.onSurface.withOpacity(
+                                      0.3,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    '暂无推荐',
+                                    style: TextStyle(
+                                      color: colorScheme.onSurface.withOpacity(
+                                        0.6,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0,
+                                vertical: 12.0,
+                              ),
+                              itemCount: tracks.length,
+                              itemBuilder: (context, index) => _buildTrackTile(
+                                context,
+                                tracks[index],
+                                index,
                               ),
                             ),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16.0,
-                          vertical: 12.0,
-                        ),
-                        itemCount: tracks.length,
-                        itemBuilder: (context, index) =>
-                            _buildTrackTile(context, tracks[index], index),
-                      ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // 独立页面模式
-    return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 120,
-            floating: false,
-            pinned: true,
-            backgroundColor: colorScheme.surface,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () {
-                if (onClose != null) {
-                  onClose!();
-                } else {
-                  Navigator.of(context).pop();
-                }
-              },
-            ),
-            flexibleSpace: FlexibleSpaceBar(
-              titlePadding: const EdgeInsets.only(
-                left: 56,
-                bottom: 16,
-                right: 16,
-              ),
-              title: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '首页',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colorScheme.onSurface.withOpacity(0.6),
-                        ),
-                      ),
-                      Icon(
-                        Icons.chevron_right,
-                        size: 14,
-                        color: colorScheme.onSurface.withOpacity(0.6),
-                      ),
-                      Text(
-                        '为你推荐',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colorScheme.onSurface.withOpacity(0.6),
-                        ),
-                      ),
-                      Icon(
-                        Icons.chevron_right,
-                        size: 14,
-                        color: colorScheme.onSurface.withOpacity(0.6),
-                      ),
-                      Text(
-                        '每日推荐',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '每日推荐',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
                     ),
                   ),
                 ],
               ),
-            ),
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 16.0),
-                child: FilledButton.icon(
-                  onPressed: () => _playAll(context),
-                  icon: const Icon(Icons.play_arrow, size: 20),
-                  label: const Text('播放全部'),
-                ),
-              ),
-            ],
-          ),
-          tracks.isEmpty
-              ? SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+            );
+          }
+
+          // 独立页面模式
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            body: CustomScrollView(
+              slivers: [
+                SliverAppBar(
+                  expandedHeight: 120,
+                  floating: false,
+                  pinned: true,
+                  backgroundColor: Colors.transparent,
+                  surfaceTintColor: Colors.transparent,
+                  elevation: 0,
+                  scrolledUnderElevation: 0,
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () {
+                      if (onClose != null) {
+                        onClose!();
+                      } else {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                  ),
+                  flexibleSpace: FlexibleSpaceBar(
+                    titlePadding: const EdgeInsets.only(
+                      left: 56,
+                      bottom: 16,
+                      right: 16,
+                    ),
+                    title: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.music_note_outlined,
-                          size: 64,
-                          color: colorScheme.onSurface.withOpacity(0.3),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '首页',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right,
+                              size: 14,
+                              color: colorScheme.onSurface.withOpacity(0.6),
+                            ),
+                            Text(
+                              '为你推荐',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right,
+                              size: 14,
+                              color: colorScheme.onSurface.withOpacity(0.6),
+                            ),
+                            Text(
+                              '每日推荐',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 2),
                         Text(
-                          '暂无推荐',
+                          '每日推荐',
                           style: TextStyle(
-                            color: colorScheme.onSurface.withOpacity(0.6),
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurface,
                           ),
                         ),
                       ],
                     ),
                   ),
-                )
-              : SliverPadding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24.0,
-                    vertical: 16.0,
-                  ),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) =>
-                          _buildTrackTile(context, tracks[index], index),
-                      childCount: tracks.length,
+                  actions: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 16.0),
+                      child: FilledButton.icon(
+                        onPressed: () => _playAll(context),
+                        icon: const Icon(Icons.play_arrow, size: 20),
+                        label: const Text('播放全部'),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-        ],
+                tracks.isEmpty
+                    ? SliverFillRemaining(
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.music_note_outlined,
+                                size: 64,
+                                color: colorScheme.onSurface.withOpacity(0.3),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                '暂无推荐',
+                                style: TextStyle(
+                                  color: colorScheme.onSurface.withOpacity(0.6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : SliverPadding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24.0,
+                          vertical: 16.0,
+                        ),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) =>
+                                _buildTrackTile(context, tracks[index], index),
+                            childCount: tracks.length,
+                          ),
+                        ),
+                      ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -675,6 +698,7 @@ class _FluentDailyRecommendPage extends StatelessWidget {
     Map<String, dynamic> song,
     int index,
   ) {
+    final theme = fluent.FluentTheme.of(context);
     final album = (song['al'] ?? song['album'] ?? {}) as Map<String, dynamic>;
     final artists = (song['ar'] ?? song['artists'] ?? []) as List<dynamic>;
     final picUrl = (album['picUrl'] ?? '').toString();
@@ -684,10 +708,68 @@ class _FluentDailyRecommendPage extends StatelessWidget {
         .join(' / ');
     final songName = song['name']?.toString() ?? '';
 
+    final cover = ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: picUrl.isEmpty
+          ? Container(
+              width: 48,
+              height: 48,
+              color: theme.resources.controlAltFillColorSecondary,
+              alignment: Alignment.center,
+              child: fluent.Icon(
+                fluent.FluentIcons.music_in_collection,
+                size: 20,
+                color: theme.resources.textFillColorTertiary,
+              ),
+            )
+          : CachedNetworkImage(
+              imageUrl: picUrl,
+              width: 48,
+              height: 48,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(
+                width: 48,
+                height: 48,
+                color: theme.resources.controlAltFillColorSecondary,
+                alignment: Alignment.center,
+                child: const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: fluent.ProgressRing(strokeWidth: 2),
+                ),
+              ),
+              errorWidget: (context, url, error) => Container(
+                width: 48,
+                height: 48,
+                color: theme.resources.controlAltFillColorSecondary,
+                alignment: Alignment.center,
+                child: fluent.Icon(
+                  fluent.FluentIcons.music_in_collection,
+                  size: 20,
+                  color: theme.resources.textFillColorTertiary,
+                ),
+              ),
+            ),
+    );
+
     return fluent.ListTile(
       leading: SizedBox(
-        width: 32,
-        child: Text('${index + 1}', textAlign: fluent.TextAlign.center),
+        width: 120,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 32,
+              child: Text(
+                '${index + 1}',
+                textAlign: fluent.TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(width: 8),
+            cover,
+          ],
+        ),
       ),
       title: Text(
         songName,
@@ -695,6 +777,7 @@ class _FluentDailyRecommendPage extends StatelessWidget {
       ),
       subtitle: Text(artistsText),
       trailing: fluent.Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           fluent.IconButton(
             icon: const Icon(fluent.FluentIcons.play),
@@ -749,43 +832,57 @@ class _FluentDailyRecommendPage extends StatelessWidget {
 
   /// 显示歌曲菜单
   void _showTrackMenu(BuildContext context, Map<String, dynamic> song) {
-    // This will still show a Material bottom sheet.
-    // A proper fluent context menu would require more work.
-    showModalBottomSheet(
+    fluent.showDialog(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.playlist_add),
-              title: const Text('添加到播放队列'),
-              onTap: () {
-                Navigator.pop(context);
-                try {
-                  final track = _convertToTrack(song);
-                  final currentQueue = PlaylistQueueService().queue;
-                  final newQueue = [...currentQueue, track];
-                  PlaylistQueueService().setQueue(
-                    newQueue,
-                    PlaylistQueueService().currentIndex,
-                    QueueSource.playlist,
-                  );
-                } catch (e) {
-                  // handle error
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.favorite_border),
-              title: const Text('收藏'),
-              onTap: () {
-                Navigator.pop(context);
-              },
+      builder: (dialogContext) {
+        return fluent.ContentDialog(
+          title: const Text('更多操作'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              fluent.Button(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  try {
+                    final track = _convertToTrack(song);
+                    final currentQueue = PlaylistQueueService().queue;
+                    final newQueue = [...currentQueue, track];
+                    PlaylistQueueService().setQueue(
+                      newQueue,
+                      PlaylistQueueService().currentIndex,
+                      QueueSource.playlist,
+                    );
+                  } catch (e) {
+                    // handle error
+                  }
+                },
+                child: const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('添加到播放队列'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              fluent.Button(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  // TODO: 收藏功能
+                },
+                child: const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('收藏'),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            fluent.Button(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('关闭'),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -806,4 +903,24 @@ class _FluentDailyRecommendPage extends StatelessWidget {
       source: MusicSource.netease,
     );
   }
+}
+
+ThemeData _dailyRecommendFontTheme(ThemeData base) {
+  const fontFamily = 'Microsoft YaHei';
+  final textTheme = base.textTheme.apply(fontFamily: fontFamily);
+  final primaryTextTheme = base.primaryTextTheme.apply(fontFamily: fontFamily);
+  final appBarTheme = base.appBarTheme.copyWith(
+    titleTextStyle: (base.appBarTheme.titleTextStyle ?? textTheme.titleLarge)
+        ?.copyWith(fontFamily: fontFamily),
+    toolbarTextStyle:
+        (base.appBarTheme.toolbarTextStyle ?? textTheme.titleMedium)?.copyWith(
+          fontFamily: fontFamily,
+        ),
+  );
+
+  return base.copyWith(
+    textTheme: textTheme,
+    primaryTextTheme: primaryTextTheme,
+    appBarTheme: appBarTheme,
+  );
 }
