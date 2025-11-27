@@ -51,23 +51,26 @@ class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
         context: context,
         builder: (context) => fluent_ui.ContentDialog(
           title: Text(type == 'text' ? '选择文字颜色' : '选择描边颜色'),
-          content: SingleChildScrollView(
-            child: ColorPicker(
-              pickerColor: initialColor,
-              onColorChanged: (color) {
-                setState(() {
-                  if (type == 'text') {
-                    _textColor = color;
-                    _desktopLyricService.setTextColor(color.value);
-                  } else {
-                    _strokeColor = color;
-                    _desktopLyricService.setStrokeColor(color.value);
-                  }
-                });
-              },
-              enableAlpha: true,
-              displayThumbColor: true,
-              pickerAreaHeightPercent: 0.8,
+          content: Material(
+            color: Colors.transparent,
+            child: SizedBox(
+              width: 300,
+              child: HueRingPicker(
+                pickerColor: initialColor,
+                onColorChanged: (color) {
+                  setState(() {
+                    if (type == 'text') {
+                      _textColor = color;
+                      _desktopLyricService.setTextColor(color.value);
+                    } else {
+                      _strokeColor = color;
+                      _desktopLyricService.setStrokeColor(color.value);
+                    }
+                  });
+                },
+                enableAlpha: true,
+                displayThumbColor: true,
+              ),
             ),
           ),
           actions: [
@@ -129,11 +132,14 @@ class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
     final isFluent = fluent_ui.FluentTheme.maybeOf(context) != null;
 
     if (isFluent) {
+      final fluentTheme = fluent_ui.FluentTheme.of(context);
+      
       return FluentSettingsGroup(
         title: '桌面歌词',
         children: [
+          // 显示开关
           FluentSwitchTile(
-            icon: Icons.lyrics,
+            icon: fluent_ui.FluentIcons.text_paragraph_option,
             title: '显示桌面歌词',
             subtitle: '在桌面覆盖层显示当前歌词',
             value: _desktopLyricService.isVisible,
@@ -143,45 +149,31 @@ class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
             },
           ),
           // 字体大小
-          fluent_ui.Card(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.format_size, size: 20),
-                    const SizedBox(width: 8),
-                    const Text('字体大小'),
-                    const Spacer(),
-                    Text('$_fontSize'),
-                  ],
-                ),
-                fluent_ui.Slider(
-                  value: _fontSize.toDouble(),
-                  min: 16,
-                  max: 72,
-                  divisions: 28,
-                  onChanged: (value) {
-                    setState(() {
-                      _fontSize = value.toInt();
-                    });
-                    _desktopLyricService.setFontSize(_fontSize);
-                  },
-                ),
-              ],
-            ),
+          FluentSliderTile(
+            icon: fluent_ui.FluentIcons.font_size,
+            title: '字体大小',
+            value: _fontSize.toDouble(),
+            min: 16,
+            max: 72,
+            divisions: 28,
+            valueLabel: '$_fontSize',
+            onChanged: (value) {
+              setState(() {
+                _fontSize = value.toInt();
+              });
+              _desktopLyricService.setFontSize(_fontSize);
+            },
           ),
           // 文字颜色
           FluentSettingsTile(
-            icon: Icons.color_lens,
+            icon: fluent_ui.FluentIcons.font_color_a,
             title: '文字颜色',
             trailing: Container(
               width: 24,
               height: 24,
               decoration: BoxDecoration(
                 color: _textColor,
-                border: Border.all(color: fluent_ui.FluentTheme.of(context).resources.dividerStrokeColorDefault),
+                border: Border.all(color: fluentTheme.resources.dividerStrokeColorDefault),
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
@@ -189,52 +181,38 @@ class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
           ),
           // 描边颜色
           FluentSettingsTile(
-            icon: Icons.border_color,
+            icon: fluent_ui.FluentIcons.border_dash,
             title: '描边颜色',
             trailing: Container(
               width: 24,
               height: 24,
               decoration: BoxDecoration(
                 color: _strokeColor,
-                border: Border.all(color: fluent_ui.FluentTheme.of(context).resources.dividerStrokeColorDefault),
+                border: Border.all(color: fluentTheme.resources.dividerStrokeColorDefault),
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
             onTap: () => _pickColor('stroke'),
           ),
           // 描边宽度
-          fluent_ui.Card(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.line_weight, size: 20),
-                    const SizedBox(width: 8),
-                    const Text('描边宽度'),
-                    const Spacer(),
-                    Text('$_strokeWidth'),
-                  ],
-                ),
-                fluent_ui.Slider(
-                  value: _strokeWidth.toDouble(),
-                  min: 0,
-                  max: 10,
-                  divisions: 10,
-                  onChanged: (value) {
-                    setState(() {
-                      _strokeWidth = value.toInt();
-                    });
-                    _desktopLyricService.setStrokeWidth(_strokeWidth);
-                  },
-                ),
-              ],
-            ),
+          FluentSliderTile(
+            icon: fluent_ui.FluentIcons.line_thickness,
+            title: '描边宽度',
+            value: _strokeWidth.toDouble(),
+            min: 0,
+            max: 10,
+            divisions: 10,
+            valueLabel: '$_strokeWidth',
+            onChanged: (value) {
+              setState(() {
+                _strokeWidth = value.toInt();
+              });
+              _desktopLyricService.setStrokeWidth(_strokeWidth);
+            },
           ),
           // 可拖动
           FluentSwitchTile(
-            icon: Icons.open_with,
+            icon: fluent_ui.FluentIcons.move,
             title: '允许拖动',
             subtitle: '鼠标可以拖动歌词窗口',
             value: _isDraggable,
@@ -247,7 +225,7 @@ class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
           ),
           // 鼠标穿透
           FluentSwitchTile(
-            icon: Icons.touch_app,
+            icon: fluent_ui.FluentIcons.touch_pointer,
             title: '鼠标穿透',
             subtitle: '歌词窗口不响应鼠标事件',
             value: _isMouseTransparent,
@@ -259,17 +237,14 @@ class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
             },
           ),
           // 测试按钮
-          fluent_ui.Card(
-            padding: const EdgeInsets.all(12),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: fluent_ui.FilledButton(
-                onPressed: () {
-                  _desktopLyricService.setLyricText('这是测试歌词 - This is a test lyric');
-                },
-                child: const Text('测试歌词显示'),
-              ),
-            ),
+          FluentSettingsTile(
+            icon: fluent_ui.FluentIcons.play,
+            title: '测试歌词显示',
+            subtitle: '显示一条测试歌词',
+            trailing: const Icon(fluent_ui.FluentIcons.chevron_right, size: 12),
+            onTap: () {
+              _desktopLyricService.setLyricText('这是测试歌词 - This is a test lyric');
+            },
           ),
         ],
       );

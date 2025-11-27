@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui'; // 导入 dart:ui 以使用 ImageFilter
 import 'package:flutter/material.dart';
 import '../../services/player_service.dart';
@@ -35,6 +34,17 @@ class _PlayerFluidCloudLyricsPanelState extends State<PlayerFluidCloudLyricsPane
   // 流体动画控制器
   late AnimationController _fluidAnimationController;
   late Animation<double> _fluidAnimation;
+  
+  // Apple Music 风格切换动画控制器
+  late AnimationController _transitionAnimationController;
+  late Animation<double> _transitionAnimation;
+  
+  // 滚动速度追踪
+  double _scrollVelocity = 0.0;
+  int _lastLyricIndex = -1;
+  
+  // 记录上一个歌词索引，用于过渡动画
+  int _previousLyricIndex = -1;
 
   @override
   void initState() {
@@ -47,6 +57,7 @@ class _PlayerFluidCloudLyricsPanelState extends State<PlayerFluidCloudLyricsPane
     _autoResetTimer?.cancel();
     _timeCapsuleAnimationController?.dispose();
     _fluidAnimationController.dispose();
+    _transitionAnimationController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -66,9 +77,9 @@ class _PlayerFluidCloudLyricsPanelState extends State<PlayerFluidCloudLyricsPane
       curve: Curves.easeInOut,
     ));
     
-    // 流体动画（持续循环）
+    // 流体动画（持续循环）- 使用更柔和的曲线
     _fluidAnimationController = AnimationController(
-      duration: const Duration(seconds: 3),
+      duration: const Duration(milliseconds: 2500),
       vsync: this,
     )..repeat(reverse: true);
     
@@ -77,8 +88,21 @@ class _PlayerFluidCloudLyricsPanelState extends State<PlayerFluidCloudLyricsPane
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _fluidAnimationController,
-      curve: Curves.easeInOut,
+      curve: Curves.easeInOutSine, // 更柔和的正弦曲线
     ));
+    
+    // Apple Music 风格切换动画
+    // 0.0 = 切换开始（旧歌词状态）
+    // 1.0 = 切换完成（新歌词状态）
+    _transitionAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    
+    _transitionAnimation = CurvedAnimation(
+      parent: _transitionAnimationController,
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -87,6 +111,12 @@ class _PlayerFluidCloudLyricsPanelState extends State<PlayerFluidCloudLyricsPane
     
     // 如果当前播放索引变化且不处于手动模式，则滚动
     if (widget.currentLyricIndex != oldWidget.currentLyricIndex && !_isManualMode) {
+      // 触发 Apple Music 风格切换动画
+      if (_lastLyricIndex != widget.currentLyricIndex) {
+        _previousLyricIndex = _lastLyricIndex;
+        _lastLyricIndex = widget.currentLyricIndex;
+        _transitionAnimationController.forward(from: 0.0);
+      }
       _scrollToCurrentLyric();
     }
   }
@@ -211,29 +241,34 @@ class _PlayerFluidCloudLyricsPanelState extends State<PlayerFluidCloudLyricsPane
         builder: (context, themeColor, child) {
           return LayoutBuilder(
             builder: (context, constraints) {
-              const int visibleLines = 7;
-              final itemHeight = constraints.maxHeight / visibleLines;
+              // 桌面端可视行数
+              const int baseVisibleLines = 7;
+              // 根据滚动速度动态调整间距（速度越快，间距稍微增大，产生拉伸效果）
+              final velocityFactor = (1.0 + (_scrollVelocity.abs() * 0.0001)).clamp(1.0, 1.15);
+              // itemHeight 不受间距动画影响，保持滚动位置稳定
+              final itemHeight = (constraints.maxHeight / baseVisibleLines) * velocityFactor;
               final viewportHeight = constraints.maxHeight;
               
               // 确保在非手动模式下滚动到正确位置
               // 使用 addPostFrameCallback 避免在 build 过程中调用 scroll
               if (!_isManualMode && _scrollController.hasClients) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                   if (_scrollController.hasClients) {
-                     // 由于设置了 padding 使得首行居中，所以直接滚动到 index * itemHeight 即可让对应行居中
-                     final targetOffset = widget.currentLyricIndex * itemHeight;
-                     
-                     // 如果距离太远，直接跳转，否则动画
-                     if ((_scrollController.offset - targetOffset).abs() > viewportHeight * 2) {
-                        _scrollController.jumpTo(targetOffset);
-                     } else {
-                        _scrollController.animateTo(
-                          targetOffset,
-                          duration: const Duration(milliseconds: 600),
-                          curve: Curves.easeOutCubic,
-                        );
-                     }
-                   }
+                  if (_scrollController.hasClients) {
+                    // 由于设置了 padding 使得首行居中，所以直接滚动到 index * itemHeight 即可让对应行居中
+                    final targetOffset = widget.currentLyricIndex * itemHeight;
+                    
+                    // 如果距离太远，直接跳转，否则动画
+                    if ((_scrollController.offset - targetOffset).abs() > viewportHeight * 2) {
+                      _scrollController.jumpTo(targetOffset);
+                    } else {
+                      // 使用平滑的缓出曲线，让滚动更丝滑
+                      _scrollController.animateTo(
+                        targetOffset,
+                        duration: const Duration(milliseconds: 800),
+                        curve: Curves.easeOutCubic,
+                      );
+                    }
+                  }
                 });
               }
               
@@ -241,11 +276,15 @@ class _PlayerFluidCloudLyricsPanelState extends State<PlayerFluidCloudLyricsPane
                 onNotification: (notification) {
                   if (notification is ScrollStartNotification && 
                       notification.dragDetails != null) {
-                    // 用户开始拖动
                     _startManualMode();
                   } else if (notification is ScrollUpdateNotification) {
+                    if (notification.scrollDelta != null) {
+                      setState(() {
+                        _scrollVelocity = notification.scrollDelta!;
+                      });
+                    }
+                    
                     if (_isManualMode) {
-                      // 计算当前中心点的歌词索引
                       final centerOffset = _scrollController.offset + (viewportHeight / 2);
                       final index = (centerOffset / itemHeight).floor();
                       
@@ -256,85 +295,104 @@ class _PlayerFluidCloudLyricsPanelState extends State<PlayerFluidCloudLyricsPane
                       }
                       _resetAutoTimer();
                     }
+                  } else if (notification is ScrollEndNotification) {
+                    setState(() {
+                      _scrollVelocity = 0.0;
+                    });
                   }
                   return false;
                 },
-                child: ListView.builder(
-                  controller: _scrollController,
-                  itemCount: widget.lyrics.length,
-                  itemExtent: itemHeight, // 固定高度优化性能
-                  // 添加内边距，确保第一行和最后一行能居中
-                  padding: EdgeInsets.symmetric(
-                    vertical: (viewportHeight - itemHeight) / 2
-                  ),
-                  physics: const BouncingScrollPhysics(), // iOS 风格回弹
-                  itemBuilder: (context, index) {
-                    // 根据是否手动模式决定高亮逻辑
-                    // 手动模式：高亮手动选中的行 (_selectedLyricIndex) - 可选，这里为了体验保持高亮当前播放行，但选中行有视觉反馈
-                    // 自动模式：高亮当前播放行 (widget.currentLyricIndex)
+                child: AnimatedBuilder(
+                  animation: _transitionAnimation,
+                  builder: (context, child) {
+                    final transitionProgress = _transitionAnimation.value;
                     
-                    // 为了流体效果，我们需要计算每一行相对于"中心"的距离
-                    // 在 ListView 中，我们无法直接得知每一行渲染时的位置，
-                    // 但我们可以基于索引距离来模拟。
-                    
-                    // 决定"中心索引"：如果是手动模式，以选中的为准(视觉中心)；否则以当前播放的为准
-                    // 但实际上 ListView 在滚动，所以视觉中心总是 Viewport 中间
-                    // 我们希望高亮的是：处于 Viewport 中间的那一行
-                    
-                    // 这里简化逻辑：
-                    // 高亮行 = 当前播放行 (始终高亮播放行，还是高亮视觉中心行？)
-                    // Apple Music 逻辑：滚动时，高亮保持在播放行，但变暗。
-                    // 我们这里：
-                    // 1. 播放行始终最亮
-                    // 2. 其他行根据距离播放行的距离衰减
-                    
-                    final lyric = widget.lyrics[index];
-                    final isActuallyPlaying = index == widget.currentLyricIndex;
-                    
-                    // 计算视觉距离 (用于模糊和缩放)
-                    // 在自动模式下，当前播放行在中心，距离 = (index - current).abs()
-                    // 在手动模式下，用户滚动了，当前播放行可能不在中心
-                    
-                    // 我们使用逻辑距离：
-                    // 如果是手动模式，我们希望用户关注他滚到的位置吗？
-                    // 还是保持播放行高亮？
-                    // 参考之前的逻辑：
-                    // isCurrent = index == displayIndex
-                    // displayIndex = _selectedLyricIndex ?? widget.currentLyricIndex
-                    
-                    final displayIndex = _isManualMode && _selectedLyricIndex != null 
-                        ? _selectedLyricIndex! 
-                        : widget.currentLyricIndex;
-                    
-                    final distance = (index - displayIndex).abs();
-                    
-                    // 视觉参数
-                    final opacity = (1.0 - (distance * 0.4)).clamp(0.1, 1.0);
-                    final scale = (1.0 - (distance * 0.05)).clamp(0.90, 1.0);
-                    final blur = distance == 0 ? 0.0 : 1.5;
-                    
-                    return Center(
-                      child: Transform.scale(
-                        scale: scale,
-                        child: Opacity(
-                          opacity: opacity,
-                          child: ImageFiltered(
-                            imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-                            child: isActuallyPlaying // 只有真正播放的行才用高亮样式
-                                ? _buildFluidCloudLyricLine(
-                                    lyric, 
-                                    themeColor, 
-                                    itemHeight, 
-                                    true
-                                  )
-                                : _buildNormalLyricLine(
-                                    lyric, 
-                                    themeColor, 
-                                    itemHeight
-                                  ),
-                          ),
-                        ),
+                    return ListView.builder(
+                      controller: _scrollController,
+                      itemCount: widget.lyrics.length,
+                      itemExtent: itemHeight,
+                      padding: EdgeInsets.symmetric(
+                        vertical: (viewportHeight - itemHeight) / 2
                       ),
+                      physics: const BouncingScrollPhysics(),
+                      itemBuilder: (context, index) {
+                        final lyric = widget.lyrics[index];
+                        final isCurrentPlaying = index == widget.currentLyricIndex;
+                        final wasPreviousPlaying = index == _previousLyricIndex;
+                        
+                        final displayIndex = _isManualMode && _selectedLyricIndex != null 
+                            ? _selectedLyricIndex! 
+                            : widget.currentLyricIndex;
+                        
+                        final distance = (index - displayIndex).abs();
+                        
+                        // Apple Music 风格视觉参数
+                        // 当前歌词：完全高亮，大字体
+                        // 其他歌词：根据距离逐渐变暗变小
+                        double opacity;
+                        double scale;
+                        double blur;
+                        
+                        if (isCurrentPlaying) {
+                          // 当前播放的歌词：从上一个状态过渡到高亮状态
+                          if (wasPreviousPlaying) {
+                            // 如果是同一行，保持高亮
+                            opacity = 1.0;
+                            scale = 1.0;
+                            blur = 0.0;
+                          } else {
+                            // 新的当前歌词：从暗淡过渡到高亮
+                            final prevDistance = (_previousLyricIndex >= 0) 
+                                ? (index - _previousLyricIndex).abs() 
+                                : 1;
+                            final startOpacity = (1.0 - (prevDistance * 0.3)).clamp(0.3, 0.7);
+                            final startScale = (1.0 - (prevDistance * 0.03)).clamp(0.94, 0.97);
+                            final startBlur = (prevDistance * 0.8).clamp(0.0, 2.0);
+                            
+                            opacity = startOpacity + (1.0 - startOpacity) * transitionProgress;
+                            scale = startScale + (1.0 - startScale) * transitionProgress;
+                            blur = startBlur * (1.0 - transitionProgress);
+                          }
+                        } else if (wasPreviousPlaying && _previousLyricIndex >= 0) {
+                          // 上一个播放的歌词：从高亮过渡到暗淡
+                          final targetOpacity = (1.0 - (distance * 0.3)).clamp(0.3, 0.7);
+                          final targetScale = (1.0 - (distance * 0.03)).clamp(0.94, 0.97);
+                          final targetBlur = (distance * 0.8).clamp(0.0, 2.0);
+                          
+                          opacity = 1.0 - (1.0 - targetOpacity) * transitionProgress;
+                          scale = 1.0 - (1.0 - targetScale) * transitionProgress;
+                          blur = targetBlur * transitionProgress;
+                        } else {
+                          // 其他歌词：保持静态的距离衰减效果
+                          opacity = (1.0 - (distance * 0.3)).clamp(0.3, 0.7);
+                          scale = (1.0 - (distance * 0.03)).clamp(0.94, 0.97);
+                          blur = (distance * 0.8).clamp(0.0, 2.0);
+                        }
+                        
+                        return Center(
+                          child: Transform.scale(
+                            scale: scale,
+                            child: Opacity(
+                              opacity: opacity,
+                              child: ImageFiltered(
+                                imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+                                child: isCurrentPlaying
+                                    ? _buildFluidCloudLyricLine(
+                                        lyric, 
+                                        themeColor, 
+                                        itemHeight, 
+                                        true
+                                      )
+                                    : _buildNormalLyricLine(
+                                        lyric, 
+                                        themeColor, 
+                                        itemHeight
+                                      ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     );
                   },
                 ),

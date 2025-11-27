@@ -436,4 +436,14 @@ class NotificationService {
       print('❌ [NotificationService] 取消通知失败: $e');
     }
   }
+
+  /// 取消所有通知
+  Future<void> cancelAll() async {
+    try {
+      await _flutterLocalNotificationsPlugin.cancelAll();
+      print('🔔 [NotificationService] 已取消所有通知');
+    } catch (e) {
+      print('❌ [NotificationService] 取消所有通知失败: $e');
+    }
+  }
 }

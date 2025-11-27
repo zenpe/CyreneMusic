@@ -252,6 +252,20 @@ void DesktopLyricPlugin::HandleMethodCall(
     }
     result->Error("INVALID_ARGUMENT", "Missing song info arguments");
     
+  } else if (method_name == "setPlayingState") {
+    // Set playing state (for play/pause button icon)
+    const auto* arguments = std::get_if<flutter::EncodableMap>(method_call.arguments());
+    if (arguments) {
+      auto playing_it = arguments->find(flutter::EncodableValue("isPlaying"));
+      if (playing_it != arguments->end()) {
+        bool is_playing = std::get<bool>(playing_it->second);
+        lyric_window_->SetPlayingState(is_playing);
+        result->Success(flutter::EncodableValue(true));
+        return;
+      }
+    }
+    result->Error("INVALID_ARGUMENT", "Missing 'isPlaying' argument");
+    
   } else {
     result->NotImplemented();
   }

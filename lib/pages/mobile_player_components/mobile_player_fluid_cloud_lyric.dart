@@ -37,6 +37,14 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
   // 流体动画控制器
   late AnimationController _fluidAnimationController;
   late Animation<double> _fluidAnimation;
+  
+  // QQ弹弹效果动画控制器
+  late AnimationController _bounceAnimationController;
+  late Animation<double> _bounceAnimation;
+  
+  // 滚动速度追踪
+  double _scrollVelocity = 0.0;
+  int _lastLyricIndex = -1;
 
   @override
   void initState() {
@@ -49,6 +57,7 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
     _autoResetTimer?.cancel();
     _timeCapsuleAnimationController?.dispose();
     _fluidAnimationController.dispose();
+    _bounceAnimationController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -68,9 +77,9 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
       curve: Curves.easeInOut,
     ));
     
-    // 流体动画（持续循环）
+    // 流体动画（持续循环）- 使用更柔和的曲线
     _fluidAnimationController = AnimationController(
-      duration: const Duration(seconds: 3),
+      duration: const Duration(milliseconds: 2500),
       vsync: this,
     )..repeat(reverse: true);
     
@@ -79,7 +88,21 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _fluidAnimationController,
-      curve: Curves.easeInOut,
+      curve: Curves.easeInOutSine, // 更柔和的正弦曲线
+    ));
+    
+    // QQ弹弹效果动画
+    _bounceAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    
+    _bounceAnimation = Tween<double>(
+      begin: 0.95,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _bounceAnimationController,
+      curve: Curves.elasticOut, // 弹性曲线
     ));
   }
 
@@ -89,6 +112,11 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
     
     // 如果当前播放索引变化且不处于手动模式，则滚动
     if (widget.currentLyricIndex != oldWidget.currentLyricIndex && !_isManualMode) {
+      // 触发QQ弹弹效果
+      if (_lastLyricIndex != widget.currentLyricIndex) {
+        _lastLyricIndex = widget.currentLyricIndex;
+        _bounceAnimationController.forward(from: 0.0);
+      }
       _scrollToCurrentLyric();
     }
   }
@@ -204,9 +232,11 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
     return RepaintBoundary(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // 移动端可视行数稍多一点，字体稍小
-          const int visibleLines = 6; // 增加可视行数以减小间隔
-          final itemHeight = constraints.maxHeight / visibleLines;
+          // 移动端可视行数 - 动态调整以实现弹性间距
+          const int baseVisibleLines = 6;
+          // 根据滚动速度动态调整间距（速度越快，间距稍微增大，产生拉伸效果）
+          final velocityFactor = (1.0 + (_scrollVelocity.abs() * 0.0001)).clamp(1.0, 1.15);
+          final itemHeight = (constraints.maxHeight / baseVisibleLines) * velocityFactor;
           final viewportHeight = constraints.maxHeight;
           
           // 确保在非手动模式下滚动到正确位置
@@ -217,10 +247,11 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
                  if ((_scrollController.offset - targetOffset).abs() > viewportHeight * 2) {
                     _scrollController.jumpTo(targetOffset);
                  } else {
+                    // 使用弹性曲线，让滚动更丝滑
                     _scrollController.animateTo(
                       targetOffset,
-                      duration: const Duration(milliseconds: 600),
-                      curve: Curves.easeOutCubic,
+                      duration: const Duration(milliseconds: 800), // 增加动画时间
+                      curve: Curves.easeOutCubic, // 使用平滑的缓出曲线
                     );
                  }
                }
@@ -233,6 +264,13 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
                   notification.dragDetails != null) {
                 _startManualMode();
               } else if (notification is ScrollUpdateNotification) {
+                // 追踪滚动速度用于动态间距
+                if (notification.scrollDelta != null) {
+                  setState(() {
+                    _scrollVelocity = notification.scrollDelta!;
+                  });
+                }
+                
                 if (_isManualMode) {
                   final centerOffset = _scrollController.offset + (viewportHeight / 2);
                   final index = (centerOffset / itemHeight).floor();
@@ -244,6 +282,11 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
                   }
                   _resetAutoTimer();
                 }
+              } else if (notification is ScrollEndNotification) {
+                // 滚动结束，重置速度
+                setState(() {
+                  _scrollVelocity = 0.0;
+                });
               }
               return false;
             },
@@ -265,30 +308,38 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
                 
                 final distance = (index - displayIndex).abs();
                 
-                // 视觉参数调整
-                final opacity = (1.0 - (distance * 0.25)).clamp(0.1, 1.0); // 减缓不透明度衰减
-                final scale = (1.0 - (distance * 0.06)).clamp(0.88, 1.0); // 减缓缩放衰减
-                final blur = distance == 0 ? 0.0 : 0.8; // 稍微减小模糊度
+                // 视觉参数调整 - 更柔和的过渡
+                final opacity = (1.0 - (distance * 0.18)).clamp(0.15, 1.0); // 更柔和的不透明度衰减
+                final scale = (1.0 - (distance * 0.04)).clamp(0.90, 1.0); // 更柔和的缩放衰减
+                final blur = distance == 0 ? 0.0 : (distance * 0.5).clamp(0.0, 1.2); // 渐进式模糊
                 
                 return Center(
-                  child: Transform.scale(
-                    scale: scale,
-                    child: Opacity(
-                      opacity: opacity,
-                      child: ImageFiltered(
-                        imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-                        child: isActuallyPlaying
-                            ? _buildFluidCloudLyricLine(
-                                lyric, 
-                                itemHeight, 
-                                true
-                              )
-                            : _buildNormalLyricLine(
-                                lyric, 
-                                itemHeight
-                              ),
-                      ),
-                    ),
+                  child: AnimatedBuilder(
+                    animation: _bounceAnimation,
+                    builder: (context, child) {
+                      // 只对当前播放的歌词应用弹跳效果
+                      final bounceScale = isActuallyPlaying ? _bounceAnimation.value : 1.0;
+                      
+                      return Transform.scale(
+                        scale: scale * bounceScale,
+                        child: Opacity(
+                          opacity: opacity,
+                          child: ImageFiltered(
+                            imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+                            child: isActuallyPlaying
+                                ? _buildFluidCloudLyricLine(
+                                    lyric, 
+                                    itemHeight, 
+                                    true
+                                  )
+                                : _buildNormalLyricLine(
+                                    lyric, 
+                                    itemHeight
+                                  ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 );
               },

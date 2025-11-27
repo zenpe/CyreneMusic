@@ -7,6 +7,7 @@ import '../models/song_detail.dart';
 import 'url_service.dart';
 import 'developer_mode_service.dart';
 import 'audio_quality_service.dart';
+import 'auth_service.dart';
 
 /// 音乐服务 - 处理与音乐相关的API请求
 class MusicService extends ChangeNotifier {
@@ -248,14 +249,41 @@ class MusicService extends ChangeNotifier {
           break;
 
         case MusicSource.kugou:
-          // 酷狗音乐
-          url = '$baseUrl/kugou/song?emixsongid=$songId';
+          // 酷狗音乐 - 需要传递用户 token 以使用绑定的酷狗账号
+          // 支持两种 ID 格式：
+          // 1. "emixsongid" - 来自搜索结果（优先使用，更稳定）
+          // 2. "hash" 或 "hash:album_audio_id" - 来自歌单导入（备用）
+          final songIdStr = songId.toString();
+          if (songIdStr.contains(':')) {
+            // 格式: "hash:album_audio_id" - 使用hash值
+            final parts = songIdStr.split(':');
+            final hash = parts[0].toUpperCase(); // 确保hash为大写
+            if (hash.isEmpty) {
+              throw Exception('酷狗歌曲hash值不能为空');
+            }
+            url = '$baseUrl/kugou/song?hash=$hash';
+          } else {
+            // 判断是hash还是emixsongid
+            // hash通常是32位十六进制字符串，emixsongid通常是其他格式
+            final idStr = songIdStr.toUpperCase();
+            final isHash = idStr.length == 32 && RegExp(r'^[0-9A-F]+$').hasMatch(idStr);
+            
+            if (isHash) {
+              // 32位十六进制字符串，是hash
+              url = '$baseUrl/kugou/song?hash=$idStr';
+            } else {
+              // 否则是emixsongid（优先使用，更稳定）
+              url = '$baseUrl/kugou/song?emixsongid=$songId';
+            }
+          }
           DeveloperModeService().addLog('🌐 [Network] GET $url');
 
+          final authToken = AuthService().token;
           response = await http.get(
             Uri.parse(url),
             headers: {
               'Content-Type': 'application/json',
+              if (authToken != null) 'Authorization': 'Bearer $authToken',
             },
           ).timeout(
             const Duration(seconds: 15),
@@ -395,6 +423,14 @@ class MusicService extends ChangeNotifier {
               return null;
             }
             
+            // 调试：打印酷狗音乐返回的 song 对象
+            print('🔍 [MusicService] 酷狗音乐 song 对象:');
+            print('   name: ${song['name']}');
+            print('   singer: ${song['singer']}');
+            print('   album: ${song['album']}');
+            print('   pic: ${song['pic']}');
+            print('   url: ${song['url'] != null ? '已获取' : '无'}');
+            
             // 处理 bitrate（可能是 int 或 String）
             final bitrateValue = song['bitrate'];
             final bitrate = bitrateValue != null ? '${bitrateValue}kbps' : '未知';
@@ -425,6 +461,7 @@ class MusicService extends ChangeNotifier {
           print('   🆔 ID: ${songDetail.id} (类型: ${songDetail.id.runtimeType})');
           print('   🎵 艺术家: ${songDetail.arName}');
           print('   💿 专辑: ${songDetail.alName}');
+          print('   🖼️ 封面: ${songDetail.pic.isNotEmpty ? songDetail.pic : "无"}');
           print('   🎼 音质: ${songDetail.level}');
           print('   📦 大小: ${songDetail.size}');
           print('   🔗 URL: ${songDetail.url.isNotEmpty ? "已获取" : "无"}');

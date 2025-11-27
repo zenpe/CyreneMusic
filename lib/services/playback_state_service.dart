@@ -192,16 +192,20 @@ class PlaybackStateService {
 
   /// 解析音乐源
   MusicSource _parseSource(String source) {
-    switch (source) {
-      case 'MusicSource.netease':
+    // 支持两种格式：'kugou' 或 'MusicSource.kugou'
+    final normalizedSource = source.contains('.') ? source.split('.').last : source;
+    
+    switch (normalizedSource) {
+      case 'netease':
         return MusicSource.netease;
-      case 'MusicSource.qq':
+      case 'qq':
         return MusicSource.qq;
-      case 'MusicSource.kugou':
+      case 'kugou':
         return MusicSource.kugou;
-      case 'MusicSource.local':
+      case 'local':
         return MusicSource.local;
       default:
+        print('⚠️ [PlaybackStateService] 未知音乐源: $source，默认使用网易云');
         return MusicSource.netease;
     }
   }

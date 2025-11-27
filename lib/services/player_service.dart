@@ -115,9 +115,12 @@ class PlayerService extends ChangeNotifier {
           _state = PlayerState.playing;
           _startListeningTimeTracking(); // 开始听歌时长追踪
           _startStateSaveTimer(); // 开始定期保存播放状态
-          // 🔥 通知Android原生层播放状态（后台歌词更新关键）
+          // 🔥 通知原生层播放状态（后台歌词更新关键）
           if (Platform.isAndroid) {
             AndroidFloatingLyricService().setPlayingState(true);
+          }
+          if (Platform.isWindows) {
+            DesktopLyricService().setPlayingState(true);
           }
           break;
         case ap.PlayerState.paused:
@@ -125,18 +128,24 @@ class PlayerService extends ChangeNotifier {
           _pauseListeningTimeTracking(); // 暂停听歌时长追踪
           _saveCurrentPlaybackState(); // 暂停时保存状态
           _stopStateSaveTimer(); // 停止定期保存
-          // 🔥 通知Android原生层播放状态（后台歌词更新关键）
+          // 🔥 通知原生层播放状态（后台歌词更新关键）
           if (Platform.isAndroid) {
             AndroidFloatingLyricService().setPlayingState(false);
+          }
+          if (Platform.isWindows) {
+            DesktopLyricService().setPlayingState(false);
           }
           break;
         case ap.PlayerState.stopped:
           _state = PlayerState.idle;
           _pauseListeningTimeTracking(); // 暂停听歌时长追踪
           _stopStateSaveTimer(); // 停止定期保存
-          // 🔥 通知Android原生层播放状态（后台歌词更新关键）
+          // 🔥 通知原生层播放状态（后台歌词更新关键）
           if (Platform.isAndroid) {
             AndroidFloatingLyricService().setPlayingState(false);
+          }
+          if (Platform.isWindows) {
+            DesktopLyricService().setPlayingState(false);
           }
           break;
         case ap.PlayerState.completed:
@@ -144,9 +153,12 @@ class PlayerService extends ChangeNotifier {
           _position = Duration.zero;
           _pauseListeningTimeTracking(); // 暂停听歌时长追踪
           _stopStateSaveTimer(); // 停止定期保存
-          // 🔥 通知Android原生层播放状态（后台歌词更新关键）
+          // 🔥 通知原生层播放状态（后台歌词更新关键）
           if (Platform.isAndroid) {
             AndroidFloatingLyricService().setPlayingState(false);
+          }
+          if (Platform.isWindows) {
+            DesktopLyricService().setPlayingState(false);
           }
           // 歌曲播放完毕，自动播放下一首
           _playNextFromHistory();
@@ -475,7 +487,10 @@ class PlayerService extends ChangeNotifier {
 
   /// 更新封面 Provider，统一管理封面缓存与刷新
   Future<void> _updateCoverImage(String? imageUrl, {bool notify = true}) async {
+    print('🖼️ [PlayerService] _updateCoverImage 调用, imageUrl: ${imageUrl ?? "null"}');
+    
     if (imageUrl == null || imageUrl.isEmpty) {
+      print('⚠️ [PlayerService] 封面URL为空，跳过更新');
       if (_currentCoverImageProvider != null) {
         setCurrentCoverImageProvider(null, shouldNotify: notify);
       }
@@ -925,6 +940,46 @@ class PlayerService extends ChangeNotifier {
     } catch (e) {
       print('❌ [PlayerService] 自动播放下一首失败: $e');
     }
+  }
+
+  /// 清除当前播放会话
+  Future<void> clearSession() async {
+    print('🗑️ [PlayerService] 清除播放会话...');
+    
+    // 停止播放
+    await _audioPlayer.stop();
+    
+    // 清除状态
+    _state = PlayerState.idle;
+    _currentSong = null;
+    _currentTrack = null;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _errorMessage = null;
+    _currentCoverImageProvider = null;
+    _currentCoverUrl = null;
+    themeColorNotifier.value = null;
+    
+    // 清除临时文件
+    await _cleanupCurrentTempFile();
+    
+    // 停止计时器
+    _stopStateSaveTimer();
+    _pauseListeningTimeTracking();
+    
+    // 清除通知
+    // 注意：这可能需要在 NotificationService 中处理
+    
+    // 更新UI
+    notifyListeners();
+    
+    // 🔥 通知Android原生层
+    if (Platform.isAndroid) {
+      AndroidFloatingLyricService().setPlayingState(false);
+      AndroidFloatingLyricService().updatePosition(Duration.zero);
+    }
+    
+    print('✅ [PlayerService] 播放会话已清除');
   }
 
   /// 播放下一首（顺序播放模式）

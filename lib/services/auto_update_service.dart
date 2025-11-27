@@ -524,6 +524,19 @@ class AutoUpdateService extends ChangeNotifier {
       // 先创建一个批处理文件来启动更新器（最可靠的方式）
       final batchFile = File(p.join(tempUpdateDir.parent.path, 'start_updater.bat'));
       final batchContent = '''@echo off
+:: Check for administrator privileges
+net session >nul 2>&1
+if %errorLevel% == 0 (
+    :: Already running as administrator
+    goto :RunUpdater
+) else (
+    :: Request administrator privileges
+    echo Requesting administrator privileges...
+    powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit /b
+)
+
+:RunUpdater
 echo ========================================
 echo Cyrene Music Updater
 echo ========================================
@@ -532,7 +545,7 @@ echo Script: $scriptPath
 echo Install: $installDirPath
 echo Update: $updateDirPath
 echo.
-echo Starting updater...
+echo Starting updater with administrator privileges...
 echo.
 
 powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -NoProfile -File "$scriptPath" -InstallDir "$installDirPath" -UpdateDir "$updateDirPath" -ExePath "$exePathClean" -WaitSeconds 3

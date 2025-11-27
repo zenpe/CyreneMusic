@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../services/url_service.dart';
 import '../services/playlist_service.dart';
 import '../services/auth_service.dart';
+import '../services/kugou_login_service.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import '../utils/theme_manager.dart';
@@ -12,7 +13,8 @@ import '../utils/theme_manager.dart';
 /// 音乐平台枚举
 enum MusicPlatform {
   netease('网易云音乐', '🎵'),
-  qq('QQ音乐', '🎶');
+  qq('QQ音乐', '🎶'),
+  kugou('酷狗音乐', '🎸');
 
   final String name;
   final String icon;
@@ -188,20 +190,29 @@ class ImportPlaylistDialog {
                   }).toList(),
                 ),
                 const SizedBox(height: 16),
-                const Text('输入歌单信息', style: TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                Text(
-                  selectedPlatform == MusicPlatform.netease
-                      ? '支持以下两种输入方式：\n• 直接输入歌单ID，如：19723756\n• 粘贴完整URL，如：https://music.163.com/#/playlist?id=19723756'
-                      : '支持以下两种输入方式：\n• 直接输入歌单ID，如：8522515502\n• 粘贴完整URL，如：https://y.qq.com/n/ryqq/playlist/8522515502',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                const SizedBox(height: 12),
-                fluent.TextBox(
-                  controller: controller,
-                  placeholder: '歌单ID或URL',
-                  maxLines: 2,
-                ),
+                // 酷狗音乐显示不同的提示
+                if (selectedPlatform == MusicPlatform.kugou) ...[
+                  const fluent.InfoBar(
+                    title: Text('酷狗音乐'),
+                    content: Text('点击"下一步"将显示您绑定的酷狗账号中的歌单'),
+                    severity: fluent.InfoBarSeverity.info,
+                  ),
+                ] else ...[
+                  const Text('输入歌单信息', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Text(
+                    selectedPlatform == MusicPlatform.netease
+                        ? '支持以下两种输入方式：\n• 直接输入歌单ID，如：19723756\n• 粘贴完整URL，如：https://music.163.com/#/playlist?id=19723756'
+                        : '支持以下两种输入方式：\n• 直接输入歌单ID，如：8522515502\n• 粘贴完整URL，如：https://y.qq.com/n/ryqq/playlist/8522515502',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  fluent.TextBox(
+                    controller: controller,
+                    placeholder: '歌单ID或URL',
+                    maxLines: 2,
+                  ),
+                ],
                 if (errorText != null) ...[
                   const SizedBox(height: 8),
                   fluent.InfoBar(title: Text(errorText!), severity: fluent.InfoBarSeverity.warning),
@@ -215,6 +226,14 @@ class ImportPlaylistDialog {
               ),
               fluent.FilledButton(
                 onPressed: () {
+                  // 酷狗音乐直接进入歌单选择
+                  if (selectedPlatform == MusicPlatform.kugou) {
+                    Navigator.pop(context, {
+                      'platform': selectedPlatform,
+                      'isKugou': true,
+                    });
+                    return;
+                  }
                   final input = controller.text.trim();
                   if (input.isEmpty) {
                     setState(() => errorText = '请输入歌单ID或URL');
@@ -259,51 +278,68 @@ class ImportPlaylistDialog {
               children: [
                 const Text('选择平台', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: MusicPlatform.values.map((platform) {
                     final isSelected = selectedPlatform == platform;
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                        child: ChoiceChip(
-                          label: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(platform.icon),
-                              const SizedBox(width: 4),
-                              Flexible(child: Text(platform.name, overflow: TextOverflow.ellipsis)),
-                            ],
-                          ),
-                          selected: isSelected,
-                          onSelected: (selected) {
-                            if (selected) setState(() => selectedPlatform = platform);
-                          },
-                        ),
+                    return ChoiceChip(
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(platform.icon),
+                          const SizedBox(width: 4),
+                          Text(platform.name),
+                        ],
                       ),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        if (selected) setState(() => selectedPlatform = platform);
+                      },
                     );
                   }).toList(),
                 ),
                 const SizedBox(height: 16),
-                const Text('输入歌单信息', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text(
-                  selectedPlatform == MusicPlatform.netease
-                      ? '支持以下两种输入方式：\n• 直接输入歌单ID，如：19723756\n• 粘贴完整URL，如：https://music.163.com/#/playlist?id=19723756'
-                      : '支持以下两种输入方式：\n• 直接输入歌单ID，如：8522515502\n• 粘贴完整URL，如：https://y.qq.com/n/ryqq/playlist/8522515502',
-                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: controller,
-                  decoration: const InputDecoration(
-                    labelText: '歌单ID或URL',
-                    hintText: '例如: 19723756 或完整URL',
-                    border: OutlineInputBorder(),
+                // 酷狗音乐显示不同的提示
+                if (selectedPlatform == MusicPlatform.kugou) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text('点击"下一步"将显示您绑定的酷狗账号中的歌单'),
+                        ),
+                      ],
+                    ),
                   ),
-                  autofocus: true,
-                  maxLines: 2,
-                  minLines: 1,
-                ),
+                ] else ...[
+                  const Text('输入歌单信息', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(
+                    selectedPlatform == MusicPlatform.netease
+                        ? '支持以下两种输入方式：\n• 直接输入歌单ID，如：19723756\n• 粘贴完整URL，如：https://music.163.com/#/playlist?id=19723756'
+                        : '支持以下两种输入方式：\n• 直接输入歌单ID，如：8522515502\n• 粘贴完整URL，如：https://y.qq.com/n/ryqq/playlist/8522515502',
+                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    decoration: const InputDecoration(
+                      labelText: '歌单ID或URL',
+                      hintText: '例如: 19723756 或完整URL',
+                      border: OutlineInputBorder(),
+                    ),
+                    autofocus: true,
+                    maxLines: 2,
+                    minLines: 1,
+                  ),
+                ],
               ],
             ),
             actions: [
@@ -313,6 +349,14 @@ class ImportPlaylistDialog {
               ),
               FilledButton(
                 onPressed: () {
+                  // 酷狗音乐直接进入歌单选择
+                  if (selectedPlatform == MusicPlatform.kugou) {
+                    Navigator.pop(context, {
+                      'platform': selectedPlatform,
+                      'isKugou': true,
+                    });
+                    return;
+                  }
                   final input = controller.text.trim();
                   if (input.isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入歌单ID或URL')));
@@ -345,8 +389,544 @@ class ImportPlaylistDialog {
 
     if (result != null && context.mounted) {
       final platform = result['platform'] as MusicPlatform;
+      // 酷狗音乐走单独的流程
+      if (result['isKugou'] == true) {
+        await _showKugouPlaylistsDialog(context);
+        return;
+      }
       final playlistId = result['playlistId'] as String;
       await _fetchAndImportPlaylist(context, platform, playlistId);
+    }
+  }
+
+  /// 显示酷狗歌单选择对话框
+  static Future<void> _showKugouPlaylistsDialog(BuildContext context) async {
+    final kugouService = KugouLoginService();
+    
+    // 先检查是否已绑定酷狗账号
+    final isBound = await kugouService.isKugouBound();
+    if (!isBound) {
+      if (!context.mounted) return;
+      if (ThemeManager().isFluentFramework) {
+        await fluent.showDialog(
+          context: context,
+          builder: (context) => fluent.ContentDialog(
+            title: const Text('未绑定酷狗账号'),
+            content: const Text('请先在「设置 → 第三方账号」中绑定酷狗账号后再导入歌单。'),
+            actions: [
+              fluent.FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('确定'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('未绑定酷狗账号'),
+            content: const Text('请先在「设置 → 第三方账号」中绑定酷狗账号后再导入歌单。'),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('确定'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+
+    // 显示加载中
+    if (ThemeManager().isFluentFramework) {
+      fluent.showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: fluent.Card(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                fluent.ProgressRing(),
+                SizedBox(height: 16),
+                Text('正在获取酷狗歌单...'),
+              ],
+            ),
+          ),
+        ),
+      );
+    } else {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('正在获取酷狗歌单...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    try {
+      final playlists = await kugouService.fetchUserPlaylists(pagesize: 50);
+      if (!context.mounted) return;
+      Navigator.pop(context); // 关闭加载对话框
+
+      if (playlists.isEmpty) {
+        if (ThemeManager().isFluentFramework) {
+          await fluent.showDialog(
+            context: context,
+            builder: (context) => fluent.ContentDialog(
+              title: const Text('暂无歌单'),
+              content: const Text('您的酷狗账号中暂无歌单。'),
+              actions: [
+                fluent.FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('确定'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          await showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('暂无歌单'),
+              content: const Text('您的酷狗账号中暂无歌单。'),
+              actions: [
+                FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('确定'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
+      // 显示歌单选择对话框
+      KugouPlaylistInfo? selectedPlaylist;
+      if (ThemeManager().isFluentFramework) {
+        selectedPlaylist = await fluent.showDialog<KugouPlaylistInfo>(
+          context: context,
+          builder: (context) => fluent.ContentDialog(
+            title: const Text('选择要导入的酷狗歌单'),
+            content: SizedBox(
+              width: 480,
+              height: 400,
+              child: ListView.builder(
+                itemCount: playlists.length,
+                itemBuilder: (context, index) {
+                  final playlist = playlists[index];
+                  return fluent.ListTile(
+                    leading: playlist.pic.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: Image.network(
+                              playlist.pic,
+                              width: 48,
+                              height: 48,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                width: 48,
+                                height: 48,
+                                color: Colors.grey[300],
+                                child: const Icon(fluent.FluentIcons.music_in_collection),
+                              ),
+                            ),
+                          )
+                        : Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Icon(fluent.FluentIcons.music_in_collection),
+                          ),
+                    title: Text(playlist.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text('${playlist.count} 首歌曲'),
+                    onPressed: () => Navigator.pop(context, playlist),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              fluent.Button(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        selectedPlaylist = await showDialog<KugouPlaylistInfo>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('选择要导入的酷狗歌单'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: playlists.length,
+                itemBuilder: (context, index) {
+                  final playlist = playlists[index];
+                  return ListTile(
+                    leading: playlist.pic.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: Image.network(
+                              playlist.pic,
+                              width: 48,
+                              height: 48,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                width: 48,
+                                height: 48,
+                                color: Colors.grey[300],
+                                child: const Icon(Icons.library_music),
+                              ),
+                            ),
+                          )
+                        : Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Icon(Icons.library_music),
+                          ),
+                    title: Text(playlist.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text('${playlist.count} 首歌曲'),
+                    onTap: () => Navigator.pop(context, playlist),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+            ],
+          ),
+        );
+      }
+
+      if (selectedPlaylist != null && context.mounted) {
+        await _fetchAndImportKugouPlaylist(context, selectedPlaylist);
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      Navigator.pop(context); // 关闭加载对话框
+
+      if (ThemeManager().isFluentFramework) {
+        await fluent.showDialog(
+          context: context,
+          builder: (context) => fluent.ContentDialog(
+            title: const Text('获取歌单失败'),
+            content: Text('$e'),
+            actions: [
+              fluent.FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('确定'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('获取歌单失败'),
+            content: Text('$e'),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('确定'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
+  /// 获取并导入酷狗歌单
+  static Future<void> _fetchAndImportKugouPlaylist(
+    BuildContext context,
+    KugouPlaylistInfo kugouPlaylist,
+  ) async {
+    final kugouService = KugouLoginService();
+
+    // 显示加载对话框
+    if (ThemeManager().isFluentFramework) {
+      fluent.showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: fluent.Card(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const fluent.ProgressRing(),
+                const SizedBox(height: 16),
+                Text('正在获取「${kugouPlaylist.name}」的歌曲...'),
+              ],
+            ),
+          ),
+        ),
+      );
+    } else {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text('正在获取「${kugouPlaylist.name}」的歌曲...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    try {
+      final tracks = await kugouService.fetchPlaylistTracks(kugouPlaylist.globalCollectionId, pagesize: 500);
+      if (!context.mounted) return;
+      Navigator.pop(context); // 关闭加载对话框
+
+      // 显示导入进度对话框（使用 StatefulBuilder 以便在对话框内更新进度）
+      int currentProgress = 0;
+      void Function(void Function())? dialogSetState;
+      
+      if (context.mounted) {
+        if (ThemeManager().isFluentFramework) {
+          fluent.showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogCtx) {
+              return fluent.StatefulBuilder(
+                builder: (context, setState) {
+                  dialogSetState = setState;
+                  return Center(
+                    child: fluent.Card(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const fluent.ProgressRing(),
+                          const SizedBox(height: 16),
+                          Text('正在导入\n$currentProgress/${tracks.length}'),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        } else {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogCtx) {
+              return StatefulBuilder(
+                builder: (context, setState) {
+                  dialogSetState = setState;
+                  return Center(
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const CircularProgressIndicator(),
+                            const SizedBox(height: 16),
+                            Text('正在导入\n$currentProgress/${tracks.length}'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        }
+      }
+
+      // 更新进度对话框内容的辅助函数
+      void updateProgress(int progress) {
+        if (dialogSetState != null) {
+          dialogSetState!(() {
+            currentProgress = progress;
+          });
+        }
+      }
+
+      // 为每首歌搜索获取emixsongid
+      final universalTracks = <Track>[];
+      for (int i = 0; i < tracks.length; i++) {
+        final track = tracks[i];
+        if (!context.mounted) break;
+
+        // 更新进度（不关闭对话框）
+        updateProgress(i + 1);
+
+        String? emixsongid;
+        try {
+          // 构建搜索关键词：使用"歌曲名 歌手名"格式
+          // 如果歌手名存在，使用"歌手名 歌曲名"；否则只使用歌曲名
+          final searchKeyword = track.artists.isNotEmpty 
+              ? '${track.artists} ${track.name}'
+              : track.name;
+          
+          // 搜索歌曲，只取前3个结果进行验证
+          final searchResults = await kugouService.searchKugou(searchKeyword, limit: 3);
+          
+          if (searchResults.isNotEmpty) {
+            // 如果原歌曲有歌手信息，验证第一个结果的歌手是否匹配
+            if (track.artists.isNotEmpty) {
+              final firstResult = searchResults[0];
+              if (_artistsMatch(track.artists, firstResult.singer)) {
+                // 歌手匹配，使用第一个结果
+                emixsongid = firstResult.emixsongid;
+              } else {
+                // 歌手不匹配，尝试在结果中找匹配的
+                for (final result in searchResults) {
+                  if (_artistsMatch(track.artists, result.singer) && result.emixsongid.isNotEmpty) {
+                    emixsongid = result.emixsongid;
+                    break;
+                  }
+                }
+                // 如果都没匹配到，记录警告但不使用
+                if (emixsongid == null) {
+                  debugPrint('⚠️ [ImportPlaylistDialog] 未找到歌手匹配的结果: ${track.name} - ${track.artists}');
+                }
+              }
+            } else {
+              // 没有歌手信息，直接使用第一个结果
+              emixsongid = searchResults[0].emixsongid;
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ [ImportPlaylistDialog] 搜索歌曲失败: ${track.name} - $e');
+          // 搜索失败，继续处理下一首
+        }
+
+        // 如果找到了emixsongid，使用它；否则使用hash作为备用
+        final trackId = emixsongid ?? track.hash;
+        
+        // 处理歌曲封面URL
+        String trackPicUrl = track.img ?? '';
+        if (trackPicUrl.isNotEmpty) {
+          trackPicUrl = trackPicUrl
+              .replaceAll('http://', 'https://')
+              .replaceAll('{size}', '400');  // 替换尺寸占位符
+        }
+        
+        universalTracks.add(Track(
+          id: trackId,
+          name: track.name,
+          artists: track.artists,
+          album: track.albumName,
+          picUrl: trackPicUrl,
+          source: MusicSource.kugou,
+        ));
+      }
+
+      if (!context.mounted) return;
+      Navigator.pop(context); // 关闭进度对话框
+
+      // 处理封面图片URL
+      String coverImgUrl = kugouPlaylist.pic;
+      
+      // 如果歌单封面为空，尝试使用第一首歌曲的封面
+      if (coverImgUrl.isEmpty && universalTracks.isNotEmpty) {
+        coverImgUrl = universalTracks.first.picUrl;
+      }
+      
+      // 处理URL格式：替换http为https，处理占位符
+      if (coverImgUrl.isNotEmpty) {
+        coverImgUrl = coverImgUrl
+            .replaceAll('http://', 'https://')
+            .replaceAll('{size}', '400');  // 替换尺寸占位符
+      }
+
+      final universalPlaylist = UniversalPlaylist(
+        id: kugouPlaylist.listid,
+        name: kugouPlaylist.name,
+        coverImgUrl: coverImgUrl,
+        creator: '酷狗用户',
+        trackCount: universalTracks.length,
+        description: kugouPlaylist.intro,
+        tracks: universalTracks,
+        platform: MusicPlatform.kugou,
+      );
+
+      // 显示选择目标歌单对话框
+      await _showSelectTargetPlaylistDialog(context, universalPlaylist);
+    } catch (e) {
+      if (!context.mounted) return;
+      Navigator.pop(context); // 关闭加载对话框
+
+      if (ThemeManager().isFluentFramework) {
+        await fluent.showDialog(
+          context: context,
+          builder: (context) => fluent.ContentDialog(
+            title: const Text('获取歌曲失败'),
+            content: Text('$e'),
+            actions: [
+              fluent.FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('确定'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('获取歌曲失败'),
+            content: Text('$e'),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('确定'),
+              ),
+            ],
+          ),
+        );
+      }
     }
   }
 
@@ -713,7 +1293,11 @@ class ImportPlaylistDialog {
       if (!context.mounted) return;
       Navigator.pop(context); // 关闭进度对话框
 
-      final platformKey = sourcePlaylist.platform == MusicPlatform.netease ? 'netease' : 'qq';
+      final platformKey = sourcePlaylist.platform == MusicPlatform.netease 
+          ? 'netease' 
+          : sourcePlaylist.platform == MusicPlatform.qq 
+              ? 'qq' 
+              : 'kugou';
       final playlistId = sourcePlaylist.id.toString();
       final bound = await playlistService.updateImportConfig(
         targetPlaylist.id,
@@ -860,14 +1444,18 @@ class UniversalPlaylist {
     // 根据平台设置正确的MusicSource
     final MusicSource source = platform == MusicPlatform.netease
         ? MusicSource.netease
-        : MusicSource.qq;
+        : platform == MusicPlatform.qq
+            ? MusicSource.qq
+            : MusicSource.kugou;
     
     final tracks = tracksJson.map((trackJson) {
       return Track(
-        // QQ音乐使用songmid，网易云使用id
+        // QQ音乐使用songmid，网易云使用id，酷狗使用album_audio_id或hash
         id: platform == MusicPlatform.qq
             ? (trackJson['songmid'] ?? trackJson['id'] ?? '')
-            : (trackJson['id'] ?? 0),
+            : platform == MusicPlatform.kugou
+                ? (trackJson['album_audio_id'] ?? trackJson['hash'] ?? '')
+                : (trackJson['id'] ?? 0),
         name: (trackJson['name'] ?? '未知歌曲') as String,
         artists: (trackJson['artists'] ?? '未知艺术家') as String,
         album: (trackJson['album'] ?? '未知专辑') as String,
@@ -1212,4 +1800,153 @@ class _ImportProgressDialog extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 字符串相似度计算（Levenshtein距离）
+int _levenshteinDistance(String s1, String s2) {
+  if (s1.isEmpty) return s2.length;
+  if (s2.isEmpty) return s1.length;
+
+  final matrix = List.generate(
+    s1.length + 1,
+    (i) => List.generate(s2.length + 1, (j) => 0),
+  );
+
+  for (int i = 0; i <= s1.length; i++) {
+    matrix[i][0] = i;
+  }
+  for (int j = 0; j <= s2.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (int i = 1; i <= s1.length; i++) {
+    for (int j = 1; j <= s2.length; j++) {
+      final cost = s1[i - 1].toLowerCase() == s2[j - 1].toLowerCase() ? 0 : 1;
+      matrix[i][j] = [
+        matrix[i - 1][j] + 1,      // deletion
+        matrix[i][j - 1] + 1,      // insertion
+        matrix[i - 1][j - 1] + cost, // substitution
+      ].reduce((a, b) => a < b ? a : b);
+    }
+  }
+
+  return matrix[s1.length][s2.length];
+}
+
+/// 计算字符串相似度（0-1之间，1表示完全相同）
+double _similarity(String s1, String s2) {
+  if (s1.isEmpty && s2.isEmpty) return 1.0;
+  if (s1.isEmpty || s2.isEmpty) return 0.0;
+  
+  final distance = _levenshteinDistance(s1, s2);
+  final maxLength = s1.length > s2.length ? s1.length : s2.length;
+  return 1.0 - (distance / maxLength);
+}
+
+/// 检查艺术家是否完全匹配（忽略大小写和空格）
+bool _artistsMatch(String trackArtists, String resultSinger) {
+  if (trackArtists.isEmpty && resultSinger.isEmpty) return true;
+  if (trackArtists.isEmpty || resultSinger.isEmpty) return false;
+
+  // 标准化：转换为小写，移除空格
+  final normalize = (String s) => s.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+  
+  // 分割艺术家（支持多种分隔符）
+  final trackArtistsList = trackArtists.split(RegExp(r'[/、,，\s]+'))
+      .map((s) => normalize(s.trim()))
+      .where((s) => s.isNotEmpty)
+      .toList();
+  final resultArtistsList = resultSinger.split(RegExp(r'[/、,，\s]+'))
+      .map((s) => normalize(s.trim()))
+      .where((s) => s.isNotEmpty)
+      .toList();
+
+  if (trackArtistsList.isEmpty || resultArtistsList.isEmpty) return false;
+
+  // 检查是否所有trackArtists都在resultArtistsList中（或反之）
+  // 允许部分匹配，但至少要有主要艺术家匹配
+  bool hasMatch = false;
+  for (final trackArtist in trackArtistsList) {
+    for (final resultArtist in resultArtistsList) {
+      // 完全匹配或包含关系
+      if (trackArtist == resultArtist || 
+          trackArtist.contains(resultArtist) || 
+          resultArtist.contains(trackArtist)) {
+        hasMatch = true;
+        break;
+      }
+    }
+    if (hasMatch) break;
+  }
+
+  return hasMatch;
+}
+
+/// 找到最匹配的搜索结果
+/// 要求：至少确保歌手完全一致（或至少有一个主要歌手匹配）
+KugouSearchResult? _findBestMatch(String trackName, String trackArtists, List<KugouSearchResult> results) {
+  if (results.isEmpty) return null;
+
+  double bestScore = 0.0;
+  KugouSearchResult? bestMatch;
+
+  for (final result in results) {
+    // 首先检查艺术家是否匹配（必需条件）
+    final artistsMatch = _artistsMatch(trackArtists, result.singer);
+    
+    // 如果艺术家不匹配，跳过这个结果（除非原歌曲没有艺术家信息）
+    if (trackArtists.isNotEmpty && !artistsMatch) {
+      continue; // 跳过不匹配的结果
+    }
+    
+    // 计算歌曲名相似度
+    final nameSimilarity = _similarity(trackName, result.name);
+    
+    // 计算艺术家相似度（如果艺术家信息存在）
+    double artistSimilarity = 0.0;
+    if (trackArtists.isNotEmpty && result.singer.isNotEmpty) {
+      // 尝试匹配艺术家（支持多个艺术家，用/或、分隔）
+      final trackArtistsList = trackArtists.split(RegExp(r'[/、,，]')).map((s) => s.trim()).toList();
+      final resultArtistsList = result.singer.split(RegExp(r'[/、,，]')).map((s) => s.trim()).toList();
+      
+      // 计算最高艺术家匹配度
+      for (final trackArtist in trackArtistsList) {
+        for (final resultArtist in resultArtistsList) {
+          final sim = _similarity(trackArtist, resultArtist);
+          if (sim > artistSimilarity) {
+            artistSimilarity = sim;
+          }
+        }
+      }
+    } else if (trackArtists.isEmpty && result.singer.isEmpty) {
+      // 都没有艺术家信息，给一个基础分
+      artistSimilarity = 0.5;
+    } else if (artistsMatch) {
+      // 艺术家已匹配，给高分
+      artistSimilarity = 1.0;
+    }
+
+    // 综合评分：歌曲名权重70%，艺术家权重30%
+    final score = nameSimilarity * 0.7 + artistSimilarity * 0.3;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = result;
+    }
+  }
+
+  // 如果最佳匹配的相似度低于0.3，认为匹配失败
+  // 或者如果原歌曲有艺术家信息但最佳匹配没有匹配到艺术家，也认为失败
+  if (bestScore < 0.3) {
+    return null;
+  }
+  
+  // 如果原歌曲有艺术家信息，必须确保艺术家匹配
+  if (trackArtists.isNotEmpty && bestMatch != null) {
+    if (!_artistsMatch(trackArtists, bestMatch.singer)) {
+      return null; // 艺术家不匹配，返回null
+    }
+  }
+
+  return bestMatch;
 }

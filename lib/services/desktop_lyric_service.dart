@@ -336,6 +336,17 @@ class DesktopLyricService {
     }
   }
 
+  /// 设置播放状态（用于更新播放/暂停按钮图标）
+  Future<void> setPlayingState(bool isPlaying) async {
+    if (!Platform.isWindows || !_isCreated) return;
+
+    try {
+      await _channel.invokeMethod('setPlayingState', {'isPlaying': isPlaying});
+    } catch (e) {
+      print('❌ [DesktopLyric] 设置播放状态失败: $e');
+    }
+  }
+
   /// 检查是否可见
   bool get isVisible => _isVisible;
 

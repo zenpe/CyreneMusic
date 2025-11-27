@@ -57,6 +57,9 @@ class DesktopLyricWindow {
   using PlaybackControlCallback = std::function<void(const std::string& action)>;
   void SetPlaybackControlCallback(PlaybackControlCallback callback);
   
+  // Set playing state (for play/pause button icon)
+  void SetPlayingState(bool is_playing);
+  
   // Get window handle
   HWND GetHandle() const { return hwnd_; }
 
@@ -87,6 +90,7 @@ class DesktopLyricWindow {
   bool is_hovered_;
   bool show_controls_;
   DWORD hover_start_time_;
+  bool is_playing_;  // Current playback state
   
   // Button hit test areas
   RECT play_pause_button_rect_;
@@ -99,7 +103,8 @@ class DesktopLyricWindow {
   // Helper methods
   bool IsPointInRect(const POINT& pt, const RECT& rect) const;
   void DrawControlPanel(HDC hdc, int width, int height);
-  void HandleButtonClick(const POINT& pt);
+  bool HandleButtonClick(const POINT& pt);  // Returns true if a button was clicked
+  int GetControlPanelHeight() const;  // Dynamic height based on font size
 };
 
 #endif  // RUNNER_DESKTOP_LYRIC_WINDOW_H_

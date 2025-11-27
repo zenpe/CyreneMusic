@@ -145,6 +145,7 @@ class UrlService extends ChangeNotifier {
   // Accounts API
   String get accountsBindingsUrl => '$baseUrl/accounts/bindings';
   String get accountsUnbindNeteaseUrl => '$baseUrl/accounts/netease';
+  String get accountsUnbindKugouUrl => '$baseUrl/accounts/kugou';
 
   // Netease Recommend API (require user-bound cookie)
   String get neteaseRecommendSongsUrl => '$baseUrl/recommend/songs';
@@ -165,6 +166,12 @@ class UrlService extends ChangeNotifier {
   // Kugou API
   String get kugouSearchUrl => '$baseUrl/kugou/search';
   String get kugouSongUrl => '$baseUrl/kugou/song';
+  // Kugou Login
+  String get kugouQrKeyUrl => '$baseUrl/kugou/login/qr/key';
+  String get kugouQrCheckUrl => '$baseUrl/kugou/login/qr/check';
+  // Kugou Playlist
+  String get kugouUserPlaylistsUrl => '$baseUrl/kugou/user/playlists';
+  String get kugouPlaylistTracksUrl => '$baseUrl/kugou/playlist/tracks';
 
   // Bilibili API
   String get biliRankingUrl => '$baseUrl/bili/ranking';

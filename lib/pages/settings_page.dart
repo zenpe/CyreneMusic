@@ -18,7 +18,17 @@ import 'settings_page/playback_settings.dart';
 import 'settings_page/network_settings.dart';
 import 'settings_page/storage_settings.dart';
 import 'settings_page/about_settings.dart';
- 
+import 'settings_page/appearance_settings_page.dart';
+import 'settings_page/third_party_accounts_page.dart';
+import 'settings_page/lyric_settings_page.dart';
+
+/// 设置页面子页面枚举
+enum SettingsSubPage {
+  none,
+  appearance,
+  thirdPartyAccounts,
+  lyric,
+}
 
 /// 设置页面
 class SettingsPage extends StatefulWidget {
@@ -30,6 +40,9 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _rebuildScheduled = false;
+  
+  // 当前显示的子页面
+  SettingsSubPage _currentSubPage = SettingsSubPage.none;
 
   void _scheduleRebuild() {
     if (!mounted || _rebuildScheduled) return;
@@ -136,6 +149,20 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
 
+  /// 打开子页面
+  void openSubPage(SettingsSubPage subPage) {
+    setState(() {
+      _currentSubPage = subPage;
+    });
+  }
+  
+  /// 关闭子页面，返回主设置页面
+  void closeSubPage() {
+    setState(() {
+      _currentSubPage = SettingsSubPage.none;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // 检查是否使用 Fluent UI
@@ -154,109 +181,221 @@ class _SettingsPageState extends State<SettingsPage> {
     
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      body: CustomScrollView(
-        slivers: [
-          // 顶部标题
-          SliverAppBar(
-            floating: true,
-            snap: true,
-            backgroundColor: colorScheme.surface,
-            title: Text(
-              '设置',
-              style: TextStyle(
-                color: colorScheme.onSurface,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+      appBar: AppBar(
+        backgroundColor: colorScheme.surface,
+        leading: _currentSubPage != SettingsSubPage.none
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: closeSubPage,
+              )
+            : null,
+        title: Text(
+          _getPageTitle(),
+          style: TextStyle(
+            color: colorScheme.onSurface,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          // 简单的左右滑动效果
+          final offset = child.key == const ValueKey('main_settings')
+              ? const Offset(-1.0, 0.0)
+              : const Offset(1.0, 0.0);
+              
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: offset,
+              end: Offset.zero,
+            ).animate(CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeInOutCubic,
+            )),
+            child: child,
+          );
+        },
+        child: _currentSubPage != SettingsSubPage.none
+            ? KeyedSubtree(
+                key: ValueKey('sub_settings_${_currentSubPage.name}'),
+                child: _buildMaterialSubPage(context, colorScheme),
+              )
+            : KeyedSubtree(
+                key: const ValueKey('main_settings'),
+                child: ListView(
+                  padding: const EdgeInsets.all(24.0),
+                  children: [
+                    // 用户卡片（需随登录状态刷新，不能使用 const）
+                    UserCard(),
+                    const SizedBox(height: 24),
+                    
+                    // 第三方账号管理（需随登录状态刷新，不能使用 const）
+                    ThirdPartyAccounts(onTap: () => openSubPage(SettingsSubPage.thirdPartyAccounts)),
+                    const SizedBox(height: 24),
+                    
+                    // 外观设置
+                    AppearanceSettings(onTap: () => openSubPage(SettingsSubPage.appearance)),
+                    const SizedBox(height: 24),
+                    
+                    // 歌词设置（仅 Windows 和 Android 平台显示）
+                    LyricSettings(onTap: () => openSubPage(SettingsSubPage.lyric)),
+                    const SizedBox(height: 24),
+                    
+                    // 播放设置
+                    const PlaybackSettings(),
+                    const SizedBox(height: 24),
+                    
+                    // 网络设置
+                    const NetworkSettings(),
+                    const SizedBox(height: 24),
+                    
+                    // 存储设置
+                    const StorageSettings(),
+                    const SizedBox(height: 24),
+                    
+                    // 关于
+                    const AboutSettings(),
+                    const SizedBox(height: 24),
+                    const SizedBox(height: 40),
+                  ],
+                ),
               ),
-            ),
-          ),
-          
-          // 设置内容
-          SliverPadding(
-            padding: const EdgeInsets.all(24.0),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                // 用户卡片（需随登录状态刷新，不能使用 const）
-                UserCard(),
-                const SizedBox(height: 24),
-                
-                // 第三方账号管理（需随登录状态刷新，不能使用 const）
-                ThirdPartyAccounts(),
-                const SizedBox(height: 24),
-                
-                // 外观设置
-                const AppearanceSettings(),
-                const SizedBox(height: 24),
-                
-                // 歌词设置（仅 Windows 和 Android 平台显示）
-                const LyricSettings(),
-                const SizedBox(height: 24),
-                
-                // 播放设置
-                const PlaybackSettings(),
-                const SizedBox(height: 24),
-                
-                // 网络设置
-                const NetworkSettings(),
-                const SizedBox(height: 24),
-                
-                // 存储设置
-                const StorageSettings(),
-                const SizedBox(height: 24),
-                
-                // 关于
-                const AboutSettings(),
-                const SizedBox(height: 24),
-                const SizedBox(height: 40),
-              ]),
-            ),
-          ),
-        ],
       ),
     );
+  }
+  
+  /// 获取页面标题
+  String _getPageTitle() {
+    switch (_currentSubPage) {
+      case SettingsSubPage.appearance:
+        return '外观设置';
+      case SettingsSubPage.thirdPartyAccounts:
+        return '第三方账号管理';
+      case SettingsSubPage.lyric:
+        return '歌词设置';
+      case SettingsSubPage.none:
+        return '设置';
+    }
+  }
+
+  /// 构建 Material UI 子页面
+  Widget _buildMaterialSubPage(BuildContext context, ColorScheme colorScheme) {
+    switch (_currentSubPage) {
+      case SettingsSubPage.appearance:
+        return AppearanceSettingsContent(onBack: closeSubPage, embed: true);
+      case SettingsSubPage.thirdPartyAccounts:
+        return ThirdPartyAccountsContent(onBack: closeSubPage, embed: true);
+      case SettingsSubPage.lyric:
+        return LyricSettingsContent(onBack: closeSubPage, embed: true);
+      case SettingsSubPage.none:
+        return const SizedBox.shrink();
+    }
   }
 
   /// 构建 Fluent UI 版本（Windows 11 风格）
   Widget _buildFluentUI(BuildContext context) {
-    return fluent_ui.ScaffoldPage.scrollable(
-      padding: const EdgeInsets.all(24.0),
-      header: const fluent_ui.PageHeader(
-        title: Text('设置'),
+    return fluent_ui.ScaffoldPage(
+      header: fluent_ui.PageHeader(
+        title: _currentSubPage == SettingsSubPage.none
+            ? const Text('设置')
+            : _buildFluentHeader(context),
       ),
-      children: [
-        // 用户卡片
-        UserCard(),
-        const SizedBox(height: 16),
-        
-        // 第三方账号管理
-        ThirdPartyAccounts(),
-        const SizedBox(height: 16),
-        
-        // 外观设置
-        const AppearanceSettings(),
-        const SizedBox(height: 16),
-        
-        // 歌词设置
-        const LyricSettings(),
-        const SizedBox(height: 16),
-        
-        // 播放设置
-        const PlaybackSettings(),
-        const SizedBox(height: 16),
-        
-        // 网络设置
-        const NetworkSettings(),
-        const SizedBox(height: 16),
-        
-        // 存储设置
-        const StorageSettings(),
-        const SizedBox(height: 16),
-        
-        // 关于
-        const AboutSettings(),
-        const SizedBox(height: 16),
-        const SizedBox(height: 40),
-      ],
+      content: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          // 简单的左右滑动效果
+          final isMain = child.key == const ValueKey('main_settings');
+          final offset = isMain
+              ? const Offset(-1.0, 0.0) // 主页面从左侧进入/退出
+              : const Offset(1.0, 0.0); // 子页面从右侧进入/退出
+              
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: offset,
+              end: Offset.zero,
+            ).animate(CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeInOutCubic, // 统一使用 easeInOutCubic
+            )),
+            child: child,
+          );
+        },
+        child: _currentSubPage != SettingsSubPage.none
+            ? KeyedSubtree(
+                key: ValueKey('sub_settings_${_currentSubPage.name}'),
+                child: _buildFluentSubPage(context),
+              )
+            : KeyedSubtree(
+                key: const ValueKey('main_settings'),
+                child: fluent_ui.ListView(
+                  padding: const EdgeInsets.all(24.0),
+                  children: [
+                    // 用户卡片
+                    UserCard(),
+                    const SizedBox(height: 16),
+                    
+                    // 第三方账号管理
+                    ThirdPartyAccounts(onTap: () => openSubPage(SettingsSubPage.thirdPartyAccounts)),
+                    const SizedBox(height: 16),
+                    
+                    // 外观设置
+                    AppearanceSettings(onTap: () => openSubPage(SettingsSubPage.appearance)),
+                    const SizedBox(height: 16),
+                    
+                    // 歌词设置
+                    LyricSettings(onTap: () => openSubPage(SettingsSubPage.lyric)),
+                    const SizedBox(height: 16),
+                    
+                    // 播放设置
+                    const PlaybackSettings(),
+                    const SizedBox(height: 16),
+                    
+                    // 网络设置
+                    const NetworkSettings(),
+                    const SizedBox(height: 16),
+                    
+                    // 存储设置
+                    const StorageSettings(),
+                    const SizedBox(height: 16),
+                    
+                    // 关于
+                    const AboutSettings(),
+                    const SizedBox(height: 16),
+                    const SizedBox(height: 40),
+                  ],
+                ),
+              ),
+      ),
     );
+  }
+  
+  /// 构建 Fluent UI 头部（面包屑）
+  Widget _buildFluentHeader(BuildContext context) {
+    switch (_currentSubPage) {
+      case SettingsSubPage.appearance:
+        return AppearanceSettingsContent(onBack: closeSubPage).buildFluentBreadcrumb(context);
+      case SettingsSubPage.thirdPartyAccounts:
+        return ThirdPartyAccountsContent(onBack: closeSubPage).buildFluentBreadcrumb(context);
+      case SettingsSubPage.lyric:
+        return LyricSettingsContent(onBack: closeSubPage).buildFluentBreadcrumb(context);
+      case SettingsSubPage.none:
+        return const Text('设置');
+    }
+  }
+  
+  /// 构建 Fluent UI 子页面
+  Widget _buildFluentSubPage(BuildContext context) {
+    switch (_currentSubPage) {
+      case SettingsSubPage.appearance:
+        return AppearanceSettingsContent(onBack: closeSubPage, embed: true);
+      case SettingsSubPage.thirdPartyAccounts:
+        return ThirdPartyAccountsContent(onBack: closeSubPage, embed: true);
+      case SettingsSubPage.lyric:
+        return LyricSettingsContent(onBack: closeSubPage, embed: true);
+      case SettingsSubPage.none:
+        return const SizedBox.shrink();
+    }
   }
 }

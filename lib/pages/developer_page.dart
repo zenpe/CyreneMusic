@@ -9,6 +9,7 @@ import '../services/auth_service.dart';
 import '../services/admin_service.dart';
 import '../services/notification_service.dart';
 import '../services/playback_state_service.dart';
+import '../services/player_service.dart';
 import '../utils/theme_manager.dart';
 
 /// 开发者页面
@@ -894,6 +895,17 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
           icon: const Icon(Icons.play_circle_outline),
           label: const Text('测试播放恢复通知'),
         ),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          onPressed: () async {
+            await _clearPlaybackSession();
+          },
+          icon: const Icon(Icons.delete_outline),
+          label: const Text('清除播放状态'),
+          style: FilledButton.styleFrom(
+            backgroundColor: Colors.orange,
+          ),
+        ),
       ],
     );
   }
@@ -951,6 +963,85 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('发送失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 清除播放会话
+  Future<void> _clearPlaybackSession() async {
+    // 检查是否是 Fluent UI
+    final isFluent = Platform.isWindows && ThemeManager().isFluentFramework;
+
+    if (isFluent) {
+      showDialog(
+        context: context,
+        builder: (context) => fluent.ContentDialog(
+          title: const Text('清除本地播放状态'),
+          content: const Text('确定要清除当前的播放会话吗？\n\n这将停止播放并重置播放器，但不会删除云端保存的播放进度。'),
+          actions: [
+            fluent.Button(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            fluent.FilledButton(
+              style: fluent.ButtonStyle(
+                backgroundColor: fluent.ButtonState.all(fluent.Colors.red),
+              ),
+              onPressed: () async {
+                Navigator.pop(context);
+                await _performClearSession();
+              },
+              child: const Text('清除'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('清除本地播放状态'),
+          content: const Text('确定要清除当前的播放会话吗？\n\n这将停止播放并重置播放器，但不会删除云端保存的播放进度。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _performClearSession();
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: const Text('清除'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  /// 执行清除操作
+  Future<void> _performClearSession() async {
+    // 1. 清除播放器会话
+    await PlayerService().clearSession();
+    
+    // 2. 取消所有通知
+    await NotificationService().cancelAll();
+    
+    if (mounted) {
+      final isFluent = Platform.isWindows && ThemeManager().isFluentFramework;
+      if (isFluent) {
+        _showFluentSnackbar('✅ 本地播放状态已清除');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ 本地播放状态已清除'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     }
@@ -1567,6 +1658,23 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
               Icon(fluent.FluentIcons.play),
               SizedBox(width: 8),
               Text('测试播放恢复通知'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        fluent.FilledButton(
+          style: fluent.ButtonStyle(
+            backgroundColor: fluent.ButtonState.all(fluent.Colors.red),
+          ),
+          onPressed: () async {
+            await _clearPlaybackSession();
+          },
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(fluent.FluentIcons.delete),
+              SizedBox(width: 8),
+              Text('清除播放状态'),
             ],
           ),
         ),

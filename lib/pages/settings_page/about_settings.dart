@@ -785,4 +785,3 @@ class _AboutSettingsState extends State<AboutSettings> {
     return '$date $time';
   }
 }
-

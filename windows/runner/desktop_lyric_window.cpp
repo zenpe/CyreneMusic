@@ -52,6 +52,7 @@ DesktopLyricWindow::DesktopLyricWindow()
       is_hovered_(false),
       show_controls_(false),
       hover_start_time_(0),
+      is_playing_(false),
       playback_callback_(nullptr) {
   InitGdiPlus();
   
@@ -242,11 +243,27 @@ void DesktopLyricWindow::SetPlaybackControlCallback(PlaybackControlCallback call
   playback_callback_ = callback;
 }
 
+void DesktopLyricWindow::SetPlayingState(bool is_playing) {
+  is_playing_ = is_playing;
+  if (IsVisible() && show_controls_) {
+    UpdateWindow();  // Refresh to show updated button icon
+  }
+}
+
+int DesktopLyricWindow::GetControlPanelHeight() const {
+  // Calculate height based on font size:
+  // - Header area (song title + artist): ~70px
+  // - Lyric area: font_size_ + padding (~20px)
+  // - Button area: ~60px
+  // - Bottom padding: ~10px
+  return 70 + font_size_ + 20 + 60 + 10;
+}
+
 void DesktopLyricWindow::UpdateWindow() {
   if (hwnd_ == nullptr) return;
 
   // Determine current window height based on control panel state
-  int current_height = show_controls_ ? kControlPanelHeight : kWindowHeight;
+  int current_height = show_controls_ ? GetControlPanelHeight() : kWindowHeight;
 
   // Create memory DC
   HDC hdc_screen = GetDC(nullptr);
@@ -366,14 +383,19 @@ LRESULT CALLBACK DesktopLyricWindow::WndProc(HWND hwnd, UINT message,
   
   switch (message) {
     case WM_LBUTTONDOWN: {
+      POINT pt = {LOWORD(lparam), HIWORD(lparam)};
+      bool button_clicked = false;
+      
       if (window->show_controls_) {
         // Check if clicked on a button
-        POINT pt = {LOWORD(lparam), HIWORD(lparam)};
-        window->HandleButtonClick(pt);
-      } else if (window->is_draggable_) {
+        button_clicked = window->HandleButtonClick(pt);
+      }
+      
+      // If not clicking a button and draggable, start dragging
+      if (!button_clicked && window->is_draggable_) {
         window->is_dragging_ = true;
-        window->drag_point_.x = LOWORD(lparam);
-        window->drag_point_.y = HIWORD(lparam);
+        window->drag_point_.x = pt.x;
+        window->drag_point_.y = pt.y;
         SetCapture(hwnd);
       }
       return 0;
@@ -457,7 +479,7 @@ LRESULT CALLBACK DesktopLyricWindow::WndProc(HWND hwnd, UINT message,
         
         // Resize window to show control panel (expand downward)
         SetWindowPos(hwnd, HWND_TOPMOST, rect.left, current_y, 
-                     kWindowWidth, kControlPanelHeight,
+                     kWindowWidth, window->GetControlPanelHeight(),
                      SWP_NOACTIVATE);
         window->UpdateWindow();
       }
@@ -479,16 +501,18 @@ bool DesktopLyricWindow::IsPointInRect(const POINT& pt, const RECT& rect) const 
          pt.y >= rect.top && pt.y <= rect.bottom;
 }
 
-void DesktopLyricWindow::HandleButtonClick(const POINT& pt) {
-  if (!playback_callback_) return;
-  
+bool DesktopLyricWindow::HandleButtonClick(const POINT& pt) {
   if (IsPointInRect(pt, prev_button_rect_)) {
-    playback_callback_("previous");
+    if (playback_callback_) playback_callback_("previous");
+    return true;
   } else if (IsPointInRect(pt, play_pause_button_rect_)) {
-    playback_callback_("play_pause");
+    if (playback_callback_) playback_callback_("play_pause");
+    return true;
   } else if (IsPointInRect(pt, next_button_rect_)) {
-    playback_callback_("next");
+    if (playback_callback_) playback_callback_("next");
+    return true;
   }
+  return false;  // No button was clicked
 }
 
 void DesktopLyricWindow::DrawControlPanel(HDC hdc, int width, int height) {
@@ -538,18 +562,60 @@ void DesktopLyricWindow::DrawControlPanel(HDC hdc, int width, int height) {
     graphics.DrawString(song_artist_.c_str(), -1, &artist_font, artist_rect, &format, &artist_brush);
   }
   
-  // Draw lyric text
+  // Draw lyric text with original style (same as DrawLyric)
   if (!lyric_text_.empty()) {
-    Gdiplus::Font lyric_font(&fontFamily, 16, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-    Gdiplus::RectF lyric_rect(20, 75, static_cast<Gdiplus::REAL>(width - 40), 30);
+    // Use user-configured font size and style
+    Gdiplus::FontFamily lyricFontFamily(L"Microsoft YaHei");
+    Gdiplus::Font lyric_font(&lyricFontFamily, static_cast<Gdiplus::REAL>(font_size_), 
+                             Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+    // Dynamic lyric area height based on font size
+    int lyric_area_height = font_size_ + 10;
+    Gdiplus::RectF lyric_rect(20, 70, static_cast<Gdiplus::REAL>(width - 40), 
+                               static_cast<Gdiplus::REAL>(lyric_area_height));
     Gdiplus::StringFormat format;
     format.SetAlignment(Gdiplus::StringAlignmentCenter);
     format.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-    graphics.DrawString(lyric_text_.c_str(), -1, &lyric_font, lyric_rect, &format, &text_brush);
+    
+    // Draw with stroke effect (same as original lyric)
+    if (stroke_width_ > 0) {
+      Gdiplus::GraphicsPath lyric_path;
+      lyric_path.AddString(lyric_text_.c_str(), -1, &lyricFontFamily, 
+                           Gdiplus::FontStyleBold, static_cast<Gdiplus::REAL>(font_size_),
+                           lyric_rect, &format);
+      
+      // Stroke pen with user-configured color
+      Gdiplus::Pen lyric_stroke_pen(Gdiplus::Color(
+          (stroke_color_ >> 24) & 0xFF,
+          (stroke_color_ >> 16) & 0xFF,
+          (stroke_color_ >> 8) & 0xFF,
+          stroke_color_ & 0xFF
+      ), static_cast<Gdiplus::REAL>(stroke_width_));
+      lyric_stroke_pen.SetLineJoin(Gdiplus::LineJoinRound);
+      graphics.DrawPath(&lyric_stroke_pen, &lyric_path);
+      
+      // Fill text with user-configured color
+      Gdiplus::SolidBrush lyric_text_brush(Gdiplus::Color(
+          (text_color_ >> 24) & 0xFF,
+          (text_color_ >> 16) & 0xFF,
+          (text_color_ >> 8) & 0xFF,
+          text_color_ & 0xFF
+      ));
+      graphics.FillPath(&lyric_text_brush, &lyric_path);
+    } else {
+      // No stroke, draw text directly with user-configured color
+      Gdiplus::SolidBrush lyric_text_brush(Gdiplus::Color(
+          (text_color_ >> 24) & 0xFF,
+          (text_color_ >> 16) & 0xFF,
+          (text_color_ >> 8) & 0xFF,
+          text_color_ & 0xFF
+      ));
+      graphics.DrawString(lyric_text_.c_str(), -1, &lyric_font, lyric_rect, &format, &lyric_text_brush);
+    }
   }
   
-  // Draw control buttons
-  int button_y = 115;
+  // Draw control buttons (position based on font size)
+  int lyric_bottom = 70 + font_size_ + 20;  // After lyric area
+  int button_y = lyric_bottom;
   int button_size = 40;
   int button_spacing = 60;
   int center_x = width / 2;
@@ -591,16 +657,37 @@ void DesktopLyricWindow::DrawControlPanel(HDC hdc, int width, int height) {
                        static_cast<Gdiplus::REAL>(button_y), 
                        static_cast<Gdiplus::REAL>(button_size), 
                        static_cast<Gdiplus::REAL>(button_size));
-  // Draw play triangle (▶)
-  Gdiplus::PointF play_triangle[3] = {
-    Gdiplus::PointF(static_cast<Gdiplus::REAL>(play_x + button_size * 0.35f), 
-                    static_cast<Gdiplus::REAL>(button_y + button_size * 0.3f)),
-    Gdiplus::PointF(static_cast<Gdiplus::REAL>(play_x + button_size * 0.35f), 
-                    static_cast<Gdiplus::REAL>(button_y + button_size * 0.7f)),
-    Gdiplus::PointF(static_cast<Gdiplus::REAL>(play_x + button_size * 0.65f), 
-                    static_cast<Gdiplus::REAL>(button_y + button_size * 0.5f))
-  };
-  graphics.FillPolygon(&icon_brush, play_triangle, 3);
+  
+  if (is_playing_) {
+    // Draw pause icon (two vertical bars ⏸)
+    int bar_width = static_cast<int>(button_size * 0.12f);
+    int bar_height = static_cast<int>(button_size * 0.4f);
+    int bar_y = button_y + static_cast<int>(button_size * 0.3f);
+    int bar1_x = play_x + static_cast<int>(button_size * 0.32f);
+    int bar2_x = play_x + static_cast<int>(button_size * 0.56f);
+    
+    Gdiplus::RectF bar1(static_cast<Gdiplus::REAL>(bar1_x), 
+                        static_cast<Gdiplus::REAL>(bar_y),
+                        static_cast<Gdiplus::REAL>(bar_width), 
+                        static_cast<Gdiplus::REAL>(bar_height));
+    Gdiplus::RectF bar2(static_cast<Gdiplus::REAL>(bar2_x), 
+                        static_cast<Gdiplus::REAL>(bar_y),
+                        static_cast<Gdiplus::REAL>(bar_width), 
+                        static_cast<Gdiplus::REAL>(bar_height));
+    graphics.FillRectangle(&icon_brush, bar1);
+    graphics.FillRectangle(&icon_brush, bar2);
+  } else {
+    // Draw play triangle (▶)
+    Gdiplus::PointF play_triangle[3] = {
+      Gdiplus::PointF(static_cast<Gdiplus::REAL>(play_x + button_size * 0.38f), 
+                      static_cast<Gdiplus::REAL>(button_y + button_size * 0.3f)),
+      Gdiplus::PointF(static_cast<Gdiplus::REAL>(play_x + button_size * 0.38f), 
+                      static_cast<Gdiplus::REAL>(button_y + button_size * 0.7f)),
+      Gdiplus::PointF(static_cast<Gdiplus::REAL>(play_x + button_size * 0.68f), 
+                      static_cast<Gdiplus::REAL>(button_y + button_size * 0.5f))
+    };
+    graphics.FillPolygon(&icon_brush, play_triangle, 3);
+  }
   
   // Next button
   int next_x = center_x + button_spacing - button_size / 2;
