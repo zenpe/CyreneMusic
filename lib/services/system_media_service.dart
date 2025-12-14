@@ -28,8 +28,8 @@ class SystemMediaService {
     try {
       if (Platform.isWindows) {
         await _initializeWindows();
-      } else if (Platform.isAndroid) {
-        await _initializeAndroid();
+      } else if (Platform.isAndroid || Platform.isIOS) {
+        await _initializeMobile();
       }
       
       // 监听播放器状态变化
@@ -62,10 +62,11 @@ class SystemMediaService {
     }
   }
 
-  /// 初始化 Android 媒体控件
-  Future<void> _initializeAndroid() async {
+  /// 初始化移动端媒体控件 (Android/iOS)
+  Future<void> _initializeMobile() async {
     try {
-      print('📱 [SystemMediaService] 开始初始化 Android audio_service...');
+      final platformName = Platform.isAndroid ? 'Android' : 'iOS';
+      print('📱 [SystemMediaService] 开始初始化 $platformName audio_service...');
       
       // 初始化 audio_service 并创建 AudioHandler
       // 根据文档：androidStopForegroundOnPause = false 时，androidNotificationOngoing 必须也为 false
@@ -84,23 +85,27 @@ class SystemMediaService {
       ) as CyreneAudioHandler;
       
       if (_audioHandler != null) {
-        // 🔧 关键修复：强制启用媒体按钮（包括蓝牙控制）
+        // 🔧 关键修复：强制启用媒体按钮（包括蓝牙控制）- 仅 Android
         // 根据 audio_service 文档，这需要在初始化后调用
-        await AudioService.androidForceEnableMediaButtons();
-        print('✅ [SystemMediaService] 已强制启用媒体按钮（蓝牙控制）');
+        if (Platform.isAndroid) {
+          await AudioService.androidForceEnableMediaButtons();
+          print('✅ [SystemMediaService] 已强制启用媒体按钮（蓝牙控制）');
+        }
         
-        print('✅ [SystemMediaService] Android audio_service 初始化成功');
+        print('✅ [SystemMediaService] $platformName audio_service 初始化成功');
         print('   AudioHandler 类型: ${_audioHandler.runtimeType}');
-        print('   通知渠道 ID: com.cyrene.music.channel.audio');
-        print('   ⚠️ 如果通知未显示，请检查：');
-        print('      1. 是否授予了通知权限（Android 13+）');
-        print('      2. 是否播放了歌曲触发状态更新');
-        print('      3. 查看 AudioHandler 日志确认状态是否更新');
+        if (Platform.isAndroid) {
+          print('   通知渠道 ID: com.cyrene.music.channel.audio');
+          print('   ⚠️ 如果通知未显示，请检查：');
+          print('      1. 是否授予了通知权限（Android 13+）');
+          print('      2. 是否播放了歌曲触发状态更新');
+          print('      3. 查看 AudioHandler 日志确认状态是否更新');
+        }
       } else {
         print('❌ [SystemMediaService] AudioHandler 为 null');
       }
     } catch (e, stackTrace) {
-      print('❌ [SystemMediaService] Android audio_service 初始化失败: $e');
+      print('❌ [SystemMediaService] 移动端 audio_service 初始化失败: $e');
       print('   堆栈跟踪: $stackTrace');
     }
   }

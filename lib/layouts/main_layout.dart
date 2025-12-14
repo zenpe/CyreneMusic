@@ -331,8 +331,8 @@ class _MainLayoutState extends State<MainLayout>
   @override
   Widget build(BuildContext context) {
     // 根据平台选择不同的布局
-    if (Platform.isAndroid) {
-      // Android 始终使用移动布局
+    if (Platform.isAndroid || Platform.isIOS) {
+      // Android/iOS 始终使用移动布局
       return _buildMobileLayout(context);
     } else if (Platform.isWindows) {
       // Windows 根据用户偏好选择布局，使用 AnimatedBuilder 确保更新
@@ -348,7 +348,7 @@ class _MainLayoutState extends State<MainLayout>
         },
       );
     } else {
-      // 其他桌面平台默认使用桌面布局
+      // 其他桌面平台（macOS/Linux）默认使用桌面布局
       return _buildDesktopLayout(context);
     }
   }
