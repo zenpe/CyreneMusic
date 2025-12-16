@@ -96,7 +96,12 @@ Future<void> main() async {
   
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       await timed('MediaKit.ensureInitialized', () {
-        MediaKit.ensureInitialized();
+        try {
+          MediaKit.ensureInitialized();
+        } catch (e, st) {
+          log(' MediaKit.ensureInitialized 失败: $e');
+          StartupLogger().log(' MediaKit.ensureInitialized stack: $st');
+        }
       });
     }
   
