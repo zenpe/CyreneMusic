@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +8,8 @@ import 'developer_mode_service.dart';
 import 'url_service.dart';
 import 'auth_overlay_service.dart';
 import 'location_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:window_manager/window_manager.dart';
 
 /// 用户信息模型
 class User {
@@ -145,6 +149,43 @@ class AuthService extends ChangeNotifier {
     final ok = await validateToken();
     if (!ok) {
       await logout();
+    }
+  }
+
+  /// 检查注册状态
+  Future<Map<String, dynamic>> checkRegistrationStatus() async {
+    try {
+      final url = '${UrlService().baseUrl}/auth/registration-status';
+
+      DeveloperModeService().addLog('🌐 [Network] GET $url');
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
+      DeveloperModeService().addLog('📄 [Network] 响应体: ${response.body}');
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'enabled': data['data']['enabled'] ?? false,
+        };
+      } else {
+        return {
+          'success': false,
+          'enabled': false,
+        };
+      }
+    } catch (e) {
+      DeveloperModeService().addLog('❌ [AuthService] 检查注册状态失败: $e');
+      return {
+        'success': false,
+        'enabled': false,
+      };
     }
   }
 
@@ -301,6 +342,227 @@ class AuthService extends ChangeNotifier {
         'success': false,
         'message': '网络错误: ${e.toString()}',
       };
+    }
+  }
+
+  /// Linux Do 授权登录
+  Future<Map<String, dynamic>> loginWithLinuxDo() async {
+    const clientId = '92bIhRkScTeJvJkb3a6w69xX7RoO7wbB';
+    const redirectUri = 'http://127.0.0.1:40555/oauth/callback';
+    const authUrl = 'https://connect.linux.do/oauth2/authorize?response_type=code&client_id=$clientId&redirect_uri=$redirectUri&state=login';
+
+    HttpServer? server;
+    final completer = Completer<String?>();
+
+    try {
+      print('🚀 [AuthService] 准备启动本地服务器...');
+      DeveloperModeService().addLog('🚀 [AuthService] 准备启动本地服务器...');
+      
+      // 绑定到 127.0.0.1 端口 40555
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 40555);
+      print('🌐 [AuthService] 本地监听器运行中: http://127.0.0.1:40555');
+      DeveloperModeService().addLog('🌐 [AuthService] 本地监听器运行中: http://127.0.0.1:40555');
+
+      server.listen((HttpRequest request) async {
+        final path = request.uri.path;
+        final params = request.uri.queryParameters;
+        print('📩 [AuthService] 收到 HTTP 请求: $path, 参数: $params');
+        DeveloperModeService().addLog('📩 [AuthService] 收到本地 HTTP 请求: $path, 参数: $params');
+
+        if (path == '/oauth/callback' || path == 'oauth/callback') {
+          final code = params['code'];
+          print('✅ [AuthService] 识别到授权码: ${code?.substring(0, 5)}...');
+          DeveloperModeService().addLog('✅ [AuthService] 识别到回调! code: ${code?.substring(0, 5)}...');
+          
+          request.response
+            ..statusCode = 200
+            ..headers.contentType = ContentType.html
+            ..write('''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>验证成功 - Cyrene Music</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f5f5f7;
+            color: #1d1d1f;
+        }
+        .container {
+            text-align: center;
+            padding: 40px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            max-width: 90%;
+            width: 400px;
+        }
+        .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            color: #007aff;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+        p {
+            font-size: 16px;
+            color: #86868b;
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+        .notice {
+            color: #007aff;
+            font-weight: 500;
+        }
+        .btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 12px 24px;
+            background-color: #007aff;
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 500;
+            transition: opacity 0.2s;
+        }
+        .btn:active {
+            opacity: 0.8;
+        }
+        .countdown {
+            font-size: 14px;
+            color: #86868b;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">✅</div>
+        <h1>验证成功</h1>
+        <p>授权码已成功捕获。</p>
+        <p class="notice">正在为您返回 Cyrene Music...</p>
+        <a href="cyrenemusic://callback" class="btn" id="manualBtn">手动返回应用</a>
+        <div class="countdown" id="timer">正在处理授权信息...</div>
+    </div>
+    <script>
+        var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        var seconds = 3;
+        
+        if (isMobile) {
+            var timer = setInterval(function() {
+                seconds--;
+                document.getElementById('timer').innerText = seconds + " 秒后自动跳转";
+                if (seconds <= 0) {
+                    clearInterval(timer);
+                    window.location.href = "cyrenemusic://callback";
+                }
+            }, 1000);
+        } else {
+            // 桌面端提示
+            document.getElementById('timer').innerText = "授权成功，应用窗口已尝试自动激活";
+            document.getElementById('manualBtn').style.display = "none"; 
+        }
+        
+        // 尝试立即跳转（仅移动端）
+        if (isMobile) {
+            window.location.href = "cyrenemusic://callback";
+        }
+    </script>
+</body>
+</html>
+''');
+          
+          await request.response.close();
+          print('📤 [AuthService] 已发送响应给浏览器');
+          
+          // 桌面端：收到回调后自动激活并置顶窗口
+          if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+            try {
+              await windowManager.show();
+              await windowManager.focus();
+              print('🪟 [AuthService] 已尝试激活并置顶桌面端窗口');
+            } catch (e) {
+              print('⚠️ [AuthService] 激活窗口失败: $e');
+            }
+          }
+          
+          if (!completer.isCompleted) {
+            completer.complete(code);
+            print('🔔 [AuthService] Completer 已触发完结');
+          }
+        } else {
+          request.response
+            ..statusCode = 404
+            ..write('Not Found');
+          await request.response.close();
+        }
+      }, onError: (e) {
+        print('❌ [AuthService] HttpServer 监听出错: $e');
+      });
+
+      if (await canLaunchUrl(Uri.parse(authUrl))) {
+        print('🔗 [AuthService] 正在打开浏览器...');
+        await launchUrl(Uri.parse(authUrl), mode: LaunchMode.externalApplication);
+      } else {
+        throw '无法启动浏览器';
+      }
+
+      print('⏳ [AuthService] 等待授权码返回...');
+      final code = await completer.future.timeout(
+        const Duration(minutes: 5),
+        onTimeout: () {
+          print('⏰ [AuthService] 登录超时');
+          return null;
+        },
+      );
+
+      if (code == null) {
+        return {'success': false, 'message': '登录超时'};
+      }
+
+      print('🔑 [AuthService] 获得授权码，开始请求后端登录...');
+      final response = await http.post(
+        Uri.parse('${UrlService().baseUrl}/auth/linuxdo/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'code': code}),
+      );
+
+      print('📥 [AuthService] 后端响应状态: ${response.statusCode}');
+      final data = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        _currentUser = User.fromJson(data['data']);
+        _authToken = data['data']['token'];
+        _isLoggedIn = true;
+        
+        await _saveUserToStorage(_currentUser!);
+        if (_authToken != null) {
+          await _saveTokenToStorage(_authToken!);
+        }
+        
+        notifyListeners();
+        print('🎉 [AuthService] Linux Do 最终登录成功: ${_currentUser?.username}');
+        return {'success': true, 'message': '登录成功'};
+      } else {
+        print('❌ [AuthService] 后端通过授权码登录失败: ${data['message']}');
+        return {'success': false, 'message': data['message'] ?? '验证失败'};
+      }
+    } catch (e) {
+      print('💥 [AuthService] 异常: $e');
+      return {'success': false, 'message': '登录异常: $e'};
+    } finally {
+      print('🏁 [AuthService] 关闭本地监听服务器');
+      await server?.close(force: true);
     }
   }
 

@@ -9,11 +9,13 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/announcement_service.dart';
 import '../services/music_service.dart';
 import '../services/player_service.dart';
 import '../services/version_service.dart';
 import '../services/auth_service.dart';
 import '../services/home_search_service.dart';
+import '../widgets/announcement_dialog.dart';
 import '../models/toplist.dart';
 import '../models/track.dart';
 import '../models/version_info.dart';
@@ -122,6 +124,9 @@ class _HomePageState extends State<HomePage>
         _handleExternalSearchRequest(pendingRequest);
       });
     }
+
+    // 📢 首次进入时检查公告（优先级高于更新检查）
+    _checkAnnouncementOnce();
 
     // 🔍 首次进入时检查更新
     _checkForUpdateOnce();
@@ -315,6 +320,68 @@ class _HomePageState extends State<HomePage>
     _startBannerTimer();
   }
 
+  /// 每次进入首页时检查公告（优先级高于更新检查）
+  Future<void> _checkAnnouncementOnce() async {
+    try {
+      // 延迟1秒后检查，优先级高于更新检查
+      await Future.delayed(const Duration(seconds: 1));
+
+      if (!mounted) return;
+
+      print('📢 [HomePage] 开始检查公告...');
+
+      final announcementService = AnnouncementService();
+
+      // 添加详细的调试信息
+      print('📢 [HomePage] 公告服务状态:');
+      print('  - isInitialized: ${announcementService.isInitialized}');
+      print('  - isLoading: ${announcementService.isLoading}');
+      print('  - error: ${announcementService.error}');
+      print('  - currentAnnouncement: ${announcementService.currentAnnouncement}');
+
+      if (announcementService.currentAnnouncement != null) {
+        final announcement = announcementService.currentAnnouncement!;
+        print('  - announcement.enabled: ${announcement.enabled}');
+        print('  - announcement.id: ${announcement.id}');
+        print('  - announcement.title: ${announcement.title}');
+      }
+
+      // 如果服务还在加载中，等待加载完成
+      if (announcementService.isLoading) {
+        print('📢 [HomePage] 公告服务正在加载，等待完成...');
+        // 最多等待5秒
+        for (int i = 0; i < 50; i++) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          if (!announcementService.isLoading) break;
+        }
+        print('📢 [HomePage] 等待完成，当前状态: isLoading=${announcementService.isLoading}');
+      }
+
+      // 检查是否应该显示公告
+      final shouldShow = announcementService.shouldShowAnnouncement();
+      print('📢 [HomePage] shouldShowAnnouncement() 返回: $shouldShow');
+
+      if (shouldShow && announcementService.currentAnnouncement != null) {
+        print('📢 [HomePage] 显示公告: ${announcementService.currentAnnouncement!.title}');
+
+        await AnnouncementDialog.show(
+          context,
+          announcementService.currentAnnouncement!,
+        );
+
+        print('📢 [HomePage] 公告已关闭');
+      } else {
+        print('📢 [HomePage] 无需显示公告');
+        if (announcementService.error != null) {
+          print('📢 [HomePage] 错误信息: ${announcementService.error}');
+        }
+      }
+    } catch (e, stackTrace) {
+      print('❌ [HomePage] 检查公告失败: $e');
+      print('❌ [HomePage] 堆栈: $stackTrace');
+    }
+  }
+
   /// 每次进入首页时检查更新
   Future<void> _checkForUpdateOnce() async {
     try {
@@ -393,7 +460,9 @@ class _HomePageState extends State<HomePage>
     showDialog(
       context: context,
       barrierDismissible: !versionInfo.forceUpdate, // 强制更新时不能关闭对话框
-      builder: (context) => AlertDialog(
+      builder: (context) => PopScope(
+        canPop: !versionInfo.forceUpdate,
+        child: AlertDialog(
         title: Row(
           children: [
             const Icon(Icons.system_update, color: Colors.blue),
@@ -528,7 +597,7 @@ class _HomePageState extends State<HomePage>
           ),
         ],
       ),
-    );
+    ));
   }
 
   /// 显示更新提示对话框（Fluent UI 版本）
@@ -542,7 +611,9 @@ class _HomePageState extends State<HomePage>
     fluent.showDialog(
       context: context,
       barrierDismissible: !isForceUpdate,
-      builder: (context) => fluent.ContentDialog(
+      builder: (context) => PopScope(
+        canPop: !isForceUpdate,
+        child: fluent.ContentDialog(
         title: const Text('发现新版本'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -642,7 +713,7 @@ class _HomePageState extends State<HomePage>
           ),
         ],
       ),
-    );
+    ));
   }
 
   /// 显示更新进度对话框（Material Design 版本）
@@ -779,7 +850,9 @@ class _HomePageState extends State<HomePage>
     fluent.showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => fluent.ContentDialog(
+      builder: (context) => PopScope(
+        canPop: false,
+        child: fluent.ContentDialog(
         title: const Text('正在更新'),
         content: AnimatedBuilder(
           animation: AutoUpdateService(),
@@ -869,7 +942,7 @@ class _HomePageState extends State<HomePage>
           },
         ),
       ),
-    );
+    ));
   }
 
   /// 打开下载链接

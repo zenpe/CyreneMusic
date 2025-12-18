@@ -679,7 +679,9 @@ class _AboutSettingsState extends State<AboutSettings> {
     fluent_ui.showDialog(
       context: context,
       barrierDismissible: !isForceUpdate,
-      builder: (context) => fluent_ui.ContentDialog(
+      builder: (context) => PopScope(
+        canPop: !isForceUpdate,
+        child: fluent_ui.ContentDialog(
         title: const Text('发现新版本'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -742,7 +744,7 @@ class _AboutSettingsState extends State<AboutSettings> {
             child: Text(platformSupported ? '一键更新' : '前往下载'),
           ),
         ],
-      ),
+      )),
     );
   }
 
@@ -1016,7 +1018,9 @@ class _AboutSettingsState extends State<AboutSettings> {
     showCupertinoDialog<void>(
       context: context,
       barrierDismissible: !isForceUpdate,
-      builder: (context) => CupertinoAlertDialog(
+      builder: (context) => PopScope(
+        canPop: !isForceUpdate,
+        child: CupertinoAlertDialog(
         title: const Text('发现新版本'),
         content: Padding(
           padding: const EdgeInsets.only(top: 16),
@@ -1069,7 +1073,7 @@ class _AboutSettingsState extends State<AboutSettings> {
             child: Text(platformSupported ? '一键更新' : '前往下载'),
           ),
         ],
-      ),
+      )),
     );
   }
 }

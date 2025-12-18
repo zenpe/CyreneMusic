@@ -17,13 +17,21 @@ class _RegisterPageState extends State<RegisterPage> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _codeController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _codeSent = false;
   int _countdown = 0;
   Timer? _timer;
+  bool _registrationEnabled = true;
+  bool _checkingStatus = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkRegistrationStatus();
+  }
 
   @override
   void dispose() {
@@ -34,6 +42,16 @@ class _RegisterPageState extends State<RegisterPage> {
     _codeController.dispose();
     _timer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _checkRegistrationStatus() async {
+    final result = await AuthService().checkRegistrationStatus();
+    if (mounted) {
+      setState(() {
+        _registrationEnabled = result['enabled'] ?? false;
+        _checkingStatus = false;
+      });
+    }
   }
 
   /// 将 QQ 号拼接为完整的 QQ 邮箱地址
@@ -144,231 +162,254 @@ class _RegisterPageState extends State<RegisterPage> {
         elevation: 0,
       ),
       body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // QQ 号输入
-                  TextFormField(
-                    controller: _qqNumberController,
-                    decoration: InputDecoration(
-                      labelText: 'QQ 号',
-                      prefixIcon: const Icon(Icons.chat_bubble_outline),
-                      suffixText: '@qq.com',
-                      suffixStyle: TextStyle(
-                        color: colorScheme.primary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      border: const OutlineInputBorder(),
-                      helperText: '将使用 QQ 邮箱接收验证码',
-                      helperMaxLines: 2,
-                    ),
-                    keyboardType: TextInputType.number,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return '请输入 QQ 邮箱';
-                      }
-                      // 验证是否为纯数字
-                      if (!RegExp(r'^\d+$').hasMatch(value.trim())) {
-                        return 'QQ 号应为纯数字';
-                      }
-                      // 验证 QQ 号长度（通常 5-11 位）
-                      if (value.trim().length < 5 || value.trim().length > 11) {
-                        return 'QQ 号长度应为 5-11 位';
-                      }
-                      return null;
-                    },
-                    textInputAction: TextInputAction.next,
-                    onChanged: (value) {
-                      // 实时更新，显示完整邮箱地址提示
-                      setState(() {});
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  
-                  // 显示完整的 QQ 邮箱地址
-                  if (_qqNumberController.text.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 12, bottom: 8),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 16,
-                            color: colorScheme.primary,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '注册邮箱：${_getFullEmail()}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: colorScheme.primary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 8),
-
-                  // 用户名
-                  TextFormField(
-                    controller: _usernameController,
-                    decoration: const InputDecoration(
-                      labelText: '用户名',
-                      prefixIcon: Icon(Icons.person_outline),
-                      border: OutlineInputBorder(),
-                      helperText: '2-20个字符，支持中文、字母、数字、下划线',
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return '请输入用户名';
-                      }
-                      if (!RegExp(r'^[\u4e00-\u9fa5a-zA-Z0-9_]{2,20}$').hasMatch(value)) {
-                        return '用户名格式不正确';
-                      }
-                      return null;
-                    },
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 密码
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: '密码',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      border: const OutlineInputBorder(),
-                      helperText: '至少8个字符',
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                        ),
-                        onPressed: () {
-                          setState(() => _obscurePassword = !_obscurePassword);
-                        },
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return '请输入密码';
-                      }
-                      if (value.length < 8) {
-                        return '密码至少8个字符';
-                      }
-                      return null;
-                    },
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 确认密码
-                  TextFormField(
-                    controller: _confirmPasswordController,
-                    obscureText: _obscureConfirmPassword,
-                    decoration: InputDecoration(
-                      labelText: '确认密码',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureConfirmPassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                        ),
-                        onPressed: () {
-                          setState(() =>
-                              _obscureConfirmPassword = !_obscureConfirmPassword);
-                        },
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return '请确认密码';
-                      }
-                      if (value != _passwordController.text) {
-                        return '两次密码不一致';
-                      }
-                      return null;
-                    },
-                    textInputAction: TextInputAction.done,
-                  ),
-                  const SizedBox(height: 24),
-
-                  // 验证码输入和发送按钮
-                  Row(
+        child: _checkingStatus
+            ? const CircularProgressIndicator()
+            : !_registrationEnabled
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _codeController,
-                          decoration: const InputDecoration(
-                            labelText: '验证码',
-                            prefixIcon: Icon(Icons.verified_user_outlined),
-                            border: OutlineInputBorder(),
-                          ),
-                          keyboardType: TextInputType.number,
-                          maxLength: 6,
-                        ),
+                      Icon(
+                        Icons.block_rounded,
+                        size: 64,
+                        color: colorScheme.error,
                       ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 120,
-                        child: FilledButton(
-                          onPressed: _codeSent || _isLoading ? null : _sendCode,
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                          ),
-                          child: Text(
-                            _codeSent ? '$_countdown 秒' : '发送验证码',
-                            style: const TextStyle(fontSize: 14),
+                      const SizedBox(height: 24),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                        child: Text(
+                          '因滥用，我们暂时关闭了公开注册！',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurface,
                           ),
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 32),
-
-                  // 注册按钮
-                  FilledButton(
-                    onPressed: _isLoading ? null : _handleRegister,
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+                  )
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(24.0),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 400),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // QQ 号输入
+                            TextFormField(
+                              controller: _qqNumberController,
+                              decoration: InputDecoration(
+                                labelText: 'QQ 号',
+                                prefixIcon: const Icon(Icons.chat_bubble_outline),
+                                suffixText: '@qq.com',
+                                suffixStyle: TextStyle(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                border: const OutlineInputBorder(),
+                                helperText: '将使用 QQ 邮箱接收验证码',
+                                helperMaxLines: 2,
+                              ),
+                              keyboardType: TextInputType.number,
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return '请输入 QQ 邮箱';
+                                }
+                                if (!RegExp(r'^\d+$').hasMatch(value.trim())) {
+                                  return 'QQ 号应为纯数字';
+                                }
+                                if (value.trim().length < 5 || value.trim().length > 11) {
+                                  return 'QQ 号长度应为 5-11 位';
+                                }
+                                return null;
+                              },
+                              textInputAction: TextInputAction.next,
+                              onChanged: (value) {
+                                setState(() {});
+                              },
                             ),
-                          )
-                        : const Text('注册', style: TextStyle(fontSize: 16)),
-                  ),
-                  const SizedBox(height: 16),
+                            const SizedBox(height: 8),
 
-                  // 用户协议
-                  Text(
-                    '注册即表示您同意我们的服务条款和隐私政策',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
+                            // 显示完整的 QQ 邮箱地址
+                            if (_qqNumberController.text.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 12, bottom: 8),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline,
+                                      size: 16,
+                                      color: colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '注册邮箱：${_getFullEmail()}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: colorScheme.primary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            const SizedBox(height: 8),
+
+                            // 用户名
+                            TextFormField(
+                              controller: _usernameController,
+                              decoration: const InputDecoration(
+                                labelText: '用户名',
+                                prefixIcon: Icon(Icons.person_outline),
+                                border: OutlineInputBorder(),
+                                helperText: '2-20个字符，支持中文、字母、数字、下划线',
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return '请输入用户名';
+                                }
+                                if (!RegExp(r'^[\u4e00-\u9fa5a-zA-Z0-9_]{2,20}$').hasMatch(value)) {
+                                  return '用户名格式不正确';
+                                }
+                                return null;
+                              },
+                              textInputAction: TextInputAction.next,
+                            ),
+                            const SizedBox(height: 16),
+
+                            // 密码
+                            TextFormField(
+                              controller: _passwordController,
+                              obscureText: _obscurePassword,
+                              decoration: InputDecoration(
+                                labelText: '密码',
+                                prefixIcon: const Icon(Icons.lock_outline),
+                                border: const OutlineInputBorder(),
+                                helperText: '至少8个字符',
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
+                                  ),
+                                  onPressed: () {
+                                    setState(() => _obscurePassword = !_obscurePassword);
+                                  },
+                                ),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return '请输入密码';
+                                }
+                                if (value.length < 8) {
+                                  return '密码至少8个字符';
+                                }
+                                return null;
+                              },
+                              textInputAction: TextInputAction.next,
+                            ),
+                            const SizedBox(height: 16),
+
+                            // 确认密码
+                            TextFormField(
+                              controller: _confirmPasswordController,
+                              obscureText: _obscureConfirmPassword,
+                              decoration: InputDecoration(
+                                labelText: '确认密码',
+                                prefixIcon: const Icon(Icons.lock_outline),
+                                border: const OutlineInputBorder(),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscureConfirmPassword
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
+                                  ),
+                                  onPressed: () {
+                                    setState(() =>
+                                        _obscureConfirmPassword = !_obscureConfirmPassword);
+                                  },
+                                ),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return '请确认密码';
+                                }
+                                if (value != _passwordController.text) {
+                                  return '两次密码不一致';
+                                }
+                                return null;
+                              },
+                              textInputAction: TextInputAction.done,
+                            ),
+                            const SizedBox(height: 24),
+
+                            // 验证码输入和发送按钮
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _codeController,
+                                    decoration: const InputDecoration(
+                                      labelText: '验证码',
+                                      prefixIcon: Icon(Icons.verified_user_outlined),
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    maxLength: 6,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 120,
+                                  child: FilledButton(
+                                    onPressed: _codeSent || _isLoading ? null : _sendCode,
+                                    style: FilledButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                    ),
+                                    child: Text(
+                                      _codeSent ? '$_countdown 秒' : '发送验证码',
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 32),
+
+                            // 注册按钮
+                            FilledButton(
+                              onPressed: _isLoading ? null : _handleRegister,
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text('注册', style: TextStyle(fontSize: 16)),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // 用户协议
+                            Text(
+                              '注册即表示您同意我们的服务条款和隐私政策',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
                         ),
+                      ),
+                    ),
                   ),
-                ],
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

@@ -69,6 +69,11 @@ class _UserCardState extends State<UserCard> {
 
     int tabIndex = 0; // 0 登录, 1 注册, 2 找回
 
+    // 注册状态
+    bool regEnabled = true;
+    bool checkingReg = true;
+    bool firstLoad = true;
+
     void cleanup() {
       regTimer?.cancel();
       fpTimer?.cancel();
@@ -91,57 +96,72 @@ class _UserCardState extends State<UserCard> {
       context: context,
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => fluent_ui.ContentDialog(
-          title: SizedBox(
-            width: 520,
-            child: _buildCapsuleTabs(
-              context,
-              tabIndex,
-              (i) => setState(() => tabIndex = i),
+        builder: (context, setState) {
+          if (firstLoad) {
+            firstLoad = false;
+            AuthService().checkRegistrationStatus().then((result) {
+              if (context.mounted) {
+                setState(() {
+                  regEnabled = result['enabled'] ?? false;
+                  checkingReg = false;
+                });
+              }
+            });
+          }
+
+          return fluent_ui.ContentDialog(
+            title: SizedBox(
+              width: 520,
+              child: _buildCapsuleTabs(
+                context,
+                tabIndex,
+                (i) => setState(() => tabIndex = i),
+              ),
             ),
-          ),
-          content: SizedBox(
-            width: 560,
-            height: 480,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 150),
-              child: SingleChildScrollView(
-                child: () {
-                  switch (tabIndex) {
-                    case 0:
-                      return _buildLoginView(
-                        context,
-                        errorText: loginError,
-                        accountController: loginAccountController,
-                        passwordController: loginPasswordController,
-                        loading: loginLoading,
-                        onCleanup: cleanup,
-                        onSubmit: () async {
-                          setState(() {
-                            loginLoading = true;
-                            loginError = null;
-                          });
-                          final result = await AuthService().login(
-                            account: loginAccountController.text.trim(),
-                            password: loginPasswordController.text,
-                          );
-                          setState(() => loginLoading = false);
-                          if (result['success'] == true) {
-                            cleanup();
-                            Navigator.pop(context, true);
-                          } else {
+            content: SizedBox(
+              width: 560,
+              height: 480,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 150),
+                child: SingleChildScrollView(
+                  child: () {
+                    switch (tabIndex) {
+                      case 0:
+                        return _buildLoginView(
+                          context,
+                          errorText: loginError,
+                          accountController: loginAccountController,
+                          passwordController: loginPasswordController,
+                          loading: loginLoading,
+                          onCleanup: cleanup,
+                          onSubmit: () async {
                             setState(() {
-                              loginError = result['message']?.toString() ?? '登录失败';
+                              loginLoading = true;
+                              loginError = null;
                             });
-                          }
-                        },
-                        toRegister: () => setState(() => tabIndex = 1),
-                        toForgot: () => setState(() => tabIndex = 2),
-                      );
-                    case 1:
-                      return _buildRegisterView(
-                        context,
-                        errorText: regError,
+                            final result = await AuthService().login(
+                              account: loginAccountController.text.trim(),
+                              password: loginPasswordController.text,
+                            );
+                            setState(() => loginLoading = false);
+                            if (result['success'] == true) {
+                              cleanup();
+                              Navigator.pop(context, true);
+                            } else {
+                              setState(() {
+                                loginError = result['message']?.toString() ?? '登录失败';
+                              });
+                            }
+                          },
+                          toRegister: () => setState(() => tabIndex = 1),
+                          toForgot: () => setState(() => tabIndex = 2),
+                        );
+                      case 1:
+                        return _buildRegisterView(
+                          context,
+                          regEnabled: regEnabled,
+                          checkingReg: checkingReg,
+                          errorText: regError,
                         qqController: regQqController,
                         usernameController: regUsernameController,
                         passwordController: regPasswordController,
@@ -280,21 +300,22 @@ class _UserCardState extends State<UserCard> {
                         }
                       },
                     );
-                }
-              }(),
+                    }
+                  }(),
+                ),
               ),
             ),
-          ),
-          actions: [
-            fluent_ui.Button(
-              onPressed: () {
-                cleanup();
-                Navigator.pop(context, false);
-              },
-              child: const Text('关闭'),
-            ),
-          ],
-        ),
+            actions: [
+              fluent_ui.Button(
+                onPressed: () {
+                  cleanup();
+                  Navigator.pop(context, false);
+                },
+                child: const Text('关闭'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -440,6 +461,21 @@ class _UserCardState extends State<UserCard> {
                     fluent_ui.HyperlinkButton(child: const Text('忘记密码'), onPressed: toForgot),
                     const SizedBox(height: 2),
                     fluent_ui.HyperlinkButton(
+                      child: const Text('Linux Do 登录'),
+                      onPressed: loading
+                          ? null
+                          : () async {
+                              final result = await AuthService().loginWithLinuxDo();
+                              if (result['success'] == true && context.mounted) {
+                                onCleanup();
+                                Navigator.pop(context, true);
+                              } else if (result['success'] == false && context.mounted) {
+                                // 可以通过回调处理错误，或者在这里显示提示
+                              }
+                            },
+                    ),
+                    const SizedBox(height: 2),
+                    fluent_ui.HyperlinkButton(
                       child: const Text('手机扫码登录'),
                       onPressed: () async {
                         final ok = await showQrLoginDialog(context);
@@ -470,6 +506,8 @@ class _UserCardState extends State<UserCard> {
 
   Widget _buildRegisterView(
     BuildContext context, {
+    required bool regEnabled,
+    required bool checkingReg,
     required String? errorText,
     required TextEditingController qqController,
     required TextEditingController usernameController,
@@ -483,6 +521,37 @@ class _UserCardState extends State<UserCard> {
     required Future<void> Function() onSubmit,
   }) {
     final typo = fluent_ui.FluentTheme.of(context).typography;
+
+    if (checkingReg) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: fluent_ui.ProgressRing(),
+        ),
+      );
+    }
+
+    if (!regEnabled) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              fluent_ui.FluentIcons.block_contact,
+              size: 64,
+              color: Colors.red,
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '因滥用，我们暂时关闭了公开注册！',
+              textAlign: TextAlign.center,
+              style: typo.subtitle?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      );
+    }
+
     return fluent_ui.Card(
       padding: const EdgeInsets.all(16),
       child: Column(

@@ -133,7 +133,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
                     child: TabBarView(
                       controller: _tabController,
                       physics: const NeverScrollableScrollPhysics(),
-                      children: const [
+                      children: [
                         _LoginView(),
                         _RegisterView(),
                         _ForgotPasswordView(),
@@ -500,6 +500,41 @@ class _LoginViewState extends State<_LoginView> {
             colorScheme: colorScheme,
           ),
 
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _isLoading
+                ? null
+                : () async {
+                    final result = await AuthService().loginWithLinuxDo();
+                    if (!mounted) return;
+                    if (result['success'] == true) {
+                      // 登录成功后，自动上报IP归属地
+                      AuthService().updateLocation();
+                      
+                      if (AuthOverlayService().isVisible) {
+                        AuthOverlayService().hide(true);
+                      } else {
+                        Navigator.pop(context, true);
+                      }
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(result['message']),
+                          backgroundColor: colorScheme.error,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+            icon: const Icon(Icons.forum_outlined),
+            label: const Text('通过linux do授权'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF007AFF),
+              side: const BorderSide(color: Color(0xFF007AFF)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+
           if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) ...[
             const SizedBox(height: 12),
 
@@ -544,7 +579,7 @@ class _LoginViewState extends State<_LoginView> {
 
 /// 注册视图
 class _RegisterView extends StatefulWidget {
-  const _RegisterView();
+  _RegisterView({Key? key}) : super(key: key);
 
   @override
   State<_RegisterView> createState() => _RegisterViewState();
@@ -557,13 +592,21 @@ class _RegisterViewState extends State<_RegisterView> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _codeController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _codeSent = false;
   int _countdown = 0;
   Timer? _timer;
+  bool _registrationEnabled = true;
+  bool _checkingStatus = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkRegistrationStatus();
+  }
 
   @override
   void dispose() {
@@ -574,6 +617,16 @@ class _RegisterViewState extends State<_RegisterView> {
     _codeController.dispose();
     _timer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _checkRegistrationStatus() async {
+    final result = await AuthService().checkRegistrationStatus();
+    if (mounted) {
+      setState(() {
+        _registrationEnabled = result['enabled'] ?? false;
+        _checkingStatus = false;
+      });
+    }
   }
 
   String _getFullEmail() {
@@ -714,6 +767,37 @@ class _RegisterViewState extends State<_RegisterView> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    if (_checkingStatus) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (!_registrationEnabled) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.block_rounded,
+              size: 64,
+              color: colorScheme.error,
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '因滥用，我们暂时关闭了公开注册！',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: colorScheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Form(
       key: _formKey,
@@ -1489,6 +1573,38 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
           onPressed: _handleLogin,
         ),
         
+        const SizedBox(height: 12),
+        CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: _isLoading
+              ? null
+              : () async {
+                  final result = await AuthService().loginWithLinuxDo();
+                  if (!mounted) return;
+                  if (result['success'] == true) {
+                    // 登录成功后，自动上报IP归属地
+                    AuthService().updateLocation();
+
+                    if (AuthOverlayService().isVisible) {
+                      AuthOverlayService().hide(true);
+                    } else {
+                      Navigator.pop(context, true);
+                    }
+                  } else {
+                    _showCupertinoAlert(result['message']);
+                  }
+                },
+          child: Container(
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: Border.all(color: CupertinoColors.activeBlue),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text('通过linux do授权'),
+          ),
+        ),
+
         const SizedBox(height: 20),
         
         // 提示文字
@@ -1510,7 +1626,7 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
 /// iOS 风格注册视图
 class _CupertinoRegisterView extends StatefulWidget {
   final bool isDark;
-  const _CupertinoRegisterView({super.key, required this.isDark});
+  _CupertinoRegisterView({Key? key, required this.isDark}) : super(key: key);
 
   @override
   State<_CupertinoRegisterView> createState() => _CupertinoRegisterViewState();
@@ -1522,13 +1638,21 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _codeController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _codeSent = false;
   int _countdown = 0;
   Timer? _timer;
+  bool _registrationEnabled = true;
+  bool _checkingStatus = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkRegistrationStatus();
+  }
 
   @override
   void dispose() {
@@ -1539,6 +1663,16 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
     _codeController.dispose();
     _timer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _checkRegistrationStatus() async {
+    final result = await AuthService().checkRegistrationStatus();
+    if (mounted) {
+      setState(() {
+        _registrationEnabled = result['enabled'] ?? false;
+        _checkingStatus = false;
+      });
+    }
   }
 
   String _getFullEmail() => '${_qqNumberController.text.trim()}@qq.com';
@@ -1652,6 +1786,37 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
 
   @override
   Widget build(BuildContext context) {
+    if (_checkingStatus) {
+      return const Center(
+        child: CupertinoActivityIndicator(),
+      );
+    }
+
+    if (!_registrationEnabled) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              CupertinoIcons.xmark_circle_fill,
+              size: 64,
+              color: CupertinoColors.systemRed,
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '因滥用，我们暂时关闭了公开注册！',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: widget.isDark ? CupertinoColors.white : CupertinoColors.black,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

@@ -7,7 +7,11 @@
     </domain-config>
 
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">er.sycdn.kuwo.cn</domain>
+        <domain includeSubdomains="true">sycdn.kuwo.cn</domain>
+        <domain includeSubdomains="true">kuwo.cn</domain>
+        <domain includeSubdomains="true">music.126.net</domain>
+        <domain includeSubdomains="true">qq.com</domain>
+        <domain includeSubdomains="true">kugou.com</domain>
     </domain-config>
     
     <!-- 默认配置：其他域名仅允许 HTTPS -->
