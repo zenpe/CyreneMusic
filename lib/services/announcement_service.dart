@@ -1,0 +1,190 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import '../models/announcement.dart';
+import 'persistent_storage_service.dart';
+import 'url_service.dart';
+import 'developer_mode_service.dart';
+
+/// 公告服务 - 管理全局公告的获取和显示逻辑
+class AnnouncementService extends ChangeNotifier {
+  static final AnnouncementService _instance = AnnouncementService._internal();
+  factory AnnouncementService() => _instance;
+  AnnouncementService._internal();
+
+  static const String _storageKeyPrefix = 'announcement_dismissed_';
+
+  bool _isInitialized = false;
+  Announcement? _currentAnnouncement;
+  bool _isLoading = false;
+  String? _error;
+
+  bool get isInitialized => _isInitialized;
+  Announcement? get currentAnnouncement => _currentAnnouncement;
+  bool get isLoading => _isLoading;
+  String? get error => _error;
+
+  /// 初始化公告服务
+  Future<void> initialize() async {
+    if (_isInitialized) {
+      print('📢 [AnnouncementService] 已经初始化过，跳过');
+      return;
+    }
+
+    try {
+      print('📢 [AnnouncementService] 开始初始化');
+      DeveloperModeService().addLog('📢 公告服务初始化');
+      await fetchAnnouncement();
+      _isInitialized = true;
+      print('📢 [AnnouncementService] 初始化完成');
+      print('📢 [AnnouncementService] _currentAnnouncement: $_currentAnnouncement');
+      DeveloperModeService().addLog('✅ 公告服务初始化完成');
+    } catch (e) {
+      print('📢 [AnnouncementService] 初始化失败: $e');
+      DeveloperModeService().addLog('❌ 公告服务初始化失败: $e');
+      _error = e.toString();
+      _isInitialized = true; // 即使失败也标记为已初始化，避免重复尝试
+    }
+  }
+
+  /// 从后端获取公告配置
+  Future<void> fetchAnnouncement() async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final baseUrl = UrlService().baseUrl;
+      final url = Uri.parse('$baseUrl/config/public');
+
+      print('📢 [AnnouncementService] 正在获取公告配置: $url');
+      DeveloperModeService().addLog('📢 正在获取公告配置: $url');
+
+      final response = await http.get(url).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('获取公告配置超时');
+        },
+      );
+
+      print('📢 [AnnouncementService] 响应状态码: ${response.statusCode}');
+      print('📢 [AnnouncementService] 响应体: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body) as Map<String, dynamic>;
+        print('📢 [AnnouncementService] 解析后的响应数据: $responseData');
+
+        // 检查响应格式：{ status: 200, data: { announcement: {...} } }
+        if (responseData.containsKey('data')) {
+          final data = responseData['data'] as Map<String, dynamic>;
+          print('📢 [AnnouncementService] data 字段: $data');
+
+          if (data.containsKey('announcement')) {
+            final announcementData = data['announcement'] as Map<String, dynamic>;
+            print('📢 [AnnouncementService] announcement 数据: $announcementData');
+
+            _currentAnnouncement = Announcement.fromJson(announcementData);
+            print('📢 [AnnouncementService] 解析后的公告对象: $_currentAnnouncement');
+            print('📢 [AnnouncementService] enabled: ${_currentAnnouncement?.enabled}');
+            print('📢 [AnnouncementService] id: ${_currentAnnouncement?.id}');
+            print('📢 [AnnouncementService] title: ${_currentAnnouncement?.title}');
+
+            DeveloperModeService().addLog(
+              '✅ 公告配置获取成功: ${_currentAnnouncement?.id} - ${_currentAnnouncement?.title}'
+            );
+          } else {
+            print('📢 [AnnouncementService] data 中没有 announcement 字段');
+            DeveloperModeService().addLog('⚠️ 后端配置中未找到公告数据');
+            _currentAnnouncement = null;
+          }
+        } else {
+          print('📢 [AnnouncementService] 响应中没有 data 字段');
+          DeveloperModeService().addLog('⚠️ 响应格式不正确');
+          _currentAnnouncement = null;
+        }
+      } else {
+        throw Exception('获取公告配置失败: HTTP ${response.statusCode}');
+      }
+    } catch (e, stackTrace) {
+      print('📢 [AnnouncementService] 获取公告配置失败: $e');
+      print('📢 [AnnouncementService] 堆栈: $stackTrace');
+      DeveloperModeService().addLog('❌ 获取公告配置失败: $e');
+      _error = e.toString();
+      _currentAnnouncement = null;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// 检查是否应该显示公告
+  /// 返回 true 表示应该显示，false 表示不应该显示
+  bool shouldShowAnnouncement() {
+    print('📢 [AnnouncementService] shouldShowAnnouncement() 开始检查');
+    print('📢 [AnnouncementService] _currentAnnouncement: $_currentAnnouncement');
+
+    if (_currentAnnouncement == null) {
+      final msg = '📢 无公告数据，不显示';
+      print(msg);
+      DeveloperModeService().addLog(msg);
+      return false;
+    }
+
+    print('📢 [AnnouncementService] enabled: ${_currentAnnouncement!.enabled}');
+    if (!_currentAnnouncement!.enabled) {
+      final msg = '📢 公告已禁用，不显示';
+      print(msg);
+      DeveloperModeService().addLog(msg);
+      return false;
+    }
+
+    print('📢 [AnnouncementService] id: ${_currentAnnouncement!.id}');
+    if (_currentAnnouncement!.id.isEmpty) {
+      final msg = '📢 公告 ID 为空，不显示';
+      print(msg);
+      DeveloperModeService().addLog(msg);
+      return false;
+    }
+
+    // 检查用户是否已经选择不再显示此公告
+    final storageKey = _storageKeyPrefix + _currentAnnouncement!.id;
+    final isDismissed = PersistentStorageService().getBool(storageKey) ?? false;
+
+    print('📢 [AnnouncementService] storageKey: $storageKey');
+    print('📢 [AnnouncementService] isDismissed: $isDismissed');
+
+    if (isDismissed) {
+      final msg = '📢 用户已选择不再显示此公告: ${_currentAnnouncement!.id}';
+      print(msg);
+      DeveloperModeService().addLog(msg);
+      return false;
+    }
+
+    final msg = '📢 应该显示公告: ${_currentAnnouncement!.id}';
+    print(msg);
+    DeveloperModeService().addLog(msg);
+    return true;
+  }
+
+  /// 标记公告为已关闭（不再显示）
+  Future<void> dismissAnnouncement({required bool dontShowAgain}) async {
+    if (_currentAnnouncement == null) return;
+
+    if (dontShowAgain) {
+      final storageKey = _storageKeyPrefix + _currentAnnouncement!.id;
+      await PersistentStorageService().setBool(storageKey, true);
+      DeveloperModeService().addLog('📢 用户选择不再显示公告: ${_currentAnnouncement!.id}');
+    } else {
+      DeveloperModeService().addLog('📢 用户关闭公告（未选择不再显示）');
+    }
+  }
+
+  /// 清除所有已关闭的公告记录（用于测试或重置）
+  Future<void> clearAllDismissedAnnouncements() async {
+    // 这个方法可以用于测试或管理员功能
+    // 实际使用时需要遍历所有可能的公告 ID
+    DeveloperModeService().addLog('📢 清除所有已关闭的公告记录');
+    // 由于我们不知道所有的公告 ID，这里只是一个占位实现
+    // 实际项目中可能需要维护一个公告 ID 列表
+  }
+}

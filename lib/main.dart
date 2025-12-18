@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:cyrene_music/layouts/fluent_main_layout.dart';
 import 'package:cyrene_music/layouts/main_layout.dart';
 import 'package:cyrene_music/services/android_floating_lyric_service.dart';
+import 'package:cyrene_music/services/announcement_service.dart';
 import 'package:cyrene_music/services/auto_update_service.dart';
 import 'package:cyrene_music/services/cache_service.dart';
 import 'package:cyrene_music/services/developer_mode_service.dart';
@@ -186,6 +187,11 @@ Future<void> main() async {
       await AutoUpdateService().initialize();
     });
     log(' 自动更新服务已初始化');
+
+    await timed('AnnouncementService.initialize', () async {
+      await AnnouncementService().initialize();
+    });
+    log(' 公告服务已初始化');
   
     await timed('CacheService.initialize', () async {
       await CacheService().initialize();
