@@ -71,6 +71,11 @@ class AuthService extends ChangeNotifier {
   User? _currentUser;
   bool _isLoggedIn = false;
   String? _authToken;
+  
+  // 用于跟踪 Linux Do OAuth 登录的本地服务器
+  // 确保在启动新登录前关闭旧服务器，避免端口占用
+  HttpServer? _oauthServer;
+  Completer<String?>? _oauthCompleter;
 
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
@@ -185,6 +190,42 @@ class AuthService extends ChangeNotifier {
       return {
         'success': false,
         'enabled': false,
+      };
+    }
+  }
+
+  /// 检查 Linux Do 登录状态
+  Future<Map<String, dynamic>> checkLinuxDoStatus() async {
+    try {
+      final url = '${UrlService().baseUrl}/auth/linuxdo-status';
+
+      DeveloperModeService().addLog('🌐 [Network] GET $url');
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'enabled': data['data']['enabled'] ?? true, // 默认启用
+        };
+      } else {
+        return {
+          'success': false,
+          'enabled': true, // 请求失败时默认启用
+        };
+      }
+    } catch (e) {
+      DeveloperModeService().addLog('❌ [AuthService] 检查 Linux Do 登录状态失败: $e');
+      return {
+        'success': false,
+        'enabled': true, // 异常时默认启用
       };
     }
   }
@@ -351,19 +392,36 @@ class AuthService extends ChangeNotifier {
     const redirectUri = 'http://127.0.0.1:40555/oauth/callback';
     const authUrl = 'https://connect.linux.do/oauth2/authorize?response_type=code&client_id=$clientId&redirect_uri=$redirectUri&state=login';
 
-    HttpServer? server;
-    final completer = Completer<String?>();
-
     try {
       print('🚀 [AuthService] 准备启动本地服务器...');
       DeveloperModeService().addLog('🚀 [AuthService] 准备启动本地服务器...');
       
-      // 绑定到 127.0.0.1 端口 40555
-      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 40555);
+      // 先关闭可能存在的旧服务器（用户多次点击登录时）
+      if (_oauthServer != null) {
+        print('� [AuthService] 检测到旧服务器，正在关闭...');
+        DeveloperModeService().addLog('� [AuthService] 关闭旧的 OAuth 服务器...');
+        try {
+          await _oauthServer!.close(force: true);
+        } catch (_) {}
+        _oauthServer = null;
+      }
+      
+      // 取消旧的 completer（如果存在）
+      if (_oauthCompleter != null && !_oauthCompleter!.isCompleted) {
+        _oauthCompleter!.complete(null);
+      }
+      _oauthCompleter = Completer<String?>();
+      
+      // 绑定到 127.0.0.1 端口 40555，使用 shared: true 避免端口占用问题
+      _oauthServer = await HttpServer.bind(
+        InternetAddress.loopbackIPv4, 
+        40555,
+        shared: true, // 允许共享端口，解决多次绑定问题
+      );
       print('🌐 [AuthService] 本地监听器运行中: http://127.0.0.1:40555');
       DeveloperModeService().addLog('🌐 [AuthService] 本地监听器运行中: http://127.0.0.1:40555');
 
-      server.listen((HttpRequest request) async {
+      _oauthServer!.listen((HttpRequest request) async {
         final path = request.uri.path;
         final params = request.uri.queryParameters;
         print('📩 [AuthService] 收到 HTTP 请求: $path, 参数: $params');
@@ -450,32 +508,20 @@ class AuthService extends ChangeNotifier {
         <div class="icon">✅</div>
         <h1>验证成功</h1>
         <p>授权码已成功捕获。</p>
-        <p class="notice">正在为您返回 Cyrene Music...</p>
-        <a href="cyrenemusic://callback" class="btn" id="manualBtn">手动返回应用</a>
+        <p class="notice" id="notice">正在为您返回 Cyrene Music...</p>
         <div class="countdown" id="timer">正在处理授权信息...</div>
     </div>
     <script>
         var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        var seconds = 3;
         
         if (isMobile) {
-            var timer = setInterval(function() {
-                seconds--;
-                document.getElementById('timer').innerText = seconds + " 秒后自动跳转";
-                if (seconds <= 0) {
-                    clearInterval(timer);
-                    window.location.href = "cyrenemusic://callback";
-                }
-            }, 1000);
+            // 移动端：不自动跳转 Deep Link，因为这可能导致应用状态丢失
+            // 授权码已被本地服务器捕获，用户只需返回应用即可
+            document.getElementById('notice').innerText = '授权成功！';
+            document.getElementById('timer').innerText = '请手动返回 Cyrene Music 应用完成登录';
         } else {
             // 桌面端提示
             document.getElementById('timer').innerText = "授权成功，应用窗口已尝试自动激活";
-            document.getElementById('manualBtn').style.display = "none"; 
-        }
-        
-        // 尝试立即跳转（仅移动端）
-        if (isMobile) {
-            window.location.href = "cyrenemusic://callback";
         }
     </script>
 </body>
@@ -496,8 +542,8 @@ class AuthService extends ChangeNotifier {
             }
           }
           
-          if (!completer.isCompleted) {
-            completer.complete(code);
+          if (!_oauthCompleter!.isCompleted) {
+            _oauthCompleter!.complete(code);
             print('🔔 [AuthService] Completer 已触发完结');
           }
         } else {
@@ -510,15 +556,30 @@ class AuthService extends ChangeNotifier {
         print('❌ [AuthService] HttpServer 监听出错: $e');
       });
 
-      if (await canLaunchUrl(Uri.parse(authUrl))) {
-        print('🔗 [AuthService] 正在打开浏览器...');
-        await launchUrl(Uri.parse(authUrl), mode: LaunchMode.externalApplication);
-      } else {
-        throw '无法启动浏览器';
+      // 直接尝试启动浏览器，不依赖 canLaunchUrl 的预检查
+      // 原因: canLaunchUrl 在 Android 11+ 和某些 Windows 设备上可能误报 false
+      print('🔗 [AuthService] 正在打开浏览器...');
+      DeveloperModeService().addLog('🔗 [AuthService] 正在打开浏览器: $authUrl');
+      
+      try {
+        final launched = await launchUrl(
+          Uri.parse(authUrl), 
+          mode: LaunchMode.externalApplication,
+        );
+        if (!launched) {
+          print('❌ [AuthService] launchUrl 返回 false');
+          DeveloperModeService().addLog('❌ [AuthService] launchUrl 返回 false，浏览器可能未正确启动');
+          // 不立即抛出异常，给用户一个机会手动打开链接
+          // 某些设备上 launchUrl 返回 false 但浏览器实际上已经打开
+        }
+      } catch (launchError) {
+        print('❌ [AuthService] 启动浏览器失败: $launchError');
+        DeveloperModeService().addLog('❌ [AuthService] 启动浏览器失败: $launchError');
+        throw '无法启动浏览器: $launchError';
       }
 
       print('⏳ [AuthService] 等待授权码返回...');
-      final code = await completer.future.timeout(
+      final code = await _oauthCompleter!.future.timeout(
         const Duration(minutes: 5),
         onTimeout: () {
           print('⏰ [AuthService] 登录超时');
@@ -539,6 +600,8 @@ class AuthService extends ChangeNotifier {
 
       print('📥 [AuthService] 后端响应状态: ${response.statusCode}');
       final data = jsonDecode(response.body);
+      print('🔍 [AuthService] 后端返回数据: ${jsonEncode(data['data'])}');
+      print('🖼️ [AuthService] 头像URL: ${data['data']?['avatarUrl']}');
       
       if (response.statusCode == 200) {
         _currentUser = User.fromJson(data['data']);
@@ -562,7 +625,10 @@ class AuthService extends ChangeNotifier {
       return {'success': false, 'message': '登录异常: $e'};
     } finally {
       print('🏁 [AuthService] 关闭本地监听服务器');
-      await server?.close(force: true);
+      try {
+        await _oauthServer?.close(force: true);
+      } catch (_) {}
+      _oauthServer = null;
     }
   }
 

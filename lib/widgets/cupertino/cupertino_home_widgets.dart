@@ -7,6 +7,7 @@ import '../../services/music_service.dart';
 import '../../services/play_history_service.dart';
 import '../../services/player_service.dart';
 import '../../utils/theme_manager.dart';
+import '../skeleton_loader.dart';
 
 /// iOS 风格的分段控制器（替代胶囊 Tabs）
 /// 采用轻量纯文字样式，更符合 iOS 原生设计
@@ -890,24 +891,8 @@ class CupertinoLoadingSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(64.0),
-        child: Column(
-          children: [
-            CupertinoActivityIndicator(radius: 16),
-            SizedBox(height: 16),
-            Text(
-              '正在加载榜单...',
-              style: TextStyle(
-                color: CupertinoColors.systemGrey,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    // 使用骨架屏替代简单的加载指示器
+    return const MobileChartsTabSkeleton();
   }
 }
 

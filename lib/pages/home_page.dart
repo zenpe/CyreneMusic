@@ -465,9 +465,12 @@ class _HomePageState extends State<HomePage>
         child: AlertDialog(
         title: Row(
           children: [
-            const Icon(Icons.system_update, color: Colors.blue),
+            Icon(
+              versionInfo.fixing ? Icons.build : Icons.system_update,
+              color: versionInfo.fixing ? Colors.orange : Colors.blue,
+            ),
             const SizedBox(width: 8),
-            const Text('发现新版本'),
+            Text(versionInfo.fixing ? '服务器正在维护' : '发现新版本'),
           ],
         ),
         content: SingleChildScrollView(
@@ -498,7 +501,7 @@ class _HomePageState extends State<HomePage>
               Text(versionInfo.changelog, style: const TextStyle(fontSize: 14)),
 
               // 强制更新提示
-              if (versionInfo.forceUpdate) ...[
+              if (versionInfo.forceUpdate && !versionInfo.fixing) ...[
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -528,11 +531,43 @@ class _HomePageState extends State<HomePage>
                   ),
                 ),
               ],
+
+              // 服务器维护提示
+              if (versionInfo.fixing) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.build,
+                        color: Colors.orange.shade700,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '服务器正在维护中，请稍后再试',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.orange.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
         actions: [
-          // 稍后提醒（仅非强制更新时显示，本次会话不再提醒）
+          // 稍后提醒（仅非强制更新且非维护时显示，本次会话不再提醒）
           if (!versionInfo.forceUpdate)
             TextButton(
               onPressed: () {
@@ -551,8 +586,8 @@ class _HomePageState extends State<HomePage>
               child: const Text('稍后提醒'),
             ),
 
-          // 忽略此版本（仅非强制更新时显示，永久忽略）
-          if (!versionInfo.forceUpdate)
+          // 忽略此版本（仅非强制更新且非维护时显示，永久忽略）
+          if (!versionInfo.forceUpdate && !versionInfo.fixing)
             TextButton(
               onPressed: () async {
                 // 永久保存用户忽略的版本号
@@ -572,29 +607,30 @@ class _HomePageState extends State<HomePage>
               child: const Text('忽略此版本'),
             ),
 
-          // 立即更新/一键更新
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              final autoUpdateService = AutoUpdateService();
-              if (autoUpdateService.isPlatformSupported) {
-                // 支持自动更新的平台，显示进度对话框
-                _showUpdateProgressDialog(versionInfo);
-                await autoUpdateService.startUpdate(
-                  versionInfo: versionInfo,
-                  autoTriggered: false,
-                );
-              } else {
-                // 不支持自动更新的平台，打开下载链接
-                _openDownloadUrl(versionInfo.downloadUrl);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
+          // 立即更新/一键更新（维护时不显示）
+          if (!versionInfo.fixing)
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                final autoUpdateService = AutoUpdateService();
+                if (autoUpdateService.isPlatformSupported) {
+                  // 支持自动更新的平台，显示进度对话框
+                  _showUpdateProgressDialog(versionInfo);
+                  await autoUpdateService.startUpdate(
+                    versionInfo: versionInfo,
+                    autoTriggered: false,
+                  );
+                } else {
+                  // 不支持自动更新的平台，打开下载链接
+                  _openDownloadUrl(versionInfo.downloadUrl);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(AutoUpdateService().isPlatformSupported ? '一键更新' : '立即更新'),
             ),
-            child: Text(AutoUpdateService().isPlatformSupported ? '一键更新' : '立即更新'),
-          ),
         ],
       ),
     ));
@@ -605,6 +641,7 @@ class _HomePageState extends State<HomePage>
     if (!mounted) return;
 
     final isForceUpdate = versionInfo.forceUpdate;
+    final isFxing = versionInfo.fixing;
     final autoUpdateService = AutoUpdateService();
     final platformSupported = autoUpdateService.isPlatformSupported;
 
@@ -614,7 +651,7 @@ class _HomePageState extends State<HomePage>
       builder: (context) => PopScope(
         canPop: !isForceUpdate,
         child: fluent.ContentDialog(
-        title: const Text('发现新版本'),
+        title: Text(isFxing ? '服务器正在维护' : '发现新版本'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -645,12 +682,22 @@ class _HomePageState extends State<HomePage>
               style: const TextStyle(fontSize: 14),
             ),
 
-            // 强制更新提示
-            if (isForceUpdate) ...[
+            // 强制更新提示（非维护时显示）
+            if (isForceUpdate && !isFxing) ...[
               const SizedBox(height: 16),
               fluent.InfoBar(
                 title: const Text('强制更新'),
                 content: const Text('此版本为强制更新，请立即更新'),
+                severity: fluent.InfoBarSeverity.warning,
+              ),
+            ],
+
+            // 服务器维护提示
+            if (isFxing) ...[
+              const SizedBox(height: 16),
+              fluent.InfoBar(
+                title: const Text('服务器维护'),
+                content: const Text('服务器正在维护中，请稍后再试'),
                 severity: fluent.InfoBarSeverity.warning,
               ),
             ],
@@ -675,8 +722,8 @@ class _HomePageState extends State<HomePage>
               child: const Text('稍后提醒'),
             ),
 
-          // 忽略此版本（仅非强制更新时显示）
-          if (!isForceUpdate)
+          // 忽略此版本（仅非强制更新且非维护时显示）
+          if (!isForceUpdate && !isFxing)
             fluent.Button(
               onPressed: () async {
                 await VersionService().ignoreCurrentVersion(versionInfo.version);
@@ -693,24 +740,25 @@ class _HomePageState extends State<HomePage>
               child: const Text('忽略此版本'),
             ),
 
-          // 立即更新/一键更新
-          fluent.FilledButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              if (platformSupported) {
-                // 支持自动更新的平台，显示进度对话框
-                _showUpdateProgressDialogFluent(versionInfo);
-                await autoUpdateService.startUpdate(
-                  versionInfo: versionInfo,
-                  autoTriggered: false,
-                );
-              } else {
-                // 不支持自动更新的平台，打开下载链接
-                _openDownloadUrl(versionInfo.downloadUrl);
-              }
-            },
-            child: Text(platformSupported ? '一键更新' : '立即更新'),
-          ),
+          // 立即更新/一键更新（维护时不显示）
+          if (!isFxing)
+            fluent.FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                if (platformSupported) {
+                  // 支持自动更新的平台，显示进度对话框
+                  _showUpdateProgressDialogFluent(versionInfo);
+                  await autoUpdateService.startUpdate(
+                    versionInfo: versionInfo,
+                    autoTriggered: false,
+                  );
+                } else {
+                  // 不支持自动更新的平台，打开下载链接
+                  _openDownloadUrl(versionInfo.downloadUrl);
+                }
+              },
+              child: Text(platformSupported ? '一键更新' : '立即更新'),
+            ),
         ],
       ),
     ));
@@ -1279,6 +1327,7 @@ class _HomePageState extends State<HomePage>
   /// 构建 iOS 风格首页 Slivers
   List<Widget> _buildCupertinoHomeSlivers(BuildContext context, bool showTabs) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+    final isLoggedIn = AuthService().isLoggedIn;
     
     return [
       // iOS 大标题导航栏
@@ -1319,8 +1368,8 @@ class _HomePageState extends State<HomePage>
           ],
         ),
       ),
-      // 固定的分段控制器（滚动时吸顶）
-      if (showTabs)
+      // 固定的分段控制器（滚动时吸顶）- 未登录时隐藏
+      if (isLoggedIn && showTabs)
         SliverPersistentHeader(
           pinned: true,
           delegate: CupertinoHomeStickyHeaderDelegate(
@@ -1334,8 +1383,14 @@ class _HomePageState extends State<HomePage>
         padding: const EdgeInsets.all(16.0),
         sliver: SliverList(
           delegate: SliverChildListDelegate([
-            // 内容
-            if (showTabs && _homeTabIndex == 0) ...[
+            // 未登录时显示登录提示
+            if (!isLoggedIn) ...[
+              HomeForYouTab(
+                key: const ValueKey('for_you_not_logged_in_cupertino'),
+                onOpenPlaylistDetail: (id) {},
+                onOpenDailyDetail: (tracks) {},
+              ),
+            ] else if (showTabs && _homeTabIndex == 0) ...[
               HomeForYouTab(
                 key: ValueKey('for_you_$_forYouReloadToken'),
                 onOpenPlaylistDetail: (id) {
@@ -1733,11 +1788,15 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildHomeContentSliver(BuildContext context, bool showTabs) {
+    // 未登录状态下直接显示登录提示（通过 HomeForYouTab）
+    final isLoggedIn = AuthService().isLoggedIn;
+    
     return SliverPadding(
       padding: const EdgeInsets.all(24.0),
       sliver: SliverList(
         delegate: SliverChildListDelegate([
-          if (showTabs) ...[
+          // 未登录时不显示 Tabs，只显示登录提示
+          if (isLoggedIn && showTabs) ...[
             Padding(
               padding: const EdgeInsets.only(bottom: 12.0),
               child: _HomeCapsuleTabs(
@@ -1748,7 +1807,14 @@ class _HomePageState extends State<HomePage>
             ),
             const SizedBox(height: 8),
           ],
-          if (showTabs && _homeTabIndex == 0) ...[
+          // 未登录时显示 HomeForYouTab（内部有登录提示）
+          if (!isLoggedIn) ...[
+            HomeForYouTab(
+              key: const ValueKey('for_you_not_logged_in'),
+              onOpenPlaylistDetail: (id) {},
+              onOpenDailyDetail: (tracks) {},
+            ),
+          ] else if (showTabs && _homeTabIndex == 0) ...[
             HomeForYouTab(
               key: ValueKey('for_you_$_forYouReloadToken'),
               onOpenPlaylistDetail: (id) {

@@ -501,6 +501,7 @@ class _AboutSettingsState extends State<AboutSettings> {
 
   void _showUpdateDialog(BuildContext context, VersionInfo versionInfo) {
     final isForceUpdate = versionInfo.forceUpdate;
+    final isFixing = versionInfo.fixing;
     final platformSupported = _autoUpdateService.isPlatformSupported;
 
     showDialog(
@@ -509,11 +510,15 @@ class _AboutSettingsState extends State<AboutSettings> {
       builder: (context) => PopScope(
         canPop: !isForceUpdate,
         child: AlertDialog(
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.system_update, size: 28),
-              SizedBox(width: 12),
-              Text('发现新版本'),
+              Icon(
+                isFixing ? Icons.build : Icons.system_update,
+                size: 28,
+                color: isFixing ? Colors.orange : null,
+              ),
+              const SizedBox(width: 12),
+              Text(isFixing ? '服务器正在维护' : '发现新版本'),
             ],
           ),
           content: SingleChildScrollView(
@@ -587,7 +592,7 @@ class _AboutSettingsState extends State<AboutSettings> {
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ),
-                if (isForceUpdate) ...[
+                if (isForceUpdate && !isFixing) ...[
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -616,6 +621,36 @@ class _AboutSettingsState extends State<AboutSettings> {
                     ),
                   ),
                 ],
+                if (isFixing) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.build,
+                          color: Colors.orange.shade700,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '服务器正在维护中，请稍后再试',
+                            style: TextStyle(
+                              color: Colors.orange.shade900,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -635,38 +670,39 @@ class _AboutSettingsState extends State<AboutSettings> {
                 },
                 child: const Text('稍后提醒'),
               ),
-            FilledButton.icon(
-              onPressed: () async {
-                Navigator.of(context).pop();
+            if (!isFixing)
+              FilledButton.icon(
+                onPressed: () async {
+                  Navigator.of(context).pop();
 
-                if (platformSupported) {
-                  await _autoUpdateService.startUpdate(
-                    versionInfo: versionInfo,
-                    autoTriggered: false,
-                  );
-                  if (!mounted) return;
-                  final messenger = ScaffoldMessenger.maybeOf(context);
-                  if (messenger != null) {
-                    messenger.showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: const [
-                            Icon(Icons.system_update, color: Colors.white),
-                            SizedBox(width: 12),
-                            Expanded(child: Text('正在下载并安装更新，请稍候')), 
-                          ],
-                        ),
-                        duration: const Duration(seconds: 3),
-                      ),
+                  if (platformSupported) {
+                    await _autoUpdateService.startUpdate(
+                      versionInfo: versionInfo,
+                      autoTriggered: false,
                     );
+                    if (!mounted) return;
+                    final messenger = ScaffoldMessenger.maybeOf(context);
+                    if (messenger != null) {
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Row(
+                            children: const [
+                              Icon(Icons.system_update, color: Colors.white),
+                              SizedBox(width: 12),
+                              Expanded(child: Text('正在下载并安装更新，请稍候')), 
+                            ],
+                          ),
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  } else {
+                    await _openDownloadLink(context, versionInfo.downloadUrl);
                   }
-                } else {
-                  await _openDownloadLink(context, versionInfo.downloadUrl);
-                }
-              },
-              icon: const Icon(Icons.download),
-              label: Text(platformSupported ? '一键更新' : '前往下载'),
-            ),
+                },
+                icon: const Icon(Icons.download),
+                label: Text(platformSupported ? '一键更新' : '前往下载'),
+              ),
           ],
         ),
       ),
@@ -675,6 +711,7 @@ class _AboutSettingsState extends State<AboutSettings> {
 
   void _showUpdateDialogFluent(BuildContext context, VersionInfo versionInfo) {
     final isForceUpdate = versionInfo.forceUpdate;
+    final isFixing = versionInfo.fixing;
     final platformSupported = _autoUpdateService.isPlatformSupported;
     fluent_ui.showDialog(
       context: context,
@@ -682,7 +719,7 @@ class _AboutSettingsState extends State<AboutSettings> {
       builder: (context) => PopScope(
         canPop: !isForceUpdate,
         child: fluent_ui.ContentDialog(
-        title: const Text('发现新版本'),
+        title: Text(isFixing ? '服务器正在维护' : '发现新版本'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -694,9 +731,17 @@ class _AboutSettingsState extends State<AboutSettings> {
             const Text('更新内容'),
             const SizedBox(height: 8),
             Text(versionInfo.changelog),
-            if (isForceUpdate) ...[
+            if (isForceUpdate && !isFixing) ...[
               const SizedBox(height: 12),
               const Text('此版本为强制更新，请尽快完成安装'),
+            ],
+            if (isFixing) ...[
+              const SizedBox(height: 12),
+              fluent_ui.InfoBar(
+                title: const Text('服务器维护'),
+                content: const Text('服务器正在维护中，请稍后再试'),
+                severity: fluent_ui.InfoBarSeverity.warning,
+              ),
             ],
           ],
         ),
@@ -719,30 +764,31 @@ class _AboutSettingsState extends State<AboutSettings> {
               },
               child: const Text('稍后提醒'),
             ),
-          fluent_ui.FilledButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              if (platformSupported) {
-                await _autoUpdateService.startUpdate(
-                  versionInfo: versionInfo,
-                  autoTriggered: false,
-                );
-                if (!mounted) return;
-                final messenger = ScaffoldMessenger.maybeOf(context);
-                if (messenger != null) {
-                  messenger.showSnackBar(
-                    const SnackBar(
-                      content: Text('正在下载并安装更新，请稍候'),
-                      duration: Duration(seconds: 3),
-                    ),
+          if (!isFixing)
+            fluent_ui.FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                if (platformSupported) {
+                  await _autoUpdateService.startUpdate(
+                    versionInfo: versionInfo,
+                    autoTriggered: false,
                   );
+                  if (!mounted) return;
+                  final messenger = ScaffoldMessenger.maybeOf(context);
+                  if (messenger != null) {
+                    messenger.showSnackBar(
+                      const SnackBar(
+                        content: Text('正在下载并安装更新，请稍候'),
+                        duration: Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                } else {
+                  await _openDownloadLink(context, versionInfo.downloadUrl);
                 }
-              } else {
-                await _openDownloadLink(context, versionInfo.downloadUrl);
-              }
-            },
-            child: Text(platformSupported ? '一键更新' : '前往下载'),
-          ),
+              },
+              child: Text(platformSupported ? '一键更新' : '前往下载'),
+            ),
         ],
       )),
     );
@@ -1013,6 +1059,7 @@ class _AboutSettingsState extends State<AboutSettings> {
   /// 显示 Cupertino 风格的更新对话框
   void _showUpdateDialogCupertino(BuildContext context, VersionInfo versionInfo) {
     final isForceUpdate = versionInfo.forceUpdate;
+    final isFixing = versionInfo.fixing;
     final platformSupported = _autoUpdateService.isPlatformSupported;
 
     showCupertinoDialog<void>(
@@ -1021,7 +1068,7 @@ class _AboutSettingsState extends State<AboutSettings> {
       builder: (context) => PopScope(
         canPop: !isForceUpdate,
         child: CupertinoAlertDialog(
-        title: const Text('发现新版本'),
+        title: Text(isFixing ? '服务器正在维护' : '发现新版本'),
         content: Padding(
           padding: const EdgeInsets.only(top: 16),
           child: Column(
@@ -1033,12 +1080,22 @@ class _AboutSettingsState extends State<AboutSettings> {
               const Text('更新内容', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               Text(versionInfo.changelog),
-              if (isForceUpdate) ...[
+              if (isForceUpdate && !isFixing) ...[
                 const SizedBox(height: 12),
                 Text(
                   '此版本为强制更新，请尽快完成安装',
                   style: TextStyle(
                     color: CupertinoColors.systemRed,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+              if (isFixing) ...[
+                const SizedBox(height: 12),
+                Text(
+                  '服务器正在维护中，请稍后再试',
+                  style: TextStyle(
+                    color: CupertinoColors.systemOrange,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -1057,21 +1114,22 @@ class _AboutSettingsState extends State<AboutSettings> {
               },
               child: const Text('稍后提醒'),
             ),
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () async {
-              Navigator.of(context).pop();
-              if (platformSupported) {
-                await _autoUpdateService.startUpdate(
-                  versionInfo: versionInfo,
-                  autoTriggered: false,
-                );
-              } else {
-                await _openDownloadLink(context, versionInfo.downloadUrl);
-              }
-            },
-            child: Text(platformSupported ? '一键更新' : '前往下载'),
-          ),
+          if (!isFixing)
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () async {
+                Navigator.of(context).pop();
+                if (platformSupported) {
+                  await _autoUpdateService.startUpdate(
+                    versionInfo: versionInfo,
+                    autoTriggered: false,
+                  );
+                } else {
+                  await _openDownloadLink(context, versionInfo.downloadUrl);
+                }
+              },
+              child: Text(platformSupported ? '一键更新' : '前往下载'),
+            ),
         ],
       )),
     );

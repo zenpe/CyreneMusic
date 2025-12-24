@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -9,6 +11,7 @@ import '../../services/donate_service.dart';
 import '../../services/location_service.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/fluent_settings_card.dart';
+import '../../utils/theme_manager.dart';
 
 class DonateSettings extends StatefulWidget {
   const DonateSettings({super.key});
@@ -192,10 +195,245 @@ class _DonateFormResult {
 
 Future<_DonateFormResult?> _showDonateDialog(BuildContext context) async {
   final bool isFluent = fluent_ui.FluentTheme.maybeOf(context) != null;
+  final bool isCupertino = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
   double amount = 6.0;
   String method = 'alipay';
   final TextEditingController customCtrl = TextEditingController();
   String? errorText;
+
+  // iOS Cupertino 风格对话框
+  if (isCupertino) {
+    return await showCupertinoModalPopup<_DonateFormResult>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+            return Material(
+              type: MaterialType.transparency,
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.75,
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                child: Column(
+                children: [
+                  // 顶部拖动指示器和标题
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.withOpacity(0.2),
+                        ),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: CupertinoColors.systemGrey3,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              onPressed: () => Navigator.pop(context),
+                              child: Text(
+                                '取消',
+                                style: TextStyle(color: ThemeManager.iosBlue),
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                Icon(
+                                  CupertinoIcons.heart_fill,
+                                  color: CupertinoColors.systemRed,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '赞助支持',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              onPressed: () {
+                                // 优先使用自定义金额
+                                final a = _resolveAmount(amount, customCtrl.text);
+                                if (a == null) {
+                                  setState(() => errorText = '请输入有效金额（最低1元，最多两位小数）');
+                                  return;
+                                }
+                                Navigator.pop(context, _DonateFormResult(method, a));
+                              },
+                              child: Text(
+                                '确定',
+                                style: TextStyle(
+                                  color: ThemeManager.iosBlue,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  // 内容区域
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 说明文字
+                          Text(
+                            '赞助后您可以获得独特的用户标识',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '是否赞助不影响任何功能',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: CupertinoColors.systemGrey,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '赞助任意金额您的名字将被永久保留在赞助墙上。',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: ThemeManager.iosBlue,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          // 金额选择
+                          Text(
+                            '选择金额',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: CupertinoColors.systemGrey,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              _buildCupertinoAmountCard(context, 3.0, '来瓶可乐', amount == 3.0 && customCtrl.text.isEmpty, isDark, () => setState(() {
+                                amount = 3.0;
+                                customCtrl.clear();
+                              })),
+                              _buildCupertinoAmountCard(context, 6.0, '投喂面包', amount == 6.0 && customCtrl.text.isEmpty, isDark, () => setState(() {
+                                amount = 6.0;
+                                customCtrl.clear();
+                              })),
+                              _buildCupertinoAmountCard(context, 10.0, '名垂千古', amount == 10.0 && customCtrl.text.isEmpty, isDark, () => setState(() {
+                                amount = 10.0;
+                                customCtrl.clear();
+                              })),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          // 自定义金额输入
+                          CupertinoTextField(
+                            controller: customCtrl,
+                            placeholder: '自定义金额 (单位：元)',
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white.withOpacity(0.08) : CupertinoColors.systemGrey6,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            onChanged: (value) => setState(() {
+                              // 当用户输入自定义金额时，保持预设金额变量但视觉上取消选中
+                            }),
+                          ),
+                          const SizedBox(height: 20),
+                          // 支付方式选择
+                          Text(
+                            '支付方式',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: CupertinoColors.systemGrey,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white.withOpacity(0.08) : CupertinoColors.white,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Column(
+                              children: [
+                                _buildCupertinoPaymentTile(
+                                  context,
+                                  '支付宝',
+                                  CupertinoIcons.money_dollar_circle,
+                                  const Color(0xFF1677FF),
+                                  method == 'alipay',
+                                  isDark,
+                                  () => setState(() => method = 'alipay'),
+                                ),
+                                Container(
+                                  height: 0.5,
+                                  margin: const EdgeInsets.only(left: 50),
+                                  color: isDark ? Colors.white.withOpacity(0.1) : CupertinoColors.systemGrey5,
+                                ),
+                                _buildCupertinoPaymentTile(
+                                  context,
+                                  '微信支付',
+                                  CupertinoIcons.chat_bubble_2,
+                                  const Color(0xFF07C160),
+                                  method == 'wxpay',
+                                  isDark,
+                                  () => setState(() => method = 'wxpay'),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (errorText != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              errorText!,
+                              style: TextStyle(
+                                color: CupertinoColors.systemRed,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   if (isFluent) {
     return await fluent_ui.showDialog<_DonateFormResult>(
@@ -576,6 +814,72 @@ double? _resolveAmount(double preset, String custom) {
 /// 显示二维码对话框（不带轮询，用于支付宝等）
 Future<void> _showQrDialog(BuildContext context, String data) async {
   final bool isFluent = fluent_ui.FluentTheme.maybeOf(context) != null;
+  final bool isCupertino = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
+  
+  // iOS Cupertino 风格
+  if (isCupertino) {
+    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+    await showCupertinoModalPopup(
+      context: context,
+      builder: (context) => Material(
+        type: MaterialType.transparency,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: CupertinoColors.systemGrey3,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '扫码支付',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: CupertinoColors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: QrImageView(
+                  data: data,
+                  version: QrVersions.auto,
+                  size: 200,
+                ),
+              ),
+              const SizedBox(height: 16),
+              CupertinoButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  '关闭',
+                  style: TextStyle(color: ThemeManager.iosBlue),
+                ),
+              ),
+            ],
+          ),
+        ),
+        ),
+      ),
+    );
+    return;
+  }
+  
   if (isFluent) {
     await fluent_ui.showDialog(
       context: context,
@@ -665,6 +969,7 @@ Future<bool> _showQrDialogWithPolling(
   String outTradeNo,
 ) async {
   final bool isFluent = fluent_ui.FluentTheme.maybeOf(context) != null;
+  final bool isCupertino = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
   
   // 创建一个 Completer 用于控制对话框关闭
   final completer = Completer<void>();
@@ -708,7 +1013,106 @@ Future<bool> _showQrDialogWithPolling(
 
   startPolling();
 
-  // 显示对话框
+  // 显示对话框 - Cupertino 版本
+  if (isCupertino) {
+    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+    final dialogFuture = showCupertinoModalPopup(
+      context: context,
+      builder: (context) => Material(
+        type: MaterialType.transparency,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: CupertinoColors.systemGrey3,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '扫码支付',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: CupertinoColors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: QrImageView(
+                  data: qrData,
+                  version: QrVersions.auto,
+                  size: 200,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '请使用手机扫码支付',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '支付成功后将自动关闭',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: CupertinoColors.systemGrey,
+                ),
+              ),
+              const SizedBox(height: 16),
+              CupertinoButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  '关闭',
+                  style: TextStyle(color: ThemeManager.iosBlue),
+                ),
+              ),
+            ],
+          ),
+        ),
+        ),
+      ),
+    );
+
+    // 等待对话框关闭或支付成功
+    await Future.any([
+      dialogFuture.then((_) {
+        print('[Donate] Dialog closed by user');
+        isPolling = false;
+        pollTimer?.cancel();
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
+      }),
+      completer.future.then((_) {
+        if (paymentSuccess && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      }),
+    ]);
+    
+    pollTimer?.cancel();
+    return paymentSuccess;
+  }
+
+  // 显示对话框 - Fluent UI 版本
   final dialogFuture = isFluent
       ? fluent_ui.showDialog(
           context: context,
@@ -846,4 +1250,112 @@ extension _SnackExt on _DonateSettingsState {
       );
     }
   }
+}
+
+/// 构建 iOS 风格的金额选择卡片
+Widget _buildCupertinoAmountCard(
+  BuildContext context,
+  double amount,
+  String description,
+  bool isSelected,
+  bool isDark,
+  VoidCallback onTap,
+) {
+  return GestureDetector(
+    onTap: onTap,
+    child: Container(
+      width: (MediaQuery.of(context).size.width - 52) / 3,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? ThemeManager.iosBlue.withOpacity(0.15)
+            : (isDark ? Colors.white.withOpacity(0.08) : CupertinoColors.white),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isSelected
+              ? ThemeManager.iosBlue
+              : (isDark ? Colors.white.withOpacity(0.1) : CupertinoColors.systemGrey5),
+          width: isSelected ? 2 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            '¥${amount.toStringAsFixed(0)}',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: isSelected
+                  ? ThemeManager.iosBlue
+                  : (isDark ? CupertinoColors.white : CupertinoColors.black),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            description,
+            style: TextStyle(
+              fontSize: 12,
+              color: isSelected
+                  ? ThemeManager.iosBlue
+                  : CupertinoColors.systemGrey,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// 构建 iOS 风格的支付方式选择项
+Widget _buildCupertinoPaymentTile(
+  BuildContext context,
+  String title,
+  IconData icon,
+  Color iconColor,
+  bool isSelected,
+  bool isDark,
+  VoidCallback onTap,
+) {
+  return CupertinoButton(
+    padding: EdgeInsets.zero,
+    onPressed: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: iconColor,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(
+              icon,
+              color: CupertinoColors.white,
+              size: 16,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: 16,
+                color: isDark ? CupertinoColors.white : CupertinoColors.black,
+              ),
+            ),
+          ),
+          Icon(
+            isSelected
+                ? CupertinoIcons.checkmark_circle_fill
+                : CupertinoIcons.circle,
+            color: isSelected ? ThemeManager.iosBlue : CupertinoColors.systemGrey3,
+            size: 22,
+          ),
+        ],
+      ),
+    ),
+  );
 }

@@ -85,12 +85,50 @@ class _SponsorWallState extends State<SponsorWall> {
   @override
   Widget build(BuildContext context) {
     final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isCupertino = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
     
     if (isFluentUI) {
       return _buildFluentUI(context);
     }
     
+    if (isCupertino) {
+      return _buildCupertinoUI(context);
+    }
+    
     return _buildMaterialUI(context);
+  }
+
+  /// iOS Cupertino UI 版本
+  Widget _buildCupertinoUI(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
+          child: Text(
+            '赞助墙 - 感谢以下用户的支持',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey,
+            ),
+          ),
+        ),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: _buildContent(context, isCupertino: true, isDark: isDark),
+          ),
+        ),
+      ],
+    );
   }
 
   /// Material UI 版本
@@ -161,7 +199,7 @@ class _SponsorWallState extends State<SponsorWall> {
     );
   }
 
-  Widget _buildContent(BuildContext context, {ColorScheme? colorScheme, bool isFluent = false}) {
+  Widget _buildContent(BuildContext context, {ColorScheme? colorScheme, bool isFluent = false, bool isCupertino = false, bool isDark = false}) {
     if (_loading) {
       return const Center(
         child: Padding(
@@ -235,7 +273,7 @@ class _SponsorWallState extends State<SponsorWall> {
       spacing: 16,
       runSpacing: 16,
       children: _sponsors.map((sponsor) {
-        return _buildSponsorCard(context, sponsor, isFluent: isFluent, colorScheme: colorScheme);
+        return _buildSponsorCard(context, sponsor, isFluent: isFluent, isCupertino: isCupertino, isDark: isDark, colorScheme: colorScheme);
       }).toList(),
     );
   }
@@ -244,6 +282,8 @@ class _SponsorWallState extends State<SponsorWall> {
     BuildContext context,
     Map<String, dynamic> sponsor, {
     bool isFluent = false,
+    bool isCupertino = false,
+    bool isDark = false,
     ColorScheme? colorScheme,
   }) {
     final username = sponsor['username'] as String? ?? '匿名用户';
@@ -265,14 +305,18 @@ class _SponsorWallState extends State<SponsorWall> {
       width: 120,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isFluent
-            ? Colors.white.withOpacity(0.05)
-            : colorScheme?.surfaceVariant.withOpacity(0.3),
+        color: isCupertino
+            ? (isDark ? Colors.white.withOpacity(0.08) : Colors.grey.withOpacity(0.1))
+            : (isFluent
+                ? Colors.white.withOpacity(0.05)
+                : colorScheme?.surfaceVariant.withOpacity(0.3)),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isFluent
-              ? Colors.white.withOpacity(0.1)
-              : colorScheme?.outline.withOpacity(0.3) ?? Colors.grey.withOpacity(0.3),
+          color: isCupertino
+              ? (isDark ? Colors.white.withOpacity(0.12) : Colors.grey.withOpacity(0.2))
+              : (isFluent
+                  ? Colors.white.withOpacity(0.1)
+                  : colorScheme?.outline.withOpacity(0.3) ?? Colors.grey.withOpacity(0.3)),
         ),
       ),
       child: Column(
@@ -291,12 +335,16 @@ class _SponsorWallState extends State<SponsorWall> {
                     )
                   : null,
               color: avatarUrl == null
-                  ? (isFluent ? const Color(0xFF0078D4) : colorScheme?.primary)
+                  ? (isCupertino 
+                      ? const Color(0xFF007AFF) 
+                      : (isFluent ? const Color(0xFF0078D4) : colorScheme?.primary))
                   : null,
             ),
             child: avatarUrl == null
                 ? Icon(
-                    isFluent ? fluent_ui.FluentIcons.contact : Icons.person,
+                    isCupertino 
+                        ? Icons.person
+                        : (isFluent ? fluent_ui.FluentIcons.contact : Icons.person),
                     size: 28,
                     color: Colors.white,
                   )
@@ -306,13 +354,19 @@ class _SponsorWallState extends State<SponsorWall> {
           // 用户名
           Text(
             username,
-            style: isFluent
-                ? fluent_ui.FluentTheme.of(context).typography.body?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    )
-                : Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+            style: isCupertino
+                ? TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black,
+                  )
+                : (isFluent
+                    ? fluent_ui.FluentTheme.of(context).typography.body?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        )
+                    : Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        )),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
@@ -321,11 +375,16 @@ class _SponsorWallState extends State<SponsorWall> {
             const SizedBox(height: 4),
             Text(
               timeText,
-              style: isFluent
-                  ? fluent_ui.FluentTheme.of(context).typography.caption
-                  : Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme?.onSurfaceVariant,
-                      ),
+              style: isCupertino
+                  ? TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                    )
+                  : (isFluent
+                      ? fluent_ui.FluentTheme.of(context).typography.caption
+                      : Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colorScheme?.onSurfaceVariant,
+                          )),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,

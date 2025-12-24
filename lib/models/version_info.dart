@@ -3,6 +3,7 @@ class VersionInfo {
   final String version;
   final String changelog;
   final bool forceUpdate;
+  final bool fixing;
   final String downloadUrl;
   final Map<String, String> platformDownloads;
 
@@ -10,6 +11,7 @@ class VersionInfo {
     required this.version,
     required this.changelog,
     required this.forceUpdate,
+    this.fixing = false,
     required this.downloadUrl,
     Map<String, String>? platformDownloads,
   }) : platformDownloads = Map.unmodifiable(platformDownloads ?? {});
@@ -27,6 +29,7 @@ class VersionInfo {
       version: json['version'] as String,
       changelog: json['changelog'] as String,
       forceUpdate: json['force_update'] as bool,
+      fixing: json['fixing'] as bool? ?? false,
       downloadUrl: json['download_url'] as String,
       platformDownloads: downloads,
     );
@@ -37,6 +40,7 @@ class VersionInfo {
       'version': version,
       'changelog': changelog,
       'force_update': forceUpdate,
+      'fixing': fixing,
       'download_url': downloadUrl,
       'platform_downloads': platformDownloads,
     };
@@ -48,7 +52,7 @@ class VersionInfo {
 
   @override
   String toString() {
-    return 'VersionInfo(version: $version, forceUpdate: $forceUpdate)';
+    return 'VersionInfo(version: $version, forceUpdate: $forceUpdate, fixing: $fixing)';
   }
 }
 

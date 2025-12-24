@@ -17,7 +17,10 @@ extension MyPageFluentUI on _MyPageState {
               const Text('登录即可管理歌单和查看听歌统计'),
               const SizedBox(height: 24),
               fluent.FilledButton(
-                onPressed: () => showAuthDialog(context).then((_) { refresh(); }),
+                onPressed: () async {
+                  final result = await showFluentLoginDialog(context);
+                  if (result == true) { refresh(); }
+                },
                 child: const Text('立即登录'),
               ),
             ],

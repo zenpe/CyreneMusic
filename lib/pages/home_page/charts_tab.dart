@@ -9,6 +9,7 @@ import '../../services/music_service.dart';
 import '../../utils/theme_manager.dart';
 import 'home_widgets.dart';
 import 'toplist_detail.dart';
+import '../../widgets/skeleton_loader.dart';
 
 class ChartsTab extends StatelessWidget {
   final List<Track> cachedRandomTracks;
@@ -26,11 +27,19 @@ class ChartsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = Platform.isIOS || Platform.isAndroid;
+    
     if (MusicService().isLoading) {
-      if (ThemeManager().isFluentFramework) {
-        return const Center(child: Padding(padding: EdgeInsets.all(32), child: fluent.ProgressRing()));
+      // 移动端使用移动端专用骨架屏
+      if (isMobile) {
+        return const MobileChartsTabSkeleton();
       }
-      return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+      // Fluent UI 桌面端使用桌面端骨架屏
+      if (ThemeManager().isFluentFramework) {
+        return const ChartsTabSkeleton();
+      }
+      // 其他桌面端也使用桌面端骨架屏
+      return const ChartsTabSkeleton();
     }
 
     if (MusicService().errorMessage != null) {

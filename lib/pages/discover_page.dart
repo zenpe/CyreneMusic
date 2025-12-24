@@ -4,11 +4,15 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/cupertino.dart';
 import '../services/netease_discover_service.dart';
+import '../services/auth_service.dart';
 import '../models/netease_discover.dart';
 import '../utils/theme_manager.dart';
 import 'discover_playlist_detail_page.dart';
 import 'discover_page/discover_breadcrumbs.dart';
 import '../widgets/cupertino/cupertino_discover_widgets.dart';
+import '../widgets/skeleton_loader.dart';
+import '../widgets/login_prompt.dart';
+import 'auth/auth_page.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -62,6 +66,32 @@ class _DiscoverPageState extends State<DiscoverPage> {
     BuildContext context,
     NeteaseDiscoverService service,
   ) {
+    // 未登录状态下显示登录提示
+    if (!AuthService().isLoggedIn) {
+      return CupertinoPageScaffold(
+        child: CustomScrollView(
+          slivers: [
+            const CupertinoSliverNavigationBar(
+              largeTitle: Text('发现'),
+              border: null,
+              backgroundColor: null,
+            ),
+            SliverFillRemaining(
+              child: LoginPrompt(
+                title: '登录后发现更多精彩',
+                subtitle: '登录即可浏览热门歌单、发现新音乐',
+                onLoginPressed: () => showAuthDialog(context).then((_) {
+                  if (mounted && AuthService().isLoggedIn) {
+                    setState(() {});
+                  }
+                }),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     // 如果选中了歌单，显示详情页（模拟导航堆栈）
     if (_selectedPlaylistId != null) {
       return CupertinoPageScaffold(
@@ -113,11 +143,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
   List<Widget> _buildCupertinoSlivers(NeteaseDiscoverService service) {
     if (service.isLoading) {
       return [
-        const SliverFillRemaining(
-          child: Center(
-            child: CupertinoActivityIndicator(radius: 16),
-          ),
-        ),
+        // 使用骨架屏替代简单的加载指示器
+        const MobileDiscoverPageSliverSkeleton(),
       ];
     }
     if (service.errorMessage != null) {
@@ -253,6 +280,41 @@ class _DiscoverPageState extends State<DiscoverPage> {
   ) {
     final colorScheme = Theme.of(context).colorScheme;
 
+    // 未登录状态下显示登录提示
+    if (!AuthService().isLoggedIn) {
+      return Scaffold(
+        backgroundColor: colorScheme.surface,
+        body: CustomScrollView(
+          slivers: [
+            SliverAppBar(
+              floating: true,
+              snap: true,
+              backgroundColor: colorScheme.surface,
+              title: Text(
+                '发现',
+                style: TextStyle(
+                  color: colorScheme.onSurface,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            SliverFillRemaining(
+              child: LoginPrompt(
+                title: '登录后发现更多精彩',
+                subtitle: '登录即可浏览热门歌单、发现新音乐',
+                onLoginPressed: () => showAuthDialog(context).then((_) {
+                  if (mounted && AuthService().isLoggedIn) {
+                    setState(() {});
+                  }
+                }),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: colorScheme.surface,
       body: CustomScrollView(
@@ -329,11 +391,10 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
 
     if (service.isLoading) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(48.0),
-          child: CircularProgressIndicator(),
-        ),
+      // 使用骨架屏替代简单的加载指示器
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16.0),
+        child: MobileDiscoverPageSkeleton(),
       );
     }
     if (service.errorMessage != null) {
@@ -448,6 +509,42 @@ class _DiscoverPageState extends State<DiscoverPage> {
     BuildContext context,
     NeteaseDiscoverService service,
   ) {
+    // 未登录状态下显示登录提示
+    if (!AuthService().isLoggedIn) {
+      return fluent.ScaffoldPage(
+        padding: EdgeInsets.zero,
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: FluentDiscoverBreadcrumbs(
+                items: [
+                  DiscoverBreadcrumbItem(
+                    label: '发现',
+                    isEmphasized: true,
+                    isCurrent: true,
+                  ),
+                ],
+                padding: EdgeInsets.zero,
+              ),
+            ),
+            Expanded(
+              child: LoginPrompt(
+                title: '登录后发现更多精彩',
+                subtitle: '登录即可浏览热门歌单、发现新音乐',
+                onLoginPressed: () {
+                  if (mounted && AuthService().isLoggedIn) {
+                    setState(() {});
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final bool isDetail = _selectedPlaylistId != null;
 
     return fluent.ScaffoldPage(
@@ -510,9 +607,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
 
     if (service.isLoading) {
-      return const Center(
+      return const DiscoverPageSkeleton(
         key: ValueKey('discover_loading'),
-        child: fluent.ProgressRing(),
       );
     }
 

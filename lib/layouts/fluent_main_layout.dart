@@ -228,7 +228,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
     AuthService().removeListener(_onAuthChanged);
     DeveloperModeService().removeListener(_onDeveloperModeChanged);
     _navigationProvider.removeListener(_onNavigationChanged);
-    _navigationProvider.dispose();
+    // 注意: NavigationProvider 是单例，不应调用 dispose
     _homeOverlayController.removeListener(_onHomeOverlayChanged);
     AuthOverlayService().removeListener(_onAuthOverlayChanged);
     super.dispose();

@@ -339,6 +339,8 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
                 fillProgress: fillProgress,
                 themeColor: themeColor,
                 isSelected: isSelected,
+                lyric: lyric,
+                currentPosition: player.position,
               ),
             );
           },
@@ -402,16 +404,31 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
   }
 
   /// 构建卡拉OK文字效果
+  /// 支持两种模式：有逐字歌词时使用逐字填充，否则回退到整行填充
   Widget _buildKaraokeText({
     required String text,
     required double fontSize,
     required double fillProgress,
     required Color? themeColor,
     bool isSelected = false,
+    LyricLine? lyric,
+    Duration? currentPosition,
   }) {
     final baseColor = _getAdaptiveLyricColor(themeColor, false);
     final highlightColor = _getAdaptiveLyricColor(themeColor, true);
     
+    // 如果有逐字歌词数据，使用逐字填充模式
+    if (lyric != null && lyric.hasWordByWord && lyric.words != null && currentPosition != null && !isSelected) {
+      return _buildWordByWordKaraokeText(
+        lyric: lyric,
+        currentPosition: currentPosition,
+        fontSize: fontSize,
+        baseColor: baseColor,
+        highlightColor: highlightColor,
+      );
+    }
+    
+    // 回退到整行填充模式
     return Stack(
       children: [
         // 底层：未填充的文字（半透明）
@@ -455,6 +472,44 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
           ),
         ),
       ],
+    );
+  }
+
+  /// 构建逐字填充的卡拉OK效果
+  Widget _buildWordByWordKaraokeText({
+    required LyricLine lyric,
+    required Duration currentPosition,
+    required double fontSize,
+    required Color baseColor,
+    required Color highlightColor,
+  }) {
+    final words = lyric.words!;
+    
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: List.generate(words.length, (index) {
+        final word = words[index];
+        
+        // 计算这个字的填充进度
+        double wordProgress;
+        if (currentPosition < word.startTime) {
+          wordProgress = 0.0;
+        } else if (currentPosition >= word.endTime) {
+          wordProgress = 1.0;
+        } else {
+          final wordElapsed = currentPosition - word.startTime;
+          wordProgress = (wordElapsed.inMilliseconds / word.duration.inMilliseconds).clamp(0.0, 1.0);
+        }
+        
+        return _MobileKaraokeWordWidget(
+          text: word.text,
+          progress: wordProgress,
+          fontSize: fontSize,
+          baseColor: baseColor,
+          highlightColor: highlightColor,
+        );
+      }),
     );
   }
 
@@ -601,5 +656,63 @@ class _KaraokeClipper extends CustomClipper<Rect> {
   @override
   bool shouldReclip(covariant CustomClipper<Rect> oldClipper) {
     return true; // 总是重新裁剪以实现动画效果
+  }
+}
+
+/// 移动端卡拉OK单个字的填充组件
+class _MobileKaraokeWordWidget extends StatelessWidget {
+  final String text;
+  final double progress;
+  final double fontSize;
+  final Color baseColor;
+  final Color highlightColor;
+
+  const _MobileKaraokeWordWidget({
+    required this.text,
+    required this.progress,
+    required this.fontSize,
+    required this.baseColor,
+    required this.highlightColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: Stack(
+        children: [
+          // 底层暗色文字
+          Text(
+            text,
+            style: TextStyle(
+              color: baseColor,
+              fontSize: fontSize,
+              fontWeight: FontWeight.bold,
+              fontFamily: 'Microsoft YaHei',
+            ),
+          ),
+          
+          // 上层亮色文字（通过 ClipRect 裁剪）
+          ClipRect(
+            clipper: _KaraokeClipper(progress),
+            child: Text(
+              text,
+              style: TextStyle(
+                color: highlightColor,
+                fontSize: fontSize,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Microsoft YaHei',
+                shadows: [
+                  Shadow(
+                    color: highlightColor.withOpacity(0.5),
+                    blurRadius: 8,
+                    offset: const Offset(0, 0),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -376,7 +376,25 @@ class _LoginViewState extends State<_LoginView> {
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _isLinuxDoLoading = false; // Linux Do 授权登录加载状态
+  String _linuxDoLoadingText = '正在授权...'; // 加载提示文字
   bool _obscurePassword = true;
+  bool _linuxDoEnabled = true; // Linux Do 登录是否启用
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLinuxDoStatus();
+  }
+
+  Future<void> _checkLinuxDoStatus() async {
+    final result = await AuthService().checkLinuxDoStatus();
+    if (mounted) {
+      setState(() {
+        _linuxDoEnabled = result['enabled'] ?? true;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -500,23 +518,58 @@ class _LoginViewState extends State<_LoginView> {
             colorScheme: colorScheme,
           ),
 
+          if (_linuxDoEnabled) ...[
           const SizedBox(height: 12),
           OutlinedButton.icon(
-            onPressed: _isLoading
+            onPressed: (_isLoading || _isLinuxDoLoading)
                 ? null
                 : () async {
+                    setState(() {
+                      _isLinuxDoLoading = true;
+                      _linuxDoLoadingText = '正在打开浏览器...';
+                    });
+                    
+                    // 延迟更新提示文字，让用户知道浏览器已打开
+                    Future.delayed(const Duration(seconds: 2), () {
+                      if (mounted && _isLinuxDoLoading) {
+                        setState(() => _linuxDoLoadingText = '等待浏览器授权...');
+                      }
+                    });
+                    
                     final result = await AuthService().loginWithLinuxDo();
+                    
                     if (!mounted) return;
+                    
                     if (result['success'] == true) {
-                      // 登录成功后，自动上报IP归属地
-                      AuthService().updateLocation();
-                      
+                      // 桌面端覆盖层：先关闭覆盖层，避免因 mounted 状态导致关闭失败
+                      // AuthOverlayService 是单例，不依赖于组件生命周期
                       if (AuthOverlayService().isVisible) {
+                        // 先更新加载状态（如果还 mounted）
+                        if (mounted) {
+                          setState(() => _linuxDoLoadingText = '授权成功，正在登录...');
+                        }
+                        
+                        // 登录成功后，自动上报IP归属地（异步执行，不阻塞）
+                        AuthService().updateLocation();
+                        
+                        // 短暂延迟让用户看到成功提示
+                        await Future.delayed(const Duration(milliseconds: 500));
+                        
+                        // 无论 mounted 状态如何，都要关闭覆盖层
                         AuthOverlayService().hide(true);
                       } else {
-                        Navigator.pop(context, true);
+                        // 移动端路由模式
+                        if (mounted) {
+                          setState(() => _linuxDoLoadingText = '授权成功，正在登录...');
+                          AuthService().updateLocation();
+                          await Future.delayed(const Duration(milliseconds: 500));
+                          if (!mounted) return;
+                          setState(() => _isLinuxDoLoading = false);
+                          Navigator.pop(context, true);
+                        }
                       }
                     } else {
+                      setState(() => _isLinuxDoLoading = false);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(result['message']),
@@ -526,14 +579,24 @@ class _LoginViewState extends State<_LoginView> {
                       );
                     }
                   },
-            icon: const Icon(Icons.forum_outlined),
-            label: const Text('通过linux do授权'),
+            icon: _isLinuxDoLoading
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: const Color(0xFF007AFF),
+                    ),
+                  )
+                : const Icon(Icons.forum_outlined),
+            label: Text(_isLinuxDoLoading ? _linuxDoLoadingText : '通过linux do授权'),
             style: OutlinedButton.styleFrom(
               foregroundColor: const Color(0xFF007AFF),
               side: const BorderSide(color: Color(0xFF007AFF)),
               padding: const EdgeInsets.symmetric(vertical: 12),
             ),
           ),
+          ],
 
           if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) ...[
             const SizedBox(height: 12),
@@ -1466,7 +1529,25 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _isLinuxDoLoading = false; // Linux Do 授权登录加载状态
+  String _linuxDoLoadingText = '正在授权...'; // 加载提示文字
   bool _obscurePassword = true;
+  bool _linuxDoEnabled = true; // Linux Do 登录是否启用
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLinuxDoStatus();
+  }
+
+  Future<void> _checkLinuxDoStatus() async {
+    final result = await AuthService().checkLinuxDoStatus();
+    if (mounted) {
+      setState(() {
+        _linuxDoEnabled = result['enabled'] ?? true;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -1573,24 +1654,51 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
           onPressed: _handleLogin,
         ),
         
+        if (_linuxDoEnabled) ...[
         const SizedBox(height: 12),
         CupertinoButton(
           padding: EdgeInsets.zero,
-          onPressed: _isLoading
+          onPressed: (_isLoading || _isLinuxDoLoading)
               ? null
               : () async {
+                  setState(() {
+                    _isLinuxDoLoading = true;
+                    _linuxDoLoadingText = '正在打开浏览器...';
+                  });
+                  
+                  // 延迟更新提示文字
+                  Future.delayed(const Duration(seconds: 2), () {
+                    if (mounted && _isLinuxDoLoading) {
+                      setState(() => _linuxDoLoadingText = '等待浏览器授权...');
+                    }
+                  });
+                  
                   final result = await AuthService().loginWithLinuxDo();
+                  
                   if (!mounted) return;
+                  
                   if (result['success'] == true) {
-                    // 登录成功后，自动上报IP归属地
-                    AuthService().updateLocation();
-
+                    // 桌面端覆盖层：先关闭覆盖层，避免因 mounted 状态导致关闭失败
                     if (AuthOverlayService().isVisible) {
+                      if (mounted) {
+                        setState(() => _linuxDoLoadingText = '授权成功，正在登录...');
+                      }
+                      AuthService().updateLocation();
+                      await Future.delayed(const Duration(milliseconds: 500));
                       AuthOverlayService().hide(true);
                     } else {
-                      Navigator.pop(context, true);
+                      // 移动端路由模式
+                      if (mounted) {
+                        setState(() => _linuxDoLoadingText = '授权成功，正在登录...');
+                        AuthService().updateLocation();
+                        await Future.delayed(const Duration(milliseconds: 500));
+                        if (!mounted) return;
+                        setState(() => _isLinuxDoLoading = false);
+                        Navigator.pop(context, true);
+                      }
                     }
                   } else {
+                    setState(() => _isLinuxDoLoading = false);
                     _showCupertinoAlert(result['message']);
                   }
                 },
@@ -1601,9 +1709,19 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
               border: Border.all(color: CupertinoColors.activeBlue),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Text('通过linux do授权'),
+            child: _isLinuxDoLoading
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CupertinoActivityIndicator(),
+                      const SizedBox(width: 8),
+                      Text(_linuxDoLoadingText),
+                    ],
+                  )
+                : const Text('通过linux do授权'),
           ),
         ),
+        ],
 
         const SizedBox(height: 20),
         

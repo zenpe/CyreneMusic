@@ -219,6 +219,8 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
             _lyrics = LyricParser.parseNeteaseLyric(
               songDetail.lyric,
               translation: songDetail.tlyric.isNotEmpty ? songDetail.tlyric : null,
+              yrcLyric: songDetail.yrc.isNotEmpty ? songDetail.yrc : null,
+              yrcTranslation: songDetail.ytlrc.isNotEmpty ? songDetail.ytlrc : null,
             );
             break;
           case 'qq':
@@ -238,6 +240,8 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
             _lyrics = LyricParser.parseNeteaseLyric(
               songDetail.lyric,
               translation: songDetail.tlyric.isNotEmpty ? songDetail.tlyric : null,
+              yrcLyric: songDetail.yrc.isNotEmpty ? songDetail.yrc : null,
+              yrcTranslation: songDetail.ytlrc.isNotEmpty ? songDetail.ytlrc : null,
             );
             break;
         }

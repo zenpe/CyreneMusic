@@ -109,6 +109,8 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
       final lyrics = LyricParser.parseNeteaseLyric(
         currentSong.lyric!,
         translation: currentSong.tlyric.isNotEmpty ? currentSong.tlyric : null,
+        yrcLyric: currentSong.yrc.isNotEmpty ? currentSong.yrc : null,
+        yrcTranslation: currentSong.ytlrc.isNotEmpty ? currentSong.ytlrc : null,
       );
       if (mounted) {
         setState(() {

@@ -140,6 +140,257 @@ class _SearchCapsuleTabs extends StatelessWidget {
   }
 }
 
+/// Win11 风格的 Pivot Tabs（带平滑滑动指示器）
+class _FluentPivotTabs extends StatefulWidget {
+  final List<String> tabs;
+  final int currentIndex;
+  final ValueChanged<int> onChanged;
+  final Color accentColor;
+  final Color selectedTextColor;
+  final Color unselectedTextColor;
+
+  const _FluentPivotTabs({
+    required this.tabs,
+    required this.currentIndex,
+    required this.onChanged,
+    required this.accentColor,
+    required this.selectedTextColor,
+    required this.unselectedTextColor,
+  });
+
+  @override
+  State<_FluentPivotTabs> createState() => _FluentPivotTabsState();
+}
+
+class _FluentPivotTabsState extends State<_FluentPivotTabs> {
+  int _hoveredIndex = -1;
+  
+  // 每个 tab 的固定配置
+  static const double _tabHorizontalPadding = 12.0;
+  static const double _tabSpacing = 8.0;
+  static const double _indicatorWidth = 20.0;
+  static const double _indicatorHeight = 2.5;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.tabs.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final isLight = fluent.FluentTheme.of(context).brightness == Brightness.light;
+    
+    // 安全处理索引
+    int safeIndex = widget.currentIndex;
+    if (safeIndex < 0) safeIndex = 0;
+    if (safeIndex >= widget.tabs.length) safeIndex = widget.tabs.length - 1;
+
+    return SizedBox(
+      height: 40,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // 使用一行布局，指示器位置通过精确计算确定
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Tab 标签行
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(widget.tabs.length, (i) {
+                  final selected = i == safeIndex;
+                  final isHovered = i == _hoveredIndex;
+
+                  // 计算文字颜色
+                  Color textColor;
+                  if (selected) {
+                    textColor = widget.selectedTextColor;
+                  } else if (isHovered) {
+                    textColor = widget.selectedTextColor.withOpacity(0.8);
+                  } else {
+                    textColor = widget.unselectedTextColor;
+                  }
+
+                  // hover 背景色
+                  final hoverBg = isHovered && !selected
+                      ? (isLight ? Colors.black.withOpacity(0.04) : Colors.white.withOpacity(0.04))
+                      : Colors.transparent;
+
+                  return Padding(
+                    padding: EdgeInsets.only(right: i < widget.tabs.length - 1 ? _tabSpacing : 0),
+                    child: MouseRegion(
+                      onEnter: (_) => setState(() => _hoveredIndex = i),
+                      onExit: (_) => setState(() => _hoveredIndex = -1),
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => widget.onChanged(i),
+                        behavior: HitTestBehavior.opaque,
+                        child: _FluentPivotTabLabel(
+                          label: widget.tabs[i],
+                          textColor: textColor,
+                          isSelected: selected,
+                          hoverBg: hoverBg,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              
+              // 使用 TweenAnimationBuilder 实现平滑滑动的下划线指示器
+              TweenAnimationBuilder<double>(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                tween: Tween<double>(end: safeIndex.toDouble()),
+                builder: (context, animatedIndex, child) {
+                  // 计算指示器的 X 位置
+                  // 需要测量每个 tab 的实际宽度来正确计算位置
+                  return _FluentPivotIndicator(
+                    tabs: widget.tabs,
+                    animatedIndex: animatedIndex,
+                    indicatorWidth: _indicatorWidth,
+                    indicatorHeight: _indicatorHeight,
+                    tabHorizontalPadding: _tabHorizontalPadding,
+                    tabSpacing: _tabSpacing,
+                    accentColor: widget.accentColor,
+                  );
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Tab 标签文字组件
+class _FluentPivotTabLabel extends StatelessWidget {
+  final String label;
+  final Color textColor;
+  final bool isSelected;
+  final Color hoverBg;
+
+  const _FluentPivotTabLabel({
+    required this.label,
+    required this.textColor,
+    required this.isSelected,
+    required this.hoverBg,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: hoverBg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Center(
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          style: TextStyle(
+            color: textColor,
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            fontFamily: 'Microsoft YaHei',
+          ),
+          child: Text(label),
+        ),
+      ),
+    );
+  }
+}
+
+/// 滑动指示器组件 - 通过测量文字宽度来计算位置
+class _FluentPivotIndicator extends StatelessWidget {
+  final List<String> tabs;
+  final double animatedIndex;
+  final double indicatorWidth;
+  final double indicatorHeight;
+  final double tabHorizontalPadding;
+  final double tabSpacing;
+  final Color accentColor;
+
+  const _FluentPivotIndicator({
+    required this.tabs,
+    required this.animatedIndex,
+    required this.indicatorWidth,
+    required this.indicatorHeight,
+    required this.tabHorizontalPadding,
+    required this.tabSpacing,
+    required this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // 使用 CustomPaint 或者计算方式来确定位置
+    // 这里我们需要测量每个 tab 的文字宽度
+    
+    final textStyle = TextStyle(
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+      fontFamily: 'Microsoft YaHei',
+    );
+    
+    // 计算每个 tab 的宽度（文字宽度 + padding）
+    List<double> tabWidths = [];
+    for (final tab in tabs) {
+      final textPainter = TextPainter(
+        text: TextSpan(text: tab, style: textStyle),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tabWidths.add(textPainter.width + tabHorizontalPadding * 2);
+    }
+    
+    // 计算当前和目标 tab 的中心位置
+    double getTabCenterX(double index) {
+      double x = 0;
+      int floorIndex = index.floor();
+      double fraction = index - floorIndex;
+      
+      // 累加前面所有 tab 的宽度
+      for (int i = 0; i < floorIndex && i < tabWidths.length; i++) {
+        x += tabWidths[i] + tabSpacing;
+      }
+      
+      // 当前 tab 的中心
+      if (floorIndex < tabWidths.length) {
+        double currentTabCenter = tabWidths[floorIndex] / 2;
+        
+        // 如果有小数部分，则进行插值
+        if (fraction > 0 && floorIndex + 1 < tabWidths.length) {
+          double nextTabStart = x + tabWidths[floorIndex] + tabSpacing;
+          double nextTabCenter = nextTabStart + tabWidths[floorIndex + 1] / 2;
+          double currentCenter = x + currentTabCenter;
+          return currentCenter + (nextTabCenter - currentCenter) * fraction;
+        }
+        
+        return x + currentTabCenter;
+      }
+      
+      return x;
+    }
+    
+    final centerX = getTabCenterX(animatedIndex);
+    final indicatorLeft = centerX - indicatorWidth / 2;
+    
+    return Positioned(
+      left: indicatorLeft,
+      bottom: 4,
+      child: Container(
+        width: indicatorWidth,
+        height: indicatorHeight,
+        decoration: BoxDecoration(
+          color: accentColor,
+          borderRadius: BorderRadius.circular(indicatorHeight / 2),
+        ),
+      ),
+    );
+  }
+}
+
 class _SearchWidgetState extends State<SearchWidget> {
   final TextEditingController _searchController = TextEditingController();
   final SearchService _searchService = SearchService();
@@ -1661,6 +1912,26 @@ class _SearchWidgetState extends State<SearchWidget> {
     );
   }
 
+  Widget _buildFluentPivotBar(BuildContext context, List<String> tabs) {
+    final fluentTheme = fluent.FluentTheme.of(context);
+    final isLight = fluentTheme.brightness == Brightness.light;
+    final accentColor = fluentTheme.accentColor;
+    final textColor = fluentTheme.typography.body?.color ??
+        (isLight ? Colors.black : Colors.white);
+    final subtleTextColor = isLight 
+        ? Colors.black.withOpacity(0.6) 
+        : Colors.white.withOpacity(0.6);
+    
+    return _FluentPivotTabs(
+      tabs: tabs,
+      currentIndex: _currentTabIndex,
+      onChanged: _handleTabChanged,
+      accentColor: accentColor,
+      selectedTextColor: textColor,
+      unselectedTextColor: subtleTextColor,
+    );
+  }
+
   Widget _buildSearchTabsArea(
     BuildContext context,
     SearchResult searchResult, {
@@ -1670,6 +1941,22 @@ class _SearchWidgetState extends State<SearchWidget> {
     final tabs = isMergeEnabled 
         ? ['歌曲', '歌手'] 
         : ['网易云', 'Apple', 'QQ音乐', '酷狗', '酷我', '歌手'];
+
+    if (_isFluent) {
+      return Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.only(top: 8, bottom: 8),
+            // 让 Tabs 居中显示，或者根据设计需求改为 Alignment.centerLeft
+            alignment: Alignment.center, 
+            child: _buildFluentPivotBar(context, tabs),
+          ),
+          Expanded(
+            child: _buildActiveTabView(context, searchResult),
+          ),
+        ],
+      );
+    }
 
     return Column(
       children: [
@@ -1698,6 +1985,10 @@ class _SearchWidgetState extends State<SearchWidget> {
     BuildContext context,
     SearchResult searchResult,
   ) {
+    return _buildTabContent(_currentTabIndex, searchResult);
+  }
+
+  Widget _buildTabContent(int tabIndex, SearchResult searchResult) {
     final fluentTheme = fluent.FluentTheme.maybeOf(context);
     final materialTheme = Theme.of(context);
     final backgroundColor = _isFluent
@@ -1710,7 +2001,7 @@ class _SearchWidgetState extends State<SearchWidget> {
 
     if (isMergeEnabled) {
       // 合并模式：['歌曲', '歌手']
-      if (_currentTabIndex == 0) {
+      if (tabIndex == 0) {
         return Container(
           key: const ValueKey('songs_tab'),
           color: backgroundColor,
@@ -1724,7 +2015,7 @@ class _SearchWidgetState extends State<SearchWidget> {
       );
     } else {
       // 分平台模式：['网易云', 'Apple', 'QQ音乐', '酷狗', '酷我', '歌手']
-      switch (_currentTabIndex) {
+      switch (tabIndex) {
         case 0:
           return Container(
             key: const ValueKey('netease_tab'),

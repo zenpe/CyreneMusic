@@ -837,6 +837,9 @@ class _KaraokeTextState extends State<_KaraokeText> with SingleTickerProviderSta
 
 /// 单个字的填充组件
 /// 使用 Stack + ClipRect 实现从左到右的填充效果
+/// 同时支持随进度向上移动的动画效果
+/// - 中文/日文等：整个字符一起移动
+/// - 英文单词：每个字母根据其位置单独移动
 class _WordFillWidget extends StatelessWidget {
   final String text;
   final double progress; // 0.0 - 1.0
@@ -847,6 +850,19 @@ class _WordFillWidget extends StatelessWidget {
     required this.progress,
     required this.style,
   });
+  
+  /// 检查文本是否主要由ASCII字符组成（英文/数字/标点）
+  bool _isAsciiText() {
+    if (text.isEmpty) return false;
+    // 如果超过一半的字符是ASCII字母，视为英文文本
+    int asciiCount = 0;
+    for (final char in text.runes) {
+      if ((char >= 65 && char <= 90) || (char >= 97 && char <= 122)) {
+        asciiCount++;
+      }
+    }
+    return asciiCount > text.length / 2;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -855,18 +871,89 @@ class _WordFillWidget extends StatelessWidget {
     // 上层：填充的亮色文字
     final brightStyle = style.copyWith(color: Colors.white);
     
+    // 英文单词：每个字母单独处理
+    if (_isAsciiText() && text.length > 1) {
+      return _buildLetterByLetterEffect(dimStyle, brightStyle);
+    }
+    
+    // 中文/日文等：整个字符一起移动
+    return _buildWholeWordEffect(dimStyle, brightStyle);
+  }
+  
+  /// 构建整字上浮效果（中文/日文等）
+  Widget _buildWholeWordEffect(TextStyle dimStyle, TextStyle brightStyle) {
+    // 计算向上移动的偏移量：随着进度从 0 到 1，向上移动 4 像素
+    // 使用 easeOutCubic 曲线使动画更自然
+    final curvedProgress = Curves.easeOutCubic.transform(progress);
+    final verticalOffset = -4.0 * curvedProgress;
+    
     return RepaintBoundary(
-      child: Stack(
-        children: [
-          // 底层暗色文字
-          Text(text, style: dimStyle),
+      child: Transform.translate(
+        offset: Offset(0, verticalOffset),
+        child: Stack(
+          children: [
+            // 底层暗色文字
+            Text(text, style: dimStyle),
+            
+            // 上层亮色文字（通过 ClipRect 裁剪）
+            ClipRect(
+              clipper: _WordClipper(progress),
+              child: Text(text, style: brightStyle),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  /// 构建逐字母上浮效果（英文单词）
+  Widget _buildLetterByLetterEffect(TextStyle dimStyle, TextStyle brightStyle) {
+    final letters = text.split('');
+    final letterCount = letters.length;
+    
+    // 位移重叠系数：用于上浮动画，高重叠以形成波浪感
+    const double displacementOverlapFactor = 2.5;
+    
+    return RepaintBoundary(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List.generate(letterCount, (index) {
+          final letter = letters[index];
+          final baseWidth = 1.0 / letterCount;
           
-          // 上层亮色文字（通过 ClipRect 裁剪）
-          ClipRect(
-            clipper: _WordClipper(progress),
-            child: Text(text, style: brightStyle),
-          ),
-        ],
+          // ===== 1. 计算位移动画进度 (高重叠，波浪感) =====
+          final waveExpandedWidth = baseWidth * (1.0 + displacementOverlapFactor);
+          // 调整波浪起始点
+          final waveStart = (index * baseWidth) - (baseWidth * displacementOverlapFactor * 0.4); 
+          final waveEnd = waveStart + waveExpandedWidth;
+          
+          final rawWaveProgress = ((progress - waveStart) / (waveEnd - waveStart)).clamp(0.0, 1.0);
+          final dispProgress = Curves.easeOutCubic.transform(rawWaveProgress);
+          final verticalOffset = -4.0 * dispProgress;
+          
+          // ===== 2. 计算颜色填充进度 (无重叠，精准卡拉OK感) =====
+          // 严格按顺序填充，避免多字母同时高亮
+          final fillStart = index * baseWidth;
+          final fillEnd = (index + 1) * baseWidth;
+          final fillProgress = ((progress - fillStart) / (fillEnd - fillStart)).clamp(0.0, 1.0);
+          
+          return Transform.translate(
+            offset: Offset(0, verticalOffset),
+            child: Stack(
+              children: [
+                // 底层暗色字母
+                Text(letter, style: dimStyle),
+                
+                // 上层亮色字母（通过 ClipRect 裁剪）
+                ClipRect(
+                  clipper: _WordClipper(fillProgress), 
+                  child: Text(letter, style: brightStyle),
+                ),
+              ],
+            ),
+          );
+        }),
       ),
     );
   }

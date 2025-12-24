@@ -15,6 +15,7 @@ import '../../widgets/import_playlist_dialog.dart';
 import '../../widgets/source_switch_dialog.dart';
 import '../../widgets/music_taste_dialog.dart';
 import '../auth/auth_page.dart';
+import '../settings_page/user_card.dart';
 
 // UI 组件分离到 part 文件
 part 'my_page_material.dart';

@@ -590,6 +590,9 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
 }
 
 /// 移动端卡拉OK文本组件 - 实现逐字填充效果
+/// 支持两种模式：
+/// 1. 有逐字歌词数据时：每个字单独渲染并高亮
+/// 2. 无逐字歌词数据时：回退到整行渐变填充
 class _MobileKaraokeText extends StatefulWidget {
   final LyricLine lyric;
   final List<LyricLine> lyrics;
@@ -609,11 +612,21 @@ class _MobileKaraokeText extends StatefulWidget {
 
 class _MobileKaraokeTextState extends State<_MobileKaraokeText> with SingleTickerProviderStateMixin {
   late Ticker _ticker;
-  double _progress = 0.0;
+  
+  // ===== 逐字模式状态 =====
+  List<double> _wordProgresses = [];
+  
+  // ===== 整行模式状态（回退） =====
+  double _lineProgress = 0.0;
+  
+  // 行持续时间
+  late Duration _duration;
 
   @override
   void initState() {
     super.initState();
+    _calculateDuration();
+    _initWordProgresses();
     _ticker = createTicker(_onTick);
     _ticker.start();
   }
@@ -623,70 +636,133 @@ class _MobileKaraokeTextState extends State<_MobileKaraokeText> with SingleTicke
     _ticker.dispose();
     super.dispose();
   }
+  
+  void _initWordProgresses() {
+    if (widget.lyric.hasWordByWord && widget.lyric.words != null) {
+      _wordProgresses = List.filled(widget.lyric.words!.length, 0.0);
+    }
+  }
+  
+  void _calculateDuration() {
+    if (widget.index < widget.lyrics.length - 1) {
+      _duration = widget.lyrics[widget.index + 1].startTime - widget.lyric.startTime;
+    } else {
+      _duration = const Duration(seconds: 5);
+    }
+    if (_duration.inMilliseconds == 0) _duration = const Duration(seconds: 3);
+  }
 
   void _onTick(Duration elapsed) {
     final currentPos = PlayerService().position;
-    final newProgress = _calculateWordByWordProgress(currentPos);
 
-    if ((newProgress - _progress).abs() > 0.005) {
-      setState(() {
-        _progress = newProgress;
-      });
+    if (widget.lyric.hasWordByWord && widget.lyric.words != null) {
+      // ===== 逐字模式：计算每个字的填充进度 =====
+      _updateWordProgresses(currentPos);
+    } else {
+      // ===== 整行模式（回退）：使用平均计算 =====
+      final elapsedFromStart = currentPos - widget.lyric.startTime;
+      final newProgress = (elapsedFromStart.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0);
+
+      if ((newProgress - _lineProgress).abs() > 0.005) {
+        setState(() {
+          _lineProgress = newProgress;
+        });
+      }
     }
   }
 
-  /// 计算逐字歌词的精确进度（基于时间占比）
-  double _calculateWordByWordProgress(Duration currentPos) {
+  void _updateWordProgresses(Duration currentPos) {
     final words = widget.lyric.words!;
-    if (words.isEmpty) return 0.0;
+    if (words.isEmpty) return;
 
-    // 计算总持续时间
-    final Duration totalDuration;
-    if (widget.lyric.lineDuration != null && widget.lyric.lineDuration!.inMilliseconds > 0) {
-      totalDuration = widget.lyric.lineDuration!;
-    } else {
-      final lastWord = words.last;
-      totalDuration = lastWord.endTime - words.first.startTime;
-    }
-    
-    if (totalDuration.inMilliseconds == 0) return 0.0;
-
-    final elapsedFromLineStart = currentPos - widget.lyric.startTime;
-    
-    if (elapsedFromLineStart.inMilliseconds < 0) {
-      return 0.0;
-    }
-    
-    if (elapsedFromLineStart >= totalDuration) {
-      return 1.0;
-    }
-
-    // 基于时间占比计算进度
-    double accumulatedProgress = 0.0;
+    bool needsUpdate = false;
+    final newProgresses = List<double>.filled(words.length, 0.0);
 
     for (int i = 0; i < words.length; i++) {
       final word = words[i];
-      final wordTimeRatio = word.duration.inMilliseconds / totalDuration.inMilliseconds;
+      double wordProgress;
 
-      if (currentPos >= word.startTime && currentPos < word.endTime) {
-        final wordElapsed = currentPos - word.startTime;
-        final wordInternalProgress = (wordElapsed.inMilliseconds / word.duration.inMilliseconds).clamp(0.0, 1.0);
-        accumulatedProgress += wordInternalProgress * wordTimeRatio;
-        return accumulatedProgress.clamp(0.0, 1.0);
+      if (currentPos < word.startTime) {
+        wordProgress = 0.0;
       } else if (currentPos >= word.endTime) {
-        accumulatedProgress += wordTimeRatio;
+        wordProgress = 1.0;
       } else {
-        return accumulatedProgress.clamp(0.0, 1.0);
+        final wordElapsed = currentPos - word.startTime;
+        wordProgress = (wordElapsed.inMilliseconds / word.duration.inMilliseconds).clamp(0.0, 1.0);
+      }
+
+      newProgresses[i] = wordProgress;
+      
+      if (i < _wordProgresses.length && (newProgresses[i] - _wordProgresses[i]).abs() > 0.01) {
+        needsUpdate = true;
       }
     }
 
-    return 1.0;
+    if (needsUpdate || _wordProgresses.length != newProgresses.length) {
+      setState(() {
+        _wordProgresses = newProgresses;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final actualFontSize = 22.0 * 1.2;
+    final style = TextStyle(
+      color: Colors.white,
+      fontSize: actualFontSize,
+      fontWeight: FontWeight.w800,
+      fontFamily: LyricFontService().currentFontFamily ?? 'Microsoft YaHei',
+      height: 1.2,
+      shadows: widget.isSelected
+          ? [
+              Shadow(
+                color: Colors.orange.withOpacity(0.6),
+                blurRadius: 12,
+                offset: const Offset(0, 0),
+              ),
+            ]
+          : [
+              Shadow(
+                color: Colors.white.withOpacity(0.5),
+                blurRadius: 12,
+                offset: const Offset(0, 0),
+              ),
+            ],
+    );
     
+    // 有逐字歌词数据时，使用逐字填充模式
+    if (widget.lyric.hasWordByWord && widget.lyric.words != null && _wordProgresses.isNotEmpty) {
+      return _buildWordByWordEffect(style);
+    }
+    
+    // 无逐字歌词数据时，回退到整行渐变模式
+    return _buildLineGradientEffect(style);
+  }
+  
+  /// 构建逐字填充效果
+  Widget _buildWordByWordEffect(TextStyle style) {
+    final words = widget.lyric.words!;
+    
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: List.generate(words.length, (index) {
+        final word = words[index];
+        final progress = index < _wordProgresses.length ? _wordProgresses[index] : 0.0;
+        
+        return _MobileWordFillWidget(
+          text: word.text,
+          progress: progress,
+          style: style,
+          isSelected: widget.isSelected,
+        );
+      }),
+    );
+  }
+  
+  /// 构建整行渐变效果（回退模式）
+  Widget _buildLineGradientEffect(TextStyle style) {
     return ShaderMask(
       shaderCallback: (bounds) {
         return LinearGradient(
@@ -701,7 +777,7 @@ class _MobileKaraokeTextState extends State<_MobileKaraokeText> with SingleTicke
                   Colors.white,
                   Colors.white.withOpacity(0.45),
                 ],
-          stops: [_progress, _progress],
+          stops: [_lineProgress, _lineProgress],
           tileMode: TileMode.clamp,
         ).createShader(bounds);
       },
@@ -711,30 +787,65 @@ class _MobileKaraokeTextState extends State<_MobileKaraokeText> with SingleTicke
         textAlign: TextAlign.center,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: actualFontSize,
-          fontWeight: FontWeight.w800,
-          fontFamily: LyricFontService().currentFontFamily ?? 'Microsoft YaHei',
-          height: 1.2,
-          shadows: widget.isSelected
-              ? [
-                  Shadow(
-                    color: Colors.orange.withOpacity(0.6),
-                    blurRadius: 12,
-                    offset: const Offset(0, 0),
-                  ),
-                ]
-              : [
-                  Shadow(
-                    color: Colors.white.withOpacity(0.5),
-                    blurRadius: 12,
-                    offset: const Offset(0, 0),
-                  ),
-                ],
-        ),
+        style: style,
       ),
     );
   }
 }
+
+/// 移动端单个字的填充组件
+class _MobileWordFillWidget extends StatelessWidget {
+  final String text;
+  final double progress;
+  final TextStyle style;
+  final bool isSelected;
+
+  const _MobileWordFillWidget({
+    required this.text,
+    required this.progress,
+    required this.style,
+    required this.isSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dimStyle = style.copyWith(color: Colors.white.withOpacity(0.45));
+    final brightStyle = style.copyWith(
+      color: isSelected ? Colors.orange : Colors.white,
+    );
+    
+    return RepaintBoundary(
+      child: Stack(
+        children: [
+          // 底层暗色文字
+          Text(text, style: dimStyle),
+          
+          // 上层亮色文字（通过 ClipRect 裁剪）
+          ClipRect(
+            clipper: _MobileWordClipper(progress),
+            child: Text(text, style: brightStyle),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 移动端单个字的裁剪器
+class _MobileWordClipper extends CustomClipper<Rect> {
+  final double progress;
+
+  _MobileWordClipper(this.progress);
+
+  @override
+  Rect getClip(Size size) {
+    return Rect.fromLTRB(0, 0, size.width * progress, size.height);
+  }
+
+  @override
+  bool shouldReclip(_MobileWordClipper oldClipper) {
+    return oldClipper.progress != progress;
+  }
+}
+
 

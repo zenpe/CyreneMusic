@@ -11,6 +11,12 @@ import '../auth/auth_page.dart';
 import '../auth/qr_login_dialog.dart';
 import '../auth/qr_login_scan_page.dart';
 
+/// 全局函数：在 Fluent UI 中显示登录对话框
+/// 可在任意地方调用此函数来显示登录对话框
+Future<bool?> showFluentLoginDialog(BuildContext context) {
+  return _FluentLoginDialogHelper.show(context);
+}
+
 /// 用户卡片组件
 class UserCard extends StatefulWidget {
   const UserCard({super.key});
@@ -43,6 +49,10 @@ class _UserCardState extends State<UserCard> {
     final loginPasswordController = TextEditingController();
     bool loginLoading = false;
     String? loginError;
+    
+    // Linux Do 登录状态
+    bool linuxDoLoading = false;
+    String linuxDoLoadingText = '正在授权...';
 
     // 注册
     final regQqController = TextEditingController();
@@ -73,6 +83,9 @@ class _UserCardState extends State<UserCard> {
     bool regEnabled = true;
     bool checkingReg = true;
     bool firstLoad = true;
+    
+    // Linux Do 登录状态
+    bool linuxDoEnabled = true;
 
     void cleanup() {
       regTimer?.cancel();
@@ -99,11 +112,19 @@ class _UserCardState extends State<UserCard> {
         builder: (context, setState) {
           if (firstLoad) {
             firstLoad = false;
+            // 同时检查注册状态和 Linux Do 登录状态
             AuthService().checkRegistrationStatus().then((result) {
               if (context.mounted) {
                 setState(() {
                   regEnabled = result['enabled'] ?? false;
                   checkingReg = false;
+                });
+              }
+            });
+            AuthService().checkLinuxDoStatus().then((result) {
+              if (context.mounted) {
+                setState(() {
+                  linuxDoEnabled = result['enabled'] ?? true;
                 });
               }
             });
@@ -133,6 +154,9 @@ class _UserCardState extends State<UserCard> {
                           accountController: loginAccountController,
                           passwordController: loginPasswordController,
                           loading: loginLoading,
+                          linuxDoLoading: linuxDoLoading,
+                          linuxDoLoadingText: linuxDoLoadingText,
+                          linuxDoEnabled: linuxDoEnabled,
                           onCleanup: cleanup,
                           onSubmit: () async {
                             setState(() {
@@ -151,6 +175,43 @@ class _UserCardState extends State<UserCard> {
                               setState(() {
                                 loginError = result['message']?.toString() ?? '登录失败';
                               });
+                            }
+                          },
+                          onLinuxDoLogin: () async {
+                            setState(() {
+                              linuxDoLoading = true;
+                              linuxDoLoadingText = '正在打开浏览器...';
+                            });
+                            
+                            // 延迟更新提示文字
+                            Future.delayed(const Duration(seconds: 2), () {
+                              if (context.mounted && linuxDoLoading) {
+                                setState(() => linuxDoLoadingText = '等待浏览器授权...');
+                              }
+                            });
+                            
+                            final result = await AuthService().loginWithLinuxDo();
+                            
+                            if (!context.mounted) return;
+                            
+                            if (result['success'] == true) {
+                              if (context.mounted) {
+                                setState(() => linuxDoLoadingText = '授权成功，正在登录...');
+                              }
+                              await Future.delayed(const Duration(milliseconds: 500));
+                              
+                              // 无论 mounted 状态如何，都要关闭对话框
+                              cleanup();
+                              if (context.mounted) {
+                                Navigator.pop(context, true);
+                              }
+                            } else {
+                              if (context.mounted) {
+                                setState(() {
+                                  linuxDoLoading = false;
+                                  loginError = result['message']?.toString() ?? '登录失败';
+                                });
+                              }
                             }
                           },
                           toRegister: () => setState(() => tabIndex = 1),
@@ -398,8 +459,12 @@ class _UserCardState extends State<UserCard> {
     required TextEditingController accountController,
     required TextEditingController passwordController,
     required bool loading,
+    required bool linuxDoLoading,
+    required String linuxDoLoadingText,
+    required bool linuxDoEnabled,
     required VoidCallback onCleanup,
     required Future<void> Function() onSubmit,
+    required Future<void> Function() onLinuxDoLogin,
     required VoidCallback toRegister,
     required VoidCallback toForgot,
   }) {
@@ -459,21 +524,28 @@ class _UserCardState extends State<UserCard> {
                     fluent_ui.HyperlinkButton(child: const Text('去注册'), onPressed: toRegister),
                     const SizedBox(height: 2),
                     fluent_ui.HyperlinkButton(child: const Text('忘记密码'), onPressed: toForgot),
+                    if (linuxDoEnabled) ...[
                     const SizedBox(height: 2),
                     fluent_ui.HyperlinkButton(
-                      child: const Text('Linux Do 登录'),
-                      onPressed: loading
+                      child: linuxDoLoading
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: fluent_ui.ProgressRing(strokeWidth: 2),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(linuxDoLoadingText),
+                              ],
+                            )
+                          : const Text('Linux Do 登录'),
+                      onPressed: (loading || linuxDoLoading)
                           ? null
-                          : () async {
-                              final result = await AuthService().loginWithLinuxDo();
-                              if (result['success'] == true && context.mounted) {
-                                onCleanup();
-                                Navigator.pop(context, true);
-                              } else if (result['success'] == false && context.mounted) {
-                                // 可以通过回调处理错误，或者在这里显示提示
-                              }
-                            },
+                          : onLinuxDoLogin,
                     ),
+                    ],
                     const SizedBox(height: 2),
                     fluent_ui.HyperlinkButton(
                       child: const Text('手机扫码登录'),
@@ -1143,8 +1215,11 @@ class _UserCardState extends State<UserCard> {
   /// 构建用户信息卡片（已登录状态）
   Widget _buildUserInfoCard(BuildContext context, User user) {
     final colorScheme = Theme.of(context).colorScheme;
+    // 优先使用服务器返回的头像 URL（如 Linux Do 用户），否则尝试从 QQ 邮箱生成
     final qqNumber = _extractQQNumber(user.email);
-    final avatarUrl = _getQQAvatarUrl(qqNumber);
+    final avatarUrl = user.avatarUrl ?? _getQQAvatarUrl(qqNumber);
+    print('🖼️ [UserCard] user.avatarUrl: ${user.avatarUrl}');
+    print('🖼️ [UserCard] 最终使用的 avatarUrl: $avatarUrl');
     
     return AnimatedBuilder(
       animation: LocationService(),
@@ -1160,20 +1235,34 @@ class _UserCardState extends State<UserCard> {
               children: [
                 Row(
                   children: [
-                    // QQ 头像
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundColor: colorScheme.primaryContainer,
-                      backgroundImage: avatarUrl != null 
-                          ? NetworkImage(avatarUrl) 
-                          : null,
-                      child: avatarUrl == null 
-                          ? Icon(
-                              Icons.person,
-                              size: 32,
-                              color: colorScheme.onPrimaryContainer,
-                            )
-                          : null,
+                    // 用户头像
+                    ClipOval(
+                      child: Container(
+                        width: 60,
+                        height: 60,
+                        color: colorScheme.primaryContainer,
+                        child: avatarUrl != null
+                            ? Image.network(
+                                avatarUrl,
+                                width: 60,
+                                height: 60,
+                                fit: BoxFit.cover,
+                                headers: const {
+                                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                  'Referer': 'https://linux.do/',
+                                },
+                                errorBuilder: (context, error, stackTrace) => Icon(
+                                  Icons.person,
+                                  size: 32,
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                              )
+                            : Icon(
+                                Icons.person,
+                                size: 32,
+                                color: colorScheme.onPrimaryContainer,
+                              ),
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -1721,8 +1810,11 @@ class _UserCardState extends State<UserCard> {
 
   /// 构建用户信息卡片 - Fluent UI 版本
   Widget _buildUserInfoCardFluent(BuildContext context, User user) {
+    // 优先使用服务器返回的头像 URL（如 Linux Do 用户），否则尝试从 QQ 邮箱生成
     final qqNumber = _extractQQNumber(user.email);
-    final avatarUrl = _getQQAvatarUrl(qqNumber);
+    final avatarUrl = user.avatarUrl ?? _getQQAvatarUrl(qqNumber);
+    print('🖼️ [UserCard-Fluent] user.avatarUrl: ${user.avatarUrl}');
+    print('🖼️ [UserCard-Fluent] 最终使用的 avatarUrl: $avatarUrl');
     
     return AnimatedBuilder(
       animation: LocationService(),
@@ -1735,27 +1827,38 @@ class _UserCardState extends State<UserCard> {
             padding: const EdgeInsets.all(24.0),
             child: Row(
               children: [
-                // QQ 头像
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    image: avatarUrl != null
-                        ? DecorationImage(
-                            image: NetworkImage(avatarUrl),
+                // 用户头像
+                ClipOval(
+                  child: Container(
+                    width: 60,
+                    height: 60,
+                    color: const Color(0xFF0078D4),
+                    child: avatarUrl != null
+                        ? Image.network(
+                            avatarUrl,
+                            width: 60,
+                            height: 60,
                             fit: BoxFit.cover,
+                            headers: const {
+                              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                              'Referer': 'https://linux.do/',
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              print('❌ [UserCard-Fluent] 头像加载失败: $error');
+                              print('❌ [UserCard-Fluent] 堆栈: $stackTrace');
+                              return const Icon(
+                                fluent_ui.FluentIcons.contact,
+                                size: 32,
+                                color: Colors.white,
+                              );
+                            },
                           )
-                        : null,
-                    color: avatarUrl == null ? const Color(0xFF0078D4) : null,
+                        : const Icon(
+                            fluent_ui.FluentIcons.contact,
+                            size: 32,
+                            color: Colors.white,
+                          ),
                   ),
-                  child: avatarUrl == null
-                      ? const Icon(
-                          fluent_ui.FluentIcons.contact,
-                          size: 32,
-                          color: Colors.white,
-                        )
-                      : null,
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -1922,3 +2025,810 @@ class _UserCardState extends State<UserCard> {
   }
 }
 
+/// Fluent UI 登录对话框辅助类
+/// 用于在任意地方显示 Fluent UI 风格的登录对话框
+class _FluentLoginDialogHelper {
+  /// 显示 Fluent UI 登录对话框
+  static Future<bool?> show(BuildContext context) async {
+    // 控制器与状态
+    // 登录
+    final loginAccountController = TextEditingController();
+    final loginPasswordController = TextEditingController();
+    bool loginLoading = false;
+    String? loginError;
+    
+    // Linux Do 登录状态
+    bool linuxDoLoading = false;
+    String linuxDoLoadingText = '正在授权...';
+
+    // 注册
+    final regQqController = TextEditingController();
+    final regUsernameController = TextEditingController();
+    final regPasswordController = TextEditingController();
+    final regConfirmController = TextEditingController();
+    final regCodeController = TextEditingController();
+    bool regLoading = false;
+    String? regError;
+    bool regCodeSent = false;
+    int regCountdown = 0;
+    Timer? regTimer;
+
+    // 找回密码
+    final fpEmailController = TextEditingController();
+    final fpCodeController = TextEditingController();
+    final fpPasswordController = TextEditingController();
+    final fpConfirmController = TextEditingController();
+    bool fpLoading = false;
+    String? fpError;
+    bool fpCodeSent = false;
+    int fpCountdown = 0;
+    Timer? fpTimer;
+
+    int tabIndex = 0; // 0 登录, 1 注册, 2 找回
+
+    // 注册状态
+    bool regEnabled = true;
+    bool checkingReg = true;
+    bool firstLoad = true;
+    
+    // Linux Do 登录状态
+    bool linuxDoEnabled = true;
+
+    void cleanup() {
+      regTimer?.cancel();
+      fpTimer?.cancel();
+      loginAccountController.dispose();
+      loginPasswordController.dispose();
+      regQqController.dispose();
+      regUsernameController.dispose();
+      regPasswordController.dispose();
+      regConfirmController.dispose();
+      regCodeController.dispose();
+      fpEmailController.dispose();
+      fpCodeController.dispose();
+      fpPasswordController.dispose();
+      fpConfirmController.dispose();
+    }
+
+    String regEmail() => '${regQqController.text.trim()}@qq.com';
+
+    return fluent_ui.showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          if (firstLoad) {
+            firstLoad = false;
+            // 同时检查注册状态和 Linux Do 登录状态
+            AuthService().checkRegistrationStatus().then((result) {
+              if (context.mounted) {
+                setState(() {
+                  regEnabled = result['enabled'] ?? false;
+                  checkingReg = false;
+                });
+              }
+            });
+            AuthService().checkLinuxDoStatus().then((result) {
+              if (context.mounted) {
+                setState(() {
+                  linuxDoEnabled = result['enabled'] ?? true;
+                });
+              }
+            });
+          }
+
+          return fluent_ui.ContentDialog(
+            title: SizedBox(
+              width: 520,
+              child: _buildCapsuleTabs(
+                context,
+                tabIndex,
+                (i) => setState(() => tabIndex = i),
+              ),
+            ),
+            content: SizedBox(
+              width: 560,
+              height: 480,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 150),
+                child: SingleChildScrollView(
+                  child: () {
+                    switch (tabIndex) {
+                      case 0:
+                        return _buildLoginView(
+                          context,
+                          errorText: loginError,
+                          accountController: loginAccountController,
+                          passwordController: loginPasswordController,
+                          loading: loginLoading,
+                          linuxDoLoading: linuxDoLoading,
+                          linuxDoLoadingText: linuxDoLoadingText,
+                          linuxDoEnabled: linuxDoEnabled,
+                          onCleanup: cleanup,
+                          onSubmit: () async {
+                            setState(() {
+                              loginLoading = true;
+                              loginError = null;
+                            });
+                            final result = await AuthService().login(
+                              account: loginAccountController.text.trim(),
+                              password: loginPasswordController.text,
+                            );
+                            setState(() => loginLoading = false);
+                            if (result['success'] == true) {
+                              cleanup();
+                              Navigator.pop(context, true);
+                            } else {
+                              setState(() {
+                                loginError = result['message']?.toString() ?? '登录失败';
+                              });
+                            }
+                          },
+                          onLinuxDoLogin: () async {
+                            setState(() {
+                              linuxDoLoading = true;
+                              linuxDoLoadingText = '正在打开浏览器...';
+                            });
+                            
+                            // 延迟更新提示文字
+                            Future.delayed(const Duration(seconds: 2), () {
+                              if (context.mounted && linuxDoLoading) {
+                                setState(() => linuxDoLoadingText = '等待浏览器授权...');
+                              }
+                            });
+                            
+                            final result = await AuthService().loginWithLinuxDo();
+                            
+                            if (!context.mounted) return;
+                            
+                            if (result['success'] == true) {
+                              if (context.mounted) {
+                                setState(() => linuxDoLoadingText = '授权成功，正在登录...');
+                              }
+                              await Future.delayed(const Duration(milliseconds: 500));
+                              
+                              // 无论 mounted 状态如何，都要关闭对话框
+                              cleanup();
+                              if (context.mounted) {
+                                Navigator.pop(context, true);
+                              }
+                            } else {
+                              if (context.mounted) {
+                                setState(() {
+                                  linuxDoLoading = false;
+                                  loginError = result['message']?.toString() ?? '登录失败';
+                                });
+                              }
+                            }
+                          },
+                          toRegister: () => setState(() => tabIndex = 1),
+                          toForgot: () => setState(() => tabIndex = 2),
+                        );
+                      case 1:
+                        return _buildRegisterView(
+                          context,
+                          regEnabled: regEnabled,
+                          checkingReg: checkingReg,
+                          errorText: regError,
+                          qqController: regQqController,
+                          usernameController: regUsernameController,
+                          passwordController: regPasswordController,
+                          confirmController: regConfirmController,
+                          codeController: regCodeController,
+                          loading: regLoading,
+                          codeSent: regCodeSent,
+                          countdown: regCountdown,
+                          onSendCode: () async {
+                            if (regQqController.text.trim().isEmpty || regUsernameController.text.trim().isEmpty) {
+                              setState(() => regError = '请先填写 QQ 号和用户名');
+                              return;
+                            }
+                            setState(() {
+                              regError = null;
+                              regLoading = true;
+                            });
+                            final result = await AuthService().sendRegisterCode(
+                              email: regEmail(),
+                              username: regUsernameController.text.trim(),
+                            );
+                            setState(() => regLoading = false);
+                            if (result['success'] == true) {
+                              setState(() {
+                                regCodeSent = true;
+                                regCountdown = 60;
+                              });
+                              regTimer?.cancel();
+                              regTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+                                if (regCountdown <= 1) {
+                                  t.cancel();
+                                  setState(() => regCodeSent = false);
+                                } else {
+                                  setState(() => regCountdown -= 1);
+                                }
+                              });
+                            } else {
+                              setState(() => regError = result['message']?.toString() ?? '发送验证码失败');
+                            }
+                          },
+                          onSubmit: () async {
+                            if (regPasswordController.text != regConfirmController.text) {
+                              setState(() => regError = '两次密码不一致');
+                              return;
+                            }
+                            if (regCodeController.text.trim().isEmpty) {
+                              setState(() => regError = '请输入验证码');
+                              return;
+                            }
+                            setState(() {
+                              regError = null;
+                              regLoading = true;
+                            });
+                            final result = await AuthService().register(
+                              email: regEmail(),
+                              username: regUsernameController.text.trim(),
+                              password: regPasswordController.text,
+                              code: regCodeController.text.trim(),
+                            );
+                            setState(() => regLoading = false);
+                            if (result['success'] == true) {
+                              cleanup();
+                              Navigator.pop(context, true);
+                            } else {
+                              setState(() => regError = result['message']?.toString() ?? '注册失败');
+                            }
+                          },
+                        );
+                      case 2:
+                      default:
+                        return _buildForgotView(
+                          context,
+                          errorText: fpError,
+                          emailController: fpEmailController,
+                          codeController: fpCodeController,
+                          passwordController: fpPasswordController,
+                          confirmController: fpConfirmController,
+                          loading: fpLoading,
+                          codeSent: fpCodeSent,
+                          countdown: fpCountdown,
+                          onSendCode: () async {
+                            if (fpEmailController.text.trim().isEmpty) {
+                              setState(() => fpError = '请输入邮箱');
+                              return;
+                            }
+                            setState(() {
+                              fpError = null;
+                              fpLoading = true;
+                            });
+                            final result = await AuthService().sendResetCode(
+                              email: fpEmailController.text.trim(),
+                            );
+                            setState(() => fpLoading = false);
+                            if (result['success'] == true) {
+                              setState(() {
+                                fpCodeSent = true;
+                                fpCountdown = 60;
+                              });
+                              fpTimer?.cancel();
+                              fpTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+                                if (fpCountdown <= 1) {
+                                  t.cancel();
+                                  setState(() => fpCodeSent = false);
+                                } else {
+                                  setState(() => fpCountdown -= 1);
+                                }
+                              });
+                            } else {
+                              setState(() => fpError = result['message']?.toString() ?? '发送验证码失败');
+                            }
+                          },
+                          onSubmit: () async {
+                            if (fpPasswordController.text != fpConfirmController.text) {
+                              setState(() => fpError = '两次密码不一致');
+                              return;
+                            }
+                            if (fpCodeController.text.trim().isEmpty) {
+                              setState(() => fpError = '请输入验证码');
+                              return;
+                            }
+                            setState(() {
+                              fpError = null;
+                              fpLoading = true;
+                            });
+                            final result = await AuthService().resetPassword(
+                              email: fpEmailController.text.trim(),
+                              code: fpCodeController.text.trim(),
+                              newPassword: fpPasswordController.text,
+                            );
+                            setState(() => fpLoading = false);
+                            if (result['success'] == true) {
+                              cleanup();
+                              Navigator.pop(context, true);
+                            } else {
+                              setState(() => fpError = result['message']?.toString() ?? '重置密码失败');
+                            }
+                          },
+                        );
+                    }
+                  }(),
+                ),
+              ),
+            ),
+            actions: [
+              fluent_ui.Button(
+                onPressed: () {
+                  cleanup();
+                  Navigator.pop(context, false);
+                },
+                child: const Text('关闭'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // 胶囊状选项卡
+  static Widget _buildCapsuleTabs(BuildContext context, int current, ValueChanged<int> onChanged) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final onSurface = theme.colorScheme.onSurface;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color bg = (isDark ? Colors.white : Colors.black).withOpacity(0.06);
+    final Color border = (isDark ? Colors.white : Colors.black).withOpacity(0.08);
+
+    final labels = const ['登录', '注册', '找回密码'];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final totalWidth = constraints.maxWidth;
+        final itemCount = labels.length;
+        final innerPadding = 4.0;
+        final itemWidth = (totalWidth - innerPadding) / itemCount;
+
+        return Container(
+          height: 40,
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: border),
+          ),
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                left: (current.clamp(0, itemCount - 1)) * itemWidth,
+                width: itemWidth,
+                height: 36,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: primary.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+              ),
+              Row(
+                children: List.generate(itemCount, (i) {
+                  return Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => onChanged(i),
+                      child: Center(
+                        child: AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOutCubic,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: i == current ? primary : onSurface,
+                          ),
+                          child: Text(labels[i]),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  static Widget _buildLoginView(
+    BuildContext context, {
+    required String? errorText,
+    required TextEditingController accountController,
+    required TextEditingController passwordController,
+    required bool loading,
+    required bool linuxDoLoading,
+    required String linuxDoLoadingText,
+    required bool linuxDoEnabled,
+    required VoidCallback onCleanup,
+    required Future<void> Function() onSubmit,
+    required Future<void> Function() onLinuxDoLogin,
+    required VoidCallback toRegister,
+    required VoidCallback toForgot,
+  }) {
+    final typo = fluent_ui.FluentTheme.of(context).typography;
+    return fluent_ui.Card(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        key: const ValueKey('login'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(fluent_ui.FluentIcons.contact, size: 18),
+              const SizedBox(width: 8),
+              Text('登录到 Cyrene', style: typo.subtitle),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (errorText != null) ...[
+            fluent_ui.InfoBar(
+              title: const Text('错误'),
+              content: Text(errorText),
+              severity: fluent_ui.InfoBarSeverity.error,
+            ),
+            const SizedBox(height: 8),
+          ],
+          fluent_ui.InfoLabel(
+            label: '账号',
+            child: fluent_ui.TextBox(
+              controller: accountController,
+              placeholder: '邮箱 / 用户名',
+              prefix: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8.0),
+                child: Icon(fluent_ui.FluentIcons.contact),
+              ),
+              prefixMode: fluent_ui.OverlayVisibilityMode.always,
+            ),
+          ),
+          const SizedBox(height: 12),
+          fluent_ui.InfoLabel(
+            label: '密码',
+            child: fluent_ui.PasswordBox(
+              controller: passwordController,
+              placeholder: '输入密码',
+              onSubmitted: (_) => onSubmit(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    fluent_ui.HyperlinkButton(child: const Text('去注册'), onPressed: toRegister),
+                    const SizedBox(height: 2),
+                    fluent_ui.HyperlinkButton(child: const Text('忘记密码'), onPressed: toForgot),
+                    if (linuxDoEnabled) ...[
+                    const SizedBox(height: 2),
+                    fluent_ui.HyperlinkButton(
+                      child: linuxDoLoading
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: fluent_ui.ProgressRing(strokeWidth: 2),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(linuxDoLoadingText),
+                              ],
+                            )
+                          : const Text('Linux Do 登录'),
+                      onPressed: (loading || linuxDoLoading)
+                          ? null
+                          : onLinuxDoLogin,
+                    ),
+                    ],
+                    const SizedBox(height: 2),
+                    fluent_ui.HyperlinkButton(
+                      child: const Text('手机扫码登录'),
+                      onPressed: () async {
+                        final ok = await showQrLoginDialog(context);
+                        if (ok == true) {
+                          onCleanup();
+                          if (context.mounted) {
+                            Navigator.pop(context, true);
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              fluent_ui.FilledButton(
+                onPressed: loading ? null : onSubmit,
+                child: loading
+                    ? const SizedBox(width: 18, height: 18, child: fluent_ui.ProgressRing(strokeWidth: 2))
+                    : const Text('登录'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _buildRegisterView(
+    BuildContext context, {
+    required bool regEnabled,
+    required bool checkingReg,
+    required String? errorText,
+    required TextEditingController qqController,
+    required TextEditingController usernameController,
+    required TextEditingController passwordController,
+    required TextEditingController confirmController,
+    required TextEditingController codeController,
+    required bool loading,
+    required bool codeSent,
+    required int countdown,
+    required Future<void> Function() onSendCode,
+    required Future<void> Function() onSubmit,
+  }) {
+    final typo = fluent_ui.FluentTheme.of(context).typography;
+
+    if (checkingReg) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: fluent_ui.ProgressRing(),
+        ),
+      );
+    }
+
+    if (!regEnabled) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              fluent_ui.FluentIcons.block_contact,
+              size: 64,
+              color: Colors.red,
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '因滥用，我们暂时关闭了公开注册！',
+              textAlign: TextAlign.center,
+              style: typo.subtitle?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return fluent_ui.Card(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        key: const ValueKey('register'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(fluent_ui.FluentIcons.add_friend, size: 18),
+              const SizedBox(width: 8),
+              Text('创建账户', style: typo.subtitle),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (errorText != null) ...[
+            fluent_ui.InfoBar(
+              title: const Text('错误'),
+              content: Text(errorText),
+              severity: fluent_ui.InfoBarSeverity.error,
+            ),
+            const SizedBox(height: 8),
+          ],
+          fluent_ui.InfoLabel(
+            label: 'QQ 号',
+            child: fluent_ui.TextBox(
+              controller: qqController,
+              placeholder: '用于生成邮箱（QQ号@qq.com）',
+              prefix: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8.0),
+                child: Icon(fluent_ui.FluentIcons.mail),
+              ),
+              prefixMode: fluent_ui.OverlayVisibilityMode.always,
+            ),
+          ),
+          const SizedBox(height: 8),
+          fluent_ui.InfoLabel(
+            label: '用户名',
+            child: fluent_ui.TextBox(
+              controller: usernameController,
+              placeholder: '2-20位，支持中文、字母、数字、下划线',
+              prefix: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8.0),
+                child: Icon(fluent_ui.FluentIcons.contact),
+              ),
+              prefixMode: fluent_ui.OverlayVisibilityMode.always,
+            ),
+          ),
+          const SizedBox(height: 8),
+          fluent_ui.InfoLabel(
+            label: '密码',
+            child: fluent_ui.PasswordBox(
+              controller: passwordController,
+              placeholder: '至少 8 位',
+            ),
+          ),
+          const SizedBox(height: 8),
+          fluent_ui.InfoLabel(
+            label: '确认密码',
+            child: fluent_ui.PasswordBox(
+              controller: confirmController,
+              placeholder: '再次输入密码',
+            ),
+          ),
+          const SizedBox(height: 8),
+          fluent_ui.InfoLabel(
+            label: '验证码',
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: fluent_ui.TextBox(
+                    controller: codeController,
+                    placeholder: '邮件验证码',
+                    prefix: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Icon(fluent_ui.FluentIcons.shield),
+                    ),
+                    prefixMode: fluent_ui.OverlayVisibilityMode.always,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: fluent_ui.FilledButton(
+                    onPressed: (codeSent || loading) ? null : onSendCode,
+                    child: loading
+                        ? const SizedBox(width: 18, height: 18, child: fluent_ui.ProgressRing(strokeWidth: 2))
+                        : Text(codeSent ? '${countdown}秒' : '发送'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Spacer(),
+              fluent_ui.FilledButton(
+                onPressed: loading ? null : onSubmit,
+                child: loading
+                    ? const SizedBox(width: 18, height: 18, child: fluent_ui.ProgressRing(strokeWidth: 2))
+                    : const Text('注册'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _buildForgotView(
+    BuildContext context, {
+    required String? errorText,
+    required TextEditingController emailController,
+    required TextEditingController codeController,
+    required TextEditingController passwordController,
+    required TextEditingController confirmController,
+    required bool loading,
+    required bool codeSent,
+    required int countdown,
+    required Future<void> Function() onSendCode,
+    required Future<void> Function() onSubmit,
+  }) {
+    final typo = fluent_ui.FluentTheme.of(context).typography;
+    return fluent_ui.Card(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        key: const ValueKey('forgot'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(fluent_ui.FluentIcons.lock, size: 18),
+              const SizedBox(width: 8),
+              Text('重置密码', style: typo.subtitle),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (errorText != null) ...[
+            fluent_ui.InfoBar(
+              title: const Text('错误'),
+              content: Text(errorText),
+              severity: fluent_ui.InfoBarSeverity.error,
+            ),
+            const SizedBox(height: 8),
+          ],
+          fluent_ui.InfoLabel(
+            label: '注册邮箱',
+            child: fluent_ui.TextBox(
+              controller: emailController,
+              placeholder: '例如 yourname@example.com',
+              prefix: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8.0),
+                child: Icon(fluent_ui.FluentIcons.mail),
+              ),
+              prefixMode: fluent_ui.OverlayVisibilityMode.always,
+            ),
+          ),
+          const SizedBox(height: 8),
+          fluent_ui.InfoLabel(
+            label: '验证码',
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: fluent_ui.TextBox(
+                    controller: codeController,
+                    placeholder: '邮件验证码',
+                    prefix: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Icon(fluent_ui.FluentIcons.shield),
+                    ),
+                    prefixMode: fluent_ui.OverlayVisibilityMode.always,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: fluent_ui.FilledButton(
+                    onPressed: (codeSent || loading) ? null : onSendCode,
+                    child: loading
+                        ? const SizedBox(width: 18, height: 18, child: fluent_ui.ProgressRing(strokeWidth: 2))
+                        : Text(codeSent ? '${countdown}秒' : '发送'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          fluent_ui.InfoLabel(
+            label: '新密码',
+            child: fluent_ui.PasswordBox(
+              controller: passwordController,
+              placeholder: '至少 8 位',
+            ),
+          ),
+          const SizedBox(height: 8),
+          fluent_ui.InfoLabel(
+            label: '确认新密码',
+            child: fluent_ui.PasswordBox(
+              controller: confirmController,
+              placeholder: '再次输入密码',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Spacer(),
+              fluent_ui.FilledButton(
+                onPressed: loading ? null : onSubmit,
+                child: loading
+                    ? const SizedBox(width: 18, height: 18, child: fluent_ui.ProgressRing(strokeWidth: 2))
+                    : const Text('重置密码'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
