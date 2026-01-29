@@ -1917,6 +1917,19 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                             ),
                           ],
                         ),
+
+                        if (_selectedType == AudioSourceType.tunehub) ...[
+                          buildSectionHeader('认证'),
+                          buildGroupedCard(
+                            children: [
+                              buildInputTile(
+                                placeholder: 'API Key',
+                                controller: _tuneHubApiKeyController,
+                                obscureText: true,
+                              ),
+                            ],
+                          ),
+                        ],
                         
                         // 添加说明
                         Padding(
@@ -2088,6 +2101,23 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                     ),
                   ),
                 ),
+                if (_selectedType == AudioSourceType.tunehub) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _tuneHubApiKeyController,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: 'API Key',
+                      hintText: 'th_your_api_key_here',
+                      filled: true,
+                      fillColor: colorScheme.surfaceContainerHighest,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ],
               ],
 
                if (_statusMessage != null) ...[
