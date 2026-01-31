@@ -36,6 +36,7 @@ import 'persistent_storage_service.dart';
 import 'dart:async' as async_lib;
 import 'dart:async' show TimeoutException;
 import '../utils/toast_utils.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 
 /// 播放状态枚举
@@ -427,6 +428,11 @@ class PlayerService extends ChangeNotifier {
       
       // 触发下一首封面预缓存
       _precacheNextCover();
+
+      // 🔥 启用屏幕常亮/CPU唤醒（防止后台播放卡顿）
+      if (Platform.isAndroid || Platform.isIOS) {
+        WakelockPlus.enable();
+      }
       
       // 记录到播放历史 (✅ 优化：非阻塞调用)
       PlayHistoryService().addToHistory(track);
