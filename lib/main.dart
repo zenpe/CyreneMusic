@@ -103,7 +103,7 @@ Future<void> main() async {
       });
     }
   
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux || Platform.isAndroid) {
       await timed('MediaKit.ensureInitialized', () {
         try {
           MediaKit.ensureInitialized();

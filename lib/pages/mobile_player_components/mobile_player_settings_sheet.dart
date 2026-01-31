@@ -132,7 +132,7 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
                     // 性能优化：缓存更多的内容避免频繁重建
                     cacheExtent: 500,
                     // 子组件使用 RepaintBoundary 隔离重绘
-                    children: const [
+                    children: [
                       // 播放顺序
                       RepaintBoundary(child: PlaybackModeSection()),
                       
@@ -140,6 +140,11 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
                       
                       // 播放器样式
                       RepaintBoundary(child: PlayerStyleSection()),
+                      
+                      SizedBox(height: 24),
+
+                      // 均衡器
+                      RepaintBoundary(child: EqualizerSection()),
                       
                       SizedBox(height: 24),
 

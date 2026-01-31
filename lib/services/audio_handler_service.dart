@@ -166,9 +166,11 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     
     // 🔧 关键修复：在播放开始时（loading 或 playing）立即更新，不等待防抖
     // 这样可以确保初次播放时状态和进度立即显示
+    // 🔧 关键修复：在播放开始或暂停时都立即更新，不等待防抖
+    // 这样可以确保状态切换（播放/暂停）立即响应
     final shouldUpdateImmediately = currentState == PlayerState.loading || 
-        currentState == PlayerState.playing ||
-        (currentState == PlayerState.playing && !previousState.playing);
+        (currentState == PlayerState.playing && !previousState.playing) ||
+        (currentState == PlayerState.paused && previousState.playing);
     
     if (shouldUpdateImmediately) {
       // 立即更新，不等待防抖
@@ -364,10 +366,8 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     print('🎮 [AudioHandler] 蓝牙/系统媒体控件: 播放');
     final player = PlayerService();
     await player.resume();
-    // 🔧 等待状态更新完成（audioplayers 的状态更新是异步的）
-    await Future.delayed(const Duration(milliseconds: 50));
-    // 🔧 立即更新状态，不等待防抖延迟，确保按钮状态同步
-    _forceUpdatePlaybackState();
+    // 🔧 移除手动强制更新，依赖 _onPlayerStateChanged 监听器自动更新
+    // 之前的手动更新会导致竞态条件（状态还没变就强制更新了旧状态）
   }
 
   @override
@@ -375,10 +375,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     print('🎮 [AudioHandler] 蓝牙/系统媒体控件: 暂停');
     final player = PlayerService();
     await player.pause();
-    // 🔧 等待状态更新完成（audioplayers 的状态更新是异步的）
-    await Future.delayed(const Duration(milliseconds: 50));
-    // 🔧 立即更新状态，不等待防抖延迟，确保按钮状态同步
-    _forceUpdatePlaybackState();
+    // 🔧 移除手动强制更新，依赖 _onPlayerStateChanged 监听器自动更新
   }
 
   @override

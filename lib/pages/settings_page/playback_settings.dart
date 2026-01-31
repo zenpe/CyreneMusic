@@ -5,9 +5,11 @@ import '../../widgets/fluent_settings_card.dart';
 import '../../widgets/cupertino/cupertino_settings_widgets.dart';
 import '../../services/audio_quality_service.dart';
 import '../../services/audio_source_service.dart';
+import '../../services/player_service.dart';
 import '../../models/song_detail.dart';
 import '../../utils/theme_manager.dart';
 import '../../widgets/material/material_settings_widgets.dart';
+import 'equalizer_page.dart';
 
 
 /// 播放设置组件
@@ -36,12 +38,24 @@ class PlaybackSettings extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _showAudioQualityDialogFluent(context),
               ),
+              FluentSettingsTile(
+                icon: Icons.graphic_eq,
+                title: '均衡器',
+                subtitle: '调节音频频率响应',
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(context, fluent_ui.FluentPageRoute(builder: (_) => const EqualizerPage())),
+              ),
             ],
           );
         }
 
         if (isCupertino) {
-          return _buildCupertinoUI(context, qualityService);
+          return Column(
+            children: [
+              _buildCupertinoUI(context, qualityService),
+              _buildCupertinoEqualizerLink(context),
+            ],
+          );
         }
 
         return MD3SettingsSection(
@@ -52,6 +66,13 @@ class PlaybackSettings extends StatelessWidget {
               subtitle: '${qualityService.getQualityName()} - ${qualityService.getQualityDescription()}',
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showAudioQualityDialog(context),
+            ),
+            MD3SettingsTile(
+              leading: const Icon(Icons.graphic_eq),
+              title: '均衡器',
+              subtitle: '自定义音效',
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EqualizerPage())),
             ),
           ],
         );
@@ -68,6 +89,17 @@ class PlaybackSettings extends StatelessWidget {
       subtitle: '${qualityService.getQualityName()} - ${qualityService.getQualityDescription()}',
       showChevron: true,
       onTap: () => _showAudioQualityDialogCupertino(context),
+    );
+  }
+
+  Widget _buildCupertinoEqualizerLink(BuildContext context) {
+    return CupertinoSettingsTile(
+      icon: CupertinoIcons.waveform,
+      iconColor: CupertinoColors.systemBlue,
+      title: '均衡器',
+      subtitle: '调节音频效果',
+      showChevron: true,
+      onTap: () => Navigator.push(context, CupertinoPageRoute(builder: (_) => const EqualizerPage())),
     );
   }
 

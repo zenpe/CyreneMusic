@@ -56,6 +56,10 @@ class PlayerService extends ChangeNotifier {
   ap.AudioPlayer? _audioPlayer; // 延迟初始化，避免启动时杂音
   mk.Player? _mediaKitPlayer;
   bool _useMediaKit = false;
+  
+  // 判断当前平台是否应该使用 MediaKit
+  bool get _shouldUseMediaKit => Platform.isWindows || Platform.isMacOS || Platform.isLinux || Platform.isAndroid;
+
   async_lib.StreamSubscription<bool>? _mediaKitPlayingSub;
   async_lib.StreamSubscription<Duration>? _mediaKitPositionSub;
   async_lib.StreamSubscription<Duration?>? _mediaKitDurationSub;
@@ -93,6 +97,14 @@ class PlayerService extends ChangeNotifier {
   
   // 音源未配置回调（用于 UI 显示弹窗）
   void Function()? onAudioSourceNotConfigured;
+  
+  // 均衡器相关
+  static const List<int> kEqualizerFrequencies = [31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+  List<double> _equalizerGains = List.filled(10, 0.0);
+  bool _equalizerEnabled = true;
+  
+  List<double> get equalizerGains => List.unmodifiable(_equalizerGains);
+  bool get equalizerEnabled => _equalizerEnabled;
 
   PlayerState get state => _state;
   SongDetail? get currentSong => _currentSong;
@@ -160,6 +172,21 @@ class PlayerService extends ChangeNotifier {
       print('🔊 [PlayerService] 使用默认音量: ${(_volume * 100).toInt()}%');
     }
 
+    // 加载均衡器设置
+    final savedEqGains = PersistentStorageService().getStringList('player_eq_gains');
+    if (savedEqGains != null && savedEqGains.length == 10) {
+      try {
+        _equalizerGains = savedEqGains.map((e) => double.tryParse(e) ?? 0.0).toList();
+        print('🎚️ [PlayerService] 已加载均衡器设置');
+      } catch (e) {
+        print('⚠️ [PlayerService] 加载均衡器设置失败: $e');
+      }
+    }
+    final savedEqEnabled = PersistentStorageService().getBool('player_eq_enabled');
+    if (savedEqEnabled != null) {
+      _equalizerEnabled = savedEqEnabled;
+    }
+
     // 设置桌面歌词播放控制回调（Windows）
     if (Platform.isWindows) {
       DesktopLyricService().setPlaybackControlCallback((action) {
@@ -192,7 +219,16 @@ class PlayerService extends ChangeNotifier {
     print('🎵 [PlayerService] 播放器初始化完成');
   }
 
-  /// 确保 AudioPlayer 已初始化（首次播放时调用）
+  /// 确保播放器已初始化（首次播放时调用）
+  Future<void> _ensurePlayerInitialized() async {
+    if (_shouldUseMediaKit) {
+      await _ensureMediaKitPlayer();
+    } else {
+      await _ensureAudioPlayerInitialized();
+    }
+  }
+
+  /// 确保 AudioPlayer 已初始化（仅用于 iOS/Web 等非 MediaKit 平台）
   Future<void> _ensureAudioPlayerInitialized() async {
     if (_audioPlayer != null) return;
 
@@ -314,8 +350,11 @@ class PlayerService extends ChangeNotifier {
     bool fromPlaylist = false,
   }) async {
     try {
-      // 🔧 关键修复：首次播放时才初始化 AudioPlayer，避免启动时的杂音
-      await _ensureAudioPlayerInitialized();
+      // 🔧 关键修复：首次播放时才初始化播放器，避免启动时的杂音
+      await _ensurePlayerInitialized();
+      
+      // 设置使用 MediaKit 标志
+      _useMediaKit = _shouldUseMediaKit;
 
       // ✅ 提前检查音源配置（仅对在线音乐）
       // 本地音乐不需要音源，直接跳过此检查
@@ -437,8 +476,14 @@ class PlayerService extends ChangeNotifier {
           _loadLyricsForFloatingDisplay();
 
           // 播放缓存文件
-          await _audioPlayer!.play(ap.DeviceFileSource(cachedFilePath));
-          print('✅ [PlayerService] 从缓存播放: $cachedFilePath');
+          if (_shouldUseMediaKit) {
+             print('✅ [PlayerService/MediaKit] 从缓存播放: $cachedFilePath');
+             await _mediaKitPlayer!.open(mk.Media(cachedFilePath));
+             await _mediaKitPlayer!.play();
+          } else {
+             await _audioPlayer!.play(ap.DeviceFileSource(cachedFilePath));
+             print('✅ [PlayerService/AudioPlayer] 从缓存播放: $cachedFilePath');
+          }
           print('📝 [PlayerService] 歌词已从缓存恢复 (长度: ${_currentSong!.lyric.length})');
           
           // 🔍 检查：如果缓存中歌词为空，尝试后台更新
@@ -527,8 +572,14 @@ class PlayerService extends ChangeNotifier {
         notifyListeners();
         _loadLyricsForFloatingDisplay();
 
-        await _audioPlayer!.play(ap.DeviceFileSource(filePath));
-        print('✅ [PlayerService] 播放本地文件: $filePath');
+        if (_shouldUseMediaKit) {
+           print('✅ [PlayerService/MediaKit] 播放本地文件: $filePath');
+           await _mediaKitPlayer!.open(mk.Media(filePath));
+           await _mediaKitPlayer!.play();
+        } else {
+           await _audioPlayer!.play(ap.DeviceFileSource(filePath));
+           print('✅ [PlayerService/AudioPlayer] 播放本地文件: $filePath');
+        }
         _extractThemeColorInBackground(track.picUrl);
         return;
       }
@@ -622,7 +673,7 @@ class PlayerService extends ChangeNotifier {
 
       // Apple Music 播放逻辑
       // 如果 URL 是后端解密流端点（/apple/stream），流式播放并从响应头获取时长
-      // 如果 URL 是原始 HLS m3u8 流，桌面端使用 media_kit 播放
+      // 如果 URL 是原始 HLS m3u8 流，所有支持 MediaKit 的平台（包括 Android）使用 media_kit 播放
       if (track.source == MusicSource.apple) {
         final isDecryptedStream = songDetail.url.contains('/apple/stream');
         
@@ -641,7 +692,12 @@ class PlayerService extends ChangeNotifier {
             }
             
             // 流式播放
-            await _audioPlayer!.play(ap.UrlSource(songDetail.url));
+            if (_shouldUseMediaKit) {
+               await _mediaKitPlayer!.open(mk.Media(songDetail.url));
+               await _mediaKitPlayer!.play();
+            } else {
+               await _audioPlayer!.play(ap.UrlSource(songDetail.url));
+            }
             print('✅ [PlayerService] Apple Music 解密流播放成功');
             DeveloperModeService().addLog('✅ [PlayerService] Apple Music 解密流播放成功');
             return;
@@ -658,12 +714,12 @@ class PlayerService extends ChangeNotifier {
             }
             return;
           }
-        } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-          // 原始 HLS 流，桌面端使用 media_kit 播放（audioplayers/WindowsAudio 不支持 HLS）
+        } else if (_shouldUseMediaKit) {
+          // 原始 HLS 流，MediaKit 支持 HLS
           await _playAppleWithMediaKit(songDetail);
           return;
         }
-        // 移动端继续使用下面的代理逻辑
+        // 移动端（非 MediaKit）继续使用下面的代理逻辑
       }
 
       // 3. 播放音乐
@@ -691,7 +747,13 @@ class PlayerService extends ChangeNotifier {
           
           try {
             // 先尝试流式播放
-            await _audioPlayer!.play(ap.UrlSource(serverProxyUrl));
+            if (_shouldUseMediaKit) {
+               await _seekToStart(); // MediaKit 有时不重置
+               await _mediaKitPlayer!.open(mk.Media(serverProxyUrl));
+               await _mediaKitPlayer!.play();
+            } else {
+               await _audioPlayer!.play(ap.UrlSource(serverProxyUrl));
+            }
             print('✅ [PlayerService] 通过服务器代理流式播放成功');
             DeveloperModeService().addLog('✅ [PlayerService] 通过服务器代理流式播放成功');
           } catch (playError) {
@@ -715,7 +777,13 @@ class PlayerService extends ChangeNotifier {
             DeveloperModeService().addLog('🔗 [PlayerService] 本地代理URL: ${proxyUrl.length > 80 ? '${proxyUrl.substring(0, 80)}...' : proxyUrl}');
             
             try {
-              await _audioPlayer!.play(ap.UrlSource(proxyUrl));
+              if (_shouldUseMediaKit) {
+                 await _seekToStart();
+                 await _mediaKitPlayer!.open(mk.Media(proxyUrl));
+                 await _mediaKitPlayer!.play();
+              } else {
+                 await _audioPlayer!.play(ap.UrlSource(proxyUrl));
+              }
               print('✅ [PlayerService] 通过本地代理开始流式播放');
               DeveloperModeService().addLog('✅ [PlayerService] 通过本地代理开始流式播放');
             } catch (playError) {
@@ -777,7 +845,13 @@ class PlayerService extends ChangeNotifier {
         }
       } else {
         // 网易云音乐直接播放
-        await _audioPlayer!.play(ap.UrlSource(songDetail.url));
+        if (_shouldUseMediaKit) {
+           await _seekToStart();
+           await _mediaKitPlayer!.open(mk.Media(songDetail.url));
+           await _mediaKitPlayer!.play();
+        } else {
+           await _audioPlayer!.play(ap.UrlSource(songDetail.url));
+        }
         print('✅ [PlayerService] 开始播放: ${songDetail.url}');
         DeveloperModeService().addLog('✅ [PlayerService] 开始播放网易云音乐');
       }
@@ -852,7 +926,12 @@ class PlayerService extends ChangeNotifier {
         DeveloperModeService().addLog('✅ [PlayerService] 代理下载完成: ${(response.bodyBytes.length / 1024 / 1024).toStringAsFixed(2)} MB');
         
         // 播放临时文件
-        await _audioPlayer!.play(ap.DeviceFileSource(tempFilePath));
+        if (_shouldUseMediaKit) {
+             await _mediaKitPlayer!.open(mk.Media(tempFilePath));
+             await _mediaKitPlayer!.play();
+        } else {
+             await _audioPlayer!.play(ap.DeviceFileSource(tempFilePath));
+        }
         print('▶️ [PlayerService] 开始播放临时文件');
         DeveloperModeService().addLog('▶️ [PlayerService] 开始播放临时文件');
         
@@ -1028,7 +1107,12 @@ class PlayerService extends ChangeNotifier {
         DeveloperModeService().addLog('✅ [PlayerService] 下载完成: ${(response.bodyBytes.length / 1024 / 1024).toStringAsFixed(2)} MB');
         
         // 播放临时文件
-        await _audioPlayer!.play(ap.DeviceFileSource(tempFilePath));
+        if (_shouldUseMediaKit) {
+             await _mediaKitPlayer!.open(mk.Media(tempFilePath));
+             await _mediaKitPlayer!.play();
+        } else {
+             await _audioPlayer!.play(ap.DeviceFileSource(tempFilePath));
+        }
         print('▶️ [PlayerService] 开始播放临时文件');
         DeveloperModeService().addLog('▶️ [PlayerService] 开始播放临时文件');
         
@@ -1414,6 +1498,16 @@ class PlayerService extends ChangeNotifier {
       print('❌ [PlayerService] 停止失败: $e');
     }
   }
+  
+  /// 媒体尝试 Seek 到开始位置 (MediaKit 专用 helper)
+  Future<void> _seekToStart() async {
+     if (_mediaKitPlayer != null) {
+       // 防止某些情况下 MediaKit 记住上次播放位置导致不从头开始
+       try {
+         await _mediaKitPlayer!.seek(Duration.zero);
+       } catch (_) {}
+     }
+  }
 
   /// 跳转到指定位置
   Future<void> seek(Duration position) async {
@@ -1498,6 +1592,9 @@ class PlayerService extends ChangeNotifier {
         ready: null,
       ),
     );
+    
+    // 初始化完成后应用均衡器
+    await _applyEqualizer();
 
     _mediaKitPlayingSub = _mediaKitPlayer!.stream.playing.listen((playing) {
       if (playing) {
@@ -1507,6 +1604,9 @@ class PlayerService extends ChangeNotifier {
         if (Platform.isWindows) {
           DesktopLyricService().setPlayingState(true);
         }
+        if (Platform.isAndroid) {
+          AndroidFloatingLyricService().setPlayingState(true);
+        }
       } else {
         if (_state == PlayerState.playing) {
           _state = PlayerState.paused;
@@ -1515,6 +1615,9 @@ class PlayerService extends ChangeNotifier {
           _stopStateSaveTimer();
           if (Platform.isWindows) {
             DesktopLyricService().setPlayingState(false);
+          }
+          if (Platform.isAndroid) {
+            AndroidFloatingLyricService().setPlayingState(false);
           }
         }
       }
@@ -1542,6 +1645,9 @@ class PlayerService extends ChangeNotifier {
         _stopStateSaveTimer();
         if (Platform.isWindows) {
           DesktopLyricService().setPlayingState(false);
+        }
+        if (Platform.isAndroid) {
+          AndroidFloatingLyricService().setPlayingState(false);
         }
         notifyListeners();
         _playNextFromHistory();
@@ -1704,6 +1810,11 @@ class PlayerService extends ChangeNotifier {
       _audioPlayer!.stop();
       _audioPlayer!.dispose();
     }
+    // 释放 MediaKit 播放器
+    if (_mediaKitPlayer != null) {
+      _mediaKitPlayer!.dispose();
+      _mediaKitPlayer = null;
+    }
     // 停止代理服务器
     ProxyService().stop();
     // 清理主题色通知器
@@ -1749,6 +1860,12 @@ class PlayerService extends ChangeNotifier {
         _audioPlayer!.dispose().catchError((e) {
           print('⚠️ [PlayerService] 释放资源失败: $e');
         });
+      }
+      
+      // 释放 MediaKit 播放器
+      if (_mediaKitPlayer != null) {
+        _mediaKitPlayer!.dispose();
+        _mediaKitPlayer = null;
       }
 
       print('✅ [PlayerService] 播放器资源清理指令已发出');
@@ -2136,7 +2253,13 @@ class PlayerService extends ChangeNotifier {
   /// 悬浮歌词也能持续更新
   Future<void> updateFloatingLyricManually() async {
     // 只有在播放器已初始化时才更新
-    if (_audioPlayer == null) return;
+    if (_audioPlayer == null && _mediaKitPlayer == null) return;
+    
+    // 如果使用 MediaKit，直接同步当前状态位置，不需要 polling 
+    if (_useMediaKit && _mediaKitPlayer != null) {
+        _syncPositionToNative(_position);
+        return;
+    }
 
     // 🔥 关键修复：主动获取播放器的当前位置，而不是依赖 onPositionChanged 事件
     // 因为在后台时，onPositionChanged 事件可能被系统节流或延迟
@@ -2177,5 +2300,85 @@ class PlayerService extends ChangeNotifier {
     } catch (e) {
       print('❌ [PlayerService] 恢复播放失败: $e');
     }
+  }
+
+  /// 更新均衡器增益
+  /// [gains] 10个频段的增益值 (-12.0 到 12.0 dB)
+  Future<void> updateEqualizer(List<double> gains) async {
+    if (gains.length != 10) return;
+    
+    _equalizerGains = List.from(gains);
+    notifyListeners();
+    
+    // 应用效果
+    await _applyEqualizer();
+    
+    // 保存设置 (节流)
+    _saveEqualizerSettingsThrottled();
+  }
+  
+  /// 开关均衡器
+  Future<void> setEqualizerEnabled(bool enabled) async {
+    if (_equalizerEnabled == enabled) return;
+    
+    _equalizerEnabled = enabled;
+    notifyListeners();
+    
+    await _applyEqualizer();
+    
+    // 保存设置
+    PersistentStorageService().setBool('player_eq_enabled', enabled);
+  }
+
+  /// 应用均衡器效果 (底层实现)
+  Future<void> _applyEqualizer() async {
+    if (!_useMediaKit || _mediaKitPlayer == null) return;
+    
+    try {
+      if (!_equalizerEnabled) {
+        // 清除滤镜
+        // 注意：media_kit (libmpv) 清除滤镜是设置空字符串
+        // 使用 dynamic 调用 platform 接口
+        await (_mediaKitPlayer!.platform as dynamic)?.setProperty('af', '');
+        print('🎚️ [PlayerService] 均衡器已禁用');
+        return;
+      }
+
+      // 构建 ffmpeg equalizer 滤镜字符串
+      // 格式：equalizer=f=31:width_type=o:width=1:g=1.5,equalizer=f=63...
+      // width=1 表示 1 倍频程 (Octave)
+      final filterBuffer = StringBuffer();
+      
+      for (int i = 0; i < 10; i++) {
+        final freq = kEqualizerFrequencies[i];
+        final gain = _equalizerGains[i];
+        
+        // 只添加增益非 0 的频段，或者全部添加以保证一致性
+        // 为了平滑过渡，建议添加所有频段
+        if (i > 0) filterBuffer.write(',');
+        filterBuffer.write('equalizer=f=$freq:width_type=o:width=1:g=${gain.toStringAsFixed(1)}');
+      }
+      
+      final filterString = filterBuffer.toString();
+      // print('🎚️ [PlayerService] 应用均衡器: $filterString');
+      
+      // 设置 libmpv 属性 'af' (audio filter)
+      await (_mediaKitPlayer!.platform as dynamic)?.setProperty('af', filterString);
+      
+    } catch (e) {
+      print('⚠️ [PlayerService] 应用均衡器失败: $e');
+    }
+  }
+
+  async_lib.Timer? _saveEqTimer;
+  /// 保存均衡器设置 (节流)
+  void _saveEqualizerSettingsThrottled() {
+    _saveEqTimer?.cancel();
+    _saveEqTimer = async_lib.Timer(const Duration(milliseconds: 1000), () {
+      PersistentStorageService().setStringList(
+        'player_eq_gains', 
+        _equalizerGains.map((e) => e.toString()).toList()
+      );
+    });
   }
 }
