@@ -60,6 +60,7 @@ class CustomMediaNotificationService : Service() {
     private var mediaController: MediaControllerCompat? = null
     private var currentMetadata: MediaMetadataCompat? = null
     private var currentState: PlaybackStateCompat? = null
+    private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
 
     // 防抖机制：避免频繁更新通知导致系统卡顿
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -80,6 +81,17 @@ class CustomMediaNotificationService : Service() {
             null
         ).apply {
             connect()
+        }
+
+        // 初始化 WiFiLock，确保后台流媒体播放不因 WiFi 休眠而中断
+        try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            wifiLock = wifiManager.createWifiLock(
+                android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                "CyreneMusic:WifiLock"
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create WifiLock: ${e.message}")
         }
     }
 
@@ -109,6 +121,13 @@ class CustomMediaNotificationService : Service() {
         mediaBrowser?.disconnect()
         mediaBrowser = null
         mediaController = null
+        
+        // 释放 WiFiLock
+        wifiLock?.let {
+            if (it.isHeld) it.release()
+        }
+        wifiLock = null
+        
         stopForeground(true)
         super.onDestroy()
     }
@@ -152,8 +171,25 @@ class CustomMediaNotificationService : Service() {
 
         override fun onPlaybackStateChanged(state: PlaybackStateCompat?) {
             currentState = state
-            // 播放状态变化（播放/暂停切换）需要立即更新
+            
             val isPlaying = state?.state == PlaybackStateCompat.STATE_PLAYING
+            
+            // 管理 WiFiLock 状态
+            try {
+                wifiLock?.let { lock ->
+                    if (isPlaying && !lock.isHeld) {
+                        lock.acquire()
+                        Log.d(TAG, "WifiLock acquired")
+                    } else if (!isPlaying && lock.isHeld) {
+                        lock.release()
+                        Log.d(TAG, "WifiLock released")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "WifiLock management failed: ${e.message}")
+            }
+
+            // 播放状态变化（播放/暂停切换）需要立即更新
             if (lastIsPlaying != isPlaying) {
                 // 播放状态切换，立即更新
                 performNotificationUpdate()
@@ -230,7 +266,7 @@ class CustomMediaNotificationService : Service() {
                 val channel = NotificationChannel(
                     CHANNEL_ID,
                     CHANNEL_NAME,
-                    NotificationManager.IMPORTANCE_LOW
+                    NotificationManager.IMPORTANCE_DEFAULT // 提升至 DEFAULT，确保后台资源分配
                 ).apply {
                     description = "Cyrene Music 媒体播放控制"
                     setShowBadge(false)

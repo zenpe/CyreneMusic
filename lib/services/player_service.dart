@@ -1319,6 +1319,17 @@ class PlayerService extends ChangeNotifier {
 
       // ✅ 优化：立即设置默认色，避免UI阻塞
       themeColorNotifier.value = Colors.grey[700]!;
+
+      // ✅ 关键优化：如果应用已经在后台运行，且用户并没有显式查看播放器（已有颜色或不是切换第一首歌），
+      // 则可以推迟甚至跳过异步颜色提取，以减少后台 CPU 竞争，防止卡顿。
+      final isAppInBackground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused ||
+                             WidgetsBinding.instance.lifecycleState == AppLifecycleState.inactive;
+      
+      if (isAppInBackground) {
+        print('🎨 [PlayerService] 应用在后台，跳过异步主题色提取以节省资源');
+        return;
+      }
+
       print('🎨 [PlayerService] 开始异步提取主题色${isMobileGradientMode ? '（从封面底部）' : ''}...');
       
       Color? themeColor;
@@ -2389,17 +2400,25 @@ class PlayerService extends ChangeNotifier {
         final freq = kEqualizerFrequencies[i];
         final gain = _equalizerGains[i];
         
-        // 只添加增益非 0 的频段，或者全部添加以保证一致性
-        // 为了平滑过渡，建议添加所有频段
-        if (i > 0) filterBuffer.write(',');
+        // 🔧 性能优化：跳过增益接近 0 的频段，减少 CPU 开销
+        // 只有当增益绝对值大于 0.1dB 时才应用滤镜
+        if (gain.abs() <= 0.1) continue;
+
+        if (filterBuffer.isNotEmpty) filterBuffer.write(',');
         filterBuffer.write('equalizer=f=$freq:width_type=o:width=1:g=${gain.toStringAsFixed(1)}');
       }
       
       final filterString = filterBuffer.toString();
       // print('🎚️ [PlayerService] 应用均衡器: $filterString');
       
-      // 设置 libmpv 属性 'af' (audio filter)
-      await (_mediaKitPlayer!.platform as dynamic)?.setProperty('af', filterString);
+      if (filterString.isEmpty) {
+        // 如果所有频段都是 0，相当于禁用均衡器（清除滤镜）
+        await (_mediaKitPlayer!.platform as dynamic)?.setProperty('af', '');
+        // print('🎚️ [PlayerService] 均衡器（平直）已应用，滤镜已清除');
+      } else {
+        // 设置 libmpv 属性 'af' (audio filter)
+        await (_mediaKitPlayer!.platform as dynamic)?.setProperty('af', filterString);
+      }
       
     } catch (e) {
       print('⚠️ [PlayerService] 应用均衡器失败: $e');
