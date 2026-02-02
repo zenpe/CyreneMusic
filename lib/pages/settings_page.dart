@@ -28,6 +28,8 @@ import 'settings_page/audio_source_settings_page.dart';
 import 'settings_page/about_settings_page.dart';
 import 'settings_page/equalizer_page.dart';
 import 'support_page.dart';
+import 'settings_page/lab_functions.dart';
+import 'settings_page/lab_functions_page.dart';
 import '../widgets/material/material_settings_widgets.dart';
 import '../widgets/fluent_settings_card.dart';
 
@@ -39,6 +41,7 @@ enum SettingsSubPage {
   audioSource,
   about,
   equalizer,
+  labFunctions,
 }
 
 /// 设置页面
@@ -221,6 +224,9 @@ class _SettingsPageState extends State<SettingsPage> {
       case SettingsSubPage.equalizer:
         content = EqualizerContent(onBack: () => Navigator.pop(context), embed: true);
         title = '均衡器';
+      case SettingsSubPage.labFunctions:
+        content = LabFunctionsContent(onBack: () => Navigator.pop(context), embed: true);
+        title = '实验室功能';
       case SettingsSubPage.none:
         return const SizedBox.shrink();
     }
@@ -336,6 +342,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     _buildSupportTile(context),
                     const SizedBox(height: 12),
                     
+                    // 实验室功能
+                    LabFunctions(onTap: () => openSubPage(SettingsSubPage.labFunctions)),
+                    const SizedBox(height: 12),
+                    
                     // 第三方账号管理（需随登录状态刷新，不能使用 const）
                     ThirdPartyAccounts(onTap: () => openSubPage(SettingsSubPage.thirdPartyAccounts)),
                     const SizedBox(height: 12),
@@ -420,6 +430,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return '关于';
       case SettingsSubPage.equalizer:
         return '均衡器';
+      case SettingsSubPage.labFunctions:
+        return '实验室功能';
       case SettingsSubPage.none:
         return '设置';
     }
@@ -439,6 +451,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return AboutSettingsContent(onBack: closeSubPage, embed: true);
       case SettingsSubPage.equalizer:
         return EqualizerContent(onBack: closeSubPage, embed: true);
+      case SettingsSubPage.labFunctions:
+        return LabFunctionsContent(onBack: closeSubPage, embed: true);
       case SettingsSubPage.none:
         return const SizedBox.shrink();
     }
@@ -799,6 +813,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return AboutSettingsContent(onBack: closeSubPage, embed: true);
       case SettingsSubPage.equalizer:
         return EqualizerContent(onBack: closeSubPage, embed: true);
+      case SettingsSubPage.labFunctions:
+        return LabFunctionsContent(onBack: closeSubPage, embed: true);
       case SettingsSubPage.none:
         return const SizedBox.shrink();
     }
@@ -862,6 +878,10 @@ class _SettingsPageState extends State<SettingsPage> {
         // 赞助与支持
         _buildFluentSupportTile(context),
         const SizedBox(height: 16),
+
+        // 实验室功能
+        LabFunctions(onTap: () => openSubPage(SettingsSubPage.labFunctions)),
+        const SizedBox(height: 16),
         
         // 分组设置
         ThirdPartyAccounts(onTap: () => openSubPage(SettingsSubPage.thirdPartyAccounts)),
@@ -905,6 +925,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return AboutSettingsContent(onBack: closeSubPage, embed: true);
       case SettingsSubPage.equalizer:
         return EqualizerContent(onBack: closeSubPage, embed: true);
+      case SettingsSubPage.labFunctions:
+        return LabFunctionsContent(onBack: closeSubPage, embed: true);
       case SettingsSubPage.none:
         return const SizedBox.shrink();
     }
@@ -923,6 +945,7 @@ class _SettingsPageState extends State<SettingsPage> {
       case SettingsSubPage.audioSource: pageName = '音源设置'; break;
       case SettingsSubPage.about: pageName = '关于'; break;
       case SettingsSubPage.equalizer: pageName = '均衡器'; break;
+      case SettingsSubPage.labFunctions: pageName = '实验室功能'; break;
       case SettingsSubPage.none: return const Text('设置');
     }
 

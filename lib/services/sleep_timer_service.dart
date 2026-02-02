@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'player_service.dart';
+import 'android_sleep_timer_service.dart';
 
 /// 睡眠定时器模式
 enum SleepTimerMode {
@@ -13,7 +14,17 @@ enum SleepTimerMode {
 class SleepTimerService extends ChangeNotifier {
   static final SleepTimerService _instance = SleepTimerService._internal();
   factory SleepTimerService() => _instance;
-  SleepTimerService._internal();
+  SleepTimerService._internal() {
+    // 初始化原生服务监听
+    if (defaultTargetPlatform == TargetPlatform.android) {
+        AndroidSleepTimerService().init(onCancelled: () {
+            print('🔄 [SleepTimerService] 收到原生取消事件，停止 Dart 端计时器');
+            // 此时原生通知已经关闭，我们需要关闭 Dart 端的计时器
+            // 这里调用 cancel() 会再次调用 stop()，但这是安全的
+            cancel(); 
+        });
+    }
+  }
 
   Timer? _timer;
   DateTime? _endTime; // 定时结束时间
@@ -61,6 +72,11 @@ class SleepTimerService extends ChangeNotifier {
 
     _startTimer();
     notifyListeners();
+    
+    // 启动原生通知
+    if (_endTime != null) {
+      AndroidSleepTimerService().start(_endTime!);
+    }
 
     print('⏰ [SleepTimerService] 设置定时器: ${minutes}分钟后停止播放');
   }
@@ -91,6 +107,11 @@ class SleepTimerService extends ChangeNotifier {
     _endTime = targetDateTime;
     _startTimer();
     notifyListeners();
+    
+    // 启动原生通知
+    if (_endTime != null) {
+      AndroidSleepTimerService().start(_endTime!);
+    }
 
     print('⏰ [SleepTimerService] 设置定时器: ${time.hour}:${time.minute} 停止播放');
   }
@@ -121,6 +142,9 @@ class SleepTimerService extends ChangeNotifier {
 
     // 暂停播放
     PlayerService().pause();
+    
+    // 停止原生通知
+    AndroidSleepTimerService().stop();
 
     // 清除定时器
     _timer?.cancel();
@@ -141,6 +165,9 @@ class SleepTimerService extends ChangeNotifier {
       _mode = null;
       _durationMinutes = null;
       _targetTime = null;
+      
+      // 停止原生通知
+      AndroidSleepTimerService().stop();
 
       notifyListeners();
 
@@ -152,6 +179,10 @@ class SleepTimerService extends ChangeNotifier {
   void extend(int minutes) {
     if (_endTime != null) {
       _endTime = _endTime!.add(Duration(minutes: minutes));
+      
+      // 更新原生通知
+      AndroidSleepTimerService().start(_endTime!);
+      
       notifyListeners();
       print('⏰ [SleepTimerService] 定时器已延长 ${minutes} 分钟');
     }

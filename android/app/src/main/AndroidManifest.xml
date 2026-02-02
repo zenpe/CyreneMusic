@@ -11,6 +11,8 @@
     
     <!-- Android 14+ (SDK 34) 媒体播放前台服务权限 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <!-- Android 14+ (SDK 34) 特殊用途前台服务权限 (用于睡眠定时器) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     
     <!-- 悬浮窗权限 -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
@@ -97,6 +99,32 @@
             android:name=".CustomMediaNotificationService"
             android:foregroundServiceType="mediaPlayback"
             android:exported="false" />
+
+        <!-- 睡眠定时器前台服务 -->
+        <service
+            android:name=".SleepTimerService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="clock" />
+        </service>
+
+        <!-- 桌面小部件 -->
+        <receiver android:name="MusicWidget" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/widget_music_info" />
+        </receiver>
+
+        <!-- 桌面小部件 (2x2) -->
+        <receiver android:name="MusicWidgetSmall" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/widget_music_small_info" />
+        </receiver>
         
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

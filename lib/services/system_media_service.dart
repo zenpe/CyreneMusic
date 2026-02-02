@@ -45,8 +45,8 @@ class SystemMediaService {
     }
   }
 
-  /// 确保移动端 audio_service 已初始化（首次播放时调用）
-  Future<void> _ensureMobileInitialized() async {
+  /// 确保移动端 audio_service 已初始化（首次播放时或手动同步小部件时调用）
+  Future<void> ensureMobileInitialized() async {
     if (_mobileInitialized || !Platform.isAndroid && !Platform.isIOS) return;
 
     await _initializeMobile();
@@ -149,6 +149,18 @@ class SystemMediaService {
     }
   }
 
+  /// 手动更新移动端小部件（供实验室功能开关调用）
+  Future<void> updateWidget() async {
+    if (Platform.isAndroid) {
+      if (!_mobileInitialized) {
+        await ensureMobileInitialized();
+      }
+      if (_audioHandler != null) {
+        _audioHandler!.refreshWidget();
+      }
+    }
+  }
+
   /// 监听播放器状态变化，同步到系统媒体控件
   void _onPlayerStateChanged() {
     // 如果已释放或未初始化，不再处理
@@ -166,7 +178,7 @@ class SystemMediaService {
       // 只有在真正开始播放时才初始化（loading 或 playing 状态）
       if (player.state == PlayerState.loading || player.state == PlayerState.playing) {
         print('🎵 [SystemMediaService] 检测到首次播放，初始化 audio_service...');
-        _ensureMobileInitialized().then((_) {
+        ensureMobileInitialized().then((_) {
           print('✅ [SystemMediaService] audio_service 初始化完成，继续更新状态');
           // 初始化完成后，再次触发状态更新
           _onPlayerStateChanged();
