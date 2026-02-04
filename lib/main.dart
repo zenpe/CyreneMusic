@@ -20,6 +20,7 @@ import 'package:cyrene_music/services/listening_stats_service.dart';
 import 'package:cyrene_music/services/lyric_style_service.dart';
 import 'package:cyrene_music/services/lyric_font_service.dart';
 import 'package:cyrene_music/services/persistent_storage_service.dart';
+import 'package:cyrene_music/services/navidrome_session_service.dart';
 import 'package:cyrene_music/services/player_background_service.dart';
 import 'package:cyrene_music/services/player_service.dart';
 import 'package:cyrene_music/services/notification_service.dart';
@@ -119,6 +120,12 @@ Future<void> main() async {
       await PersistentStorageService().initialize();
     });
     log(' 持久化存储服务已初始化');
+
+    // Navidrome 会话服务初始化（依赖 PersistentStorageService）
+    await timed('NavidromeSessionService.initialize', () async {
+      await NavidromeSessionService().initialize();
+    });
+    log(' Navidrome 会话服务已初始化');
 
     await timed('DeveloperModeService.initialize', () async {
       await DeveloperModeService().initialize();

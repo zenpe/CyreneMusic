@@ -87,51 +87,98 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
   }
 
   Widget _buildMobile(BuildContext context) {
+    // Navidrome Scheme B Design Colors
+    const backgroundColor = Color(0xFF0A0A0A);
+    const bottomBarColor = Color(0xFF0F0F0F);
+    const bottomBarBorderColor = Color(0xFF2C2C2E);
+    const activeColor = Color(0xFF0A84FF);
+    const inactiveColor = Color(0xFF8E8E93);
+
     return Scaffold(
+      backgroundColor: backgroundColor,
       body: Stack(
         children: [
-          IndexedStack(
-            index: _selectedIndex,
-            children: _pages,
+          // Main Content
+          Positioned.fill(
+            bottom: 44 + MediaQuery.of(context).padding.bottom + 64, // TabBar + Safe Area + MiniPlayer
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: _pages,
+            ),
           ),
+          
+          // Mini Player & Bottom Bar Area
           Positioned(
             left: 0,
             right: 0,
-            bottom: kBottomNavigationBarHeight,
-            child: _buildMiniPlayer(),
+            bottom: 0,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildMiniPlayer(),
+                // Custom Bottom Navigation Bar
+                Container(
+                  height: 44 + MediaQuery.of(context).padding.bottom,
+                  decoration: const BoxDecoration(
+                    color: bottomBarColor,
+                    border: Border(
+                      top: BorderSide(color: bottomBarBorderColor, width: 0.5),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).padding.bottom,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildNavItem(0, Icons.library_music, '音乐库', activeColor, inactiveColor),
+                        _buildNavItem(1, Icons.search, '搜索', activeColor, inactiveColor),
+                        _buildNavItem(2, Icons.favorite, '收藏', activeColor, inactiveColor),
+                        _buildNavItem(3, Icons.settings, '设置', activeColor, inactiveColor),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.library_music_outlined),
-            activeIcon: Icon(Icons.library_music),
-            label: '音乐库',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search_outlined),
-            activeIcon: Icon(Icons.search),
-            label: '搜索',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.queue_music_outlined),
-            activeIcon: Icon(Icons.queue_music),
-            label: '歌单',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            activeIcon: Icon(Icons.settings),
-            label: '设置',
-          ),
-        ],
-        type: BottomNavigationBarType.fixed,
+    );
+  }
+
+  Widget _buildNavItem(
+    int index,
+    IconData icon,
+    String label,
+    Color activeColor,
+    Color inactiveColor,
+  ) {
+    final isSelected = _selectedIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _selectedIndex = index),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 24,
+              color: isSelected ? activeColor : inactiveColor,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: isSelected ? activeColor : inactiveColor,
+                fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

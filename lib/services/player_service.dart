@@ -1726,6 +1726,54 @@ class PlayerService extends ChangeNotifier {
     await _mediaKitPlayer!.play();
   }
 
+  /// 播放网络电台流
+  Future<void> playRadioStream(String streamUrl, Track radioTrack) async {
+    try {
+      await _ensurePlayerInitialized();
+      _useMediaKit = _shouldUseMediaKit;
+
+      // 清理上一首的临时文件
+      await _cleanupCurrentTempFile();
+
+      _state = PlayerState.loading;
+      _currentTrack = radioTrack;
+      _currentSong = null;
+      _errorMessage = null;
+      _duration = Duration.zero;
+      _position = Duration.zero;
+      positionNotifier.value = Duration.zero;
+
+      // 清空封面
+      _currentCoverImageProvider = null;
+      _currentCoverUrl = null;
+      themeColorNotifier.value = null;
+
+      notifyListeners();
+
+      print('📻 [PlayerService] 播放电台流: $streamUrl');
+
+      if (_shouldUseMediaKit) {
+        await _mediaKitPlayer!.setVolume(_volume * 100);
+        await _mediaKitPlayer!.open(mk.Media(streamUrl));
+        await _mediaKitPlayer!.play();
+      } else {
+        await _audioPlayer!.play(ap.UrlSource(streamUrl));
+      }
+
+      _state = PlayerState.playing;
+      _startListeningTimeTracking();
+      notifyListeners();
+
+      print('✅ [PlayerService] 电台播放开始: ${radioTrack.name}');
+    } catch (e, st) {
+      print('❌ [PlayerService] 电台播放失败: $e');
+      print('❌ [PlayerService] Stack: $st');
+      _state = PlayerState.error;
+      _errorMessage = '电台播放失败: $e';
+      notifyListeners();
+    }
+  }
+
   /// 切换播放/暂停
   Future<void> togglePlayPause() async {
     if (isPlaying) {

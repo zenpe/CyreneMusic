@@ -8,6 +8,7 @@ enum QueueSource {
   none,        // 无队列
   favorites,   // 收藏列表
   playlist,    // 歌单
+  album,       // 专辑
   history,     // 播放历史
   search,      // 搜索结果
   toplist,     // 排行榜

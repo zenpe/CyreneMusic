@@ -9,6 +9,9 @@ class NavidromeConfigForm extends StatefulWidget {
   final bool showClearButton;
   final VoidCallback? onSaved;
   final VoidCallback? onCleared;
+  final Widget? header;
+  final Widget? footer;
+  final EdgeInsetsGeometry padding;
 
   const NavidromeConfigForm({
     super.key,
@@ -17,6 +20,9 @@ class NavidromeConfigForm extends StatefulWidget {
     this.showClearButton = false,
     this.onSaved,
     this.onCleared,
+    this.header,
+    this.footer,
+    this.padding = const EdgeInsets.all(16),
   });
 
   @override
@@ -31,6 +37,7 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
   bool _obscurePassword = true;
   bool _isBusy = false;
   String? _statusMessage;
+  bool? _statusIsError;
 
   @override
   void initState() {
@@ -57,6 +64,7 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
     setState(() {
       _isBusy = true;
       _statusMessage = '正在测试连接...';
+      _statusIsError = null;
     });
 
     try {
@@ -68,10 +76,12 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
       final ok = await api.ping();
       setState(() {
         _statusMessage = ok ? '连接成功' : '连接失败';
+        _statusIsError = ok ? false : true;
       });
     } catch (e) {
       setState(() {
         _statusMessage = '连接失败：$e';
+        _statusIsError = true;
       });
     } finally {
       if (mounted) {
@@ -91,6 +101,7 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
     setState(() {
       _isBusy = true;
       _statusMessage = null;
+      _statusIsError = null;
     });
 
     try {
@@ -106,6 +117,7 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
     } catch (e) {
       setState(() {
         _statusMessage = '保存失败：$e';
+        _statusIsError = true;
       });
     } finally {
       if (mounted) {
@@ -121,12 +133,14 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
     if (!_isValidUrl(baseUrl)) {
       setState(() {
         _statusMessage = '服务器地址无效';
+        _statusIsError = true;
       });
       return false;
     }
     if (username.isEmpty || password.isEmpty) {
       setState(() {
         _statusMessage = '用户名和密码不能为空';
+        _statusIsError = true;
       });
       return false;
     }
@@ -145,11 +159,25 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    Color statusColor;
+    if (_statusIsError == null) {
+      statusColor = colorScheme.outline;
+    } else if (_statusIsError == true) {
+      statusColor = colorScheme.error;
+    } else {
+      statusColor = colorScheme.primary;
+    }
+
     return Form(
       key: _formKey,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: widget.padding,
         children: [
+          if (widget.header != null) ...[
+            widget.header!,
+            const SizedBox(height: 12),
+          ],
           TextFormField(
             controller: _baseUrlController,
             decoration: const InputDecoration(
@@ -197,7 +225,7 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
             Text(
               _statusMessage!,
               style: TextStyle(
-                color: Theme.of(context).colorScheme.error,
+                color: statusColor,
               ),
             ),
           const SizedBox(height: 16),
@@ -230,6 +258,10 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
               onPressed: _clearConfig,
               child: const Text('清除登录信息'),
             ),
+          ],
+          if (widget.footer != null) ...[
+            const SizedBox(height: 20),
+            widget.footer!,
           ],
         ],
       ),
