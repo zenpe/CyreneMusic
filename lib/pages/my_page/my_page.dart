@@ -20,6 +20,7 @@ import '../../widgets/music_taste_dialog.dart';
 import '../auth/auth_page.dart';
 import '../settings_page/user_card.dart';
 import 'my_page_breadcrumbs.dart';
+import '../../services/global_back_handler_service.dart';
 
 // UI 组件分离到 part 文件
 part 'my_page_material.dart';
@@ -57,12 +58,17 @@ class _MyPageState extends State<MyPage> {
       _playlistService.loadPlaylists();
       _loadStats();
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncGlobalBackHandler();
+    });
   }
 
   @override
   void dispose() {
     _playlistService.removeListener(_onPlaylistsChanged);
     _searchController.dispose();
+    GlobalBackHandlerService().unregister('my_page_overlay');
     super.dispose();
   }
 
@@ -94,15 +100,16 @@ class _MyPageState extends State<MyPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final isLoggedIn = AuthService().isLoggedIn;
 
+    Widget page;
     if (_themeManager.isFluentFramework) {
-      return _buildFluentPage(context, isLoggedIn);
-    }
-    
-    if (_themeManager.isCupertinoFramework) {
-      return _buildCupertinoPage(context, isLoggedIn);
+      page = _buildFluentPage(context, isLoggedIn);
+    } else if (_themeManager.isCupertinoFramework) {
+      page = _buildCupertinoPage(context, isLoggedIn);
+    } else {
+      page = _buildMaterialPage(context, colorScheme, isLoggedIn);
     }
 
-    return _buildMaterialPage(context, colorScheme, isLoggedIn);
+    return page;
   }
 
   // ==================== 工具方法 ====================
@@ -161,6 +168,7 @@ class _MyPageState extends State<MyPage> {
       _selectedPlaylist = playlist;
     });
     _playlistService.loadPlaylistTracks(playlist.id);
+    _syncGlobalBackHandler();
   }
 
   void _backToList() {
@@ -173,6 +181,7 @@ class _MyPageState extends State<MyPage> {
       _searchQuery = '';
       _searchController.clear();
     });
+    _syncGlobalBackHandler();
   }
 
   void _toggleSearchMode() {
@@ -183,6 +192,7 @@ class _MyPageState extends State<MyPage> {
         _searchController.clear();
       }
     });
+    _syncGlobalBackHandler();
   }
 
   void _onSearchChanged(String query) {
@@ -207,6 +217,30 @@ class _MyPageState extends State<MyPage> {
     setState(() {
       _isEditMode = !_isEditMode;
       if (!_isEditMode) _selectedTrackIds.clear();
+    });
+    _syncGlobalBackHandler();
+  }
+
+  void _syncGlobalBackHandler() {
+    if (!mounted || (_selectedPlaylist == null && !_isSearchMode && !_isEditMode)) {
+      GlobalBackHandlerService().unregister('my_page_overlay');
+      return;
+    }
+
+    GlobalBackHandlerService().register('my_page_overlay', () {
+      if (!mounted) return false;
+
+      if (_isSearchMode) {
+        _toggleSearchMode();
+        return true;
+      } else if (_isEditMode) {
+        _toggleEditMode();
+        return true;
+      } else if (_selectedPlaylist != null) {
+        _backToList();
+        return true;
+      }
+      return false;
     });
   }
 
@@ -516,6 +550,7 @@ class _MyPageState extends State<MyPage> {
       _isEditMode = false;
       _selectedTrackIds.clear();
     });
+    _syncGlobalBackHandler();
   }
 
   Future<void> _confirmRemoveTrack(PlaylistTrack track) async {
@@ -928,6 +963,7 @@ class _MyPageState extends State<MyPage> {
       _isEditMode = false;
       _selectedTrackIds.clear();
     });
+    _syncGlobalBackHandler();
   }
 }
 

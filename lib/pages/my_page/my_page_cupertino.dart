@@ -207,10 +207,12 @@ extension MyPageCupertinoUI on _MyPageState {
                           ],
                         ),
                       ),
-                      if (!playlist.isDefault) ...[
-                        CupertinoButton(padding: EdgeInsets.zero, onPressed: _hasImportConfig(playlist) ? () => _syncPlaylistFromList(playlist) : null, child: Icon(CupertinoIcons.arrow_2_circlepath, size: 20, color: _hasImportConfig(playlist) ? CupertinoColors.systemBlue : CupertinoColors.systemGrey3)),
-                        CupertinoButton(padding: EdgeInsets.zero, onPressed: () => _confirmDeletePlaylistCupertino(playlist), child: Icon(CupertinoIcons.delete, size: 20, color: CupertinoColors.systemRed)),
-                      ],
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () => _showPlaylistMoreOptionsCupertino(playlist, isDark),
+                        child: Icon(CupertinoIcons.ellipsis, size: 20, color: CupertinoColors.systemGrey),
+                      ),
+                      const SizedBox(width: 4),
                       Icon(CupertinoIcons.chevron_forward, size: 18, color: CupertinoColors.systemGrey3),
                     ],
                   ),
@@ -373,8 +375,7 @@ extension MyPageCupertinoUI on _MyPageState {
       decoration: BoxDecoration(color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white, borderRadius: BorderRadius.circular(12)),
       child: Row(
         children: [
-          Icon(CupertinoIcons.music_note, size: 22, color: CupertinoColors.systemBlue),
-          const SizedBox(width: 12),
+
           Text(countText, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? CupertinoColors.white : CupertinoColors.black)),
           const Spacer(),
           if (count > 0)
@@ -430,16 +431,13 @@ extension MyPageCupertinoUI on _MyPageState {
                     Row(
                       children: [
                         Expanded(child: Text('${item.artists} • ${item.album}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: CupertinoColors.systemGrey))),
-                        Text(_getSourceIcon(item.source), style: const TextStyle(fontSize: 12)),
+
                       ],
                     ),
                   ],
                 ),
               ),
-              if (!_isEditMode) ...[
-                CupertinoButton(padding: EdgeInsets.zero, onPressed: () => _playDetailTrack(index), child: Icon(CupertinoIcons.play_circle, size: 28, color: CupertinoColors.systemBlue)),
-                CupertinoButton(padding: EdgeInsets.zero, onPressed: () => _confirmRemoveTrackCupertino(item), child: Icon(CupertinoIcons.minus_circle, size: 24, color: CupertinoColors.systemRed)),
-              ],
+
             ],
           ),
         ),
@@ -472,6 +470,120 @@ extension MyPageCupertinoUI on _MyPageState {
           Text('未找到匹配的歌曲', style: TextStyle(fontSize: 16, color: isDark ? CupertinoColors.white : CupertinoColors.black)),
           const SizedBox(height: 8),
           Text('尝试其他关键词', style: TextStyle(fontSize: 14, color: CupertinoColors.systemGrey)),
+        ],
+      ),
+    );
+  }
+
+  /// 显示歌单更多操作 (Cupertino)
+  void _showPlaylistMoreOptionsCupertino(Playlist playlist, bool isDark) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: Text(playlist.name),
+        message: Text('共 ${playlist.trackCount} 首歌曲'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _openPlaylistDetail(playlist);
+            },
+            child: const Text('播放全部'),
+          ),
+          if (_hasImportConfig(playlist))
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(context);
+                _syncPlaylistFromList(playlist);
+              },
+              child: const Text('同步歌单'),
+            ),
+          if (!playlist.isDefault)
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(context);
+                _confirmDeletePlaylistCupertino(playlist);
+              },
+              isDestructiveAction: true,
+              child: const Text('删除歌单'),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context),
+          isDefaultAction: true,
+          child: const Text('取消'),
+        ),
+      ),
+    );
+  }
+
+  /// 确认删除歌单 (Cupertino)
+  Future<void> _confirmDeletePlaylistCupertino(Playlist playlist) async {
+    showCupertinoDialog<void>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('删除歌单'),
+        content: Text('确定要删除歌单「${playlist.name}」吗？\n删除后将无法恢复。'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () async {
+              Navigator.pop(context);
+              final success = await _playlistService.deletePlaylist(playlist.id);
+              _showCupertinoToast(success ? '歌单已删除' : '删除失败');
+              if (success && _selectedPlaylist?.id == playlist.id) {
+                _backToList();
+              }
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+
+  /// 批量移除单曲 (Cupertino)
+  Future<void> _batchRemoveTracksCupertino() async {
+    if (_selectedPlaylist == null || _selectedTrackIds.isEmpty) return;
+
+    showCupertinoDialog<void>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('批量删除'),
+        content: Text('确定要删除选中的 ${_selectedTrackIds.length} 首歌曲吗？'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () async {
+              Navigator.pop(context);
+              final tracksToDelete = _playlistService.currentTracks
+                  .where((track) => _selectedTrackIds.contains(_getTrackKey(track)))
+                  .toList();
+
+              final deletedCount = await _playlistService.removeTracksFromPlaylist(
+                _selectedPlaylist!.id,
+                tracksToDelete,
+              );
+
+              _showCupertinoToast('已删除 $deletedCount 首歌曲');
+
+              setState(() {
+                _isEditMode = false;
+                _selectedTrackIds.clear();
+              });
+            },
+            child: const Text('删除'),
+          ),
         ],
       ),
     );
