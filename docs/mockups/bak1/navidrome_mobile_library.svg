@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="390" height="844" viewBox="0 0 390 844" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Navidrome Mobile Library - Option B: Chips Filter (Modern Flat Style) -->
+  
+  <!-- Background -->
+  <rect width="390" height="844" fill="#0A0A0A"/>
+
+  <!-- Status Bar -->
+  <rect y="0" width="390" height="54" fill="#0A0A0A"/>
+  <text x="24" y="36" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600">9:41</text>
+  <text x="340" y="36" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="15">100%</text>
+
+  <!-- Header & Search Icon -->
+  <g transform="translate(0, 70)">
+    <text x="24" y="40" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="34" font-weight="700">音乐库</text>
+    <circle cx="350" cy="28" r="22" fill="#1C1C1E"/>
+    <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="#0A84FF" transform="translate(338, 16) scale(1.0)"/>
+  </g>
+
+  <!-- Filter Chips Row -->
+  <g transform="translate(16, 140)">
+    <!-- Chip: Playlists (Active) -->
+    <rect x="0" y="0" width="70" height="32" rx="16" fill="#FFFFFF"/>
+    <text x="35" y="21" fill="#000000" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="600" text-anchor="middle">歌单</text>
+
+    <!-- Chip: Artists -->
+    <rect x="78" y="0" width="80" height="32" rx="16" fill="#1C1C1E" stroke="#2C2C2E" stroke-width="1"/>
+    <text x="118" y="21" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="500" text-anchor="middle">艺术家</text>
+
+    <!-- Chip: Albums -->
+    <rect x="166" y="0" width="70" height="32" rx="16" fill="#1C1C1E" stroke="#2C2C2E" stroke-width="1"/>
+    <text x="201" y="21" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="500" text-anchor="middle">专辑</text>
+
+    <!-- Chip: Radio (New) -->
+    <rect x="244" y="0" width="70" height="32" rx="16" fill="#1C1C1E" stroke="#2C2C2E" stroke-width="1"/>
+    <text x="279" y="21" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="500" text-anchor="middle">电台</text>
+    
+    <!-- Chip: Songs (Cutoff) -->
+    <path d="M322 16c0-8.84 7.16-16 16-16h40v32h-40c-8.84 0-16-7.16-16-16z" fill="#1C1C1E" stroke="#2C2C2E" stroke-width="1"/>
+  </g>
+
+  <!-- Content Grid (Merged Flow) -->
+  <g transform="translate(16, 196)">
+    <!-- Item 1 -->
+    <g>
+      <rect width="170" height="170" rx="12" fill="#2C2C2E"/>
+      <rect x="50" y="65" width="70" height="40" rx="6" fill="#3A3A3C"/>
+      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" fill="#8E8E93" transform="translate(73, 73) scale(1.0)"/>
+      <text x="0" y="194" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600">Random Access</text>
+      <text x="0" y="214" fill="#8E8E93" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="13">Daft Punk · 专辑</text>
+    </g>
+
+    <!-- Item 2 -->
+    <g transform="translate(188, 0)">
+      <rect width="170" height="170" rx="12" fill="#1E3A5F"/>
+      <rect x="50" y="65" width="70" height="40" rx="6" fill="#2A4A6F"/>
+      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" fill="#4A9FFF" transform="translate(73, 73) scale(1.0)"/>
+      <text x="0" y="194" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600">The Dark Side</text>
+      <text x="0" y="214" fill="#8E8E93" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="13">Pink Floyd · 专辑</text>
+    </g>
+
+    <!-- Item 3 -->
+    <g transform="translate(0, 240)">
+      <rect width="170" height="170" rx="12" fill="#3D2E1E"/>
+      <rect x="50" y="65" width="70" height="40" rx="6" fill="#4D3E2E"/>
+      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" fill="#D4A574" transform="translate(73, 73) scale(1.0)"/>
+      <text x="0" y="194" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600">Abbey Road</text>
+      <text x="0" y="214" fill="#8E8E93" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="13">The Beatles · 专辑</text>
+    </g>
+
+    <!-- Item 4 -->
+    <g transform="translate(188, 240)">
+      <rect width="170" height="170" rx="12" fill="#2E1E3D"/>
+      <rect x="50" y="65" width="70" height="40" rx="6" fill="#3E2E4D"/>
+      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" fill="#9F7AEA" transform="translate(73, 73) scale(1.0)"/>
+      <text x="0" y="194" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600">Purple Rain</text>
+      <text x="0" y="214" fill="#8E8E93" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="13">Prince · 专辑</text>
+    </g>
+    
+    <!-- Item 5 -->
+    <g transform="translate(0, 480)">
+      <rect width="170" height="170" rx="12" fill="#1E2E1E"/>
+      <rect x="50" y="65" width="70" height="40" rx="6" fill="#2E3E2E"/>
+      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" fill="#68D391" transform="translate(73, 73) scale(1.0)"/>
+      <text x="0" y="194" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600">Good Kid</text>
+      <text x="0" y="214" fill="#8E8E93" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="13">Kendrick Lamar · 专辑</text>
+    </g>
+
+    <!-- Item 6 -->
+    <g transform="translate(188, 480)">
+      <rect width="170" height="170" rx="12" fill="#3D1E1E"/>
+      <rect x="50" y="65" width="70" height="40" rx="6" fill="#4D2E2E"/>
+      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" fill="#FC8181" transform="translate(73, 73) scale(1.0)"/>
+      <text x="0" y="194" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600">Thriller</text>
+      <text x="0" y="214" fill="#8E8E93" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="13">Michael Jackson · 专辑</text>
+    </g>
+  </g>
+
+  <!-- Mini Player (Unchanged) -->
+  <g transform="translate(0, 736)">
+    <rect width="390" height="64" fill="#1C1C1E"/>
+    <rect x="0" y="0" width="390" height="2" fill="#2C2C2E"/>
+    <rect x="0" y="0" width="156" height="2" fill="#0A84FF"/>
+    <rect x="16" y="14" width="40" height="40" rx="8" fill="#2C2C2E"/>
+    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" fill="#8E8E93" transform="translate(24, 22) scale(1.0)"/>
+    <text x="68" y="30" fill="#FFFFFF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="500">Random Access Memories</text>
+    <text x="68" y="48" fill="#8E8E93" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="12">Daft Punk</text>
+    <circle cx="330" cy="34" r="18" fill="#0A84FF"/>
+    <rect x="324" y="26" width="4" height="16" rx="2" fill="#FFFFFF"/>
+    <rect x="332" y="26" width="4" height="16" rx="2" fill="#FFFFFF"/>
+  </g>
+
+  <!-- Bottom Tab Bar (Standard) -->
+  <g transform="translate(0, 800)">
+    <rect width="390" height="44" fill="#0F0F0F"/>
+    <line x1="0" y1="0" x2="390" y2="0" stroke="#2C2C2E" stroke-width="0.5"/>
+    
+    <!-- Library (Active) -->
+    <g transform="translate(38, 8)">
+      <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z" fill="#0A84FF" transform="translate(4, -2) scale(0.9)"/>
+      <text x="14" y="32" fill="#0A84FF" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="10" text-anchor="middle">音乐库</text>
+    </g>
+    
+    <!-- Search -->
+    <g transform="translate(126, 8)">
+      <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="#8E8E93" transform="translate(4, -2) scale(0.9)"/>
+      <text x="14" y="32" fill="#8E8E93" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="10" text-anchor="middle">搜索</text>
+    </g>
+    
+    <!-- My -->
+    <g transform="translate(214, 8)">
+      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="#8E8E93" transform="translate(4, -2) scale(0.9)"/>
+      <text x="14" y="32" fill="#8E8E93" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="10" text-anchor="middle">收藏</text>
+    </g>
+    
+    <!-- Settings -->
+    <g transform="translate(302, 8)">
+      <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L5.09 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="#8E8E93" transform="translate(4, -2) scale(0.9)"/>
+      <text x="14" y="32" fill="#8E8E93" font-family="SF Pro Display, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="10" text-anchor="middle">设置</text>
+    </g>
+  </g>
+</svg>

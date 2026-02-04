@@ -97,6 +97,9 @@ class AudioQualityService extends ChangeNotifier {
         return [AudioQuality.standard, AudioQuality.exhigh, AudioQuality.lossless];
       case AudioSourceType.omniparse:
         return omniParseQualities;
+      case AudioSourceType.navidrome:
+        // Navidrome 以服务端实际文件为准，这里给出全量可选
+        return _qualityPriority;
     }
   }
   

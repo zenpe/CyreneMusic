@@ -47,7 +47,11 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
 
   List<MusicSource> _getAvailableSources() {
     return MusicSource.values
-        .where((s) => s != MusicSource.local && s != MusicSource.apple && s != widget.currentSource)
+        .where((s) =>
+            s != MusicSource.local &&
+            s != MusicSource.apple &&
+            s != MusicSource.navidrome &&
+            s != widget.currentSource)
         .toList();
   }
 
@@ -508,6 +512,8 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
         return '酷狗';
       case MusicSource.kuwo:
         return '酷我';
+      case MusicSource.navidrome:
+        return 'Navidrome';
       case MusicSource.local:
         return '本地';
     }
@@ -1290,6 +1296,8 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
         return '酷狗';
       case MusicSource.kuwo:
         return '酷我';
+      case MusicSource.navidrome:
+        return 'Navidrome';
       case MusicSource.local:
         return '本地';
     }

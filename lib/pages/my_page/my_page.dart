@@ -239,6 +239,7 @@ class _MyPageState extends State<MyPage> {
       case 'MusicSource.netease': return '🎵';
       case 'MusicSource.qq': return '🎶';
       case 'MusicSource.kugou': return '🎼';
+      case 'MusicSource.navidrome': return '🎧';
       default: return '🎵';
     }
   }

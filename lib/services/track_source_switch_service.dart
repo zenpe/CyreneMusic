@@ -176,6 +176,8 @@ class TrackSourceSwitchService extends ChangeNotifier {
           return await _searchKugou(keyword, baseUrl);
         case MusicSource.kuwo:
           return await _searchKuwo(keyword, baseUrl);
+        case MusicSource.navidrome:
+          return [];
         case MusicSource.local:
           return [];
       }

@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="390" height="844" viewBox="0 0 390 844" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Navidrome Search Page - Dark Theme -->
+  <!-- 分Tab显示搜索结果 + 电台搜索 -->
+
+  <!-- Background -->
+  <rect width="390" height="844" fill="#0A0A0A"/>
+
+  <!-- Status Bar -->
+  <rect y="0" width="390" height="54" fill="#0A0A0A"/>
+  <text x="24" y="36" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="15" font-weight="600">9:41</text>
+  <text x="340" y="36" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="15">100%</text>
+
+  <!-- Header -->
+  <text x="24" y="100" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="34" font-weight="700">搜索</text>
+
+  <!-- Search Bar (Active) -->
+  <rect x="16" y="120" width="310" height="48" rx="14" fill="#1C1C1E"/>
+  <rect x="16" y="120" width="310" height="48" rx="14" stroke="#0A84FF" stroke-width="2" fill="none"/>
+  <text x="24" y="150" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="16">🔍</text>
+  <text x="52" y="150" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="16">pink fl</text>
+  <rect x="100" y="136" width="2" height="18" fill="#0A84FF"/>
+
+  <!-- Cancel button -->
+  <text x="342" y="150" fill="#0A84FF" font-family="SF Pro Display, system-ui" font-size="16">取消</text>
+
+  <!-- Search Result Tabs - 可滚动 -->
+  <g transform="translate(16, 184)">
+    <!-- 全部 (Active) -->
+    <rect x="0" y="0" width="48" height="32" rx="16" fill="#0A84FF"/>
+    <text x="24" y="22" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="13" font-weight="600" text-anchor="middle">全部</text>
+
+    <!-- 艺术家 -->
+    <rect x="56" y="0" width="56" height="32" rx="16" fill="#1C1C1E"/>
+    <text x="84" y="22" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="13" text-anchor="middle">艺术家</text>
+
+    <!-- 专辑 -->
+    <rect x="120" y="0" width="48" height="32" rx="16" fill="#1C1C1E"/>
+    <text x="144" y="22" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="13" text-anchor="middle">专辑</text>
+
+    <!-- 歌曲 -->
+    <rect x="176" y="0" width="48" height="32" rx="16" fill="#1C1C1E"/>
+    <text x="200" y="22" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="13" text-anchor="middle">歌曲</text>
+
+    <!-- 歌单 -->
+    <rect x="232" y="0" width="48" height="32" rx="16" fill="#1C1C1E"/>
+    <text x="256" y="22" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="13" text-anchor="middle">歌单</text>
+
+    <!-- 电台 -->
+    <rect x="288" y="0" width="48" height="32" rx="16" fill="#1C1C1E"/>
+    <text x="312" y="22" fill="#FF9500" font-family="SF Pro Display, system-ui" font-size="13" text-anchor="middle">电台</text>
+  </g>
+
+  <!-- Search Results -->
+  <g transform="translate(0, 232)">
+    <!-- Section: 艺术家 -->
+    <g transform="translate(16, 0)">
+      <text x="8" y="20" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="16" font-weight="600">艺术家</text>
+      <text x="310" y="20" fill="#0A84FF" font-family="SF Pro Display, system-ui" font-size="13">查看全部</text>
+    </g>
+
+    <g transform="translate(16, 36)">
+      <rect width="358" height="64" rx="14" fill="#1C1C1E"/>
+      <circle cx="40" cy="32" r="24" fill="#1E3A5F"/>
+      <text x="40" y="38" fill="#4A9FFF" font-family="SF Pro Display, system-ui" font-size="20" text-anchor="middle">👤</text>
+      <text x="76" y="26" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="15" font-weight="500">Pink Floyd</text>
+      <text x="76" y="46" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12">8 张专辑 · 67 首歌曲</text>
+      <text x="340" y="36" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="18">›</text>
+    </g>
+
+    <!-- Section: 专辑 -->
+    <g transform="translate(16, 116)">
+      <text x="8" y="20" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="16" font-weight="600">专辑</text>
+      <text x="310" y="20" fill="#0A84FF" font-family="SF Pro Display, system-ui" font-size="13">查看全部</text>
+    </g>
+
+    <!-- 专辑横向滚动卡片 -->
+    <g transform="translate(16, 152)">
+      <!-- Album 1 -->
+      <g>
+        <rect width="120" height="120" rx="12" fill="#2A4A6F"/>
+        <rect x="30" y="35" width="60" height="50" rx="8" fill="#3A5A7F"/>
+        <text x="60" y="68" fill="#4A9FFF" font-family="SF Pro Display, system-ui" font-size="22" text-anchor="middle">♪</text>
+        <text x="8" y="140" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="12" font-weight="500">The Dark Side</text>
+        <text x="8" y="156" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="11">Pink Floyd</text>
+      </g>
+
+      <!-- Album 2 -->
+      <g transform="translate(132, 0)">
+        <rect width="120" height="120" rx="12" fill="#3D2E4E"/>
+        <rect x="30" y="35" width="60" height="50" rx="8" fill="#4D3E5E"/>
+        <text x="60" y="68" fill="#9F7AEA" font-family="SF Pro Display, system-ui" font-size="22" text-anchor="middle">♪</text>
+        <text x="8" y="140" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="12" font-weight="500">The Wall</text>
+        <text x="8" y="156" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="11">Pink Floyd</text>
+      </g>
+
+      <!-- Album 3 (partial) -->
+      <g transform="translate(264, 0)">
+        <rect width="120" height="120" rx="12" fill="#2E3D1E"/>
+        <rect x="30" y="35" width="60" height="50" rx="8" fill="#3E4D2E"/>
+        <text x="60" y="68" fill="#68D391" font-family="SF Pro Display, system-ui" font-size="22" text-anchor="middle">♪</text>
+      </g>
+    </g>
+
+    <!-- Section: 歌曲 -->
+    <g transform="translate(16, 340)">
+      <text x="8" y="20" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="16" font-weight="600">歌曲</text>
+      <text x="310" y="20" fill="#0A84FF" font-family="SF Pro Display, system-ui" font-size="13">查看全部</text>
+    </g>
+
+    <g transform="translate(16, 356)">
+      <!-- Song 1 -->
+      <rect width="358" height="60" rx="12" fill="#1C1C1E"/>
+      <rect x="10" y="10" width="40" height="40" rx="8" fill="#2A4A6F"/>
+      <text x="30" y="36" fill="#4A9FFF" font-family="SF Pro Display, system-ui" font-size="14" text-anchor="middle">♪</text>
+      <text x="62" y="28" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500">Money</text>
+      <text x="62" y="46" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12">Pink Floyd</text>
+      <text x="332" y="36" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12">6:22</text>
+
+      <!-- Song 2 -->
+      <g transform="translate(0, 68)">
+        <rect width="358" height="60" rx="12" fill="#1C1C1E"/>
+        <rect x="10" y="10" width="40" height="40" rx="8" fill="#2A4A6F"/>
+        <text x="30" y="36" fill="#4A9FFF" font-family="SF Pro Display, system-ui" font-size="14" text-anchor="middle">♪</text>
+        <text x="62" y="28" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500">Time</text>
+        <text x="62" y="46" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12">Pink Floyd</text>
+        <text x="332" y="36" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12">6:53</text>
+      </g>
+    </g>
+
+    <!-- Section: 网络电台 -->
+    <g transform="translate(16, 508)">
+      <text x="8" y="20" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="16" font-weight="600">网络电台</text>
+      <text x="310" y="20" fill="#0A84FF" font-family="SF Pro Display, system-ui" font-size="13">查看全部</text>
+    </g>
+
+    <g transform="translate(16, 524)">
+      <!-- Radio Station 1 -->
+      <rect width="358" height="60" rx="12" fill="#1C1C1E"/>
+      <circle cx="36" cy="30" r="20" fill="#FF9500" opacity="0.15"/>
+      <text x="36" y="36" fill="#FF9500" font-family="SF Pro Display, system-ui" font-size="18" text-anchor="middle">📻</text>
+      <text x="68" y="24" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500">Classic Rock FM</text>
+      <text x="68" y="42" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12">Rock · 128kbps</text>
+      <!-- 播放状态指示 -->
+      <circle cx="330" cy="30" r="14" fill="#FF9500"/>
+      <polygon points="326,24 326,36 336,30" fill="#FFFFFF"/>
+
+      <!-- Radio Station 2 -->
+      <g transform="translate(0, 68)">
+        <rect width="358" height="60" rx="12" fill="#1C1C1E"/>
+        <circle cx="36" cy="30" r="20" fill="#9F7AEA" opacity="0.15"/>
+        <text x="36" y="36" fill="#9F7AEA" font-family="SF Pro Display, system-ui" font-size="18" text-anchor="middle">📻</text>
+        <text x="68" y="24" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500">Pink Floyd Radio</text>
+        <text x="68" y="42" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12">Progressive Rock · 320kbps</text>
+        <circle cx="330" cy="30" r="14" fill="#1C1C1E" stroke="#5A5A5E" stroke-width="1"/>
+        <polygon points="326,24 326,36 336,30" fill="#5A5A5E"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- Bottom Tab Bar -->
+  <g transform="translate(0, 800)">
+    <rect width="390" height="44" fill="#0F0F0F"/>
+    <line x1="0" y1="0" x2="390" y2="0" stroke="#2C2C2E" stroke-width="0.5"/>
+
+    <!-- Library -->
+    <g transform="translate(24, 8)">
+      <text x="12" y="14" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="20" text-anchor="middle">📚</text>
+      <text x="12" y="32" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="10" text-anchor="middle">音乐库</text>
+    </g>
+
+    <!-- Search (Active) -->
+    <g transform="translate(94, 8)">
+      <text x="12" y="14" fill="#0A84FF" font-family="SF Pro Display, system-ui" font-size="20" text-anchor="middle">🔍</text>
+      <text x="12" y="32" fill="#0A84FF" font-family="SF Pro Display, system-ui" font-size="10" text-anchor="middle">搜索</text>
+    </g>
+
+    <!-- Radio -->
+    <g transform="translate(164, 8)">
+      <text x="12" y="14" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="20" text-anchor="middle">📻</text>
+      <text x="12" y="32" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="10" text-anchor="middle">电台</text>
+    </g>
+
+    <!-- Favorites -->
+    <g transform="translate(234, 8)">
+      <text x="12" y="14" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="20" text-anchor="middle">❤️</text>
+      <text x="12" y="32" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="10" text-anchor="middle">收藏</text>
+    </g>
+
+    <!-- Settings -->
+    <g transform="translate(304, 8)">
+      <text x="12" y="14" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="20" text-anchor="middle">⚙️</text>
+      <text x="12" y="32" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="10" text-anchor="middle">设置</text>
+    </g>
+  </g>
+</svg>

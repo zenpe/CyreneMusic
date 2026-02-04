@@ -11,6 +11,7 @@ import 'developer_mode_service.dart';
 import 'audio_quality_service.dart';
 import 'auth_service.dart';
 import 'lx_music_runtime_service.dart';
+import 'navidrome_session_service.dart';
 
 /// 音乐服务 - 处理与音乐相关的API请求
 class MusicService extends ChangeNotifier {
@@ -208,6 +209,29 @@ class MusicService extends ChangeNotifier {
         return null;
       }
 
+      // Navidrome 使用独立 API
+      if (source == MusicSource.navidrome) {
+        final session = NavidromeSessionService();
+        if (!session.isConfigured) {
+          throw AudioSourceNotConfiguredException('Navidrome 未配置，请在设置中配置 Navidrome');
+        }
+        final api = session.api!;
+        final streamUrl = api.buildStreamUrl(songId.toString());
+        return SongDetail(
+          id: songId,
+          name: '',
+          pic: '',
+          arName: '',
+          alName: '',
+          level: quality.displayName,
+          size: '0',
+          url: streamUrl,
+          lyric: '',
+          tlyric: '',
+          source: source,
+        );
+      }
+
       // 检查音源是否已配置
       final audioSourceService = AudioSourceService();
       if (!audioSourceService.isConfigured) {
@@ -373,6 +397,9 @@ class MusicService extends ChangeNotifier {
             },
           );
           break;
+
+        case MusicSource.navidrome:
+          return null;
 
         case MusicSource.local:
           // 本地音乐已在方法开头处理，不会到达这里
@@ -791,6 +818,8 @@ class MusicService extends ChangeNotifier {
       case MusicSource.kuwo:
         url = '$baseUrl/lyrics/kuwo?mid=$songId';
         break;
+      case MusicSource.navidrome:
+        return null;
       default:
         print('⚠️ [MusicService] 后端歌词 API 不支持 ${source.name}');
         return null;

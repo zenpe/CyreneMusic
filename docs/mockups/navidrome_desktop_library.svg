@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1280" height="800" viewBox="0 0 1280 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Navidrome Desktop Library - Dark Theme -->
+  <!-- 优化：简化侧边栏结构，加入电台，优化视觉层次 -->
+
+  <!-- Background -->
+  <rect width="1280" height="800" fill="#0A0A0A"/>
+
+  <!-- Title Bar -->
+  <rect width="1280" height="40" fill="#141414"/>
+  <circle cx="20" cy="20" r="6" fill="#FF5F56"/>
+  <circle cx="40" cy="20" r="6" fill="#FFBD2E"/>
+  <circle cx="60" cy="20" r="6" fill="#27CA40"/>
+  <text x="640" y="26" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="13" font-weight="500" text-anchor="middle">Cyrene Music - Navidrome</text>
+
+  <!-- Sidebar - 简化结构 -->
+  <rect x="0" y="40" width="220" height="760" fill="#0F0F0F"/>
+  <line x1="220" y1="40" x2="220" y2="800" stroke="#1C1C1E" stroke-width="1"/>
+
+  <!-- Sidebar Navigation - 扁平化设计 -->
+  <g transform="translate(0, 60)">
+    <!-- 最近播放 (Active) -->
+    <rect x="12" y="0" width="196" height="44" rx="10" fill="#0A84FF" opacity="0.15"/>
+    <text x="48" y="28" fill="#0A84FF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500">最近播放</text>
+    <text x="24" y="28" fill="#0A84FF" font-family="SF Pro Display, system-ui" font-size="16">🕐</text>
+
+    <!-- 艺术家 -->
+    <g transform="translate(0, 48)">
+      <rect x="12" y="0" width="196" height="44" rx="10" fill="transparent"/>
+      <text x="48" y="28" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14">艺术家</text>
+      <text x="24" y="28" fill="#FF6B6B" font-family="SF Pro Display, system-ui" font-size="16">👤</text>
+      <text x="188" y="28" fill="#5A5A5E" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="end">89</text>
+    </g>
+
+    <!-- 专辑 -->
+    <g transform="translate(0, 96)">
+      <rect x="12" y="0" width="196" height="44" rx="10" fill="transparent"/>
+      <text x="48" y="28" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14">专辑</text>
+      <text x="24" y="28" fill="#4A9FFF" font-family="SF Pro Display, system-ui" font-size="16">💿</text>
+      <text x="188" y="28" fill="#5A5A5E" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="end">156</text>
+    </g>
+
+    <!-- 歌曲 -->
+    <g transform="translate(0, 144)">
+      <rect x="12" y="0" width="196" height="44" rx="10" fill="transparent"/>
+      <text x="48" y="28" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14">歌曲</text>
+      <text x="24" y="28" fill="#48BB78" font-family="SF Pro Display, system-ui" font-size="16">🎵</text>
+      <text x="188" y="28" fill="#5A5A5E" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="end">1,234</text>
+    </g>
+
+    <!-- 流派 -->
+    <g transform="translate(0, 192)">
+      <rect x="12" y="0" width="196" height="44" rx="10" fill="transparent"/>
+      <text x="48" y="28" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14">流派</text>
+      <text x="24" y="28" fill="#ECC94B" font-family="SF Pro Display, system-ui" font-size="16">🎭</text>
+      <text x="188" y="28" fill="#5A5A5E" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="end">24</text>
+    </g>
+
+    <!-- 歌单 -->
+    <g transform="translate(0, 240)">
+      <rect x="12" y="0" width="196" height="44" rx="10" fill="transparent"/>
+      <text x="48" y="28" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14">歌单</text>
+      <text x="24" y="28" fill="#9F7AEA" font-family="SF Pro Display, system-ui" font-size="16">📋</text>
+      <text x="188" y="28" fill="#5A5A5E" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="end">5</text>
+    </g>
+
+    <!-- 喜欢 -->
+    <g transform="translate(0, 288)">
+      <rect x="12" y="0" width="196" height="44" rx="10" fill="transparent"/>
+      <text x="48" y="28" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14">喜欢</text>
+      <text x="24" y="28" fill="#FF6B6B" font-family="SF Pro Display, system-ui" font-size="16">❤️</text>
+      <text x="188" y="28" fill="#5A5A5E" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="end">42</text>
+    </g>
+
+    <!-- 电台 - 新增，与其他项目并列 -->
+    <g transform="translate(0, 336)">
+      <rect x="12" y="0" width="196" height="44" rx="10" fill="transparent"/>
+      <text x="48" y="28" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14">电台</text>
+      <text x="24" y="28" fill="#FF9500" font-family="SF Pro Display, system-ui" font-size="16">📻</text>
+      <text x="188" y="28" fill="#5A5A5E" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="end">8</text>
+    </g>
+  </g>
+
+  <!-- 分隔线 -->
+  <line x1="24" y1="460" x2="196" y2="460" stroke="#1C1C1E" stroke-width="1"/>
+
+  <!-- 智能列表 -->
+  <text x="24" y="490" fill="#5A5A5E" font-family="SF Pro Display, system-ui" font-size="11" font-weight="600" letter-spacing="0.5">智能列表</text>
+
+  <g transform="translate(0, 504)">
+    <rect x="12" y="0" width="196" height="40" rx="8" fill="transparent"/>
+    <text x="44" y="26" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="13">最常播放</text>
+    <text x="24" y="26" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="14">🔥</text>
+
+    <g transform="translate(0, 40)">
+      <rect x="12" y="0" width="196" height="40" rx="8" fill="transparent"/>
+      <text x="44" y="26" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="13">随机发现</text>
+      <text x="24" y="26" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="14">🎲</text>
+    </g>
+
+    <g transform="translate(0, 80)">
+      <rect x="12" y="0" width="196" height="40" rx="8" fill="transparent"/>
+      <text x="44" y="26" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="13">最近添加</text>
+      <text x="24" y="26" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="14">➕</text>
+    </g>
+  </g>
+
+  <!-- Server Status -->
+  <g transform="translate(12, 720)">
+    <rect width="196" height="48" rx="10" fill="#1C1C1E"/>
+    <circle cx="24" cy="24" r="5" fill="#30D158"/>
+    <text x="40" y="20" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="12" font-weight="500">my-server.local</text>
+    <text x="40" y="36" fill="#5A5A5E" font-family="SF Pro Display, system-ui" font-size="11">在线 · 1,234 首歌曲</text>
+  </g>
+
+  <!-- Main Content Area -->
+  <g transform="translate(220, 40)">
+    <!-- Content Header -->
+    <rect width="1060" height="72" fill="#0A0A0A"/>
+
+    <!-- Title -->
+    <text x="32" y="46" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="28" font-weight="700">最近播放</text>
+
+    <!-- Search & Controls -->
+    <rect x="720" y="16" width="220" height="40" rx="10" fill="#1C1C1E"/>
+    <text x="748" y="42" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="14">🔍 搜索...</text>
+
+    <!-- Shuffle Button -->
+    <rect x="956" y="16" width="80" height="40" rx="20" fill="#0A84FF"/>
+    <text x="996" y="42" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500" text-anchor="middle">随机</text>
+  </g>
+
+  <!-- Album Grid -->
+  <g transform="translate(252, 128)">
+    <!-- Row 1 -->
+    <g>
+      <!-- Album 1 -->
+      <g>
+        <rect width="180" height="180" rx="14" fill="#2C2C2E"/>
+        <rect x="40" y="50" width="100" height="80" rx="10" fill="#3A3A3C"/>
+        <text x="90" y="100" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="28" text-anchor="middle">♪</text>
+        <text x="90" y="206" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500" text-anchor="middle">Random Access</text>
+        <text x="90" y="226" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="middle">Daft Punk</text>
+      </g>
+
+      <!-- Album 2 -->
+      <g transform="translate(196, 0)">
+        <rect width="180" height="180" rx="14" fill="#1E3A5F"/>
+        <rect x="40" y="50" width="100" height="80" rx="10" fill="#2A4A6F"/>
+        <text x="90" y="100" fill="#4A9FFF" font-family="SF Pro Display, system-ui" font-size="28" text-anchor="middle">♪</text>
+        <text x="90" y="206" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500" text-anchor="middle">The Dark Side</text>
+        <text x="90" y="226" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="middle">Pink Floyd</text>
+      </g>
+
+      <!-- Album 3 -->
+      <g transform="translate(392, 0)">
+        <rect width="180" height="180" rx="14" fill="#3D2E1E"/>
+        <rect x="40" y="50" width="100" height="80" rx="10" fill="#4D3E2E"/>
+        <text x="90" y="100" fill="#D4A574" font-family="SF Pro Display, system-ui" font-size="28" text-anchor="middle">♪</text>
+        <text x="90" y="206" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500" text-anchor="middle">Abbey Road</text>
+        <text x="90" y="226" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="middle">The Beatles</text>
+      </g>
+
+      <!-- Album 4 -->
+      <g transform="translate(588, 0)">
+        <rect width="180" height="180" rx="14" fill="#2E1E3D"/>
+        <rect x="40" y="50" width="100" height="80" rx="10" fill="#3E2E4D"/>
+        <text x="90" y="100" fill="#9F7AEA" font-family="SF Pro Display, system-ui" font-size="28" text-anchor="middle">♪</text>
+        <text x="90" y="206" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500" text-anchor="middle">Purple Rain</text>
+        <text x="90" y="226" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="middle">Prince</text>
+      </g>
+
+      <!-- Album 5 -->
+      <g transform="translate(784, 0)">
+        <rect width="180" height="180" rx="14" fill="#1E2E1E"/>
+        <rect x="40" y="50" width="100" height="80" rx="10" fill="#2E3E2E"/>
+        <text x="90" y="100" fill="#68D391" font-family="SF Pro Display, system-ui" font-size="28" text-anchor="middle">♪</text>
+        <text x="90" y="206" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500" text-anchor="middle">Good Kid</text>
+        <text x="90" y="226" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="middle">Kendrick Lamar</text>
+      </g>
+    </g>
+
+    <!-- Row 2 -->
+    <g transform="translate(0, 260)">
+      <!-- Album 6 -->
+      <g>
+        <rect width="180" height="180" rx="14" fill="#3D1E1E"/>
+        <rect x="40" y="50" width="100" height="80" rx="10" fill="#4D2E2E"/>
+        <text x="90" y="100" fill="#FC8181" font-family="SF Pro Display, system-ui" font-size="28" text-anchor="middle">♪</text>
+        <text x="90" y="206" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500" text-anchor="middle">Thriller</text>
+        <text x="90" y="226" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="middle">Michael Jackson</text>
+      </g>
+
+      <!-- Album 7 -->
+      <g transform="translate(196, 0)">
+        <rect width="180" height="180" rx="14" fill="#1E3D3D"/>
+        <rect x="40" y="50" width="100" height="80" rx="10" fill="#2E4D4D"/>
+        <text x="90" y="100" fill="#4FD1C5" font-family="SF Pro Display, system-ui" font-size="28" text-anchor="middle">♪</text>
+        <text x="90" y="206" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500" text-anchor="middle">OK Computer</text>
+        <text x="90" y="226" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="middle">Radiohead</text>
+      </g>
+
+      <!-- Album 8 -->
+      <g transform="translate(392, 0)">
+        <rect width="180" height="180" rx="14" fill="#3D3D1E"/>
+        <rect x="40" y="50" width="100" height="80" rx="10" fill="#4D4D2E"/>
+        <text x="90" y="100" fill="#ECC94B" font-family="SF Pro Display, system-ui" font-size="28" text-anchor="middle">♪</text>
+        <text x="90" y="206" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500" text-anchor="middle">A Night at Opera</text>
+        <text x="90" y="226" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="middle">Queen</text>
+      </g>
+
+      <!-- Album 9 -->
+      <g transform="translate(588, 0)">
+        <rect width="180" height="180" rx="14" fill="#2C2C2E"/>
+        <rect x="40" y="50" width="100" height="80" rx="10" fill="#3A3A3C"/>
+        <text x="90" y="100" fill="#A0AEC0" font-family="SF Pro Display, system-ui" font-size="28" text-anchor="middle">♪</text>
+        <text x="90" y="206" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500" text-anchor="middle">Parachutes</text>
+        <text x="90" y="226" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="middle">Coldplay</text>
+      </g>
+
+      <!-- Album 10 -->
+      <g transform="translate(784, 0)">
+        <rect width="180" height="180" rx="14" fill="#3D1E2E"/>
+        <rect x="40" y="50" width="100" height="80" rx="10" fill="#4D2E3E"/>
+        <text x="90" y="100" fill="#ED64A6" font-family="SF Pro Display, system-ui" font-size="28" text-anchor="middle">♪</text>
+        <text x="90" y="206" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500" text-anchor="middle">1989</text>
+        <text x="90" y="226" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12" text-anchor="middle">Taylor Swift</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Mini Player -->
+  <g transform="translate(220, 720)">
+    <rect width="1060" height="80" fill="#141414"/>
+    <line x1="0" y1="0" x2="1060" y2="0" stroke="#1C1C1E" stroke-width="1"/>
+
+    <!-- Progress Bar -->
+    <rect x="0" y="0" width="1060" height="3" fill="#2C2C2E"/>
+    <rect x="0" y="0" width="424" height="3" fill="#0A84FF"/>
+
+    <!-- Album Art -->
+    <rect x="24" y="18" width="48" height="48" rx="8" fill="#1E3A5F"/>
+    <text x="48" y="48" fill="#4A9FFF" font-family="SF Pro Display, system-ui" font-size="18" text-anchor="middle">♪</text>
+
+    <!-- Track Info -->
+    <text x="88" y="38" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" font-weight="500">Breathe (In the Air)</text>
+    <text x="88" y="56" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12">Pink Floyd · The Dark Side of the Moon</text>
+
+    <!-- Controls -->
+    <g transform="translate(480, 24)">
+      <circle cx="0" cy="16" r="16" fill="#1C1C1E"/>
+      <text x="0" y="22" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" text-anchor="middle">⏮</text>
+
+      <circle cx="56" cy="16" r="24" fill="#0A84FF"/>
+      <rect x="48" y="6" width="5" height="20" rx="2" fill="#FFFFFF"/>
+      <rect x="59" y="6" width="5" height="20" rx="2" fill="#FFFFFF"/>
+
+      <circle cx="112" cy="16" r="16" fill="#1C1C1E"/>
+      <text x="112" y="22" fill="#FFFFFF" font-family="SF Pro Display, system-ui" font-size="14" text-anchor="middle">⏭</text>
+    </g>
+
+    <!-- Time -->
+    <text x="680" y="46" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="12">1:23 / 2:49</text>
+
+    <!-- Shuffle & Repeat -->
+    <text x="780" y="46" fill="#5A5A5E" font-family="SF Pro Display, system-ui" font-size="16">🔀</text>
+    <text x="820" y="46" fill="#0A84FF" font-family="SF Pro Display, system-ui" font-size="16">🔁</text>
+
+    <!-- Volume -->
+    <g transform="translate(900, 30)">
+      <text x="0" y="12" fill="#8E8E93" font-family="SF Pro Display, system-ui" font-size="14">🔊</text>
+      <rect x="28" y="6" width="100" height="4" rx="2" fill="#2C2C2E"/>
+      <rect x="28" y="6" width="70" height="4" rx="2" fill="#FFFFFF"/>
+    </g>
+  </g>
+</svg>

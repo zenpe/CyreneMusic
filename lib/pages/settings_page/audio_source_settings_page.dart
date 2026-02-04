@@ -8,8 +8,10 @@ import '../../widgets/material/material_settings_widgets.dart';
 import '../../services/audio_source_service.dart';
 
 import '../../services/lx_music_source_parser.dart';
+import '../../services/navidrome_session_service.dart';
 import '../../models/audio_source_config.dart';
 import '../../utils/theme_manager.dart';
+import '../navidrome_settings_page.dart';
 
 /// 音源设置二级页面内容
 class AudioSourceSettingsContent extends StatefulWidget {
@@ -70,11 +72,13 @@ class _AudioSourceSettingsContentState
   void initState() {
     super.initState();
     _audioSourceService.addListener(_onSourceChanged);
+    NavidromeSessionService().addListener(_onSourceChanged);
   }
 
   @override
   void dispose() {
     _audioSourceService.removeListener(_onSourceChanged);
+    NavidromeSessionService().removeListener(_onSourceChanged);
     super.dispose();
   }
 
@@ -87,6 +91,22 @@ class _AudioSourceSettingsContentState
   /// 切换当前活动音源
   void _setActiveSource(String id) {
     _audioSourceService.setActiveSource(id);
+  }
+
+  Future<void> _activateNavidrome({bool openSettingsIfUnconfigured = true}) async {
+    await _audioSourceService.setActiveSource(AudioSourceService.navidromeSourceId);
+    if (openSettingsIfUnconfigured && !_isNavidromeConfigured && mounted) {
+      await _openNavidromeSettings();
+    }
+  }
+
+  Future<void> _openNavidromeSettings() async {
+    await _audioSourceService.setActiveSource(AudioSourceService.navidromeSourceId);
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const NavidromeSettingsPage()),
+    );
   }
 
   /// 删除音源
@@ -180,8 +200,21 @@ class _AudioSourceSettingsContentState
       case AudioSourceType.omniparse: return 'OmniParse';
       case AudioSourceType.lxmusic: return '洛雪音乐';
       case AudioSourceType.tunehub: return 'TuneHub';
+      case AudioSourceType.navidrome: return 'Navidrome';
     }
   }
+
+  AudioSourceConfig _buildNavidromeConfig() {
+    final session = NavidromeSessionService();
+    return AudioSourceConfig(
+      id: AudioSourceService.navidromeSourceId,
+      type: AudioSourceType.navidrome,
+      name: 'Navidrome',
+      url: session.baseUrl,
+    );
+  }
+
+  bool get _isNavidromeConfigured => NavidromeSessionService().isConfigured;
 
   // ==================== Builders ====================
 
@@ -203,6 +236,8 @@ class _AudioSourceSettingsContentState
   Widget _buildFluentContent(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
     final sources = _audioSourceService.sources;
+    final navidromeConfig = _buildNavidromeConfig();
+    final displaySources = [navidromeConfig, ...sources];
 
     return fluent.ScaffoldPage(
       content: SingleChildScrollView(
@@ -245,7 +280,9 @@ class _AudioSourceSettingsContentState
               spacing: 16,
               runSpacing: 16,
               children: [
-                ...sources.map((config) => _buildFluentSourceCard(config, theme)),
+                ...displaySources.map((config) => config.type == AudioSourceType.navidrome
+                    ? _buildFluentNavidromeCard(config, theme)
+                    : _buildFluentSourceCard(config, theme)),
                 // 添加音源按钮
                 _buildFluentAddCard(theme),
               ],
@@ -360,6 +397,101 @@ class _AudioSourceSettingsContentState
     );
   }
 
+  Widget _buildFluentNavidromeCard(AudioSourceConfig config, fluent.FluentThemeData theme) {
+    final isActive = _audioSourceService.isNavidromeActive;
+    final isConfigured = _isNavidromeConfigured;
+    final subtitle = isConfigured
+        ? (config.url.isNotEmpty ? config.url : '已配置')
+        : '未配置';
+
+    return SizedBox(
+      width: 280,
+      height: 180,
+      child: fluent.Card(
+        padding: const EdgeInsets.all(12),
+        borderColor: isActive ? theme.accentColor : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      fluent.FluentIcons.server,
+                      size: 20,
+                      color: isActive ? theme.accentColor : theme.resources.textFillColorSecondary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        config.name,
+                        style: theme.typography.subtitle?.copyWith(fontSize: 16),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (isActive)
+                      fluent.Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: theme.accentColor,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '当前使用',
+                          style: theme.typography.caption?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '类型: Navidrome',
+                  style: theme.typography.caption,
+                ),
+                const SizedBox(height: 4),
+                fluent.Tooltip(
+                  message: subtitle,
+                  child: Text(
+                    subtitle,
+                    style: theme.typography.caption?.copyWith(
+                      color: theme.resources.textFillColorSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (!isActive)
+                  fluent.Button(
+                    onPressed: () => _activateNavidrome(
+                      openSettingsIfUnconfigured: !isConfigured,
+                    ),
+                    child: const Text('启用'),
+                  ),
+                const SizedBox(width: 8),
+                fluent.Button(
+                  onPressed: _openNavidromeSettings,
+                  child: Text(isConfigured ? '配置' : '设置'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildFluentAddCard(fluent.FluentThemeData theme) {
     return fluent.MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -395,6 +527,8 @@ class _AudioSourceSettingsContentState
   /// Cupertino 风格内容
   Widget _buildCupertinoContent(BuildContext context) {
     final sources = _audioSourceService.sources;
+    final navidromeConfig = _buildNavidromeConfig();
+    final displaySources = [navidromeConfig, ...sources];
     final brightness = CupertinoTheme.brightnessOf(context);
     final isDark = brightness == Brightness.dark;
     
@@ -413,6 +547,7 @@ class _AudioSourceSettingsContentState
         AudioSourceType.lxmusic => [const Color(0xFF667eea), const Color(0xFF764ba2)],
         AudioSourceType.tunehub => [const Color(0xFF11998e), const Color(0xFF38ef7d)],
         AudioSourceType.omniparse => [const Color(0xFFf093fb), const Color(0xFFf5576c)],
+        AudioSourceType.navidrome => [const Color(0xFF00B4DB), const Color(0xFF0083B0)],
       };
       
       return Container(
@@ -441,6 +576,7 @@ class _AudioSourceSettingsContentState
             AudioSourceType.lxmusic => CupertinoIcons.music_note_2,
             AudioSourceType.tunehub => CupertinoIcons.cloud,
             AudioSourceType.omniparse => CupertinoIcons.link,
+            AudioSourceType.navidrome => CupertinoIcons.music_note_list,
           },
           color: CupertinoColors.white,
           size: 22,
@@ -448,8 +584,232 @@ class _AudioSourceSettingsContentState
       );
     }
 
+    // 构建 Navidrome 卡片
+    Widget buildNavidromeCard(AudioSourceConfig config, int index) {
+      final isActive = _audioSourceService.isNavidromeActive;
+      final isConfigured = _isNavidromeConfigured;
+      final statusText = isConfigured
+          ? (config.url.isNotEmpty ? config.url : '已配置')
+          : '未配置';
+      final actionColor = isActive
+          ? CupertinoColors.inactiveGray.resolveFrom(context)
+          : CupertinoColors.activeBlue.resolveFrom(context);
+
+      return Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: index == 0 ? 0 : 8,
+          bottom: 8,
+        ),
+        child: GestureDetector(
+          onTap: () => _activateNavidrome(openSettingsIfUnconfigured: !isConfigured),
+          child: Container(
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(14),
+              border: isActive
+                  ? Border.all(
+                      color: CupertinoColors.activeBlue.resolveFrom(context),
+                      width: 2,
+                    )
+                  : null,
+              boxShadow: [
+                BoxShadow(
+                  color: CupertinoColors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                // 主内容区
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      // 图标
+                      buildSourceIcon(config, isActive),
+                      const SizedBox(width: 14),
+                      
+                      // 信息
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 名称 + 活跃标签
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    config.name,
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w600,
+                                      color: labelColor,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (isActive) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: CupertinoColors.activeBlue.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      '使用中',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: CupertinoColors.activeBlue.resolveFrom(context),
+                                        decoration: TextDecoration.none,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            
+                            // 类型
+                            Text(
+                              _getSourceTypeName(config.type),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: secondaryLabelColor,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              statusText,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: secondaryLabelColor,
+                                decoration: TextDecoration.none,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      // 右侧箭头
+                      Icon(
+                        CupertinoIcons.chevron_right,
+                        color: CupertinoColors.tertiaryLabel.resolveFrom(context),
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // 分割线
+                Padding(
+                  padding: const EdgeInsets.only(left: 72),
+                  child: Container(
+                    height: 0.5,
+                    color: separatorColor,
+                  ),
+                ),
+                
+                // 操作按钮区
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  child: Row(
+                    children: [
+                      // 配置按钮
+                      Expanded(
+                        child: CupertinoButton(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          minSize: 0,
+                          onPressed: _openNavidromeSettings,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                CupertinoIcons.gear,
+                                size: 16,
+                                color: CupertinoColors.activeBlue.resolveFrom(context),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '配置',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: CupertinoColors.activeBlue.resolveFrom(context),
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      
+                      // 分割线
+                      Container(
+                        width: 0.5,
+                        height: 20,
+                        color: separatorColor,
+                      ),
+                      
+                      // 启用按钮
+                      Expanded(
+                        child: CupertinoButton(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          minSize: 0,
+                          onPressed: isActive
+                              ? null
+                              : () => _activateNavidrome(
+                                    openSettingsIfUnconfigured: !isConfigured,
+                                  ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                isActive ? CupertinoIcons.check_mark : CupertinoIcons.play_fill,
+                                size: 16,
+                                color: actionColor,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                isActive ? '已启用' : '启用',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: actionColor,
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     // 构建单个音源卡片
     Widget buildSourceCard(AudioSourceConfig config, int index) {
+      if (config.type == AudioSourceType.navidrome) {
+        return buildNavidromeCard(config, index);
+      }
+
       final isActive = config.id == _audioSourceService.activeSource?.id;
       
       return Padding(
@@ -716,7 +1076,7 @@ class _AudioSourceSettingsContentState
             ),
             const SizedBox(height: 16),
             Text(
-              '暂无音源',
+              '暂无其他音源',
               style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w600,
@@ -796,11 +1156,11 @@ class _AudioSourceSettingsContentState
             const SizedBox(height: 24),
             
             // 分组标题
-            if (sources.isNotEmpty)
+            if (displaySources.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(left: 32, bottom: 8),
                 child: Text(
-                  '已配置音源',
+                  '音源列表',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
@@ -811,13 +1171,12 @@ class _AudioSourceSettingsContentState
                 ),
               ),
             
-            // 音源列表或空状态
+            // 音源列表
+            ...displaySources.asMap().entries.map(
+              (entry) => buildSourceCard(entry.value, entry.key),
+            ),
             if (sources.isEmpty)
-              buildEmptyState()
-            else
-              ...sources.asMap().entries.map(
-                (entry) => buildSourceCard(entry.value, entry.key),
-              ),
+              buildEmptyState(),
             
             const SizedBox(height: 24),
             
@@ -860,6 +1219,9 @@ class _AudioSourceSettingsContentState
 
   Widget _buildMaterialContent(BuildContext context) {
     final sources = _audioSourceService.sources;
+    final navidromeConfig = _buildNavidromeConfig();
+    final isNavidromeConfigured = _isNavidromeConfigured;
+    final isNavidromeActive = _audioSourceService.isNavidromeActive;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -913,7 +1275,13 @@ class _AudioSourceSettingsContentState
           MD3SettingsSection(
             title: '已配置音源',
             children: [
-              if (sources.isEmpty)
+              _buildMaterialNavidromeTile(
+                navidromeConfig,
+                theme,
+                isNavidromeActive,
+                isNavidromeConfigured,
+              ),
+              if (sources.isEmpty && !isNavidromeConfigured)
                 const Padding(
                   padding: EdgeInsets.all(24.0),
                   child: Center(child: Text('暂无已配置音源')),
@@ -980,6 +1348,50 @@ class _AudioSourceSettingsContentState
       onTap: isActive ? null : () => _setActiveSource(config.id),
     );
   }
+
+  Widget _buildMaterialNavidromeTile(
+    AudioSourceConfig config,
+    ThemeData theme,
+    bool isActive,
+    bool isConfigured,
+  ) {
+    final colorScheme = theme.colorScheme;
+    final status = isConfigured
+        ? (config.url.isNotEmpty ? config.url : '已配置')
+        : '未配置';
+
+    return MD3SettingsTile(
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: isActive ? colorScheme.primaryContainer : colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(
+          Icons.storage_outlined,
+          color: isActive ? colorScheme.onPrimaryContainer : colorScheme.onSurfaceVariant,
+          size: 20,
+        ),
+      ),
+      title: config.name,
+      subtitle: 'Navidrome • ${isActive ? "当前使用" : "未开启"} • $status',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined, size: 20),
+            onPressed: _openNavidromeSettings,
+          ),
+          if (!isActive)
+            IconButton(
+              icon: Icon(Icons.check_circle_outline, size: 20, color: colorScheme.primary),
+              onPressed: () => _activateNavidrome(openSettingsIfUnconfigured: !isConfigured),
+            ),
+        ],
+      ),
+      onTap: isActive ? null : () => _activateNavidrome(openSettingsIfUnconfigured: !isConfigured),
+    );
+  }
 }
 
 /// 添加/编辑音源对话框
@@ -1015,6 +1427,9 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
   bool _needsApiKeyInput = false;
   LxMusicSourceConfig? _pendingLxConfig;
   String? _pendingScriptSource;
+
+  List<AudioSourceType> get _availableTypes =>
+      AudioSourceType.values.where((t) => t != AudioSourceType.navidrome).toList();
 
   bool get _isEditing => widget.existingConfig != null;
 
@@ -1262,7 +1677,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
               label: '音源类型',
               child: fluent.ComboBox<AudioSourceType>(
                 value: _selectedType,
-                items: AudioSourceType.values.map((e) => fluent.ComboBoxItem(
+                items: _availableTypes.map((e) => fluent.ComboBoxItem(
                   value: e,
                   child: Text(_getTypeName(e)),
                 )).toList(),
@@ -1739,22 +2154,20 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                                                 itemExtent: 40,
                                                 scrollController:
                                                     FixedExtentScrollController(
-                                                  initialItem: AudioSourceType
-                                                      .values
-                                                      .indexOf(_selectedType),
+                                                  initialItem: _availableTypes.indexOf(_selectedType) < 0
+                                                      ? 0
+                                                      : _availableTypes.indexOf(_selectedType),
                                                 ),
                                                 onSelectedItemChanged:
                                                     (int selectedItem) {
                                                   setState(() {
-                                                    _selectedType =
-                                                        AudioSourceType.values[
-                                                            selectedItem];
+                                                    _selectedType = _availableTypes[selectedItem];
                                                     _statusMessage = null;
                                                     _needsApiKeyInput = false;
                                                     _pendingLxConfig = null;
                                                   });
                                                 },
-                                                children: AudioSourceType.values
+                                                children: _availableTypes
                                                     .map((type) => Center(
                                                           child: Text(
                                                             _getTypeName(type),
@@ -1988,7 +2401,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                     borderSide: BorderSide.none,
                   ),
                 ),
-                items: AudioSourceType.values.map((e) => DropdownMenuItem(
+                items: _availableTypes.map((e) => DropdownMenuItem(
                       value: e,
                       child: Text(_getTypeName(e)),
                     ))
@@ -2181,6 +2594,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
       case AudioSourceType.omniparse: return 'OmniParse / 自定义';
       case AudioSourceType.lxmusic: return '洛雪音乐脚本';
       case AudioSourceType.tunehub: return 'TuneHub';
+      case AudioSourceType.navidrome: return 'Navidrome';
     }
   }
 }

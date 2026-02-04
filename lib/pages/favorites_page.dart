@@ -338,6 +338,8 @@ class _FavoritesPageState extends State<FavoritesPage>
         return '🎼';
       case MusicSource.kuwo:
         return '🎸';
+      case MusicSource.navidrome:
+        return '🎧';
       case MusicSource.local:
         return '📁';
     }

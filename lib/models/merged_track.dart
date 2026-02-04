@@ -108,10 +108,12 @@ class MergedTrack {
         return 2;
       case MusicSource.kuwo:
         return 3;
+      case MusicSource.navidrome:
+        return 4;
       case MusicSource.apple:
-        return 4; // Apple Music 优先级最低
+        return 5; // Apple Music 优先级最低
       case MusicSource.local:
-        return 5;
+        return 6;
     }
   }
 }

@@ -39,6 +39,7 @@ import 'package:cyrene_music/services/startup_logger.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:cyrene_music/pages/settings_page/audio_source_settings.dart';
+import 'package:cyrene_music/pages/navidrome_settings_page.dart';
 import 'package:cyrene_music/pages/mobile_setup_page.dart';
 import 'package:cyrene_music/pages/mobile_app_gate.dart';
 import 'package:cyrene_music/pages/desktop_app_gate.dart';
@@ -669,14 +670,20 @@ void showAudioSourceNotConfiguredDialog(BuildContext context) {
   final themeManager = ThemeManager();
   final isFluent = Platform.isWindows && themeManager.isFluentFramework;
   final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
+  final isNavidromeActive = AudioSourceService().isNavidromeActive;
+  final title = isNavidromeActive ? 'Navidrome 未配置' : '音源失效';
+  final content = isNavidromeActive
+      ? '当前 Navidrome 配置似乎已失效或未填写，请重新配置。'
+      : '当前音源配置似乎已失效或无法连接，请重新配置音源。';
+  final targetPage = isNavidromeActive ? const NavidromeSettingsPage() : const AudioSourceSettings();
 
   if (isFluent) {
     fluent.showDialog(
       context: context,
       builder: (context) {
         return fluent.ContentDialog(
-          title: const Text('音源失效'),
-          content: const Text('当前音源配置似乎已失效或无法连接，请重新配置音源。'),
+          title: Text(title),
+          content: Text(content),
           actions: [
             fluent.Button(
               onPressed: () => Navigator.pop(context),
@@ -687,7 +694,7 @@ void showAudioSourceNotConfiguredDialog(BuildContext context) {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const AudioSourceSettings()),
+                  MaterialPageRoute(builder: (context) => targetPage),
                 );
               },
               child: const Text('去配置'),
@@ -701,8 +708,8 @@ void showAudioSourceNotConfiguredDialog(BuildContext context) {
       context: context,
       builder: (context) {
         return CupertinoAlertDialog(
-          title: const Text('音源失效'),
-          content: const Text('当前音源配置似乎已失效或无法连接，请重新配置音源。'),
+          title: Text(title),
+          content: Text(content),
           actions: [
             CupertinoDialogAction(
               onPressed: () => Navigator.pop(context),
@@ -714,7 +721,7 @@ void showAudioSourceNotConfiguredDialog(BuildContext context) {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const AudioSourceSettings()),
+                  MaterialPageRoute(builder: (context) => targetPage),
                 );
               },
               child: const Text('去配置'),
@@ -728,8 +735,8 @@ void showAudioSourceNotConfiguredDialog(BuildContext context) {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('音源失效'),
-          content: const Text('当前音源配置似乎已失效或无法连接，请重新配置音源。'),
+          title: Text(title),
+          content: Text(content),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -740,7 +747,7 @@ void showAudioSourceNotConfiguredDialog(BuildContext context) {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const AudioSourceSettings()),
+                  MaterialPageRoute(builder: (context) => targetPage),
                 );
               },
               child: const Text('去配置'),

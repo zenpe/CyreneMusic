@@ -9,12 +9,14 @@ import '../models/track.dart';
 import '../models/song_detail.dart';
 import '../models/audio_source_config.dart';
 import 'lx_music_runtime_service.dart';
+import 'navidrome_session_service.dart';
 
 /// 音源类型枚举
 enum AudioSourceType {
   omniparse,   // OmniParse 音源（兼容现有后端格式）
   lxmusic,     // 洛雪音乐音源
   tunehub,     // TuneHub 音源（公开 API）
+  navidrome,   // Navidrome
 }
 
 /// 音源服务 - 管理音源配置（获取歌曲播放 URL）
@@ -37,6 +39,7 @@ class AudioSourceService extends ChangeNotifier {
   // ==================== 存储键名 ====================
   static const String _keySources = 'audio_source_list';
   static const String _keyActiveSourceId = 'audio_source_active_id';
+  static const String navidromeSourceId = '__navidrome__';
 
   // 兼容旧版配置的键名
   static const String _keyOldSourceType = 'audio_source_type';
@@ -73,6 +76,7 @@ class AudioSourceService extends ChangeNotifier {
     AudioSourceType.omniparse: ['netease', 'qq', 'kugou', 'kuwo', 'apple'],
     AudioSourceType.tunehub: ['netease', 'qq', 'kuwo'],
     AudioSourceType.lxmusic: [], // 动态从脚本获取
+    AudioSourceType.navidrome: [], // Navidrome 使用独立 API
   };
 
   /// 初始化服务
@@ -224,12 +228,23 @@ class AudioSourceService extends ChangeNotifier {
 
   /// 获取当前活动音源配置
   AudioSourceConfig? get activeSource {
+    if (_activeSourceId == navidromeSourceId) {
+      final session = NavidromeSessionService();
+      return AudioSourceConfig(
+        id: navidromeSourceId,
+        type: AudioSourceType.navidrome,
+        name: 'Navidrome',
+        url: session.baseUrl,
+      );
+    }
     try {
       return _sources.firstWhere((s) => s.id == _activeSourceId);
     } catch (e) {
       return null;
     }
   }
+
+  bool get isNavidromeActive => _activeSourceId == navidromeSourceId;
 
   /// 添加新音源
   Future<void> addSource(AudioSourceConfig config) async {
@@ -262,6 +277,7 @@ class AudioSourceService extends ChangeNotifier {
 
   /// 删除音源
   Future<void> removeSource(String id) async {
+    if (id == navidromeSourceId) return;
     _sources.removeWhere((s) => s.id == id);
     await _saveSources();
 
@@ -318,10 +334,18 @@ class AudioSourceService extends ChangeNotifier {
   
   String get lxScriptSource => activeSource?.scriptSource ?? '';
   
-  bool get isConfigured => activeSource != null;
+  bool get isConfigured {
+    if (isNavidromeActive) {
+      return NavidromeSessionService().isConfigured;
+    }
+    return activeSource != null;
+  }
 
   /// 获取当前活动音源支持的搜索平台列表
   List<String> get currentSupportedPlatforms {
+    if (isNavidromeActive) {
+      return const [];
+    }
     final source = activeSource;
     if (source == null) {
       // 无活动音源时返回所有平台
@@ -390,12 +414,18 @@ class AudioSourceService extends ChangeNotifier {
         return '洛雪音乐';
       case AudioSourceType.tunehub:
         return 'TuneHub';
+      case AudioSourceType.navidrome:
+        return 'Navidrome';
     }
   }
 
   /// 获取音源描述 (兼容旧版 API)
   String getSourceDescription() {
     if (!isConfigured) return '未配置';
+    if (isNavidromeActive) {
+      final baseUrl = NavidromeSessionService().baseUrl;
+      return baseUrl.isEmpty ? 'Navidrome (未配置)' : baseUrl;
+    }
     if (activeSource!.type == AudioSourceType.lxmusic) {
       return '${activeSource!.name} (v${activeSource!.version})';
     }

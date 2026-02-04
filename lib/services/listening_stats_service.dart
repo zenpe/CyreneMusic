@@ -90,6 +90,8 @@ class PlayCountItem {
         return MusicSource.kugou;
       case 'kuwo':
         return MusicSource.kuwo;
+      case 'navidrome':
+        return MusicSource.navidrome;
       case 'local':
         return MusicSource.local;
       default:

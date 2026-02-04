@@ -922,6 +922,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
         return '🎼';
       case MusicSource.kuwo:
         return '🎸';
+      case MusicSource.navidrome:
+        return '🎧';
       case MusicSource.local:
         return '📁';
     }

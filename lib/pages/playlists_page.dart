@@ -1348,6 +1348,8 @@ class _PlaylistsPageState extends State<PlaylistsPage>
         return '🎼';
       case MusicSource.kuwo:
         return '🎸';
+      case MusicSource.navidrome:
+        return '🎧';
       case MusicSource.local:
         return '📁';
     }
