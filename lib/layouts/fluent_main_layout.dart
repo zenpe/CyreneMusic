@@ -23,6 +23,7 @@ import '../services/avatar_fetch_service.dart';
 import '../services/developer_mode_service.dart';
 import '../services/navigation_provider.dart';
 import '../services/home_search_service.dart';
+import '../services/global_back_handler_service.dart';
 import '../services/window_background_service.dart';
 import '../utils/page_visibility_notifier.dart';
 import '../utils/theme_manager.dart';
@@ -647,6 +648,11 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
   }
 
   void _handleGlobalBack() {
+    // 优先处理全局返回处理器
+    if (GlobalBackHandlerService().handleBack()) {
+      return;
+    }
+
     if (_isSearchVisible) {
       setState(() {
         _isSearchVisible = false;

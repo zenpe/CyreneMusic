@@ -4,51 +4,53 @@ part of 'my_page.dart';
 extension MyPageMaterialUI on _MyPageState {
   Widget _buildMaterialPage(BuildContext context, ColorScheme colorScheme, bool isLoggedIn) {
     if (!isLoggedIn) {
-      return Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              colorScheme.primaryContainer.withOpacity(0.3),
-              colorScheme.surface,
-            ],
+      return Scaffold(
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                colorScheme.primaryContainer.withOpacity(0.3),
+                colorScheme.surface,
+              ],
+            ),
           ),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withOpacity(0.5),
-                  shape: BoxShape.circle,
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.person_outline, size: 80, color: colorScheme.primary),
                 ),
-                child: Icon(Icons.person_outline, size: 80, color: colorScheme.primary),
-              ),
-              const SizedBox(height: 32),
-              Text('发现你的音乐世界', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 48),
-                child: Text(
-                  '登录即可解锁个性化推荐、管理云端歌单并记录你的每一次聆听。',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7), fontSize: 16),
+                const SizedBox(height: 32),
+                Text('发现你的音乐世界', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 48),
+                  child: Text(
+                    '登录即可解锁个性化推荐、管理云端歌单并记录你的每一次聆听。',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7), fontSize: 16),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 48),
-              FilledButton.icon(
-                onPressed: () => showAuthDialog(context).then((_) { refresh(); }),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                const SizedBox(height: 48),
+                FilledButton.icon(
+                  onPressed: () => showAuthDialog(context).then((_) { refresh(); }),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  icon: const Icon(Icons.login),
+                  label: const Text('立即开启'),
                 ),
-                icon: const Icon(Icons.login),
-                label: const Text('立即开启'),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
@@ -60,170 +62,174 @@ extension MyPageMaterialUI on _MyPageState {
 
     final user = AuthService().currentUser;
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        await _playlistService.loadPlaylists();
-        await _loadStats();
-      },
-      child: Stack(
-        children: [
-          // 全局沉浸式背景
-          Positioned.fill(
-            child: user?.avatarUrl != null
-                ? (user!.avatarUrl!.contains('linux.do')
-                    ? LinuxDoAvatarMaterial(
-                        url: user.avatarUrl!,
-                        userId: user.id,
-                        size: MediaQuery.of(context).size.width,
-                      )
-                    : CachedNetworkImage(
-                        imageUrl: user.avatarUrl!,
-                        fit: BoxFit.cover,
-                      ))
-                : Container(color: colorScheme.surface),
-          ),
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      colorScheme.surface.withOpacity(0.2),
-                      colorScheme.surface.withOpacity(0.6),
-                      colorScheme.surface.withOpacity(0.8),
-                      colorScheme.surface,
-                    ],
-                    stops: const [0.0, 0.3, 0.6, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          
-          CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              // 沉浸式头部 - 背景设为透明，因为底层已有背景
-              SliverAppBar(
-                expandedHeight: 240,
-                pinned: true,
-                stretch: true,
-                backgroundColor: Colors.transparent,
-                surfaceTintColor: Colors.transparent,
-                flexibleSpace: FlexibleSpaceBar(
-                  stretchModes: const [
-                    StretchMode.zoomBackground,
-                  ],
-                  background: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const SizedBox(height: 48), // 为状态栏和可能的返回键留出空间
-                        // 用户头像
-                        if (user?.avatarUrl != null && user!.avatarUrl!.contains('linux.do'))
-                          ClipOval(
-                            child: LinuxDoAvatarMaterial(
-                              url: user.avatarUrl!,
-                              userId: user.id,
-                              size: 100,
-                            ),
+    return Scaffold(
+      backgroundColor: Colors.transparent, // 允许背景底层颜色透出
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await _playlistService.loadPlaylists();
+          await _loadStats();
+        },
+        child: ClipRect(
+          child: Stack(
+            children: [
+              // 1. 全局沉浸式背景
+              Positioned.fill(
+                child: user?.avatarUrl != null
+                    ? (user!.avatarUrl!.contains('linux.do')
+                        ? LinuxDoAvatarMaterial(
+                            url: user.avatarUrl!,
+                            userId: user.id,
+                            size: 400,
                           )
-                        else
-                          CircleAvatar(
-                            radius: 50,
-                            backgroundColor: colorScheme.secondaryContainer.withOpacity(0.5),
-                            backgroundImage: user?.avatarUrl != null ? CachedNetworkImageProvider(user!.avatarUrl!) : null,
-                            child: user?.avatarUrl == null ? Text(user?.username[0].toUpperCase() ?? '?', style: TextStyle(fontSize: 32, color: colorScheme.onSecondaryContainer)) : null,
-                          ),
-                        const SizedBox(height: 16),
-                        Text(
-                          user?.username ?? '未登录',
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                        if (user?.displayEmail != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            user!.displayEmail!,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
+                        : CachedNetworkImage(
+                            imageUrl: user.avatarUrl!,
+                            fit: BoxFit.cover,
+                          ))
+                    : Container(color: colorScheme.surface),
+              ),
+              // 2. 模糊蒙层
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          colorScheme.surface.withOpacity(0.2),
+                          colorScheme.surface.withOpacity(0.6),
+                          colorScheme.surface.withOpacity(0.8),
+                          colorScheme.surface,
                         ],
-
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ),
 
-              // 核心统计磁贴
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: _buildMaterialStatsTiles(colorScheme),
-                ),
-              ),
-
-              // 歌单部分标题
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-                  child: Row(
-                    children: [
-                      Text('我的收藏', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                      const Spacer(),
-                      IconButton.filledTonal(
-                        onPressed: _showMusicTasteDialog,
-                        icon: const Icon(Icons.auto_awesome, size: 20),
-                        tooltip: '品味总结',
+              // 3. 滚动内容区
+              CustomScrollView(
+                physics: const BouncingScrollPhysics(),
+                slivers: [
+                  // 沉浸式头部
+                  SliverAppBar(
+                    expandedHeight: 240,
+                    pinned: true,
+                    stretch: true,
+                    backgroundColor: Colors.transparent,
+                    surfaceTintColor: Colors.transparent,
+                    flexibleSpace: FlexibleSpaceBar(
+                      stretchModes: const [
+                        StretchMode.zoomBackground,
+                      ],
+                      background: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const SizedBox(height: 48),
+                            if (user?.avatarUrl != null && user!.avatarUrl!.contains('linux.do'))
+                              ClipOval(
+                                child: LinuxDoAvatarMaterial(
+                                  url: user.avatarUrl!,
+                                  userId: user.id,
+                                  size: 100,
+                                ),
+                              )
+                            else
+                              CircleAvatar(
+                                radius: 50,
+                                backgroundColor: colorScheme.secondaryContainer.withOpacity(0.5),
+                                backgroundImage: user?.avatarUrl != null ? CachedNetworkImageProvider(user!.avatarUrl!) : null,
+                                child: user?.avatarUrl == null ? Text(user?.username[0].toUpperCase() ?? '?', style: TextStyle(fontSize: 32, color: colorScheme.onSecondaryContainer)) : null,
+                              ),
+                            const SizedBox(height: 16),
+                            Text(
+                              user?.username ?? '未登录',
+                              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: colorScheme.onSurface,
+                                  ),
+                            ),
+                            if (user?.displayEmail != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                user!.displayEmail!,
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                      letterSpacing: 0.5,
+                                    ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                      const SizedBox(width: 8),
-                      IconButton.filledTonal(
-                        onPressed: _showImportPlaylistDialog,
-                        icon: const Icon(Icons.cloud_download_outlined, size: 20),
-                        tooltip: '导入',
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton.filled(
-                        onPressed: _showCreatePlaylistDialog,
-                        icon: const Icon(Icons.add, size: 20),
-                        tooltip: '新建',
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
 
-              // 歌单列表
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                sliver: _buildMaterialPlaylistsSliver(colorScheme),
-              ),
-
-              // 播放排行榜标题
-              if (_statsData != null && _statsData!.playCounts.isNotEmpty) ...[
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                    child: Text('播放排行 Top 10', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                  // 核心统计磁贴
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: _buildMaterialStatsTiles(colorScheme),
+                    ),
                   ),
-                ),
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  sliver: _buildMaterialTopPlaysSliver(colorScheme),
-                ),
-              ],
-              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+
+                  // 歌单部分标题
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+                      child: Row(
+                        children: [
+                          Text('我的收藏', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                          const Spacer(),
+                          IconButton.filledTonal(
+                            onPressed: _showMusicTasteDialog,
+                            icon: const Icon(Icons.auto_awesome, size: 20),
+                            tooltip: '品味总结',
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton.filledTonal(
+                            onPressed: _showImportPlaylistDialog,
+                            icon: const Icon(Icons.cloud_download_outlined, size: 20),
+                            tooltip: '导入',
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton.filled(
+                            onPressed: _showCreatePlaylistDialog,
+                            icon: const Icon(Icons.add, size: 20),
+                            tooltip: '新建',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // 歌单列表
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    sliver: _buildMaterialPlaylistsSliver(colorScheme),
+                  ),
+
+                  // 播放排行榜标题
+                  if (_statsData != null && _statsData!.playCounts.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                        child: Text('播放排行 Top 10', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      sliver: _buildMaterialTopPlaysSliver(colorScheme),
+                    ),
+                  ],
+                  const SliverToBoxAdapter(child: SizedBox(height: 80)),
+                ],
+              ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }

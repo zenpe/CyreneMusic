@@ -41,6 +41,12 @@ class PlayerWindowControls extends StatelessWidget {
   final VoidCallback? onLyricsToggle;
   final VoidCallback? onQueueToggle;
   final VoidCallback? onWikiToggle;
+  final bool isTabletMode;
+  final VoidCallback? onMorePressed;
+
+  // 胶囊拖动回调
+  final void Function(DragUpdateDetails)? onCapsuleDragUpdate;
+  final void Function(DragEndDetails)? onCapsuleDragEnd;
 
   const PlayerWindowControls({
     super.key,
@@ -60,6 +66,10 @@ class PlayerWindowControls extends StatelessWidget {
     this.onLyricsToggle,
     this.onQueueToggle,
     this.onWikiToggle,
+    this.isTabletMode = false,
+    this.onMorePressed,
+    this.onCapsuleDragUpdate,
+    this.onCapsuleDragEnd,
   });
 
   @override
@@ -161,71 +171,114 @@ class PlayerWindowControls extends StatelessWidget {
       );
     } else {
       // 其他平台（如移动端）
-      return Container(
-        height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(
-          children: [
-            // 返回按钮
-            IconButton(
-              icon: const Icon(Icons.keyboard_arrow_down, size: 32),
-              color: Colors.white,
-              onPressed: onBackPressed,
-              tooltip: '返回',
+      return Stack(
+        alignment: Alignment.topCenter,
+        children: [
+          Container(
+            height: 56,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              children: [
+                if (isTabletMode) ...[
+                  // 平板模式下：仅显示更多按钮
+                  IconButton(
+                    icon: const Icon(Icons.more_vert_rounded, size: 28),
+                    color: Colors.white,
+                    onPressed: onMorePressed,
+                    tooltip: '更多设置',
+                  ),
+                ] else ...[
+                  // 返回按钮
+                  IconButton(
+                    icon: const Icon(Icons.keyboard_arrow_down, size: 32),
+                    color: Colors.white,
+                    onPressed: onBackPressed,
+                    tooltip: '返回',
+                  ),
+                  const SizedBox(width: 4),
+                  // 更多按钮
+                  _MoreMenuButton(
+                    onPlaylistPressed: onPlaylistPressed,
+                    onSleepTimerPressed: onSleepTimerPressed,
+                    onPlaybackModePressed: onPlaybackModePressed,
+                  ),
+                  // 译文按钮
+                  if (showTranslationButton)
+                    _TranslationButton(
+                      showTranslation: showTranslation,
+                      onToggle: onTranslationToggle,
+                    ),
+                  // 下载按钮
+                  if (currentTrack != null && currentSong != null)
+                    _DownloadButton(
+                      track: currentTrack!,
+                      song: currentSong!,
+                    ),
+                ],
+                
+                const Spacer(),
+                
+                // 布局快捷切换按钮
+                _LayoutToggleButton(),
+                
+                // 歌曲百科按钮
+                if (onWikiToggle != null)
+                  _TopBarButton(
+                    icon: CupertinoIcons.info_circle,
+                    isActive: isWikiActive,
+                    onPressed: onWikiToggle!,
+                    tooltip: '歌曲信息',
+                  ),
+                
+                // 待播清单按钮
+                if (onQueueToggle != null)
+                  _TopBarButton(
+                    icon: Icons.format_list_bulleted_rounded,
+                    isActive: isQueueActive,
+                    onPressed: onQueueToggle!,
+                    tooltip: '待播清单',
+                  ),
+                
+                // 歌词按钮
+                if (onLyricsToggle != null)
+                  _TopBarButton(
+                    icon: Icons.lyrics_rounded,
+                    isActive: isLyricsActive,
+                    onPressed: onLyricsToggle!,
+                    tooltip: '歌词',
+                  ),
+              ],
             ),
-            const SizedBox(width: 4),
-            // 更多按钮
-            _MoreMenuButton(
-              onPlaylistPressed: onPlaylistPressed,
-              onSleepTimerPressed: onSleepTimerPressed,
-              onPlaybackModePressed: onPlaybackModePressed,
+          ),
+          
+          // 平板模式顶部拖动胶囊条
+          if (isTabletMode)
+            Positioned(
+              top: 24, // 下移以避免误触状态栏
+              child: GestureDetector(
+                onVerticalDragUpdate: onCapsuleDragUpdate,
+                onVerticalDragEnd: (details) {
+                  if (onCapsuleDragEnd != null) {
+                    onCapsuleDragEnd!(details);
+                  } else {
+                     // 兼容旧逻辑：仅支持快速下滑关闭
+                    if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
+                      onBackPressed();
+                    }
+                  }
+                },
+                child: Container(
+                  width: 48,
+                  height: 5, // 胶囊高度
+                  padding: const EdgeInsets.symmetric(vertical: 10), // 增加垂直热区
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                ),
+              ),
             ),
-            // 译文按钮
-            if (showTranslationButton)
-              _TranslationButton(
-                showTranslation: showTranslation,
-                onToggle: onTranslationToggle,
-              ),
-            // 下载按钮
-            if (currentTrack != null && currentSong != null)
-              _DownloadButton(
-                track: currentTrack!,
-                song: currentSong!,
-              ),
-            
-            const Spacer(),
-            
-            // 布局快捷切换按钮
-            _LayoutToggleButton(),
-            
-            // 歌曲百科按钮
-            if (onWikiToggle != null)
-              _TopBarButton(
-                icon: CupertinoIcons.info_circle,
-                isActive: isWikiActive,
-                onPressed: onWikiToggle!,
-                tooltip: '歌曲信息',
-              ),
-            
-            // 待播清单按钮
-            if (onQueueToggle != null)
-              _TopBarButton(
-                icon: Icons.format_list_bulleted_rounded,
-                isActive: isQueueActive,
-                onPressed: onQueueToggle!,
-                tooltip: '待播清单',
-              ),
-            
-            // 歌词按钮
-            if (onLyricsToggle != null)
-              _TopBarButton(
-                icon: Icons.lyrics_rounded,
-                isActive: isLyricsActive,
-                onPressed: onLyricsToggle!,
-                tooltip: '歌词',
-              ),
-          ],
-        ),
+        ],
       );
     }
   }

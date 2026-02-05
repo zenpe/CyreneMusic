@@ -266,7 +266,7 @@ class _MainLayoutState extends State<MainLayout>
       // 已登录，显示用户菜单
       _showUserMenu();
     } else {
-      // 未登录：桌面端使用覆盖层；移动端使用整页
+      // 未登录：真正的桌面端操作系统使用覆盖层；移动端操作系统（Android/iOS，含平板模式）使用弹窗/整页
       if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
         AuthOverlayService().show().then((_) {
           if (mounted) setState(() {});
@@ -356,7 +356,11 @@ class _MainLayoutState extends State<MainLayout>
   Widget build(BuildContext context) {
     // 根据平台选择不同的布局
     if (Platform.isAndroid || Platform.isIOS) {
-      // Android/iOS 始终使用移动布局
+      if (ThemeManager().isTablet) {
+        // 平板设备使用桌面端布局逻辑
+        return GlobalWatermark(child: _buildDesktopLayout(context));
+      }
+      // 手机始终使用移动布局
       return GlobalWatermark(child: _buildMobileLayout(context));
     } else if (Platform.isWindows) {
       // Windows 根据用户偏好选择布局，使用 AnimatedBuilder 确保更新

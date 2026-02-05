@@ -18,7 +18,9 @@ import 'mobile_player_components/mobile_player_classic_layout.dart';
 import 'mobile_player_components/mobile_player_dialogs.dart';
 import 'mobile_player_components/mobile_player_settings_sheet.dart';
 import 'player_components/player_immersive_layout.dart';
+import 'player_components/player_fluid_cloud_layout.dart';
 import '../../services/lyric_style_service.dart';
+import '../utils/theme_manager.dart';
 
 /// 移动端播放器页面（重构版本）
 /// 适用于 Android/iOS，现在使用组件化架构
@@ -452,7 +454,22 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
                 )
               // 流体云布局模式：完全接管背景和 Safe Area
               else if (useFluidCloudLayout)
-                _buildAppleMusicStyleLayout(context, const BoxConstraints())
+                ThemeManager().isTablet
+                    ? PlayerFluidCloudLayout(
+                        lyrics: _lyrics,
+                        currentLyricIndex: _currentLyricIndex,
+                        showTranslation: _showTranslation,
+                        isMaximized: true,
+                        onBackPressed: () => Navigator.pop(context),
+                        onPlaylistPressed: () => MobilePlayerDialogs.showPlaylistBottomSheet(context),
+                        onVolumeControlPressed: () {
+                          // 移动端通过系统按键控制音量，内部 Slider 会直接调用 PlayerService().setVolume
+                        },
+                        onSleepTimerPressed: () => MobilePlayerDialogs.showSleepTimer(context),
+                        onTranslationToggle: () => setState(() => _showTranslation = !_showTranslation),
+                        leftPanelScale: 0.75, // 缩小左侧区域
+                      )
+                    : _buildAppleMusicStyleLayout(context, const BoxConstraints())
               else ...[
                 // 标准布局模式：原有背景 + Safe Area
                 const MobilePlayerBackground(),

@@ -2,6 +2,7 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/system_theme_color_service.dart';
@@ -77,9 +78,24 @@ class ThemeManager extends ChangeNotifier {
   MobileThemeFramework get mobileThemeFramework => _mobileThemeFramework;
   bool get isMaterialFramework => _themeFramework == ThemeFramework.material;
   bool get isFluentFramework => _themeFramework == ThemeFramework.fluent;
-  bool get isCupertinoFramework =>
-      (Platform.isIOS || Platform.isAndroid) &&
-      _mobileThemeFramework == MobileThemeFramework.cupertino;
+
+  /// 是否为平板设备 (Android/iOS 且最短边 >= 600dp)
+  bool get isTablet {
+    if (!(Platform.isIOS || Platform.isAndroid)) return false;
+    final shortestSide = ui.PlatformDispatcher.instance.views.first.physicalSize.shortestSide /
+        ui.PlatformDispatcher.instance.views.first.devicePixelRatio;
+    return shortestSide >= 600;
+  }
+
+  bool get isCupertinoFramework {
+    if (Platform.isIOS || Platform.isAndroid) {
+      // 在移动端（手机）且用户选择了 Cupertino 框架时返回 true
+      // 如果是平板设备，强制返回 false 以使用 Material 布局
+      if (isTablet) return false;
+      return _mobileThemeFramework == MobileThemeFramework.cupertino;
+    }
+    return false;
+  }
   WindowEffect get windowEffect => _windowEffect;
   
   /// 获取有效的主题色（Cupertino 模式下固定返回 iOS 蓝色）

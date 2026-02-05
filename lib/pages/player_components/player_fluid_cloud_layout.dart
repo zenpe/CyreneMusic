@@ -19,6 +19,7 @@ import 'player_fluid_cloud_lyrics_panel.dart';
 import 'player_fluid_cloud_queue_panel.dart';
 import 'player_fluid_cloud_queue_panel.dart';
 import 'player_fluid_cloud_song_wiki_panel.dart';
+import '../mobile_player_components/mobile_player_settings_sheet.dart';
 import 'player_dialogs.dart';
 
 /// 流体云全屏布局
@@ -35,6 +36,7 @@ class PlayerFluidCloudLayout extends StatefulWidget {
   final VoidCallback onVolumeControlPressed;
   final VoidCallback? onSleepTimerPressed;
   final VoidCallback? onTranslationToggle;
+  final double leftPanelScale;
 
   const PlayerFluidCloudLayout({
     super.key,
@@ -47,6 +49,7 @@ class PlayerFluidCloudLayout extends StatefulWidget {
     required this.onVolumeControlPressed,
     this.onSleepTimerPressed,
     this.onTranslationToggle,
+    this.leftPanelScale = 0.9,
   });
 
   @override
@@ -54,7 +57,7 @@ class PlayerFluidCloudLayout extends StatefulWidget {
 }
 
 class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   // 缓存当前歌曲的封面 URL，用于检测歌曲变化
   String? _currentImageUrl;
 
@@ -80,6 +83,11 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   // 获取动画值，未初始化时返回 0
   double get _collapseAnimationValue => _collapseAnimation?.value ?? 0.0;
   
+  // 下滑关闭相关 (平板模式胶囊拖动)
+  double _dragOffset = 0;
+  late AnimationController _snapController;
+  late Animation<double> _snapAnimation;
+  
   @override
   void initState() {
     super.initState();
@@ -96,11 +104,23 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
     
     PlayerService().addListener(_onPlayerChanged);
     _updateCurrentImageUrl();
+
+    // 初始化下滑回弹动画
+    _snapController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _snapController.addListener(() {
+      setState(() {
+        _dragOffset = _snapAnimation.value;
+      });
+    });
   }
   
   @override
   void dispose() {
     _collapseController?.dispose();
+    _snapController.dispose();
     PlayerService().removeListener(_onPlayerChanged);
     super.dispose();
   }
@@ -142,9 +162,37 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
     _currentImageUrl = PlayerService().currentCoverUrl ?? '';
   }
 
+  /// 处理胶囊拖动更新
+  void _handleCapsuleDragUpdate(DragUpdateDetails details) {
+    setState(() {
+      _dragOffset += details.delta.dy;
+      if (_dragOffset < 0) _dragOffset = 0; // 不允许向上拖动
+    });
+  }
+
+  /// 处理胶囊拖动结束
+  void _handleCapsuleDragEnd(DragEndDetails details) {
+    if (_dragOffset > 150 || (details.primaryVelocity ?? 0) > 800) {
+      // 下滑超过阈值或速度足够快，关闭播放器
+      widget.onBackPressed();
+    } else {
+      // 回弹
+      _snapAnimation = Tween<double>(
+        begin: _dragOffset,
+        end: 0,
+      ).animate(CurvedAnimation(
+        parent: _snapController,
+        curve: Curves.easeOutCubic,
+      ));
+      _snapController.forward(from: 0);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return Transform.translate(
+      offset: Offset(0, _dragOffset),
+      child: Stack(
       children: [
         // 1. 全局背景（流体云专用背景：自适应模式下始终显示专辑封面 100% 填充）
         Positioned.fill(child: const PlayerFluidCloudBackground()),
@@ -232,6 +280,15 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                         }
                       });
                     },
+                    isTabletMode: ThemeManager().isTablet,
+                    onMorePressed: () => MobilePlayerSettingsSheet.show(
+                      context, 
+                      currentTrack: player.currentTrack
+                    ),
+
+                    // 传递拖动回调
+                    onCapsuleDragUpdate: _handleCapsuleDragUpdate,
+                    onCapsuleDragEnd: _handleCapsuleDragEnd,
                   );
                 },
               ),
@@ -331,6 +388,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
           ),
         ),
       ],
+    ),
     );
   }
 
@@ -580,148 +638,153 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
     
     // 未折叠时：原有布局
     return Transform.scale(
-      scale: 0.9,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // 1. 专辑封面
-          cover,
-          
-          const SizedBox(height: 40),
-          
-          // 2. 歌曲信息（歌曲名 + 收藏按钮）
-          Row(
+      scale: widget.leftPanelScale,
+      child: Center(
+        child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Flexible(
-                child: Text(
-                  track?.name ?? '未知歌曲',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: -0.5,
-                    fontFamily: 'Microsoft YaHei',
+              // 1. 专辑封面
+              cover,
+              
+              const SizedBox(height: 30), // 缩小间距 (40 -> 30)
+              
+              // 2. 歌曲信息（歌曲名 + 收藏按钮）
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      track?.name ?? '未知歌曲',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: -0.5,
+                        fontFamily: 'Microsoft YaHei',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  if (track != null) ...[
+                    const SizedBox(width: 8),
+                    _FavoriteButton(track: track),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              // 歌手名（可点击）
+              _buildArtistsRow(context, track?.artists ?? '未知歌手', player.currentSong),
+              
+              const SizedBox(height: 24), // 缩小间距 (30 -> 24)
+              
+              // 3. 进度条 - Apple Music 风格 (Hover 显现滑块)
+              AnimatedBuilder(
+                animation: player.positionNotifier,
+                builder: (context, _) {
+                  final position = player.positionNotifier.value.inMilliseconds.toDouble();
+                  final duration = player.duration.inMilliseconds.toDouble();
+                  final value = (duration > 0) ? (position / duration).clamp(0.0, 1.0) : 0.0;
+                  
+                  return Column(
+                    children: [
+                      _AppleMusicSlider(
+                        value: value,
+                        onChanged: (v) {
+                          final pos = Duration(milliseconds: (v * duration).round());
+                          player.seek(pos);
+                        },
+                      ),
+                      const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _formatDuration(player.positionNotifier.value),
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.6), 
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Consolas',
+                              ),
+                            ),
+                            Text(
+                              _formatDuration(player.duration),
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.6), 
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Consolas',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                }
+              ),
+              
+              const SizedBox(height: 12), // 缩小间距 (16 -> 12)
+              
+              // 4. 控制按钮 (居中，作为一个整体) - iOS/Cupertino 风格图标，与移动端一致
+              Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // 上一首 - iOS 风格粗图标
+                    IconButton(
+                      icon: const Icon(CupertinoIcons.backward_fill),
+                      color: Colors.white.withOpacity(0.9),
+                      iconSize: 36,
+                      onPressed: player.hasPrevious ? player.playPrevious : null,
+                    ),
+                    const SizedBox(width: 24),
+                    
+                    // 播放/暂停 - iOS 风格粗图标
+                    AnimatedBuilder(
+                      animation: player,
+                      builder: (context, _) {
+                        return IconButton(
+                          icon: Icon(
+                            player.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+                            color: Colors.white,
+                          ),
+                          iconSize: 56,
+                          padding: EdgeInsets.zero,
+                          onPressed: player.togglePlayPause,
+                        );
+                      }
+                    ),
+                    const SizedBox(width: 24),
+                    
+                    // 下一首 - iOS 风格粗图标
+                    IconButton(
+                      icon: const Icon(CupertinoIcons.forward_fill),
+                      color: Colors.white.withOpacity(0.9),
+                      iconSize: 36,
+                      onPressed: player.hasNext ? player.playNext : null,
+                    ),
+                  ],
                 ),
               ),
-              if (track != null) ...[
-                const SizedBox(width: 8),
-                _FavoriteButton(track: track),
-              ],
+              
+              const SizedBox(height: 16), // 缩小间距 (20 -> 16)
+              
+              // 5. 音量控制 (与进度条样式一致)
+              _buildVolumeSlider(player),
+              
             ],
           ),
-          const SizedBox(height: 8),
-          // 歌手名（可点击）
-          _buildArtistsRow(context, track?.artists ?? '未知歌手', player.currentSong),
-          
-          const SizedBox(height: 30),
-          
-                  // 3. 进度条 - Apple Music 风格 (Hover 显现滑块)
-                  AnimatedBuilder(
-                    animation: player.positionNotifier,
-                    builder: (context, _) {
-                      final position = player.positionNotifier.value.inMilliseconds.toDouble();
-                      final duration = player.duration.inMilliseconds.toDouble();
-                      final value = (duration > 0) ? (position / duration).clamp(0.0, 1.0) : 0.0;
-                      
-                      return Column(
-                        children: [
-                          _AppleMusicSlider(
-                            value: value,
-                            onChanged: (v) {
-                              final pos = Duration(milliseconds: (v * duration).round());
-                              player.seek(pos);
-                            },
-                          ),
-                          const SizedBox(height: 4),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  _formatDuration(player.positionNotifier.value),
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.6), 
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    fontFamily: 'Consolas',
-                                  ),
-                                ),
-                                Text(
-                                  _formatDuration(player.duration),
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.6), 
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    fontFamily: 'Consolas',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
-                    }
-                  ),
-          
-          const SizedBox(height: 16),
-          
-          // 4. 控制按钮 (居中，作为一个整体) - iOS/Cupertino 风格图标，与移动端一致
-          Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // 上一首 - iOS 风格粗图标
-                IconButton(
-                  icon: const Icon(CupertinoIcons.backward_fill),
-                  color: Colors.white.withOpacity(0.9),
-                  iconSize: 36,
-                  onPressed: player.hasPrevious ? player.playPrevious : null,
-                ),
-                const SizedBox(width: 24),
-                
-                // 播放/暂停 - iOS 风格粗图标
-                AnimatedBuilder(
-                  animation: player,
-                  builder: (context, _) {
-                    return IconButton(
-                      icon: Icon(
-                        player.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
-                        color: Colors.white,
-                      ),
-                      iconSize: 56,
-                      padding: EdgeInsets.zero,
-                      onPressed: player.togglePlayPause,
-                    );
-                  }
-                ),
-                const SizedBox(width: 24),
-                
-                // 下一首 - iOS 风格粗图标
-                IconButton(
-                  icon: const Icon(CupertinoIcons.forward_fill),
-                  color: Colors.white.withOpacity(0.9),
-                  iconSize: 36,
-                  onPressed: player.hasNext ? player.playNext : null,
-                ),
-              ],
-            ),
-          ),
-          
-          const SizedBox(height: 20),
-          
-          // 5. 音量控制 (与进度条样式一致)
-          _buildVolumeSlider(player),
-          
-        ],
+        ),
       ),
     );
   }

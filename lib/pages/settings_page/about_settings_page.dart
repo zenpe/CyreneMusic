@@ -12,6 +12,7 @@ import '../../services/developer_mode_service.dart';
 import '../../utils/theme_manager.dart';
 import '../../widgets/material/material_settings_widgets.dart';
 import '../../utils/toast_utils.dart';
+import 'user_agreement_page.dart';
 
 /// 关于设置详情内容（二级页面内容，嵌入在设置页面中）
 class AboutSettingsContent extends StatefulWidget {
@@ -156,6 +157,16 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
               title: '版本信息',
               subtitle: 'v${_versionService.currentVersion}',
               onTap: () => DeveloperModeService().onVersionClicked(),
+            ),
+            MD3SettingsTile(
+              leading: const Icon(Icons.description_outlined),
+              title: '用户协议',
+              subtitle: '查看用户协议与隐私政策',
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const UserAgreementPage()),
+              ),
             ),
             MD3SettingsTile(
               leading: const Icon(Icons.system_update_outlined),
@@ -352,6 +363,18 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
             DeveloperModeService().onVersionClicked();
             _showAboutDialogCupertino(context);
           },
+        ),
+        const SizedBox(height: 1),
+        // 用户协议
+        CupertinoSettingsTile(
+          icon: CupertinoIcons.doc_text,
+          iconColor: CupertinoColors.systemPurple,
+          title: '用户协议',
+          showChevron: true,
+          onTap: () => Navigator.push(
+            context,
+            CupertinoPageRoute(builder: (context) => const UserAgreementPage()),
+          ),
         ),
         const SizedBox(height: 1),
         // 检查更新

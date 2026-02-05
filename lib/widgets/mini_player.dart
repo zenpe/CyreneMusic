@@ -333,25 +333,21 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
         return Listener(
           onPointerDown: (_) => _handlePointerDown(),
           onPointerUp: (_) => _resetCollapseTimer(),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            excludeFromSemantics: true,
-            onTap: () {
-              if (showCollapsed) {
-                _resetCollapseTimer(expand: true);
-                return;
-              }
-              _resetCollapseTimer();
-              _openFullPlayer(context);
-            },
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOutCubic,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                child: showCollapsed ? collapsed : expanded,
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOutCubic,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: showCollapsed ? collapsed : GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                excludeFromSemantics: true,
+                onTap: () {
+                  _resetCollapseTimer();
+                  _openFullPlayer(context);
+                },
+                child: expanded,
               ),
             ),
           ),
@@ -479,21 +475,24 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
         key: const ValueKey('mini_collapsed'),
         margin: margin,
         alignment: Alignment.bottomLeft,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: isNavidromeStyle
-                ? navTheme.cardShadow
-                : [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+        child: GestureDetector(
+          onTap: () => _resetCollapseTimer(expand: true),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: isNavidromeStyle
+                  ? navTheme.cardShadow
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.12),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+            ),
+            child: cover,
           ),
-          child: cover,
         ),
       );
     }
@@ -502,44 +501,51 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
       key: const ValueKey('mini_collapsed'),
       margin: margin,
       alignment: Alignment.bottomLeft,
-      child: AnimatedBuilder(
-        animation: _breathingController ?? kAlwaysCompleteAnimation,
-        child: cover,
-        builder: (context, child) {
-          final controller = _breathingController;
-          final scaleAnim = _breathingScale;
-          final t = controller?.value ?? 1.0;
-          final scale = scaleAnim?.value ?? 1.0;
-          final glowColor = isNavidromeStyle
-              ? navTheme.progressActive.withOpacity(ui.lerpDouble(0.3, 0.5, t) ?? 0.4)
-              : colorScheme.primary.withOpacity(ui.lerpDouble(0.35, 0.6, t) ?? 0.45);
-          final blur = ui.lerpDouble(18, 32, t) ?? 24;
-          final spread = ui.lerpDouble(3, 10, t) ?? 6;
+      child: GestureDetector(
+        onTap: () => _resetCollapseTimer(expand: true),
+        child: AnimatedBuilder(
+          animation: _breathingController ?? kAlwaysCompleteAnimation,
+          child: cover,
+          builder: (context, child) {
+            final controller = _breathingController;
+            final scaleAnim = _breathingScale;
+            final t = controller?.value ?? 1.0;
+            final scale = scaleAnim?.value ?? 1.0;
+            final glowColor = isNavidromeStyle
+                ? navTheme.progressActive.withOpacity(ui.lerpDouble(0.3, 0.5, t) ?? 0.4)
+                : colorScheme.primary.withOpacity(ui.lerpDouble(0.35, 0.6, t) ?? 0.45);
+            final blur = ui.lerpDouble(18, 32, t) ?? 24;
+            final spread = ui.lerpDouble(3, 10, t) ?? 6;
 
-          return Transform.scale(
-            scale: scale,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: glowColor,
-                    blurRadius: blur,
-                    spreadRadius: spread,
-                  ),
-                ],
-              ),
+            return Transform.scale(
+              scale: scale,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: borderColor),
-                  color: backgroundColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: glowColor,
+                      blurRadius: blur,
+                      spreadRadius: spread,
+                    ),
+                  ],
                 ),
-                child: child,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: isNavidromeStyle
+                          ? borderColor
+                          : colorScheme.primary
+                              .withOpacity(ui.lerpDouble(0.25, 0.4, t) ?? 0.3),
+                    ),
+                    color: isNavidromeStyle ? backgroundColor : colorScheme.surface,
+                  ),
+                  child: child,
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
