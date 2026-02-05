@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../models/navidrome_models.dart';
+import '../models/track.dart';
 import '../services/navidrome_session_service.dart';
 import '../services/navidrome_api.dart';
-import 'navidrome_library_page.dart';
+import '../services/player_service.dart';
+import '../services/playlist_queue_service.dart';
 import '../widgets/navidrome_ui.dart';
 
 /// 艺术家列表页面
@@ -63,54 +65,68 @@ class _NavidromeArtistsPageState extends State<NavidromeArtistsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final navTheme = NavidromeTheme.of(context);
+
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return Scaffold(
+        backgroundColor: navTheme.background,
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     if (_error != null) {
-      return Center(child: Text(_error!));
+      return Scaffold(
+        backgroundColor: navTheme.background,
+        body: Center(child: Text(_error!)),
+      );
     }
 
     if (_artists.isEmpty) {
-      return const Center(child: Text('暂无艺术家'));
+      return Scaffold(
+        backgroundColor: navTheme.background,
+        body: const Center(child: Text('暂无艺术家')),
+      );
     }
 
-    return SafeArea(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth;
-          final padding = NavidromeLayout.pagePadding(width);
-          final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    return Scaffold(
+      backgroundColor: navTheme.background,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final padding = NavidromeLayout.pagePadding(width);
+            final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
 
-          return RefreshIndicator(
-            onRefresh: _loadArtists,
-            child: ListView.separated(
-              padding: EdgeInsets.fromLTRB(
-                padding.left,
-                8,
-                padding.right,
-                bottomPadding,
+            return RefreshIndicator(
+              onRefresh: _loadArtists,
+              child: ListView.separated(
+                padding: EdgeInsets.fromLTRB(
+                  padding.left,
+                  8,
+                  padding.right,
+                  bottomPadding,
+                ),
+                itemCount: _artists.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final artist = _artists[index];
+                  return _ArtistTile(
+                    artist: artist,
+                    api: _api,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => NavidromeArtistDetailPage(artist: artist),
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
-              itemCount: _artists.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final artist = _artists[index];
-                return _ArtistTile(
-                  artist: artist,
-                  api: _api,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => NavidromeArtistDetailPage(artist: artist),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -131,6 +147,7 @@ class _ArtistTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final navTheme = NavidromeTheme.of(context);
 
     final coverUrl = artist.coverArt != null && api != null
         ? api!.buildCoverUrl(artist.coverArt!, size: 120)
@@ -164,13 +181,13 @@ class _ArtistTile extends StatelessWidget {
                 Text(
                   '${artist.albumCount} 张专辑',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.outline,
+                    color: navTheme.textSecondary,
                   ),
                 ),
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: colorScheme.outline),
+          Icon(Icons.chevron_right, color: navTheme.textSecondary),
         ],
       ),
     );
@@ -190,6 +207,7 @@ class NavidromeArtistDetailPage extends StatefulWidget {
 
 class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
   NavidromeArtistInfo? _artistInfo;
+  List<NavidromeSong> _topSongs = [];
   bool _loading = true;
   String? _error;
 
@@ -222,6 +240,7 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
       setState(() {
         _artistInfo = info;
       });
+      await _loadTopSongs();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -236,15 +255,256 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
     }
   }
 
+  Future<void> _loadTopSongs() async {
+    final api = _api;
+    if (api == null) return;
+
+    try {
+      final songs = await api.getTopSongs(count: 100);
+      if (!mounted) return;
+
+      final matched = songs
+          .where((song) =>
+              song.artistId == widget.artist.id ||
+              song.artist == widget.artist.name)
+          .toList();
+
+      setState(() {
+        _topSongs = matched;
+      });
+    } catch (_) {
+      // ignore song load failures to avoid blocking the page
+    }
+  }
+
+  void _playSongs(List<NavidromeSong> songs, int index) {
+    if (songs.isEmpty) return;
+    final api = _api;
+    if (api == null) return;
+
+    final tracks = songs
+        .map(
+          (song) => Track(
+            id: song.id,
+            name: song.title,
+            artists: song.artist,
+            album: song.album,
+            picUrl: api.buildCoverUrl(song.coverArt),
+            source: MusicSource.navidrome,
+          ),
+        )
+        .toList();
+
+    PlaylistQueueService().setQueue(tracks, index, QueueSource.search);
+    PlayerService().playTrack(tracks[index]);
+  }
+
+  Future<void> _playAlbumQuick(NavidromeAlbum album) async {
+    final api = _api;
+    if (api == null) return;
+
+    try {
+      final songs = await api.getAlbumSongs(album.id);
+      if (!mounted || songs.isEmpty) return;
+
+      final tracks = songs
+          .map(
+            (song) => Track(
+              id: song.id,
+              name: song.title,
+              artists: song.artist,
+              album: song.album,
+              picUrl: api.buildCoverUrl(song.coverArt),
+              source: MusicSource.navidrome,
+            ),
+          )
+          .toList();
+
+      PlaylistQueueService().setQueue(tracks, 0, QueueSource.album);
+      PlayerService().playTrack(tracks[0]);
+    } catch (_) {
+      // ignore play errors
+    }
+  }
+
+  Future<void> _addAlbumToQueue(NavidromeAlbum album) async {
+    final api = _api;
+    if (api == null) return;
+
+    try {
+      final songs = await api.getAlbumSongs(album.id);
+      if (!mounted || songs.isEmpty) return;
+
+      final tracks = songs
+          .map(
+            (song) => Track(
+              id: song.id,
+              name: song.title,
+              artists: song.artist,
+              album: song.album,
+              picUrl: api.buildCoverUrl(song.coverArt),
+              source: MusicSource.navidrome,
+            ),
+          )
+          .toList();
+
+      PlaylistQueueService().appendToQueue(tracks);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已加入播放队列')),
+        );
+      }
+    } catch (_) {
+      // ignore add failures
+    }
+  }
+
+  Future<void> _toggleAlbumStar(NavidromeAlbum album) async {
+    final api = _api;
+    if (api == null) return;
+
+    try {
+      if (album.starred) {
+        await api.unstar(albumId: album.id);
+      } else {
+        await api.star(albumId: album.id);
+      }
+
+      if (!mounted || _artistInfo == null) return;
+      final info = _artistInfo!;
+      final updatedAlbums = info.albums.map((a) {
+        if (a.id != album.id) return a;
+        return NavidromeAlbum(
+          id: a.id,
+          name: a.name,
+          artist: a.artist,
+          artistId: a.artistId,
+          coverArt: a.coverArt,
+          songCount: a.songCount,
+          year: a.year,
+          genre: a.genre,
+          duration: a.duration,
+          starred: !a.starred,
+        );
+      }).toList();
+
+      setState(() {
+        _artistInfo = NavidromeArtistInfo(
+          artist: info.artist,
+          albums: updatedAlbums,
+          biography: info.biography,
+          musicBrainzId: info.musicBrainzId,
+          lastFmUrl: info.lastFmUrl,
+          similarArtistIds: info.similarArtistIds,
+        );
+      });
+    } catch (_) {
+      // ignore toggle failures
+    }
+  }
+
+  void _showAlbumActions(NavidromeAlbum album) {
+    final navTheme = NavidromeTheme.of(context);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: navTheme.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.play_arrow),
+                title: const Text('播放专辑'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _playAlbumQuick(album);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.queue_music),
+                title: const Text('加入队列'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _addAlbumToQueue(album);
+                },
+              ),
+              ListTile(
+                leading: Icon(album.starred ? Icons.star : Icons.star_border),
+                title: Text(album.starred ? '取消收藏' : '收藏专辑'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _toggleAlbumStar(album);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAllSongsSheet(List<NavidromeSong> songs) {
+    if (songs.isEmpty) return;
+    final navTheme = NavidromeTheme.of(context);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: navTheme.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.6,
+            minChildSize: 0.4,
+            maxChildSize: 0.9,
+            builder: (context, controller) {
+              return NavidromeSongList(
+                songs: songs,
+                api: _api,
+                controller: controller,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                onTap: (index) => _playSongs(songs, index),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAlbumSheet(NavidromeAlbum album) {
+    showNavidromeAlbumSheet(
+      context: context,
+      album: album,
+      api: _api,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final navTheme = NavidromeTheme.of(context);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.artist.name),
+        backgroundColor: navTheme.background,
+        foregroundColor: navTheme.textPrimary,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
       ),
+      backgroundColor: navTheme.background,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -264,10 +524,7 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
   ) {
     final albums = _artistInfo?.albums ?? [];
     final padding = NavidromeLayout.pagePadding(width);
-
-    if (albums.isEmpty) {
-      return const Center(child: Text('暂无专辑'));
-    }
+    final navTheme = NavidromeTheme.of(context);
 
     return CustomScrollView(
       slivers: [
@@ -311,7 +568,7 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
                       Text(
                         '${albums.length} 张专辑',
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.outline,
+                          color: navTheme.textSecondary,
                         ),
                       ),
                     ],
@@ -321,7 +578,47 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
             ),
           ),
         ),
-        // 专辑分隔标题
+        if (_topSongs.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: NavidromeSectionHeader(
+              title: '热门歌曲',
+              actionLabel: '查看全部',
+              onAction: () => _showAllSongsSheet(_topSongs),
+              padding: EdgeInsets.fromLTRB(
+                padding.left,
+                8,
+                padding.right,
+                4,
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                padding.left,
+                0,
+                padding.right,
+                12,
+              ),
+              child: Column(
+                children: _topSongs.take(5).map((song) {
+                  final index = _topSongs.indexOf(song);
+                  final coverUrl = _api?.buildCoverUrl(song.coverArt) ?? '';
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: NavidromeSongTile(
+                      title: song.title,
+                      subtitle: '${song.artist} · ${song.album}',
+                      coverUrl: coverUrl,
+                      duration: song.durationFormatted,
+                      onTap: () => _playSongs(_topSongs, index),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ],
         SliverToBoxAdapter(
           child: NavidromeSectionHeader(
             title: '专辑',
@@ -333,36 +630,80 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
             ),
           ),
         ),
-        // 专辑网格
-        SliverPadding(
-          padding: EdgeInsets.symmetric(horizontal: padding.left),
-          sliver: SliverGrid(
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: NavidromeLayout.gridColumns(width),
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: NavidromeLayout.gridAspectRatio(width),
+        if (albums.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                padding.left,
+                8,
+                padding.right,
+                24,
+              ),
+              child: Text(
+                '暂无专辑',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: navTheme.textSecondary,
+                ),
+              ),
             ),
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final album = albums[index];
-                return _AlbumGridItem(
-                  album: album,
-                  api: _api,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => NavidromeAlbumPage(album: album),
-                      ),
-                    );
-                  },
-                );
-              },
-              childCount: albums.length,
+          )
+        else
+          SliverPadding(
+            padding: EdgeInsets.symmetric(horizontal: padding.left),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount:
+                    width < NavidromeLayout.compactWidth ? 2 : 3,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: NavidromeLayout.gridAspectRatio(width),
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final album = albums[index];
+                  return GestureDetector(
+                    onLongPress: () => _showAlbumActions(album),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: _AlbumGridItem(
+                            album: album,
+                            api: _api,
+                            onTap: () {
+                              _showAlbumSheet(album);
+                            },
+                          ),
+                        ),
+                        Positioned(
+                          right: 6,
+                          top: 6,
+                          child: InkWell(
+                            onTap: () => _playAlbumQuick(album),
+                            borderRadius: BorderRadius.circular(18),
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: NavidromeColors.activeBlue,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: navTheme.cardShadow,
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                childCount: albums.length,
+              ),
             ),
           ),
-        ),
         const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
       ],
     );

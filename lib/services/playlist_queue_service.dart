@@ -11,6 +11,7 @@ enum QueueSource {
   album,       // 专辑
   history,     // 播放历史
   search,      // 搜索结果
+  radio,       // 电台
   toplist,     // 排行榜
 }
 
@@ -72,6 +73,15 @@ class PlaylistQueueService extends ChangeNotifier {
     _shufflePosition = -1;
     
     print('🎵 [PlaylistQueueService] 设置播放队列: ${_queue.length} 首歌曲, 来源: ${source.name}, 当前索引: $startIndex');
+    notifyListeners();
+  }
+
+  /// 追加歌曲到当前队列（不改变当前播放索引）
+  void appendToQueue(List<Track> tracks) {
+    if (tracks.isEmpty) return;
+    _queue.addAll(tracks);
+    _shuffledIndices.clear();
+    _shufflePosition = -1;
     notifyListeners();
   }
 

@@ -17,8 +17,10 @@ class NavidromeSettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final navTheme = NavidromeTheme.of(context);
 
     return Scaffold(
+      backgroundColor: navTheme.background,
       body: SafeArea(
         child: NavidromeConfigForm(
           showClearButton: true,
@@ -29,13 +31,14 @@ class NavidromeSettingsPage extends StatelessWidget {
                 '设置',
                 style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w700,
+                  color: navTheme.textPrimary,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 'Navidrome',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.outline,
+                  color: navTheme.textSecondary,
                 ),
               ),
               const SizedBox(height: 16),
@@ -61,7 +64,7 @@ class NavidromeSettingsPage extends StatelessWidget {
                   );
                 },
                 padding: const EdgeInsets.all(12),
-                borderColor: colorScheme.outlineVariant,
+                borderColor: navTheme.cardBorder,
                 child: Row(
                   children: [
                     _IconBadge(
@@ -84,13 +87,13 @@ class NavidromeSettingsPage extends StatelessWidget {
                           Text(
                             '进入音源配置与选择',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.outline,
+                              color: navTheme.textSecondary,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right, color: colorScheme.outline),
+                    Icon(Icons.chevron_right, color: navTheme.textSecondary),
                   ],
                 ),
               ),
@@ -99,7 +102,7 @@ class NavidromeSettingsPage extends StatelessWidget {
                 onTap: () => _confirmResetAudioSource(context),
                 padding: const EdgeInsets.all(12),
                 borderColor: colorScheme.error.withOpacity(0.35),
-                backgroundColor: colorScheme.errorContainer.withOpacity(0.18),
+                backgroundColor: navTheme.card,
                 child: Row(
                   children: [
                     _IconBadge(
@@ -123,7 +126,7 @@ class NavidromeSettingsPage extends StatelessWidget {
                           Text(
                             '清除当前音源选择并回到引导页',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.outline,
+                              color: navTheme.textSecondary,
                             ),
                           ),
                         ],
@@ -141,7 +144,7 @@ class NavidromeSettingsPage extends StatelessWidget {
               NavidromeCard(
                 onTap: () => _confirmExit(context),
                 padding: const EdgeInsets.all(12),
-                backgroundColor: colorScheme.errorContainer.withOpacity(0.25),
+                backgroundColor: navTheme.card,
                 borderColor: colorScheme.error.withOpacity(0.4),
                 child: Row(
                   children: [

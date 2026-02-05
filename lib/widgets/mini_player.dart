@@ -11,6 +11,8 @@ import '../services/playlist_queue_service.dart';
 import '../services/play_history_service.dart';
 import '../models/track.dart';
 import '../utils/theme_manager.dart';
+import '../services/audio_source_service.dart';
+import '../widgets/navidrome_ui.dart';
 
 /// 迷你播放器组件（底部播放栏）
 class MiniPlayer extends StatefulWidget {
@@ -393,416 +395,66 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
     required Color? themeTint,
     required bool isCompactWidth,
   }) {
-    final bool isFluent = ThemeManager().isFluentFramework;
-    final bool effectEnabled = ThemeManager().windowEffect.name != 'disabled';
-    final fluentBg = isFluent ? fluent.FluentTheme.of(context).micaBackgroundColor : null;
-    final Color bgColor = isCompactWidth
-        ? Colors.transparent
-        : (isFluent
-            ? (effectEnabled ? Colors.transparent : (fluentBg ?? colorScheme.surface))
-            : colorScheme.surfaceContainerHighest);
+    final isNavidromeStyle = AudioSourceService().isNavidromeActive;
+    final navTheme = NavidromeTheme.of(context);
+    final backgroundColor = isNavidromeStyle ? navTheme.miniPlayerBackground : colorScheme.surfaceContainerHighest;
+    final progressBarTrackColor = isNavidromeStyle ? navTheme.progressTrack : colorScheme.surfaceContainerHighest;
+    final progressBarActiveColor = isNavidromeStyle ? navTheme.progressActive : colorScheme.primary;
+
     return Container(
       key: const ValueKey('mini_expanded'),
-      height: 90,
-      margin: isCompactWidth ? const EdgeInsets.fromLTRB(12, 8, 12, 8) : EdgeInsets.zero,
+      height: 64, // Reduced height to match Scheme B (64px)
+      margin: EdgeInsets.zero, // Remove margins for full-width look
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(isCompactWidth ? 28 : 0),
-        border: isCompactWidth ? Border.all(color: Colors.white.withOpacity(0.18), width: 1) : null,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.10),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
+        color: backgroundColor,
+        border: isNavidromeStyle
+            ? Border(
+                top: BorderSide(color: navTheme.miniPlayerBorder, width: 0.5),
+              )
+            : null,
+      ),
+      child: Column(
+        children: [
+          // Top-aligned full-width progress bar
+          SizedBox(
+            height: 2,
+            width: double.infinity,
+            child: ValueListenableBuilder<Duration>(
+              valueListenable: player.positionNotifier,
+              builder: (context, position, child) {
+                final progress = player.duration.inMilliseconds > 0
+                    ? position.inMilliseconds / player.duration.inMilliseconds
+                    : 0.0;
+                return LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 2,
+                  backgroundColor: progressBarTrackColor,
+                  valueColor: AlwaysStoppedAnimation<Color>(progressBarActiveColor),
+                );
+              },
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  // Album Art
+                  _buildCover(song, track, colorScheme, size: 40),
+                  const SizedBox(width: 12),
+                  // Title & Artist
+                  Expanded(
+                    child: _buildSongInfo(song, track, context),
+                  ),
+                  // Controls
+                  _buildAdaptiveControls(player, context, colorScheme, hideSkip: false), // Scheme B has Prev/Next/Play
+                ],
+              ),
+            ),
           ),
         ],
       ),
-      child: isCompactWidth
-          ? Stack(
-              children: [
-                if (!(isFluent && effectEnabled))
-                  Positioned.fill(
-                    child: ClipRect(
-                      child: BackdropFilter(
-                        filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                        child: const SizedBox.shrink(),
-                      ),
-                    ),
-                  ),
-                // Material Expressive: Cleaner Look, no complex gradients
-                if (!ThemeManager().isFluentFramework && !ThemeManager().isCupertinoFramework)
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(28),
-                        color: colorScheme.surfaceContainerHighest.withOpacity(0.95),
-                      ),
-                    ),
-                  )
-                else ...[
-                   Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(28),
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Colors.white.withOpacity(0.16),
-                            (themeTint ?? colorScheme.primary).withOpacity(0.10),
-                            Colors.white.withOpacity(0.05),
-                          ],
-                          stops: const [0.0, 0.45, 1.0],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      ignoring: true,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(28),
-                          gradient: RadialGradient(
-                            center: const Alignment(-0.9, -0.9),
-                            radius: 1.2,
-                            colors: [
-                              Colors.white.withOpacity(0.20),
-                              Colors.white.withOpacity(0.04),
-                              Colors.transparent,
-                            ],
-                            stops: const [0.0, 0.45, 1.0],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-                Column(
-                  children: [
-                    if (!ThemeManager().isFluentFramework)
-                      _buildProgressBar(player, colorScheme),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final isCompact = constraints.maxWidth < 600;
-                            final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
-                            if (isCompact) {
-                              if (isPortrait) {
-                                return Row(
-                                  children: [
-                                    Expanded(
-                                      flex: 8,
-                                      child: Row(
-                                        children: [
-                                          _buildCover(song, track, colorScheme, size: 56),
-                                          const SizedBox(width: 10),
-                                          Expanded(child: _buildSongInfo(song, track, context)),
-                                        ],
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 6,
-                                      child: Align(
-                                        alignment: Alignment.centerRight,
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            _buildAdaptiveControls(player, context, colorScheme, hideSkip: true),
-                                            _isCupertino
-                                                ? CupertinoButton(
-                                                    padding: const EdgeInsets.all(8),
-                                                    minSize: 0,
-                                                    onPressed: () => _showQueueSheet(context),
-                                                    child: Icon(
-                                                      CupertinoIcons.music_note_list,
-                                                      color: CupertinoColors.activeBlue,
-                                                    ),
-                                                  )
-                                                : IconButton(
-                                                    icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
-                                                    tooltip: '播放列表',
-                                                    onPressed: () => _showQueueSheet(context),
-                                                  ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              } else {
-                                return Row(
-                                  children: [
-                                    Expanded(
-                                      flex: 6,
-                                      child: Row(
-                                        children: [
-                                          _buildCover(song, track, colorScheme, size: 56),
-                                          const SizedBox(width: 10),
-                                          Expanded(child: _buildSongInfo(song, track, context)),
-                                        ],
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 4,
-                                      child: Center(
-                                      child: _buildAdaptiveControls(player, context, colorScheme, hideSkip: true),
-                                    ),
-                                    ),
-                                    Expanded(
-                                      flex: 5,
-                                      child: Align(
-                                        alignment: Alignment.centerRight,
-                                        child: ThemeManager().isFluentFramework
-                                            ? Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  ValueListenableBuilder<Duration>(
-                                                    valueListenable: player.positionNotifier,
-                                                    builder: (context, position, child) {
-                                                      return Text(
-                                                        _formatDuration(position),
-                                                        style: TextStyle(
-                                                          fontFamily: 'Microsoft YaHei',
-                                                          fontSize: 12,
-                                                          color: fluent.FluentTheme.of(context).resources.textFillColorSecondary,
-                                                        ),
-                                                      );
-                                                    },
-                                                  ),
-                                                  Text(
-                                                    ' / ',
-                                                    style: TextStyle(
-                                                      fontFamily: 'Microsoft YaHei',
-                                                      fontSize: 12,
-                                                      color: fluent.FluentTheme.of(context).resources.textFillColorSecondary,
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    _formatDuration(player.duration),
-                                                    style: TextStyle(
-                                                      fontFamily: 'Microsoft YaHei',
-                                                      fontSize: 12,
-                                                      color: fluent.FluentTheme.of(context).resources.textFillColorSecondary,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  fluent.IconButton(
-                                                    icon: Icon(Icons.queue_music_rounded, color: fluent.FluentTheme.of(context).resources.textFillColorPrimary),
-                                                    onPressed: () => _showQueueSheet(context),
-                                                  ),
-                                                ],
-                                              )
-                                            : Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  ValueListenableBuilder<Duration>(
-                                                    valueListenable: player.positionNotifier,
-                                                    builder: (context, position, child) {
-                                                      return Text(
-                                                        _formatDuration(position),
-                                                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                                                      );
-                                                    },
-                                                  ),
-                                                  const Text(' / '),
-                                                  Text(
-                                                    _formatDuration(player.duration),
-                                                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  IconButton(
-                                                    icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
-                                                    tooltip: '播放列表',
-                                                    onPressed: () => _showQueueSheet(context),
-                                                  ),
-                                                ],
-                                              ),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              }
-                            }
-                            return Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      _buildCover(song, track, colorScheme, size: 56),
-                                      const SizedBox(width: 12),
-                                      ConstrainedBox(
-                                        constraints: const BoxConstraints(maxWidth: 420),
-                                        child: _buildSongInfo(song, track, context),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Align(
-                                  alignment: Alignment.center,
-                                  child: _buildAdaptiveControls(player, context, colorScheme),
-                                ),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: _buildAdaptiveRightPanel(player, context, colorScheme),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            )
-          : Column(
-              children: [
-                if (!ThemeManager().isFluentFramework)
-                  _buildProgressBar(player, colorScheme),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final isCompact = constraints.maxWidth < 600;
-                        final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
-                        if (isCompact) {
-                          if (isPortrait) {
-                            return Row(
-                              children: [
-                                Expanded(
-                                  flex: 8,
-                                  child: Row(
-                                    children: [
-                                      _buildCover(song, track, colorScheme, size: 56),
-                                      const SizedBox(width: 10),
-                                      Expanded(child: _buildSongInfo(song, track, context)),
-                                    ],
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 6,
-                                  child: Align(
-                                    alignment: Alignment.centerRight,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        _buildAdaptiveControls(player, context, colorScheme, hideSkip: true),
-                                        _isCupertino
-                                            ? CupertinoButton(
-                                                padding: const EdgeInsets.all(8),
-                                                minSize: 0,
-                                                onPressed: () => _showQueueSheet(context),
-                                                child: Icon(
-                                                  CupertinoIcons.music_note_list,
-                                                  color: CupertinoColors.activeBlue,
-                                                ),
-                                              )
-                                            : IconButton(
-                                                icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
-                                                tooltip: '播放列表',
-                                                onPressed: () => _showQueueSheet(context),
-                                              ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          } else {
-                            return Row(
-                              children: [
-                                Expanded(
-                                  flex: 6,
-                                  child: Row(
-                                    children: [
-                                      _buildCover(song, track, colorScheme, size: 56),
-                                      const SizedBox(width: 10),
-                                      Expanded(child: _buildSongInfo(song, track, context)),
-                                    ],
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 4,
-                                  child: Center(
-                                    child: _buildAdaptiveControls(player, context, colorScheme, hideSkip: true),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 5,
-                                  child: Align(
-                                    alignment: Alignment.centerRight,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        ValueListenableBuilder<Duration>(
-                                          valueListenable: player.positionNotifier,
-                                          builder: (context, position, child) {
-                                            return Text(
-                                              _formatDuration(position),
-                                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                                            );
-                                          },
-                                        ),
-                                        const Text(' / '),
-                                        Text(
-                                          _formatDuration(player.duration),
-                                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        IconButton(
-                                          icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
-                                          tooltip: '播放列表',
-                                          onPressed: () => _showQueueSheet(context),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-                        }
-                        return Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _buildCover(song, track, colorScheme, size: 56),
-                                  const SizedBox(width: 12),
-                                  ConstrainedBox(
-                                    constraints: const BoxConstraints(maxWidth: 420),
-                                    child: _buildSongInfo(song, track, context),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Align(
-                              alignment: Alignment.center,
-                              child: _buildAdaptiveControls(player, context, colorScheme),
-                            ),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: _buildAdaptiveRightPanel(player, context, colorScheme),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
     );
   }
 
@@ -817,6 +469,11 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
     final margin = isCompactWidth ? const EdgeInsets.fromLTRB(12, 8, 12, 8) : EdgeInsets.zero;
     final cover = _buildCover(song, track, colorScheme, size: 64);
 
+    final isNavidromeStyle = AudioSourceService().isNavidromeActive;
+    final navTheme = NavidromeTheme.of(context);
+    final backgroundColor = isNavidromeStyle ? navTheme.miniPlayerBackground : colorScheme.surface;
+    final borderColor = isNavidromeStyle ? navTheme.miniPlayerBorder : colorScheme.primary.withOpacity(0.3);
+
     if (!isActive) {
       return Container(
         key: const ValueKey('mini_collapsed'),
@@ -824,14 +481,17 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
         alignment: Alignment.bottomLeft,
         child: DecoratedBox(
           decoration: BoxDecoration(
+            color: backgroundColor,
             borderRadius: BorderRadius.circular(22),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.12),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            boxShadow: isNavidromeStyle
+                ? navTheme.cardShadow
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
           ),
           child: cover,
         ),
@@ -850,7 +510,9 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
           final scaleAnim = _breathingScale;
           final t = controller?.value ?? 1.0;
           final scale = scaleAnim?.value ?? 1.0;
-          final glowColor = colorScheme.primary.withOpacity(ui.lerpDouble(0.35, 0.6, t) ?? 0.45);
+          final glowColor = isNavidromeStyle
+              ? navTheme.progressActive.withOpacity(ui.lerpDouble(0.3, 0.5, t) ?? 0.4)
+              : colorScheme.primary.withOpacity(ui.lerpDouble(0.35, 0.6, t) ?? 0.45);
           final blur = ui.lerpDouble(18, 32, t) ?? 24;
           final spread = ui.lerpDouble(3, 10, t) ?? 6;
 
@@ -870,8 +532,8 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: colorScheme.primary.withOpacity(ui.lerpDouble(0.25, 0.4, t) ?? 0.3)),
-                  color: colorScheme.surface,
+                  border: Border.all(color: borderColor),
+                  color: backgroundColor,
                 ),
                 child: child,
               ),
@@ -1107,8 +769,11 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
 
   /// 中间控制（上一首/播放暂停/下一首）- Material 风格
   Widget _buildCenterControls(PlayerService player, ColorScheme colorScheme, {bool hideSkip = false}) {
-    const double skipIconSize = 24;
-    const double playIconSize = 28;
+    const double skipIconSize = 28;
+    const double playIconSize = 24;
+    // Navidrome Scheme B Colors
+    const activeColor = Color(0xFF0A84FF);
+    const iconColor = Colors.white;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -1117,7 +782,7 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
         IconButton(
           icon: Icon(
             Icons.skip_previous_rounded,
-            color: player.hasPrevious ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+            color: player.hasPrevious ? iconColor : iconColor.withOpacity(0.5),
           ),
           iconSize: skipIconSize,
           onPressed: player.hasPrevious ? () => player.playPrevious() : null,
@@ -1131,26 +796,27 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
               height: 28,
               child: CircularProgressIndicator(
                 strokeWidth: 2.5,
-                color: colorScheme.primary,
+                color: activeColor,
               ),
             ),
           )
         else
           Container(
+             margin: const EdgeInsets.symmetric(horizontal: 8),
              decoration: BoxDecoration(
-               color: colorScheme.primary,
+               color: activeColor,
                shape: BoxShape.circle,
                boxShadow: [
                  BoxShadow(
-                   color: colorScheme.primary.withOpacity(0.3),
+                   color: activeColor.withOpacity(0.3),
                    blurRadius: 8,
-                   offset: const Offset(0, 4),
+                   offset: const Offset(0, 2),
                  )
                ]
              ),
              child: IconButton(
                 icon: Icon(player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
-                color: colorScheme.onPrimary,
+                color: Colors.white,
                 iconSize: playIconSize,
                 onPressed: () => player.togglePlayPause(),
                 tooltip: player.isPlaying ? '暂停' : '播放',
@@ -1160,7 +826,7 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
         IconButton(
           icon: Icon(
             Icons.skip_next_rounded,
-            color: player.hasNext ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+            color: player.hasNext ? iconColor : iconColor.withOpacity(0.5),
           ),
           iconSize: skipIconSize,
           onPressed: player.hasNext ? () => player.playNext() : null,

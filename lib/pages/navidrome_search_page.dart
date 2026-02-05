@@ -5,13 +5,12 @@ import '../services/navidrome_api.dart';
 import '../services/navidrome_session_service.dart';
 import '../services/player_service.dart';
 import '../services/playlist_queue_service.dart';
-import 'navidrome_library_page.dart';
 import 'navidrome_artists_page.dart';
 import '../widgets/navidrome_ui.dart';
 
 /// Navidrome 搜索页面
 ///
-/// 支持 Tab 分类筛选：全部/艺术家/专辑/歌曲
+/// 支持 Tab 分类筛选：全部/艺术家/专辑/歌曲/电台
 class NavidromeSearchPage extends StatefulWidget {
   const NavidromeSearchPage({super.key});
 
@@ -20,7 +19,7 @@ class NavidromeSearchPage extends StatefulWidget {
 }
 
 class _NavidromeSearchPageState extends State<NavidromeSearchPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   late TabController _tabController;
@@ -28,10 +27,11 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
   bool _isLoading = false;
   String? _error;
   NavidromeSearchResult? _result;
+  List<NavidromeRadioStation> _radioStations = []; // 电台搜索结果
 
   NavidromeApi? get _api => NavidromeSessionService().api;
 
-  static const _tabs = ['全部', '艺术家', '专辑', '歌曲'];
+  static const _tabs = ['全部', '艺术家', '专辑', '歌曲', '电台'];
 
   @override
   void initState() {
@@ -63,14 +63,33 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     });
 
     try {
-      final result = await api.search3(
-        query,
-        artistCount: 50,
-        albumCount: 50,
-        songCount: 100,
-      );
+      // 并行搜索：常规搜索 + 电台搜索
+      final results = await Future.wait([
+        api.search3(
+          query,
+          artistCount: 50,
+          albumCount: 50,
+          songCount: 100,
+        ),
+        api.getInternetRadioStations(),
+      ]);
+
       if (!mounted) return;
-      setState(() => _result = result);
+
+      final searchResult = results[0] as NavidromeSearchResult;
+      final allRadios = results[1] as List<NavidromeRadioStation>;
+
+      // 本地过滤电台（Subsonic API 不支持电台搜索）
+      final queryLower = query.toLowerCase();
+      final matchedRadios = allRadios.where((station) {
+        return station.name.toLowerCase().contains(queryLower) ||
+            (station.homePageUrl?.toLowerCase().contains(queryLower) ?? false);
+      }).toList();
+
+      setState(() {
+        _result = searchResult;
+        _radioStations = matchedRadios;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = '搜索失败：$e');
@@ -85,6 +104,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     _controller.clear();
     setState(() {
       _result = null;
+      _radioStations = [];
       _error = null;
     });
     _focusNode.requestFocus();
@@ -112,12 +132,141 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     PlayerService().playTrack(tracks[index]);
   }
 
+  Future<List<Track>> _buildAlbumTracks(NavidromeAlbum album) async {
+    final api = _api;
+    if (api == null) return [];
+    try {
+      final songs = await api.getAlbumSongs(album.id);
+      return songs
+          .map(
+            (song) => Track(
+              id: song.id,
+              name: song.title,
+              artists: song.artist,
+              album: song.album,
+              picUrl: api.buildCoverUrl(song.coverArt),
+              source: MusicSource.navidrome,
+            ),
+          )
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _playAlbumQuick(NavidromeAlbum album) async {
+    final tracks = await _buildAlbumTracks(album);
+    if (tracks.isEmpty) return;
+    PlaylistQueueService().setQueue(tracks, 0, QueueSource.album);
+    PlayerService().playTrack(tracks[0]);
+  }
+
+  Future<void> _addAlbumToQueue(NavidromeAlbum album) async {
+    final tracks = await _buildAlbumTracks(album);
+    if (tracks.isEmpty) return;
+    PlaylistQueueService().appendToQueue(tracks);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已加入播放队列')),
+      );
+    }
+  }
+
+  Future<void> _toggleAlbumStar(NavidromeAlbum album) async {
+    final api = _api;
+    if (api == null) return;
+
+    try {
+      if (album.starred) {
+        await api.unstar(albumId: album.id);
+      } else {
+        await api.star(albumId: album.id);
+      }
+
+      if (!mounted || _result == null) return;
+      final updatedAlbums = _result!.albums.map((a) {
+        if (a.id != album.id) return a;
+        return NavidromeAlbum(
+          id: a.id,
+          name: a.name,
+          artist: a.artist,
+          artistId: a.artistId,
+          coverArt: a.coverArt,
+          songCount: a.songCount,
+          year: a.year,
+          genre: a.genre,
+          duration: a.duration,
+          starred: !a.starred,
+        );
+      }).toList();
+
+      setState(() {
+        _result = NavidromeSearchResult(
+          artists: _result!.artists,
+          albums: updatedAlbums,
+          songs: _result!.songs,
+        );
+      });
+    } catch (_) {
+      // ignore toggle failures
+    }
+  }
+
+  void _showAlbumActions(NavidromeAlbum album) {
+    final navTheme = NavidromeTheme.of(context);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: navTheme.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.play_arrow),
+                title: const Text('播放专辑'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _playAlbumQuick(album);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.queue_music),
+                title: const Text('加入队列'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _addAlbumToQueue(album);
+                },
+              ),
+              ListTile(
+                leading: Icon(album.starred ? Icons.star : Icons.star_border),
+                title: Text(album.starred ? '取消收藏' : '收藏专辑'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _toggleAlbumStar(album);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final navTheme = NavidromeTheme.of(context);
 
     return Scaffold(
+      backgroundColor: navTheme.background,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -138,6 +287,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
                     '搜索',
                     style: theme.textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.w700,
+                      color: navTheme.textPrimary,
                     ),
                   ),
                 ),
@@ -148,9 +298,9 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
                     padding.right,
                     8,
                   ),
-                  child: _buildSearchField(colorScheme),
+                  child: _buildSearchField(navTheme),
                 ),
-                if (_result != null && !_result!.isEmpty)
+                if (_result != null && (!_result!.isEmpty || _radioStations.isNotEmpty))
                   _buildTabChips(colorScheme, width),
                 Expanded(
                   child: _buildBody(theme, colorScheme),
@@ -163,7 +313,10 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     );
   }
 
-  Widget _buildSearchField(ColorScheme colorScheme) {
+  Widget _buildSearchField(NavidromeThemeData navTheme) {
+    final borderRadius = BorderRadius.circular(14);
+    final borderColor = navTheme.isDark ? NavidromeColors.cardBorder : navTheme.cardBorder;
+
     return TextField(
       controller: _controller,
       focusNode: _focusNode,
@@ -171,7 +324,8 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
       onSubmitted: (_) => _search(),
       decoration: InputDecoration(
         hintText: '搜索歌曲、专辑、艺术家',
-        prefixIcon: const Icon(Icons.search),
+        hintStyle: TextStyle(color: navTheme.textSecondary),
+        prefixIcon: Icon(Icons.search, color: navTheme.textSecondary),
         suffixIcon: _controller.text.isNotEmpty
             ? IconButton(
                 icon: const Icon(Icons.clear),
@@ -179,11 +333,19 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
               )
             : null,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
+          borderRadius: borderRadius,
+          borderSide: BorderSide(color: borderColor, width: 1),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: borderRadius,
+          borderSide: BorderSide(color: borderColor, width: 1),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: borderRadius,
+          borderSide: const BorderSide(color: NavidromeColors.activeBlue, width: 2),
         ),
         filled: true,
-        fillColor: colorScheme.surfaceContainerHighest,
+        fillColor: navTheme.card,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 12,
@@ -226,6 +388,8 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
   }
 
   Widget _buildBody(ThemeData theme, ColorScheme colorScheme) {
+    final navTheme = NavidromeTheme.of(context);
+
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -248,12 +412,12 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.search, size: 64, color: colorScheme.outline),
+            Icon(Icons.search, size: 64, color: navTheme.textSecondary),
             const SizedBox(height: 16),
             Text(
               '输入关键词开始搜索',
               style: theme.textTheme.bodyLarge?.copyWith(
-                color: colorScheme.outline,
+                color: navTheme.textSecondary,
               ),
             ),
           ],
@@ -261,17 +425,17 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
       );
     }
 
-    if (_result!.isEmpty) {
+    if (_result!.isEmpty && _radioStations.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.search_off, size: 64, color: colorScheme.outline),
+            Icon(Icons.search_off, size: 64, color: navTheme.textSecondary),
             const SizedBox(height: 16),
             Text(
               '未找到相关结果',
               style: theme.textTheme.bodyLarge?.copyWith(
-                color: colorScheme.outline,
+                color: navTheme.textSecondary,
               ),
             ),
           ],
@@ -286,6 +450,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
         _buildArtistsTab(theme, colorScheme),
         _buildAlbumsTab(theme, colorScheme),
         _buildSongsTab(theme, colorScheme),
+        _buildRadioTab(theme, colorScheme),
       ],
     );
   }
@@ -294,106 +459,151 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     final artists = _result?.artists ?? [];
     final albums = _result?.albums ?? [];
     final songs = _result?.songs ?? [];
+    final radios = _radioStations;
     final width = MediaQuery.of(context).size.width;
     final padding = NavidromeLayout.pagePadding(width);
     final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
 
-    return ListView(
-      padding: EdgeInsets.fromLTRB(
-        padding.left,
-        4,
-        padding.right,
-        bottomPadding,
-      ),
-      children: [
-        // 艺术家区域
-        if (artists.isNotEmpty) ...[
-          NavidromeSectionHeader(
-            title: '艺术家',
-            actionLabel: '查看全部',
-            onAction: () => _tabController.animateTo(1),
-            padding: EdgeInsets.fromLTRB(
-              padding.left,
-              8,
-              padding.right,
-              4,
-            ),
+    return AnimatedBuilder(
+      animation: PlayerService(),
+      builder: (context, _) {
+        final currentTrack = PlayerService().currentTrack;
+
+        return ListView(
+          padding: EdgeInsets.fromLTRB(
+            padding.left,
+            4,
+            padding.right,
+            bottomPadding,
           ),
-          SizedBox(
-            height: 100,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: padding.left),
-              itemCount: artists.take(10).length,
-              itemBuilder: (context, index) {
-                final artist = artists[index];
-                return _ArtistChip(
-                  artist: artist,
-                  api: _api,
-                  onTap: () => _navigateToArtist(artist),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-        // 专辑区域
-        if (albums.isNotEmpty) ...[
-          NavidromeSectionHeader(
-            title: '专辑',
-            actionLabel: '查看全部',
-            onAction: () => _tabController.animateTo(2),
-            padding: EdgeInsets.fromLTRB(
-              padding.left,
-              8,
-              padding.right,
-              4,
-            ),
-          ),
-          SizedBox(
-            height: 210,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: padding.left),
-              itemCount: albums.take(10).length,
-              itemBuilder: (context, index) {
-                final album = albums[index];
-                return _AlbumCard(
-                  album: album,
-                  api: _api,
-                  onTap: () => _navigateToAlbum(album),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-        // 歌曲区域
-        if (songs.isNotEmpty) ...[
-          NavidromeSectionHeader(
-            title: '歌曲',
-            actionLabel: '查看全部',
-            onAction: () => _tabController.animateTo(3),
-            padding: EdgeInsets.fromLTRB(
-              padding.left,
-              8,
-              padding.right,
-              4,
-            ),
-          ),
-          ...songs.take(5).map((song) {
-            final songIndex = songs.indexOf(song);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _SongTile(
-                song: song,
-                api: _api,
-                onTap: () => _playSongs(songs, songIndex),
+          children: [
+            // 艺术家区域
+            if (artists.isNotEmpty) ...[
+              NavidromeSectionHeader(
+                title: '艺术家',
+                actionLabel: '查看全部',
+                onAction: () => _tabController.animateTo(1),
+                padding: EdgeInsets.fromLTRB(
+                  padding.left,
+                  8,
+                  padding.right,
+                  4,
+                ),
               ),
-            );
-          }),
-        ],
-      ],
+              SizedBox(
+                height: 100,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: EdgeInsets.symmetric(horizontal: padding.left),
+                  itemCount: artists.take(10).length,
+                  itemBuilder: (context, index) {
+                    final artist = artists[index];
+                    return _ArtistChip(
+                      artist: artist,
+                      api: _api,
+                      onTap: () => _navigateToArtist(artist),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            // 专辑区域
+            if (albums.isNotEmpty) ...[
+              NavidromeSectionHeader(
+                title: '专辑',
+                actionLabel: '查看全部',
+                onAction: () => _tabController.animateTo(2),
+                padding: EdgeInsets.fromLTRB(
+                  padding.left,
+                  8,
+                  padding.right,
+                  4,
+                ),
+              ),
+              SizedBox(
+                height: 184,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: EdgeInsets.symmetric(horizontal: padding.left),
+                  itemCount: albums.length > 10 ? 10 : albums.length,
+                  itemBuilder: (context, index) {
+                    final album = albums[index];
+                    final coverUrl = _api?.buildCoverUrl(album.coverArt) ?? '';
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: NavidromeAlbumCard(
+                        coverUrl: coverUrl,
+                        title: album.name,
+                        subtitle: album.artist,
+                        width: 120,
+                        height: 168,
+                        showColorBackground: true,
+                        onTap: () => _navigateToAlbum(album),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            // 歌曲区域
+            if (songs.isNotEmpty) ...[
+              NavidromeSectionHeader(
+                title: '歌曲',
+                actionLabel: '查看全部',
+                onAction: () => _tabController.animateTo(3),
+                padding: EdgeInsets.fromLTRB(
+                  padding.left,
+                  8,
+                  padding.right,
+                  4,
+                ),
+              ),
+              ...songs.take(5).map((song) {
+                final songIndex = songs.indexOf(song);
+                final isPlaying = currentTrack?.id == song.id;
+                final coverUrl = _api?.buildCoverUrl(song.coverArt) ?? '';
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: NavidromeSongTile(
+                    title: song.title,
+                    subtitle: '${song.artist} · ${song.album}',
+                    coverUrl: coverUrl,
+                    duration: song.durationFormatted,
+                    isPlaying: isPlaying,
+                    onTap: () => _playSongs(songs, songIndex),
+                  ),
+                );
+              }),
+            ],
+            // 电台区域
+            if (radios.isNotEmpty) ...[
+              NavidromeSectionHeader(
+                title: '网络电台',
+                actionLabel: '查看全部',
+                onAction: () => _tabController.animateTo(4),
+                padding: EdgeInsets.fromLTRB(
+                  padding.left,
+                  8,
+                  padding.right,
+                  4,
+                ),
+              ),
+              ...radios.take(3).map((station) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _RadioStationTile(
+                    station: station,
+                    onTap: () => _playRadioStation(station),
+                  ),
+                );
+              }),
+            ],
+          ],
+        );
+      },
     );
   }
 
@@ -403,6 +613,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
       return const Center(child: Text('没有找到艺术家'));
     }
 
+    final navTheme = NavidromeTheme.of(context);
     final width = MediaQuery.of(context).size.width;
     final padding = NavidromeLayout.pagePadding(width);
     final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
@@ -451,13 +662,13 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
                     Text(
                       '${artist.albumCount} 张专辑',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.outline,
+                        color: navTheme.textSecondary,
                       ),
                     ),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: colorScheme.outline),
+              Icon(Icons.chevron_right, color: navTheme.textSecondary),
             ],
           ),
         );
@@ -493,52 +704,47 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
         final album = albums[index];
         final coverUrl = _api?.buildCoverUrl(album.coverArt) ?? '';
 
-        return InkWell(
-          onTap: () => _navigateToAlbum(album),
-          borderRadius: BorderRadius.circular(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        final navTheme = NavidromeTheme.of(context);
+
+        return GestureDetector(
+          onLongPress: () => _showAlbumActions(album),
+          child: Stack(
             children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: coverUrl.isNotEmpty
-                      ? Image.network(
-                          coverUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _albumPlaceholder(colorScheme),
-                        )
-                      : _albumPlaceholder(colorScheme),
+              Positioned.fill(
+                child: NavidromeAlbumCard(
+                  coverUrl: coverUrl,
+                  title: album.name,
+                  subtitle: album.artist,
+                  showColorBackground: true,
+                  onTap: () => _navigateToAlbum(album),
                 ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                album.name,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w500,
+              Positioned(
+                right: 6,
+                top: 6,
+                child: InkWell(
+                  onTap: () => _playAlbumQuick(album),
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: NavidromeColors.activeBlue,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: navTheme.cardShadow,
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                album.artist,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.outline,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
         );
       },
-    );
-  }
-
-  Widget _albumPlaceholder(ColorScheme colorScheme) {
-    return Container(
-      color: colorScheme.surfaceContainerHighest,
-      child: Icon(Icons.album, size: 48, color: colorScheme.onSurfaceVariant),
     );
   }
 
@@ -552,23 +758,16 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     final padding = NavidromeLayout.pagePadding(width);
     final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
 
-    return ListView.separated(
+    return NavidromeSongList(
+      songs: songs,
+      api: _api,
       padding: EdgeInsets.fromLTRB(
         padding.left,
         8,
         padding.right,
         bottomPadding,
       ),
-      itemCount: songs.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (context, index) {
-        final song = songs[index];
-        return _SongTile(
-          song: song,
-          api: _api,
-          onTap: () => _playSongs(songs, index),
-        );
-      },
+      onTap: (index) => _playSongs(songs, index),
     );
   }
 
@@ -582,13 +781,62 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
   }
 
   void _navigateToAlbum(NavidromeAlbum album) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => NavidromeAlbumPage(album: album),
-      ),
+    showNavidromeAlbumSheet(
+      context: context,
+      album: album,
+      api: _api,
     );
   }
+
+  Widget _buildRadioTab(ThemeData theme, ColorScheme colorScheme) {
+    if (_radioStations.isEmpty) {
+      return const Center(child: Text('没有找到电台'));
+    }
+
+    final navTheme = NavidromeTheme.of(context);
+    final width = MediaQuery.of(context).size.width;
+    final padding = NavidromeLayout.pagePadding(width);
+    final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+
+    return ListView.separated(
+      padding: EdgeInsets.fromLTRB(
+        padding.left,
+        8,
+        padding.right,
+        bottomPadding,
+      ),
+      itemCount: _radioStations.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final station = _radioStations[index];
+        return _RadioStationTile(
+          station: station,
+          onTap: () => _playRadioStation(station),
+        );
+      },
+    );
+  }
+
+  void _playRadioStation(NavidromeRadioStation station) {
+    // 创建电台 Track 并播放
+    final track = Track(
+      id: 'radio_${station.id}',
+      name: station.name,
+      artists: '网络电台',
+      album: station.homePageUrl ?? '',
+      picUrl: '', // 电台没有封面
+      source: MusicSource.navidrome,
+    );
+
+    // 设置单曲队列并播放
+    PlaylistQueueService().setQueue([track], 0, QueueSource.radio);
+
+    // 直接播放电台流
+    PlayerService().playRadioStream(station.streamUrl, track);
+  }
+
+  @override
+  bool get wantKeepAlive => true;
 }
 
 class _ArtistChip extends StatelessWidget {
@@ -646,130 +894,38 @@ class _ArtistChip extends StatelessWidget {
   }
 }
 
-class _AlbumCard extends StatelessWidget {
-  final NavidromeAlbum album;
-  final NavidromeApi? api;
+/// 电台列表项组件
+class _RadioStationTile extends StatelessWidget {
+  final NavidromeRadioStation station;
   final VoidCallback onTap;
 
-  const _AlbumCard({
-    required this.album,
-    required this.api,
+  const _RadioStationTile({
+    required this.station,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final coverUrl = api?.buildCoverUrl(album.coverArt) ?? '';
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          width: 140,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: SizedBox(
-                  width: 140,
-                  height: 140,
-                  child: coverUrl.isNotEmpty
-                      ? Image.network(
-                          coverUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: colorScheme.surfaceContainerHighest,
-                            child: Icon(
-                              Icons.album,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        )
-                      : Container(
-                          color: colorScheme.surfaceContainerHighest,
-                          child: Icon(
-                            Icons.album,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                album.name,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                album.artist,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.outline,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SongTile extends StatelessWidget {
-  final NavidromeSong song;
-  final NavidromeApi? api;
-  final VoidCallback onTap;
-
-  const _SongTile({
-    required this.song,
-    required this.api,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final coverUrl = api?.buildCoverUrl(song.coverArt) ?? '';
+    final navTheme = NavidromeTheme.of(context);
 
     return NavidromeCard(
       onTap: onTap,
       padding: const EdgeInsets.all(12),
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: SizedBox(
-              width: 52,
-              height: 52,
-              child: coverUrl.isNotEmpty
-                  ? Image.network(
-                      coverUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: colorScheme.surfaceContainerHighest,
-                        child: Icon(
-                          Icons.music_note,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    )
-                  : Container(
-                      color: colorScheme.surfaceContainerHighest,
-                      child: Icon(
-                        Icons.music_note,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
+          // 电台图标（橙色）
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: NavidromeColors.radioOrange.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.radio,
+              color: NavidromeColors.radioOrange,
+              size: 28,
             ),
           ),
           const SizedBox(width: 12),
@@ -778,7 +934,7 @@ class _SongTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  song.title,
+                  station.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyLarge?.copyWith(
@@ -787,9 +943,9 @@ class _SongTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${song.artist} · ${song.album}',
+                  station.homePageUrl ?? '网络电台',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.outline,
+                    color: navTheme.textSecondary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -797,10 +953,18 @@ class _SongTile extends StatelessWidget {
               ],
             ),
           ),
-          Text(
-            song.durationFormatted,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.outline,
+          // 播放按钮
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: NavidromeColors.radioOrange,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Icon(
+              Icons.play_arrow,
+              color: Colors.white,
+              size: 22,
             ),
           ),
         ],

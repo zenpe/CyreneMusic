@@ -62,110 +62,120 @@ class _NavidromePlaylistsPageState extends State<NavidromePlaylistsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final navTheme = NavidromeTheme.of(context);
+
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return Scaffold(
+        backgroundColor: navTheme.background,
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
     if (_error != null) {
-      return Center(child: Text(_error!));
+      return Scaffold(
+        backgroundColor: navTheme.background,
+        body: Center(child: Text(_error!)),
+      );
     }
 
-    return SafeArea(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth;
-          final padding = NavidromeLayout.pagePadding(width);
-          final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    return Scaffold(
+      backgroundColor: navTheme.background,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final padding = NavidromeLayout.pagePadding(width);
+            final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  padding.left,
-                  12,
-                  padding.right,
-                  4,
-                ),
-                child: Text(
-                  '歌单',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-              ),
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: _loadPlaylists,
-                  child: ListView.separated(
-                    padding: EdgeInsets.fromLTRB(
-                      padding.left,
-                      8,
-                      padding.right,
-                      bottomPadding,
-                    ),
-                    itemCount: _playlists.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final playlist = _playlists[index];
-                      final coverUrl = _api?.buildCoverUrl(playlist.coverArt) ?? '';
-
-                      return NavidromeCard(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  NavidromePlaylistDetailPage(playlist: playlist),
-                            ),
-                          );
-                        },
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          children: [
-                            _CoverTile(
-                              coverUrl: coverUrl,
-                              size: 52,
-                              icon: Icons.queue_music,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    playlist.name,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyLarge
-                                        ?.copyWith(fontWeight: FontWeight.w600),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${playlist.songCount} 首歌曲',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .outline,
-                                        ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Icon(Icons.chevron_right,
-                                color: Theme.of(context).colorScheme.outline),
-                          ],
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    padding.left,
+                    12,
+                    padding.right,
+                    4,
+                  ),
+                  child: Text(
+                    '歌单',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: navTheme.textPrimary,
                         ),
-                      );
-                    },
                   ),
                 ),
-              ),
-            ],
-          );
-        },
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _loadPlaylists,
+                    child: ListView.separated(
+                      padding: EdgeInsets.fromLTRB(
+                        padding.left,
+                        8,
+                        padding.right,
+                        bottomPadding,
+                      ),
+                      itemCount: _playlists.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final playlist = _playlists[index];
+                        final coverUrl = _api?.buildCoverUrl(playlist.coverArt) ?? '';
+
+                        return NavidromeCard(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    NavidromePlaylistDetailPage(playlist: playlist),
+                              ),
+                            );
+                          },
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            children: [
+                              _CoverTile(
+                                coverUrl: coverUrl,
+                                size: 52,
+                                icon: Icons.queue_music,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      playlist.name,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyLarge
+                                          ?.copyWith(fontWeight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${playlist.songCount} 首歌曲',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: navTheme.textSecondary,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.chevron_right,
+                                  color: navTheme.textSecondary),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -251,10 +261,17 @@ class _NavidromePlaylistDetailPageState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final navTheme = NavidromeTheme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.playlist.name)),
+      backgroundColor: navTheme.background,
+      appBar: AppBar(
+        title: Text(widget.playlist.name),
+        backgroundColor: navTheme.background,
+        foregroundColor: navTheme.textPrimary,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -307,7 +324,7 @@ class _NavidromePlaylistDetailPageState
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: theme.textTheme.bodySmall?.copyWith(
-                                        color: colorScheme.outline,
+                                        color: navTheme.textSecondary,
                                       ),
                                     ),
                                   ],
@@ -316,7 +333,7 @@ class _NavidromePlaylistDetailPageState
                               Text(
                                 song.durationFormatted,
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: colorScheme.outline,
+                                  color: navTheme.textSecondary,
                                 ),
                               ),
                             ],

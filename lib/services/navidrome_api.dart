@@ -262,6 +262,28 @@ class NavidromeApi {
     );
   }
 
+  // ==================== 歌曲 API ====================
+
+  /// 获取热门歌曲
+  Future<List<NavidromeSong>> getTopSongs({
+    int count = 50,
+    int offset = 0,
+    String? musicFolderId,
+  }) async {
+    final params = <String, String>{
+      'count': count.toString(),
+      'offset': offset.toString(),
+    };
+    if (musicFolderId != null) params['musicFolderId'] = musicFolderId;
+
+    final response = await _get('getTopSongs', params);
+    final payload = response['topSongs'] as Map<String, dynamic>?;
+    final songs = _asList(payload?['song']);
+    return songs
+        .map((e) => NavidromeSong.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   // ==================== 收藏 API ====================
 
   /// 添加收藏
