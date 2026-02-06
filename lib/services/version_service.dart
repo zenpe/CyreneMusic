@@ -27,6 +27,7 @@ class VersionService extends ChangeNotifier {
   /// ⚠️⚠️⚠️ 应用当前版本（硬编码）⚠️⚠️⚠️
   /// 发布新版本时 **必须** 手动更新此值！
   static const String kAppVersion = '1.2.9';
+  static const bool kDisableUpdateCheck = true;
 
   /// 当前应用版本
   String _currentVersion = kAppVersion;
@@ -140,6 +141,14 @@ class VersionService extends ChangeNotifier {
 
   /// 检查更新
   Future<VersionInfo?> checkForUpdate({bool silent = false}) async {
+    if (kDisableUpdateCheck) {
+      _latestVersion = null;
+      AutoUpdateService().clearPendingVersion();
+      if (!silent) {
+        notifyListeners();
+      }
+      return null;
+    }
     if (_isChecking) {
       print('⚠️ [VersionService] 正在检查更新，跳过重复请求');
       return null;
