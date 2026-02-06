@@ -1534,6 +1534,8 @@ class _DownloadButtonState extends State<_DownloadButton> {
         final detail = await MusicService().fetchSongDetail(
           songId: widget.track.id.toString(),
           source: widget.track.source,
+          title: widget.track.name,
+          artist: widget.track.artists,
         );
         
         if (detail == null) {

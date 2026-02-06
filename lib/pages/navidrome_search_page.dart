@@ -279,24 +279,9 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
                 Padding(
                   padding: EdgeInsets.fromLTRB(
                     padding.left,
-                    12,
+                    6,
                     padding.right,
                     4,
-                  ),
-                  child: Text(
-                    '搜索',
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: navTheme.textPrimary,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    padding.left,
-                    8,
-                    padding.right,
-                    8,
                   ),
                   child: _buildSearchField(navTheme),
                 ),
@@ -348,7 +333,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
         fillColor: navTheme.card,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
-          vertical: 12,
+          vertical: 10,
         ),
       ),
       onChanged: (_) => setState(() {}),
@@ -365,9 +350,9 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
           scrollDirection: Axis.horizontal,
           padding: EdgeInsets.fromLTRB(
             padding.left,
-            0,
+            2,
             padding.right,
-            8,
+            4,
           ),
           child: Row(
             children: List.generate(_tabs.length, (index) {
@@ -462,7 +447,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     final radios = _radioStations;
     final width = MediaQuery.of(context).size.width;
     final padding = NavidromeLayout.pagePadding(width);
-    final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    final bottomPadding = NavidromeLayout.bottomPadding(context);
 
     return AnimatedBuilder(
       animation: PlayerService(),
@@ -616,7 +601,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     final navTheme = NavidromeTheme.of(context);
     final width = MediaQuery.of(context).size.width;
     final padding = NavidromeLayout.pagePadding(width);
-    final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    final bottomPadding = NavidromeLayout.bottomPadding(context);
 
     return ListView.separated(
       padding: EdgeInsets.fromLTRB(
@@ -684,7 +669,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
 
     final width = MediaQuery.of(context).size.width;
     final padding = NavidromeLayout.pagePadding(width);
-    final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    final bottomPadding = NavidromeLayout.bottomPadding(context);
 
     return GridView.builder(
       padding: EdgeInsets.fromLTRB(
@@ -756,7 +741,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
 
     final width = MediaQuery.of(context).size.width;
     final padding = NavidromeLayout.pagePadding(width);
-    final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    final bottomPadding = NavidromeLayout.bottomPadding(context);
 
     return NavidromeSongList(
       songs: songs,
@@ -772,6 +757,10 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
   }
 
   void _navigateToArtist(NavidromeArtist artist) {
+    if (NavidromeLayout.useSheetNavigation(context)) {
+      showNavidromeArtistSheet(context: context, artist: artist);
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -796,7 +785,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     final navTheme = NavidromeTheme.of(context);
     final width = MediaQuery.of(context).size.width;
     final padding = NavidromeLayout.pagePadding(width);
-    final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    final bottomPadding = NavidromeLayout.bottomPadding(context);
 
     return ListView.separated(
       padding: EdgeInsets.fromLTRB(

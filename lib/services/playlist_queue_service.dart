@@ -54,6 +54,12 @@ class PlaylistQueueService extends ChangeNotifier {
   QueueSource get source => _source;
   bool get hasQueue => _queue.isNotEmpty;
 
+  int _indexOfTrack(Track track) {
+    return _queue.indexWhere(
+      (t) => t.id.toString() == track.id.toString() && t.source == track.source,
+    );
+  }
+
   /// 设置播放队列
   void setQueue(
     List<Track> tracks,
@@ -80,6 +86,75 @@ class PlaylistQueueService extends ChangeNotifier {
   void appendToQueue(List<Track> tracks) {
     if (tracks.isEmpty) return;
     _queue.addAll(tracks);
+    _shuffledIndices.clear();
+    _shufflePosition = -1;
+    notifyListeners();
+  }
+
+  /// 插入为下一首播放（不会打断当前播放）
+  void insertNext(Track track) {
+    if (_queue.isEmpty) {
+      _queue = [track];
+      _currentIndex = -1;
+      _source = QueueSource.history;
+      _shuffledIndices.clear();
+      _shufflePosition = -1;
+      notifyListeners();
+      return;
+    }
+
+    final existing = _indexOfTrack(track);
+    if (existing != -1) {
+      _queue.removeAt(existing);
+      if (existing <= _currentIndex) {
+        _currentIndex = (_currentIndex - 1).clamp(-1, _queue.length);
+      }
+    }
+
+    final insertIndex = (_currentIndex + 1).clamp(0, _queue.length);
+    _queue.insert(insertIndex, track);
+    _shuffledIndices.clear();
+    _shufflePosition = -1;
+    notifyListeners();
+  }
+
+  /// 移除队列中的歌曲
+  void removeAt(int index) {
+    if (index < 0 || index >= _queue.length) return;
+
+    _queue.removeAt(index);
+    if (_queue.isEmpty) {
+      _currentIndex = -1;
+      _source = QueueSource.none;
+    } else if (_currentIndex == index) {
+      _currentIndex = index.clamp(0, _queue.length - 1);
+    } else if (index < _currentIndex) {
+      _currentIndex -= 1;
+    }
+
+    _shuffledIndices.clear();
+    _shufflePosition = -1;
+    notifyListeners();
+  }
+
+  /// 调整队列顺序
+  void move(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _queue.length) return;
+    if (newIndex < 0 || newIndex >= _queue.length) return;
+    if (oldIndex == newIndex) return;
+
+    final currentTrack = (_currentIndex >= 0 && _currentIndex < _queue.length)
+        ? _queue[_currentIndex]
+        : null;
+
+    final item = _queue.removeAt(oldIndex);
+    _queue.insert(newIndex, item);
+
+    if (currentTrack != null) {
+      final updatedIndex = _indexOfTrack(currentTrack);
+      _currentIndex = updatedIndex;
+    }
+
     _shuffledIndices.clear();
     _shufflePosition = -1;
     notifyListeners();

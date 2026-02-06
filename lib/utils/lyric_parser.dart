@@ -120,6 +120,13 @@ class LyricParser {
     // 否则使用普通LRC格式
     if (lyric.isEmpty) return [];
 
+    // 如果没有任何时间戳，则按纯文本歌词处理（Navidrome 可能返回无时间戳的歌词）
+    final lyricLinesRaw = lyric.split('\n');
+    final hasTimestamp = lyricLinesRaw.any((line) => LyricLine.parseTime(line) != null);
+    if (!hasTimestamp) {
+      return _parsePlainTextLyric(lyricLinesRaw);
+    }
+
     final lines = <LyricLine>[];
     final lyricLines = lyric.split('\n');
     
@@ -174,6 +181,21 @@ class LyricParser {
     // QQ音乐格式与网易云类似，暂时使用相同解析方式
     // 后续如有差异可以在这里调整
     return parseNeteaseLyric(lyric, translation: translation);
+  }
+
+  static List<LyricLine> _parsePlainTextLyric(List<String> rawLines) {
+    final lines = <LyricLine>[];
+    var index = 0;
+    for (final raw in rawLines) {
+      final text = raw.trim();
+      if (text.isEmpty) continue;
+      lines.add(LyricLine(
+        startTime: Duration(seconds: index * 3),
+        text: text,
+      ));
+      index += 1;
+    }
+    return lines;
   }
 
   /// 解析酷狗音乐歌词（可能需要特殊处理）

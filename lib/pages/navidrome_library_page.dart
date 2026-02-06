@@ -8,6 +8,7 @@ import '../services/playlist_queue_service.dart';
 import '../widgets/navidrome_ui.dart';
 import 'navidrome_search_page.dart';
 import 'navidrome_artists_page.dart';
+import 'navidrome_playlists_page.dart';
 
 /// Navidrome 音乐库页面
 ///
@@ -229,63 +230,13 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    padding.left,
-                    8,
-                    padding.right,
-                    4,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '音乐库',
-                          style: theme.textTheme.headlineLarge?.copyWith(
-                            fontSize: 34,
-                            fontWeight: FontWeight.w700,
-                            color: navTheme.textPrimary,
-                          ),
-                        ),
-                      ),
-                      InkWell(
-                        onTap: () {
-                          if (widget.onSearchTap != null) {
-                            widget.onSearchTap!();
-                            return;
-                          }
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const NavidromeSearchPage(),
-                            ),
-                          );
-                        },
-                        borderRadius: BorderRadius.circular(22),
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: navTheme.card,
-                            shape: BoxShape.circle,
-                            boxShadow: navTheme.cardShadow,
-                          ),
-                          child: const Icon(
-                            Icons.search,
-                            color: NavidromeColors.activeBlue,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   padding: EdgeInsets.fromLTRB(
                     padding.left,
-                    8,
+                    0,
                     padding.right,
-                    8,
+                    4,
                   ),
                   child: Row(
                     children: [
@@ -388,7 +339,7 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
 
     final navTheme = NavidromeTheme.of(context);
     final padding = NavidromeLayout.pagePadding(width);
-    final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    final bottomPadding = NavidromeLayout.bottomPadding(context);
 
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -456,7 +407,7 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
 
     final navTheme = NavidromeTheme.of(context);
     final padding = NavidromeLayout.pagePadding(width);
-    final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    final bottomPadding = NavidromeLayout.bottomPadding(context);
 
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -529,7 +480,7 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
     }
 
     final padding = NavidromeLayout.pagePadding(width);
-    final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    final bottomPadding = NavidromeLayout.bottomPadding(context);
 
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -572,7 +523,7 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
 
     final navTheme = NavidromeTheme.of(context);
     final padding = NavidromeLayout.pagePadding(width);
-    final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    final bottomPadding = NavidromeLayout.bottomPadding(context);
 
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -649,7 +600,7 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
     }
 
     final padding = NavidromeLayout.pagePadding(width);
-    final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    final bottomPadding = NavidromeLayout.bottomPadding(context);
 
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -693,6 +644,10 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
   bool get wantKeepAlive => true;
 
   void _navigateToPlaylist(NavidromePlaylist playlist) {
+    if (NavidromeLayout.useSheetNavigation(context)) {
+      showNavidromePlaylistSheet(context: context, playlist: playlist);
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -702,6 +657,10 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
   }
 
   void _navigateToArtist(NavidromeArtist artist) {
+    if (NavidromeLayout.useSheetNavigation(context)) {
+      showNavidromeArtistSheet(context: context, artist: artist);
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -1083,8 +1042,7 @@ class _NavidromeAlbumPageState extends State<NavidromeAlbumPage> {
                     final padding = NavidromeLayout.pagePadding(width);
                     final coverSize =
                         width < NavidromeLayout.compactWidth ? 160.0 : 200.0;
-                    final bottomPadding =
-                        24 + MediaQuery.of(context).padding.bottom;
+                    final bottomPadding = NavidromeLayout.bottomPadding(context);
 
                     return CustomScrollView(
                       slivers: [
@@ -1336,7 +1294,7 @@ class _PlaylistDetailPageState extends State<_PlaylistDetailPage> {
   @override
   Widget build(BuildContext context) {
     final navTheme = NavidromeTheme.of(context);
-    final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+    final bottomPadding = NavidromeLayout.bottomPadding(context);
 
     return Scaffold(
       backgroundColor: navTheme.background,

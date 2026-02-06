@@ -163,8 +163,23 @@ class NavidromeLayout {
   }
 
   static EdgeInsets pagePadding(double width) {
-    final horizontal = width < compactWidth ? 16.0 : 24.0;
+    final horizontal = width < compactWidth ? 16.0 : 16.0;
     return EdgeInsets.symmetric(horizontal: horizontal, vertical: 8);
+  }
+
+  static double bottomPadding(BuildContext context,
+      {double portrait = 24, double landscape = 0}) {
+    final media = MediaQuery.of(context);
+    final isLandscape = media.orientation == Orientation.landscape;
+    final safeBottom = isLandscape ? 0.0 : media.padding.bottom;
+    return (isLandscape ? landscape : portrait) + safeBottom;
+  }
+
+  static bool useSheetNavigation(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final width = media.size.width;
+    final isPortrait = media.orientation == Orientation.portrait;
+    return isPortrait || width < desktopWidth;
   }
 }
 
@@ -225,6 +240,73 @@ class NavidromePill extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class NavidromeErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  final IconData icon;
+  final String actionLabel;
+
+  const NavidromeErrorState({
+    super.key,
+    required this.message,
+    required this.onRetry,
+    this.icon = Icons.cloud_off,
+    this.actionLabel = '刷新',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final navTheme = NavidromeTheme.of(context);
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 56, color: navTheme.textSecondary),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: navTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onRetry,
+              borderRadius: BorderRadius.circular(22),
+              child: Ink(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: navTheme.card,
+                  shape: BoxShape.circle,
+                  boxShadow: navTheme.cardShadow,
+                ),
+                child: Icon(
+                  Icons.refresh,
+                  color: navTheme.textSecondary,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            actionLabel,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: navTheme.textSecondary,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -410,6 +492,53 @@ class _PlayingIndicatorState extends State<PlayingIndicator>
   }
 }
 
+class NavidromeCoverPlaceholder extends StatelessWidget {
+  final double iconSize;
+  final double borderRadius;
+  final Color? baseColor;
+  final double contrast;
+  final double iconOpacity;
+  final double borderOpacity;
+
+  const NavidromeCoverPlaceholder({
+    super.key,
+    this.iconSize = 40,
+    this.borderRadius = 12,
+    this.baseColor,
+    this.contrast = 0.12,
+    this.iconOpacity = 0.35,
+    this.borderOpacity = 0.25,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final base = baseColor ?? scheme.surfaceContainerHighest;
+    final top = Color.lerp(base, scheme.surface, contrast) ?? base;
+    final bottom = Color.lerp(base, scheme.surfaceVariant, contrast) ?? base;
+    final border = scheme.outlineVariant.withOpacity(borderOpacity);
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [top, bottom],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(color: border, width: 0.6),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.album_rounded,
+          size: iconSize,
+          color: scheme.onSurfaceVariant.withOpacity(iconOpacity),
+        ),
+      ),
+    );
+  }
+}
+
 /// 带彩色背景的专辑卡片
 class NavidromeAlbumCard extends StatefulWidget {
   final String coverUrl;
@@ -583,20 +712,10 @@ class _NavidromeAlbumCardState extends State<NavidromeAlbumCard> {
   }
 
   Widget _buildPlaceholder(Color backgroundColor) {
-    // 计算与背景色对比的图标颜色
-    final iconColor = HSLColor.fromColor(backgroundColor).lightness > 0.5
-        ? Colors.black38
-        : Colors.white38;
-
-    return Container(
-      color: backgroundColor,
-      child: Center(
-        child: Icon(
-          Icons.album,
-          size: 48,
-          color: iconColor,
-        ),
-      ),
+    return NavidromeCoverPlaceholder(
+      baseColor: backgroundColor,
+      iconSize: 32,
+      borderRadius: 12,
     );
   }
 }
@@ -798,12 +917,14 @@ class NavidromeAlbumSheet extends StatefulWidget {
   final NavidromeAlbum album;
   final NavidromeApi? api;
   final ScrollController controller;
+  final bool showHandle;
 
   const NavidromeAlbumSheet({
     super.key,
     required this.album,
     required this.api,
     required this.controller,
+    this.showHandle = true,
   });
 
   @override
@@ -893,17 +1014,13 @@ class _NavidromeAlbumSheetState extends State<NavidromeAlbumSheet> {
     final colorScheme = Theme.of(context).colorScheme;
 
     if (coverUrl.isEmpty) {
-      return Container(
+      return SizedBox(
         width: size,
         height: size,
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Icon(
-          Icons.album,
-          size: size * 0.5,
-          color: colorScheme.onSurfaceVariant,
+        child: NavidromeCoverPlaceholder(
+          baseColor: colorScheme.surfaceContainerHighest,
+          iconSize: size * 0.35,
+          borderRadius: 12,
         ),
       );
     }
@@ -915,14 +1032,13 @@ class _NavidromeAlbumSheetState extends State<NavidromeAlbumSheet> {
         width: size,
         height: size,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
+        errorBuilder: (_, __, ___) => SizedBox(
           width: size,
           height: size,
-          color: colorScheme.surfaceContainerHighest,
-          child: Icon(
-            Icons.album,
-            size: size * 0.5,
-            color: colorScheme.onSurfaceVariant,
+          child: NavidromeCoverPlaceholder(
+            baseColor: colorScheme.surfaceContainerHighest,
+            iconSize: size * 0.35,
+            borderRadius: 12,
           ),
         ),
       ),
@@ -940,17 +1056,21 @@ class _NavidromeAlbumSheetState extends State<NavidromeAlbumSheet> {
         color: navTheme.background,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: Column(
+      child: Stack(
         children: [
-          const SizedBox(height: 8),
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: navTheme.divider,
-              borderRadius: BorderRadius.circular(2),
+          Column(
+            children: [
+          if (widget.showHandle) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: navTheme.divider,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
+          ],
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             child: Row(
@@ -1028,6 +1148,17 @@ class _NavidromeAlbumSheetState extends State<NavidromeAlbumSheet> {
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                         onTap: _playSongs,
                       ),
+          ),
+            ],
+          ),
+          Positioned(
+            right: 4,
+            top: 2,
+            child: IconButton(
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: Icon(Icons.close_rounded, color: navTheme.textSecondary),
+              tooltip: '关闭',
+            ),
           ),
         ],
       ),

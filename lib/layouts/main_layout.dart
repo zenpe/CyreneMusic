@@ -40,6 +40,7 @@ class _MainLayoutState extends State<MainLayout>
   // NavigationDrawer 固定宽度与 NavigationRail 展开状态一致（Material 3 默认 256）
   static const double _drawerWidth = 256.0;
   static const double _collapsedWidth = 80.0; // 折叠状态宽度，仅显示图标
+  static const double _landscapeRailWidth = 84.0; // 横屏侧栏宽度（移动端）
   bool _isDrawerCollapsed = false; // 抽屉是否处于折叠状态（默认展开）
 
   // 页面列表
@@ -72,62 +73,64 @@ class _MainLayoutState extends State<MainLayout>
       builder: (context) {
         final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.history_outlined),
-                title: const Text('历史'),
-                onTap: () {
-                  Navigator.pop(context);
-                  setState(() => _selectedIndex = 2); // 历史
-                  PageVisibilityNotifier().setCurrentPage(2);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.folder_open),
-                title: const Text('本地'),
-                onTap: () {
-                  Navigator.pop(context);
-                  setState(() => _selectedIndex = 3); // 本地
-                  PageVisibilityNotifier().setCurrentPage(3);
-                },
-              ),
-              const Divider(height: 8),
-              ListTile(
-                leading: const Icon(Icons.settings_outlined),
-                title: const Text('设置'),
-                onTap: () {
-                  Navigator.pop(context);
-                  final idx = _settingsIndex;
-                  setState(() => _selectedIndex = idx); // 设置
-                  PageVisibilityNotifier().setCurrentPage(idx);
-                  // 触发开发者模式（与设置点击一致）
-                  DeveloperModeService().onSettingsClicked();
-                },
-              ),
-              if (isPortrait)
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 ListTile(
-                  leading: const Icon(Icons.favorite_outline),
-                  title: const Text('支持'),
+                  leading: const Icon(Icons.history_outlined),
+                  title: const Text('历史'),
                   onTap: () {
                     Navigator.pop(context);
-                    final idx = _supportIndex;
-                    setState(() => _selectedIndex = idx); // 支持
+                    setState(() => _selectedIndex = 2); // 历史
+                    PageVisibilityNotifier().setCurrentPage(2);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.folder_open),
+                  title: const Text('本地'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    setState(() => _selectedIndex = 3); // 本地
+                    PageVisibilityNotifier().setCurrentPage(3);
+                  },
+                ),
+                const Divider(height: 8),
+                ListTile(
+                  leading: const Icon(Icons.settings_outlined),
+                  title: const Text('设置'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    final idx = _settingsIndex;
+                    setState(() => _selectedIndex = idx); // 设置
                     PageVisibilityNotifier().setCurrentPage(idx);
+                    // 触发开发者模式（与设置点击一致）
+                    DeveloperModeService().onSettingsClicked();
                   },
                 ),
-              if (DeveloperModeService().isDeveloperMode)
-                ListTile(
-                  leading: const Icon(Icons.code),
-                  title: const Text('Dev'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    setState(() => _selectedIndex = _pages.length - 1);
-                    PageVisibilityNotifier().setCurrentPage(_pages.length - 1);
-                  },
-                ),
-            ],
+                if (isPortrait)
+                  ListTile(
+                    leading: const Icon(Icons.favorite_outline),
+                    title: const Text('支持'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      final idx = _supportIndex;
+                      setState(() => _selectedIndex = idx); // 支持
+                      PageVisibilityNotifier().setCurrentPage(idx);
+                    },
+                  ),
+                if (DeveloperModeService().isDeveloperMode)
+                  ListTile(
+                    leading: const Icon(Icons.code),
+                    title: const Text('Dev'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      setState(() => _selectedIndex = _pages.length - 1);
+                      PageVisibilityNotifier().setCurrentPage(_pages.length - 1);
+                    },
+                  ),
+              ],
+            ),
           ),
         );
       },
@@ -471,8 +474,12 @@ class _MainLayoutState extends State<MainLayout>
   Widget _buildMobileLayout(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
+    final orientation = MediaQuery.of(context).orientation;
+    final bool isLandscape = orientation == Orientation.landscape;
+    final double miniPlayerWidth =
+        (MediaQuery.of(context).size.width * 0.55).clamp(320.0, 520.0).toDouble();
 
-    return PopScope(
+    final scaffold = PopScope(
       canPop: false, // 始终拦截返回键
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
@@ -484,47 +491,250 @@ class _MainLayoutState extends State<MainLayout>
                 ? CupertinoColors.black 
                 : CupertinoColors.systemGroupedBackground)
             : colorScheme.surface,
-        body: Stack(
-          children: [
-            // 主内容层 - 使用 RepaintBoundary 隔离，防止 BackdropFilter 导致滚动残影
-            RepaintBoundary(
-              child: Column(
+        body: isLandscape && !isCupertinoUI
+            ? Row(
                 children: [
-                  if (Platform.isWindows) const CustomTitleBar(),
-                  Expanded(child: _pages[_selectedIndex]),
+                  _buildLandscapeSideNavigation(context),
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        // 主内容层 - 使用 RepaintBoundary 隔离，防止 BackdropFilter 导致滚动残影
+                        RepaintBoundary(
+                          child: Column(
+                            children: [
+                              if (Platform.isWindows) const CustomTitleBar(),
+                              Expanded(child: _pages[_selectedIndex]),
+                            ],
+                          ),
+                        ),
+                        // 悬浮迷你播放器（不占用布局空间）
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: AnimatedBuilder(
+                            animation: PlayerService(),
+                            builder: (context, child) {
+                              final hasMiniPlayer =
+                                  PlayerService().currentTrack != null ||
+                                  PlayerService().currentSong != null;
+                              if (!hasMiniPlayer) return const SizedBox.shrink();
+                              return const MiniPlayer();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            : Stack(
+                children: [
+                  // 主内容层 - 使用 RepaintBoundary 隔离，防止 BackdropFilter 导致滚动残影
+                  RepaintBoundary(
+                    child: Column(
+                      children: [
+                        if (Platform.isWindows) const CustomTitleBar(),
+                        Expanded(child: _pages[_selectedIndex]),
+                      ],
+                    ),
+                  ),
+                  // 悬浮迷你播放器（不占用布局空间）
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: isCupertinoUI ? 80 : 0, // Cupertino 模式下给悬浮 Tab 栏留空间
+                    child: AnimatedBuilder(
+                      animation: PlayerService(),
+                      builder: (context, child) {
+                        final hasMiniPlayer =
+                            PlayerService().currentTrack != null ||
+                            PlayerService().currentSong != null;
+                        if (!hasMiniPlayer) return const SizedBox.shrink();
+                        return const MiniPlayer();
+                      },
+                    ),
+                  ),
+                  // iOS 26 悬浮液态玻璃 Tab 栏
+                  if (isCupertinoUI)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: _buildCupertinoTabBar(context),
+                    ),
                 ],
               ),
-            ),
-            // 悬浮迷你播放器（不占用布局空间）
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: isCupertinoUI ? 80 : 0, // Cupertino 模式下给悬浮 Tab 栏留空间
-              child: AnimatedBuilder(
-                animation: PlayerService(),
-                builder: (context, child) {
-                  final hasMiniPlayer =
-                      PlayerService().currentTrack != null ||
-                      PlayerService().currentSong != null;
-                  if (!hasMiniPlayer) return const SizedBox.shrink();
-                  return const MiniPlayer();
-                },
-              ),
-            ),
-            // iOS 26 悬浮液态玻璃 Tab 栏
-            if (isCupertinoUI)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _buildCupertinoTabBar(context),
-              ),
-          ],
-        ),
         // 非 Cupertino 模式使用 bottomNavigationBar
         bottomNavigationBar: isCupertinoUI 
             ? null
-            : _buildGlassBottomNavigationBar(context),
+            : (isLandscape ? null : _buildGlassBottomNavigationBar(context)),
+      ),
+    );
+
+    if (!Platform.isAndroid) {
+      return scaffold;
+    }
+
+    return AnimatedBuilder(
+      animation: PlayerService(),
+      builder: (context, child) {
+        final theme = Theme.of(context);
+        final isDark = theme.brightness == Brightness.dark;
+        final hasPlayback = PlayerService().currentTrack != null ||
+            PlayerService().currentSong != null;
+        final navColor = hasPlayback ? Colors.transparent : theme.colorScheme.surface;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness:
+                isDark ? Brightness.light : Brightness.dark,
+            statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+            systemNavigationBarColor: navColor,
+            systemNavigationBarDividerColor: navColor,
+            systemNavigationBarIconBrightness:
+                isDark ? Brightness.light : Brightness.dark,
+          ),
+          child: child!,
+        );
+      },
+      child: scaffold,
+    );
+  }
+
+  Widget _buildLandscapeSideNavigation(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final int supportIndex = _supportIndex;
+    final int myIndex = _pages.indexWhere((w) => w is MyPage);
+
+    final List<NavigationRailDestination> destinations = const [
+      NavigationRailDestination(
+        icon: Icon(Icons.home_outlined),
+        selectedIcon: Icon(Icons.home),
+        label: Text('首页'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.explore_outlined),
+        selectedIcon: Icon(Icons.explore),
+        label: Text('发现'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.person_outlined),
+        selectedIcon: Icon(Icons.person),
+        label: Text('我的'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.favorite_outline),
+        selectedIcon: Icon(Icons.favorite),
+        label: Text('支持'),
+      ),
+      NavigationRailDestination(
+        icon: Icon(Icons.more_horiz),
+        selectedIcon: Icon(Icons.more_horiz),
+        label: Text('更多'),
+      ),
+    ];
+
+    int navSelectedIndex() {
+      if (_selectedIndex == 0) return 0; // 首页
+      if (_selectedIndex == 1) return 1; // 发现
+      if (_selectedIndex == myIndex) return 2; // 我的
+      if (_selectedIndex == supportIndex) return 3; // 支持
+      return 4; // 更多
+    }
+
+    final Color? themeTint = PlayerService().themeColorNotifier.value;
+    return SafeArea(
+      left: true,
+      right: false,
+      top: true,
+      bottom: true,
+      child: SizedBox(
+        width: _landscapeRailWidth,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.only(
+            topRight: Radius.circular(16),
+            bottomRight: Radius.circular(16),
+          ),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: const SizedBox.shrink(),
+                ),
+              ),
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.24),
+                        (themeTint ?? colorScheme.primary).withOpacity(0.08),
+                        Colors.white.withOpacity(0.06),
+                      ],
+                    ),
+                    border: Border(
+                      right: BorderSide(
+                        color: Colors.white.withOpacity(0.18),
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 6),
+                child: NavigationRail(
+                  backgroundColor: Colors.transparent,
+                  selectedIndex: navSelectedIndex(),
+                  labelType: NavigationRailLabelType.selected,
+                  groupAlignment: -0.95,
+                  minWidth: _landscapeRailWidth,
+                  minExtendedWidth: _landscapeRailWidth,
+                  selectedIconTheme: IconThemeData(
+                    color: colorScheme.primary,
+                    size: 22,
+                  ),
+                  unselectedIconTheme: IconThemeData(
+                    color: colorScheme.onSurfaceVariant,
+                    size: 22,
+                  ),
+                  selectedLabelTextStyle: TextStyle(
+                    color: colorScheme.primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  unselectedLabelTextStyle: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                  onDestinationSelected: (tabIndex) async {
+                    final int moreTab = destinations.length - 1;
+                    if (tabIndex == moreTab) {
+                      await _openMoreBottomSheet(context);
+                      return;
+                    }
+
+                    int targetPageIndex = _selectedIndex;
+                    if (tabIndex == 0) targetPageIndex = 0; // 首页
+                    if (tabIndex == 1) targetPageIndex = 1; // 发现
+                    if (tabIndex == 2) targetPageIndex = myIndex; // 我的
+                    if (tabIndex == 3) targetPageIndex = supportIndex; // 支持
+
+                    setState(() {
+                      _selectedIndex = targetPageIndex;
+                    });
+                    PageVisibilityNotifier().setCurrentPage(targetPageIndex);
+                  },
+                  destinations: destinations,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -776,7 +986,23 @@ class _MainLayoutState extends State<MainLayout>
       destinations: destinations,
     );
 
-    if (!useGlass) return baseNav;
+    const double navHeight = 80.0;
+    Widget navWidget = baseNav;
+    if (isLandscape) {
+      final width = MediaQuery.of(context).size.width;
+      final navWidth = (width * 0.62).clamp(360.0, 560.0).toDouble();
+      navWidget = SizedBox(
+        height: navHeight,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: SizedBox(width: navWidth, child: baseNav),
+        ),
+      );
+    } else {
+      navWidget = SizedBox(height: navHeight, child: navWidget);
+    }
+
+    if (!useGlass) return navWidget;
 
     final cs = Theme.of(context).colorScheme;
     final Color? themeTint = PlayerService().themeColorNotifier.value;
@@ -855,7 +1081,7 @@ class _MainLayoutState extends State<MainLayout>
                   ),
                 ),
               ),
-              baseNav,
+              navWidget,
             ],
           ),
         ),

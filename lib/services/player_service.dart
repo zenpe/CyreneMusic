@@ -501,6 +501,8 @@ class PlayerService extends ChangeNotifier {
               songId: track.id, 
               source: track.source,
               quality: selectedQuality,
+              title: track.name,
+              artist: track.artists,
             ).then((detail) {
                if (detail != null && detail.lyric.isNotEmpty) {
                   print('✅ [PlayerService] 成功获取新歌词 (${detail.lyric.length}字符)');
@@ -608,6 +610,8 @@ class PlayerService extends ChangeNotifier {
         songId: track.id,
         quality: selectedQuality,
         source: track.source,
+        title: track.name,
+        artist: track.artists,
       );
 
       if (songDetail == null || songDetail.url.isEmpty) {

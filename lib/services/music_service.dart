@@ -197,6 +197,8 @@ class MusicService extends ChangeNotifier {
     required dynamic songId, // 支持 int 和 String
     AudioQuality quality = AudioQuality.exhigh,
     MusicSource source = MusicSource.netease,
+    String? title,
+    String? artist,
   }) async {
     try {
       print('🎵 [MusicService] 获取歌曲详情: $songId (${source.name}), 音质: ${quality.displayName}');
@@ -217,6 +219,23 @@ class MusicService extends ChangeNotifier {
         }
         final api = session.api!;
         final streamUrl = api.buildStreamUrl(songId.toString());
+        String lyricText = '';
+        if ((artist?.isNotEmpty ?? false) && (title?.isNotEmpty ?? false)) {
+          try {
+            print('📝 [MusicService] Navidrome 获取歌词: getLyrics(artist="$artist", title="$title")');
+            final fetched = await api
+                .getLyrics(artist: artist!, title: title!)
+                .timeout(const Duration(seconds: 4));
+            if (fetched != null) {
+              lyricText = fetched;
+              print('✅ [MusicService] Navidrome 歌词获取成功: getLyrics');
+            } else {
+              print('⚠️ [MusicService] Navidrome 歌词为空: getLyrics');
+            }
+          } catch (e) {
+            print('⚠️ [MusicService] Navidrome 获取歌词失败（不影响播放）: getLyrics: $e');
+          }
+        }
         return SongDetail(
           id: songId,
           name: '',
@@ -226,7 +245,7 @@ class MusicService extends ChangeNotifier {
           level: quality.displayName,
           size: '0',
           url: streamUrl,
-          lyric: '',
+          lyric: lyricText,
           tlyric: '',
           source: source,
         );

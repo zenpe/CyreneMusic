@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../pages/navidrome_library_page.dart';
 import '../pages/navidrome_search_page.dart';
 import '../pages/navidrome_playlists_page.dart';
-import '../pages/navidrome_settings_page.dart';
+import '../pages/settings_page.dart';
 import '../services/player_service.dart';
 import '../services/navidrome_session_service.dart';
 import '../widgets/mini_player.dart';
@@ -18,6 +20,7 @@ class NavidromeMainLayout extends StatefulWidget {
 
 class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
   int _selectedIndex = 0;
+  static const double _landscapeRailWidth = 84.0;
 
   List<Widget> get _pages => [
         NavidromeLibraryPage(
@@ -26,7 +29,11 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
         ),
         const NavidromeSearchPage(key: PageStorageKey('navidrome_search')),
         const NavidromePlaylistsPage(key: PageStorageKey('navidrome_playlists')),
-        const NavidromeSettingsPage(key: PageStorageKey('navidrome_settings')),
+        SettingsPage(
+          key: const PageStorageKey('navidrome_settings'),
+          initialSubPage: SettingsSubPage.audioSource,
+          isActive: _selectedIndex == 3,
+        ),
       ];
 
   bool get _isDesktop =>
@@ -375,106 +382,310 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
   Widget _buildMobile(BuildContext context) {
     final navTheme = NavidromeTheme.of(context);
     final backgroundColor = navTheme.background;
-    final bottomBarColor = navTheme.bottomBarBackground;
-    final bottomBarBorderColor = navTheme.bottomBarBorder;
-    const activeColor = NavidromeColors.activeBlue;
-    final inactiveColor = navTheme.textSecondary;
+    final orientation = MediaQuery.of(context).orientation;
+    final bool isLandscape = orientation == Orientation.landscape;
+    final scaffold = isLandscape
+        ? Scaffold(
+            backgroundColor: backgroundColor,
+            body: Row(
+              children: [
+                _buildLandscapeSideNavigation(context),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return Stack(
+                        children: [
+                          Positioned.fill(
+                            child: IndexedStack(
+                              index: _selectedIndex,
+                              children: _pages,
+                            ),
+                          ),
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: _buildMiniPlayer(),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          )
+        : Scaffold(
+            backgroundColor: backgroundColor,
+            body: Stack(
+              children: [
+                Positioned.fill(
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: _pages,
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _buildMiniPlayer(),
+                ),
+              ],
+            ),
+            bottomNavigationBar: _buildGlassBottomNavigationBar(context),
+          );
 
-    return Scaffold(
-      backgroundColor: backgroundColor,
-      body: AnimatedBuilder(
-        animation: PlayerService(),
-        builder: (context, _) {
-          final hasMiniPlayer = PlayerService().currentTrack != null ||
-              PlayerService().currentSong != null;
-          final bottomInset = 44 +
-              MediaQuery.of(context).padding.bottom +
-              (hasMiniPlayer ? 64 : 0);
+    if (!Platform.isAndroid) {
+      return scaffold;
+    }
 
-          return Stack(
+    return AnimatedBuilder(
+      animation: PlayerService(),
+      builder: (context, child) {
+        final theme = Theme.of(context);
+        final isDark = theme.brightness == Brightness.dark;
+        final hasPlayback = PlayerService().currentTrack != null ||
+            PlayerService().currentSong != null;
+        final navColor = hasPlayback ? Colors.transparent : theme.colorScheme.surface;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness:
+                isDark ? Brightness.light : Brightness.dark,
+            statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+            systemNavigationBarColor: navColor,
+            systemNavigationBarDividerColor: navColor,
+            systemNavigationBarIconBrightness:
+                isDark ? Brightness.light : Brightness.dark,
+          ),
+          child: child!,
+        );
+      },
+      child: scaffold,
+    );
+  }
+
+  Widget _buildLandscapeSideNavigation(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final Color? themeTint = PlayerService().themeColorNotifier.value;
+
+    return SafeArea(
+      left: true,
+      right: false,
+      top: true,
+      bottom: true,
+      child: SizedBox(
+        width: _landscapeRailWidth,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.only(
+            topRight: Radius.circular(16),
+            bottomRight: Radius.circular(16),
+          ),
+          child: Stack(
             children: [
-              // Main Content
               Positioned.fill(
-                bottom: bottomInset,
-                child: IndexedStack(
-                  index: _selectedIndex,
-                  children: _pages,
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: const SizedBox.shrink(),
                 ),
               ),
-
-              // Mini Player & Bottom Bar Area
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildMiniPlayer(),
-                    // Custom Bottom Navigation Bar
-                    Container(
-                      height: 44 + MediaQuery.of(context).padding.bottom,
-                      decoration: BoxDecoration(
-                        color: bottomBarColor,
-                        border: Border(
-                          top: BorderSide(color: bottomBarBorderColor, width: 0.5),
-                        ),
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.24),
+                        (themeTint ?? colorScheme.primary).withOpacity(0.08),
+                        Colors.white.withOpacity(0.06),
+                      ],
+                    ),
+                    border: Border(
+                      right: BorderSide(
+                        color: Colors.white.withOpacity(0.18),
+                        width: 1,
                       ),
-                      child: Padding(
-                        padding: EdgeInsets.only(
-                          bottom: MediaQuery.of(context).padding.bottom,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _buildNavItem(0, Icons.library_music, '音乐库', activeColor, inactiveColor),
-                            _buildNavItem(1, Icons.search, '搜索', activeColor, inactiveColor),
-                            _buildNavItem(2, Icons.favorite, '收藏', activeColor, inactiveColor),
-                            _buildNavItem(3, Icons.settings, '设置', activeColor, inactiveColor),
-                          ],
-                        ),
-                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 6),
+                child: NavigationRail(
+                  backgroundColor: Colors.transparent,
+                  selectedIndex: _selectedIndex,
+                  labelType: NavigationRailLabelType.selected,
+                  groupAlignment: -0.95,
+                  minWidth: _landscapeRailWidth,
+                  minExtendedWidth: _landscapeRailWidth,
+                  selectedIconTheme: IconThemeData(
+                    color: colorScheme.primary,
+                    size: 22,
+                  ),
+                  unselectedIconTheme: IconThemeData(
+                    color: colorScheme.onSurfaceVariant,
+                    size: 22,
+                  ),
+                  selectedLabelTextStyle: TextStyle(
+                    color: colorScheme.primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  unselectedLabelTextStyle: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                  onDestinationSelected: (index) {
+                    setState(() => _selectedIndex = index);
+                  },
+                  destinations: const [
+                    NavigationRailDestination(
+                      icon: Icon(Icons.library_music_outlined),
+                      selectedIcon: Icon(Icons.library_music),
+                      label: Text('音乐库'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.search_outlined),
+                      selectedIcon: Icon(Icons.search),
+                      label: Text('搜索'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.queue_music_outlined),
+                      selectedIcon: Icon(Icons.queue_music),
+                      label: Text('歌单'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.settings_outlined),
+                      selectedIcon: Icon(Icons.settings),
+                      label: Text('设置'),
                     ),
                   ],
                 ),
               ),
             ],
-          );
-        },
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildNavItem(
-    int index,
-    IconData icon,
-    String label,
-    Color activeColor,
-    Color inactiveColor,
-  ) {
-    final isSelected = _selectedIndex == index;
-    return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => setState(() => _selectedIndex = index),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 24,
-              color: isSelected ? activeColor : inactiveColor,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                color: isSelected ? activeColor : inactiveColor,
-                fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
-              ),
+  Widget _buildGlassBottomNavigationBar(BuildContext context) {
+    final orientation = MediaQuery.of(context).orientation;
+    final bool useGlass = Platform.isAndroid || orientation == Orientation.portrait;
+
+    final destinations = const [
+      NavigationDestination(
+        icon: Icon(Icons.library_music_outlined),
+        selectedIcon: Icon(Icons.library_music),
+        label: '音乐库',
+      ),
+      NavigationDestination(
+        icon: Icon(Icons.search_outlined),
+        selectedIcon: Icon(Icons.search),
+        label: '搜索',
+      ),
+      NavigationDestination(
+        icon: Icon(Icons.favorite_outline),
+        selectedIcon: Icon(Icons.favorite),
+        label: '收藏',
+      ),
+      NavigationDestination(
+        icon: Icon(Icons.settings_outlined),
+        selectedIcon: Icon(Icons.settings),
+        label: '设置',
+      ),
+    ];
+
+    final baseNav = NavigationBar(
+      selectedIndex: _selectedIndex,
+      onDestinationSelected: (int index) {
+        if (_selectedIndex == index) return;
+        setState(() => _selectedIndex = index);
+      },
+      destinations: destinations,
+    );
+ 
+    if (!useGlass) return baseNav;
+
+    final cs = Theme.of(context).colorScheme;
+    final Color? themeTint = PlayerService().themeColorNotifier.value;
+    return Theme(
+      data: Theme.of(context).copyWith(
+        navigationBarTheme: const NavigationBarThemeData(
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+        ),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 12,
+              offset: const Offset(0, -2),
             ),
           ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.zero,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.16),
+                        (themeTint ?? cs.primary).withOpacity(0.10),
+                        Colors.white.withOpacity(0.05),
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
+                    ),
+                    border: Border(
+                      top: BorderSide(
+                        color: Colors.white.withOpacity(0.18),
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: true,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: RadialGradient(
+                        center: Alignment(-0.9, -0.9),
+                        radius: 1.2,
+                        colors: [
+                          Color(0x33FFFFFF),
+                          Color(0x0AFFFFFF),
+                          Colors.transparent,
+                        ],
+                        stops: [0.0, 0.45, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              baseNav,
+            ],
+          ),
         ),
       ),
     );

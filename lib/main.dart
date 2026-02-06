@@ -40,7 +40,6 @@ import 'package:cyrene_music/services/startup_logger.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:cyrene_music/pages/settings_page/audio_source_settings.dart';
-import 'package:cyrene_music/pages/navidrome_settings_page.dart';
 import 'package:cyrene_music/pages/mobile_setup_page.dart';
 import 'package:cyrene_music/pages/mobile_app_gate.dart';
 import 'package:cyrene_music/pages/desktop_app_gate.dart';
@@ -682,7 +681,9 @@ void showAudioSourceNotConfiguredDialog(BuildContext context) {
   final content = isNavidromeActive
       ? '当前 Navidrome 配置似乎已失效或未填写，请重新配置。'
       : '当前音源配置似乎已失效或无法连接，请重新配置音源。';
-  final targetPage = isNavidromeActive ? const NavidromeSettingsPage() : const AudioSourceSettings();
+  final targetPage = isNavidromeActive
+      ? const AudioSourceSettings(openNavidromeSettings: true)
+      : const AudioSourceSettings();
 
   if (isFluent) {
     fluent.showDialog(

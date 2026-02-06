@@ -264,6 +264,24 @@ class NavidromeApi {
 
   // ==================== 歌曲 API ====================
 
+  /// 获取歌词（按艺术家/标题）
+  Future<String?> getLyrics({
+    required String artist,
+    required String title,
+  }) async {
+    if (artist.isEmpty || title.isEmpty) return null;
+    try {
+      final response = await _get('getLyrics', {
+        'artist': artist,
+        'title': title,
+      });
+      return _extractLyrics(response);
+    } on NavidromeApiException catch (e) {
+      debugPrint('[NavidromeApi] getLyrics failed: $e');
+      return null;
+    }
+  }
+
   /// 获取热门歌曲
   Future<List<NavidromeSong>> getTopSongs({
     int count = 50,
@@ -493,6 +511,19 @@ class NavidromeApi {
     if (value == null) return const [];
     if (value is List) return value;
     return [value];
+  }
+
+  String? _extractLyrics(Map<String, dynamic> response) {
+    final lyrics = response['lyrics'];
+    if (lyrics is Map<String, dynamic>) {
+      final value = lyrics['value'] ?? lyrics['lyrics'] ?? lyrics['text'];
+      if (value is String && value.isNotEmpty) {
+        return value;
+      }
+    } else if (lyrics is String && lyrics.isNotEmpty) {
+      return lyrics;
+    }
+    return null;
   }
 }
 

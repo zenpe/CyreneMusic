@@ -6,6 +6,7 @@ import '../services/navidrome_api.dart';
 import '../services/player_service.dart';
 import '../services/playlist_queue_service.dart';
 import '../widgets/navidrome_ui.dart';
+import '../widgets/sheet_stack_navigator.dart';
 
 /// 艺术家列表页面
 class NavidromeArtistsPage extends StatefulWidget {
@@ -77,7 +78,10 @@ class _NavidromeArtistsPageState extends State<NavidromeArtistsPage> {
     if (_error != null) {
       return Scaffold(
         backgroundColor: navTheme.background,
-        body: Center(child: Text(_error!)),
+        body: NavidromeErrorState(
+          message: _error!,
+          onRetry: _loadArtists,
+        ),
       );
     }
 
@@ -95,41 +99,154 @@ class _NavidromeArtistsPageState extends State<NavidromeArtistsPage> {
           builder: (context, constraints) {
             final width = constraints.maxWidth;
             final padding = NavidromeLayout.pagePadding(width);
-            final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+            final bottomPadding = NavidromeLayout.bottomPadding(context);
 
-            return RefreshIndicator(
-              onRefresh: _loadArtists,
-              child: ListView.separated(
-                padding: EdgeInsets.fromLTRB(
-                  padding.left,
-                  8,
-                  padding.right,
-                  bottomPadding,
-                ),
-                itemCount: _artists.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final artist = _artists[index];
-                  return _ArtistTile(
-                    artist: artist,
-                    api: _api,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => NavidromeArtistDetailPage(artist: artist),
+            return Column(
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    padding.left,
+                    6,
+                    padding.right,
+                    0,
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: InkWell(
+                      onTap: _loadArtists,
+                      borderRadius: BorderRadius.circular(18),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: navTheme.card,
+                          shape: BoxShape.circle,
+                          boxShadow: navTheme.cardShadow,
                         ),
-                      );
-                    },
-                  );
-                },
-              ),
+                        child: Icon(
+                          Icons.refresh,
+                          color: navTheme.textSecondary,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _loadArtists,
+                    child: ListView.separated(
+                      padding: EdgeInsets.fromLTRB(
+                        padding.left,
+                        6,
+                        padding.right,
+                        bottomPadding,
+                      ),
+                      itemCount: _artists.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final artist = _artists[index];
+                        return _ArtistTile(
+                          artist: artist,
+                          api: _api,
+                          onTap: () {
+                            _openArtist(context, artist);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         ),
       ),
     );
   }
+}
+
+bool _useArtistSheet(BuildContext context) {
+  return NavidromeLayout.useSheetNavigation(context);
+}
+
+void _openArtist(BuildContext context, NavidromeArtist artist) {
+  if (_useArtistSheet(context)) {
+    showNavidromeArtistSheet(context: context, artist: artist);
+    return;
+  }
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => NavidromeArtistDetailPage(artist: artist),
+    ),
+  );
+}
+
+Future<void> showNavidromeArtistSheet({
+  required BuildContext context,
+  required NavidromeArtist artist,
+}) {
+  final navTheme = NavidromeTheme.of(context);
+  final media = MediaQuery.of(context);
+  final isLandscape = media.orientation == Orientation.landscape;
+  final sheetHeight = media.size.height * (isLandscape ? 0.9 : 0.65);
+  final stack = SheetStackController(
+    initialPage: SheetStackPage(
+      title: artist.name,
+      builder: (context, controller, stack) {
+        return NavidromeArtistDetailPage(
+          artist: artist,
+          asSheet: true,
+          showHandle: false,
+          controller: controller,
+          onOpenAlbum: (album) {
+            stack.push(
+              SheetStackPage(
+                title: album.name,
+                builder: (context, controller, stack) {
+                  return NavidromeAlbumSheet(
+                    album: album,
+                    api: NavidromeSessionService().api,
+                    controller: controller,
+                    showHandle: false,
+                  );
+                },
+              ),
+            );
+          },
+        );
+      },
+    ),
+  );
+
+  return showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: navTheme.background,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) {
+      return SafeArea(
+        child: SizedBox(
+          height: sheetHeight,
+          child: SheetStackNavigator(
+            controller: stack,
+            backgroundColor: navTheme.background,
+            dividerColor: navTheme.divider,
+            useDraggableSheet: false,
+            showHandle: true,
+            onClose: () => Navigator.of(context).maybePop(),
+            titleTextStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: navTheme.textPrimary,
+                ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class _ArtistTile extends StatelessWidget {
@@ -197,8 +314,19 @@ class _ArtistTile extends StatelessWidget {
 /// 艺术家详情页面
 class NavidromeArtistDetailPage extends StatefulWidget {
   final NavidromeArtist artist;
+  final bool asSheet;
+  final bool showHandle;
+  final ScrollController? controller;
+  final ValueChanged<NavidromeAlbum>? onOpenAlbum;
 
-  const NavidromeArtistDetailPage({super.key, required this.artist});
+  const NavidromeArtistDetailPage({
+    super.key,
+    required this.artist,
+    this.asSheet = false,
+    this.showHandle = true,
+    this.controller,
+    this.onOpenAlbum,
+  });
 
   @override
   State<NavidromeArtistDetailPage> createState() =>
@@ -483,6 +611,10 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
   }
 
   void _showAlbumSheet(NavidromeAlbum album) {
+    if (widget.onOpenAlbum != null) {
+      widget.onOpenAlbum!(album);
+      return;
+    }
     showNavidromeAlbumSheet(
       context: context,
       album: album,
@@ -495,6 +627,46 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final navTheme = NavidromeTheme.of(context);
+    final body = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : _error != null
+            ? Center(child: Text(_error!))
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  return _buildContent(
+                    theme,
+                    colorScheme,
+                    constraints.maxWidth,
+                    scrollController: widget.controller,
+                  );
+                },
+              );
+
+    if (widget.asSheet) {
+      return Container(
+        decoration: BoxDecoration(
+          color: navTheme.background,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            if (widget.showHandle) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: navTheme.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            Expanded(child: body),
+          ],
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -505,15 +677,7 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
         surfaceTintColor: Colors.transparent,
       ),
       backgroundColor: navTheme.background,
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    return _buildContent(theme, colorScheme, constraints.maxWidth);
-                  },
-                ),
+      body: body,
     );
   }
 
@@ -521,19 +685,21 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
     ThemeData theme,
     ColorScheme colorScheme,
     double width,
+    {ScrollController? scrollController}
   ) {
     final albums = _artistInfo?.albums ?? [];
     final padding = NavidromeLayout.pagePadding(width);
     final navTheme = NavidromeTheme.of(context);
 
     return CustomScrollView(
+      controller: scrollController,
       slivers: [
         // 艺术家头部信息
         SliverToBoxAdapter(
           child: Padding(
             padding: EdgeInsets.fromLTRB(
               padding.left,
-              16,
+              widget.asSheet ? 6 : 16,
               padding.right,
               12,
             ),
@@ -734,30 +900,24 @@ class _AlbumGridItem extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: coverUrl.isNotEmpty
-                  ? Image.network(
-                      coverUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: colorScheme.surfaceContainerHighest,
-                        child: Icon(
-                          Icons.album,
-                          size: 48,
-                          color: colorScheme.onSurfaceVariant,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: coverUrl.isNotEmpty
+                      ? Image.network(
+                          coverUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => NavidromeCoverPlaceholder(
+                            baseColor: colorScheme.surfaceContainerHighest,
+                            iconSize: 32,
+                            borderRadius: 12,
+                          ),
+                        )
+                      : NavidromeCoverPlaceholder(
+                          baseColor: colorScheme.surfaceContainerHighest,
+                          iconSize: 32,
+                          borderRadius: 12,
                         ),
-                      ),
-                    )
-                  : Container(
-                      color: colorScheme.surfaceContainerHighest,
-                      child: Icon(
-                        Icons.album,
-                        size: 48,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-            ),
+                ),
           ),
           const SizedBox(height: 6),
           Text(

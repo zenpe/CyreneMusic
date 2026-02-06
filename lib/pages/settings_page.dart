@@ -45,7 +45,14 @@ enum SettingsSubPage {
 
 /// 设置页面
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  final SettingsSubPage initialSubPage;
+  final bool isActive;
+
+  const SettingsPage({
+    super.key,
+    this.initialSubPage = SettingsSubPage.none,
+    this.isActive = true,
+  });
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -56,6 +63,7 @@ class _SettingsPageState extends State<SettingsPage> {
   
   // 当前显示的子页面
   SettingsSubPage _currentSubPage = SettingsSubPage.none;
+  bool _autoOpenDone = false;
 
   void _scheduleRebuild() {
     if (!mounted || _rebuildScheduled) return;
@@ -66,6 +74,18 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() {});
     });
   }
+
+  void _maybeAutoOpenSubPage() {
+    if (_autoOpenDone) return;
+    if (widget.initialSubPage == SettingsSubPage.none) return;
+    if (!widget.isActive) return;
+    _autoOpenDone = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      openSubPage(widget.initialSubPage);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -100,7 +120,20 @@ class _SettingsPageState extends State<SettingsPage> {
     } else {
       print('⚙️ [SettingsPage] 用户未登录，跳过获取IP归属地');
     }
+
+    _maybeAutoOpenSubPage();
   }
+
+  @override
+  void didUpdateWidget(covariant SettingsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isActive) {
+      _autoOpenDone = false;
+      return;
+    }
+    _maybeAutoOpenSubPage();
+  }
+
 
   @override
   void dispose() {

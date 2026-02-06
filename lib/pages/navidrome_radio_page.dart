@@ -100,21 +100,9 @@ class _NavidromeRadioPageState extends State<NavidromeRadioPage> {
     }
 
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 48, color: colorScheme.error),
-            const SizedBox(height: 16),
-            Text(_error!, style: TextStyle(color: colorScheme.error)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _loadStations,
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
-            ),
-          ],
-        ),
+      return NavidromeErrorState(
+        message: _error!,
+        onRetry: _loadStations,
       );
     }
 
@@ -148,7 +136,7 @@ class _NavidromeRadioPageState extends State<NavidromeRadioPage> {
         builder: (context, constraints) {
           final width = constraints.maxWidth;
           final padding = NavidromeLayout.pagePadding(width);
-          final bottomPadding = 24 + MediaQuery.of(context).padding.bottom;
+          final bottomPadding = NavidromeLayout.bottomPadding(context);
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
