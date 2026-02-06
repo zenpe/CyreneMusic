@@ -176,10 +176,7 @@ class NavidromeLayout {
   }
 
   static bool useSheetNavigation(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final width = media.size.width;
-    final isPortrait = media.orientation == Orientation.portrait;
-    return isPortrait || width < desktopWidth;
+    return true;
   }
 }
 
@@ -200,6 +197,12 @@ class NavidromePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final navTheme = NavidromeTheme.of(context);
+    final width = MediaQuery.of(context).size.width;
+    final isLarge = width >= NavidromeLayout.tabletWidth;
+    final height = isLarge ? 38.0 : 32.0;
+    final horizontal = isLarge ? 16.0 : 12.0;
+    final fontSize = isLarge ? 14.0 : 13.0;
+    final iconSize = isLarge ? 18.0 : 16.0;
 
     final background = selected
         ? navTheme.chipSelectedBackground
@@ -215,8 +218,8 @@ class NavidromePill extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Ink(
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          height: height,
+          padding: EdgeInsets.symmetric(horizontal: horizontal),
           decoration: BoxDecoration(
             color: background,
             borderRadius: BorderRadius.circular(16),
@@ -226,14 +229,14 @@ class NavidromePill extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 16, color: foreground),
+                Icon(icon, size: iconSize, color: foreground),
                 const SizedBox(width: 6),
               ],
               Text(
                 label,
                 style: TextStyle(
                   color: foreground,
-                  fontSize: 13,
+                  fontSize: fontSize,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),
@@ -918,6 +921,7 @@ class NavidromeAlbumSheet extends StatefulWidget {
   final NavidromeApi? api;
   final ScrollController controller;
   final bool showHandle;
+  final bool showClose;
 
   const NavidromeAlbumSheet({
     super.key,
@@ -925,6 +929,7 @@ class NavidromeAlbumSheet extends StatefulWidget {
     required this.api,
     required this.controller,
     this.showHandle = true,
+    this.showClose = true,
   });
 
   @override
@@ -1151,15 +1156,16 @@ class _NavidromeAlbumSheetState extends State<NavidromeAlbumSheet> {
           ),
             ],
           ),
-          Positioned(
-            right: 4,
-            top: 2,
-            child: IconButton(
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: Icon(Icons.close_rounded, color: navTheme.textSecondary),
-              tooltip: '关闭',
+          if (widget.showClose)
+            Positioned(
+              right: 4,
+              top: 2,
+              child: IconButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+                icon: Icon(Icons.close_rounded, color: navTheme.textSecondary),
+                tooltip: '关闭',
+              ),
             ),
-          ),
         ],
       ),
     );

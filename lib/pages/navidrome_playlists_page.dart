@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/navidrome_models.dart';
 import '../models/track.dart';
@@ -140,23 +139,10 @@ class _NavidromePlaylistsPageState extends State<NavidromePlaylistsPage> {
                         final coverUrl = _api?.buildCoverUrl(playlist.coverArt) ?? '';
 
                         return NavidromeCard(
-                          onTap: () {
-                            if (Platform.isAndroid || Platform.isIOS) {
-                              showNavidromePlaylistSheet(
-                                context: context,
-                                playlist: playlist,
-                              );
-                              return;
-                            }
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => NavidromePlaylistDetailPage(
-                                  playlist: playlist,
-                                ),
-                              ),
-                            );
-                          },
+                          onTap: () => showNavidromePlaylistSheet(
+                            context: context,
+                            playlist: playlist,
+                          ),
                           padding: const EdgeInsets.all(12),
                           child: Row(
                             children: [
@@ -212,6 +198,7 @@ class NavidromePlaylistDetailPage extends StatefulWidget {
   final NavidromePlaylist playlist;
   final bool asSheet;
   final bool showHandle;
+  final bool showTitle;
   final ScrollController? controller;
 
   const NavidromePlaylistDetailPage({
@@ -219,6 +206,7 @@ class NavidromePlaylistDetailPage extends StatefulWidget {
     required this.playlist,
     this.asSheet = false,
     this.showHandle = true,
+    this.showTitle = true,
     this.controller,
   });
 
@@ -395,20 +383,22 @@ class _NavidromePlaylistDetailPageState
               ),
               const SizedBox(height: 8),
             ],
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  widget.playlist.name,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: navTheme.textPrimary,
+            if (widget.showTitle) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    widget.playlist.name,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: navTheme.textPrimary,
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 4),
+              const SizedBox(height: 4),
+            ],
             Expanded(child: body),
           ],
         ),
@@ -434,6 +424,9 @@ Future<void> showNavidromePlaylistSheet({
   required NavidromePlaylist playlist,
 }) {
   final navTheme = NavidromeTheme.of(context);
+  final media = MediaQuery.of(context);
+  final isLandscape = media.orientation == Orientation.landscape;
+  final sheetHeight = media.size.height * (isLandscape ? 0.9 : 0.65);
 
   return showModalBottomSheet(
     context: context,
@@ -444,27 +437,34 @@ Future<void> showNavidromePlaylistSheet({
     ),
     builder: (context) {
       return SafeArea(
-        child: SheetStackNavigator(
-          controller: SheetStackController(
-            initialPage: SheetStackPage(
-              title: playlist.name,
-              builder: (context, controller, stack) {
-                return NavidromePlaylistDetailPage(
-                  playlist: playlist,
-                  asSheet: true,
-                  controller: controller,
-                );
-              },
-            ),
-          ),
-          backgroundColor: navTheme.background,
-          dividerColor: navTheme.divider,
-          showHandle: true,
-          onClose: () => Navigator.of(context).maybePop(),
-          titleTextStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: navTheme.textPrimary,
+        top: false,
+        child: SizedBox(
+          height: sheetHeight,
+          child: SheetStackNavigator(
+            controller: SheetStackController(
+              initialPage: SheetStackPage(
+                title: playlist.name,
+                builder: (context, controller, stack) {
+                  return NavidromePlaylistDetailPage(
+                    playlist: playlist,
+                    asSheet: true,
+                    showHandle: false,
+                    showTitle: false,
+                    controller: controller,
+                  );
+                },
               ),
+            ),
+            backgroundColor: navTheme.background,
+            dividerColor: navTheme.divider,
+            showHandle: true,
+            useDraggableSheet: false,
+            onClose: () => Navigator.of(context).maybePop(),
+            titleTextStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: navTheme.textPrimary,
+                ),
+          ),
         ),
       );
     },

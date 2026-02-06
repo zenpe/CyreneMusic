@@ -9,6 +9,7 @@ import '../services/player_service.dart';
 import '../pages/player_page.dart';
 import '../services/playlist_queue_service.dart';
 import '../services/play_history_service.dart';
+import '../services/system_volume_service.dart';
 import '../models/track.dart';
 import '../utils/theme_manager.dart';
 
@@ -37,17 +38,24 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
   }
 
   /// iOS Cupertino 风格的控制按钮
-  Widget _buildCenterControlsCupertino(PlayerService player, BuildContext context, {bool hideSkip = false}) {
+  Widget _buildCenterControlsCupertino(
+    PlayerService player,
+    BuildContext context, {
+    bool hideSkip = false,
+    bool compact = false,
+  }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    const double skipIconSize = 24;
-    const double playIconSize = 28;
+    final double skipIconSize = compact ? 20 : 24;
+    final double playIconSize = compact ? 24 : 28;
+    final EdgeInsets buttonPadding =
+        compact ? const EdgeInsets.all(4) : const EdgeInsets.all(8);
     
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (!hideSkip)
           CupertinoButton(
-            padding: const EdgeInsets.all(8),
+            padding: buttonPadding,
             minSize: 0,
             onPressed: player.hasPrevious ? () => player.playPrevious() : null,
             child: Icon(
@@ -65,7 +73,7 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
           )
         else
           CupertinoButton(
-            padding: const EdgeInsets.all(8),
+            padding: buttonPadding,
             minSize: 0,
             onPressed: () => player.togglePlayPause(),
             child: Icon(
@@ -76,7 +84,7 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
           ),
         if (!hideSkip)
           CupertinoButton(
-            padding: const EdgeInsets.all(8),
+            padding: buttonPadding,
             minSize: 0,
             onPressed: player.hasNext ? () => player.playNext() : null,
             child: Icon(
@@ -91,9 +99,14 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildCenterControlsFluent(PlayerService player, BuildContext context, {bool hideSkip = false}) {
-    const double skipIconSize = 20;
-    const double playIconSize = 22;
+  Widget _buildCenterControlsFluent(
+    PlayerService player,
+    BuildContext context, {
+    bool hideSkip = false,
+    bool compact = false,
+  }) {
+    final double skipIconSize = compact ? 18 : 20;
+    final double playIconSize = compact ? 20 : 22;
     final theme = fluent.FluentTheme.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -397,79 +410,402 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
     final backgroundColor = colorScheme.surfaceContainerHighest;
     final progressBarTrackColor = colorScheme.surfaceContainerHighest;
     final progressBarActiveColor = colorScheme.primary;
+    final bool useAlignedLayout = !isCompactWidth;
+
+    if (!useAlignedLayout) {
+      return Container(
+        key: const ValueKey('mini_expanded'),
+        height: 64,
+        margin: EdgeInsets.zero,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(color: backgroundColor),
+        child: Column(
+          children: [
+            // Top-aligned full-width progress bar
+            SizedBox(
+              height: 2,
+              width: double.infinity,
+              child: ValueListenableBuilder<Duration>(
+                valueListenable: player.positionNotifier,
+                builder: (context, position, child) {
+                  final progress = player.duration.inMilliseconds > 0
+                      ? position.inMilliseconds /
+                          player.duration.inMilliseconds
+                      : 0.0;
+                  return LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 2,
+                    backgroundColor: progressBarTrackColor,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      progressBarActiveColor,
+                    ),
+                  );
+                },
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    _buildCover(song, track, colorScheme, size: 40),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildSongInfo(song, track, context),
+                    ),
+                    _buildAdaptiveControls(
+                      player,
+                      context,
+                      colorScheme,
+                      hideSkip: false,
+                      compact: true,
+                    ),
+                    const SizedBox(width: 6),
+                    _buildQueueButton(context, colorScheme, compact: true),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       key: const ValueKey('mini_expanded'),
-      height: 64, // Reduced height to match Scheme B (64px)
-      margin: EdgeInsets.zero, // Remove margins for full-width look
+      margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
+      constraints: const BoxConstraints(minHeight: 80),
       decoration: BoxDecoration(color: backgroundColor),
-        child: Column(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
           children: [
-          // Top-aligned full-width progress bar
-          SizedBox(
-            height: 2,
-            width: double.infinity,
-            child: ValueListenableBuilder<Duration>(
-              valueListenable: player.positionNotifier,
-              builder: (context, position, child) {
-                final progress = player.duration.inMilliseconds > 0
-                    ? position.inMilliseconds / player.duration.inMilliseconds
-                    : 0.0;
-                return LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 2,
-                  backgroundColor: progressBarTrackColor,
-                  valueColor: AlwaysStoppedAnimation<Color>(progressBarActiveColor),
-                );
-              },
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
+            _buildCover(song, track, colorScheme, size: 44),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Album Art
-                  _buildCover(song, track, colorScheme, size: 40),
-                  const SizedBox(width: 12),
-                  // Title & Artist
-                  Expanded(
-                    child: _buildSongInfo(song, track, context),
-                  ),
-                  // Controls
-                  _buildAdaptiveControls(player, context, colorScheme, hideSkip: false), // Scheme B has Prev/Next/Play
-                  const SizedBox(width: 6),
-                  _buildQueueButton(context, colorScheme),
+                  _buildSongInfo(song, track, context, singleLine: true),
+                  const SizedBox(height: 6),
+                  _buildAlignedProgressRow(player, colorScheme),
                 ],
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 16),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildAdaptiveControls(
+                  player,
+                  context,
+                  colorScheme,
+                  hideSkip: false,
+                  compact: true,
+                ),
+                const SizedBox(width: 6),
+                _buildVolumeButton(
+                  context,
+                  colorScheme,
+                  player,
+                  compact: true,
+                ),
+                const SizedBox(width: 4),
+                _buildQueueButton(context, colorScheme, compact: true),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildQueueButton(BuildContext context, ColorScheme colorScheme) {
+  Widget _buildQueueButton(
+    BuildContext context,
+    ColorScheme colorScheme, {
+    bool compact = false,
+  }) {
     if (ThemeManager().isFluentFramework) {
       final theme = fluent.FluentTheme.of(context);
       return fluent.IconButton(
-        icon: Icon(Icons.queue_music_rounded, color: theme.resources.textFillColorPrimary),
+        icon: Icon(
+          Icons.queue_music_rounded,
+          color: theme.resources.textFillColorPrimary,
+          size: compact ? 20 : 22,
+        ),
         onPressed: () => _showQueueSheet(context),
       );
     }
     if (_isCupertino) {
       return CupertinoButton(
-        padding: const EdgeInsets.all(6),
+        padding: compact ? const EdgeInsets.all(2) : const EdgeInsets.all(6),
         minSize: 0,
         onPressed: () => _showQueueSheet(context),
-        child: const Icon(CupertinoIcons.music_note_list, color: CupertinoColors.activeBlue, size: 22),
+        child: Icon(
+          CupertinoIcons.music_note_list,
+          color: CupertinoColors.activeBlue,
+          size: compact ? 20 : 22,
+        ),
       );
     }
     return IconButton(
-      icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
+      icon: Icon(
+        Icons.queue_music_rounded,
+        color: colorScheme.onSurface,
+        size: compact ? 20 : 22,
+      ),
+      padding: EdgeInsets.zero,
+      constraints: compact
+          ? const BoxConstraints.tightFor(width: 32, height: 32)
+          : null,
       tooltip: '播放队列',
       onPressed: () => _showQueueSheet(context),
+    );
+  }
+
+  Widget _buildVolumeButton(
+    BuildContext context,
+    ColorScheme colorScheme,
+    PlayerService player, {
+    bool compact = false,
+  }) {
+    if (ThemeManager().isFluentFramework) {
+      final theme = fluent.FluentTheme.of(context);
+      return fluent.IconButton(
+        icon: Icon(
+          _volumeIcon(player.volume),
+          color: theme.resources.textFillColorPrimary,
+          size: compact ? 20 : 22,
+        ),
+        onPressed: () => _showVolumeDialog(context, player),
+      );
+    }
+    if (_isCupertino) {
+      return CupertinoButton(
+        padding: compact ? const EdgeInsets.all(2) : const EdgeInsets.all(6),
+        minSize: 0,
+        onPressed: () => _showVolumeDialog(context, player),
+        child: Icon(
+          _volumeIconCupertino(player.volume),
+          color: CupertinoColors.activeBlue,
+          size: compact ? 20 : 22,
+        ),
+      );
+    }
+    return Builder(
+      builder: (buttonContext) {
+        return IconButton(
+          icon: Icon(
+            _volumeIcon(player.volume),
+            color: colorScheme.onSurface,
+            size: compact ? 20 : 22,
+          ),
+          padding: EdgeInsets.zero,
+          constraints: compact
+              ? const BoxConstraints.tightFor(width: 32, height: 32)
+              : null,
+          tooltip: '音量',
+          onPressed: () => _showVolumePopover(buttonContext, player),
+        );
+      },
+    );
+  }
+
+  Future<void> _showVolumePopover(
+    BuildContext context,
+    PlayerService player,
+  ) async {
+    final overlay = Overlay.of(context);
+    final renderBox = context.findRenderObject() as RenderBox?;
+    final overlayBox = overlay?.context.findRenderObject() as RenderBox?;
+    if (overlay == null || renderBox == null || overlayBox == null) {
+      await _showVolumeDialog(context, player);
+      return;
+    }
+
+    final target = renderBox.localToGlobal(Offset.zero, ancestor: overlayBox);
+    final size = renderBox.size;
+    final screen = overlayBox.size;
+
+    final systemService = SystemVolumeService();
+    bool systemSupported = false;
+    double systemTemp = 0.0;
+    try {
+      systemSupported = await systemService.isSupported();
+      if (systemSupported) {
+        systemTemp = (await systemService.getVolume()) ?? player.volume;
+      }
+    } catch (_) {}
+
+    final double cardWidth = systemSupported ? 240 : 220;
+    final double cardHeight = systemSupported ? 118 : 72;
+    const double padding = 8;
+
+    final double preferredTop = target.dy - cardHeight - padding;
+    final double top = preferredTop >= 0
+        ? preferredTop
+        : target.dy + size.height + padding;
+    final double left = (target.dx + size.width / 2 - cardWidth / 2)
+        .clamp(padding, screen.width - cardWidth - padding);
+
+    double appTemp = player.volume;
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Volume',
+      barrierColor: Colors.transparent,
+      pageBuilder: (context, animation, secondaryAnimation) {
+        final colorScheme = Theme.of(context).colorScheme;
+        return Stack(
+          children: [
+            Positioned(
+              left: left,
+              top: top,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: cardWidth,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: StatefulBuilder(
+                    builder: (context, setLocal) {
+                      if (!systemSupported) {
+                        return Row(
+                          children: [
+                            Icon(
+                              _volumeIcon(appTemp),
+                              size: 18,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Slider(
+                                value: appTemp,
+                                min: 0.0,
+                                max: 1.0,
+                                onChanged: (v) {
+                                  setLocal(() => appTemp = v);
+                                  player.setVolume(v);
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${(appTemp * 100).round()}%',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.speaker,
+                                size: 18,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 6),
+                              SizedBox(
+                                width: 28,
+                                child: Text(
+                                  '系统',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Slider(
+                                  value: systemTemp,
+                                  min: 0.0,
+                                  max: 1.0,
+                                  onChanged: (v) {
+                                    setLocal(() => systemTemp = v);
+                                    systemService.setVolume(v);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${(systemTemp * 100).round()}%',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Icon(
+                                _volumeIcon(appTemp),
+                                size: 18,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 6),
+                              SizedBox(
+                                width: 28,
+                                child: Text(
+                                  '应用',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Slider(
+                                  value: appTemp,
+                                  min: 0.0,
+                                  max: 1.0,
+                                  onChanged: (v) {
+                                    setLocal(() => appTemp = v);
+                                    player.setVolume(v);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${(appTemp * 100).round()}%',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -597,6 +933,51 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildAlignedProgressRow(PlayerService player, ColorScheme colorScheme) {
+    final timeStyle = TextStyle(
+      fontSize: 11,
+      color: colorScheme.onSurfaceVariant,
+    );
+    return ValueListenableBuilder<Duration>(
+      valueListenable: player.positionNotifier,
+      builder: (context, position, child) {
+        final progress = player.duration.inMilliseconds > 0
+            ? position.inMilliseconds / player.duration.inMilliseconds
+            : 0.0;
+        final indicator = ThemeManager().isFluentFramework
+            ? SizedBox(
+                height: 4,
+                child: fluent.ProgressBar(value: progress),
+              )
+            : SizedBox(
+                height: 3,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 3,
+                    backgroundColor:
+                        colorScheme.onSurface.withOpacity(0.08),
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                  ),
+                ),
+              );
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(_formatDuration(position), style: timeStyle),
+            const SizedBox(width: 8),
+            Expanded(child: indicator),
+            const SizedBox(width: 8),
+            Text(_formatDuration(player.duration), style: timeStyle),
+          ],
+        );
+      },
+    );
+  }
+
   /// 构建封面
   Widget _buildCover(dynamic song, dynamic track, ColorScheme colorScheme, {double size = 48}) {
     final imageUrl = song?.pic ?? track?.picUrl ?? '';
@@ -679,11 +1060,89 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
   }
 
   /// 构建歌曲信息
-  Widget _buildSongInfo(dynamic song, dynamic track, BuildContext context) {
+  Widget _buildSongInfo(
+    dynamic song,
+    dynamic track,
+    BuildContext context, {
+    bool singleLine = false,
+  }) {
     final name = song?.name ?? track?.name ?? '未知歌曲';
     final artist = song?.arName ?? track?.artists ?? '未知艺术家';
     final bool isFluent = ThemeManager().isFluentFramework;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (singleLine) {
+      final String artistText = artist.isNotEmpty ? ' · $artist' : '';
+      if (isFluent) {
+        final fluentTheme = fluent.FluentTheme.of(context);
+        final primaryStyle = TextStyle(
+          fontFamily: 'Microsoft YaHei',
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: fluentTheme.resources.textFillColorPrimary,
+        );
+        final secondaryStyle = TextStyle(
+          fontFamily: 'Microsoft YaHei',
+          fontSize: 12,
+          color: fluentTheme.resources.textFillColorSecondary,
+        );
+        return Text.rich(
+          TextSpan(
+            text: name,
+            style: primaryStyle,
+            children: [
+              if (artistText.isNotEmpty)
+                TextSpan(text: artistText, style: secondaryStyle),
+            ],
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+      }
+      if (_isCupertino) {
+        final primaryStyle = TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+          color: isDark ? CupertinoColors.white : CupertinoColors.black,
+        );
+        final secondaryStyle = const TextStyle(
+          fontSize: 13,
+          color: CupertinoColors.systemGrey,
+        );
+        return Text.rich(
+          TextSpan(
+            text: name,
+            style: primaryStyle,
+            children: [
+              if (artistText.isNotEmpty)
+                TextSpan(text: artistText, style: secondaryStyle),
+            ],
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+      }
+      final theme = Theme.of(context);
+      final primaryStyle = theme.textTheme.bodyMedium?.copyWith(
+        fontWeight: FontWeight.w500,
+        color: theme.colorScheme.onSurface,
+      );
+      final secondaryStyle = theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      );
+      return Text.rich(
+        TextSpan(
+          text: name,
+          style: primaryStyle,
+          children: [
+            if (artistText.isNotEmpty)
+              TextSpan(text: artistText, style: secondaryStyle),
+          ],
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
 
     // Fluent UI 主题下使用微软雅黑字体
     if (isFluent) {
@@ -775,23 +1234,50 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
   }
 
   /// 自适应控制按钮（根据主题选择）
-  Widget _buildAdaptiveControls(PlayerService player, BuildContext context, ColorScheme colorScheme, {bool hideSkip = false}) {
+  Widget _buildAdaptiveControls(
+    PlayerService player,
+    BuildContext context,
+    ColorScheme colorScheme, {
+    bool hideSkip = false,
+    bool compact = false,
+  }) {
     if (ThemeManager().isFluentFramework) {
-      return _buildCenterControlsFluent(player, context, hideSkip: hideSkip);
+      return _buildCenterControlsFluent(
+        player,
+        context,
+        hideSkip: hideSkip,
+        compact: compact,
+      );
     }
     if (_isCupertino) {
-      return _buildCenterControlsCupertino(player, context, hideSkip: hideSkip);
+      return _buildCenterControlsCupertino(
+        player,
+        context,
+        hideSkip: hideSkip,
+        compact: compact,
+      );
     }
-    return _buildCenterControls(player, colorScheme, hideSkip: hideSkip);
+    return _buildCenterControls(
+      player,
+      colorScheme,
+      hideSkip: hideSkip,
+      compact: compact,
+    );
   }
 
   /// 中间控制（上一首/播放暂停/下一首）- Material 风格
-  Widget _buildCenterControls(PlayerService player, ColorScheme colorScheme, {bool hideSkip = false}) {
-    const double skipIconSize = 28;
-    const double playIconSize = 24;
-    // Navidrome Scheme B Colors
-    const activeColor = Color(0xFF0A84FF);
-    const iconColor = Colors.white;
+  Widget _buildCenterControls(
+    PlayerService player,
+    ColorScheme colorScheme, {
+    bool hideSkip = false,
+    bool compact = false,
+  }) {
+    final double skipIconSize = compact ? 22 : 28;
+    final double playIconSize = compact ? 20 : 24;
+    final double skipButtonSize = compact ? 32 : 40;
+    final double playButtonSize = compact ? 36 : 44;
+    final activeColor = colorScheme.primary;
+    final iconColor = colorScheme.onSurface;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -801,8 +1287,11 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
           icon: Icon(
             Icons.skip_previous_rounded,
             color: player.hasPrevious ? iconColor : iconColor.withOpacity(0.5),
+            size: skipIconSize,
           ),
-          iconSize: skipIconSize,
+          padding: EdgeInsets.zero,
+          constraints:
+              BoxConstraints.tightFor(width: skipButtonSize, height: skipButtonSize),
           onPressed: player.hasPrevious ? () => player.playPrevious() : null,
           tooltip: '上一首',
         ),
@@ -810,8 +1299,8 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: SizedBox(
-              width: 28,
-              height: 28,
+              width: playButtonSize,
+              height: playButtonSize,
               child: CircularProgressIndicator(
                 strokeWidth: 2.5,
                 color: activeColor,
@@ -820,7 +1309,7 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
           )
         else
           Container(
-             margin: const EdgeInsets.symmetric(horizontal: 8),
+             margin: EdgeInsets.symmetric(horizontal: compact ? 6 : 8),
              decoration: BoxDecoration(
                color: activeColor,
                shape: BoxShape.circle,
@@ -836,17 +1325,25 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                 icon: Icon(player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
                 color: Colors.white,
                 iconSize: playIconSize,
+                padding: EdgeInsets.zero,
+                constraints: BoxConstraints.tightFor(
+                  width: playButtonSize,
+                  height: playButtonSize,
+                ),
                 onPressed: () => player.togglePlayPause(),
                 tooltip: player.isPlaying ? '暂停' : '播放',
              ),
-          ),
+           ),
         if (!hideSkip)
         IconButton(
           icon: Icon(
             Icons.skip_next_rounded,
             color: player.hasNext ? iconColor : iconColor.withOpacity(0.5),
+            size: skipIconSize,
           ),
-          iconSize: skipIconSize,
+          padding: EdgeInsets.zero,
+          constraints:
+              BoxConstraints.tightFor(width: skipButtonSize, height: skipButtonSize),
           onPressed: player.hasNext ? () => player.playNext() : null,
           tooltip: '下一首',
         ),
@@ -977,7 +1474,16 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
   }
 
   Future<void> _showVolumeDialog(BuildContext context, PlayerService player) async {
-    double temp = player.volume;
+    final systemService = SystemVolumeService();
+    bool systemSupported = false;
+    double systemTemp = 0.0;
+    try {
+      systemSupported = await systemService.isSupported();
+      if (systemSupported) {
+        systemTemp = (await systemService.getVolume()) ?? player.volume;
+      }
+    } catch (_) {}
+    double appTemp = player.volume;
     if (ThemeManager().isFluentFramework) {
       await fluent.showDialog(
         context: context,
@@ -986,19 +1492,56 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
             title: const Text('音量'),
             content: StatefulBuilder(
               builder: (context, setLocal) {
+                if (!systemSupported) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      fluent.Slider(
+                        value: appTemp,
+                        min: 0.0,
+                        max: 1.0,
+                        onChanged: (v) {
+                          setLocal(() => appTemp = v);
+                          player.setVolume(v);
+                        },
+                      ),
+                      Text('${(appTemp * 100).toInt()}%'),
+                    ],
+                  );
+                }
+
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('系统音量'),
+                    ),
                     fluent.Slider(
-                      value: temp,
+                      value: systemTemp,
                       min: 0.0,
                       max: 1.0,
                       onChanged: (v) {
-                        setLocal(() => temp = v);
+                        setLocal(() => systemTemp = v);
+                        systemService.setVolume(v);
+                      },
+                    ),
+                    Text('${(systemTemp * 100).toInt()}%'),
+                    const SizedBox(height: 12),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('应用音量'),
+                    ),
+                    fluent.Slider(
+                      value: appTemp,
+                      min: 0.0,
+                      max: 1.0,
+                      onChanged: (v) {
+                        setLocal(() => appTemp = v);
                         player.setVolume(v);
                       },
                     ),
-                    Text('${(temp * 100).toInt()}%'),
+                    Text('${(appTemp * 100).toInt()}%'),
                   ],
                 );
               },
@@ -1034,6 +1577,51 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                 top: false,
                 child: StatefulBuilder(
                   builder: (context, setLocal) {
+                    if (!systemSupported) {
+                      return Column(
+                        children: [
+                          Container(
+                            margin: const EdgeInsets.only(top: 8),
+                            width: 36,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: CupertinoColors.systemGrey.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(2.5),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          const Text(
+                            '音量',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: CupertinoSlider(
+                              value: appTemp,
+                              min: 0.0,
+                              max: 1.0,
+                              onChanged: (v) {
+                                setLocal(() => appTemp = v);
+                                player.setVolume(v);
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${(appTemp * 100).toInt()}%',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              color: CupertinoColors.systemGrey,
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+
                     return Column(
                       children: [
                         Container(
@@ -1045,31 +1633,60 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                             borderRadius: BorderRadius.circular(2.5),
                           ),
                         ),
-                        const SizedBox(height: 20),
-                        Text(
-                          '音量',
+                        const SizedBox(height: 16),
+                        const Text(
+                          '系统音量',
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 12),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
                           child: CupertinoSlider(
-                            value: temp,
+                            value: systemTemp,
                             min: 0.0,
                             max: 1.0,
                             onChanged: (v) {
-                              setLocal(() => temp = v);
+                              setLocal(() => systemTemp = v);
+                              systemService.setVolume(v);
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${(systemTemp * 100).toInt()}%',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            color: CupertinoColors.systemGrey,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          '应用音量',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: CupertinoSlider(
+                            value: appTemp,
+                            min: 0.0,
+                            max: 1.0,
+                            onChanged: (v) {
+                              setLocal(() => appTemp = v);
                               player.setVolume(v);
                             },
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '${(temp * 100).toInt()}%',
-                          style: TextStyle(
+                          '${(appTemp * 100).toInt()}%',
+                          style: const TextStyle(
                             fontSize: 15,
                             color: CupertinoColors.systemGrey,
                           ),
@@ -1093,19 +1710,56 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
           title: const Text('音量'),
           content: StatefulBuilder(
             builder: (context, setLocal) {
+              if (!systemSupported) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Slider(
+                      value: appTemp,
+                      min: 0.0,
+                      max: 1.0,
+                      onChanged: (v) {
+                        setLocal(() => appTemp = v);
+                        player.setVolume(v);
+                      },
+                    ),
+                    Text('${(appTemp * 100).toInt()}%'),
+                  ],
+                );
+              }
+
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('系统音量'),
+                  ),
                   Slider(
-                    value: temp,
+                    value: systemTemp,
                     min: 0.0,
                     max: 1.0,
                     onChanged: (v) {
-                      setLocal(() => temp = v);
+                      setLocal(() => systemTemp = v);
+                      systemService.setVolume(v);
+                    },
+                  ),
+                  Text('${(systemTemp * 100).toInt()}%'),
+                  const SizedBox(height: 12),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('应用音量'),
+                  ),
+                  Slider(
+                    value: appTemp,
+                    min: 0.0,
+                    max: 1.0,
+                    onChanged: (v) {
+                      setLocal(() => appTemp = v);
                       player.setVolume(v);
                     },
                   ),
-                  Text('${(temp * 100).toInt()}%'),
+                  Text('${(appTemp * 100).toInt()}%'),
                 ],
               );
             },

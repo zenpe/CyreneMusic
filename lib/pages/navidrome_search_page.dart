@@ -757,16 +757,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
   }
 
   void _navigateToArtist(NavidromeArtist artist) {
-    if (NavidromeLayout.useSheetNavigation(context)) {
-      showNavidromeArtistSheet(context: context, artist: artist);
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => NavidromeArtistDetailPage(artist: artist),
-      ),
-    );
+    showNavidromeArtistSheet(context: context, artist: artist);
   }
 
   void _navigateToAlbum(NavidromeAlbum album) {

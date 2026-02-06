@@ -166,21 +166,8 @@ class _NavidromeArtistsPageState extends State<NavidromeArtistsPage> {
   }
 }
 
-bool _useArtistSheet(BuildContext context) {
-  return NavidromeLayout.useSheetNavigation(context);
-}
-
 void _openArtist(BuildContext context, NavidromeArtist artist) {
-  if (_useArtistSheet(context)) {
-    showNavidromeArtistSheet(context: context, artist: artist);
-    return;
-  }
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => NavidromeArtistDetailPage(artist: artist),
-    ),
-  );
+  showNavidromeArtistSheet(context: context, artist: artist);
 }
 
 Future<void> showNavidromeArtistSheet({
@@ -205,14 +192,15 @@ Future<void> showNavidromeArtistSheet({
               SheetStackPage(
                 title: album.name,
                 builder: (context, controller, stack) {
-                  return NavidromeAlbumSheet(
-                    album: album,
-                    api: NavidromeSessionService().api,
-                    controller: controller,
-                    showHandle: false,
-                  );
-                },
-              ),
+                return NavidromeAlbumSheet(
+                  album: album,
+                  api: NavidromeSessionService().api,
+                  controller: controller,
+                  showHandle: false,
+                  showClose: false,
+                );
+              },
+            ),
             );
           },
         );

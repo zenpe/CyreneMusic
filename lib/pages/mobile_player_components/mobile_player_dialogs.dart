@@ -7,6 +7,7 @@ import '../../services/playlist_queue_service.dart';
 import '../../services/play_history_service.dart';
 import '../../services/player_service.dart';
 import '../../models/track.dart';
+import '../../widgets/track_action_menu.dart';
 
 /// 移动端播放器对话框工具类
 /// 包含睡眠定时器、添加到歌单、播放列表等对话框
@@ -137,18 +138,9 @@ class MobilePlayerDialogs {
   /// 显示播放列表底部抽屉
   static void showPlaylistBottomSheet(BuildContext context) {
     final queueService = PlaylistQueueService();
-    final history = PlayHistoryService().history;
+    final historyService = PlayHistoryService();
     final currentTrack = PlayerService().currentTrack;
     
-    // 优先使用播放队列，如果没有队列则使用播放历史
-    final bool hasQueue = queueService.hasQueue;
-    final List<dynamic> displayList = hasQueue 
-        ? queueService.queue 
-        : history.map((h) => h.toTrack()).toList();
-    final String listTitle = hasQueue 
-        ? '播放队列 (${queueService.source.name})' 
-        : '播放历史';
-
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.grey[900],
@@ -162,101 +154,166 @@ class MobilePlayerDialogs {
         maxChildSize: 0.95,
         expand: false,
         builder: (context, scrollController) {
-          return Column(
-            children: [
-              // 标题栏
-              Container(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    // 拖动指示器
-                    Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.white30,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    Row(
+          return AnimatedBuilder(
+            animation: Listenable.merge([queueService, historyService]),
+            builder: (context, _) {
+              // 优先使用播放队列，如果没有队列则使用播放历史
+              final bool hasQueue = queueService.hasQueue;
+              final List<Track> displayList = hasQueue
+                  ? List<Track>.from(queueService.queue)
+                  : historyService.history.map((h) => h.toTrack()).toList();
+              final String listTitle = hasQueue
+                  ? '播放队列 (${queueService.source.name})'
+                  : '播放历史';
+
+              return Column(
+                children: [
+                  // 标题栏
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
                       children: [
-                        const Icon(
-                          Icons.queue_music,
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          listTitle,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                        // 拖动指示器
+                        Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white30,
+                            borderRadius: BorderRadius.circular(2),
                           ),
                         ),
-                        const Spacer(),
-                        Text(
-                          '${displayList.length} 首',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, color: Colors.white),
-                          onPressed: () => Navigator.pop(context),
-                          tooltip: '关闭',
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              
-              const Divider(color: Colors.white24, height: 1),
-              
-              // 播放列表
-              Expanded(
-                child: displayList.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                        Row(
                           children: [
-                            Icon(
-                              Icons.music_off,
-                              size: 64,
-                              color: Colors.white.withOpacity(0.3),
+                            const Icon(
+                              Icons.queue_music,
+                              color: Colors.white,
+                              size: 24,
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(width: 12),
                             Text(
-                              '播放列表为空',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.6),
-                                fontSize: 16,
+                              listTitle,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              '${displayList.length} 首',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            TextButton(
+                              onPressed: displayList.isEmpty
+                                  ? null
+                                  : () {
+                                      if (hasQueue) {
+                                        queueService.clear();
+                                      } else {
+                                        historyService.clearHistory();
+                                      }
+                                    },
+                              child: Text(
+                                '清空',
+                                style: TextStyle(
+                                  color: displayList.isEmpty
+                                      ? Colors.white30
+                                      : Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                      )
-                    : ListView.builder(
-                        controller: scrollController,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        itemCount: displayList.length,
-                        itemBuilder: (context, index) {
-                          final item = displayList[index];
-                          // 转换为 Track
-                          final track = item is Track ? item : (item as PlayHistoryItem).toTrack();
-                          final isCurrentTrack = currentTrack != null &&
-                              track.id.toString() == currentTrack.id.toString() &&
-                              track.source == currentTrack.source;
+                      ],
+                    ),
+                  ),
 
-                          return _buildPlaylistItem(context, track, index, isCurrentTrack);
-                        },
-                      ),
-              ),
-            ],
+                  const Divider(color: Colors.white24, height: 1),
+
+                  // 播放列表
+                  Expanded(
+                    child: displayList.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.music_off,
+                                  size: 64,
+                                  color: Colors.white.withOpacity(0.3),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  '播放列表为空',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.6),
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : (hasQueue
+                            ? ReorderableListView.builder(
+                                buildDefaultDragHandles: false,
+                                scrollController: scrollController,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                itemCount: displayList.length,
+                                onReorder: (oldIndex, newIndex) {
+                                  if (newIndex > oldIndex) newIndex -= 1;
+                                  queueService.move(oldIndex, newIndex);
+                                },
+                                itemBuilder: (context, index) {
+                                  final track = displayList[index];
+                                  final isCurrentTrack = currentTrack != null &&
+                                      track.id.toString() ==
+                                          currentTrack.id.toString() &&
+                                      track.source == currentTrack.source;
+
+                                  return _buildPlaylistItem(
+                                    context,
+                                    track,
+                                    index,
+                                    isCurrentTrack,
+                                    hasQueue: true,
+                                    queueService: queueService,
+                                    key: ValueKey(
+                                      '${track.source.name}_${track.id}',
+                                    ),
+                                  );
+                                },
+                              )
+                            : ListView.builder(
+                                controller: scrollController,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                itemCount: displayList.length,
+                                itemBuilder: (context, index) {
+                                  final track = displayList[index];
+                                  final isCurrentTrack = currentTrack != null &&
+                                      track.id.toString() ==
+                                          currentTrack.id.toString() &&
+                                      track.source == currentTrack.source;
+
+                                  return _buildPlaylistItem(
+                                    context,
+                                    track,
+                                    index,
+                                    isCurrentTrack,
+                                    hasQueue: false,
+                                  );
+                                },
+                              )),
+                  ),
+                ],
+              );
+            },
           );
         },
       ),
@@ -264,11 +321,19 @@ class MobilePlayerDialogs {
   }
 
   /// 构建播放列表项
-  static Widget _buildPlaylistItem(BuildContext context, Track track, int index, bool isCurrentTrack) {
+  static Widget _buildPlaylistItem(
+    BuildContext context,
+    Track track,
+    int index,
+    bool isCurrentTrack, {
+    required bool hasQueue,
+    PlaylistQueueService? queueService,
+    Key? key,
+  }) {
     return Material(
-      color: isCurrentTrack 
-          ? Colors.white.withOpacity(0.1) 
-          : Colors.transparent,
+      key: key,
+      color:
+          isCurrentTrack ? Colors.white.withOpacity(0.1) : Colors.transparent,
       child: InkWell(
         onTap: () {
           PlayerService().playTrack(track);
@@ -323,9 +388,11 @@ class MobilePlayerDialogs {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: isCurrentTrack ? Colors.white : Colors.white.withOpacity(0.87),
+                        color:
+                            isCurrentTrack ? Colors.white : Colors.white.withOpacity(0.87),
                         fontSize: 15,
-                        fontWeight: isCurrentTrack ? FontWeight.bold : FontWeight.normal,
+                        fontWeight:
+                            isCurrentTrack ? FontWeight.bold : FontWeight.normal,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -340,6 +407,47 @@ class MobilePlayerDialogs {
                     ),
                   ],
                 ),
+              ),
+
+              const SizedBox(width: 6),
+
+              // 操作按钮
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Builder(
+                    builder: (buttonContext) {
+                      return IconButton(
+                        icon: const Icon(Icons.more_vert, color: Colors.white70),
+                        onPressed: () {
+                          TrackActionMenu.show(
+                            context: buttonContext,
+                            track: track,
+                            onDelete: hasQueue
+                                ? () => queueService?.removeAt(index)
+                                : null,
+                          );
+                        },
+                        tooltip: '更多',
+                      );
+                    },
+                  ),
+                  if (hasQueue) ...[
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white70),
+                      onPressed: () => queueService?.removeAt(index),
+                      tooltip: '移除',
+                    ),
+                    ReorderableDragStartListener(
+                      index: index,
+                      child: const SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: Icon(Icons.drag_handle, color: Colors.white70),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ],
           ),

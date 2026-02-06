@@ -341,6 +341,8 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
   /// NavigationRail（平板端）
   Widget _buildNavigationRail(BuildContext context) {
     final navTheme = NavidromeTheme.of(context);
+    final width = MediaQuery.of(context).size.width;
+    final isLarge = width >= NavidromeLayout.tabletWidth;
 
     return Container(
       color: navTheme.background,
@@ -353,6 +355,25 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
           });
         },
         labelType: NavigationRailLabelType.selected,
+        minWidth: isLarge ? 88 : 72,
+        minExtendedWidth: isLarge ? 96 : 72,
+        selectedIconTheme: IconThemeData(
+          color: Theme.of(context).colorScheme.primary,
+          size: isLarge ? 26 : 22,
+        ),
+        unselectedIconTheme: IconThemeData(
+          color: navTheme.textSecondary,
+          size: isLarge ? 24 : 22,
+        ),
+        selectedLabelTextStyle: TextStyle(
+          color: Theme.of(context).colorScheme.primary,
+          fontSize: isLarge ? 13 : 11,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelTextStyle: TextStyle(
+          color: navTheme.textSecondary,
+          fontSize: isLarge ? 13 : 11,
+        ),
         destinations: const [
           NavigationRailDestination(
             icon: Icon(Icons.library_music_outlined),

@@ -1,10 +1,14 @@
 package com.cyrene.music
 
+import android.content.Context
+import android.media.AudioManager
 import android.os.Bundle
 import android.util.Log
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.ryanheise.audioservice.AudioServiceFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
+import kotlin.math.roundToInt
 
 class MainActivity : AudioServiceFragmentActivity() {
 
@@ -46,7 +50,7 @@ class MainActivity : AudioServiceFragmentActivity() {
         }
 
         // 注册睡眠定时器 MethodChannel
-        io.flutter.plugin.common.MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.cyrene.music/sleep_timer")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.cyrene.music/sleep_timer")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "start" -> {
@@ -56,6 +60,33 @@ class MainActivity : AudioServiceFragmentActivity() {
                     }
                     "stop" -> {
                         SleepTimerService.stop(this)
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.cyrene.music/system_volume")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isSupported" -> result.success(true)
+                    "getVolume" -> {
+                        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        if (max <= 0) {
+                            result.success(0.0)
+                        } else {
+                            val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                            result.success(current.toDouble() / max.toDouble())
+                        }
+                    }
+                    "setVolume" -> {
+                        val raw = call.argument<Double>("volume") ?: 0.0
+                        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        if (max > 0) {
+                            val target = (raw.coerceIn(0.0, 1.0) * max).roundToInt()
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+                        }
                         result.success(null)
                     }
                     else -> result.notImplemented()

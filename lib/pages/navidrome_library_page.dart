@@ -226,6 +226,8 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
           builder: (context, constraints) {
             final width = constraints.maxWidth;
             final padding = NavidromeLayout.pagePadding(width);
+            final pillSpacing =
+                width >= NavidromeLayout.tabletWidth ? 12.0 : 8.0;
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,25 +247,25 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
                         selected: _currentTab == _LibraryTab.playlists,
                         onTap: () => _switchTab(_LibraryTab.playlists),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: pillSpacing),
                       NavidromePill(
                         label: '艺术家',
                         selected: _currentTab == _LibraryTab.artists,
                         onTap: () => _switchTab(_LibraryTab.artists),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: pillSpacing),
                       NavidromePill(
                         label: '专辑',
                         selected: _currentTab == _LibraryTab.albums,
                         onTap: () => _switchTab(_LibraryTab.albums),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: pillSpacing),
                       NavidromePill(
                         label: '电台',
                         selected: _currentTab == _LibraryTab.radio,
                         onTap: () => _switchTab(_LibraryTab.radio),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: pillSpacing),
                       NavidromePill(
                         label: '歌曲',
                         selected: _currentTab == _LibraryTab.songs,
@@ -644,29 +646,11 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
   bool get wantKeepAlive => true;
 
   void _navigateToPlaylist(NavidromePlaylist playlist) {
-    if (NavidromeLayout.useSheetNavigation(context)) {
-      showNavidromePlaylistSheet(context: context, playlist: playlist);
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _PlaylistDetailPage(playlist: playlist),
-      ),
-    );
+    showNavidromePlaylistSheet(context: context, playlist: playlist);
   }
 
   void _navigateToArtist(NavidromeArtist artist) {
-    if (NavidromeLayout.useSheetNavigation(context)) {
-      showNavidromeArtistSheet(context: context, artist: artist);
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => NavidromeArtistDetailPage(artist: artist),
-      ),
-    );
+    showNavidromeArtistSheet(context: context, artist: artist);
   }
 
   void _navigateToAlbum(NavidromeAlbum album) {
