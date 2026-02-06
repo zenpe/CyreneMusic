@@ -8,6 +8,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   dynamic_color
   flutter_acrylic
   flutter_inappwebview_windows
+  flutter_js
   flutter_secure_storage_windows
   media_kit_libs_windows_video
   media_kit_video

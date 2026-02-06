@@ -1,10 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:audio_service/audio_service.dart';
 import 'player_service.dart';
 import 'android_floating_lyric_service.dart';
 import 'android_media_notification_service.dart';
 import 'package:home_widget/home_widget.dart';
+import 'package:crypto/crypto.dart';
+import 'package:image/image.dart' as img;
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'lab_functions_service.dart';
@@ -24,6 +31,22 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   String? _lastWidgetArtUri;      // 上次小部件使用的封面 URI
   String? _lastWidgetArtPath;     // 上次小部件使用的封面本地路径
   String? _lastWidgetSongKey;     // 上次小部件显示的歌曲标识 (Title + Artist)
+  final Set<String> _artCacheInFlight = <String>{};
+  Directory? _artCacheDir;
+  Future<Directory>? _artCacheDirFuture;
+  int _mediaArtRequestId = 0;
+  String? _currentMediaKey;
+  Future<void> _updateQueue = Future.value();
+  Future<void> _widgetUpdateQueue = Future.value();
+  bool _cacheCleanupInProgress = false;
+  DateTime? _lastCacheCleanup;
+  static const int _artCacheMaxFiles = 120;
+  static const int _artCacheMaxBytes = 50 * 1024 * 1024;
+  static const Duration _artCacheCleanupInterval = Duration(minutes: 5);
+  final Map<String, DateTime> _artNegativeCache = <String, DateTime>{};
+  final Map<String, Duration> _artNegativeTtlOverride = <String, Duration>{};
+  static const Duration _artNegativeCacheTtl = Duration(minutes: 10);
+  static const Duration _artNegativeCacheTtlTransient = Duration(minutes: 2);
   
   // 构造函数
   CyreneAudioHandler() {
@@ -185,7 +208,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       // 立即更新，不等待防抖
       _updateTimer?.cancel();
       _updatePending = false;
-      _performUpdate();
+      unawaited(_performUpdate());
       
       // 清除位置缓存，确保下次更新
       _lastUpdatedPosition = null;
@@ -216,7 +239,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     // 设置新的定时器，延迟 200ms 执行更新
     _updateTimer = Timer(const Duration(milliseconds: 200), () {
       if (_updatePending) {
-        _performUpdate();
+        unawaited(_performUpdate());
         _updatePending = false;
         // 清除位置缓存，确保下次更新
         _lastUpdatedPosition = null;
@@ -228,11 +251,20 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   /// 外部手动触发更新（例如在设置中开启小部件后立即同步）
   void refreshWidget() {
     print('🔄 [AudioHandler] 手动触发小部件更新...');
-    _performUpdate();
+    unawaited(_performUpdate());
   }
   
   /// 实际执行更新操作
-  void _performUpdate() {
+  Future<void> _performUpdate() {
+    _updateQueue = _updateQueue.then((_) async {
+      await _performUpdateInternal();
+    }).catchError((e, st) {
+      print('⚠️ [AudioHandler] 更新队列执行失败: $e');
+    });
+    return _updateQueue;
+  }
+
+  Future<void> _performUpdateInternal() async {
     final player = PlayerService();
     final song = player.currentSong;
     final track = player.currentTrack;
@@ -242,11 +274,20 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
     // 更新媒体信息
     if (song != null || track != null) {
-      _updateMediaItem(song, track);
+      await _updateMediaItem(song, track);
     }
     
     // 更新桌面小部件
-    _updateWidget(player.state, song ?? track);
+    unawaited(_enqueueWidgetUpdate(player.state, song ?? track));
+  }
+
+  Future<void> _enqueueWidgetUpdate(PlayerState state, dynamic songOrTrack) {
+    _widgetUpdateQueue = _widgetUpdateQueue.then((_) async {
+      await _updateWidget(state, songOrTrack);
+    }).catchError((e, st) {
+      print('⚠️ [AudioHandler] 小部件更新队列失败: $e');
+    });
+    return _widgetUpdateQueue;
   }
 
   /// 更新桌面小部件数据
@@ -358,36 +399,333 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   }
 
   /// 更新媒体信息
-  void _updateMediaItem(dynamic song, dynamic track) {
+  Future<void> _updateMediaItem(dynamic song, dynamic track) async {
     final title = song?.name ?? track?.name ?? '未知歌曲';
     final artist = song?.arName ?? track?.artists ?? '未知歌手';
     final album = song?.alName ?? track?.album ?? '';
     final artUri = song?.pic ?? track?.picUrl ?? '';
+    final mediaId = track?.id.toString() ?? '0';
+    final duration = PlayerService().duration;
 
-    // 转换封面 URI
+    final mediaKey = '$mediaId|$title|$artist|$artUri';
+    _currentMediaKey = mediaKey;
+    final requestId = ++_mediaArtRequestId;
+
+    // 优先使用本地缓存的压缩封面，避免直接传递大图导致系统卡顿/崩溃
     Uri? parsedArtUri;
     if (artUri.isNotEmpty) {
-      if (artUri.startsWith('/')) {
-        // 本地文件路径，转换为 file:// URI
-        parsedArtUri = Uri.file(artUri);
-      } else if (artUri.startsWith('http://') || artUri.startsWith('https://') || artUri.startsWith('file://')) {
-        // 已经是完整的 URI
-        parsedArtUri = Uri.parse(artUri);
-      } else {
-        // 其他情况，尝试直接解析
+      final cachedPath = await _getArtCachePath(artUri);
+      if (cachedPath != null) {
+        final cachedFile = File(cachedPath);
+        if (await cachedFile.exists()) {
+          parsedArtUri = Uri.file(cachedPath);
+        }
+      }
+    }
+    if (parsedArtUri == null && artUri.isNotEmpty) {
+      final isNetwork = artUri.startsWith('http://') || artUri.startsWith('https://');
+      final isFile = artUri.startsWith('/') || artUri.startsWith('file://');
+      if (!isNetwork && !isFile) {
+        // 对 content://、android.resource:// 等无法缓存的 URI 进行回退
         parsedArtUri = Uri.tryParse(artUri);
       }
     }
 
-    mediaItem.add(MediaItem(
-      id: track?.id.toString() ?? '0',
+    mediaItem.add(_buildMediaItem(
+      id: mediaId,
       title: title,
       artist: artist,
       album: album,
+      duration: duration,
       artUri: parsedArtUri,
-      duration: PlayerService().duration,
     ));
+
+    // 缓存压缩封面（异步），完成后若歌曲未变化则刷新元数据
+    if (artUri.isNotEmpty) {
+      unawaited(_ensureSmallArtCached(
+        artUri: artUri,
+        mediaKey: mediaKey,
+        requestId: requestId,
+        id: mediaId,
+        title: title,
+        artist: artist,
+        album: album,
+        duration: duration,
+      ));
+    }
   }
+
+  MediaItem _buildMediaItem({
+    required String id,
+    required String title,
+    required String artist,
+    required String album,
+    required Duration duration,
+    Uri? artUri,
+  }) {
+    return MediaItem(
+      id: id,
+      title: title,
+      artist: artist,
+      album: album,
+      artUri: artUri,
+      duration: duration,
+    );
+  }
+
+  Future<Directory> _getArtCacheDir() {
+    if (_artCacheDir != null) {
+      return Future.value(_artCacheDir);
+    }
+    if (_artCacheDirFuture != null) {
+      return _artCacheDirFuture!;
+    }
+    _artCacheDirFuture = () async {
+      final baseDir = await getTemporaryDirectory();
+      final dir = Directory(p.join(baseDir.path, 'media_art_cache'));
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      _artCacheDir = dir;
+      return dir;
+    }();
+    return _artCacheDirFuture!;
+  }
+
+  Future<String?> _getArtCachePath(String artUri) async {
+    if (artUri.isEmpty) return null;
+    final dir = await _getArtCacheDir();
+    final hash = md5.convert(utf8.encode(artUri)).toString();
+    return p.join(dir.path, 'media_art_${hash}_512.jpg');
+  }
+
+  Future<void> _ensureSmallArtCached({
+    required String artUri,
+    required String mediaKey,
+    required int requestId,
+    required String id,
+    required String title,
+    required String artist,
+    required String album,
+    required Duration duration,
+  }) async {
+    if (!_isCacheableArtUri(artUri)) {
+      _markNegativeCache(artUri, _artNegativeCacheTtl);
+      return;
+    }
+
+    _pruneNegativeArtCache();
+    final lastFailure = _artNegativeCache[artUri];
+    final ttl = _artNegativeTtlOverride[artUri] ?? _artNegativeCacheTtl;
+    if (lastFailure != null &&
+        DateTime.now().difference(lastFailure) < ttl) {
+      return;
+    }
+
+    final cachePath = await _getArtCachePath(artUri);
+    if (cachePath == null) return;
+    if (await File(cachePath).exists()) return;
+    if (_artCacheInFlight.contains(cachePath)) return;
+
+    _artCacheInFlight.add(cachePath);
+    try {
+      final bytes = await _loadArtBytes(artUri);
+      if (bytes == null || bytes.isEmpty) return;
+      if (bytes.lengthInBytes > 15 * 1024 * 1024) {
+        print('⚠️ [AudioHandler] 封面图片过大，跳过缓存: ${bytes.lengthInBytes} bytes');
+        _markNegativeCache(artUri, _artNegativeCacheTtl);
+        return;
+      }
+      final resized = await _resizeArtBytes(bytes, 512);
+      if (resized == null || resized.isEmpty) return;
+      await File(cachePath).writeAsBytes(resized, flush: true);
+      if (_shouldTriggerCacheCleanup()) {
+        unawaited(_cleanupArtCacheIfNeeded());
+      }
+    } catch (e) {
+      print('⚠️ [AudioHandler] 缓存封面失败: $e');
+      _markNegativeCache(artUri, _artNegativeCacheTtlTransient);
+      return;
+    } finally {
+      _artCacheInFlight.remove(cachePath);
+    }
+
+    if (_currentMediaKey == mediaKey && requestId == _mediaArtRequestId) {
+      final cachedUri = Uri.file(cachePath);
+      mediaItem.add(_buildMediaItem(
+        id: id,
+        title: title,
+        artist: artist,
+        album: album,
+        duration: duration,
+        artUri: cachedUri,
+      ));
+    }
+  }
+
+  Future<Uint8List?> _loadArtBytes(String artUri) async {
+    try {
+      if (artUri.startsWith('http://') || artUri.startsWith('https://')) {
+        final client = http.Client();
+        try {
+          final request = http.Request('GET', Uri.parse(artUri));
+          final response = await client.send(request).timeout(const Duration(seconds: 6));
+          if (response.statusCode != 200) {
+            print('⚠️ [AudioHandler] 下载封面失败: HTTP ${response.statusCode}');
+            _markNegativeCache(artUri, _artNegativeCacheTtlTransient);
+            return null;
+          }
+
+          final bytes = <int>[];
+          var total = 0;
+          await for (final chunk in response.stream) {
+            total += chunk.length;
+            if (total > 15 * 1024 * 1024) {
+              print('⚠️ [AudioHandler] 封面下载超限，停止: $total bytes');
+              _markNegativeCache(artUri, _artNegativeCacheTtl);
+              return null;
+            }
+            bytes.addAll(chunk);
+          }
+          return Uint8List.fromList(bytes);
+        } finally {
+          client.close();
+        }
+      }
+      var localPath = artUri;
+      if (localPath.startsWith('file://')) {
+        localPath = localPath.replaceFirst('file://', '');
+      }
+      if (localPath.startsWith('/')) {
+        final file = File(localPath);
+        if (!await file.exists()) {
+          _markNegativeCache(artUri, _artNegativeCacheTtlTransient);
+          return null;
+        }
+        return await file.readAsBytes();
+      }
+    } catch (e) {
+      print('⚠️ [AudioHandler] 读取封面失败: $e');
+      _markNegativeCache(artUri, _artNegativeCacheTtlTransient);
+    }
+    return null;
+  }
+
+  Future<Uint8List?> _resizeArtBytes(Uint8List bytes, int maxSize) async {
+    return Isolate.run(() {
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return null;
+      final maxDim = math.max(decoded.width, decoded.height);
+      img.Image processed = decoded;
+      if (maxDim > maxSize) {
+        final scale = maxSize / maxDim;
+        final targetWidth = math.max(1, (decoded.width * scale).round());
+        final targetHeight = math.max(1, (decoded.height * scale).round());
+        processed = img.copyResize(
+          decoded,
+          width: targetWidth,
+          height: targetHeight,
+          interpolation: img.Interpolation.average,
+        );
+      }
+      final encoded = img.encodeJpg(processed, quality: 85);
+      return Uint8List.fromList(encoded);
+    });
+  }
+
+  Future<void> _cleanupArtCacheIfNeeded() async {
+    if (_cacheCleanupInProgress) return;
+    if (_lastCacheCleanup != null &&
+        DateTime.now().difference(_lastCacheCleanup!) < _artCacheCleanupInterval) {
+      return;
+    }
+
+    _cacheCleanupInProgress = true;
+    try {
+      final dir = await _getArtCacheDir();
+      final entries = await dir.list().toList();
+      final cacheEntries = <_ArtCacheEntry>[];
+      var totalBytes = 0;
+
+      for (final entity in entries) {
+        if (entity is! File) continue;
+        final name = p.basename(entity.path);
+        if (!name.startsWith('media_art_') || !name.endsWith('.jpg')) {
+          continue;
+        }
+        try {
+          final stat = await entity.stat();
+          totalBytes += stat.size;
+          cacheEntries.add(_ArtCacheEntry(
+            file: entity,
+            modified: stat.modified,
+            size: stat.size,
+          ));
+        } catch (_) {
+          // ignore individual file errors
+        }
+      }
+
+      if (cacheEntries.length <= _artCacheMaxFiles &&
+          totalBytes <= _artCacheMaxBytes) {
+        return;
+      }
+
+      cacheEntries.sort((a, b) => a.modified.compareTo(b.modified));
+      var index = 0;
+      while ((cacheEntries.length - index) > _artCacheMaxFiles ||
+          totalBytes > _artCacheMaxBytes) {
+        if (index >= cacheEntries.length) break;
+        final entry = cacheEntries[index];
+        try {
+          await entry.file.delete();
+          totalBytes -= entry.size;
+        } catch (_) {
+          // ignore delete errors
+        }
+        index++;
+      }
+      _lastCacheCleanup = DateTime.now();
+    } catch (e) {
+      print('⚠️ [AudioHandler] 清理封面缓存失败: $e');
+    } finally {
+      _cacheCleanupInProgress = false;
+    }
+  }
+
+  void _pruneNegativeArtCache() {
+    if (_artNegativeCache.isEmpty) return;
+    final now = DateTime.now();
+    _artNegativeCache.removeWhere((key, time) {
+      final ttl = _artNegativeTtlOverride[key] ?? _artNegativeCacheTtl;
+      return now.difference(time) >= ttl;
+    });
+    _artNegativeTtlOverride.removeWhere((key, _) {
+      return !_artNegativeCache.containsKey(key);
+    });
+  }
+
+  bool _isCacheableArtUri(String artUri) {
+    if (artUri.isEmpty) return false;
+    return artUri.startsWith('http://') ||
+        artUri.startsWith('https://') ||
+        artUri.startsWith('/') ||
+        artUri.startsWith('file://');
+  }
+
+  void _markNegativeCache(String artUri, Duration ttl) {
+    if (artUri.isEmpty) return;
+    _artNegativeCache[artUri] = DateTime.now();
+    _artNegativeTtlOverride[artUri] = ttl;
+  }
+
+  bool _shouldTriggerCacheCleanup() {
+    if (_cacheCleanupInProgress) return false;
+    if (_lastCacheCleanup == null) return true;
+    return DateTime.now().difference(_lastCacheCleanup!) >=
+        _artCacheCleanupInterval;
+  }
+
 
   /// 更新播放状态
   void _updatePlaybackState(PlayerState playerState, Duration position, Duration duration) {
@@ -546,6 +884,18 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       return;
     }
   }
+}
+
+class _ArtCacheEntry {
+  final File file;
+  final DateTime modified;
+  final int size;
+
+  const _ArtCacheEntry({
+    required this.file,
+    required this.modified,
+    required this.size,
+  });
 }
 
 

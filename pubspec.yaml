@@ -120,6 +120,8 @@ dependencies:
   
   # InAppWebView for executing LxMusic source scripts in sandbox
   flutter_inappwebview: ^6.0.0
+  # JavaScript runtime (QuickJS/JavaScriptCore) for LxMusic scripts
+  flutter_js: ^0.8.7
   fluttertoast: ^9.0.0
   wakelock_plus: ^1.3.3
   home_widget: ^0.9.0
