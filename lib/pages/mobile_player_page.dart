@@ -287,6 +287,8 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
             _lyrics = LyricParser.parseQQLyric(
               songDetail.lyric,
               translation: songDetail.tlyric.isNotEmpty ? songDetail.tlyric : null,
+              qrcLyric: songDetail.qrc.isNotEmpty ? songDetail.qrc : null,
+              qrcTranslation: songDetail.qrcTrans.isNotEmpty ? songDetail.qrcTrans : null,
             );
             break;
           case 'kugou':

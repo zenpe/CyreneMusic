@@ -2198,6 +2198,8 @@ class PlayerService extends ChangeNotifier {
           _lyrics = LyricParser.parseQQLyric(
             currentSong.lyric,
             translation: currentSong.tlyric.isNotEmpty ? currentSong.tlyric : null,
+            qrcLyric: currentSong.qrc.isNotEmpty ? currentSong.qrc : null,
+            qrcTranslation: currentSong.qrcTrans.isNotEmpty ? currentSong.qrcTrans : null,
           );
           break;
         case 'kugou':

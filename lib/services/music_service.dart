@@ -467,20 +467,28 @@ class MusicService extends ChangeNotifier {
               }
             }
             
-            // 安全获取歌词（后端返回的是 {lyric: string, tylyric: string}）
+            // 安全获取歌词（后端返回的是 {lyric: string, tylyric: string, qrc: string, qrcTrans: string}）
             String lyricText = '';
             String tlyricText = '';
+            String qrcText = '';
+            String qrcTransText = '';
             if (lyricData != null) {
               // 确保类型安全：检查是否为String
               final lyricValue = lyricData['lyric'];
               final tlyricValue = lyricData['tylyric'];
+              final qrcValue = lyricData['qrc'];
+              final qrcTransValue = lyricData['qrcTrans'];
               
               lyricText = lyricValue is String ? lyricValue : '';
               tlyricText = tlyricValue is String ? tlyricValue : '';
+              qrcText = qrcValue is String ? qrcValue : '';
+              qrcTransText = qrcTransValue is String ? qrcTransValue : '';
               
-              print('🎵 [MusicService] QQ音乐歌词获取:');
+              print('🎵 [MusicService] OmniParse QQ音乐歌词获取:');
               print('   原文歌词: ${lyricText.isNotEmpty ? "${lyricText.length}字符" : "无"}');
               print('   翻译歌词: ${tlyricText.isNotEmpty ? "${tlyricText.length}字符" : "无"}');
+              print('   逐字歌词(QRC): ${qrcText.isNotEmpty ? "${qrcText.length}字符" : "无"}');
+              print('   📋 lyricData 原始字段: ${lyricData?.keys.toList()}');
             }
             
             songDetail = SongDetail(
@@ -494,6 +502,8 @@ class MusicService extends ChangeNotifier {
               url: playUrl,
               lyric: lyricText,
               tlyric: tlyricText,
+              qrc: qrcText,
+              qrcTrans: qrcTransText,
               source: source,
             );
           } else if (source == MusicSource.kugou) {
@@ -728,12 +738,19 @@ class MusicService extends ChangeNotifier {
       // 🎵 尝试从后端歌词 API 获取歌词
       String lyric = '';
       String tlyric = '';
+      String qrc = '';
+      String qrcTrans = '';
       try {
         final lyricData = await _fetchLyricFromBackend(source, songId);
         if (lyricData != null) {
           lyric = lyricData['lyric'] ?? '';
           tlyric = lyricData['tlyric'] ?? '';
+          qrc = lyricData['qrc'] ?? '';
+          qrcTrans = lyricData['qrcTrans'] ?? '';
           print('📝 [MusicService] 成功从后端获取歌词: ${lyric.length} 字符');
+          if (qrc.isNotEmpty) {
+            print('   逐字歌词(QRC): ${qrc.length} 字符');
+          }
         }
       } catch (e) {
         print('⚠️ [MusicService] 获取歌词失败（不影响播放）: $e');
@@ -752,6 +769,8 @@ class MusicService extends ChangeNotifier {
         url: audioUrl,
         lyric: lyric,
         tlyric: tlyric,
+        qrc: qrc,
+        qrcTrans: qrcTrans,
         source: source,
       );
     } catch (e) {
@@ -814,6 +833,8 @@ class MusicService extends ChangeNotifier {
           return {
             'lyric': (lyricData['lyric'] ?? '') as String,
             'tlyric': (lyricData['tlyric'] ?? '') as String,
+            'qrc': (lyricData['qrc'] ?? '') as String,
+            'qrcTrans': (lyricData['qrcTrans'] ?? '') as String,
           };
         }
       }
@@ -961,12 +982,19 @@ class MusicService extends ChangeNotifier {
           // 🎵 使用后端歌词 API 获取歌词（与洛雪音源保持一致）
           String lyricText = '';
           String tlyricText = '';
+          String qrcText = '';
+          String qrcTransText = '';
           try {
             final lyricData = await _fetchLyricFromBackend(source, songId);
             if (lyricData != null) {
               lyricText = lyricData['lyric'] ?? '';
               tlyricText = lyricData['tlyric'] ?? '';
+              qrcText = lyricData['qrc'] ?? '';
+              qrcTransText = lyricData['qrcTrans'] ?? '';
               print('📝 [MusicService] TuneHub v3 成功从后端获取歌词: ${lyricText.length} 字符');
+              if (qrcText.isNotEmpty) {
+                print('   逐字歌词(QRC): ${qrcText.length} 字符');
+              }
             }
           } catch (e) {
             print('⚠️ [MusicService] TuneHub v3 获取歌词失败（不影响播放）: $e');
@@ -993,6 +1021,8 @@ class MusicService extends ChangeNotifier {
             url: audioUrl,
             lyric: lyricText,
             tlyric: tlyricText,
+            qrc: qrcText,
+            qrcTrans: qrcTransText,
             source: source,
           );
         } else {

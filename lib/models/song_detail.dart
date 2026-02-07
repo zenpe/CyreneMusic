@@ -14,6 +14,8 @@ class SongDetail {
   final String tlyric; // 翻译歌词
   final String yrc; // 逐字歌词（网易云YRC格式）
   final String ytlrc; // YRC对应的翻译歌词（时间戳与YRC匹配）
+  final String qrc; // QQ音乐逐字歌词（QRC格式）
+  final String qrcTrans; // QRC对应的翻译歌词
   final MusicSource source;
 
   SongDetail({
@@ -29,6 +31,8 @@ class SongDetail {
     required this.tlyric,
     this.yrc = '',
     this.ytlrc = '',
+    this.qrc = '',
+    this.qrcTrans = '',
     this.source = MusicSource.netease,
   });
 
@@ -38,6 +42,8 @@ class SongDetail {
     String lyricText = '';
     String tlyricText = '';
     String yrcText = '';
+    String qrcText = '';
+    String qrcTransText = '';
     String ytlrcText = '';
 
     // 网易云音乐格式：lyric 和 tlyric 直接是字符串
@@ -70,6 +76,18 @@ class SongDetail {
       ytlrcText = ytlrcValue;
     }
 
+    // 解析 QQ 音乐 QRC 逐字歌词
+    final qrcValue = json['qrc'];
+    if (qrcValue is String) {
+      qrcText = qrcValue;
+    }
+
+    // 解析 QRC 对应的翻译歌词
+    final qrcTransValue = json['qrcTrans'];
+    if (qrcTransValue is String) {
+      qrcTransText = qrcTransValue;
+    }
+
     return SongDetail(
       id: json['id'] ?? 0, // 支持 int 和 String
       name: json['name'] as String? ?? '',
@@ -83,6 +101,8 @@ class SongDetail {
       tlyric: tlyricText,
       yrc: yrcText,
       ytlrc: ytlrcText,
+      qrc: qrcText,
+      qrcTrans: qrcTransText,
       source: source ?? MusicSource.netease,
     );
   }
