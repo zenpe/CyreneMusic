@@ -1148,7 +1148,7 @@ class _UserCardState extends State<UserCard> {
   Widget build(BuildContext context) {
     final isLoggedIn = AuthService().isLoggedIn;
     final user = AuthService().currentUser;
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     final isCupertinoUI = ThemeManager().isCupertinoFramework;
     
     if (!isLoggedIn || user == null) {
@@ -1524,7 +1524,7 @@ class _UserCardState extends State<UserCard> {
     print('👤 [UserCard] 打开登录页面...');
 
     // 在 Windows + Fluent UI 框架下，使用 Fluent 风格对话框承载登录
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     bool? result;
     if (isFluentUI) {
       result = await _showLoginDialogFluent(context);

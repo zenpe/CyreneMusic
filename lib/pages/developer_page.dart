@@ -63,7 +63,7 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     // 检查是否启用 Fluent UI 主题
-    if (Platform.isWindows && ThemeManager().isFluentFramework) {
+    if (ThemeManager().isDesktopFluentUI) {
       return _buildFluentPage(context);
     }
 
@@ -1661,7 +1661,7 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
   /// 清除播放会话
   Future<void> _clearPlaybackSession() async {
     // 检查是否是 Fluent UI
-    final isFluent = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluent = ThemeManager().isDesktopFluentUI;
 
     if (isFluent) {
       showDialog(
@@ -1723,7 +1723,7 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
     await NotificationService().cancelAll();
     
     if (mounted) {
-      final isFluent = Platform.isWindows && ThemeManager().isFluentFramework;
+      final isFluent = ThemeManager().isDesktopFluentUI;
       if (isFluent) {
         _showFluentSnackbar('✅ 本地播放状态已清除');
       } else {

@@ -426,7 +426,7 @@ class _MyAppState extends State<MyApp> {
         final lightTheme = themeManager.buildThemeData(Brightness.light);
         final darkTheme = themeManager.buildThemeData(Brightness.dark);
 
-        final useFluentLayout = Platform.isWindows && themeManager.isFluentFramework;
+        final useFluentLayout = themeManager.isDesktopFluentUI;
         final useCupertinoLayout = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
 
         if (useFluentLayout) {
@@ -667,7 +667,7 @@ class _WindowsRoundedContainerState extends State<_WindowsRoundedContainer> with
 /// 显示音源未配置对话框
 void showAudioSourceNotConfiguredDialog(BuildContext context) {
   final themeManager = ThemeManager();
-  final isFluent = Platform.isWindows && themeManager.isFluentFramework;
+  final isFluent = themeManager.isDesktopFluentUI;
   final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
 
   if (isFluent) {

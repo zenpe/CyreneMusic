@@ -80,6 +80,12 @@ class ThemeManager extends ChangeNotifier {
   MobileThemeFramework get mobileThemeFramework => _mobileThemeFramework;
   bool get isMaterialFramework => _themeFramework == ThemeFramework.material;
   bool get isFluentFramework => _themeFramework == ThemeFramework.fluent;
+  
+  /// 是否为桌面端平台（Windows/macOS/Linux）
+  bool get isDesktop => Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+  
+  /// 是否使用桌面端 Fluent UI（所有桌面平台均支持）
+  bool get isDesktopFluentUI => isDesktop && isFluentFramework;
 
   /// 是否为平板设备 (Android/iOS 且最短边 >= 600dp)
   bool get isTablet {

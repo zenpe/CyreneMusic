@@ -15,7 +15,7 @@ class LabFunctions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     final isCupertinoUI = ThemeManager().isCupertinoFramework;
 
     if (isFluentUI) {

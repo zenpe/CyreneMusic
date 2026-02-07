@@ -108,7 +108,7 @@ class _ThirdPartyAccountsState extends State<ThirdPartyAccounts> {
       return const SizedBox.shrink();
     }
     
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     final isCupertinoUI = ThemeManager().isCupertinoFramework;
     
     if (isFluentUI) {

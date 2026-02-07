@@ -78,7 +78,7 @@ class AppearanceSettingsContent extends StatefulWidget {
 class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
   @override
   Widget build(BuildContext context) {
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
     
     if (isFluentUI) {
@@ -1005,7 +1005,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
   }
 
   void _showLayoutModeDialog() {
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     
     if (isFluentUI) {
       fluent_ui.showDialog(
@@ -1142,7 +1142,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
   }
 
   void _showPlayerBackgroundDialog() {
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
     
     if (isCupertinoUI) {
@@ -1272,7 +1272,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
   }
 
   void _showThemeFrameworkDialog() {
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     if (isFluentUI) {
       fluent_ui.showDialog(
         context: context,
@@ -1452,7 +1452,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
 
   /// 显示歌词字体选择对话框 (Fluent UI / Material)
   void _showLyricFontDialog() {
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     
     if (isFluentUI) {
       fluent_ui.showDialog(

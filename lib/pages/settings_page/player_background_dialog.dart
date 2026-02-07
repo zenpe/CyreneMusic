@@ -24,7 +24,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
   Widget build(BuildContext context) {
     final backgroundService = PlayerBackgroundService();
     final currentType = backgroundService.backgroundType;
-    final isFluent = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluent = ThemeManager().isDesktopFluentUI;
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
     
     // 检查用户是否为赞助用户
@@ -531,7 +531,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
     final backgroundService = PlayerBackgroundService();
     Color? selectedColor;
 
-    final isFluent = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluent = ThemeManager().isDesktopFluentUI;
 
     if (isFluent) {
       await fluent_ui.showDialog(
@@ -689,7 +689,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
     final backgroundService = PlayerBackgroundService();
     Color pickerColor = backgroundService.solidColor;
 
-    final isFluent = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluent = ThemeManager().isDesktopFluentUI;
     if (isFluent) {
       await fluent_ui.showDialog(
         context: context,
@@ -791,7 +791,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
       widget.onChanged();
       
       if (mounted) {
-        final isFluent = Platform.isWindows && ThemeManager().isFluentFramework;
+        final isFluent = ThemeManager().isDesktopFluentUI;
         
         if (isFluent) {
           fluent_ui.displayInfoBar(
