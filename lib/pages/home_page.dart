@@ -1364,6 +1364,10 @@ class _HomePageState extends State<HomePage>
         (topPadding > 0 && topPadding / windowHeight > 0.1);
     
     return [
+      // iOS 下拉刷新
+      CupertinoSliverRefreshControl(
+        onRefresh: _onRefresh,
+      ),
       // iOS 大标题导航栏
       // 注意：移除 opacity 以避免与 BackdropFilter 组合导致快速滚动残影
       CupertinoSliverNavigationBar(
@@ -1395,7 +1399,7 @@ class _HomePageState extends State<HomePage>
             ),
             CupertinoButton(
               padding: EdgeInsets.zero,
-              onPressed: () => _handleRefreshPressed(context),
+              onPressed: _onRefresh,
               child: Icon(
                 CupertinoIcons.refresh,
                 color: ThemeManager.iosBlue,
@@ -1542,7 +1546,7 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  Future<void> _handleRefreshPressed(BuildContext context) async {
+  Future<void> _onRefresh() async {
     await _clearForYouCache();
     if (mounted) {
       setState(() {
@@ -1552,7 +1556,7 @@ class _HomePageState extends State<HomePage>
         const SnackBar(content: Text('正在刷新为你推荐...')),
       );
     }
-    MusicService().refreshToplists();
+    await MusicService().refreshToplists();
   }
 
   Future<void> _clearForYouCache() async {
@@ -1703,13 +1707,18 @@ class _HomePageState extends State<HomePage>
       );
     }
 
-    return CustomScrollView(
-      key: const ValueKey('material_home_overview'),
-      slivers: _buildHomeSlivers(
-        context: context,
-        colorScheme: colorScheme,
-        showTabs: showTabs,
-        includeAppBar: true,
+    return RefreshIndicator(
+      onRefresh: _onRefresh,
+      displacement: 20,
+      edgeOffset: 0, 
+      child: CustomScrollView(
+        key: const ValueKey('material_home_overview'),
+        slivers: _buildHomeSlivers(
+          context: context,
+          colorScheme: colorScheme,
+          showTabs: showTabs,
+          includeAppBar: true,
+        ),
       ),
     );
   }
@@ -1833,7 +1842,7 @@ class _HomePageState extends State<HomePage>
         IconButton(
           icon: const Icon(Icons.refresh),
           tooltip: '刷新',
-          onPressed: () => _handleRefreshPressed(context),
+          onPressed: _onRefresh,
         ),
       ],
     );
@@ -1916,7 +1925,7 @@ class _HomePageState extends State<HomePage>
               cachedRandomTracks: _cachedRandomTracks,
               checkLoginStatus: _checkLoginStatus,
               guessYouLikeFuture: _guessYouLikeFuture,
-              onRefresh: () => _handleRefreshPressed(context),
+              onRefresh: _onRefresh,
             ),
           ],
         ]),
@@ -2010,7 +2019,7 @@ class _HomePageState extends State<HomePage>
           message: '刷新',
           child: fluent.IconButton(
             icon: const Icon(fluent.FluentIcons.refresh, size: 16),
-            onPressed: () => _handleRefreshPressed(context),
+            onPressed: _onRefresh,
           ),
         ),
       ],
