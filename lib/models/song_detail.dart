@@ -179,7 +179,7 @@ extension AudioQualityExtension on AudioQuality {
       case AudioQuality.hires:
         return 'Hi-Res';
       case AudioQuality.jyeffect:
-        return '高清环绕声';
+        return 'Audio Vivid';
       case AudioQuality.sky:
         return '沉浸环绕声';
       case AudioQuality.jymaster:
@@ -191,6 +191,7 @@ extension AudioQualityExtension on AudioQuality {
     switch (this) {
       case AudioQuality.lossless:
       case AudioQuality.hires:
+      case AudioQuality.jyeffect:
       case AudioQuality.jymaster:
         return 'flac';
       default:

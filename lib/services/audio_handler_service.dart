@@ -17,6 +17,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   bool _updatePending = false;  // 是否有待处理的更新
   Timer? _lyricUpdateTimer;  // 悬浮歌词更新定时器（后台持续运行）
   Timer? _positionUpdateTimer;  // 进度条更新定时器（播放时定期更新）
+  Timer? _iosStateRefreshTimer;  // iOS 专用状态刷新定时器（保持锁屏显示）
   PlayerState? _lastLoggedState;  // 上次记录日志时的状态
   DateTime? _lastLogTime;  // 上次记录日志的时间
   Duration? _lastUpdatedPosition;  // 上次更新的位置（用于减少不必要的更新）
@@ -44,6 +45,11 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       // AndroidMediaNotificationService().start();
     }
     
+    // 🍎 iOS 专用：启动状态刷新定时器以保持锁屏/灵动岛显示
+    if (Platform.isIOS) {
+      _startIOSStateRefreshTimer();
+    }
+    
     // 启动进度条更新定时器
     _startPositionUpdateTimer();
     
@@ -63,6 +69,29 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       }
     });
     print('✅ [AudioHandler] 悬浮歌词后台更新定时器已启动（2000ms间隔，定期校准）');
+  }
+
+  /// 🍎 iOS 专用：启动状态刷新定时器
+  /// iOS 的 MPNowPlayingInfoCenter 需要定期刷新状态才能保持锁屏控制中心活跃
+  void _startIOSStateRefreshTimer() {
+    _iosStateRefreshTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      final player = PlayerService();
+      // 只要有歌曲在播放或暂停，就持续刷新状态
+      if (player.state == PlayerState.playing || player.state == PlayerState.paused) {
+        // 强制重新发送当前状态，保持 iOS 锁屏显示
+        final song = player.currentSong;
+        final track = player.currentTrack;
+        
+        // 更新 mediaItem（确保封面、歌名等信息不丢失）
+        if (song != null || track != null) {
+          _updateMediaItem(song, track);
+        }
+        
+        // 更新播放状态
+        _updatePlaybackState(player.state, player.position, player.duration);
+      }
+    });
+    print('✅ [AudioHandler] iOS 状态刷新定时器已启动（3秒间隔，保持锁屏显示）');
   }
 
   /// 启动进度条更新定时器（播放时定期更新进度）
@@ -86,8 +115,12 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         final playingStateChanged = currentState.playing != isPlaying;
         final durationChanged = currentState.bufferedPosition != currentDuration;
         
-        // 只有当位置、状态或时长有显著变化时才更新
-        if (positionChanged || stateChanged || playingStateChanged || durationChanged) {
+        // 🍎 iOS 始终更新以保持锁屏显示活跃，Android 使用优化逻辑
+        final shouldUpdate = Platform.isIOS || 
+            positionChanged || stateChanged || playingStateChanged || durationChanged;
+        
+        // 只有当位置、状态或时长有显著变化时才更新（或 iOS 始终更新）
+        if (shouldUpdate) {
           // 更新播放状态和进度
           playbackState.add(currentState.copyWith(
             playing: isPlaying,
@@ -115,6 +148,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     _updateTimer?.cancel();
     _lyricUpdateTimer?.cancel();
     _positionUpdateTimer?.cancel();
+    _iosStateRefreshTimer?.cancel();  // 🍎 iOS 专用定时器
     await super.onTaskRemoved();
   }
 

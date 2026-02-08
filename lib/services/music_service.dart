@@ -240,6 +240,16 @@ class MusicService extends ChangeNotifier {
       final baseUrl = audioSourceService.baseUrl;
       // 获取 OmniParse API Key
       final omniParseApiKey = audioSourceService.activeSource?.apiKey ?? '';
+      
+      // 🔧 OmniParse 音质降级处理：hires 和 jyeffect 只支持网易云平台
+      final qualityService = AudioQualityService();
+      final platformQualities = qualityService.getOmniParseQualitiesForPlatform(source);
+      final effectiveQuality = qualityService.getEffectiveQuality(quality, platformQualities);
+      if (effectiveQuality != quality) {
+        print('🔄 [MusicService] OmniParse 音质降级: ${quality.displayName} -> ${effectiveQuality.displayName} (平台: ${source.name})');
+        DeveloperModeService().addLog('🔄 [MusicService] 音质降级到 ${effectiveQuality.displayName}');
+      }
+      
       String url;
       http.Response response;
       
@@ -249,7 +259,7 @@ class MusicService extends ChangeNotifier {
           url = '$baseUrl/song';
           final requestBody = {
             'ids': songId.toString(),
-            'level': quality.value,
+            'level': effectiveQuality.value,
             'type': 'json',
           };
 
