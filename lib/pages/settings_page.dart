@@ -21,11 +21,13 @@ import 'settings_page/search_settings.dart';
 import 'settings_page/network_settings.dart';
 import 'settings_page/storage_settings.dart';
 import 'settings_page/about_settings.dart';
+import 'settings_page/other_settings.dart';
 import 'settings_page/appearance_settings_page.dart';
 import 'settings_page/third_party_accounts_page.dart';
 import 'settings_page/lyric_settings_page.dart';
 import 'settings_page/audio_source_settings_page.dart';
 import 'settings_page/about_settings_page.dart';
+import 'settings_page/other_settings_page.dart';
 import 'settings_page/equalizer_page.dart';
 import 'support_page.dart';
 import 'settings_page/lab_functions.dart';
@@ -41,6 +43,7 @@ enum SettingsSubPage {
   audioSource,
   about,
   labFunctions,
+  other,
 }
 
 /// 设置页面
@@ -256,6 +259,9 @@ class _SettingsPageState extends State<SettingsPage> {
       case SettingsSubPage.labFunctions:
         content = LabFunctionsContent(onBack: () => Navigator.pop(context), embed: true);
         title = '实验室功能';
+      case SettingsSubPage.other:
+        content = OtherSettingsContent(onBack: () => Navigator.pop(context), embed: true);
+        title = '其它设置';
       case SettingsSubPage.none:
         return const SizedBox.shrink();
     }
@@ -402,6 +408,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     // 存储设置
                     const StorageSettings(),
                     const SizedBox(height: 12),
+
+                    // 其它设置
+                    OtherSettings(onTap: () => openSubPage(SettingsSubPage.other)),
+                    const SizedBox(height: 12),
                     
                     // 关于
                     AboutSettings(onTap: () => openSubPage(SettingsSubPage.about)),
@@ -459,6 +469,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return '关于';
       case SettingsSubPage.labFunctions:
         return '实验室功能';
+      case SettingsSubPage.other:
+        return '其它设置';
       case SettingsSubPage.none:
         return '设置';
     }
@@ -478,6 +490,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return AboutSettingsContent(onBack: closeSubPage, embed: true);
       case SettingsSubPage.labFunctions:
         return LabFunctionsContent(onBack: closeSubPage, embed: true);
+      case SettingsSubPage.other:
+        return OtherSettingsContent(onBack: closeSubPage, embed: true);
       case SettingsSubPage.none:
         return const SizedBox.shrink();
     }
@@ -625,6 +639,26 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
               
+              const SizedBox(height: 24),
+
+              // 其它设置分组
+              _buildCupertinoSettingsGroup(
+                context,
+                isDark: isDark,
+                header: '其它',
+                children: [
+                  _buildCupertinoSettingsItem(
+                    context,
+                    isDark: isDark,
+                    icon: CupertinoIcons.ellipsis,
+                    iconColor: CupertinoColors.systemGrey,
+                    title: '其它设置',
+                    subtitle: '启动提示、更新提示',
+                    onTap: () => openSubPage(SettingsSubPage.other),
+                  ),
+                ],
+              ),
+
               const SizedBox(height: 24),
               
               _buildCupertinoSettingsGroup(
@@ -828,6 +862,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return AboutSettingsContent(onBack: closeSubPage, embed: true);
       case SettingsSubPage.labFunctions:
         return LabFunctionsContent(onBack: closeSubPage, embed: true);
+      case SettingsSubPage.other:
+        return OtherSettingsContent(onBack: closeSubPage, embed: true);
       case SettingsSubPage.none:
         return const SizedBox.shrink();
     }
@@ -917,6 +953,9 @@ class _SettingsPageState extends State<SettingsPage> {
         
         const StorageSettings(),
         const SizedBox(height: 16),
+
+        OtherSettings(onTap: () => openSubPage(SettingsSubPage.other)),
+        const SizedBox(height: 16),
         
         AboutSettings(onTap: () => openSubPage(SettingsSubPage.about)),
         const SizedBox(height: 40),
@@ -938,6 +977,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return AboutSettingsContent(onBack: closeSubPage, embed: true);
       case SettingsSubPage.labFunctions:
         return LabFunctionsContent(onBack: closeSubPage, embed: true);
+      case SettingsSubPage.other:
+        return OtherSettingsContent(onBack: closeSubPage, embed: true);
       case SettingsSubPage.none:
         return const SizedBox.shrink();
     }
@@ -956,6 +997,7 @@ class _SettingsPageState extends State<SettingsPage> {
       case SettingsSubPage.audioSource: pageName = '音源设置'; break;
       case SettingsSubPage.about: pageName = '关于'; break;
       case SettingsSubPage.labFunctions: pageName = '实验室功能'; break;
+      case SettingsSubPage.other: pageName = '其它设置'; break;
       case SettingsSubPage.none: return const Text('设置');
     }
 

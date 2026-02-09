@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'playback_state_service.dart';
 import 'notification_service.dart';
 import 'player_service.dart';
+import 'app_settings_service.dart';
 
 /// 播放恢复管理服务
 /// 负责在应用启动时检查上次播放状态并询问用户是否继续播放
@@ -27,6 +28,13 @@ class PlaybackResumeService {
     _hasCheckedOnStartup = true;
 
     try {
+      final appSettings = AppSettingsService();
+      await appSettings.ensureInitialized();
+      if (!appSettings.showResumePromptOnStartup) {
+        print('ℹ️ [PlaybackResumeService] 启动恢复提示已关闭，跳过');
+        return;
+      }
+
       print('📱 [PlaybackResumeService] 正在获取上次播放状态...');
       
       // 获取上次播放状态

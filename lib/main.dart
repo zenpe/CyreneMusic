@@ -15,6 +15,7 @@ import 'package:cyrene_music/services/announcement_service.dart';
 import 'package:cyrene_music/services/auto_update_service.dart';
 import 'package:cyrene_music/services/cache_service.dart';
 import 'package:cyrene_music/services/developer_mode_service.dart';
+import 'package:cyrene_music/services/app_settings_service.dart';
 import 'package:cyrene_music/services/desktop_lyric_service.dart';
 import 'package:cyrene_music/services/listening_stats_service.dart';
 import 'package:cyrene_music/services/lyric_style_service.dart';
@@ -130,6 +131,11 @@ Future<void> main() async {
       await DeveloperModeService().initialize();
     });
     log('✅ 开发者模式服务已初始化');
+
+    await timed('AppSettingsService.initialize', () async {
+      await AppSettingsService().initialize();
+    });
+    log(' 应用设置服务已初始化');
   
     await timed('PersistentStorageService.getBackupStats', () {
       final storageStats = PersistentStorageService().getBackupStats();

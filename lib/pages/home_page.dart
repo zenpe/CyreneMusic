@@ -13,6 +13,7 @@ import '../services/announcement_service.dart';
 import '../services/music_service.dart';
 import '../services/player_service.dart';
 import '../services/version_service.dart';
+import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
 import '../services/home_search_service.dart';
 import '../widgets/announcement_dialog.dart';
@@ -407,6 +408,10 @@ class _HomePageState extends State<HomePage>
 
       if (!mounted) return;
 
+      final appSettings = AppSettingsService();
+      await appSettings.ensureInitialized();
+      final allowStartupUpdatePrompt = appSettings.showUpdatePromptOnStartup;
+
       print('🔍 [HomePage] 开始检查更新...');
 
       final versionInfo = await VersionService().checkForUpdate(silent: true);
@@ -436,6 +441,11 @@ class _HomePageState extends State<HomePage>
               ),
             );
           }
+          return;
+        }
+
+        if (!allowStartupUpdatePrompt) {
+          print('🔕 [HomePage] 启动更新提示已关闭，跳过弹窗');
           return;
         }
 
