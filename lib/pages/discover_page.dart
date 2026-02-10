@@ -406,6 +406,30 @@ class _DiscoverPageState extends State<DiscoverPage> {
       );
     }
 
+    // Material 桌面分支：选中歌单时展示详情内容
+    if (_selectedPlaylistId != null) {
+      return Scaffold(
+        backgroundColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
+        appBar: AppBar(
+          backgroundColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
+          surfaceTintColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
+          title: Text(_selectedPlaylistName ?? '歌单详情'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              setState(() {
+                _selectedPlaylistId = null;
+                _selectedPlaylistName = null;
+              });
+            },
+          ),
+        ),
+        body: DiscoverPlaylistDetailContent(
+          playlistId: _selectedPlaylistId!,
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
       body: CustomScrollView(
