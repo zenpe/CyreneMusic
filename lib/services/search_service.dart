@@ -14,16 +14,19 @@ class SearchResult {
   final List<Track> qqResults;
   final List<Track> kugouResults;
   final List<Track> kuwoResults;
+  final List<Track> spotifyResults;
   final bool neteaseLoading;
   final bool appleLoading;
   final bool qqLoading;
   final bool kugouLoading;
   final bool kuwoLoading;
+  final bool spotifyLoading;
   final String? neteaseError;
   final String? appleError;
   final String? qqError;
   final String? kugouError;
   final String? kuwoError;
+  final String? spotifyError;
 
   SearchResult({
     this.neteaseResults = const [],
@@ -31,26 +34,29 @@ class SearchResult {
     this.qqResults = const [],
     this.kugouResults = const [],
     this.kuwoResults = const [],
+    this.spotifyResults = const [],
     this.neteaseLoading = false,
     this.appleLoading = false,
     this.qqLoading = false,
     this.kugouLoading = false,
     this.kuwoLoading = false,
+    this.spotifyLoading = false,
     this.neteaseError,
     this.appleError,
     this.qqError,
     this.kugouError,
     this.kuwoError,
+    this.spotifyError,
   });
 
   /// 获取所有结果的总数
-  int get totalCount => neteaseResults.length + appleResults.length + qqResults.length + kugouResults.length + kuwoResults.length;
+  int get totalCount => neteaseResults.length + appleResults.length + qqResults.length + kugouResults.length + kuwoResults.length + spotifyResults.length;
 
-  /// 是否所有平台都加载完成
-  bool get allCompleted => !neteaseLoading && !appleLoading && !qqLoading && !kugouLoading && !kuwoLoading;
+  /// 是否所有平加载完成
+  bool get allCompleted => !neteaseLoading && !appleLoading && !qqLoading && !kugouLoading && !kuwoLoading && !spotifyLoading;
 
   /// 是否有任何错误
-  bool get hasError => neteaseError != null || appleError != null || qqError != null || kugouError != null || kuwoError != null;
+  bool get hasError => neteaseError != null || appleError != null || qqError != null || kugouError != null || kuwoError != null || spotifyError != null;
 
   /// 复制并修改部分字段
   SearchResult copyWith({
@@ -59,16 +65,19 @@ class SearchResult {
     List<Track>? qqResults,
     List<Track>? kugouResults,
     List<Track>? kuwoResults,
+    List<Track>? spotifyResults,
     bool? neteaseLoading,
     bool? appleLoading,
     bool? qqLoading,
     bool? kugouLoading,
     bool? kuwoLoading,
+    bool? spotifyLoading,
     String? neteaseError,
     String? appleError,
     String? qqError,
     String? kugouError,
     String? kuwoError,
+    String? spotifyError,
   }) {
     return SearchResult(
       neteaseResults: neteaseResults ?? this.neteaseResults,
@@ -76,16 +85,19 @@ class SearchResult {
       qqResults: qqResults ?? this.qqResults,
       kugouResults: kugouResults ?? this.kugouResults,
       kuwoResults: kuwoResults ?? this.kuwoResults,
+      spotifyResults: spotifyResults ?? this.spotifyResults,
       neteaseLoading: neteaseLoading ?? this.neteaseLoading,
       appleLoading: appleLoading ?? this.appleLoading,
       qqLoading: qqLoading ?? this.qqLoading,
       kugouLoading: kugouLoading ?? this.kugouLoading,
       kuwoLoading: kuwoLoading ?? this.kuwoLoading,
+      spotifyLoading: spotifyLoading ?? this.spotifyLoading,
       neteaseError: neteaseError,
       appleError: appleError,
       qqError: qqError,
       kugouError: kugouError,
       kuwoError: kuwoError,
+      spotifyError: spotifyError,
     );
   }
 }
@@ -133,6 +145,7 @@ class SearchService extends ChangeNotifier {
       qqLoading: supportedPlatforms.contains('qq'),
       kugouLoading: supportedPlatforms.contains('kugou'),
       kuwoLoading: supportedPlatforms.contains('kuwo'),
+      spotifyLoading: supportedPlatforms.contains('spotify'),
     );
     notifyListeners();
 
@@ -145,6 +158,7 @@ class SearchService extends ChangeNotifier {
     if (supportedPlatforms.contains('qq')) futures.add(_searchQQ(keyword));
     if (supportedPlatforms.contains('kugou')) futures.add(_searchKugou(keyword));
     if (supportedPlatforms.contains('kuwo')) futures.add(_searchKuwo(keyword));
+    if (supportedPlatforms.contains('spotify')) futures.add(_searchSpotify(keyword));
     
     await Future.wait(futures);
 
@@ -426,6 +440,64 @@ class SearchService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 搜索 Spotify
+  Future<void> _searchSpotify(String keyword) async {
+    try {
+      print('🟢 [SearchService] Spotify 搜索: $keyword');
+
+      final baseUrl = UrlService().baseUrl;
+      final url = '$baseUrl/spotify/search?keywords=${Uri.encodeComponent(keyword)}';
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw Exception('请求超时'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+
+        if (data['status'] == 200) {
+          final tracksData = data['result']?['tracks'] as List<dynamic>? ?? [];
+          final results = tracksData.map((item) {
+            final artistsList = item['artists'] as List<dynamic>? ?? [];
+            final artistsNames = artistsList.map((a) => a['name'] as String).join(', ');
+            final albumData = item['album'] as Map<String, dynamic>? ?? {};
+
+            return Track(
+              id: item['id'] as String,
+              name: item['name'] as String,
+              artists: artistsNames,
+              album: albumData['name'] as String? ?? '',
+              picUrl: albumData['coverArt'] as String? ?? '',
+              source: MusicSource.spotify,
+            );
+          }).toList();
+
+          _searchResult = _searchResult.copyWith(
+            spotifyResults: results,
+            spotifyLoading: false,
+          );
+
+          print('✅ [SearchService] Spotify 搜索完成: ${results.length} 条结果');
+        } else {
+          throw Exception('服务器返回状态 ${data['status']}');
+        }
+      } else {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ [SearchService] Spotify 搜索失败: $e');
+      _searchResult = _searchResult.copyWith(
+        spotifyLoading: false,
+        spotifyError: e.toString(),
+      );
+    }
+    notifyListeners();
+  }
+
   /// 获取合并后的搜索结果（跨平台去重）
   List<MergedTrack> getMergedResults() {
     // 收集所有平台的歌曲
@@ -435,6 +507,7 @@ class SearchService extends ChangeNotifier {
       ...(_searchResult.qqResults),
       ...(_searchResult.kugouResults),
       ...(_searchResult.kuwoResults),
+      ...(_searchResult.spotifyResults),
       ...(_searchResult.appleResults), // Apple Music 优先级最低
     ];
 

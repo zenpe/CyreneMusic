@@ -4,7 +4,7 @@ import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -1217,12 +1217,33 @@ class _HomePageState extends State<HomePage>
     ColorScheme colorScheme,
     bool showTabs,
   ) {
-    return Scaffold(
+    final mediaQuery = MediaQuery.of(context);
+    final windowHeight = mediaQuery.size.height;
+    final topPadding = mediaQuery.viewPadding.top;
+    
+    // 检测是否处于安卓小窗模式：
+    // 1. 窗口高度较小 (< 500)
+    // 2. 或者顶部 padding 占窗口高度的比例过大 (> 10%)，表明系统可能错误地为小窗应用了状态栏高度
+    final bool shouldRemoveTopPadding = windowHeight < 500 || 
+        (topPadding > 0 && topPadding / windowHeight > 0.1);
+
+    final scaffold = Scaffold(
       backgroundColor: colorScheme.surface,
       body: _buildSlidingSwitcher(
         _buildMaterialContentArea(context, colorScheme, showTabs),
       ),
     );
+
+    // 在需要时移除顶部安全区域 padding
+    if (shouldRemoveTopPadding) {
+      return MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: scaffold,
+      );
+    }
+
+    return scaffold;
   }
 
   /// 构建 iOS Cupertino 风格首页
@@ -1232,7 +1253,17 @@ class _HomePageState extends State<HomePage>
         ? CupertinoColors.black
         : CupertinoColors.systemGroupedBackground;
 
-    return Material(
+    final mediaQuery = MediaQuery.of(context);
+    final windowHeight = mediaQuery.size.height;
+    final topPadding = mediaQuery.viewPadding.top;
+    
+    // 检测是否处于安卓小窗模式：
+    // 1. 窗口高度较小 (< 500)
+    // 2. 或者顶部 padding 占窗口高度的比例过大 (> 10%)
+    final bool shouldRemoveTopPadding = windowHeight < 500 || 
+        (topPadding > 0 && topPadding / windowHeight > 0.1);
+
+    final pageScaffold = Material(
       type: MaterialType.transparency,
       child: CupertinoPageScaffold(
         backgroundColor: backgroundColor,
@@ -1244,6 +1275,17 @@ class _HomePageState extends State<HomePage>
         ),
       ),
     );
+
+    // 在小窗模式下移除顶部安全区域 padding
+    if (shouldRemoveTopPadding) {
+      return MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: pageScaffold,
+      );
+    }
+
+    return pageScaffold;
   }
 
   /// 构建 iOS 风格内容区域
@@ -1323,11 +1365,25 @@ class _HomePageState extends State<HomePage>
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
     final isLoggedIn = AuthService().isLoggedIn;
     
+    final mediaQuery = MediaQuery.of(context);
+    final windowHeight = mediaQuery.size.height;
+    final topPadding = mediaQuery.viewPadding.top;
+    
+    // 检测是否处于安卓小窗模式
+    final bool isSmallWindow = windowHeight < 500 || 
+        (topPadding > 0 && topPadding / windowHeight > 0.1);
+    
     return [
+      // iOS 下拉刷新
+      CupertinoSliverRefreshControl(
+        onRefresh: _onRefresh,
+      ),
       // iOS 大标题导航栏
       // 注意：移除 opacity 以避免与 BackdropFilter 组合导致快速滚动残影
       CupertinoSliverNavigationBar(
-        largeTitle: const Text('首页'),
+        // 小窗模式下使用紧凑标题而非大标题
+        largeTitle: isSmallWindow ? null : const Text('首页'),
+        middle: isSmallWindow ? const Text('首页') : null,
         backgroundColor: isDark
             ? const Color(0xFF1C1C1E)
             : CupertinoColors.systemBackground,
@@ -1353,7 +1409,7 @@ class _HomePageState extends State<HomePage>
             ),
             CupertinoButton(
               padding: EdgeInsets.zero,
-              onPressed: () => _handleRefreshPressed(context),
+              onPressed: _onRefresh,
               child: Icon(
                 CupertinoIcons.refresh,
                 color: ThemeManager.iosBlue,
@@ -1500,7 +1556,7 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  Future<void> _handleRefreshPressed(BuildContext context) async {
+  Future<void> _onRefresh() async {
     await _clearForYouCache();
     if (mounted) {
       setState(() {
@@ -1510,7 +1566,7 @@ class _HomePageState extends State<HomePage>
         const SnackBar(content: Text('正在刷新为你推荐...')),
       );
     }
-    MusicService().refreshToplists();
+    await MusicService().refreshToplists();
   }
 
   Future<void> _clearForYouCache() async {
@@ -1661,13 +1717,18 @@ class _HomePageState extends State<HomePage>
       );
     }
 
-    return CustomScrollView(
-      key: const ValueKey('material_home_overview'),
-      slivers: _buildHomeSlivers(
-        context: context,
-        colorScheme: colorScheme,
-        showTabs: showTabs,
-        includeAppBar: true,
+    return RefreshIndicator(
+      onRefresh: _onRefresh,
+      displacement: 20,
+      edgeOffset: 0, 
+      child: CustomScrollView(
+        key: const ValueKey('material_home_overview'),
+        slivers: _buildHomeSlivers(
+          context: context,
+          colorScheme: colorScheme,
+          showTabs: showTabs,
+          includeAppBar: true,
+        ),
       ),
     );
   }
@@ -1752,7 +1813,16 @@ class _HomePageState extends State<HomePage>
             statusBarColor: Colors.transparent,
           );
 
+    final mediaQuery = MediaQuery.of(context);
+    final windowHeight = mediaQuery.size.height;
+    final topPadding = mediaQuery.viewPadding.top;
+    
+    // 检测是否处于安卓小窗模式
+    final bool shouldDisablePrimary = windowHeight < 500 || 
+        (topPadding > 0 && topPadding / windowHeight > 0.1);
+
     return SliverAppBar(
+      primary: !shouldDisablePrimary,
       floating: true,
       snap: true,
       backgroundColor: Colors.transparent,
@@ -1782,7 +1852,7 @@ class _HomePageState extends State<HomePage>
         IconButton(
           icon: const Icon(Icons.refresh),
           tooltip: '刷新',
-          onPressed: () => _handleRefreshPressed(context),
+          onPressed: _onRefresh,
         ),
       ],
     );
@@ -1865,7 +1935,7 @@ class _HomePageState extends State<HomePage>
               cachedRandomTracks: _cachedRandomTracks,
               checkLoginStatus: _checkLoginStatus,
               guessYouLikeFuture: _guessYouLikeFuture,
-              onRefresh: () => _handleRefreshPressed(context),
+              onRefresh: _onRefresh,
             ),
           ],
         ]),
@@ -1959,7 +2029,7 @@ class _HomePageState extends State<HomePage>
           message: '刷新',
           child: fluent.IconButton(
             icon: const Icon(fluent.FluentIcons.refresh, size: 16),
-            onPressed: () => _handleRefreshPressed(context),
+            onPressed: _onRefresh,
           ),
         ),
       ],

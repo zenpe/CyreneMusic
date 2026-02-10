@@ -31,6 +31,8 @@ import '../widgets/mini_player.dart';
 import '../widgets/search_widget.dart';
 import '../widgets/video_background_player.dart';
 import '../pages/home_page/home_overlay_controller.dart';
+import '../pages/desktop_setup_page.dart';
+import '../services/persistent_storage_service.dart';
 import '../widgets/global_watermark.dart';
 
 /// Fluent UI 版本的主布局，使用 NavigationView
@@ -69,6 +71,18 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
 
   /// 主导航项列表
   List<fluent_ui.NavigationPaneItem> get _paneItems {
+    final isLocalMode = PersistentStorageService().enableLocalMode;
+
+    if (isLocalMode) {
+      return [
+        fluent_ui.PaneItem(
+          icon: _svgIcon('assets/ui/FluentColorDocumentFolder16.svg'),
+          title: const Text('本地'),
+          body: _buildAnimatedContent(),
+        ),
+      ];
+    }
+
     final items = <fluent_ui.NavigationPaneItem>[
       fluent_ui.PaneItem(
         icon: _svgIcon('assets/ui/FluentColorHome16.svg'),
@@ -122,10 +136,12 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
 
   /// 底部导航项（设置页面）
   List<fluent_ui.NavigationPaneItem> get _footerItems {
+    final isLocalMode = PersistentStorageService().enableLocalMode;
+
     return [
       fluent_ui.PaneItem(
         icon: _svgIcon('assets/ui/FluentColorSettings16.svg'),
-        title: const Text('设置'),
+        title: Text(isLocalMode ? '退出本地模式' : '设置'),
         body: _buildAnimatedContent(),
       ),
     ];
@@ -158,6 +174,15 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
 
   /// 与 Pane 对应顺序的内容页（items + footerItems）
   List<Widget> get _bodyChildren {
+    final isLocalMode = PersistentStorageService().enableLocalMode;
+
+    if (isLocalMode) {
+      return [
+        const LocalPage(),
+        DesktopSetupPage(), // 本地模式下的设置项显示引导页，以便配置音源
+      ];
+    }
+
     final children = <Widget>[
       const HomePage(),
       const DiscoverPage(),

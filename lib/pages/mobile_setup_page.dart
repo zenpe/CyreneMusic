@@ -403,6 +403,20 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
               
               const SizedBox(height: 16),
               
+                TextButton(
+                  onPressed: () => _enterLocalMode(),
+                  child: Text(
+                    '使用本地模式',
+                    style: TextStyle(
+                      color: isCupertino ? ThemeManager.iosBlue : colorScheme.primary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                
+              const SizedBox(height: 8),
+
               // 跳过按钮
               if (showSkip)
                 TextButton(
@@ -748,6 +762,8 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                   // 持久化协议确认为 true
                   final storage = PersistentStorageService();
                   await storage.setBool('terms_accepted', true);
+                  // 退出本地模式，显示全功能界面
+                  await storage.setEnableLocalMode(false);
                   
                   // 触发监听以切换 MobileAppGate
                   AudioSourceService().notifyListeners();
@@ -789,9 +805,24 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
     );
   }
 
-  void _skipSetup() {
+  void _skipSetup() async {
+    // 标记协议为已确认
+    final storage = PersistentStorageService();
+    await storage.setBool('terms_accepted', true);
+    // 退出本地模式
+    await storage.setEnableLocalMode(false);
+    
     // 通知跳过 - 触发 main.dart 中的状态更新来进入主应用
-    // 这里通过 notifyListeners 来触发 AnimatedBuilder 重建
+    AudioSourceService().notifyListeners();
+    AuthService().notifyListeners();
+  }
+
+  void _enterLocalMode() async {
+    final storage = PersistentStorageService();
+    await storage.setEnableLocalMode(true);
+    await storage.setBool('terms_accepted', true);
+    
+    // 通知应用状态变化以进入主界面
     AudioSourceService().notifyListeners();
     AuthService().notifyListeners();
   }

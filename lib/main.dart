@@ -6,7 +6,7 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+
 import 'package:window_manager/window_manager.dart';
 import 'package:cyrene_music/layouts/fluent_main_layout.dart';
 import 'package:cyrene_music/layouts/main_layout.dart';
@@ -331,20 +331,7 @@ Future<void> main() async {
       runApp(const MyApp());
     });
   
-    if (Platform.isWindows) {
-      await timed('doWhenWindowReady(Windows)', () {
-        doWhenWindowReady(() {
-          const initialSize = Size(1320, 880);
-          const minSize = Size(160, 60);
 
-          appWindow.minSize = minSize;
-          appWindow.size = initialSize;
-          appWindow.alignment = Alignment.center;
-          appWindow.title = 'Cyrene Music';
-          appWindow.show();
-        });
-      });
-    }
   }, (error, stack) {
     StartupLogger().log('runZonedGuarded: $error\n$stack');
   });
@@ -439,7 +426,7 @@ class _MyAppState extends State<MyApp> {
         final lightTheme = themeManager.buildThemeData(Brightness.light);
         final darkTheme = themeManager.buildThemeData(Brightness.dark);
 
-        final useFluentLayout = Platform.isWindows && themeManager.isFluentFramework;
+        final useFluentLayout = themeManager.isDesktopFluentUI;
         final useCupertinoLayout = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
 
         if (useFluentLayout) {
@@ -680,7 +667,7 @@ class _WindowsRoundedContainerState extends State<_WindowsRoundedContainer> with
 /// 显示音源未配置对话框
 void showAudioSourceNotConfiguredDialog(BuildContext context) {
   final themeManager = ThemeManager();
-  final isFluent = Platform.isWindows && themeManager.isFluentFramework;
+  final isFluent = themeManager.isDesktopFluentUI;
   final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
   final isNavidromeActive = AudioSourceService().isNavidromeActive;
   final title = isNavidromeActive ? 'Navidrome 未配置' : '音源失效';
@@ -811,10 +798,11 @@ class _RefreshRateBoosterState extends State<RefreshRateBooster> with SingleTick
         AnimatedBuilder(
           animation: _controller,
           builder: (context, _) {
-            // 通过极小的不透明度变化触发重绘，但不产生视觉干扰
-            return const Opacity(
-              opacity: 0.001,
-              child: SizedBox(width: 1, height: 1),
+            // 动态改变透明度，强制引擎认为每一帧都是“脏的”，从而请求显示器最高刷新率所需的 VSync
+            // 0.001 - 0.002 之间的微小变化足以触发重绘，但几乎不可见
+            return Opacity(
+              opacity: 0.001 + (_controller.value * 0.001),
+              child: const SizedBox(width: 1, height: 1),
             );
           },
         ),

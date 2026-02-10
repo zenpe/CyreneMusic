@@ -3,7 +3,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
-import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:window_manager/window_manager.dart';
 import '../../services/sleep_timer_service.dart';
 import '../../services/playback_mode_service.dart';
@@ -82,7 +81,11 @@ class PlayerWindowControls extends StatelessWidget {
           children: [
             // 可拖动区域（整个顶部）
             Positioned.fill(
-              child: MoveWindow(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onPanStart: (details) {
+                  windowManager.startDragging();
+                },
                 child: Container(
                   color: Colors.transparent,
                 ),
@@ -290,12 +293,18 @@ class PlayerWindowControls extends StatelessWidget {
       children: [
         _buildWindowButton(
           icon: Icons.remove,
-          onPressed: () => appWindow.minimize(),
+          onPressed: () => windowManager.minimize(),
           tooltip: '最小化',
         ),
         _buildWindowButton(
           icon: isMaximized ? Icons.fullscreen_exit : Icons.crop_square,
-          onPressed: () => appWindow.maximizeOrRestore(),
+          onPressed: () async {
+            if (await windowManager.isMaximized()) {
+              windowManager.unmaximize();
+            } else {
+              windowManager.maximize();
+            }
+          },
           tooltip: isMaximized ? '还原' : '最大化',
         ),
         _buildWindowButton(

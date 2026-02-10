@@ -121,46 +121,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.2.1"
-  bitsdojo_window:
-    dependency: "direct main"
-    description:
-      name: bitsdojo_window
-      sha256: "88ef7765dafe52d97d7a3684960fb5d003e3151e662c18645c1641c22b873195"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.6"
-  bitsdojo_window_linux:
-    dependency: transitive
-    description:
-      name: bitsdojo_window_linux
-      sha256: "9519c0614f98be733e0b1b7cb15b827007886f6fe36a4fb62cf3d35b9dd578ab"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.4"
-  bitsdojo_window_macos:
-    dependency: transitive
-    description:
-      name: bitsdojo_window_macos
-      sha256: f7c5be82e74568c68c5b8449e2c5d8fd12ec195ecd70745a7b9c0f802bb0268f
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.4"
-  bitsdojo_window_platform_interface:
-    dependency: transitive
-    description:
-      name: bitsdojo_window_platform_interface
-      sha256: "65daa015a0c6dba749bdd35a0f092e7a8ba8b0766aa0480eb3ef808086f6e27c"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.2"
-  bitsdojo_window_windows:
-    dependency: transitive
-    description:
-      name: bitsdojo_window_windows
-      sha256: fa982cf61ede53f483e50b257344a1c250af231a3cdc93a7064dd6dc0d720b68
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.6"
   boolean_selector:
     dependency: transitive
     description:
@@ -241,6 +201,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.1"
+  convert:
+    dependency: transitive
+    description:
+      name: convert
+      sha256: b30acd5944035672bc15c6b7a8b47d773e41e2f17de064350988c5d02adb1c68
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.1.2"
   cross_file:
     dependency: transitive
     description:
@@ -734,7 +702,7 @@ packages:
     source: hosted
     version: "1.1.4"
   media_kit_libs_linux:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: media_kit_libs_linux
       sha256: "2b473399a49ec94452c4d4ae51cfc0f6585074398d74216092bf3d54aac37ecf"
@@ -981,6 +949,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.8"
+  pointycastle:
+    dependency: "direct main"
+    description:
+      name: pointycastle
+      sha256: "4be0097fcf3fd3e8449e53730c631200ebc7b88016acecab2b0da2f0149222fe"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.9.1"
   posix:
     dependency: transitive
     description:
@@ -1518,10 +1494,10 @@ packages:
     dependency: "direct main"
     description:
       name: window_manager
-      sha256: "732896e1416297c63c9e3fb95aea72d0355f61390263982a47fd519169dc5059"
+      sha256: "7eb6d6c4164ec08e1bf978d6e733f3cebe792e2a23fb07cbca25c2872bfdbdcd"
       url: "https://pub.dev"
     source: hosted
-    version: "0.4.3"
+    version: "0.5.1"
   xdg_directories:
     dependency: transitive
     description:

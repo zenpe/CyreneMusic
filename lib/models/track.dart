@@ -6,6 +6,7 @@ enum MusicSource {
   kuwo,     // 酷我音乐
   apple,    // Apple Music
   navidrome, // Navidrome
+  spotify,  // Spotify
   local,    // 本地文件
 }
 
@@ -66,6 +67,8 @@ class Track {
         return 'Apple Music';
       case MusicSource.navidrome:
         return 'Navidrome';
+      case MusicSource.spotify:
+        return 'Spotify';
       case MusicSource.local:
         return '本地';
     }
@@ -86,6 +89,8 @@ class Track {
         return '🍎';
       case MusicSource.navidrome:
         return '🎧';
+      case MusicSource.spotify:
+        return '🟢';
       case MusicSource.local:
         return '📁';
     }

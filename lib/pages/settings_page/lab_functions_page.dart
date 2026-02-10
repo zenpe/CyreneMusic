@@ -48,7 +48,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
     if (ThemeManager().isCupertinoFramework) {
       return _buildCupertinoUI(context);
     }
-    if (Platform.isWindows && ThemeManager().isFluentFramework) {
+    if ((Platform.isWindows || Platform.isMacOS || Platform.isLinux) && ThemeManager().isFluentFramework) {
       return _buildFluentUI(context);
     }
     return _buildMaterialUI(context);

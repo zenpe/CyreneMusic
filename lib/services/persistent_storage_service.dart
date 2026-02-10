@@ -378,5 +378,12 @@ class PersistentStorageService extends ChangeNotifier {
       'backup_file_exists': _backupFile?.existsSync() ?? false,
     };
   }
+  // ============== 业务便捷方法 ==============
+
+  /// 是否启用本地模式
+  bool get enableLocalMode => getBool('enable_local_mode') ?? false;
+
+  /// 设置是否启用本地模式
+  Future<void> setEnableLocalMode(bool value) => setBool('enable_local_mode', value);
 }
 

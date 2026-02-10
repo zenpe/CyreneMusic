@@ -4,7 +4,6 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_windows
-  bitsdojo_window_windows
   dynamic_color
   flutter_acrylic
   flutter_inappwebview_windows

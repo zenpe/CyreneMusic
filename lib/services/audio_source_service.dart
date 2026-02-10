@@ -73,7 +73,7 @@ class AudioSourceService extends ChangeNotifier {
 
   /// 各音源类型默认支持的搜索平台
   static const Map<AudioSourceType, List<String>> defaultSupportedPlatforms = {
-    AudioSourceType.omniparse: ['netease', 'qq', 'kugou', 'kuwo', 'apple'],
+    AudioSourceType.omniparse: ['netease', 'qq', 'kugou', 'kuwo', 'apple', 'spotify'],
     AudioSourceType.tunehub: ['netease', 'qq', 'kuwo'],
     AudioSourceType.lxmusic: [], // 动态从脚本获取
     AudioSourceType.navidrome: [], // Navidrome 使用独立 API
@@ -422,14 +422,16 @@ class AudioSourceService extends ChangeNotifier {
   /// 获取音源描述 (兼容旧版 API)
   String getSourceDescription() {
     if (!isConfigured) return '未配置';
+    final config = activeSource!;
     if (isNavidromeActive) {
       final baseUrl = NavidromeSessionService().baseUrl;
       return baseUrl.isEmpty ? 'Navidrome (未配置)' : baseUrl;
     }
-    if (activeSource!.type == AudioSourceType.lxmusic) {
-      return '${activeSource!.name} (v${activeSource!.version})';
-    }
-    return activeSource!.url;
+    if (config.type == AudioSourceType.lxmusic) {
+      return '${config.name} (v${config.version})';
+    } else if (config.type == AudioSourceType.omniparse) {
+      return '${config.name} (URL 已隐藏)';
+    }    return config.url;
   }
 
   /// [Deprecated] Use addSource instead
@@ -633,3 +635,4 @@ class AudioSourceService extends ChangeNotifier {
     };
   }
 }
+

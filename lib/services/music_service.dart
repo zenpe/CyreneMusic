@@ -281,6 +281,18 @@ class MusicService extends ChangeNotifier {
 
       // OmniParse 格式（原有逻辑）
       final baseUrl = audioSourceService.baseUrl;
+      // 获取 OmniParse API Key
+      final omniParseApiKey = audioSourceService.activeSource?.apiKey ?? '';
+      
+      // 🔧 OmniParse 音质降级处理：hires 和 jyeffect 只支持网易云平台
+      final qualityService = AudioQualityService();
+      final platformQualities = qualityService.getOmniParseQualitiesForPlatform(source);
+      final effectiveQuality = qualityService.getEffectiveQuality(quality, platformQualities);
+      if (effectiveQuality != quality) {
+        print('🔄 [MusicService] OmniParse 音质降级: ${quality.displayName} -> ${effectiveQuality.displayName} (平台: ${source.name})');
+        DeveloperModeService().addLog('🔄 [MusicService] 音质降级到 ${effectiveQuality.displayName}');
+      }
+      
       String url;
       http.Response response;
       
@@ -290,7 +302,7 @@ class MusicService extends ChangeNotifier {
           url = '$baseUrl/song';
           final requestBody = {
             'ids': songId.toString(),
-            'level': quality.value,
+            'level': effectiveQuality.value,
             'type': 'json',
           };
 
@@ -301,6 +313,7 @@ class MusicService extends ChangeNotifier {
             Uri.parse(url),
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
+              if (omniParseApiKey.isNotEmpty) 'X-API-Key': omniParseApiKey,
             },
             body: requestBody,
           ).timeout(
@@ -342,6 +355,7 @@ class MusicService extends ChangeNotifier {
             Uri.parse(url),
             headers: {
               'Content-Type': 'application/json',
+              if (omniParseApiKey.isNotEmpty) 'X-API-Key': omniParseApiKey,
             },
           ).timeout(
             const Duration(seconds: 15),
@@ -388,6 +402,7 @@ class MusicService extends ChangeNotifier {
             headers: {
               'Content-Type': 'application/json',
               if (authToken != null) 'Authorization': 'Bearer $authToken',
+              if (omniParseApiKey.isNotEmpty) 'X-API-Key': omniParseApiKey,
             },
           ).timeout(
             const Duration(seconds: 15),
@@ -407,6 +422,7 @@ class MusicService extends ChangeNotifier {
             Uri.parse(url),
             headers: {
               'Content-Type': 'application/json',
+              if (omniParseApiKey.isNotEmpty) 'X-API-Key': omniParseApiKey,
             },
           ).timeout(
             const Duration(seconds: 15),
@@ -419,6 +435,12 @@ class MusicService extends ChangeNotifier {
 
         case MusicSource.navidrome:
           return null;
+        case MusicSource.spotify:
+          // Spotify 歌曲详情处理
+          return await _fetchSongDetailFromSpotify(
+            songId: songId,
+            quality: effectiveQuality,
+          );
 
         case MusicSource.local:
           // 本地音乐已在方法开头处理，不会到达这里
@@ -513,20 +535,28 @@ class MusicService extends ChangeNotifier {
               }
             }
             
-            // 安全获取歌词（后端返回的是 {lyric: string, tylyric: string}）
+            // 安全获取歌词（后端返回的是 {lyric: string, tylyric: string, qrc: string, qrcTrans: string}）
             String lyricText = '';
             String tlyricText = '';
+            String qrcText = '';
+            String qrcTransText = '';
             if (lyricData != null) {
               // 确保类型安全：检查是否为String
               final lyricValue = lyricData['lyric'];
               final tlyricValue = lyricData['tylyric'];
+              final qrcValue = lyricData['qrc'];
+              final qrcTransValue = lyricData['qrcTrans'];
               
               lyricText = lyricValue is String ? lyricValue : '';
               tlyricText = tlyricValue is String ? tlyricValue : '';
+              qrcText = qrcValue is String ? qrcValue : '';
+              qrcTransText = qrcTransValue is String ? qrcTransValue : '';
               
-              print('🎵 [MusicService] QQ音乐歌词获取:');
+              print('🎵 [MusicService] OmniParse QQ音乐歌词获取:');
               print('   原文歌词: ${lyricText.isNotEmpty ? "${lyricText.length}字符" : "无"}');
               print('   翻译歌词: ${tlyricText.isNotEmpty ? "${tlyricText.length}字符" : "无"}');
+              print('   逐字歌词(QRC): ${qrcText.isNotEmpty ? "${qrcText.length}字符" : "无"}');
+              print('   📋 lyricData 原始字段: ${lyricData?.keys.toList()}');
             }
             
             songDetail = SongDetail(
@@ -540,6 +570,8 @@ class MusicService extends ChangeNotifier {
               url: playUrl,
               lyric: lyricText,
               tlyric: tlyricText,
+              qrc: qrcText,
+              qrcTrans: qrcTransText,
               source: source,
             );
           } else if (source == MusicSource.kugou) {
@@ -774,12 +806,19 @@ class MusicService extends ChangeNotifier {
       // 🎵 尝试从后端歌词 API 获取歌词
       String lyric = '';
       String tlyric = '';
+      String qrc = '';
+      String qrcTrans = '';
       try {
         final lyricData = await _fetchLyricFromBackend(source, songId);
         if (lyricData != null) {
           lyric = lyricData['lyric'] ?? '';
           tlyric = lyricData['tlyric'] ?? '';
+          qrc = lyricData['qrc'] ?? '';
+          qrcTrans = lyricData['qrcTrans'] ?? '';
           print('📝 [MusicService] 成功从后端获取歌词: ${lyric.length} 字符');
+          if (qrc.isNotEmpty) {
+            print('   逐字歌词(QRC): ${qrc.length} 字符');
+          }
         }
       } catch (e) {
         print('⚠️ [MusicService] 获取歌词失败（不影响播放）: $e');
@@ -798,6 +837,8 @@ class MusicService extends ChangeNotifier {
         url: audioUrl,
         lyric: lyric,
         tlyric: tlyric,
+        qrc: qrc,
+        qrcTrans: qrcTrans,
         source: source,
       );
     } catch (e) {
@@ -862,6 +903,8 @@ class MusicService extends ChangeNotifier {
           return {
             'lyric': (lyricData['lyric'] ?? '') as String,
             'tlyric': (lyricData['tlyric'] ?? '') as String,
+            'qrc': (lyricData['qrc'] ?? '') as String,
+            'qrcTrans': (lyricData['qrcTrans'] ?? '') as String,
           };
         }
       }
@@ -1009,12 +1052,19 @@ class MusicService extends ChangeNotifier {
           // 🎵 使用后端歌词 API 获取歌词（与洛雪音源保持一致）
           String lyricText = '';
           String tlyricText = '';
+          String qrcText = '';
+          String qrcTransText = '';
           try {
             final lyricData = await _fetchLyricFromBackend(source, songId);
             if (lyricData != null) {
               lyricText = lyricData['lyric'] ?? '';
               tlyricText = lyricData['tlyric'] ?? '';
+              qrcText = lyricData['qrc'] ?? '';
+              qrcTransText = lyricData['qrcTrans'] ?? '';
               print('📝 [MusicService] TuneHub v3 成功从后端获取歌词: ${lyricText.length} 字符');
+              if (qrcText.isNotEmpty) {
+                print('   逐字歌词(QRC): ${qrcText.length} 字符');
+              }
             }
           } catch (e) {
             print('⚠️ [MusicService] TuneHub v3 获取歌词失败（不影响播放）: $e');
@@ -1041,6 +1091,8 @@ class MusicService extends ChangeNotifier {
             url: audioUrl,
             lyric: lyricText,
             tlyric: tlyricText,
+            qrc: qrcText,
+            qrcTrans: qrcTransText,
             source: source,
           );
         } else {
@@ -1059,6 +1111,57 @@ class MusicService extends ChangeNotifier {
       if (e is UnsupportedError) rethrow;
       print('❌ [MusicService] TuneHub v3 音源异常: $e');
       DeveloperModeService().addLog('❌ [MusicService] 异常: $e');
+      return null;
+    }
+  }
+
+  /// 🎵 Spotify 音源：获取歌曲详情 (通过流媒体服务)
+  Future<SongDetail?> _fetchSongDetailFromSpotify({
+    required dynamic songId,
+    required AudioQuality quality,
+  }) async {
+    final baseUrl = UrlService().baseUrl;
+    // 使用流端点获取可播放 URL
+    final url = '$baseUrl/spotify/stream/$songId';
+
+    DeveloperModeService().addLog('🌐 [Network] GET $url');
+
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(
+        const Duration(seconds: 30), // 流获取可能需要较长时间
+        onTimeout: () {
+          DeveloperModeService().addLog('⏱️ [Network] 请求超时 (30s)');
+          throw Exception('请求超时');
+        },
+      );
+
+      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        if (data['status'] == 200 && data['data'] != null) {
+          final streamData = data['data'];
+          final metadata = streamData['metadata'];
+
+          return SongDetail(
+            id: songId,
+            name: metadata['name'] ?? '',
+            pic: metadata['coverArt'] ?? '',
+            arName: metadata['artists'] ?? '',
+            alName: metadata['album'] ?? '',
+            level: streamData['bitrate'] ?? 'High',
+            size: '0',
+            url: streamData['url'] ?? streamData['proxyUrl'] ?? '',
+            lyric: streamData['lyric'] ?? '',
+            tlyric: '', // Spotify 通常无翻译
+            source: MusicSource.spotify,
+          );
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ [MusicService] Spotify fetch failed: $e');
+      DeveloperModeService().addLog('❌ [MusicService] Spotify异常: $e');
       return null;
     }
   }

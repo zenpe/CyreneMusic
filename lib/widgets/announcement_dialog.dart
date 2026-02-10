@@ -13,7 +13,7 @@ class AnnouncementDialog {
     final themeManager = ThemeManager();
 
     // 根据平台和主题框架选择合适的弹窗样式
-    if (Platform.isWindows && themeManager.isFluentFramework) {
+    if (themeManager.isDesktopFluentUI) {
       await _showFluentDialog(context, announcement);
     } else if ((Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework) {
       await _showCupertinoDialog(context, announcement);

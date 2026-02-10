@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/models/toplist.dart';
@@ -100,14 +100,18 @@ void _showToplistDetailSidebarFluent(BuildContext context, Toplist toplist) {
             ),
           ),
 
-          // 标题栏拖动区 (Overlay)
-          if (Platform.isWindows)
             Positioned(
               top: 0,
               left: 0,
               right: 0,
               height: 40,
-              child: MoveWindow(child: Container(color: Colors.transparent)),
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onPanStart: (details) {
+                  windowManager.startDragging();
+                },
+                child: Container(color: Colors.transparent),
+              ),
             ),
         ],
       );
@@ -161,13 +165,16 @@ void _showToplistDetailSidebar(BuildContext context, Toplist toplist) {
             ),
           ),
           // Windows 标题栏可拖动区域（覆盖在模糊层上方）
-          if (Platform.isWindows)
             Positioned(
               top: 0,
               left: 0,
               right: 0,
               height: 48, // 标题栏高度
-              child: MoveWindow(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onPanStart: (details) {
+                  windowManager.startDragging();
+                },
                 child: Container(
                   color: Colors.transparent,
                 ),

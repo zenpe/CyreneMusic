@@ -23,7 +23,7 @@ class LyricSettings extends StatelessWidget {
       return const SizedBox.shrink();
     }
     
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     
     if (isFluentUI) {
       return _buildFluentUI(context);

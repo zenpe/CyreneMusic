@@ -514,6 +514,8 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
         return '酷我';
       case MusicSource.navidrome:
         return 'Navidrome';
+      case MusicSource.spotify:
+        return 'Spotify';
       case MusicSource.local:
         return '本地';
     }
@@ -1298,8 +1300,10 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
         return '酷我';
       case MusicSource.navidrome:
         return 'Navidrome';
-      case MusicSource.local:
+      case MusicSource.spotify:
+        return 'Spotify';      case MusicSource.local:
         return '本地';
     }
   }
 }
+

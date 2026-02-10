@@ -63,7 +63,7 @@ class LyricSettingsContent extends StatefulWidget {
 class _LyricSettingsContentState extends State<LyricSettingsContent> {
   @override
   Widget build(BuildContext context) {
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = (Platform.isWindows || Platform.isMacOS || Platform.isLinux) && ThemeManager().isFluentFramework;
     
     if (isFluentUI) {
       return _buildFluentUI(context);

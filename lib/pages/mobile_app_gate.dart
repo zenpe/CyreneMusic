@@ -50,6 +50,7 @@ class _MobileAppGateState extends State<MobileAppGate> {
     final isNavidromeActive = audioSourceService.isNavidromeActive;
     final isLoggedIn = AuthService().isLoggedIn;
     final isTermsAccepted = PersistentStorageService().getBool('terms_accepted') ?? false;
+    final isLocalMode = PersistentStorageService().enableLocalMode;
 
     if (isNavidromeActive) {
       if (isConfigured && isTermsAccepted) {
@@ -58,8 +59,8 @@ class _MobileAppGateState extends State<MobileAppGate> {
       return const NavidromeSetupPage();
     }
 
-    // 音源配置、登录以及协议确认都完成后，显示主布局
-    if (isConfigured && isLoggedIn && isTermsAccepted) {
+    // 音源配置、登录以及协议确认都完成后，显示主布局；或者开启了本地模式且已确认协议
+    if ((isConfigured && isLoggedIn && isTermsAccepted) || (isLocalMode && isTermsAccepted)) {
       return const MainLayout();
     }
 
@@ -67,3 +68,4 @@ class _MobileAppGateState extends State<MobileAppGate> {
     return const MobileSetupPage();
   }
 }
+

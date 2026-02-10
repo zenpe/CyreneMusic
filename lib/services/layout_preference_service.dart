@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -88,12 +88,13 @@ class LayoutPreferenceService extends ChangeNotifier {
         print('🖥️ [LayoutPreference] 调整窗口为桌面尺寸: ${desktopSize.width}x${desktopSize.height}');
         
         // 先设置最小尺寸，确保新尺寸不会被限制
-        appWindow.minSize = minSize;
+        // 先设置最小尺寸，确保新尺寸不会被限制
+        windowManager.setMinimumSize(minSize);
         
         // 稍作延迟，确保最小尺寸设置生效
         Future.delayed(const Duration(milliseconds: 50), () {
-          appWindow.size = desktopSize;
-          appWindow.alignment = Alignment.center;
+          windowManager.setSize(desktopSize);
+          windowManager.center();
           print('✅ [LayoutPreference] 桌面窗口大小设置完成');
         });
       } else {
@@ -104,12 +105,12 @@ class LayoutPreferenceService extends ChangeNotifier {
         print('📱 [LayoutPreference] 调整窗口为移动尺寸: ${mobileSize.width}x${mobileSize.height}');
         
         // 先设置更小的最小尺寸，允许窄窗口
-        appWindow.minSize = minSize;
+        windowManager.setMinimumSize(minSize);
         
         // 稍作延迟，确保最小尺寸设置生效
         Future.delayed(const Duration(milliseconds: 50), () {
-          appWindow.size = mobileSize;
-          appWindow.alignment = Alignment.center;
+          windowManager.setSize(mobileSize);
+          windowManager.center();
           print('✅ [LayoutPreference] 移动窗口大小设置完成');
         });
       }

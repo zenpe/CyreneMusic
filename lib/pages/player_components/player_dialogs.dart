@@ -11,7 +11,7 @@ import '../../utils/theme_manager.dart';
 class PlayerDialogs {
   /// 显示睡眠定时器对话框
   static void showSleepTimer(BuildContext context) {
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     
     if (isFluentUI) {
       fluent.showDialog(
@@ -146,7 +146,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     final timer = SleepTimerService();
 
     if (isFluentUI) {

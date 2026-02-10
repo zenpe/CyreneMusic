@@ -15,6 +15,47 @@ import '../pages/auth/auth_page.dart';
 import '../utils/theme_manager.dart';
 import 'track_action_menu.dart';
 
+/// 平台配色映射 - 使用品牌相关色系的小球代替文字
+/// 用于规避直接显示平台名称的风险
+Color _getPlatformDotColor(String platformCode, Brightness brightness) {
+  switch (platformCode) {
+    case 'netease':
+      return const Color(0xFFE72D2D); // 红色
+    case 'qq':
+      return const Color(0xFF31C27C); // 绿色
+    case 'kugou':
+      return const Color(0xFF00A9FF); // 蓝色
+    case 'kuwo':
+      return const Color(0xFFFFD800); // 黄色
+    case 'apple':
+      return brightness == Brightness.dark ? Colors.white : Colors.black;
+    case 'spotify':
+      return const Color(0xFF1DB954); // Spotify 绿色
+    default:
+      return brightness == Brightness.dark ? Colors.white70 : Colors.black54;
+  }
+}
+
+/// 判断是否为平台tab（非歌手/歌曲等功能tab）
+bool _isPlatformTab(String tab) {
+  return tab == 'netease' || tab == 'qq' || tab == 'kugou' || 
+         tab == 'kuwo' || tab == 'apple' || tab == 'spotify' ||
+         tab.contains('网易云') || tab.contains('QQ') || tab.contains('酷狗') ||
+         tab.contains('酷我') || tab.contains('Apple') || tab.contains('Spotify');
+}
+
+/// 从显示名称获取平台代码
+String _getPlatformCodeFromLabel(String label) {
+  if (label.contains('网易云')) return 'netease';
+  if (label.contains('Apple')) return 'apple';
+  if (label.contains('QQ')) return 'qq';
+  if (label.contains('酷狗')) return 'kugou';
+  if (label.contains('酷我')) return 'kuwo';
+  if (label.contains('Spotify')) return 'spotify';
+  return '';
+}
+
+
 /// 搜索组件（内嵌版本）
 class SearchWidget extends StatefulWidget {
   final VoidCallback onClose;
@@ -28,6 +69,7 @@ class SearchWidget extends StatefulWidget {
 
 
 /// Material Design Expressive 风格的 Tab 栏
+/// 平台tab使用彩色小球，功能tab（如歌手）保留文字
 class _SearchExpressiveTabs extends StatelessWidget {
   final List<String> tabs;
   final int currentIndex;
@@ -42,15 +84,15 @@ class _SearchExpressiveTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final brightness = Theme.of(context).brightness;
     
     // 品牌配色映射
     Color getPlatformColor(String tab) {
-      if (tab.contains('网易云')) return const Color(0xFFE72D2D);
-      if (tab.contains('Apple')) return Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black;
-      if (tab.contains('QQ')) return const Color(0xFF31C27C);
-      if (tab.contains('酷狗')) return const Color(0xFF00A9FF);
-      if (tab.contains('酷我')) return const Color(0xFFFFD800);
-      if (tab.contains('歌手')) return cs.primary;
+      final code = _getPlatformCodeFromLabel(tab);
+      if (code.isNotEmpty) {
+        return _getPlatformDotColor(code, brightness);
+      }
+      // 非平台tab使用主题色
       return cs.primary;
     }
 
@@ -89,6 +131,7 @@ class _SearchExpressiveTabs extends StatelessWidget {
                 children: List.generate(count, (i) {
                   final selected = i == currentIndex;
                   final platformColor = getPlatformColor(tabs[i]);
+                  final isPlatform = _isPlatformTab(tabs[i]);
                   
                   return Expanded(
                     child: GestureDetector(
@@ -96,17 +139,37 @@ class _SearchExpressiveTabs extends StatelessWidget {
                       behavior: HitTestBehavior.opaque,
                       child: Container(
                         alignment: Alignment.center,
-                        child: AnimatedDefaultTextStyle(
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOutCubic,
-                          style: TextStyle(
-                            color: selected ? (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87) : cs.onSurface.withOpacity(0.5),
-                            fontSize: selected ? 19 : 15,
-                            fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
-                            letterSpacing: selected ? -0.2 : 0,
-                          ),
-                          child: Text(tabs[i]),
-                        ),
+                        child: isPlatform 
+                          // 平台tab：显示彩色小球
+                          ? AnimatedContainer(
+                              duration: const Duration(milliseconds: 250),
+                              curve: Curves.easeOutCubic,
+                              width: selected ? 20 : 14,
+                              height: selected ? 20 : 14,
+                              decoration: BoxDecoration(
+                                color: platformColor.withOpacity(selected ? 1.0 : 0.5),
+                                shape: BoxShape.circle,
+                                boxShadow: selected ? [
+                                  BoxShadow(
+                                    color: platformColor.withOpacity(0.4),
+                                    blurRadius: 8,
+                                    spreadRadius: 1,
+                                  ),
+                                ] : null,
+                              ),
+                            )
+                          // 功能tab（如歌手）：显示文字
+                          : AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 250),
+                              curve: Curves.easeOutCubic,
+                              style: TextStyle(
+                                color: selected ? (brightness == Brightness.dark ? Colors.white : Colors.black87) : cs.onSurface.withOpacity(0.5),
+                                fontSize: selected ? 19 : 15,
+                                fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
+                                letterSpacing: selected ? -0.2 : 0,
+                              ),
+                              child: Text(tabs[i]),
+                            ),
                       ),
                     ),
                   );
@@ -120,256 +183,16 @@ class _SearchExpressiveTabs extends StatelessWidget {
   }
 }
 
-/// Win11 风格的 Pivot Tabs（带平滑滑动指示器）
-class _FluentPivotTabs extends StatefulWidget {
-  final List<String> tabs;
-  final int currentIndex;
-  final ValueChanged<int> onChanged;
-  final Color accentColor;
-  final Color selectedTextColor;
-  final Color unselectedTextColor;
 
-  const _FluentPivotTabs({
-    required this.tabs,
-    required this.currentIndex,
-    required this.onChanged,
-    required this.accentColor,
-    required this.selectedTextColor,
-    required this.unselectedTextColor,
-  });
 
-  @override
-  State<_FluentPivotTabs> createState() => _FluentPivotTabsState();
-}
 
-class _FluentPivotTabsState extends State<_FluentPivotTabs> {
-  int _hoveredIndex = -1;
-  
-  // 每个 tab 的固定配置
-  static const double _tabHorizontalPadding = 12.0;
-  static const double _tabSpacing = 8.0;
-  static const double _indicatorWidth = 20.0;
-  static const double _indicatorHeight = 2.5;
 
-  @override
-  Widget build(BuildContext context) {
-    if (widget.tabs.isEmpty) {
-      return const SizedBox.shrink();
-    }
 
-    final isLight = fluent.FluentTheme.of(context).brightness == Brightness.light;
-    
-    // 安全处理索引
-    int safeIndex = widget.currentIndex;
-    if (safeIndex < 0) safeIndex = 0;
-    if (safeIndex >= widget.tabs.length) safeIndex = widget.tabs.length - 1;
 
-    return SizedBox(
-      height: 40,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // 使用一行布局，指示器位置通过精确计算确定
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // Tab 标签行
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: List.generate(widget.tabs.length, (i) {
-                  final selected = i == safeIndex;
-                  final isHovered = i == _hoveredIndex;
 
-                  // 计算文字颜色
-                  Color textColor;
-                  if (selected) {
-                    textColor = widget.selectedTextColor;
-                  } else if (isHovered) {
-                    textColor = widget.selectedTextColor.withOpacity(0.8);
-                  } else {
-                    textColor = widget.unselectedTextColor;
-                  }
-
-                  // hover 背景色
-                  final hoverBg = isHovered && !selected
-                      ? (isLight ? Colors.black.withOpacity(0.04) : Colors.white.withOpacity(0.04))
-                      : Colors.transparent;
-
-                  return Padding(
-                    padding: EdgeInsets.only(right: i < widget.tabs.length - 1 ? _tabSpacing : 0),
-                    child: MouseRegion(
-                      onEnter: (_) => setState(() => _hoveredIndex = i),
-                      onExit: (_) => setState(() => _hoveredIndex = -1),
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => widget.onChanged(i),
-                        behavior: HitTestBehavior.opaque,
-                        child: _FluentPivotTabLabel(
-                          label: widget.tabs[i],
-                          textColor: textColor,
-                          isSelected: selected,
-                          hoverBg: hoverBg,
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ),
-              
-              // 使用 TweenAnimationBuilder 实现平滑滑动的下划线指示器
-              TweenAnimationBuilder<double>(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOutCubic,
-                tween: Tween<double>(end: safeIndex.toDouble()),
-                builder: (context, animatedIndex, child) {
-                  // 计算指示器的 X 位置
-                  // 需要测量每个 tab 的实际宽度来正确计算位置
-                  return _FluentPivotIndicator(
-                    tabs: widget.tabs,
-                    animatedIndex: animatedIndex,
-                    indicatorWidth: _indicatorWidth,
-                    indicatorHeight: _indicatorHeight,
-                    tabHorizontalPadding: _tabHorizontalPadding,
-                    tabSpacing: _tabSpacing,
-                    accentColor: widget.accentColor,
-                  );
-                },
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// Tab 标签文字组件
-class _FluentPivotTabLabel extends StatelessWidget {
-  final String label;
-  final Color textColor;
-  final bool isSelected;
-  final Color hoverBg;
-
-  const _FluentPivotTabLabel({
-    required this.label,
-    required this.textColor,
-    required this.isSelected,
-    required this.hoverBg,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: hoverBg,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Center(
-        child: AnimatedDefaultTextStyle(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-          style: TextStyle(
-            color: textColor,
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-            fontFamily: 'Microsoft YaHei',
-          ),
-          child: Text(label),
-        ),
-      ),
-    );
-  }
-}
 
 /// 滑动指示器组件 - 通过测量文字宽度来计算位置
-class _FluentPivotIndicator extends StatelessWidget {
-  final List<String> tabs;
-  final double animatedIndex;
-  final double indicatorWidth;
-  final double indicatorHeight;
-  final double tabHorizontalPadding;
-  final double tabSpacing;
-  final Color accentColor;
 
-  const _FluentPivotIndicator({
-    required this.tabs,
-    required this.animatedIndex,
-    required this.indicatorWidth,
-    required this.indicatorHeight,
-    required this.tabHorizontalPadding,
-    required this.tabSpacing,
-    required this.accentColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // 使用 CustomPaint 或者计算方式来确定位置
-    // 这里我们需要测量每个 tab 的文字宽度
-    
-    final textStyle = TextStyle(
-      fontSize: 13,
-      fontWeight: FontWeight.w600,
-      fontFamily: 'Microsoft YaHei',
-    );
-    
-    // 计算每个 tab 的宽度（文字宽度 + padding）
-    List<double> tabWidths = [];
-    for (final tab in tabs) {
-      final textPainter = TextPainter(
-        text: TextSpan(text: tab, style: textStyle),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tabWidths.add(textPainter.width + tabHorizontalPadding * 2);
-    }
-    
-    // 计算当前和目标 tab 的中心位置
-    double getTabCenterX(double index) {
-      double x = 0;
-      int floorIndex = index.floor();
-      double fraction = index - floorIndex;
-      
-      // 累加前面所有 tab 的宽度
-      for (int i = 0; i < floorIndex && i < tabWidths.length; i++) {
-        x += tabWidths[i] + tabSpacing;
-      }
-      
-      // 当前 tab 的中心
-      if (floorIndex < tabWidths.length) {
-        double currentTabCenter = tabWidths[floorIndex] / 2;
-        
-        // 如果有小数部分，则进行插值
-        if (fraction > 0 && floorIndex + 1 < tabWidths.length) {
-          double nextTabStart = x + tabWidths[floorIndex] + tabSpacing;
-          double nextTabCenter = nextTabStart + tabWidths[floorIndex + 1] / 2;
-          double currentCenter = x + currentTabCenter;
-          return currentCenter + (nextTabCenter - currentCenter) * fraction;
-        }
-        
-        return x + currentTabCenter;
-      }
-      
-      return x;
-    }
-    
-    final centerX = getTabCenterX(animatedIndex);
-    final indicatorLeft = centerX - indicatorWidth / 2;
-    
-    return Positioned(
-      left: indicatorLeft,
-      bottom: 4,
-      child: Container(
-        width: indicatorWidth,
-        height: indicatorHeight,
-        decoration: BoxDecoration(
-          color: accentColor,
-          borderRadius: BorderRadius.circular(indicatorHeight / 2),
-        ),
-      ),
-    );
-  }
-}
 
 class _SearchWidgetState extends State<SearchWidget> {
   final TextEditingController _searchController = TextEditingController();
@@ -870,7 +693,8 @@ class _SearchWidgetState extends State<SearchWidget> {
     final isMergeEnabled = DeveloperModeService().isSearchResultMergeEnabled;
     final tabs = isMergeEnabled 
         ? ['歌曲', '歌手'] 
-        : ['网易云', 'Apple', 'QQ音乐', '酷狗', '酷我', '歌手'];
+        : ['网易云', 'Apple', 'Spotify', 'QQ音乐', '酷狗', '酷我', '歌手'];
+    final brightness = isDark ? Brightness.dark : Brightness.light;
 
     return Column(
       children: [
@@ -884,11 +708,25 @@ class _SearchWidgetState extends State<SearchWidget> {
               children: {
                 for (int i = 0; i < tabs.length; i++)
                   i: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(
-                      tabs[i],
-                      style: const TextStyle(fontSize: 13),
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    child: _isPlatformTab(tabs[i])
+                      // 平台tab：显示彩色小球
+                      ? Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: _getPlatformDotColor(
+                              _getPlatformCodeFromLabel(tabs[i]),
+                              brightness,
+                            ),
+                            shape: BoxShape.circle,
+                          ),
+                        )
+                      // 功能tab：显示文字
+                      : Text(
+                          tabs[i],
+                          style: const TextStyle(fontSize: 13),
+                        ),
                   ),
               },
               onValueChanged: (value) {
@@ -896,6 +734,7 @@ class _SearchWidgetState extends State<SearchWidget> {
                   _handleTabChanged(value);
                 }
               },
+
             ),
           ),
         ),
@@ -933,59 +772,66 @@ class _SearchWidgetState extends State<SearchWidget> {
         child: _buildCupertinoArtistResults(isDark),
       );
     } else {
-      switch (_currentTabIndex) {
-        case 0:
-          return Container(
-            key: const ValueKey('cupertino_netease_tab'),
-            child: _buildCupertinoSinglePlatformList(
-              searchResult.neteaseResults,
-              searchResult.neteaseLoading,
-              isDark,
-            ),
-          );
-        case 1:
-          return Container(
-            key: const ValueKey('cupertino_apple_tab'),
-            child: _buildCupertinoSinglePlatformList(
-              searchResult.appleResults,
-              searchResult.appleLoading,
-              isDark,
-            ),
-          );
-        case 2:
-          return Container(
-            key: const ValueKey('cupertino_qq_tab'),
-            child: _buildCupertinoSinglePlatformList(
-              searchResult.qqResults,
-              searchResult.qqLoading,
-              isDark,
-            ),
-          );
-        case 3:
-          return Container(
-            key: const ValueKey('cupertino_kugou_tab'),
-            child: _buildCupertinoSinglePlatformList(
-              searchResult.kugouResults,
-              searchResult.kugouLoading,
-              isDark,
-            ),
-          );
-        case 4:
-          return Container(
-            key: const ValueKey('cupertino_kuwo_tab'),
-            child: _buildCupertinoSinglePlatformList(
-              searchResult.kuwoResults,
-              searchResult.kuwoLoading,
-              isDark,
-            ),
-          );
-        case 5:
-        default:
-          return Container(
-            key: const ValueKey('cupertino_artists_tab'),
-            child: _buildCupertinoArtistResults(isDark),
-          );
+      // 分平台模式：根据当前音源支持的平台动态显示
+      final platformCodes = _getSupportedPlatformCodes();
+      
+      // 如果 _currentTabIndex 在平台范围内，显示对应平台的结果
+      if (_currentTabIndex < platformCodes.length) {
+        final platform = platformCodes[_currentTabIndex];
+        
+        List<Track> results;
+        bool isLoading;
+        String valueKey;
+        
+        switch (platform) {
+          case 'netease':
+            results = searchResult.neteaseResults;
+            isLoading = searchResult.neteaseLoading;
+            valueKey = 'cupertino_netease_tab';
+            break;
+          case 'apple':
+            results = searchResult.appleResults;
+            isLoading = searchResult.appleLoading;
+            valueKey = 'cupertino_apple_tab';
+            break;
+          case 'qq':
+            results = searchResult.qqResults;
+            isLoading = searchResult.qqLoading;
+            valueKey = 'cupertino_qq_tab';
+            break;
+          case 'kugou':
+            results = searchResult.kugouResults;
+            isLoading = searchResult.kugouLoading;
+            valueKey = 'cupertino_kugou_tab';
+            break;
+          case 'kuwo':
+            results = searchResult.kuwoResults;
+            isLoading = searchResult.kuwoLoading;
+            valueKey = 'cupertino_kuwo_tab';
+            break;
+          case 'spotify':
+            results = searchResult.spotifyResults;
+            isLoading = searchResult.spotifyLoading;
+            valueKey = 'cupertino_spotify_tab';
+            break;
+          default:
+            return Container(
+              key: const ValueKey('cupertino_artists_tab'),
+              child: _buildCupertinoArtistResults(isDark),
+            );
+        }
+        
+        return Container(
+          key: ValueKey(valueKey),
+          child: _buildCupertinoSinglePlatformList(results, isLoading, isDark),
+        );
       }
+      
+      // 最后一个 tab 是歌手
+      return Container(
+        key: const ValueKey('cupertino_artists_tab'),
+        child: _buildCupertinoArtistResults(isDark),
+      );
     }
   }
 
@@ -1049,7 +895,8 @@ class _SearchWidgetState extends State<SearchWidget> {
         result.appleLoading ||
         result.qqLoading || 
         result.kugouLoading || 
-        result.kuwoLoading;
+        result.kuwoLoading ||
+        result.spotifyLoading;
     final mergedResults = _searchService.getMergedResults();
 
     if (result.allCompleted && mergedResults.isEmpty) {
@@ -2133,25 +1980,6 @@ class _SearchWidgetState extends State<SearchWidget> {
     );
   }
 
-  Widget _buildFluentPivotBar(BuildContext context, List<String> tabs) {
-    final fluentTheme = fluent.FluentTheme.of(context);
-    final isLight = fluentTheme.brightness == Brightness.light;
-    final accentColor = fluentTheme.accentColor;
-    final textColor = fluentTheme.typography.body?.color ??
-        (isLight ? Colors.black : Colors.white);
-    final subtleTextColor = isLight 
-        ? Colors.black.withOpacity(0.6) 
-        : Colors.white.withOpacity(0.6);
-    
-    return _FluentPivotTabs(
-      tabs: tabs,
-      currentIndex: _currentTabIndex,
-      onChanged: _handleTabChanged,
-      accentColor: accentColor,
-      selectedTextColor: textColor,
-      unselectedTextColor: subtleTextColor,
-    );
-  }
 
   /// 获取当前平台 tab 列表（根据音源支持情况动态生成）
   List<String> _getPlatformTabs() {
@@ -2163,13 +1991,14 @@ class _SearchWidgetState extends State<SearchWidget> {
       const platformLabels = {
         'netease': '网易云',
         'apple': 'Apple',
+        'spotify': 'Spotify',
         'qq': 'QQ音乐',
         'kugou': '酷狗',
         'kuwo': '酷我',
       };
       
       // 按固定顺序添加支持的平台
-      for (final platform in ['netease', 'apple', 'qq', 'kugou', 'kuwo']) {
+      for (final platform in ['netease', 'apple', 'spotify', 'qq', 'kugou', 'kuwo']) {
         if (supportedPlatforms.contains(platform)) {
           tabs.add(platformLabels[platform]!);
         }
@@ -2195,7 +2024,7 @@ class _SearchWidgetState extends State<SearchWidget> {
       final supportedPlatforms = _searchService.currentSupportedPlatforms;
       final codes = <String>[];
       
-      for (final platform in ['netease', 'apple', 'qq', 'kugou', 'kuwo']) {
+      for (final platform in ['netease', 'apple', 'spotify', 'qq', 'kugou', 'kuwo']) {
         if (supportedPlatforms.contains(platform)) {
           codes.add(platform);
         }
@@ -2226,15 +2055,19 @@ class _SearchWidgetState extends State<SearchWidget> {
 
     if (_isFluent) {
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.only(top: 8, bottom: 8),
-            // 让 Tabs 居中显示，或者根据设计需求改为 Alignment.centerLeft
-            alignment: Alignment.center, 
-            child: _buildFluentPivotBar(context, tabs),
+          Padding(
+            padding: padding,
+            child: _FluentPivotTabs(
+              items: tabs.map((t) => _buildFluentTabHeader(t)).toList(),
+              selectedIndex: _currentTabIndex.clamp(0, tabs.length - 1),
+              onChanged: _handleTabChanged,
+            ),
           ),
+          const SizedBox(height: 8),
           Expanded(
-            child: _buildActiveTabView(context, searchResult),
+            child: _buildTabContent(_currentTabIndex, searchResult),
           ),
         ],
       );
@@ -2261,6 +2094,35 @@ class _SearchWidgetState extends State<SearchWidget> {
         ),
       ],
     );
+  }
+
+  Widget _buildFluentTabHeader(String label) {
+    if (_isPlatformTab(label)) {
+      final platformCode = _getPlatformCodeFromLabel(label);
+      final brightness = fluent.FluentTheme.of(context).brightness;
+      final dotColor = _getPlatformDotColor(platformCode, brightness);
+      
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: dotColor,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: dotColor.withOpacity(0.3),
+                blurRadius: 4,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    return Text(label);
   }
 
   Widget _buildActiveTabView(
@@ -2332,6 +2194,11 @@ class _SearchWidgetState extends State<SearchWidget> {
             results = searchResult.kuwoResults;
             isLoading = searchResult.kuwoLoading;
             valueKey = 'kuwo_tab';
+            break;
+          case 'spotify':
+            results = searchResult.spotifyResults;
+            isLoading = searchResult.spotifyLoading;
+            valueKey = 'spotify_tab';
             break;
           default:
             return Container(
@@ -2685,7 +2552,8 @@ class _SearchWidgetState extends State<SearchWidget> {
         result.appleLoading ||
         result.qqLoading ||
         result.kugouLoading ||
-        result.kuwoLoading;
+        result.kuwoLoading ||
+        result.spotifyLoading;
 
     // 获取合并后的结果
     final mergedResults = _searchService.getMergedResults();
@@ -3453,4 +3321,94 @@ class _SearchWidgetState extends State<SearchWidget> {
       ),
     );
   }
+  bool _isPlatformTab(String label) {
+    return ['网易云', 'Apple', 'Spotify', 'QQ音乐', '酷狗', '酷我'].contains(label);
+  }
+
+  String _getPlatformCodeFromLabel(String label) {
+    switch (label) {
+      case '网易云': return 'netease';
+      case 'Apple': return 'apple';
+      case 'Spotify': return 'spotify';
+      case 'QQ音乐': return 'qq';
+      case '酷狗': return 'kugou';
+      case '酷我': return 'kuwo';
+      default: return 'netease';
+    }
+  }
+
+  Color _getPlatformDotColor(String platformCode, Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    switch (platformCode) {
+      case 'netease': return isDark ? Colors.redAccent.shade100 : Colors.red;
+      case 'apple': return const Color(0xFFFF2D55);
+      case 'spotify': return const Color(0xFF1DB954);
+      case 'qq': return const Color(0xFF00CFA5); // Slightly teal/bright green to distinguish from Spotify
+      case 'kugou': return isDark ? Colors.blueAccent.shade100 : Colors.blue;
+      case 'kuwo': return isDark ? Colors.orangeAccent.shade100 : Colors.orange;
+      default: return Colors.grey;
+    }
+  }
 }
+
+class _FluentPivotTabs extends StatelessWidget {
+  final List<Widget> items;
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
+
+  const _FluentPivotTabs({
+    Key? key,
+    required this.items,
+    required this.selectedIndex,
+    required this.onChanged,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = fluent.FluentTheme.of(context);
+    final accentColor = theme.accentColor;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List.generate(items.length, (index) {
+          final isSelected = index == selectedIndex;
+          return fluent.HoverButton(
+            onPressed: () => onChanged(index),
+            builder: (context, states) {
+              final isHovering = states.isHovering;
+              final textColor = isSelected 
+                  ? theme.typography.body?.color 
+                  : theme.typography.body?.color?.withOpacity(0.7);
+
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                margin: const EdgeInsets.only(right: 4),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  color: isHovering ? theme.resources.controlFillColorSecondary : Colors.transparent, 
+                  border: Border(
+                    bottom: BorderSide(
+                      color: isSelected ? accentColor : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                ),
+                child: DefaultTextStyle.merge(
+                  style: TextStyle(
+                    color: textColor,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                  child: items[index],
+                ),
+              );
+            },
+          );
+        }),
+      ),
+    );
+  }
+}
+

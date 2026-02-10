@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:window_manager/window_manager.dart';
 
 /// 自定义标题栏组件 - 仅用于 Windows 平台
@@ -15,57 +14,58 @@ class CustomTitleBar extends StatelessWidget {
     }
 
     final colorScheme = Theme.of(context).colorScheme;
-    
-    return WindowTitleBarBox(
-      child: Container(
-        height: 48, // 增加标题栏高度
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: MoveWindow(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Row(
-                    children: [
-                      // 使用应用图标
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: Image.asset(
-                          'assets/icons/tray_icon.png',
-                          width: 20,
-                          height: 20,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) {
-                            // 如果图标加载失败，显示默认图标
-                            return Icon(
-                              Icons.music_note,
-                              color: colorScheme.primary,
-                              size: 20,
-                            );
-                          },
-                        ),
+    return Container(
+      height: 48, // 增加标题栏高度
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onPanStart: (details) {
+                windowManager.startDragging();
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Row(
+                  children: [
+                    // 使用应用图标
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.asset(
+                        'assets/icons/tray_icon.png',
+                        width: 20,
+                        height: 20,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          // 如果图标加载失败，显示默认图标
+                          return Icon(
+                            Icons.music_note,
+                            color: colorScheme.primary,
+                            size: 20,
+                          );
+                        },
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Cyrene Music',
-                        style: TextStyle(
-                          color: colorScheme.onSurface,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Cyrene Music',
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            // 窗口控制按钮
-            _WindowButtons(),
-          ],
-        ),
+          ),
+          // 窗口控制按钮
+          _WindowButtons(),
+        ],
       ),
     );
   }
@@ -81,13 +81,25 @@ class _WindowButtons extends StatelessWidget {
       children: [
         _WindowButton(
           icon: Icons.remove,
-          onPressed: () => appWindow.minimize(),
+          onPressed: () => windowManager.minimize(),
           colorScheme: colorScheme,
         ),
-        _WindowButton(
-          icon: Icons.crop_square,
-          onPressed: () => appWindow.maximizeOrRestore(),
-          colorScheme: colorScheme,
+        FutureBuilder<bool>(
+          future: windowManager.isMaximized(),
+          builder: (context, snapshot) {
+            final isMaximized = snapshot.data ?? false;
+            return _WindowButton(
+              icon: isMaximized ? Icons.content_copy : Icons.crop_square,
+              onPressed: () async {
+                if (await windowManager.isMaximized()) {
+                  windowManager.unmaximize();
+                } else {
+                  windowManager.maximize();
+                }
+              },
+              colorScheme: colorScheme,
+            );
+          },
         ),
         _WindowButton(
           icon: Icons.close,

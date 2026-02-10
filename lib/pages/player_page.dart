@@ -294,6 +294,8 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
             _lyrics = LyricParser.parseQQLyric(
               song.lyric,
               translation: song.tlyric.isNotEmpty ? song.tlyric : null,
+              qrcLyric: song.qrc.isNotEmpty ? song.qrc : null,
+              qrcTranslation: song.qrcTrans.isNotEmpty ? song.qrcTrans : null,
             );
             break;
           case 'kugou':

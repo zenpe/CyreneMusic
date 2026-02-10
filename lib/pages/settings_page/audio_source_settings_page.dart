@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:http/http.dart' as http;
+import 'package:file_picker/file_picker.dart';
 import '../../widgets/material/material_settings_widgets.dart';
 import '../../services/audio_source_service.dart';
 
 import '../../services/lx_music_source_parser.dart';
 import '../../services/navidrome_session_service.dart';
+import '../../services/cyrene_config_service.dart';
 import '../../models/audio_source_config.dart';
 import '../../utils/theme_manager.dart';
 import '../../widgets/navidrome_config_form.dart';
@@ -469,20 +471,51 @@ class _AudioSourceSettingsContentState
                   '类型: ${config.type == AudioSourceType.lxmusic ? "洛雪音乐" : (config.type == AudioSourceType.tunehub ? "TuneHub" : "OmniParse")}',
                   style: theme.typography.caption,
                 ),
-                if (config.version.isNotEmpty)
-                  Text('版本: ${config.version}', style: theme.typography.caption),
+                if (config.version.isNotEmpty || config.author.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '${config.version.isNotEmpty ? "版本: ${config.version}" : ""}${config.version.isNotEmpty && config.author.isNotEmpty ? " • " : ""}${config.author.isNotEmpty ? "作者: ${config.author}" : ""}',
+                      style: theme.typography.caption?.copyWith(
+                        color: theme.resources.textFillColorSecondary,
+                      ),
+                    ),
+                  ),
+                if (config.description.isNotEmpty)
+                   Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      config.description,
+                      style: theme.typography.caption?.copyWith(
+                        color: theme.resources.textFillColorSecondary,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 const SizedBox(height: 4),
-                fluent.Tooltip(
-                  message: config.url,
-                  child: Text(
-                    config.url,
+                // OmniParse 类型隐藏 URL
+                if (config.type == AudioSourceType.omniparse)
+                  Text(
+                    '已配置 (URL 已隐藏)',
                     style: theme.typography.caption?.copyWith(
                       color: theme.resources.textFillColorSecondary,
+                      fontStyle: FontStyle.italic,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  )
+                else
+                  fluent.Tooltip(
+                    message: config.url,
+                    child: Text(
+                      config.url,
+                      style: theme.typography.caption?.copyWith(
+                        color: theme.resources.textFillColorSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
               ],
             ),
             Row(
@@ -1013,7 +1046,24 @@ class _AudioSourceSettingsContentState
                                 ],
                               ],
                             ),
-                            const SizedBox(height: 4),
+                            
+                            // 描述
+                            if (config.description.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                config.description,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: secondaryLabelColor.withValues(alpha: 0.8),
+                                  fontStyle: FontStyle.italic,
+                                  decoration: TextDecoration.none,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                            
+                            const SizedBox(height: 6),
                             
                             // 类型 + 版本
                             Row(
@@ -1480,7 +1530,7 @@ class _AudioSourceSettingsContentState
         ),
       ),
       title: config.name,
-      subtitle: '${_getSourceTypeName(config.type)} • ${isActive ? "当前使用" : "未开启"}',
+      subtitle: '${_getSourceTypeName(config.type)}${config.author.isNotEmpty ? " • ${config.author}" : ""}${config.version.isNotEmpty ? " • v${config.version}" : ""} • ${isActive ? "当前使用" : "未开启"}',
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1562,6 +1612,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
   final TextEditingController _lxScriptUrlController = TextEditingController();
   final TextEditingController _lxApiKeyController = TextEditingController();
   final TextEditingController _tuneHubApiKeyController = TextEditingController();
+  final TextEditingController _omniParseApiKeyController = TextEditingController();
   
   // Services
   final LxMusicSourceParser _lxParser = LxMusicSourceParser();
@@ -1595,6 +1646,8 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
         _lxApiKeyController.text = config.apiKey;
       } else if (config.type == AudioSourceType.tunehub) {
         _tuneHubApiKeyController.text = config.apiKey;
+      } else if (config.type == AudioSourceType.omniparse) {
+        _omniParseApiKeyController.text = config.apiKey;
       }
     } else {
       _selectedType = AudioSourceType.lxmusic;
@@ -1608,6 +1661,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
     _lxScriptUrlController.dispose();
     _lxApiKeyController.dispose();
     _tuneHubApiKeyController.dispose();
+    _omniParseApiKeyController.dispose();
     super.dispose();
   }
 
@@ -1774,10 +1828,13 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
       return;
     }
     
+    final apiKey = _omniParseApiKeyController.text.trim();
+    
     if (_isEditing) {
        final newConfig = widget.existingConfig!.copyWith(
         name: _nameController.text.isEmpty ? 'OmniParse' : _nameController.text,
         url: url,
+        apiKey: apiKey,
       );
       _audioSourceService.updateSource(newConfig);
     } else {
@@ -1786,9 +1843,56 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
             type: AudioSourceType.omniparse,
             name: _nameController.text.isEmpty ? 'OmniParse' : _nameController.text,
             url: url,
+            apiKey: apiKey,
           ));
     }
     Navigator.of(context).pop();
+  }
+
+  /// 导入 .cyrene 加密配置文件
+  Future<void> _importCyreneConfig() async {
+    try {
+      // 选择 .cyrene 文件
+      // 移动端不支持自定义扩展名过滤，使用 FileType.any
+      final isMobile = Platform.isAndroid || Platform.isIOS;
+      final result = await FilePicker.platform.pickFiles(
+        type: isMobile ? FileType.any : FileType.custom,
+        allowedExtensions: isMobile ? null : ['cyrene'],
+        allowMultiple: false,
+      );
+
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final file = result.files.first;
+      if (file.path == null) {
+        _setStatus('无法读取文件', isError: true);
+        return;
+      }
+
+      // 读取文件内容
+      final bytes = await File(file.path!).readAsBytes();
+
+      // 解密配置
+      final config = CyreneConfigService().decrypt(bytes);
+      if (config == null) {
+        _setStatus('配置文件无效或已损坏', isError: true);
+        return;
+      }
+
+      // 填充表单
+      setState(() {
+        _selectedType = AudioSourceType.omniparse;
+        _nameController.text = config.name;
+        _urlController.text = config.url;
+        _omniParseApiKeyController.text = config.apiKey;
+      });
+
+      _setStatus('配置已导入: ${config.name}');
+    } catch (e) {
+      _setStatus('导入失败: $e', isError: true);
+    }
   }
 
   void _setStatus(String? msg, {bool isError = false}) {
@@ -1879,7 +1983,35 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                    child: const Text('确认添加'),
                  ),
                ]
+            ] else if (_selectedType == AudioSourceType.omniparse) ...[
+               // OmniParse 只允许通过导入配置文件进行配置
+               const SizedBox(height: 16),
+               Center(
+                 child: Column(
+                   children: [
+                     const Icon(fluent.FluentIcons.shield_alert, size: 48),
+                     const SizedBox(height: 16),
+                     const Text(
+                       '为保护配置信息安全，OmniParse 音源\n只能通过导入配置文件进行配置',
+                       textAlign: TextAlign.center,
+                     ),
+                     const SizedBox(height: 24),
+                     fluent.FilledButton(
+                       onPressed: _importCyreneConfig,
+                       child: const Row(
+                         mainAxisSize: MainAxisSize.min,
+                         children: [
+                           Icon(fluent.FluentIcons.open_file, size: 16),
+                           SizedBox(width: 8),
+                           Text('导入 .cyrene 配置文件'),
+                         ],
+                       ),
+                     ),
+                   ],
+                 ),
+               ),
             ] else ...[
+               // TuneHub 配置
                fluent.InfoLabel(
                  label: '名称 (可选)',
                  child: fluent.TextBox(controller: _nameController, placeholder: '给音源起个名字'),
@@ -2457,8 +2589,43 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                             ),
                           ),
                         ],
+                      ] else if (_selectedType == AudioSourceType.omniparse) ...[
+                        // OmniParse 只允许通过导入配置文件进行配置
+                        const SizedBox(height: 48),
+                        Center(
+                          child: Column(
+                            children: [
+                              Icon(
+                                CupertinoIcons.lock_shield,
+                                size: 48,
+                                color: CupertinoColors.systemGrey,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                '为保护配置信息安全，OmniParse 音源\n只能通过导入配置文件进行配置',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  color: secondaryLabelColor,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              CupertinoButton.filled(
+                                onPressed: _importCyreneConfig,
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(CupertinoIcons.folder_open, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('导入 .cyrene 配置文件'),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ] else ...[
-                        // TuneHub / OmniParse 配置
+                        // TuneHub 配置
                         buildSectionHeader('基本信息'),
                         buildGroupedCard(
                           children: [
@@ -2500,9 +2667,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                             vertical: 8,
                           ),
                           child: Text(
-                            _selectedType == AudioSourceType.tunehub
-                                ? '请输入 TuneHub 服务器的 API 地址'
-                                : '请输入 OmniParse 服务的地址',
+                            '请输入 TuneHub 服务器的 API 地址',
                             style: TextStyle(
                               fontSize: 13,
                               color: secondaryLabelColor,
@@ -2635,7 +2800,36 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                     ),
                   ),
                 ]
+              ] else if (_selectedType == AudioSourceType.omniparse) ...[
+                // OmniParse 只允许通过导入配置文件进行配置
+                const SizedBox(height: 32),
+                Center(
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.security,
+                        size: 56,
+                        color: colorScheme.outline,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '为保护配置信息安全，OmniParse 音源\n只能通过导入配置文件进行配置',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      FilledButton.icon(
+                        onPressed: _importCyreneConfig,
+                        icon: const Icon(Icons.folder_open),
+                        label: const Text('导入 .cyrene 配置文件'),
+                      ),
+                    ],
+                  ),
+                ),
               ] else ...[
+                // TuneHub 配置
                  TextField(
                   controller: _nameController,
                   decoration: InputDecoration(

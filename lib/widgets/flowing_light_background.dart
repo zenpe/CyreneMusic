@@ -168,7 +168,7 @@ class _FlowingLightBackgroundState extends State<FlowingLightBackground> with Si
             },
           )
         else
-          Container(color: Colors.black26), // Placeholder
+          Container(color: Colors.grey[900]), // Placeholder - use opaque grey
 
         // Overlay Child
         if (widget.child != null) widget.child!,

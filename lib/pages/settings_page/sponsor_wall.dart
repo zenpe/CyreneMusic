@@ -16,6 +16,7 @@ class SponsorWall extends StatefulWidget {
 class _SponsorWallState extends State<SponsorWall> {
   List<Map<String, dynamic>> _sponsors = [];
   bool _loading = true;
+  bool _enabled = true; // 是否显示赞助墙
   String? _error;
 
   @override
@@ -53,16 +54,19 @@ class _SponsorWallState extends State<SponsorWall> {
       final result = await DonateService.getSponsorList();
       if (result['code'] == 200 && result['data'] != null) {
         final data = result['data'] as Map<String, dynamic>;
+        final enabled = data['enabled'] as bool? ?? true;
         final sponsors = data['sponsors'] as List<dynamic>?;
         
         if (sponsors != null) {
           setState(() {
+            _enabled = enabled;
             _sponsors = sponsors.cast<Map<String, dynamic>>();
             _loading = false;
           });
           print('[SponsorWall] 加载了 ${_sponsors.length} 位赞助用户');
         } else {
           setState(() {
+            _enabled = enabled;
             _sponsors = [];
             _loading = false;
           });
@@ -84,7 +88,12 @@ class _SponsorWallState extends State<SponsorWall> {
 
   @override
   Widget build(BuildContext context) {
-    final isFluentUI = Platform.isWindows && ThemeManager().isFluentFramework;
+    // 如果后端配置关闭了赞助墙，返回空组件
+    if (!_loading && !_enabled) {
+      return const SizedBox.shrink();
+    }
+    
+    final isFluentUI = ThemeManager().isDesktopFluentUI;
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
     
     if (isFluentUI) {

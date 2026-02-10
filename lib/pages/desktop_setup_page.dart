@@ -347,6 +347,19 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
               
               const SizedBox(height: 16),
               
+                fluent.HyperlinkButton(
+                  onPressed: () => _enterLocalMode(context),
+                  child: Text(
+                    '使用本地模式',
+                    style: TextStyle(
+                      color: theme.accentColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                
+              const SizedBox(height: 8),
+              
               // 跳过按钮
               if (showSkip)
                 fluent.HyperlinkButton(
@@ -994,6 +1007,8 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                     // 持久化协议确认为 true
                     final storage = PersistentStorageService();
                     await storage.setBool('terms_accepted', true);
+                    // 退出本地模式
+                    await storage.setEnableLocalMode(false);
                     
                     // 触发监听以切换 DesktopAppGate
                     AudioSourceService().notifyListeners();
@@ -1078,10 +1093,24 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
     );
   }
 
-  void _skipSetup() {
+  void _skipSetup() async {
     // 直接标记协议为已确认并跳到主界面
-    PersistentStorageService().setBool('terms_accepted', true);
+    final storage = PersistentStorageService();
+    await storage.setBool('terms_accepted', true);
+    // 退出本地模式
+    await storage.setEnableLocalMode(false);
+    
     // 通知跳过 - 触发状态更新来进入主应用
+    AudioSourceService().notifyListeners();
+    AuthService().notifyListeners();
+  }
+
+  void _enterLocalMode(BuildContext context) async {
+    final storage = PersistentStorageService();
+    await storage.setEnableLocalMode(true);
+    await storage.setBool('terms_accepted', true);
+    
+    // 通知应用状态变化以进入主界面
     AudioSourceService().notifyListeners();
     AuthService().notifyListeners();
   }

@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
+import '../services/audio_source_service.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -24,6 +26,8 @@ import '../utils/theme_manager.dart';
 import '../pages/auth/auth_page.dart';
 import '../services/auth_overlay_service.dart';
 import '../services/player_service.dart';
+import '../services/persistent_storage_service.dart';
+import '../pages/mobile_setup_page.dart';
 import '../widgets/global_watermark.dart';
 
 /// 主布局 - 包含侧边导航栏和内容区域
@@ -45,6 +49,15 @@ class _MainLayoutState extends State<MainLayout>
 
   // 页面列表
   List<Widget> get _pages {
+    final isLocalMode = PersistentStorageService().enableLocalMode;
+
+    if (isLocalMode) {
+      return [
+        const LocalPage(),
+        MobileSetupPage(), // 本地模式下的“设置”显示引导页
+      ];
+    }
+
     final pages = <Widget>[
       const HomePage(),
       const DiscoverPage(),
@@ -67,6 +80,9 @@ class _MainLayoutState extends State<MainLayout>
   int get _settingsIndex => _pages.indexWhere((w) => w is SettingsPage);
 
   Future<void> _openMoreBottomSheet(BuildContext context) async {
+    final isLocalMode = PersistentStorageService().enableLocalMode;
+    if (isLocalMode) return; // 本地模式下没有“更多”选项，因为只有 2 个 Tab
+
     await showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -150,6 +166,9 @@ class _MainLayoutState extends State<MainLayout>
     DeveloperModeService().addListener(_onDeveloperModeChanged);
     // 监听主题变化（包括移动端主题框架切换）
     ThemeManager().addListener(_onThemeChanged);
+    // 监听音源服务变化（用于本地模式切换）
+    AudioSourceService().addListener(_onThemeChanged); // 重用 _onThemeChanged 逻辑即可
+
 
     // 初始化系统主题色（在 build 完成后执行）
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -175,6 +194,7 @@ class _MainLayoutState extends State<MainLayout>
     PageVisibilityNotifier().removeListener(_onPageVisibilityNotifierChanged);
     DeveloperModeService().removeListener(_onDeveloperModeChanged);
     ThemeManager().removeListener(_onThemeChanged);
+    AudioSourceService().removeListener(_onThemeChanged);
     super.dispose();
   }
 
@@ -201,6 +221,7 @@ class _MainLayoutState extends State<MainLayout>
   }
 
   void _onThemeChanged() {
+    print('🎨 [MainLayout] _onThemeChanged called (Theme or AudioSource change)');
     if (mounted) {
       // 使用 addPostFrameCallback 避免在构建期间调用 setState
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -215,11 +236,13 @@ class _MainLayoutState extends State<MainLayout>
     if (mounted) {
       final newIndex = PageVisibilityNotifier().currentPageIndex;
       if (_selectedIndex != newIndex && newIndex < _pages.length) {
+        print('📡 [MainLayout] PageVisibilityNotifier triggered index: $newIndex (Current: $_selectedIndex)');
         // 使用 addPostFrameCallback 避免在构建期间调用 setState
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             setState(() {
               _selectedIndex = newIndex;
+              print('🔄 [MainLayout] _selectedIndex updated via Notifier to: $_selectedIndex');
             });
           }
         });
@@ -357,6 +380,7 @@ class _MainLayoutState extends State<MainLayout>
 
   @override
   Widget build(BuildContext context) {
+    print('🏗️ [MainLayout] build called. SelectedIndex: $_selectedIndex, LocalMode: ${PersistentStorageService().enableLocalMode}');
     // 根据平台选择不同的布局
     if (Platform.isAndroid || Platform.isIOS) {
       if (ThemeManager().isTablet) {
@@ -472,6 +496,9 @@ class _MainLayoutState extends State<MainLayout>
 
   /// 构建移动端布局（Android/iOS）
   Widget _buildMobileLayout(BuildContext context) {
+    final isLocalMode = PersistentStorageService().enableLocalMode;
+    print('📱 [MainLayout] Building Mobile Layout (LocalMode: $isLocalMode, SelectedIndex: $_selectedIndex)');
+    
     final colorScheme = Theme.of(context).colorScheme;
     final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
     final orientation = MediaQuery.of(context).orientation;
@@ -757,30 +784,43 @@ class _MainLayoutState extends State<MainLayout>
       return isLandscape ? 4 : 3; // 更多
     }
     
+    final isLocalMode = PersistentStorageService().enableLocalMode;
+
     // Tab 项目数据 - 使用自定义 SVG 图标
-    final List<_FloatingTabItem> tabItems = [
-      _FloatingTabItem(
-        svgAsset: 'assets/ui/FluentColorHome16.svg',
-        label: '首页',
-      ),
-      _FloatingTabItem(
-        svgAsset: 'assets/ui/FluentColorSearchSparkle16.svg',
-        label: '发现',
-      ),
-      _FloatingTabItem(
-        svgAsset: 'assets/ui/FluentColorPerson16.svg',
-        label: '我的',
-      ),
-      if (isLandscape)
-        _FloatingTabItem(
-          svgAsset: 'assets/ui/FluentColorHeart16.svg',
-          label: '支持',
-        ),
-      _FloatingTabItem(
-        svgAsset: 'assets/ui/FluentColorAppsList20.svg',
-        label: '更多',
-      ),
-    ];
+    final List<_FloatingTabItem> tabItems = isLocalMode
+        ? [
+            _FloatingTabItem(
+              svgAsset: 'assets/ui/FluentColorHistory16.svg',
+              label: '本地',
+            ),
+            _FloatingTabItem(
+              svgAsset: 'assets/ui/FluentColorSettings16.svg',
+              label: '退出本地',
+            ),
+          ]
+        : [
+            _FloatingTabItem(
+              svgAsset: 'assets/ui/FluentColorHome16.svg',
+              label: '首页',
+            ),
+            _FloatingTabItem(
+              svgAsset: 'assets/ui/FluentColorSearchSparkle16.svg',
+              label: '发现',
+            ),
+            _FloatingTabItem(
+              svgAsset: 'assets/ui/FluentColorPerson16.svg',
+              label: '我的',
+            ),
+            if (isLandscape)
+              _FloatingTabItem(
+                svgAsset: 'assets/ui/FluentColorHeart16.svg',
+                label: '支持',
+              ),
+            _FloatingTabItem(
+              svgAsset: 'assets/ui/FluentColorAppsList20.svg',
+              label: '更多',
+            ),
+          ];
     
     final int currentIndex = navSelectedIndex();
     
@@ -805,17 +845,38 @@ class _MainLayoutState extends State<MainLayout>
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () async {
+                  final isLocalMode = PersistentStorageService().enableLocalMode;
+                  if (isSelected) return;
+                  
+                  if (isLocalMode) {
+                    // 本地模式：0 -> 本地, 1 -> 退出本地(其实是 MobileSetupPage)
+                    setState(() {
+                      _selectedIndex = index;
+                    });
+                    PageVisibilityNotifier().setCurrentPage(index);
+                    return;
+                  }
+
+                  // 非本地模式：映射 Tab 索引到页面索引
                   final int moreTab = tabItems.length - 1;
                   if (index == moreTab) {
                     await _openCupertinoMoreSheet(context);
                     return;
                   }
-                  
-                  int targetPageIndex = _selectedIndex;
-                  if (index == 0) targetPageIndex = 0; // 首页
-                  if (index == 1) targetPageIndex = 1; // 发现
-                  if (index == 2) targetPageIndex = myIndex; // 我的
-                  if (isLandscape && index == 3) targetPageIndex = supportIndex; // 支持
+
+                  int targetPageIndex;
+                  if (index == 0) {
+                    targetPageIndex = 0; // 首页
+                  } else if (index == 1) {
+                    targetPageIndex = 1; // 发现
+                  } else if (index == 2) {
+                    targetPageIndex = myIndex; // 我的
+                  } else if (isLandscape && index == 3) {
+                    targetPageIndex = supportIndex; // 支持 (横屏下才有)
+                  } else {
+                    // 理论上不会走到这里，因为 moreTab 已经提前拦截了
+                    return;
+                  }
                   
                   setState(() {
                     _selectedIndex = targetPageIndex;
@@ -918,44 +979,61 @@ class _MainLayoutState extends State<MainLayout>
   }
 
   Widget _buildGlassBottomNavigationBar(BuildContext context) {
+    final isLocalMode = PersistentStorageService().enableLocalMode;
+    print('🎨 [MainLayout] Building Glass Bottom Navigation (LocalMode: $isLocalMode)');
     final orientation = MediaQuery.of(context).orientation;
     final bool useGlass = Platform.isAndroid || orientation == Orientation.portrait;
 
     final bool isLandscape = orientation == Orientation.landscape;
     final int supportIndex = _supportIndex;
     final int myIndex = _pages.indexWhere((w) => w is MyPage);
-
     // Build destinations: landscape adds Support tab before More
-    final List<NavigationDestination> destinations = [
-      const NavigationDestination(
-        icon: Icon(Icons.home_outlined),
-        selectedIcon: Icon(Icons.home),
-        label: '首页',
-      ),
-      const NavigationDestination(
-        icon: Icon(Icons.explore_outlined),
-        selectedIcon: Icon(Icons.explore),
-        label: '发现',
-      ),
-      const NavigationDestination(
-        icon: Icon(Icons.person_outlined),
-        selectedIcon: Icon(Icons.person),
-        label: '我的',
-      ),
-      if (isLandscape)
-        const NavigationDestination(
-          icon: Icon(Icons.favorite_outline),
-          selectedIcon: Icon(Icons.favorite),
-          label: '支持',
-        ),
-      const NavigationDestination(
-        icon: Icon(Icons.more_horiz),
-        selectedIcon: Icon(Icons.more_horiz),
-        label: '更多',
-      ),
-    ];
+    final List<NavigationDestination> destinations = isLocalMode
+        ? [
+            const NavigationDestination(
+              icon: Icon(Icons.folder_open_outlined),
+              selectedIcon: Icon(Icons.folder_open),
+              label: '本地',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
+              label: '设置',
+            ),
+          ]
+        : [
+            const NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: '首页',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.explore_outlined),
+              selectedIcon: Icon(Icons.explore),
+              label: '发现',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.person_outlined),
+              selectedIcon: Icon(Icons.person),
+              label: '我的',
+            ),
+            if (isLandscape)
+              const NavigationDestination(
+                icon: Icon(Icons.favorite_outline),
+                selectedIcon: Icon(Icons.favorite),
+                label: '支持',
+              ),
+            const NavigationDestination(
+              icon: Icon(Icons.more_horiz),
+              selectedIcon: Icon(Icons.more_horiz),
+              label: '更多',
+            ),
+          ];
 
     int navSelectedIndex() {
+      final isLocalMode = PersistentStorageService().enableLocalMode;
+      if (isLocalMode) return _selectedIndex;
+
       if (_selectedIndex == 0) return 0; // 首页
       if (_selectedIndex == 1) return 1; // 发现
       if (_selectedIndex == myIndex) return 2; // 我的
@@ -966,22 +1044,35 @@ class _MainLayoutState extends State<MainLayout>
     final baseNav = NavigationBar(
       selectedIndex: navSelectedIndex(),
       onDestinationSelected: (int tabIndex) async {
-        final int moreTab = destinations.length - 1;
-        if (tabIndex == moreTab) {
-          await _openMoreBottomSheet(context);
-          return;
+        final isLocalMode = PersistentStorageService().enableLocalMode;
+        print('🖱️ [MainLayout] NavigationBar tab selected: $tabIndex (LocalMode: $isLocalMode)');
+        
+        int targetIndex = tabIndex;
+        if (!isLocalMode) {
+          final int moreTab = destinations.length - 1;
+          if (tabIndex == moreTab) {
+            print('📑 [MainLayout] Opening "More" bottom sheet');
+            await _openMoreBottomSheet(context);
+            return;
+          }
+
+          // 修复索引映射：从标签索引映射回真实的页面索引
+          if (tabIndex == 0) {
+            targetIndex = 0;
+          } else if (tabIndex == 1) {
+            targetIndex = 1;
+          } else if (tabIndex == 2) {
+            targetIndex = myIndex;
+          } else if (isLandscape && tabIndex == 3) {
+            targetIndex = supportIndex;
+          }
         }
 
-        int targetPageIndex = _selectedIndex;
-        if (tabIndex == 0) targetPageIndex = 0; // 首页
-        if (tabIndex == 1) targetPageIndex = 1; // 发现
-        if (tabIndex == 2) targetPageIndex = myIndex; // 我的
-        if (isLandscape && tabIndex == 3) targetPageIndex = supportIndex; // 支持
-
         setState(() {
-          _selectedIndex = targetPageIndex;
+          _selectedIndex = targetIndex;
+          print('🔄 [MainLayout] _selectedIndex updated to: $_selectedIndex');
         });
-        PageVisibilityNotifier().setCurrentPage(targetPageIndex);
+        PageVisibilityNotifier().setCurrentPage(targetIndex);
       },
       destinations: destinations,
     );
@@ -1144,60 +1235,77 @@ class _MainLayoutState extends State<MainLayout>
                         child: NavigationDrawer(
                           selectedIndex: _selectedIndex,
                           onDestinationSelected: (int index) {
+                            final isLocalMode = PersistentStorageService().enableLocalMode;
+                            print('🖱️ [MainLayout] NavigationDrawer index selected: $index (LocalMode: $isLocalMode)');
+
                             // 如果点击的是设置按钮，触发开发者模式检测
-                            if (index == _settingsIndex) {
+                            if (!isLocalMode && index == _settingsIndex) {
                               DeveloperModeService().onSettingsClicked();
                             }
 
                             setState(() {
                               _selectedIndex = index;
+                              print('🔄 [MainLayout] _selectedIndex updated to: $_selectedIndex');
                             });
                             // 通知页面切换
                             PageVisibilityNotifier().setCurrentPage(index);
                           },
                           children: [
                             const SizedBox(height: 8),
-                            const NavigationDrawerDestination(
-                              icon: Icon(Icons.home_outlined),
-                              selectedIcon: Icon(Icons.home),
-                              label: Text('首页'),
-                            ),
-                            const NavigationDrawerDestination(
-                              icon: Icon(Icons.explore_outlined),
-                              selectedIcon: Icon(Icons.explore),
-                              label: Text('发现'),
-                            ),
-                            const NavigationDrawerDestination(
-                              icon: Icon(Icons.history_outlined),
-                              selectedIcon: Icon(Icons.history),
-                              label: Text('历史'),
-                            ),
-                            const NavigationDrawerDestination(
-                              icon: Icon(Icons.folder_open),
-                              selectedIcon: Icon(Icons.folder),
-                              label: Text('本地'),
-                            ),
-                            const NavigationDrawerDestination(
-                              icon: Icon(Icons.person_outlined),
-                              selectedIcon: Icon(Icons.person),
-                              label: Text('我的'),
-                            ),
-                            const NavigationDrawerDestination(
-                              icon: Icon(Icons.favorite_outline),
-                              selectedIcon: Icon(Icons.favorite),
-                              label: Text('支持'),
-                            ),
-                            const NavigationDrawerDestination(
-                              icon: Icon(Icons.settings_outlined),
-                              selectedIcon: Icon(Icons.settings),
-                              label: Text('设置'),
-                            ),
-                            if (DeveloperModeService().isDeveloperMode)
+                            if (PersistentStorageService().enableLocalMode) ...[
                               const NavigationDrawerDestination(
-                                icon: Icon(Icons.code),
-                                selectedIcon: Icon(Icons.code),
-                                label: Text('Dev'),
+                                icon: Icon(Icons.folder_open),
+                                selectedIcon: Icon(Icons.folder),
+                                label: Text('本地'),
                               ),
+                              const NavigationDrawerDestination(
+                                icon: Icon(Icons.settings_outlined),
+                                selectedIcon: Icon(Icons.settings),
+                                label: Text('本地设置'),
+                              ),
+                            ] else ...[
+                              const NavigationDrawerDestination(
+                                icon: Icon(Icons.home_outlined),
+                                selectedIcon: Icon(Icons.home),
+                                label: Text('首页'),
+                              ),
+                              const NavigationDrawerDestination(
+                                icon: Icon(Icons.explore_outlined),
+                                selectedIcon: Icon(Icons.explore),
+                                label: Text('发现'),
+                              ),
+                              const NavigationDrawerDestination(
+                                icon: Icon(Icons.history_outlined),
+                                selectedIcon: Icon(Icons.history),
+                                label: Text('历史'),
+                              ),
+                              const NavigationDrawerDestination(
+                                icon: Icon(Icons.folder_open),
+                                selectedIcon: Icon(Icons.folder),
+                                label: Text('本地'),
+                              ),
+                              const NavigationDrawerDestination(
+                                icon: Icon(Icons.person_outlined),
+                                selectedIcon: Icon(Icons.person),
+                                label: Text('我的'),
+                              ),
+                              const NavigationDrawerDestination(
+                                icon: Icon(Icons.favorite_outline),
+                                selectedIcon: Icon(Icons.favorite),
+                                label: Text('支持'),
+                              ),
+                              const NavigationDrawerDestination(
+                                icon: Icon(Icons.settings_outlined),
+                                selectedIcon: Icon(Icons.settings),
+                                label: Text('设置'),
+                              ),
+                              if (DeveloperModeService().isDeveloperMode)
+                                const NavigationDrawerDestination(
+                                  icon: Icon(Icons.code),
+                                  selectedIcon: Icon(Icons.code),
+                                  label: Text('开发者'),
+                                ),
+                            ],
                           ],
                         ),
                       ),
@@ -1209,45 +1317,59 @@ class _MainLayoutState extends State<MainLayout>
     );
   }
 
-  /// 折叠状态下仅显示图标的目的地列表
   Widget _buildCollapsedDestinations(ColorScheme colorScheme) {
-    final List<_CollapsedItem> items = [
-      _CollapsedItem(
-        icon: Icons.home_outlined,
-        selectedIcon: Icons.home,
-        label: '首页',
-      ),
-      _CollapsedItem(
-        icon: Icons.explore_outlined,
-        selectedIcon: Icons.explore,
-        label: '发现',
-      ),
-      _CollapsedItem(
-        icon: Icons.history_outlined,
-        selectedIcon: Icons.history,
-        label: '历史',
-      ),
-      _CollapsedItem(
-        icon: Icons.folder_open,
-        selectedIcon: Icons.folder,
-        label: '本地',
-      ),
-      _CollapsedItem(
-        icon: Icons.person_outlined,
-        selectedIcon: Icons.person,
-        label: '我的',
-      ),
-      _CollapsedItem(
-        icon: Icons.favorite_outline,
-        selectedIcon: Icons.favorite,
-        label: '支持',
-      ),
-      _CollapsedItem(
-        icon: Icons.settings_outlined,
-        selectedIcon: Icons.settings,
-        label: '设置',
-      ),
-    ];
+    final isLocalMode = PersistentStorageService().enableLocalMode;
+    
+    final List<_CollapsedItem> items = isLocalMode
+        ? [
+            _CollapsedItem(
+              icon: Icons.folder_open,
+              selectedIcon: Icons.folder,
+              label: '本地',
+            ),
+            _CollapsedItem(
+              icon: Icons.settings_outlined,
+              selectedIcon: Icons.settings,
+              label: '本地设置',
+            ),
+          ]
+        : [
+            _CollapsedItem(
+              icon: Icons.home_outlined,
+              selectedIcon: Icons.home,
+              label: '首页',
+            ),
+            _CollapsedItem(
+              icon: Icons.explore_outlined,
+              selectedIcon: Icons.explore,
+              label: '发现',
+            ),
+            _CollapsedItem(
+              icon: Icons.history_outlined,
+              selectedIcon: Icons.history,
+              label: '历史',
+            ),
+            _CollapsedItem(
+              icon: Icons.folder_open,
+              selectedIcon: Icons.folder,
+              label: '本地',
+            ),
+            _CollapsedItem(
+              icon: Icons.person_outlined,
+              selectedIcon: Icons.person,
+              label: '我的',
+            ),
+            _CollapsedItem(
+              icon: Icons.favorite_outline,
+              selectedIcon: Icons.favorite,
+              label: '支持',
+            ),
+            _CollapsedItem(
+              icon: Icons.settings_outlined,
+              selectedIcon: Icons.settings,
+              label: '设置',
+            ),
+          ];
     if (DeveloperModeService().isDeveloperMode) {
       items.add(
         _CollapsedItem(
@@ -1276,11 +1398,16 @@ class _MainLayoutState extends State<MainLayout>
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
                 onTap: () {
-                  if (index == _settingsIndex) {
+                  final isLocalMode = PersistentStorageService().enableLocalMode;
+                  print('🖱️ [MainLayout] Collapsed Drawer item selected: $index (LocalMode: $isLocalMode)');
+                  
+                  if (!isLocalMode && index == _settingsIndex) {
                     DeveloperModeService().onSettingsClicked();
                   }
+                  
                   setState(() {
                     _selectedIndex = index;
+                    print('🔄 [MainLayout] _selectedIndex updated via Collapsed Drawer to: $_selectedIndex');
                   });
                   PageVisibilityNotifier().setCurrentPage(index);
                 },

@@ -190,10 +190,12 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
 
   @override
   Widget build(BuildContext context) {
-    return Transform.translate(
-      offset: Offset(0, _dragOffset),
-      child: Stack(
-      children: [
+    return ClipRect(
+      child: Transform.translate(
+        offset: Offset(0, _dragOffset),
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
         // 1. 全局背景（流体云专用背景：自适应模式下始终显示专辑封面 100% 填充）
         Positioned.fill(child: const PlayerFluidCloudBackground()),
         
@@ -388,7 +390,8 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
           ),
         ),
       ],
-    ),
+        ),
+      ),
     );
   }
 

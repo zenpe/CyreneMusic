@@ -148,11 +148,14 @@ class LxMusicSourceParser {
     try {
       print('🔍 [LxMusicSourceParser] 开始解析脚本内容...');
 
+      // 提取头部元数据（优先级最高）
+      final headerMetadata = _parseHeaderMetadata(scriptContent);
+
       // 提取名称
-      String name = _extractName(scriptContent);
+      String name = headerMetadata['name'] ?? _extractName(scriptContent);
       
       // 提取版本
-      String version = _extractVersion(scriptContent);
+      String version = headerMetadata['version'] ?? _extractVersion(scriptContent);
       
       // 提取 API URL
       String apiUrl = _extractApiUrl(scriptContent);
@@ -162,12 +165,12 @@ class LxMusicSourceParser {
       
       // 提取 URL 路径模板
       String urlPathTemplate = _extractUrlPathTemplate(scriptContent);
-
+      
       // 提取作者
-      String author = _extractAuthor(scriptContent);
-
+      String author = headerMetadata['author'] ?? _extractAuthor(scriptContent);
+      
       // 提取描述
-      String description = _extractDescription(scriptContent);
+      String description = headerMetadata['description'] ?? _extractDescription(scriptContent);
 
       print('📋 [LxMusicSourceParser] 解析结果:');
       print('   名称: $name');
@@ -372,5 +375,40 @@ class LxMusicSourceParser {
       }
     }
     return '';
+  }
+
+  /// 解析脚本开头的注释块元数据
+  Map<String, String> _parseHeaderMetadata(String script) {
+    final Map<String, String> metadata = {};
+    
+    // 匹配 /*! ... */ 或 /* ... */ 块注释
+    final commentBlockMatch = RegExp(r'/\*[\s\S]*?\*/').firstMatch(script);
+    if (commentBlockMatch == null) return metadata;
+    
+    final commentContent = commentBlockMatch.group(0)!;
+    
+    // 提取 @name, @author, @version, @description
+    final patterns = {
+      'name': RegExp(r'@name\s+(.*)'),
+      'author': RegExp(r'@author\s+(.*)'),
+      'version': RegExp(r'@version\s+(.*)'),
+      'description': RegExp(r'@description\s+(.*)'),
+    };
+    
+    patterns.forEach((key, pattern) {
+      final match = pattern.firstMatch(commentContent);
+      if (match != null) {
+        String value = match.group(1)?.trim() ?? '';
+        // 移除可能存在的星号和多余空格（针对 JSDoc 风格）
+        if (value.startsWith('*')) {
+          value = value.substring(1).trim();
+        }
+        if (value.isNotEmpty) {
+          metadata[key] = value;
+        }
+      }
+    });
+    
+    return metadata;
   }
 }

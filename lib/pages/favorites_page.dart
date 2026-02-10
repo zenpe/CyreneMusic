@@ -340,6 +340,8 @@ class _FavoritesPageState extends State<FavoritesPage>
         return '🎸';
       case MusicSource.navidrome:
         return '🎧';
+      case MusicSource.spotify:
+        return '🟢';
       case MusicSource.local:
         return '📁';
     }

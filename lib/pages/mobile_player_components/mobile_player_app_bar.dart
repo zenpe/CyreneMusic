@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import 'mobile_player_settings_sheet.dart';
 
 /// 移动端播放器顶部应用栏组件
@@ -37,7 +37,7 @@ class MobilePlayerAppBar extends StatelessWidget {
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onPanStart: (details) {
-                  appWindow.startDragging();
+                  windowManager.startDragging();
                 },
                 child: const Center(
                   child: Text(
@@ -56,7 +56,7 @@ class MobilePlayerAppBar extends StatelessWidget {
             _buildWindowButton(
               icon: Icons.remove,
               tooltip: '最小化',
-              onPressed: () => appWindow.minimize(),
+              onPressed: () => windowManager.minimize(),
             ),
             _buildWindowButton(
               icon: Icons.crop_square,
@@ -67,7 +67,7 @@ class MobilePlayerAppBar extends StatelessWidget {
             _buildWindowButton(
               icon: Icons.close,
               tooltip: '关闭',
-              onPressed: () => appWindow.close(),
+              onPressed: () => windowManager.close(),
               isClose: true,
             ),
           ],
