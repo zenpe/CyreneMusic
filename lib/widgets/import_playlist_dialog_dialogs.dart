@@ -334,7 +334,11 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
         builder: (context, setState) {
           final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
 
-          return Material(
+          return AnimatedPadding(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            child: Material(
             type: MaterialType.transparency,
             child: Container(
               height: MediaQuery.of(context).size.height * 0.7,
@@ -635,7 +639,8 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                 ),
               ),
             ),
-          );
+          ),
+        );
         },
       ),
     );

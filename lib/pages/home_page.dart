@@ -412,6 +412,12 @@ class _HomePageState extends State<HomePage>
       await appSettings.ensureInitialized();
       final allowStartupUpdatePrompt = appSettings.showUpdatePromptOnStartup;
 
+      // 如果更新提示已关闭且自动更新也未开启，跳过网络请求
+      if (!allowStartupUpdatePrompt && !AutoUpdateService().isEnabled) {
+        print('🔕 [HomePage] 更新提示与自动更新均已关闭，跳过版本检查');
+        return;
+      }
+
       print('🔍 [HomePage] 开始检查更新...');
 
       final versionInfo = await VersionService().checkForUpdate(silent: true);

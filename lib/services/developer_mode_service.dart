@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/toast_utils.dart';
 
@@ -38,6 +39,27 @@ class DeveloperModeService extends ChangeNotifier {
   /// 记录日志
   final List<String> _logs = [];
   List<String> get logs => List.unmodifiable(_logs);
+
+
+  void _notifyListenersSafely() {
+    SchedulerPhase phase;
+    try {
+      phase = SchedulerBinding.instance.schedulerPhase;
+    } catch (_) {
+      // Binding not ready yet; safe to notify synchronously.
+      notifyListeners();
+      return;
+    }
+    if (phase != SchedulerPhase.idle) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (hasListeners) {
+          notifyListeners();
+        }
+      });
+      return;
+    }
+    notifyListeners();
+  }
 
   /// 处理设置按钮点击
   void onSettingsClicked() {
@@ -88,7 +110,7 @@ class DeveloperModeService extends ChangeNotifier {
     await _saveDeveloperMode();
     addLog('🚀 开发者模式已启用');
     ToastUtils.success('开发者模式已启用');
-    notifyListeners();
+    _notifyListenersSafely();
     print('🚀 [DeveloperMode] 开发者模式已启用');
   }
 
@@ -97,7 +119,7 @@ class DeveloperModeService extends ChangeNotifier {
     _isDeveloperMode = false;
     await _saveDeveloperMode();
     addLog('🔒 开发者模式已禁用');
-    notifyListeners();
+    _notifyListenersSafely();
     print('🔒 [DeveloperMode] 开发者模式已禁用');
   }
 
@@ -106,7 +128,7 @@ class DeveloperModeService extends ChangeNotifier {
     _isSearchResultMergeEnabled = value;
     await _saveDeveloperMode();
     addLog(value ? '🔄 已启用搜索结果合并' : '🔄 已禁用搜索结果合并');
-    notifyListeners();
+    _notifyListenersSafely();
   }
 
   /// 切换性能叠加层开关
@@ -114,7 +136,7 @@ class DeveloperModeService extends ChangeNotifier {
     _showPerformanceOverlay = value;
     await _saveDeveloperMode();
     addLog(value ? '📈 已启用性能叠加层' : '📈 已禁用性能叠加层');
-    notifyListeners();
+    _notifyListenersSafely();
   }
 
   /// 添加日志
@@ -128,14 +150,14 @@ class DeveloperModeService extends ChangeNotifier {
       _logs.removeAt(0);
     }
     
-    notifyListeners();
+    _notifyListenersSafely();
   }
 
   /// 清除所有日志
   void clearLogs() {
     _logs.clear();
     addLog('🗑️ 日志已清除');
-    notifyListeners();
+    _notifyListenersSafely();
   }
 
   /// 加载开发者模式状态
@@ -151,11 +173,11 @@ class DeveloperModeService extends ChangeNotifier {
         addLog('🔄 开发者模式状态已恢复');
       }
       print('🔧 [DeveloperMode] 搜索结果合并设置加载: $_isSearchResultMergeEnabled');
-      notifyListeners();
+      _notifyListenersSafely();
     } catch (e) {
       print('❌ [DeveloperMode] 加载失败: $e');
       _isInitialized = true; // 即使加载失败也标记为已初始化，使用默认值
-      notifyListeners();
+      _notifyListenersSafely();
     }
   }
 

@@ -47,7 +47,8 @@ class LocalLibraryService extends ChangeNotifier {
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
-    await _loadLibrary();
+    await _loadLibrary(validateFiles: false);
+    _validateLocalFilesInBackground();
   }
 
   /// 获取库数据文件路径
@@ -59,7 +60,7 @@ class LocalLibraryService extends ChangeNotifier {
   }
 
   /// 从文件加载本地音乐库
-  Future<void> _loadLibrary() async {
+  Future<void> _loadLibrary({bool validateFiles = true}) async {
     try {
       final file = await _getLibraryFile();
       if (!await file.exists()) {
@@ -92,8 +93,8 @@ class LocalLibraryService extends ChangeNotifier {
           
           final track = Track.fromJson(map, source: source);
           
-          // 验证本地文件是否还存在
-          if (track.source == MusicSource.local && track.id is String) {
+          // 验证本地文件是否还存在（可选，启动时可跳过以加速）
+          if (validateFiles && track.source == MusicSource.local && track.id is String) {
             final file = File(track.id as String);
             if (!await file.exists()) {
               debugPrint('📀 [LocalLibrary] 文件已不存在，跳过: ${track.id}');
@@ -136,6 +137,36 @@ class LocalLibraryService extends ChangeNotifier {
     } catch (e) {
       debugPrint('📀 [LocalLibrary] 保存本地音乐库失败: $e');
     }
+  }
+
+  /// 后台校验本地文件是否存在，避免阻塞启动
+  void _validateLocalFilesInBackground() {
+    Future(() async {
+      if (_tracks.isEmpty) return;
+
+      final missingPaths = <String>{};
+      for (final track in List<Track>.from(_tracks)) {
+        if (track.source != MusicSource.local || track.id is! String) continue;
+        final path = track.id as String;
+        if (!await File(path).exists()) {
+          missingPaths.add(path);
+        }
+      }
+
+      if (missingPaths.isEmpty) return;
+
+      _tracks.removeWhere((t) =>
+          t.source == MusicSource.local &&
+          t.id is String &&
+          missingPaths.contains(t.id as String));
+      for (final path in missingPaths) {
+        _pathToLyric.remove(path);
+      }
+
+      notifyListeners();
+      await _saveLibrary();
+      debugPrint('📀 [LocalLibrary] 后台校验移除 ${missingPaths.length} 个不存在的文件');
+    });
   }
 
   /// 根据 Track.id（本地为完整文件路径）获取歌词文本

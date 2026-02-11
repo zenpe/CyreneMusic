@@ -8,7 +8,6 @@ import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:palette_generator/palette_generator.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 import 'color_extraction_service.dart';
 import '../models/song_detail.dart';
@@ -34,6 +33,7 @@ import 'url_service.dart';
 import 'notification_service.dart';
 import 'persistent_storage_service.dart';
 import 'equalizer_service.dart';
+import 'app_settings_service.dart';
 import 'dart:async' as async_lib;
 import 'dart:async' show TimeoutException;
 import '../utils/toast_utils.dart';
@@ -152,17 +152,7 @@ class PlayerService extends ChangeNotifier {
     // AudioPlayer 将在第一次播放时才创建和配置（见 _ensureAudioPlayerInitialized 方法）
     print('🎵 [PlayerService] 播放器服务已准备就绪（AudioPlayer 将在首次播放时初始化）');
 
-    // 启动本地代理服务器
-    print('🌐 [PlayerService] 启动本地代理服务器...');
-    DeveloperModeService().addLog('🌐 [PlayerService] 启动本地代理服务器...');
-    final proxyStarted = await ProxyService().start();
-    if (proxyStarted) {
-      print('✅ [PlayerService] 本地代理服务器已就绪');
-      DeveloperModeService().addLog('✅ [PlayerService] 本地代理服务器已就绪 (端口: ${ProxyService().port})');
-    } else {
-      print('⚠️ [PlayerService] 本地代理服务器启动失败，将使用备用方案');
-      DeveloperModeService().addLog('⚠️ [PlayerService] 本地代理服务器启动失败，将使用备用方案（下载后播放）');
-    }
+    // 本地代理服务器改为按需启动，避免影响启动耗时
 
     // 加载保存的音量设置（但不应用到播放器，因为播放器还未创建）
     final savedVolume = PersistentStorageService().getDouble('player_volume');
@@ -779,9 +769,10 @@ class PlayerService extends ChangeNotifier {
           // Android/桌面端：使用本地代理
           final platformName = Platform.isAndroid ? 'Android' : '桌面端';
           DeveloperModeService().addLog('📱 [PlayerService] $platformName 使用本地代理');
-          DeveloperModeService().addLog('🔍 [PlayerService] 本地代理状态: ${ProxyService().isRunning ? "运行中 (端口: ${ProxyService().port})" : "未运行"}');
+          final proxyReady = await _ensureLocalProxyRunning(platform);
+          DeveloperModeService().addLog('🔍 [PlayerService] 本地代理状态: ${proxyReady ? "运行中 (端口: ${ProxyService().port})" : "未运行"}');
           
-          if (ProxyService().isRunning) {
+          if (proxyReady) {
             final proxyUrl = ProxyService().getProxyUrl(songDetail.url, platform);
             DeveloperModeService().addLog('🔗 [PlayerService] 本地代理URL: ${proxyUrl.length > 80 ? '${proxyUrl.substring(0, 80)}...' : proxyUrl}');
             
@@ -1360,44 +1351,6 @@ class PlayerService extends ChangeNotifier {
     }
   }
 
-  /// 从整张图片提取主题色（使用 PaletteGenerator，会阻塞主线程 - 仅作为备用）
-  /// 支持网络 URL 和本地文件路径
-  Future<Color?> _extractColorFromFullImage(String imageUrl) async {
-    try {
-      // 判断是网络 URL 还是本地文件路径
-      final isNetwork = imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
-      final ImageProvider imageProvider;
-      
-      if (isNetwork) {
-        imageProvider = CachedNetworkImageProvider(imageUrl);
-      } else {
-        final file = File(imageUrl);
-        if (!await file.exists()) {
-          print('⚠️ [PlayerService] 本地封面文件不存在: $imageUrl');
-          return null;
-        }
-        imageProvider = FileImage(file);
-      }
-      
-      final paletteGenerator = await PaletteGenerator.fromImageProvider(
-        imageProvider,
-        size: const Size(150, 150),      // ✅ 优化：缩小图片尺寸，提升速度
-        maximumColorCount: 8,             // ✅ 优化：减少采样数（从12-16降到8）
-        timeout: const Duration(seconds: 3), // ✅ 优化：缩短超时时间
-      );
-
-      return paletteGenerator.vibrantColor?.color ?? 
-             paletteGenerator.dominantColor?.color ??
-             paletteGenerator.mutedColor?.color;
-    } on TimeoutException catch (e) {
-      print('⏱️ [PlayerService] 图片加载超时，使用默认颜色');
-      return null; // 返回 null，让外层使用默认颜色
-    } catch (e) {
-      print('⚠️ [PlayerService] 提取颜色异常: $e');
-      return null;
-    }
-  }
-
   /// 从图片底部区域提取主题色（使用 Isolate 异步提取，不阻塞主线程）
   Future<Color?> _extractColorFromBottomRegion(String imageUrl) async {
     try {
@@ -1706,7 +1659,8 @@ class PlayerService extends ChangeNotifier {
       }
     } catch (_) {}
 
-    final url = ProxyService().isRunning
+    final proxyReady = await _ensureLocalProxyRunning('apple');
+    final url = proxyReady
         ? ProxyService().getProxyUrl(songDetail.url, 'apple')
         : songDetail.url;
 
@@ -1716,6 +1670,19 @@ class PlayerService extends ChangeNotifier {
     await _mediaKitPlayer!.setVolume(_volume * 100);
     await _mediaKitPlayer!.open(mk.Media(url));
     await _mediaKitPlayer!.play();
+  }
+
+  Future<bool> _ensureLocalProxyRunning(String platform) async {
+    if (ProxyService().isRunning) return true;
+
+    DeveloperModeService().addLog('🌐 [PlayerService] 尝试启动本地代理服务器...');
+    final started = await ProxyService().start();
+    if (started) {
+      DeveloperModeService().addLog('✅ [PlayerService] 本地代理服务器已就绪 (端口: ${ProxyService().port})');
+    } else {
+      DeveloperModeService().addLog('⚠️ [PlayerService] 本地代理服务器启动失败，将使用备用方案');
+    }
+    return started;
   }
 
   /// 播放网络电台流
@@ -1844,12 +1811,15 @@ class PlayerService extends ChangeNotifier {
   void _startStateSaveTimer() {
     // 如果已经在运行，不重复启动
     if (_stateSaveTimer != null && _stateSaveTimer!.isActive) return;
-    
+
+    // 如果用户关闭了恢复播放提示，不启动定时器，节省 I/O
+    if (!AppSettingsService().showResumePromptOnStartup) return;
+
     // 每10秒保存一次播放状态
     _stateSaveTimer = async_lib.Timer.periodic(const Duration(seconds: 10), (timer) {
       _saveCurrentPlaybackState();
     });
-    
+
     print('💾 [PlayerService] 开始定期保存播放状态（每10秒）');
   }
 
@@ -1864,6 +1834,9 @@ class PlayerService extends ChangeNotifier {
 
   /// 保存当前播放状态
   void _saveCurrentPlaybackState() {
+    // 如果用户关闭了恢复播放提示，跳过保存
+    if (!AppSettingsService().showResumePromptOnStartup) return;
+
     if (_currentTrack == null || _state != PlayerState.playing) {
       return;
     }

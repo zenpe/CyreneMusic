@@ -55,9 +55,8 @@ dependencies:
   # Local storage for settings persistence
   shared_preferences: ^2.3.3
   
-  # Color extraction from images
-  palette_generator: ^0.3.3
-  image: ^4.3.0  # Pure Dart image processing for isolate-safe color extraction
+  # Color extraction from images (isolate-safe)
+  image: ^4.3.0
   
   # Cryptography for cache encryption
   crypto: ^3.0.3

@@ -707,6 +707,7 @@ class ImportPlaylistDialog {
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, setState) => AlertDialog(
+            scrollable: true,
             title: const Row(
               children: [
                 Icon(Icons.cloud_download, size: 24),
@@ -1997,6 +1998,14 @@ class ImportPlaylistDialog {
       );
     }
 
+    bool loadingClosed = false;
+    void closeLoadingIfOpen() {
+      if (!loadingClosed && context.mounted) {
+        Navigator.pop(context); // 关闭加载对话框
+        loadingClosed = true;
+      }
+    }
+
     try {
       final baseUrl = UrlService().baseUrl;
       String url;
@@ -2012,6 +2021,8 @@ class ImportPlaylistDialog {
         throw Exception('不支持的平台');
       }
       
+      debugPrint('[ImportPlaylistDialog] fetch playlist request: url=$url');
+
       final response = await http.get(
         Uri.parse(url),
       ).timeout(
@@ -2020,7 +2031,12 @@ class ImportPlaylistDialog {
       );
 
       if (!context.mounted) return;
-      Navigator.pop(context); // 关闭加载对话框
+      closeLoadingIfOpen(); // 关闭加载对话框
+
+      debugPrint('[ImportPlaylistDialog] fetch playlist response status=${response.statusCode}');
+      if (response.body.isNotEmpty) {
+        debugPrint('[ImportPlaylistDialog] fetch playlist response body: ${response.body}');
+      }
 
       if (response.statusCode == 200) {
         final data = json.decode(utf8.decode(response.bodyBytes));
@@ -2048,14 +2064,17 @@ class ImportPlaylistDialog {
           // 显示选择目标歌单对话框
           await _showSelectTargetPlaylistDialog(context, playlist);
         } else {
+          debugPrint('[ImportPlaylistDialog] fetch playlist failed: data=$data');
           throw Exception(data['msg'] ?? '获取歌单失败');
         }
       } else {
+        debugPrint('[ImportPlaylistDialog] fetch playlist failed: HTTP ${response.statusCode}');
         throw Exception('HTTP ${response.statusCode}');
       }
     } catch (e) {
+      debugPrint('[ImportPlaylistDialog] fetch playlist exception: $e');
       if (!context.mounted) return;
-      Navigator.pop(context); // 关闭加载对话框
+      closeLoadingIfOpen(); // 关闭加载对话框
 
       if (ThemeManager().isFluentFramework) {
         await fluent.showDialog(

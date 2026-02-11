@@ -288,18 +288,17 @@ class MobileDiscoverPageSkeleton extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         // 歌单网格骨架（2列布局适配移动端）
-        Expanded(
-          child: GridView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
-              childAspectRatio: 0.75,
-            ),
-            itemCount: 6,
-            itemBuilder: (context, index) => const _MobileDiscoverPlaylistCardSkeleton(),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 16,
+            crossAxisSpacing: 16,
+            childAspectRatio: 0.75,
           ),
+          itemCount: 6,
+          itemBuilder: (context, index) => const _MobileDiscoverPlaylistCardSkeleton(),
         ),
       ],
     );

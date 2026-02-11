@@ -41,14 +41,31 @@ class UrlService extends ChangeNotifier {
   Future<void> _loadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
-      // 加载源类型
-      final sourceTypeIndex = prefs.getInt('backend_source_type') ?? 0;
-      _sourceType = BackendSourceType.values[sourceTypeIndex];
-      
+
+      // 1) 新版：优先读取字符串类型
+      final sourceTypeStr = prefs.getString('backend_source_type');
+      if (sourceTypeStr == BackendSourceType.custom.name) {
+        _sourceType = BackendSourceType.custom;
+      } else if (sourceTypeStr == BackendSourceType.official.name) {
+        _sourceType = BackendSourceType.official;
+      } else {
+        // 2) 兼容旧版 int（0=official, 1=custom）
+        final sourceTypeIndex = prefs.getInt('backend_source_type');
+        if (sourceTypeIndex == 1) {
+          _sourceType = BackendSourceType.custom;
+        } else if (sourceTypeIndex == 0) {
+          _sourceType = BackendSourceType.official;
+        }
+      }
+
       // 加载自定义源地址
       _customBaseUrl = prefs.getString('custom_base_url') ?? '';
-      
+
+      // 迁移保护：如果被误切到 custom 但地址为空，回退官方
+      if (_sourceType == BackendSourceType.custom && _customBaseUrl.isEmpty) {
+        _sourceType = BackendSourceType.official;
+      }
+
       print('🌐 [UrlService] 从本地加载配置: ${_sourceType.name}, 自定义源: $_customBaseUrl');
       notifyListeners();
     } catch (e) {
@@ -60,7 +77,7 @@ class UrlService extends ChangeNotifier {
   Future<void> _saveSourceType() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('backend_source_type', _sourceType.index);
+      await prefs.setString('backend_source_type', _sourceType.name);
       print('💾 [UrlService] 源类型已保存: ${_sourceType.name}');
     } catch (e) {
       print('❌ [UrlService] 保存源类型失败: $e');

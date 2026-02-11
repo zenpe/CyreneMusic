@@ -44,8 +44,12 @@ class PersistentStorageService extends ChangeNotifier {
       // 3. 从备份恢复数据（如果 SharedPreferences 为空）
       await _restoreFromBackup();
 
-      // 4. 创建初始备份
-      await _createBackup();
+      // 4. 创建初始备份（首次运行则立即创建，否则延迟避免阻塞启动）
+      if (_backupFile != null && !await _backupFile!.exists()) {
+        await _createBackup();
+      } else {
+        Future(() => _createBackup());
+      }
 
       _isInitialized = true;
       print('✅ [PersistentStorage] 持久化存储服务初始化完成');

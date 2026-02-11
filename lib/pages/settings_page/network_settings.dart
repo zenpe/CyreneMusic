@@ -23,6 +23,7 @@ class NetworkSettings extends StatefulWidget {
 }
 
 class _NetworkSettingsState extends State<NetworkSettings> {
+  static const String _selfHostedPresetUrl = 'https://niba.cc.cd';
   bool _isTesting = false;
   int? _latencyMs;
   String? _errorMessage;
@@ -309,8 +310,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              fluent_ui.RadioButton(
+            children: [              fluent_ui.RadioButton(
                 content: const Text('官方源'),
                 checked: UrlService().sourceType == BackendSourceType.official,
                 onChanged: (v) {
@@ -321,7 +321,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                     messenger.showSnackBar(
                       const SnackBar(content: Text('已切换到官方源')),
                     );
-                  } 
+                  }
                 },
               ),
               const SizedBox(height: 8),
@@ -368,7 +368,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
             RadioListTile<BackendSourceType>(
               title: const Text('官方源'),
               subtitle: Text(
-                '默认后端服务',
+                UrlService.officialBaseUrl,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               value: BackendSourceType.official,
@@ -381,11 +381,27 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                 );
               },
             ),
+            ListTile(
+              title: const Text('自建源（预设）'),
+              subtitle: Text(
+                _selfHostedPresetUrl,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                UrlService().setCustomBaseUrl(_selfHostedPresetUrl);
+                UrlService().setSourceType(BackendSourceType.custom);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('已切换到自建源预设')),
+                );
+              },
+            ),
             RadioListTile<BackendSourceType>(
               title: const Text('自定义源'),
               subtitle: Text(
-                UrlService().customBaseUrl.isNotEmpty 
-                    ? UrlService().customBaseUrl 
+                UrlService().customBaseUrl.isNotEmpty
+                    ? UrlService().customBaseUrl
                     : '点击设置自定义地址',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -408,7 +424,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
     );
   }
 
-  void _showCustomUrlDialog(BuildContext context) {
+void _showCustomUrlDialog(BuildContext context) {
     final controller = TextEditingController(text: UrlService().customBaseUrl);
     
     showDialog(
@@ -507,6 +523,14 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       builder: (context) => CupertinoActionSheet(
         title: const Text('选择后端源'),
         actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              UrlService().setCustomBaseUrl(_selfHostedPresetUrl);
+              UrlService().setSourceType(BackendSourceType.custom);
+              Navigator.pop(context);
+            },
+            child: const Text('自建源（预设）'),
+          ),
           CupertinoActionSheetAction(
             onPressed: () {
               UrlService().useOfficialSource();

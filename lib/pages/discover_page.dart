@@ -432,32 +432,38 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
     return Scaffold(
       backgroundColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          SliverAppBar(
-            pinned: true,
-            expandedHeight: isExpressive ? 140 : null,
-            collapsedHeight: isExpressive ? 72 : null,
-            backgroundColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
-            surfaceTintColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
-            flexibleSpace: FlexibleSpaceBar(
-              titlePadding: EdgeInsets.only(
-                left: isExpressive ? 24 : 16,
-                bottom: isExpressive ? 16 : 16,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          final currentCat = NeteaseDiscoverService().currentCat;
+          await NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+        },
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          slivers: [
+            SliverAppBar(
+              pinned: true,
+              expandedHeight: isExpressive ? 140 : null,
+              collapsedHeight: isExpressive ? 72 : null,
+              backgroundColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
+              surfaceTintColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
+              flexibleSpace: FlexibleSpaceBar(
+                titlePadding: EdgeInsets.only(
+                  left: isExpressive ? 24 : 16,
+                  bottom: isExpressive ? 16 : 16,
+                ),
+                title: _buildMaterialTitle(colorScheme, isExpressive),
+                centerTitle: false,
               ),
-              title: _buildMaterialTitle(colorScheme, isExpressive),
-              centerTitle: false,
             ),
-          ),
-          SliverPadding(
-            padding: EdgeInsets.all(isExpressive ? 16.0 : 24.0),
-            sliver: SliverToBoxAdapter(
-              child: _buildMaterialContent(service, isExpressive),
+            SliverPadding(
+              padding: EdgeInsets.all(isExpressive ? 16.0 : 24.0),
+              sliver: SliverToBoxAdapter(
+                child: _buildMaterialContent(service, isExpressive),
+              ),
             ),
-          ),
 
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -489,7 +495,26 @@ class _DiscoverPageState extends State<DiscoverPage> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
-          child: Text(service.errorMessage!),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 16),
+              Text(
+                service.errorMessage!,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  final currentCat = NeteaseDiscoverService().currentCat;
+                  NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('重试'),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -732,9 +757,26 @@ class _DiscoverPageState extends State<DiscoverPage> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: FluentDiscoverBreadcrumbs(
-              items: _buildFluentBreadcrumbItems(service),
-              padding: EdgeInsets.zero,
+            child: Row(
+              children: [
+                Expanded(
+                  child: FluentDiscoverBreadcrumbs(
+                    items: _buildFluentBreadcrumbItems(service),
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                fluent.Tooltip(
+                  message: '刷新',
+                  child: fluent.IconButton(
+                    icon: const Icon(fluent.FluentIcons.refresh, size: 16),
+                    onPressed: () {
+                      final currentCat = NeteaseDiscoverService().currentCat;
+                      NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
           // Removed Divider to avoid white line between header and content under acrylic/mica
@@ -794,10 +836,23 @@ class _DiscoverPageState extends State<DiscoverPage> {
       return Padding(
         key: const ValueKey('discover_error'),
         padding: padding,
-        child: fluent.InfoBar(
-          title: const Text('加载失败'),
-          content: Text(service.errorMessage!),
-          severity: fluent.InfoBarSeverity.error,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            fluent.InfoBar(
+              title: const Text('加载失败'),
+              content: Text(service.errorMessage!),
+              severity: fluent.InfoBarSeverity.error,
+            ),
+            const SizedBox(height: 16),
+            fluent.Button(
+              onPressed: () {
+                final currentCat = NeteaseDiscoverService().currentCat;
+                NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+              },
+              child: const Text('重试'),
+            ),
+          ],
         ),
       );
     }

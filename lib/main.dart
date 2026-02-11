@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:flutter/foundation.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -51,7 +52,7 @@ import 'package:flutter_displaymode/flutter_displaymode.dart' if (dart.library.h
 Future<void> main() async {
   final startupLogger = StartupLogger.bootstrapSync(appName: 'CyreneMusic');
   startupLogger.log('main() entered');
-  if (startupLogger.filePath != null) {
+  if (startupLogger.filePath != null && kDebugMode) {
     print(' [StartupLogger] ${startupLogger.filePath}');
   }
 
@@ -191,7 +192,7 @@ Future<void> main() async {
       });
     }
 
-    // Android 特有的 edge-to-edge 和权限请求
+    // Android 特有的 edge-to-edge
     if (Platform.isAndroid) {
       await timed('Android edgeToEdge + overlays', () {
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -201,15 +202,6 @@ Future<void> main() async {
           systemNavigationBarDividerColor: Colors.transparent,
         ));
         log(' 已启用边到边模式');
-      });
-
-      await timed('PermissionService.requestNotificationPermission', () async {
-        final hasPermission = await PermissionService().requestNotificationPermission();
-        if (hasPermission) {
-          log(' 通知权限已授予');
-        } else {
-          log(' 通知权限未授予，媒体通知可能无法显示');
-        }
       });
     }
 
@@ -258,14 +250,6 @@ Future<void> main() async {
       timed('AutoUpdateService.initialize', () async {
         await AutoUpdateService().initialize();
         log(' 自动更新服务已初始化');
-      }),
-      timed('AnnouncementService.initialize', () async {
-        await AnnouncementService().initialize();
-        log(' 公告服务已初始化');
-      }),
-      timed('CacheService.initialize', () async {
-        await CacheService().initialize();
-        log(' 缓存服务已初始化');
       }),
       timed('ListeningStatsService.initialize', () async {
         ListeningStatsService().initialize();
@@ -327,11 +311,44 @@ Future<void> main() async {
     await timed('runApp(MyApp)', () {
       runApp(const MyApp());
     });
+
+    // P0: 权限请求放到 runApp 之后
+    if (Platform.isAndroid) {
+      Future.microtask(() async {
+        await timed('PermissionService.requestNotificationPermission', () async {
+          final hasPermission = await PermissionService().requestNotificationPermission();
+          if (hasPermission) {
+            log(' 通知权限已授予');
+          } else {
+            log(' 通知权限未授予，媒体通知可能无法显示');
+          }
+        });
+      });
+    }
+
+    // P0: 公告请求延迟到 runApp 之后，避免阻塞首帧
+    Future.microtask(() async {
+      await timed('AnnouncementService.initialize', () async {
+        await AnnouncementService().initialize();
+        log(' 公告服务已初始化');
+      });
+    });
+
+    // P2: 缓存服务初始化延迟到 runApp 之后
+    Future.microtask(() async {
+      await timed('CacheService.initialize', () async {
+        await CacheService().initialize();
+        log(' 缓存服务已初始化');
+      });
+    });
   
 
   }, (error, stack) {
     StartupLogger().log('runZonedGuarded: $error\n$stack');
-  });
+  }, zoneSpecification: kReleaseMode
+      ? ZoneSpecification(print: (self, parent, zone, line) {})
+      : null,
+  );
  }
 
 class MyApp extends StatefulWidget {
