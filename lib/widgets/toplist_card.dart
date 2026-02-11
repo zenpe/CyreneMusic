@@ -34,6 +34,8 @@ class ToplistCard extends StatelessWidget {
                   CachedNetworkImage(
                     imageUrl: toplist.coverImgUrl,
                     fit: BoxFit.cover,
+                    memCacheWidth: 280,
+                    memCacheHeight: 280,
                     placeholder: (context, url) => Container(
                       color: colorScheme.surfaceContainerHighest,
                       child: const Center(

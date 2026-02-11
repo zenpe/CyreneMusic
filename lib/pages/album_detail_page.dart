@@ -143,6 +143,8 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         imageUrl: coverUrl,
         width: 120,
         height: 120,
+        memCacheWidth: 280,
+        memCacheHeight: 280,
         fit: BoxFit.cover,
         placeholder: (_, __) => Container(
           width: 120,
@@ -456,6 +458,8 @@ Widget _buildSongListItem({
         borderRadius: BorderRadius.circular(isExpressive ? 14 : isCupertino ? 10 : 4),
         child: CachedNetworkImage(
           imageUrl: track.picUrl,
+          memCacheWidth: 128,
+          memCacheHeight: 128,
           width: isExpressive ? 56 : 50,
           height: isExpressive ? 56 : 50,
           fit: BoxFit.cover,
@@ -615,6 +619,8 @@ Widget _buildSongsGrid({
               imageUrl: track.picUrl,
               width: isExpressive ? 88 : 80,
               height: isExpressive ? 88 : 80,
+              memCacheWidth: 280,
+              memCacheHeight: 280,
               fit: BoxFit.cover,
               placeholder: (_, __) => Container(
                 width: isExpressive ? 88 : 80,

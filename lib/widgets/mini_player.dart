@@ -1034,6 +1034,8 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
       imageUrl: imageUrl,
       width: size,
       height: size,
+      memCacheWidth: 128,
+      memCacheHeight: 128,
       fit: BoxFit.cover,
       placeholder: (context, url) => Container(
         width: size,
@@ -1816,6 +1818,8 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                               child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
                                   ? CachedNetworkImage(
                                       imageUrl: t.picUrl,
+                                      memCacheWidth: 128,
+                                      memCacheHeight: 128,
                                       imageBuilder: (context, imageProvider) {
                                         PlaylistQueueService().updateCoverProvider(t, imageProvider);
                                         return Image(image: imageProvider, width: 44, height: 44, fit: BoxFit.cover);
@@ -1983,6 +1987,8 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                                     child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
                                                         ? CachedNetworkImage(
                                                             imageUrl: t.picUrl,
+                                                            memCacheWidth: 128,
+                                                            memCacheHeight: 128,
                                                             imageBuilder: (context, imageProvider) {
                                                               PlaylistQueueService().updateCoverProvider(t, imageProvider);
                                                               return Image(image: imageProvider, width: 44, height: 44, fit: BoxFit.cover);
@@ -2128,6 +2134,8 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                                       child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
                                                           ? CachedNetworkImage(
                                                               imageUrl: t.picUrl,
+                                                              memCacheWidth: 128,
+                                                              memCacheHeight: 128,
                                                               imageBuilder: (context, imageProvider) {
                                                                 PlaylistQueueService().updateCoverProvider(t, imageProvider);
                                                                 return Image(image: imageProvider, width: 44, height: 44, fit: BoxFit.cover);
@@ -2280,6 +2288,8 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                             child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
                                               ? CachedNetworkImage(
                                                   imageUrl: t.picUrl,
+                                                  memCacheWidth: 128,
+                                                  memCacheHeight: 128,
                                                   imageBuilder: (context, imageProvider) {
                                                     PlaylistQueueService().updateCoverProvider(t, imageProvider);
                                                     return Image(
@@ -2368,6 +2378,8 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                             child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
                                               ? CachedNetworkImage(
                                                   imageUrl: t.picUrl,
+                                                  memCacheWidth: 128,
+                                                  memCacheHeight: 128,
                                                   imageBuilder: (context, imageProvider) {
                                                     PlaylistQueueService().updateCoverProvider(t, imageProvider);
                                                     return Image(

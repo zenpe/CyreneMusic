@@ -33,6 +33,7 @@ import 'developer_mode_service.dart';
 import 'url_service.dart';
 import 'notification_service.dart';
 import 'persistent_storage_service.dart';
+import 'equalizer_service.dart';
 import 'dart:async' as async_lib;
 import 'dart:async' show TimeoutException;
 import '../utils/toast_utils.dart';
@@ -100,13 +101,11 @@ class PlayerService extends ChangeNotifier {
   // 音源未配置回调（用于 UI 显示弹窗）
   void Function()? onAudioSourceNotConfigured;
   
-  // 均衡器相关
-  static const List<int> kEqualizerFrequencies = [31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-  List<double> _equalizerGains = List.filled(10, 0.0);
-  bool _equalizerEnabled = true;
-  
-  List<double> get equalizerGains => List.unmodifiable(_equalizerGains);
-  bool get equalizerEnabled => _equalizerEnabled;
+  // 均衡器相关 — 委托给 EqualizerService
+  static List<int> get kEqualizerFrequencies => EqualizerService.kEqualizerFrequencies;
+
+  List<double> get equalizerGains => EqualizerService().equalizerGains;
+  bool get equalizerEnabled => EqualizerService().equalizerEnabled;
 
   PlayerState get state => _state;
   SongDetail? get currentSong => _currentSong;
@@ -174,20 +173,8 @@ class PlayerService extends ChangeNotifier {
       print('🔊 [PlayerService] 使用默认音量: ${(_volume * 100).toInt()}%');
     }
 
-    // 加载均衡器设置
-    final savedEqGains = PersistentStorageService().getStringList('player_eq_gains');
-    if (savedEqGains != null && savedEqGains.length == 10) {
-      try {
-        _equalizerGains = savedEqGains.map((e) => double.tryParse(e) ?? 0.0).toList();
-        print('🎚️ [PlayerService] 已加载均衡器设置');
-      } catch (e) {
-        print('⚠️ [PlayerService] 加载均衡器设置失败: $e');
-      }
-    }
-    final savedEqEnabled = PersistentStorageService().getBool('player_eq_enabled');
-    if (savedEqEnabled != null) {
-      _equalizerEnabled = savedEqEnabled;
-    }
+    // 加载均衡器设置（委托给 EqualizerService）
+    EqualizerService().loadSettings();
 
     // 设置桌面歌词播放控制回调（Windows）
     if (Platform.isWindows) {
@@ -1645,8 +1632,9 @@ class PlayerService extends ChangeNotifier {
       }
     }
     
-    // 初始化完成后应用均衡器
-    await _applyEqualizer();
+    // 初始化完成后，注入播放器引用并应用均衡器
+    EqualizerService().setPlayer(_mediaKitPlayer, useMediaKit: _useMediaKit);
+    await EqualizerService().applyEqualizer();
 
     _mediaKitPlayingSub = _mediaKitPlayer!.stream.playing.listen((playing) {
       if (playing) {
@@ -2404,91 +2392,15 @@ class PlayerService extends ChangeNotifier {
     }
   }
 
-  /// 更新均衡器增益
-  /// [gains] 10个频段的增益值 (-12.0 到 12.0 dB)
+  /// 更新均衡器增益（委托给 EqualizerService）
   Future<void> updateEqualizer(List<double> gains) async {
-    if (gains.length != 10) return;
-    
-    _equalizerGains = List.from(gains);
+    await EqualizerService().updateEqualizer(gains);
     notifyListeners();
-    
-    // 应用效果
-    await _applyEqualizer();
-    
-    // 保存设置 (节流)
-    _saveEqualizerSettingsThrottled();
   }
-  
-  /// 开关均衡器
+
+  /// 开关均衡器（委托给 EqualizerService）
   Future<void> setEqualizerEnabled(bool enabled) async {
-    if (_equalizerEnabled == enabled) return;
-    
-    _equalizerEnabled = enabled;
+    await EqualizerService().setEqualizerEnabled(enabled);
     notifyListeners();
-    
-    await _applyEqualizer();
-    
-    // 保存设置
-    PersistentStorageService().setBool('player_eq_enabled', enabled);
-  }
-
-  /// 应用均衡器效果 (底层实现)
-  Future<void> _applyEqualizer() async {
-    if (!_useMediaKit || _mediaKitPlayer == null) return;
-    
-    try {
-      if (!_equalizerEnabled) {
-        // 清除滤镜
-        // 注意：media_kit (libmpv) 清除滤镜是设置空字符串
-        // 使用 dynamic 调用 platform 接口
-        await (_mediaKitPlayer!.platform as dynamic)?.setProperty('af', '');
-        print('🎚️ [PlayerService] 均衡器已禁用');
-        return;
-      }
-
-      // 构建 ffmpeg equalizer 滤镜字符串
-      // 格式：equalizer=f=31:width_type=o:width=1:g=1.5,equalizer=f=63...
-      // width=1 表示 1 倍频程 (Octave)
-      final filterBuffer = StringBuffer();
-      
-      for (int i = 0; i < 10; i++) {
-        final freq = kEqualizerFrequencies[i];
-        final gain = _equalizerGains[i];
-        
-        // 🔧 性能优化：跳过增益接近 0 的频段，减少 CPU 开销
-        // 只有当增益绝对值大于 0.1dB 时才应用滤镜
-        if (gain.abs() <= 0.1) continue;
-
-        if (filterBuffer.isNotEmpty) filterBuffer.write(',');
-        filterBuffer.write('equalizer=f=$freq:width_type=o:width=1:g=${gain.toStringAsFixed(1)}');
-      }
-      
-      final filterString = filterBuffer.toString();
-      // print('🎚️ [PlayerService] 应用均衡器: $filterString');
-      
-      if (filterString.isEmpty) {
-        // 如果所有频段都是 0，相当于禁用均衡器（清除滤镜）
-        await (_mediaKitPlayer!.platform as dynamic)?.setProperty('af', '');
-        // print('🎚️ [PlayerService] 均衡器（平直）已应用，滤镜已清除');
-      } else {
-        // 设置 libmpv 属性 'af' (audio filter)
-        await (_mediaKitPlayer!.platform as dynamic)?.setProperty('af', filterString);
-      }
-      
-    } catch (e) {
-      print('⚠️ [PlayerService] 应用均衡器失败: $e');
-    }
-  }
-
-  async_lib.Timer? _saveEqTimer;
-  /// 保存均衡器设置 (节流)
-  void _saveEqualizerSettingsThrottled() {
-    _saveEqTimer?.cancel();
-    _saveEqTimer = async_lib.Timer(const Duration(milliseconds: 1000), () {
-      PersistentStorageService().setStringList(
-        'player_eq_gains', 
-        _equalizerGains.map((e) => e.toString()).toList()
-      );
-    });
   }
 }

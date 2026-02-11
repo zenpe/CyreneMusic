@@ -10,6 +10,7 @@ import '../services/url_service.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import '../widgets/import_playlist_dialog.dart';
+import '../models/music_platform.dart';
 
 /// 歌单页面
 class PlaylistsPage extends StatefulWidget {
@@ -561,6 +562,8 @@ class _PlaylistsPageState extends State<PlaylistsPage>
           width: 48,
           height: 48,
           fit: BoxFit.cover,
+          memCacheWidth: 128,
+          memCacheHeight: 128,
           placeholder: (context, url) => Container(
             width: 48,
             height: 48,
@@ -1149,6 +1152,8 @@ class _PlaylistsPageState extends State<PlaylistsPage>
                       width: 50,
                       height: 50,
                       fit: BoxFit.cover,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       placeholder: (context, url) => Container(
                         width: 50,
                         height: 50,

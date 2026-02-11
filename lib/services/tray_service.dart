@@ -236,9 +236,6 @@ class TrayService with TrayListener, WindowListener {
     
     // 立即移除所有监听器，防止继续接收事件
     try {
-      print('🔌 [TrayService] 移除播放器监听器...');
-      PlayerService().removeListener(() {});
-      
       print('🔌 [TrayService] 移除托盘和窗口监听器...');
       trayManager.removeListener(this);
       windowManager.removeListener(this);

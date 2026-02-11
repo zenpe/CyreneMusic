@@ -476,6 +476,8 @@ class _SongsListView extends StatelessWidget {
                             borderRadius: BorderRadius.circular(14),
                             child: CachedNetworkImage(
                               imageUrl: track.picUrl,
+                              memCacheWidth: 128,
+                              memCacheHeight: 128,
                               width: 56,
                               height: 56,
                               fit: BoxFit.cover,
@@ -547,6 +549,8 @@ class _SongsListView extends StatelessWidget {
               borderRadius: BorderRadius.circular(4),
               child: CachedNetworkImage(
                 imageUrl: track.picUrl,
+                memCacheWidth: 128,
+                memCacheHeight: 128,
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
@@ -583,6 +587,8 @@ class _SongsListView extends StatelessWidget {
               borderRadius: BorderRadius.circular(6),
               child: CachedNetworkImage(
                 imageUrl: track.picUrl,
+                memCacheWidth: 128,
+                memCacheHeight: 128,
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
@@ -718,7 +724,7 @@ class _AlbumsListView extends StatelessWidget {
             isDark: isDark,
             leading: ClipRRect(
               borderRadius: BorderRadius.circular(6),
-              child: CachedNetworkImage(imageUrl: cover, width: 56, height: 56, fit: BoxFit.cover),
+              child: CachedNetworkImage(imageUrl: cover, memCacheWidth: 128, memCacheHeight: 128, width: 56, height: 56, fit: BoxFit.cover),
             ),
             title: Text(a['name']?.toString() ?? ''),
             subtitle: Text((a['company']?.toString() ?? '').isEmpty ? '' : a['company'].toString()),
@@ -770,6 +776,8 @@ class _AlbumsListView extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               child: CachedNetworkImage(
                 imageUrl: cover,
+                memCacheWidth: 128,
+                memCacheHeight: 128,
                 width: 56,
                 height: 56,
                 fit: BoxFit.cover,
@@ -875,7 +883,7 @@ class _SongsThumbView extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(imageUrl: pic, width: 80, height: 80, fit: BoxFit.cover),
+                child: CachedNetworkImage(imageUrl: pic, width: 80, height: 80, fit: BoxFit.cover, memCacheWidth: 200, memCacheHeight: 200),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1002,7 +1010,7 @@ class _AlbumsThumbView extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(imageUrl: cover, width: 80, height: 80, fit: BoxFit.cover),
+                child: CachedNetworkImage(imageUrl: cover, width: 80, height: 80, fit: BoxFit.cover, memCacheWidth: 200, memCacheHeight: 200),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1523,6 +1531,8 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
                       borderRadius: BorderRadius.circular(14),
                       child: CachedNetworkImage(
                         imageUrl: track.picUrl,
+                        memCacheWidth: 128,
+                        memCacheHeight: 128,
                         width: 56,
                         height: 56,
                         fit: BoxFit.cover,
@@ -1636,6 +1646,8 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
                       imageUrl: picUrl,
                       width: 80,
                       height: 80,
+                      memCacheWidth: 200,
+                      memCacheHeight: 200,
                       fit: BoxFit.cover,
                     ),
                   ),

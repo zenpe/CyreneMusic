@@ -113,7 +113,7 @@ class _LargePlaylistCardState extends State<LargePlaylistCard> {
                 AnimatedScale(
                   scale: _hovering ? 1.05 : 1.0,
                   duration: const Duration(milliseconds: 200),
-                  child: CachedNetworkImage(imageUrl: pic, fit: BoxFit.cover),
+                  child: CachedNetworkImage(imageUrl: pic, fit: BoxFit.cover, memCacheWidth: 280, memCacheHeight: 280),
                 ),
                 // 渐变遮罩
                 Container(
@@ -197,7 +197,7 @@ class _SmallPlaylistCardState extends State<SmallPlaylistCard> {
                 AnimatedScale(
                   scale: _hovering ? 1.05 : 1.0,
                   duration: const Duration(milliseconds: 200),
-                  child: CachedNetworkImage(imageUrl: pic, fit: BoxFit.cover),
+                  child: CachedNetworkImage(imageUrl: pic, fit: BoxFit.cover, memCacheWidth: 280, memCacheHeight: 280),
                 ),
                 Container(
                   decoration: BoxDecoration(

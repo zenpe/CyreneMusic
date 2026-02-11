@@ -89,6 +89,8 @@ class PlayerBackground extends StatelessWidget {
                         CachedNetworkImage(
                           imageUrl: imageUrl,
                           fit: BoxFit.cover,
+                          memCacheWidth: 1080,
+                          memCacheHeight: 1080,
                           placeholder: (context, url) => Container(
                             color: greyColor,
                           ),

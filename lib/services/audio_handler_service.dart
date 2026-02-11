@@ -59,28 +59,17 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     // 监听播放器状态变化
     PlayerService().addListener(_onPlayerStateChanged);
     
-    // 启动悬浮歌词后台更新定时器（仅 Android）
-    if (Platform.isAndroid) {
-      _startLyricUpdateTimer();
-
-      // 启动自定义 Android 媒体通知服务（复用 audio_service 的 MediaSession）
-      // 🔧 修复：禁用自定义通知服务，避免与 audio_service/media_kit 的系统通知冲突导致出现两个播放器控件
-      // AndroidMediaNotificationService().start();
-    }
-    
-    // 🍎 iOS 专用：启动状态刷新定时器以保持锁屏/灵动岛显示
-    if (Platform.isIOS) {
-      _startIOSStateRefreshTimer();
-    }
-    
-    // 启动进度条更新定时器
-    _startPositionUpdateTimer();
+    // 🔧 性能优化：不在初始化时启动定时器，改为在 _onPlayerStateChanged() 中按需启动
+    // 避免用户启动应用但未播放时定时器空转
+    // 主动调用一次以根据当前状态决定是否启动定时器
+    _onPlayerStateChanged();
     
     print('✅ [AudioHandler] 初始化完成');
   }
   
   /// 启动悬浮歌词后台更新定时器
   void _startLyricUpdateTimer() {
+    _lyricUpdateTimer?.cancel();
     // 🔧 性能优化：将同步频率从 200ms 降低至 2000ms。
     // Android 原生层 (FloatingLyricService) 内部已有 100ms 的平滑自推进机制，
     // Dart 侧只需每 2 秒同步一次基准位置进行校准即可，这样可以显著降低后台 CPU 占用。
@@ -97,6 +86,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   /// 🍎 iOS 专用：启动状态刷新定时器
   /// iOS 的 MPNowPlayingInfoCenter 需要定期刷新状态才能保持锁屏控制中心活跃
   void _startIOSStateRefreshTimer() {
+    _iosStateRefreshTimer?.cancel();
     _iosStateRefreshTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
       final player = PlayerService();
       // 只要有歌曲在播放或暂停，就持续刷新状态
@@ -119,6 +109,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
   /// 启动进度条更新定时器（播放时定期更新进度）
   void _startPositionUpdateTimer() {
+    _positionUpdateTimer?.cancel();
     // 🔧 性能优化：降低更新频率到 1 秒，减少系统通知更新次数
     // 每1秒更新一次进度条（仅在播放时）
     _positionUpdateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -219,6 +210,18 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     final currentState = player.state;
     final previousState = playbackState.value;
     final now = DateTime.now();
+
+    // 🔧 性能优化：根据播放状态启停定时器，避免空转
+    final isActive = currentState == PlayerState.playing || currentState == PlayerState.paused;
+    if (isActive && _positionUpdateTimer == null) {
+      _startPositionUpdateTimer();
+      if (Platform.isAndroid) _startLyricUpdateTimer();
+      if (Platform.isIOS) _startIOSStateRefreshTimer();
+    } else if (!isActive && _positionUpdateTimer != null) {
+      _positionUpdateTimer?.cancel(); _positionUpdateTimer = null;
+      _lyricUpdateTimer?.cancel(); _lyricUpdateTimer = null;
+      _iosStateRefreshTimer?.cancel(); _iosStateRefreshTimer = null;
+    }
     
     // 🔧 性能优化：忽略仅位置变化的情况（位置更新由专门的定时器处理）
     // 只有当播放状态、歌曲或时长真正改变时才需要更新

@@ -234,6 +234,8 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                             imageUrl: track.picUrl,
                             width: 40,
                             height: 40,
+                            memCacheWidth: 128,
+                            memCacheHeight: 128,
                             fit: BoxFit.cover,
                             errorWidget: (_, __, ___) => Container(
                               width: 40,
@@ -415,6 +417,8 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                                 imageUrl: track.picUrl,
                                 width: 40,
                                 height: 40,
+                                memCacheWidth: 128,
+                                memCacheHeight: 128,
                                 fit: BoxFit.cover,
                                 errorWidget: (_, __, ___) => Container(
                                   width: 40,
@@ -854,6 +858,8 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                     imageUrl: original.picUrl,
                     width: 48,
                     height: 48,
+                    memCacheWidth: 128,
+                    memCacheHeight: 128,
                     fit: BoxFit.cover,
                     errorWidget: (_, __, ___) => Container(
                       width: 48,
@@ -953,6 +959,8 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                       imageUrl: track.picUrl,
                       width: 40,
                       height: 40,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       fit: BoxFit.cover,
                       errorWidget: (_, __, ___) => Container(
                         width: 40,
@@ -1123,6 +1131,8 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                     imageUrl: original.picUrl,
                     width: 48,
                     height: 48,
+                    memCacheWidth: 128,
+                    memCacheHeight: 128,
                     fit: BoxFit.cover,
                     errorWidget: (_, __, ___) => Container(
                       width: 48,
@@ -1229,6 +1239,8 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                       imageUrl: track.picUrl,
                       width: 40,
                       height: 40,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       fit: BoxFit.cover,
                       errorWidget: (_, __, ___) => Container(
                         width: 40,

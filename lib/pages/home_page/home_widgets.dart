@@ -131,6 +131,8 @@ class TrackBannerCard extends StatelessWidget {
             CachedNetworkImage(
               imageUrl: track.picUrl,
               fit: BoxFit.cover,
+              memCacheWidth: 280,
+              memCacheHeight: 280,
               placeholder: (context, url) => Container(
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 child: const Center(
@@ -468,6 +470,8 @@ class HistorySection extends StatelessWidget {
                             width: 88,
                             height: 88,
                             fit: BoxFit.cover,
+                            memCacheWidth: 280,
+                            memCacheHeight: 280,
                           ),
                         ),
                       ),
@@ -575,6 +579,8 @@ class HistorySection extends StatelessWidget {
                       width: 64,
                       height: 64,
                       fit: BoxFit.cover,
+                      memCacheWidth: 280,
+                      memCacheHeight: 280,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -795,6 +801,8 @@ class GuessYouLikeSection extends StatelessWidget {
                       width: 88,
                       height: 88,
                       fit: BoxFit.cover,
+                      memCacheWidth: 280,
+                      memCacheHeight: 280,
                     ),
                   ),
                 ),
@@ -894,6 +902,8 @@ class GuessYouLikeSection extends StatelessWidget {
                 width: 64,
                 height: 64,
                 fit: BoxFit.cover,
+                memCacheWidth: 280,
+                memCacheHeight: 280,
               ),
             ),
             const SizedBox(width: 12),
@@ -1117,6 +1127,8 @@ class ToplistsGrid extends StatelessWidget {
                               width: coverSize,
                               height: coverSize,
                               fit: BoxFit.cover,
+                              memCacheWidth: 280,
+                              memCacheHeight: 280,
                               placeholder: (context, url) => Container(
                                 width: coverSize,
                                 height: coverSize,

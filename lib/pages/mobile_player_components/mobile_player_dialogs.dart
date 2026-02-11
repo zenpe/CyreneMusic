@@ -467,6 +467,8 @@ class MobilePlayerDialogs {
         width: 48,
         height: 48,
         fit: BoxFit.cover,
+        memCacheWidth: 128,
+        memCacheHeight: 128,
         placeholder: (context, url) => Container(
           width: 48,
           height: 48,

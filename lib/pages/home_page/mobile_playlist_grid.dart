@@ -108,6 +108,8 @@ class _MobileHoverPlaylistCardState extends State<MobileHoverPlaylistCard> {
                                   child: CachedNetworkImage(
                                     imageUrl: widget.picUrl,
                                     fit: BoxFit.cover,
+                                    memCacheWidth: 280,
+                                    memCacheHeight: 280,
                                     placeholder: (context, url) => Container(
                                       color: CupertinoColors.systemGrey6,
                                       child: const Icon(
@@ -214,6 +216,8 @@ class _MobileHoverPlaylistCardState extends State<MobileHoverPlaylistCard> {
                             child: CachedNetworkImage(
                               imageUrl: widget.picUrl,
                               fit: BoxFit.cover,
+                              memCacheWidth: 280,
+                              memCacheHeight: 280,
                               placeholder: (context, url) => Container(
                                 color: cs.surfaceContainerHighest,
                                 child: Icon(

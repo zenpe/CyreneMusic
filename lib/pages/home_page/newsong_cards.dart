@@ -89,7 +89,7 @@ class _NewsongCardState extends State<NewsongCard> {
                         scale: _hovering ? 1.05 : 1.0,
                         duration: const Duration(milliseconds: 200),
                         child: SizedBox.expand(
-                          child: CachedNetworkImage(imageUrl: pic, fit: BoxFit.cover),
+                          child: CachedNetworkImage(imageUrl: pic, fit: BoxFit.cover, memCacheWidth: 280, memCacheHeight: 280),
                         ),
                       ),
                       if (_hovering)

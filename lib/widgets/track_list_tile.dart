@@ -110,6 +110,8 @@ class _TrackListTileState extends State<TrackListTile> {
             borderRadius: BorderRadius.circular(6),
             child: CachedNetworkImage(
               imageUrl: widget.track.picUrl,
+              memCacheWidth: 128,
+              memCacheHeight: 128,
               imageBuilder: (context, imageProvider) {
                 if (!_reportedCover) {
                   widget.onCoverReady?.call(imageProvider);

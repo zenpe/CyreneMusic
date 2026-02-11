@@ -269,22 +269,26 @@ class ColorExtractionService {
       final imageInfo = await _loadImageFromProvider(provider, timeout);
       
       if (imageInfo != null) {
-        // 将图片转换为字节数据
-        final byteData = await imageInfo.image.toByteData(format: ui.ImageByteFormat.png);
+        // 🔧 性能优化：使用 rawRgba 格式避免主线程 PNG 编码，速度快数倍
+        final byteData = await imageInfo.image.toByteData(format: ui.ImageByteFormat.rawRgba);
         if (byteData == null) {
           debugPrint('⚠️ [ColorExtraction] 无法转换图片为字节数据');
           return null;
         }
-        
+
         final imageBytes = byteData.buffer.asUint8List();
-        debugPrint('🎨 [ColorExtraction] 从 ImageProvider 提取颜色 (${imageBytes.length} bytes)');
-        
+        final imageWidth = imageInfo.image.width;
+        final imageHeight = imageInfo.image.height;
+        debugPrint('🎨 [ColorExtraction] 从 ImageProvider 提取颜色 (${imageWidth}x${imageHeight}, ${imageBytes.length} bytes RGBA)');
+
         final result = await compute(
           _extractColorsInIsolate,
           _ColorExtractionParams(
             imageBytes: imageBytes,
             sampleSize: sampleSize,
             region: region,
+            rawRgbaWidth: imageWidth,
+            rawRgbaHeight: imageHeight,
           ),
         );
 
@@ -345,11 +349,17 @@ class _ColorExtractionParams {
   final Uint8List imageBytes;
   final int sampleSize;
   final Rect? region;
+  /// 当数据为 rawRgba 格式时的图片宽度（非空表示 RGBA 原始数据）
+  final int? rawRgbaWidth;
+  /// 当数据为 rawRgba 格式时的图片高度
+  final int? rawRgbaHeight;
 
   const _ColorExtractionParams({
     required this.imageBytes,
     required this.sampleSize,
     this.region,
+    this.rawRgbaWidth,
+    this.rawRgbaHeight,
   });
 }
 
@@ -357,8 +367,21 @@ class _ColorExtractionParams {
 /// 使用纯 Dart 的 image 包，可以安全地在 isolate 中运行
 ColorExtractionResult? _extractColorsInIsolate(_ColorExtractionParams params) {
   try {
-    // 使用 image 包解码图片（纯 Dart，可在 isolate 中运行）
-    img.Image? image = img.decodeImage(params.imageBytes);
+    img.Image? image;
+
+    // 🔧 性能优化：支持 rawRgba 格式，直接从像素数据构建图片，避免 PNG 解码开销
+    if (params.rawRgbaWidth != null && params.rawRgbaHeight != null) {
+      image = img.Image.fromBytes(
+        width: params.rawRgbaWidth!,
+        height: params.rawRgbaHeight!,
+        bytes: params.imageBytes.buffer,
+        numChannels: 4,
+        order: img.ChannelOrder.rgba,
+      );
+    } else {
+      // 使用 image 包解码图片（纯 Dart，可在 isolate 中运行）
+      image = img.decodeImage(params.imageBytes);
+    }
     if (image == null) {
       return null;
     }

@@ -353,6 +353,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                     borderRadius: BorderRadius.circular(6),
                     child: CachedNetworkImage(
                       imageUrl: item.picUrl,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       width: 50,
                       height: 50,
                       fit: BoxFit.cover,
@@ -665,6 +667,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                             borderRadius: BorderRadius.circular(16),
                             child: CachedNetworkImage(
                               imageUrl: item.picUrl,
+                              memCacheWidth: 128,
+                              memCacheHeight: 128,
                               width: 60,
                               height: 60,
                               fit: BoxFit.cover,
@@ -782,6 +786,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
               borderRadius: BorderRadius.circular(4),
               child: CachedNetworkImage(
                 imageUrl: item.picUrl,
+                memCacheWidth: 128,
+                memCacheHeight: 128,
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,

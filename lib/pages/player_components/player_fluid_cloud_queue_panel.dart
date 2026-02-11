@@ -312,6 +312,8 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                       width: 44,
                       height: 44,
                       fit: BoxFit.cover,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       fadeOutDuration: Duration.zero,
                       fadeInDuration: const Duration(milliseconds: 200),
                     ),
@@ -402,6 +404,8 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                       width: 40,
                       height: 40,
                       fit: BoxFit.cover,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       fadeOutDuration: Duration.zero,
                       fadeInDuration: const Duration(milliseconds: 200),
                       placeholder: (context, url) => Container(

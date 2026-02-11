@@ -190,6 +190,8 @@ class _FavoritesPageState extends State<FavoritesPage>
               borderRadius: BorderRadius.circular(4),
               child: CachedNetworkImage(
                 imageUrl: item.picUrl,
+                memCacheWidth: 128,
+                memCacheHeight: 128,
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,

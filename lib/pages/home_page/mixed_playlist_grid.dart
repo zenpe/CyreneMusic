@@ -79,7 +79,7 @@ class _MixedPlaylistCardState extends State<MixedPlaylistCard> {
                       AnimatedScale(
                         scale: _hovering ? 1.08 : 1.0,
                         duration: const Duration(milliseconds: 200),
-                        child: CachedNetworkImage(imageUrl: pic, fit: BoxFit.cover),
+                        child: CachedNetworkImage(imageUrl: pic, fit: BoxFit.cover, memCacheWidth: 280, memCacheHeight: 280),
                       ),
                       AnimatedOpacity(
                         opacity: _hovering ? 1.0 : 0.0,

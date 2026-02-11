@@ -194,6 +194,8 @@ class CupertinoTrackBannerCard extends StatelessWidget {
               CachedNetworkImage(
                 imageUrl: track.picUrl,
                 fit: BoxFit.cover,
+                memCacheWidth: 280,
+                memCacheHeight: 280,
                 placeholder: (context, url) => Container(
                   color: isDark
                       ? const Color(0xFF2C2C2E)
@@ -468,6 +470,8 @@ class CupertinoHistorySection extends StatelessWidget {
                       width: 60,
                       height: 60,
                       fit: BoxFit.cover,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       placeholder: (context, url) => Container(
                         width: 60,
                         height: 60,
@@ -604,6 +608,8 @@ class CupertinoGuessYouLikeSection extends StatelessWidget {
                 width: 60,
                 height: 60,
                 fit: BoxFit.cover,
+                memCacheWidth: 128,
+                memCacheHeight: 128,
               ),
             ),
             const SizedBox(width: 12),
@@ -789,6 +795,8 @@ class CupertinoToplistsGrid extends StatelessWidget {
                         width: coverSize,
                         height: coverSize,
                         fit: BoxFit.cover,
+                        memCacheWidth: 280,
+                        memCacheHeight: 280,
                         placeholder: (context, url) => Container(
                           width: coverSize,
                           height: coverSize,

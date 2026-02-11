@@ -568,6 +568,8 @@ class _DiscoverPlaylistDetailContentState
                 imageUrl: detail.coverImgUrl,
                 width: 120,
                 height: 120,
+                memCacheWidth: 280,
+                memCacheHeight: 280,
                 fit: BoxFit.cover,
                 placeholder: (context, url) => Container(
                   width: 120,
@@ -724,6 +726,8 @@ class _DiscoverPlaylistDetailContentState
                 borderRadius: BorderRadius.circular(8),
                 child: CachedNetworkImage(
                   imageUrl: track.picUrl,
+                  memCacheWidth: 128,
+                  memCacheHeight: 128,
                   width: 56,
                   height: 56,
                   fit: BoxFit.cover,
@@ -1310,6 +1314,8 @@ class _DiscoverPlaylistDetailContentState
                   imageUrl: detail.coverImgUrl,
                   width: 140,
                   height: 140,
+                  memCacheWidth: 280,
+                  memCacheHeight: 280,
                   fit: BoxFit.cover,
                   placeholder: (context, url) => Container(
                     width: 140,
@@ -1603,6 +1609,8 @@ class _DiscoverPlaylistDetailContentState
                     borderRadius: BorderRadius.circular(14),
                     child: CachedNetworkImage(
                       imageUrl: track.picUrl,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       width: 56,
                       height: 56,
                       fit: BoxFit.cover,
@@ -1976,6 +1984,8 @@ class _DiscoverPlaylistDetailContentState
                   borderRadius: BorderRadius.circular(8),
                   child: CachedNetworkImage(
                     imageUrl: track.picUrl,
+                    memCacheWidth: 128,
+                    memCacheHeight: 128,
                     width: 64,
                     height: 64,
                     fit: BoxFit.cover,

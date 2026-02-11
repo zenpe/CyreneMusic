@@ -232,6 +232,7 @@ extension MyPageCupertinoUI on _MyPageState {
         borderRadius: BorderRadius.circular(8),
         child: CachedNetworkImage(
           imageUrl: playlist.coverUrl!, width: 48, height: 48, fit: BoxFit.cover,
+          memCacheWidth: 128, memCacheHeight: 128,
           placeholder: (_, __) => Container(width: 48, height: 48, decoration: BoxDecoration(color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, borderRadius: BorderRadius.circular(8)), child: Icon(playlist.isDefault ? CupertinoIcons.heart_fill : CupertinoIcons.music_albums, color: playlist.isDefault ? CupertinoColors.systemRed : CupertinoColors.systemBlue, size: 20)),
           errorWidget: (_, __, ___) => Container(width: 48, height: 48, decoration: BoxDecoration(color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, borderRadius: BorderRadius.circular(8)), child: Icon(playlist.isDefault ? CupertinoIcons.heart_fill : CupertinoIcons.music_albums, color: playlist.isDefault ? CupertinoColors.systemRed : CupertinoColors.systemBlue, size: 20)),
         ),
@@ -271,6 +272,7 @@ extension MyPageCupertinoUI on _MyPageState {
                             borderRadius: BorderRadius.circular(6),
                             child: CachedNetworkImage(
                               imageUrl: item.picUrl, width: 48, height: 48, fit: BoxFit.cover,
+                              memCacheWidth: 128, memCacheHeight: 128,
                               placeholder: (_, __) => Container(width: 48, height: 48, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
                               errorWidget: (_, __, ___) => Container(width: 48, height: 48, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
                             ),
@@ -414,6 +416,7 @@ extension MyPageCupertinoUI on _MyPageState {
                       borderRadius: BorderRadius.circular(6),
                       child: CachedNetworkImage(
                         imageUrl: item.picUrl, width: 50, height: 50, fit: BoxFit.cover,
+                        memCacheWidth: 128, memCacheHeight: 128,
                         placeholder: (_, __) => Container(width: 50, height: 50, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Center(child: CupertinoActivityIndicator(radius: 10))),
                         errorWidget: (_, __, ___) => Container(width: 50, height: 50, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
                       ),

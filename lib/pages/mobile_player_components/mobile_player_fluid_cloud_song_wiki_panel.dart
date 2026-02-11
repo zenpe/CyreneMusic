@@ -646,6 +646,8 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                             width: 36,
                             height: 36,
                             fit: BoxFit.cover,
+                            memCacheWidth: 128,
+                            memCacheHeight: 128,
                             placeholder: (context, url) => Container(
                               color: Colors.white10,
                               child: Icon(CupertinoIcons.person_fill, size: 18, color: Colors.white.withOpacity(0.5)),
@@ -796,6 +798,8 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                       width: 44,
                       height: 44,
                       fit: BoxFit.cover,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       placeholder: (context, url) => Container(
                         width: 44,
                         height: 44,
@@ -888,6 +892,8 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                       width: 36,
                       height: 36,
                       fit: BoxFit.cover,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       placeholder: (context, url) => Container(
                         width: 36,
                         height: 36,
@@ -955,6 +961,8 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                   CachedNetworkImage(
                     imageUrl: playlist['imageUrl'] ?? '',
                     fit: BoxFit.cover,
+                    memCacheWidth: 280,
+                    memCacheHeight: 280,
                     placeholder: (_, __) => Container(
                       color: Colors.white.withOpacity(0.1),
                       child: Icon(Icons.queue_music, color: Colors.white.withOpacity(0.3), size: 28),
@@ -1133,6 +1141,8 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                 imageUrl: detail.coverImgUrl.replaceAll('http://', 'https://'),
                 width: 100,
                 height: 100,
+                memCacheWidth: 200,
+                memCacheHeight: 200,
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Container(
                   color: Colors.white.withOpacity(0.1),
@@ -1236,6 +1246,8 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                 width: 42,
                 height: 42,
                 fit: BoxFit.cover,
+                memCacheWidth: 128,
+                memCacheHeight: 128,
                 placeholder: (_, __) => Container(
                   color: Colors.white.withOpacity(0.1),
                   child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3), size: 16),

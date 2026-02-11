@@ -548,6 +548,8 @@ class DailyRecommendDetailPage extends StatelessWidget {
                           imageUrl: picUrl,
                           width: 56,
                           height: 56,
+                          memCacheWidth: 128,
+                          memCacheHeight: 128,
                           fit: BoxFit.cover,
                           placeholder: (context, url) => Container(
                             width: 56,
@@ -694,6 +696,8 @@ class DailyRecommendDetailPage extends StatelessWidget {
                   imageUrl: picUrl,
                   width: 56,
                   height: 56,
+                  memCacheWidth: 128,
+                  memCacheHeight: 128,
                   fit: BoxFit.cover,
                   placeholder: (context, url) => Container(
                     color: colorScheme.surfaceContainerHighest,
@@ -1114,6 +1118,8 @@ class _FluentDailyRecommendPage extends StatelessWidget {
               imageUrl: picUrl,
               width: 48,
               height: 48,
+              memCacheWidth: 128,
+              memCacheHeight: 128,
               fit: BoxFit.cover,
               placeholder: (context, url) => Container(
                 width: 48,

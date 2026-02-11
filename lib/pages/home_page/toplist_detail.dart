@@ -318,6 +318,8 @@ class _ToplistDetailContentFluent extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                   child: CachedNetworkImage(
                     imageUrl: toplist.coverImgUrl,
+                    memCacheWidth: 200,
+                    memCacheHeight: 200,
                     fit: BoxFit.cover,
                   ),
                 ),
@@ -475,6 +477,8 @@ class _FluentTrackListTileState extends State<_FluentTrackListTile> {
                imageUrl: widget.track.picUrl,
                width: 40,
                height: 40,
+               memCacheWidth: 128,
+               memCacheHeight: 128,
                fit: BoxFit.cover,
                placeholder: (c, u) => Container(color: theme.resources.controlFillColorSecondary),
              ),
@@ -559,6 +563,8 @@ class _ToplistDetailContent extends StatelessWidget {
                   imageUrl: toplist.coverImgUrl,
                   width: isDesktop ? 96 : 80, // 桌面端稍大
                   height: isDesktop ? 96 : 80,
+                  memCacheWidth: 200,
+                  memCacheHeight: 200,
                   fit: BoxFit.cover,
                   placeholder: (context, url) => Container(
                     width: isDesktop ? 96 : 80,

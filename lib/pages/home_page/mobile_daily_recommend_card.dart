@@ -256,6 +256,8 @@ class MobileDailyRecommendCard extends StatelessWidget {
                       ? CachedNetworkImage(
                           imageUrl: displayCovers[index],
                           fit: BoxFit.cover,
+                          memCacheWidth: 280,
+                          memCacheHeight: 280,
                         )
                       : Container(
                           color: isDark
@@ -572,6 +574,8 @@ class MobileDailyRecommendCard extends StatelessWidget {
                   : CachedNetworkImage(
                       imageUrl: url,
                       fit: BoxFit.cover,
+                      memCacheWidth: 280,
+                      memCacheHeight: 280,
                       placeholder: (context, url) => Container(
                         color: cs.surfaceContainerHighest,
                       ),

@@ -287,6 +287,8 @@ class _FeaturedCardState extends State<_FeaturedCard> {
                   child: CachedNetworkImage(
                     imageUrl: widget.track.picUrl,
                     fit: BoxFit.cover,
+                    memCacheWidth: 280,
+                    memCacheHeight: 280,
                     placeholder: (context, url) => Container(
                       color: Colors.grey[800],
                     ),
@@ -510,6 +512,8 @@ class _ToplistTrackCardState extends State<_ToplistTrackCard> {
                         child: CachedNetworkImage(
                           imageUrl: widget.track.picUrl,
                           fit: BoxFit.cover,
+                          memCacheWidth: 280,
+                          memCacheHeight: 280,
                         ),
                       ),
                     ),

@@ -82,6 +82,8 @@ class TrackActionMenu {
                   imageUrl: track.picUrl,
                   width: 48,
                   height: 48,
+                  memCacheWidth: 128,
+                  memCacheHeight: 128,
                   fit: BoxFit.cover,
                   placeholder: (context, url) => Container(
                     width: 48,
@@ -297,6 +299,8 @@ class TrackActionMenu {
                         borderRadius: BorderRadius.circular(16),
                         child: CachedNetworkImage(
                           imageUrl: track.picUrl,
+                          memCacheWidth: 200,
+                          memCacheHeight: 200,
                           fit: BoxFit.cover,
                           errorWidget: (context, url, error) => Icon(
                             Icons.music_note_rounded,
@@ -481,12 +485,14 @@ class TrackActionMenu {
                     imageUrl: track.picUrl,
                     width: 48,
                     height: 48,
+                    memCacheWidth: 128,
+                    memCacheHeight: 128,
                     fit: BoxFit.cover,
                     placeholder: (context, url) => Container(
                       width: 48,
                       height: 48,
-                      color: isDark 
-                          ? const Color(0xFF2C2C2E) 
+                      color: isDark
+                          ? const Color(0xFF2C2C2E)
                           : CupertinoColors.systemGrey5,
                     ),
                     errorWidget: (context, url, error) => Container(

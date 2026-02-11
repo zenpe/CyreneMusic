@@ -84,6 +84,8 @@ extension MyPageMaterialUI on _MyPageState {
                         : CachedNetworkImage(
                             imageUrl: user.avatarUrl!,
                             fit: BoxFit.cover,
+                            memCacheWidth: 1080,
+                            memCacheHeight: 1080,
                           ))
                     : Container(color: colorScheme.surface),
               ),
@@ -454,6 +456,7 @@ extension MyPageMaterialUI on _MyPageState {
                     borderRadius: BorderRadius.circular(12),
                     child: CachedNetworkImage(
                       imageUrl: item.picUrl, width: 56, height: 56, fit: BoxFit.cover,
+                      memCacheWidth: 128, memCacheHeight: 128,
                       placeholder: (_, __) => Container(width: 56, height: 56, color: colorScheme.surfaceContainerHighest, child: const Icon(Icons.music_note)),
                       errorWidget: (_, __, ___) => Container(width: 56, height: 56, color: colorScheme.surfaceContainerHighest, child: const Icon(Icons.music_note)),
                     ),
@@ -816,6 +819,8 @@ extension MyPageMaterialUI on _MyPageState {
                               width: 60,
                               height: 60,
                               fit: BoxFit.cover,
+                              memCacheWidth: 128,
+                              memCacheHeight: 128,
                               placeholder: (_, __) => Container(
                                 width: 60,
                                 height: 60,
@@ -940,6 +945,7 @@ extension MyPageMaterialUI on _MyPageState {
         child: CachedNetworkImage(
           imageUrl: playlist.coverUrl!,
           width: 56, height: 56, fit: BoxFit.cover,
+          memCacheWidth: 128, memCacheHeight: 128,
           placeholder: (_, __) => Container(width: 56, height: 56, decoration: BoxDecoration(color: playlist.isDefault ? colorScheme.primaryContainer : colorScheme.secondaryContainer, borderRadius: BorderRadius.circular(12)), child: Icon(playlist.isDefault ? Icons.favorite : Icons.library_music, color: playlist.isDefault ? Colors.red : colorScheme.primary)),
           errorWidget: (_, __, ___) => Container(width: 56, height: 56, decoration: BoxDecoration(color: playlist.isDefault ? colorScheme.primaryContainer : colorScheme.secondaryContainer, borderRadius: BorderRadius.circular(12)), child: Icon(playlist.isDefault ? Icons.favorite : Icons.library_music, color: playlist.isDefault ? Colors.red : colorScheme.primary)),
         ),

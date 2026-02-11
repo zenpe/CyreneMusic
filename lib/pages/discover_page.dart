@@ -1037,6 +1037,8 @@ class _MaterialPlaylistCard extends StatelessWidget {
 
                         imageUrl: summary.coverImgUrl,
                         fit: BoxFit.cover,
+                        memCacheWidth: 280,
+                        memCacheHeight: 280,
                         placeholder: (context, url) => Container(
                           color: colorScheme.surfaceContainerHighest,
                         ),
@@ -1127,6 +1129,8 @@ class _MaterialPlaylistCard extends StatelessWidget {
               child: CachedNetworkImage(
                 imageUrl: summary.coverImgUrl,
                 fit: BoxFit.cover,
+                memCacheWidth: 280,
+                memCacheHeight: 280,
                 placeholder: (context, url) => Container(
                   color: colorScheme.surfaceContainerHighest,
                 ),
@@ -1204,6 +1208,8 @@ class _FluentPlaylistCard extends StatelessWidget {
                 child: CachedNetworkImage(
                   imageUrl: summary.coverImgUrl,
                   fit: BoxFit.cover,
+                  memCacheWidth: 280,
+                  memCacheHeight: 280,
                   placeholder: (context, url) => Container(
                     color: theme.resources.controlAltFillColorSecondary,
                   ),

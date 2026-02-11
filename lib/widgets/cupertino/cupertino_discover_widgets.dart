@@ -47,6 +47,8 @@ class CupertinoDiscoverPlaylistCard extends StatelessWidget {
                     CachedNetworkImage(
                       imageUrl: summary.coverImgUrl,
                       fit: BoxFit.cover,
+                      memCacheWidth: 280,
+                      memCacheHeight: 280,
                       placeholder: (context, url) => Container(
                         color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey6,
                         child: const CupertinoActivityIndicator(),

@@ -674,6 +674,8 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                                 width: 40,
                                 height: 40,
                                 fit: BoxFit.cover,
+                                memCacheWidth: 128,
+                                memCacheHeight: 128,
                                 placeholder: (context, url) => Container(
                                   color: Colors.white10,
                                   child: Icon(CupertinoIcons.person_fill, size: 20, color: Colors.white.withOpacity(0.5)),
@@ -835,6 +837,8 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                         imageUrl: detail.coverImgUrl.replaceAll('http://', 'https://'),
                         width: 140,
                         height: 140,
+                        memCacheWidth: 280,
+                        memCacheHeight: 280,
                         fit: BoxFit.cover,
                         placeholder: (_, __) => Container(
                           color: Colors.white.withOpacity(0.1),
@@ -1013,6 +1017,8 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                   width: 44,
                   height: 44,
                   fit: BoxFit.cover,
+                  memCacheWidth: 128,
+                  memCacheHeight: 128,
                   placeholder: (_, __) => Container(
                     color: Colors.white.withOpacity(0.1),
                     child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3), size: 20),
@@ -1117,6 +1123,8 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                   width: 52,
                   height: 52,
                   fit: BoxFit.cover,
+                  memCacheWidth: 128,
+                  memCacheHeight: 128,
                   placeholder: (_, __) => Container(
                     color: Colors.white.withOpacity(0.1),
                     child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3)),
@@ -1202,6 +1210,8 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                     width: 44,
                     height: 44,
                     fit: BoxFit.cover,
+                    memCacheWidth: 128,
+                    memCacheHeight: 128,
                     placeholder: (_, __) => Container(
                       color: Colors.white.withOpacity(0.1),
                       child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3)),
@@ -1276,6 +1286,8 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                     CachedNetworkImage(
                       imageUrl: playlist['imageUrl'] ?? '',
                       fit: BoxFit.cover,
+                      memCacheWidth: 280,
+                      memCacheHeight: 280,
                       placeholder: (_, __) => Container(
                         color: Colors.white.withOpacity(0.1),
                         child: Icon(Icons.queue_music, color: Colors.white.withOpacity(0.3), size: 32),

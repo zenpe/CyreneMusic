@@ -116,6 +116,7 @@ Future<void> main() async {
       });
     }
   
+    // ── 第 1 批：基础服务（串行，有依赖关系） ──
     await timed('PersistentStorageService.initialize', () async {
       await PersistentStorageService().initialize();
     });
@@ -127,22 +128,13 @@ Future<void> main() async {
     });
     log(' Navidrome 会话服务已初始化');
 
-    await timed('DeveloperModeService.initialize', () async {
-      await DeveloperModeService().initialize();
-    });
-    log('✅ 开发者模式服务已初始化');
-
-    await timed('AppSettingsService.initialize', () async {
-      await AppSettingsService().initialize();
-    });
-    log(' 应用设置服务已初始化');
-  
     await timed('PersistentStorageService.getBackupStats', () {
       final storageStats = PersistentStorageService().getBackupStats();
       log(' 存储统计: ${storageStats['sharedPreferences_keys']} 个键');
       log(' 备份路径: ${storageStats['backup_file_path']}');
     });
-  
+
+    // WindowManager 初始化（平台相关 UI 操作，保持原有位置）
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       await timed('windowManager.ensureInitialized', () async {
         await windowManager.ensureInitialized();
@@ -198,62 +190,8 @@ Future<void> main() async {
         });
       });
     }
-  
-    await timed('UrlService.initialize', () async {
-      await UrlService().initialize();
-    });
-    log('✅ URL 服务已初始化');
-  
-    await timed('AudioSourceService.initialize', () async {
-      await AudioSourceService().initialize();
-    });
-    log('✅ 音源服务已初始化');
-  
-    await timed('VersionService.initialize', () async {
-      await VersionService().initialize();
-    });
-    log(' 版本服务已初始化');
 
-    await timed('AutoUpdateService.initialize', () async {
-      await AutoUpdateService().initialize();
-    });
-    log(' 自动更新服务已初始化');
-
-    await timed('AnnouncementService.initialize', () async {
-      await AnnouncementService().initialize();
-    });
-    log(' 公告服务已初始化');
-  
-    await timed('CacheService.initialize', () async {
-      await CacheService().initialize();
-    });
-    log(' 缓存服务已初始化');
-  
-    await timed('PlayerBackgroundService.initialize', () async {
-      await PlayerBackgroundService().initialize();
-    });
-    log(' 播放器背景服务已初始化');
-  
-    await timed('PlayerService.initialize', () async {
-      await PlayerService().initialize();
-    });
-    log(' 播放器服务已初始化');
-
-    await timed('LocalLibraryService.init', () async {
-      await LocalLibraryService().init();
-    });
-    log(' 本地音乐库服务已初始化');
-  
-    await timed('LyricStyleService.initialize', () async {
-      await LyricStyleService().initialize();
-    });
-    log(' 歌词样式服务已初始化');
-  
-    await timed('LyricFontService.initialize', () async {
-      await LyricFontService().initialize();
-    });
-    log(' 歌词字体服务已初始化');
-  
+    // Android 特有的 edge-to-edge 和权限请求
     if (Platform.isAndroid) {
       await timed('Android edgeToEdge + overlays', () {
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -273,36 +211,95 @@ Future<void> main() async {
           log(' 通知权限未授予，媒体通知可能无法显示');
         }
       });
-
     }
 
-  
+    // ── 第 2 批：无互相依赖的服务（并行） ──
+    await timed('Batch 2: parallel services', () => Future.wait([
+      timed('DeveloperModeService.initialize', () async {
+        await DeveloperModeService().initialize();
+        log('✅ 开发者模式服务已初始化');
+      }),
+      timed('AppSettingsService.initialize', () async {
+        await AppSettingsService().initialize();
+        log(' 应用设置服务已初始化');
+      }),
+      timed('UrlService.initialize', () async {
+        await UrlService().initialize();
+        log('✅ URL 服务已初始化');
+      }),
+      timed('LocalLibraryService.init', () async {
+        await LocalLibraryService().init();
+        log(' 本地音乐库服务已初始化');
+      }),
+      timed('LyricStyleService.initialize', () async {
+        await LyricStyleService().initialize();
+        log(' 歌词样式服务已初始化');
+      }),
+      timed('LyricFontService.initialize', () async {
+        await LyricFontService().initialize();
+        log(' 歌词字体服务已初始化');
+      }),
+      timed('PlayerBackgroundService.initialize', () async {
+        await PlayerBackgroundService().initialize();
+        log(' 播放器背景服务已初始化');
+      }),
+      timed('AudioSourceService.initialize', () async {
+        await AudioSourceService().initialize();
+        log('✅ 音源服务已初始化');
+      }),
+    ]));
+
+    // ── 第 3 批：依赖第 1-2 批的服务（并行） ──
+    await timed('Batch 3: parallel services', () => Future.wait([
+      timed('VersionService.initialize', () async {
+        await VersionService().initialize();
+        log(' 版本服务已初始化');
+      }),
+      timed('AutoUpdateService.initialize', () async {
+        await AutoUpdateService().initialize();
+        log(' 自动更新服务已初始化');
+      }),
+      timed('AnnouncementService.initialize', () async {
+        await AnnouncementService().initialize();
+        log(' 公告服务已初始化');
+      }),
+      timed('CacheService.initialize', () async {
+        await CacheService().initialize();
+        log(' 缓存服务已初始化');
+      }),
+      timed('ListeningStatsService.initialize', () async {
+        ListeningStatsService().initialize();
+        log(' 听歌统计服务已初始化');
+      }),
+      timed('NotificationService.initialize', () async {
+        await NotificationService().initialize();
+      }),
+    ]));
+
+    // ── 第 4 批：串行，有依赖关系 ──
+    await timed('PlayerService.initialize', () async {
+      await PlayerService().initialize();
+    });
+    log(' 播放器服务已初始化');
+
     await timed('SystemMediaService.initialize', () async {
       await SystemMediaService().initialize();
     });
     log(' 系统媒体服务已初始化');
-  
+
     await timed('TrayService.initialize', () async {
       await TrayService().initialize();
     });
     log(' 系统托盘已初始化');
-  
-    await timed('ListeningStatsService.initialize', () {
-      ListeningStatsService().initialize();
-    });
-    log(' 听歌统计服务已初始化');
-  
-    await timed('NotificationService.initialize', () async {
-      await NotificationService().initialize();
-    });
-  
+
+    // ── 第 5 批：平台相关服务（放最后） ──
     if (Platform.isWindows) {
       await timed('DesktopLyricService.initialize(Windows)', () async {
         await DesktopLyricService().initialize();
       });
       log(' 桌面歌词服务已初始化');
     }
-  
+
     if (Platform.isAndroid) {
       await timed('AndroidFloatingLyricService.initialize(Android)', () async {
         await AndroidFloatingLyricService().initialize();

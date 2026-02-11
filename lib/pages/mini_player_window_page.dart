@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:window_manager/window_manager.dart';
 import '../models/track.dart';
-import '../services/color_extraction_service.dart';
 import '../services/desktop_lyric_service.dart';
 import '../services/player_service.dart';
 import '../services/mini_player_window_service.dart';
@@ -29,11 +28,6 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
   bool _isQueuePanelOpen = false;
   bool _isQueuePanelVisible = false;
 
-  Color _extractedThemeColor = Colors.grey;
-  String? _currentThemeColorImageUrl;
-  int _pendingThemeColorExtractionId = 0;
-  String? _lastScheduledThemeColorImageUrl;
-
   Size? _restoreSize;
   Offset? _restorePosition;
   Size? _lastKnownSize;
@@ -52,17 +46,12 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
   @override
   void initState() {
     super.initState();
-    _extractedThemeColor = Colors.grey[700]!;
     if (Platform.isWindows) {
       windowManager.addListener(this);
       _refreshWindowMetrics();
     }
 
     PlayerService().addListener(_onPlayerServiceChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _scheduleThemeColorExtraction();
-    });
 
     _queuePanelController = AnimationController(
       vsync: this,
@@ -112,86 +101,7 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
 
   void _onPlayerServiceChanged() {
     if (!mounted) return;
-    _scheduleThemeColorExtraction();
-  }
-
-  void _scheduleThemeColorExtraction() {
-    final player = PlayerService();
-    final song = player.currentSong;
-    final track = player.currentTrack;
-    final imageUrl = song?.pic ?? track?.picUrl ?? '';
-
-    if (imageUrl.isEmpty) {
-      if (_currentThemeColorImageUrl != null || _extractedThemeColor != Colors.grey[700]!) {
-        _currentThemeColorImageUrl = null;
-        _lastScheduledThemeColorImageUrl = null;
-        if (mounted) {
-          setState(() {
-            _extractedThemeColor = Colors.grey[700]!;
-          });
-        } else {
-          _extractedThemeColor = Colors.grey[700]!;
-        }
-      }
-      return;
-    }
-
-    if (imageUrl == _currentThemeColorImageUrl) return;
-    if (imageUrl == _lastScheduledThemeColorImageUrl) return;
-    _lastScheduledThemeColorImageUrl = imageUrl;
-
-    final cached = ColorExtractionService().getCachedColors(imageUrl);
-    final cachedTheme = cached?.themeColor;
-    if (cachedTheme != null) {
-      _currentThemeColorImageUrl = imageUrl;
-      if (mounted) {
-        setState(() {
-          _extractedThemeColor = cachedTheme;
-        });
-      }
-      return;
-    }
-
-    _pendingThemeColorExtractionId++;
-    final currentId = _pendingThemeColorExtractionId;
-
-    Future.delayed(const Duration(milliseconds: 200), () {
-      if (!mounted) return;
-      if (currentId != _pendingThemeColorExtractionId) return;
-      _extractThemeColorFromImage(imageUrl);
-    });
-  }
-
-  Future<void> _extractThemeColorFromImage(String imageUrl) async {
-    final cached = ColorExtractionService().getCachedColors(imageUrl);
-    final cachedTheme = cached?.themeColor;
-    if (cachedTheme != null) {
-      _currentThemeColorImageUrl = imageUrl;
-      if (mounted) {
-        setState(() {
-          _extractedThemeColor = cachedTheme;
-        });
-      }
-      return;
-    }
-
-    _currentThemeColorImageUrl = imageUrl;
-
-    try {
-      final result = await ColorExtractionService().extractColorsFromUrl(
-        imageUrl,
-        sampleSize: 64,
-        timeout: const Duration(seconds: 3),
-      );
-      final themeColor = result?.themeColor;
-      if (themeColor != null && mounted && _currentThemeColorImageUrl == imageUrl) {
-        setState(() {
-          _extractedThemeColor = themeColor;
-        });
-      }
-    } catch (_) {
-      return;
-    }
+    setState(() {});
   }
 
   Future<void> _refreshWindowMetrics() async {
@@ -453,15 +363,18 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
           textTheme: materialTheme.textTheme.apply(fontFamily: 'Microsoft YaHei'),
           primaryTextTheme: materialTheme.primaryTextTheme.apply(fontFamily: 'Microsoft YaHei'),
         );
-        
+
         // 获取封面URL
         final coverUrl = song?.pic ?? track?.picUrl ?? '';
-        
-        // 获取主题色
-        final themeColor = _extractedThemeColor;
-        
-        // 计算背景色（更浅的灰色调，类似参考图）
-        final backgroundColor = Color.lerp(themeColor, Colors.grey[600]!, 0.7)!;
+
+        return ValueListenableBuilder<Color?>(
+          valueListenable: PlayerService().themeColorNotifier,
+          builder: (context, themeColorValue, _) {
+            // 获取主题色
+            final themeColor = themeColorValue ?? Colors.grey[700]!;
+
+            // 计算背景色（更浅的灰色调，类似参考图）
+            final backgroundColor = Color.lerp(themeColor, Colors.grey[600]!, 0.7)!;
 
         return fluent.FluentTheme(
           data: fluentTheme,
@@ -536,6 +449,8 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
             ),
           ),
         );
+          },  // ValueListenableBuilder builder
+        );  // ValueListenableBuilder
       },
     );
   }
@@ -648,6 +563,8 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
           CachedNetworkImage(
             imageUrl: coverUrl,
             fit: BoxFit.cover,
+            memCacheWidth: 1080,
+            memCacheHeight: 1080,
             errorWidget: (_, __, ___) => Container(color: backgroundColor),
           ),
         
