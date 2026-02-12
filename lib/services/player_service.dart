@@ -71,6 +71,7 @@ class PlayerService extends ChangeNotifier {
   PlayerState _state = PlayerState.idle;
   SongDetail? _currentSong;
   Track? _currentTrack;
+  int _playGeneration = 0; // 切歌代数，用于丢弃旧异步操作的回写
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   String? _errorMessage;
@@ -394,6 +395,7 @@ class PlayerService extends ChangeNotifier {
       _currentSong = null;
       _errorMessage = null;
       _isAudioSourceNotConfigured = false;  // 重置标志
+      final gen = ++_playGeneration; // 记录本次播放代数
       
       // ✅ 关键逻辑：如果是手动点击（未提供预取的 coverProvider），则强制刷新一次封面
       final shouldForceUpdate = coverProvider == null;
@@ -481,6 +483,7 @@ class PlayerService extends ChangeNotifier {
               title: track.name,
               artist: track.artists,
             ).then((detail) {
+               if (gen != _playGeneration) return; // 已切歌，丢弃
                if (detail != null && detail.lyric.isNotEmpty) {
                   print('✅ [PlayerService] 成功获取新歌词 (${detail.lyric.length}字符)');
                   
@@ -590,6 +593,12 @@ class PlayerService extends ChangeNotifier {
         title: track.name,
         artist: track.artists,
       );
+
+      // 异步返回后检查是否已切歌
+      if (gen != _playGeneration) {
+        print('⏭️ [PlayerService] 已切歌(gen=$gen→$_playGeneration)，丢弃 fetchSongDetail 结果');
+        return;
+      }
 
       if (songDetail == null || songDetail.url.isEmpty) {
         _state = PlayerState.error;
@@ -1589,6 +1598,10 @@ class PlayerService extends ChangeNotifier {
     EqualizerService().setPlayer(_mediaKitPlayer, useMediaKit: _useMediaKit);
     await EqualizerService().applyEqualizer();
 
+    // 立即应用音量设置，避免首次播放以默认100%音量出声
+    await _mediaKitPlayer!.setVolume(_volume * 100);
+    print('🔊 [PlayerService] MediaKit 已应用音量设置: ${(_volume * 100).toInt()}%');
+
     _mediaKitPlayingSub = _mediaKitPlayer!.stream.playing.listen((playing) {
       if (playing) {
         _state = PlayerState.playing;
@@ -1698,6 +1711,7 @@ class PlayerService extends ChangeNotifier {
       _currentTrack = radioTrack;
       _currentSong = null;
       _errorMessage = null;
+      ++_playGeneration; // 电台播放也递增代数
       _duration = Duration.zero;
       _position = Duration.zero;
       positionNotifier.value = Duration.zero;

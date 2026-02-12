@@ -312,24 +312,48 @@ extension _DeveloperPageFluent on _DeveloperPageState {
 
     if (AdminService().errorMessage != null &&
         AdminService().errorMessage!.contains('令牌验证失败')) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(fluent.FluentIcons.error, size: 48, color: fluent.Colors.red),
-            const SizedBox(height: 16),
-            const Text('数据加载失败'),
-            const SizedBox(height: 8),
-            Text(AdminService().errorMessage!),
-            const SizedBox(height: 24),
-            fluent.Button(
-              onPressed: () {
-                AdminService().logout();
-              },
-              child: const Text('重新登录'),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 220;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        fluent.FluentIcons.error,
+                        size: compact ? 40 : 48,
+                        color: fluent.Colors.red,
+                      ),
+                      SizedBox(height: compact ? 12 : 16),
+                      const Text('数据加载失败'),
+                      const SizedBox(height: 8),
+                      Text(
+                        AdminService().errorMessage!,
+                        textAlign: TextAlign.center,
+                        maxLines: compact ? 3 : 5,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: compact ? 16 : 24),
+                      fluent.Button(
+                        onPressed: () {
+                          AdminService().logout();
+                        },
+                        child: const Text('重新登录'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ],
-        ),
+          );
+        },
       );
     }
 
@@ -686,20 +710,39 @@ extension _DeveloperPageFluent on _DeveloperPageState {
 
         final data = snapshot.data;
         if (data == null) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(fluent.FluentIcons.error, size: 48, color: fluent.Colors.grey),
-                const SizedBox(height: 16),
-                const Text('加载赞助排行榜失败'),
-                const SizedBox(height: 16),
-                fluent.FilledButton(
-                  onPressed: () => setState(() {}),
-                  child: const Text('重试'),
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+              final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+              return SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: minHeight),
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            fluent.FluentIcons.error,
+                            size: compact ? 40 : 48,
+                            color: fluent.Colors.grey,
+                          ),
+                          SizedBox(height: compact ? 12 : 16),
+                          const Text('加载赞助排行榜失败'),
+                          SizedBox(height: compact ? 12 : 16),
+                          fluent.FilledButton(
+                            onPressed: () => setState(() {}),
+                            child: const Text('重试'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ],
-            ),
+              );
+            },
           );
         }
 

@@ -1,79 +1,80 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'url_service.dart';
-import 'auth_service.dart';
+import 'api/api_client.dart';
 
 class NeteaseRecommendService extends ChangeNotifier {
   static final NeteaseRecommendService _instance = NeteaseRecommendService._internal();
   factory NeteaseRecommendService() => _instance;
   NeteaseRecommendService._internal();
 
-  Map<String, String> _authHeaders() {
-    final token = AuthService().token;
-    return token != null ? { 'Authorization': 'Bearer $token' } : {};
-  }
+  final ApiClient _api = ApiClient();
 
   Future<List<Map<String, dynamic>>> fetchDailySongs() async {
-    final resp = await http.get(
-      Uri.parse(UrlService().neteaseRecommendSongsUrl),
-      headers: _authHeaders(),
-    ).timeout(const Duration(seconds: 15));
-    if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
-    final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    final result = await _api.getJson(
+      '/recommend/songs',
+      timeout: const Duration(seconds: 15),
+    );
+    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+    final data = result.data as Map<String, dynamic>;
     if ((data['code'] as num?)?.toInt() != 200) throw Exception('code ${data['code']}');
     final list = (data['recommend'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
     return list;
   }
 
   Future<List<Map<String, dynamic>>> fetchDailyPlaylists() async {
-    final resp = await http.get(
-      Uri.parse(UrlService().neteaseRecommendResourceUrl),
-      headers: _authHeaders(),
-    ).timeout(const Duration(seconds: 15));
-    if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
-    final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    final result = await _api.getJson(
+      '/recommend/resource',
+      timeout: const Duration(seconds: 15),
+    );
+    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+    final data = result.data as Map<String, dynamic>;
     if ((data['code'] as num?)?.toInt() != 200) throw Exception('code ${data['code']}');
     final list = (data['recommend'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
     return list;
   }
 
   Future<List<Map<String, dynamic>>> fetchPersonalFm() async {
-    final resp = await http.get(
-      Uri.parse(UrlService().neteasePersonalFmUrl),
-      headers: _authHeaders(),
-    ).timeout(const Duration(seconds: 15));
-    if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
-    final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    final result = await _api.getJson(
+      '/personal_fm',
+      timeout: const Duration(seconds: 15),
+    );
+    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+    final data = result.data as Map<String, dynamic>;
     if ((data['code'] as num?)?.toInt() != 200) throw Exception('code ${data['code']}');
     final list = (data['data'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
     return list;
   }
 
   Future<void> fmTrash(dynamic id) async {
-    final resp = await http.post(
-      Uri.parse(UrlService().neteaseFmTrashUrl),
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', ..._authHeaders() },
-      body: 'id=$id',
-    ).timeout(const Duration(seconds: 15));
-    if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
+    final result = await _api.postJson(
+      '/fm_trash',
+      contentType: 'application/x-www-form-urlencoded',
+      data: 'id=$id',
+      timeout: const Duration(seconds: 15),
+    );
+    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
   }
 
   Future<List<Map<String, dynamic>>> fetchPersonalizedPlaylists({int limit = 20}) async {
-    final url = '${UrlService().neteasePersonalizedPlaylistsUrl}?limit=$limit';
-    final resp = await http.get(Uri.parse(url), headers: _authHeaders()).timeout(const Duration(seconds: 15));
-    if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
-    final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    final result = await _api.getJson(
+      '/personalized',
+      queryParameters: {'limit': limit},
+      timeout: const Duration(seconds: 15),
+    );
+    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+    final data = result.data as Map<String, dynamic>;
     if ((data['code'] as num?)?.toInt() != 200) throw Exception('code ${data['code']}');
     final list = (data['result'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
     return list;
   }
 
   Future<List<Map<String, dynamic>>> fetchPersonalizedNewsongs({int limit = 10}) async {
-    final url = '${UrlService().neteasePersonalizedNewsongUrl}?limit=$limit';
-    final resp = await http.get(Uri.parse(url), headers: _authHeaders()).timeout(const Duration(seconds: 15));
-    if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
-    final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    final result = await _api.getJson(
+      '/personalized/newsong',
+      queryParameters: {'limit': limit},
+      timeout: const Duration(seconds: 15),
+    );
+    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+    final data = result.data as Map<String, dynamic>;
     if ((data['code'] as num?)?.toInt() != 200) throw Exception('code ${data['code']}');
     final list = (data['result'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
     return list;
@@ -93,10 +94,13 @@ class NeteaseRecommendService extends ChangeNotifier {
     ];
 
     final futures = radarIds.map((id) async {
-      final url = '${UrlService().neteasePlaylistDetailUrl}?id=$id&limit=0';
-      final resp = await http.get(Uri.parse(url), headers: _authHeaders()).timeout(const Duration(seconds: 15));
-      if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
-      final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+      final result = await _api.getJson(
+        '/playlist',
+        queryParameters: {'id': id, 'limit': 0},
+        timeout: const Duration(seconds: 15),
+      );
+      if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+      final data = result.data as Map<String, dynamic>;
       if ((data['status'] as num?)?.toInt() != 200) throw Exception('status ${data['status']}');
       final playlist = (data['data'] as Map<String, dynamic>?)?['playlist'] as Map<String, dynamic>?;
       if (playlist == null) return <String, dynamic>{};
@@ -116,10 +120,16 @@ class NeteaseRecommendService extends ChangeNotifier {
 
   /// 聚合接口：一次性获取为你推荐所需的全部数据
   Future<Map<String, List<Map<String, dynamic>>>> fetchForYouCombined({int personalizedLimit = 12, int newsongLimit = 10}) async {
-    final url = '${UrlService().neteaseForYouUrl}?personalizedLimit=$personalizedLimit&newsongLimit=$newsongLimit';
-    final resp = await http.get(Uri.parse(url), headers: _authHeaders()).timeout(const Duration(seconds: 20));
-    if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
-    final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    final result = await _api.getJson(
+      '/recommend/for_you',
+      queryParameters: {
+        'personalizedLimit': personalizedLimit,
+        'newsongLimit': newsongLimit,
+      },
+      timeout: const Duration(seconds: 20),
+    );
+    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+    final data = result.data as Map<String, dynamic>;
     if ((data['status'] as num?)?.toInt() != 200 || data['data'] == null) {
       throw Exception('status ${data['status']}');
     }
@@ -134,5 +144,3 @@ class NeteaseRecommendService extends ChangeNotifier {
     };
   }
 }
-
-

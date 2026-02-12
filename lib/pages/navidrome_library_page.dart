@@ -298,21 +298,39 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
     }
 
     if (error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 48, color: colorScheme.error),
-            const SizedBox(height: 16),
-            Text(error, style: TextStyle(color: colorScheme.error)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _refresh,
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.error_outline, size: 48, color: colorScheme.error),
+                      const SizedBox(height: 16),
+                      Text(
+                        error,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: colorScheme.error),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _refresh,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('重试'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ],
-        ),
+          );
+        },
       );
     }
 
@@ -624,21 +642,38 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
     final theme = Theme.of(context);
     final navTheme = NavidromeTheme.of(context);
 
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 64, color: navTheme.textSecondary),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: navTheme.textSecondary,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: compact ? 52 : 64, color: navTheme.textSecondary),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 2 : 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: navTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            textAlign: TextAlign.center,
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

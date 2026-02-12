@@ -1,10 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import '../models/announcement.dart';
 import 'persistent_storage_service.dart';
-import 'url_service.dart';
 import 'developer_mode_service.dart';
+import 'api/api_client.dart';
 
 /// 公告服务 - 管理全局公告的获取和显示逻辑
 class AnnouncementService extends ChangeNotifier {
@@ -54,37 +52,24 @@ class AnnouncementService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final url = Uri.parse('$baseUrl/config/public');
+      print('📢 [AnnouncementService] 正在获取公告配置...');
+      DeveloperModeService().addLog('📢 正在获取公告配置');
 
-      print('📢 [AnnouncementService] 正在获取公告配置: $url');
-      DeveloperModeService().addLog('📢 正在获取公告配置: $url');
+      final result = await ApiClient().getJson('/config/public', auth: false);
 
-      final response = await http.get(url).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('获取公告配置超时');
-        },
-      );
+      print('📢 [AnnouncementService] 响应状态码: ${result.statusCode}');
 
-      print('📢 [AnnouncementService] 响应状态码: ${response.statusCode}');
-      print('📢 [AnnouncementService] 响应体: ${response.body}');
-
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body) as Map<String, dynamic>;
+      if (result.ok) {
+        final responseData = result.data as Map<String, dynamic>?;
         print('📢 [AnnouncementService] 解析后的响应数据: $responseData');
 
-        // 检查响应格式：{ status: 200, data: { announcement: {...} } }
-        if (responseData.containsKey('data')) {
+        if (responseData != null && responseData.containsKey('data')) {
           final data = responseData['data'] as Map<String, dynamic>;
-          print('📢 [AnnouncementService] data 字段: $data');
 
           if (data.containsKey('announcement')) {
             final announcementData = data['announcement'] as Map<String, dynamic>;
-            print('📢 [AnnouncementService] announcement 数据: $announcementData');
 
             _currentAnnouncement = Announcement.fromJson(announcementData);
-            print('📢 [AnnouncementService] 解析后的公告对象: $_currentAnnouncement');
             print('📢 [AnnouncementService] enabled: ${_currentAnnouncement?.enabled}');
             print('📢 [AnnouncementService] id: ${_currentAnnouncement?.id}');
             print('📢 [AnnouncementService] title: ${_currentAnnouncement?.title}');
@@ -93,17 +78,15 @@ class AnnouncementService extends ChangeNotifier {
               '✅ 公告配置获取成功: ${_currentAnnouncement?.id} - ${_currentAnnouncement?.title}'
             );
           } else {
-            print('📢 [AnnouncementService] data 中没有 announcement 字段');
             DeveloperModeService().addLog('⚠️ 后端配置中未找到公告数据');
             _currentAnnouncement = null;
           }
         } else {
-          print('📢 [AnnouncementService] 响应中没有 data 字段');
           DeveloperModeService().addLog('⚠️ 响应格式不正确');
           _currentAnnouncement = null;
         }
       } else {
-        throw Exception('获取公告配置失败: HTTP ${response.statusCode}');
+        throw Exception('获取公告配置失败: HTTP ${result.statusCode}');
       }
     } catch (e, stackTrace) {
       print('📢 [AnnouncementService] 获取公告配置失败: $e');

@@ -468,34 +468,55 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
   }
 
   Widget _buildCupertinoEmptyState(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            CupertinoIcons.time,
-            size: 80,
-            color: CupertinoColors.systemGrey.withOpacity(0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '暂无播放历史',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-              color: isDark ? CupertinoColors.white : CupertinoColors.black,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.time,
+                      size: compact ? 56 : 80,
+                      color: CupertinoColors.systemGrey.withOpacity(0.5),
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '暂无播放历史',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '播放歌曲后会自动记录',
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: CupertinoColors.systemGrey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '播放歌曲后会自动记录',
-            style: TextStyle(
-              fontSize: 14,
-              color: CupertinoColors.systemGrey,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -958,31 +979,53 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
 
   /// 构建空状态
   Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.history,
-            size: 80,
-            color: colorScheme.onSurfaceVariant.withOpacity(0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '暂无播放历史',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+    final theme = Theme.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.history,
+                      size: compact ? 56 : 80,
+                      color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '暂无播放历史',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '播放歌曲后会自动记录',
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '播放歌曲后会自动记录',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.7),
-                ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1103,17 +1146,44 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
   }
 
   Widget _buildFluentEmptyState(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
-          Icon(fluent.FluentIcons.history, size: 80),
-          SizedBox(height: 16),
-          Text('暂无播放历史', style: TextStyle(fontSize: 18)),
-          SizedBox(height: 8),
-          Text('播放歌曲后会自动记录', style: TextStyle(fontSize: 12)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(fluent.FluentIcons.history, size: compact ? 56 : 80),
+                    SizedBox(height: compact ? 10 : 16),
+                    const Text(
+                      '暂无播放历史',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 18),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '播放歌曲后会自动记录',
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

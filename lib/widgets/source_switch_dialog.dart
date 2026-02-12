@@ -203,15 +203,38 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                 builder: (context) {
                   final filteredIndices = _getFilteredIndices();
                   if (filteredIndices.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.search_off, size: 48, color: colorScheme.onSurfaceVariant),
-                          const SizedBox(height: 8),
-                          Text('未找到匹配的歌曲', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                        ],
-                      ),
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 160;
+                        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+                        return SingleChildScrollView(
+                          physics: const ClampingScrollPhysics(),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(minHeight: minHeight),
+                            child: Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.search_off,
+                                      size: compact ? 40 : 48,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '未找到匹配的歌曲',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     );
                   }
                   return ListView.builder(
@@ -383,15 +406,40 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                 builder: (context) {
                   final filteredIndices = _getFilteredIndices();
                   if (filteredIndices.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(fluent.FluentIcons.search, size: 48, color: theme.resources.textFillColorSecondary),
-                          const SizedBox(height: 8),
-                          Text('未找到匹配的歌曲', style: TextStyle(color: theme.resources.textFillColorSecondary)),
-                        ],
-                      ),
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 160;
+                        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+                        return SingleChildScrollView(
+                          physics: const ClampingScrollPhysics(),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(minHeight: minHeight),
+                            child: Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      fluent.FluentIcons.search,
+                                      size: compact ? 40 : 48,
+                                      color: theme.resources.textFillColorSecondary,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '未找到匹配的歌曲',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: theme.resources.textFillColorSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     );
                   }
                   return ListView.builder(

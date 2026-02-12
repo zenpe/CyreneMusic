@@ -1,7 +1,5 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'url_service.dart';
+import 'api/api_client.dart';
 
 class NeteaseArtistBrief {
   final int id;
@@ -24,18 +22,15 @@ class NeteaseArtistDetailService extends ChangeNotifier {
   Future<List<NeteaseArtistBrief>> searchArtists(String keywords, {int limit = 20}) async {
     try {
       if (keywords.trim().isEmpty) return [];
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/artist/search';
-      final resp = await http
-          .post(
-            Uri.parse(url),
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: {'keywords': keywords, 'limit': '$limit'},
-          )
-          .timeout(const Duration(seconds: 12));
-      if (resp.statusCode != 200) return [];
-      final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-      if (data['status'] != 200) return [];
+      final result = await ApiClient().postJson(
+        '/artist/search',
+        data: {'keywords': keywords, 'limit': '$limit'},
+        contentType: 'application/x-www-form-urlencoded',
+        timeout: const Duration(seconds: 12),
+      );
+      if (!result.ok) return [];
+      final data = result.data as Map<String, dynamic>?;
+      if (data == null || data['status'] != 200) return [];
       final resultList = (data['result'] as List<dynamic>? ?? [])
           .map((e) => NeteaseArtistBrief.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -48,16 +43,15 @@ class NeteaseArtistDetailService extends ChangeNotifier {
   /// 通过歌手名查ID（优先精确匹配）
   Future<int?> resolveArtistIdByName(String name) async {
     try {
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/artist/search';
-      final resp = await http
-          .post(Uri.parse(url),
-              headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-              body: {'keywords': name, 'limit': '5'})
-          .timeout(const Duration(seconds: 12));
-      if (resp.statusCode != 200) return null;
-      final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-      if (data['status'] != 200) return null;
+      final result = await ApiClient().postJson(
+        '/artist/search',
+        data: {'keywords': name, 'limit': '5'},
+        contentType: 'application/x-www-form-urlencoded',
+        timeout: const Duration(seconds: 12),
+      );
+      if (!result.ok) return null;
+      final data = result.data as Map<String, dynamic>?;
+      if (data == null || data['status'] != 200) return null;
       final results = (data['result'] as List<dynamic>? ?? [])
           .map((e) => NeteaseArtistBrief.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -76,12 +70,14 @@ class NeteaseArtistDetailService extends ChangeNotifier {
   /// 获取歌手详情
   Future<Map<String, dynamic>?> fetchArtistDetail(int id) async {
     try {
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/artist/detail?id=$id';
-      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
-      if (resp.statusCode != 200) return null;
-      final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-      if (data['status'] != 200) return null;
+      final result = await ApiClient().getJson(
+        '/artist/detail',
+        queryParameters: {'id': id},
+        timeout: const Duration(seconds: 15),
+      );
+      if (!result.ok) return null;
+      final data = result.data as Map<String, dynamic>?;
+      if (data == null || data['status'] != 200) return null;
       return data['data'] as Map<String, dynamic>;
     } catch (_) {
       return null;
@@ -91,18 +87,17 @@ class NeteaseArtistDetailService extends ChangeNotifier {
   /// 获取歌手描述
   Future<Map<String, dynamic>?> fetchArtistDesc(int id) async {
     try {
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/artist/desc?id=$id';
-      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
-      print('🌐 [NeteaseService] artist/desc HTTP 状态: ${resp.statusCode}');
-      if (resp.statusCode != 200) return null;
-      final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-      if (data['status'] != 200) return null;
+      final result = await ApiClient().getJson(
+        '/artist/desc',
+        queryParameters: {'id': id},
+        timeout: const Duration(seconds: 15),
+      );
+      if (!result.ok) return null;
+      final data = result.data as Map<String, dynamic>?;
+      if (data == null || data['status'] != 200) return null;
       return data;
     } catch (_) {
       return null;
     }
   }
 }
-
-

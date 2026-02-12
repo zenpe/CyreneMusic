@@ -1,12 +1,10 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/version_info.dart';
 import 'auto_update_service.dart';
-import 'url_service.dart';
 import 'developer_mode_service.dart';
+import 'api/api_client.dart';
 
 /// 版本检查服务
 /// 
@@ -165,34 +163,19 @@ class VersionService extends ChangeNotifier {
         DeveloperModeService().addLog('🔍 检查更新中...');
       }
 
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/version/latest';
+      final result = await ApiClient().getJson('/version/latest', auth: false);
 
-      print('🔍 [VersionService] 请求URL: $url');
+      print('🔍 [VersionService] 响应状态码: ${result.statusCode}');
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('请求超时');
-        },
-      );
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>?;
 
-      print('🔍 [VersionService] 响应状态码: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes));
-        
-        if (data['status'] == 200 && data['data'] != null) {
+        if (data != null && data['status'] == 200 && data['data'] != null) {
           _latestVersion = VersionInfo.fromJson(data['data']);
-          
+
           print('✅ [VersionService] 最新版本: ${_latestVersion!.version}');
           print('✅ [VersionService] 当前版本: $_currentVersion');
-          
+
           if (hasUpdate) {
             print('🆕 [VersionService] 发现新版本！');
             if (!silent) {
@@ -206,7 +189,7 @@ class VersionService extends ChangeNotifier {
             }
             AutoUpdateService().clearPendingVersion();
           }
-          
+
           _isChecking = false;
           notifyListeners();
           return _latestVersion;
@@ -216,7 +199,7 @@ class VersionService extends ChangeNotifier {
         }
       } else {
         AutoUpdateService().clearPendingVersion();
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [VersionService] 检查更新失败: $e');

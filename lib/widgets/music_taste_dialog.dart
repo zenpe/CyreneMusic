@@ -185,17 +185,47 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
     final playlists = _playlistService.playlists;
 
     if (playlists.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.library_music_outlined, size: 64, color: colorScheme.onSurface.withOpacity(0.3)),
-            const SizedBox(height: 16),
-            Text('暂无歌单', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6))),
-            const SizedBox(height: 8),
-            Text('请先创建或导入歌单', style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.5))),
-          ],
-        ),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.library_music_outlined,
+                        size: compact ? 52 : 64,
+                        color: colorScheme.onSurface.withOpacity(0.3),
+                      ),
+                      SizedBox(height: compact ? 10 : 16),
+                      Text(
+                        '暂无歌单',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '请先创建或导入歌单',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onSurface.withOpacity(0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       );
     }
 
@@ -430,17 +460,47 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
     final playlists = _playlistService.playlists;
 
     if (playlists.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(fluent.FluentIcons.music_in_collection, size: 64, color: theme.resources.textFillColorSecondary),
-            const SizedBox(height: 16),
-            Text('暂无歌单', style: TextStyle(color: theme.resources.textFillColorSecondary)),
-            const SizedBox(height: 8),
-            Text('请先创建或导入歌单', style: TextStyle(fontSize: 12, color: theme.resources.textFillColorTertiary)),
-          ],
-        ),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        fluent.FluentIcons.music_in_collection,
+                        size: compact ? 52 : 64,
+                        color: theme.resources.textFillColorSecondary,
+                      ),
+                      SizedBox(height: compact ? 10 : 16),
+                      Text(
+                        '暂无歌单',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: theme.resources.textFillColorSecondary),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '请先创建或导入歌单',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.resources.textFillColorTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       );
     }
 
@@ -658,17 +718,47 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
     final playlists = _playlistService.playlists;
 
     if (playlists.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(CupertinoIcons.music_albums, size: 64, color: CupertinoColors.systemGrey),
-            const SizedBox(height: 16),
-            Text('暂无歌单', style: TextStyle(color: CupertinoColors.systemGrey)),
-            const SizedBox(height: 8),
-            Text('请先创建或导入歌单', style: TextStyle(fontSize: 12, color: CupertinoColors.systemGrey2)),
-          ],
-        ),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        CupertinoIcons.music_albums,
+                        size: compact ? 52 : 64,
+                        color: CupertinoColors.systemGrey,
+                      ),
+                      SizedBox(height: compact ? 10 : 16),
+                      const Text(
+                        '暂无歌单',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: CupertinoColors.systemGrey),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '请先创建或导入歌单',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: CupertinoColors.systemGrey2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       );
     }
 

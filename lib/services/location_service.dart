@@ -1,7 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'url_service.dart';
+import 'api/api_client.dart';
 
 /// IP 归属地信息模型
 class LocationInfo {
@@ -87,58 +85,38 @@ class LocationService extends ChangeNotifier {
 
   /// 获取当前 IP 归属地
   Future<LocationInfo?> fetchLocation() async {
-    final apiUrl = UrlService().ipLocationUrl;
     print('🌍 [LocationService] 开始获取IP归属地...');
-    print('🌍 [LocationService] API URL: $apiUrl');
-    
+
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      print('🌍 [LocationService] 发送 HTTP GET 请求...');
-      
-      final response = await http.get(
-        Uri.parse(apiUrl),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          print('❌ [LocationService] 请求超时！');
-          throw Exception('请求超时');
-        },
-      );
+      final result = await ApiClient().getJson('/ip-location', auth: false);
 
-      print('🌍 [LocationService] 收到响应 - 状态码: ${response.statusCode}');
-      print('🌍 [LocationService] 响应体: ${response.body}');
+      print('🌍 [LocationService] 收到响应 - 状态码: ${result.statusCode}');
 
-      if (response.statusCode == 200) {
-        print('✅ [LocationService] 响应成功，开始解析JSON...');
-        
-        final data = jsonDecode(response.body);
-        print('🌍 [LocationService] JSON 解析成功: $data');
-        
-        if (data['success'] == true) {
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>?;
+
+        if (data != null && data['success'] == true) {
           _currentLocation = LocationInfo.fromJson(data);
-          print('✅ [LocationService] LocationInfo 创建成功');
-          print('🌍 [LocationService] IP: ${_currentLocation?.ip}');
+          print('✅ [LocationService] IP: ${_currentLocation?.ip}');
           print('🌍 [LocationService] 归属地: ${_currentLocation?.shortDescription}');
-          
+
           _isLoading = false;
           notifyListeners();
-          print('✅ [LocationService] 获取IP归属地完成！');
           return _currentLocation;
         } else {
-          print('❌ [LocationService] API 返回失败: ${data['message']}');
-          throw Exception(data['message'] ?? '获取失败');
+          throw Exception(data?['message'] ?? '获取失败');
         }
       } else {
-        print('❌ [LocationService] 请求失败 - 状态码: ${response.statusCode}');
-        throw Exception('请求失败: ${response.statusCode}');
+        throw Exception('请求失败: ${result.statusCode}');
       }
     } catch (e, stackTrace) {
       print('❌ [LocationService] 发生错误: $e');
       print('❌ [LocationService] 错误堆栈: $stackTrace');
-      
+
       _errorMessage = e.toString();
       _isLoading = false;
       notifyListeners();

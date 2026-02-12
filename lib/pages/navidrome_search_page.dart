@@ -380,51 +380,109 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     }
 
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 48, color: colorScheme.error),
-            const SizedBox(height: 16),
-            Text(_error!, style: TextStyle(color: colorScheme.error)),
-          ],
-        ),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.error_outline, size: 48, color: colorScheme.error),
+                      const SizedBox(height: 16),
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: colorScheme.error),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       );
     }
 
     if (_result == null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search, size: 64, color: navTheme.textSecondary),
-            const SizedBox(height: 16),
-            Text(
-              '输入关键词开始搜索',
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: navTheme.textSecondary,
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.search,
+                        size: compact ? 52 : 64,
+                        color: navTheme.textSecondary,
+                      ),
+                      SizedBox(height: compact ? 10 : 16),
+                      Text(
+                        '输入关键词开始搜索',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: navTheme.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ],
-        ),
+          );
+        },
       );
     }
 
     if (_result!.isEmpty && _radioStations.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off, size: 64, color: navTheme.textSecondary),
-            const SizedBox(height: 16),
-            Text(
-              '未找到相关结果',
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: navTheme.textSecondary,
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.search_off,
+                        size: compact ? 52 : 64,
+                        color: navTheme.textSecondary,
+                      ),
+                      SizedBox(height: compact ? 10 : 16),
+                      Text(
+                        '未找到相关结果',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: navTheme.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ],
-        ),
+          );
+        },
       );
     }
 

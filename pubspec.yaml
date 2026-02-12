@@ -40,6 +40,7 @@ dependencies:
   
   # HTTP requests
   http: ^1.2.0
+  dio: ^5.4.0
   
   # Audio player
   audioplayers: ^6.0.0

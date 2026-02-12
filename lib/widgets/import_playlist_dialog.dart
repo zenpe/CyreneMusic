@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
-import 'package:http/http.dart' as http;
-import '../services/url_service.dart';
+import '../services/api/api_client.dart';
 import '../services/playlist_service.dart';
 import '../services/auth_service.dart';
 import '../services/kugou_login_service.dart';
@@ -2007,39 +2005,42 @@ class ImportPlaylistDialog {
     }
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      String url;
+      String path;
+      Map<String, dynamic> queryParameters;
       if (platform == MusicPlatform.netease) {
-        url = '$baseUrl/playlist?id=$playlistId&limit=1000';
+        path = '/playlist';
+        queryParameters = {'id': playlistId, 'limit': 1000};
       } else if (platform == MusicPlatform.qq) {
-        url = '$baseUrl/qq/playlist?id=$playlistId&limit=1000';
+        path = '/qq/playlist';
+        queryParameters = {'id': playlistId, 'limit': 1000};
       } else if (platform == MusicPlatform.kuwo) {
-        url = '$baseUrl/kuwo/playlist?pid=$playlistId&limit=500';
+        path = '/kuwo/playlist';
+        queryParameters = {'pid': playlistId, 'limit': 500};
       } else if (platform == MusicPlatform.apple) {
-        url = '$baseUrl/apple/playlist?id=$playlistId';
+        path = '/apple/playlist';
+        queryParameters = {'id': playlistId};
       } else {
         throw Exception('不支持的平台');
       }
-      
-      debugPrint('[ImportPlaylistDialog] fetch playlist request: url=$url');
 
-      final response = await http.get(
-        Uri.parse(url),
-      ).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw Exception('请求超时'),
+      debugPrint('[ImportPlaylistDialog] fetch playlist request: path=$path params=$queryParameters');
+
+      final result = await ApiClient().getJson(
+        path,
+        queryParameters: queryParameters,
+        timeout: const Duration(seconds: 30),
       );
 
       if (!context.mounted) return;
       closeLoadingIfOpen(); // 关闭加载对话框
 
-      debugPrint('[ImportPlaylistDialog] fetch playlist response status=${response.statusCode}');
-      if (response.body.isNotEmpty) {
-        debugPrint('[ImportPlaylistDialog] fetch playlist response body: ${response.body}');
+      debugPrint('[ImportPlaylistDialog] fetch playlist response status=${result.statusCode}');
+      if (result.text?.isNotEmpty == true) {
+        debugPrint('[ImportPlaylistDialog] fetch playlist response body: ${result.text}');
       }
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes));
+      if (result.ok) {
+        final data = result.data;
 
         // 酷我音乐返回格式不同
         if (platform == MusicPlatform.kuwo) {
@@ -2068,8 +2069,8 @@ class ImportPlaylistDialog {
           throw Exception(data['msg'] ?? '获取歌单失败');
         }
       } else {
-        debugPrint('[ImportPlaylistDialog] fetch playlist failed: HTTP ${response.statusCode}');
-        throw Exception('HTTP ${response.statusCode}');
+        debugPrint('[ImportPlaylistDialog] fetch playlist failed: HTTP ${result.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       debugPrint('[ImportPlaylistDialog] fetch playlist exception: $e');

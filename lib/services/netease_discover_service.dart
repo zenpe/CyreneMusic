@@ -1,8 +1,6 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import '../models/netease_discover.dart';
-import 'url_service.dart';
+import 'api/api_client.dart';
 
 /// 发现页 - 网易云歌单服务
 class NeteaseDiscoverService extends ChangeNotifier {
@@ -22,7 +20,7 @@ class NeteaseDiscoverService extends ChangeNotifier {
   List<NeteaseTag> get tags => _tags;
   String get currentCat => _currentCat;
 
-  /// 获取“发现-推荐歌单”列表
+  /// 获取"发现-推荐歌单"列表
   Future<void> fetchDiscoverPlaylists({String cat = '全部歌单'}) async {
     if (_isLoading) return;
     _isLoading = true;
@@ -30,16 +28,17 @@ class NeteaseDiscoverService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final baseUrl = UrlService().baseUrl;
       _currentCat = cat;
-      final encodedCat = Uri.encodeQueryComponent(cat);
-      final url = '$baseUrl/netease/top/playlist?cat=$encodedCat';
-      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
-      if (resp.statusCode != 200) {
-        throw Exception('HTTP ${resp.statusCode}');
+      final result = await ApiClient().getJson(
+        '/netease/top/playlist',
+        queryParameters: {'cat': cat},
+        timeout: const Duration(seconds: 15),
+      );
+      if (!result.ok) {
+        throw Exception('HTTP ${result.statusCode}');
       }
 
-      final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+      final data = result.data as Map<String, dynamic>;
       if (data['status'] != 200) {
         throw Exception('status ${data['status']}');
       }
@@ -57,13 +56,15 @@ class NeteaseDiscoverService extends ChangeNotifier {
   /// 获取歌单详情（含曲目）
   Future<NeteasePlaylistDetail?> fetchPlaylistDetail(int id) async {
     try {
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/playlist?id=$id';
-      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
-      if (resp.statusCode != 200) {
-        throw Exception('HTTP ${resp.statusCode}');
+      final result = await ApiClient().getJson(
+        '/playlist',
+        queryParameters: {'id': id},
+        timeout: const Duration(seconds: 15),
+      );
+      if (!result.ok) {
+        throw Exception('HTTP ${result.statusCode}');
       }
-      final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+      final data = result.data as Map<String, dynamic>;
       if (data['status'] != 200) {
         throw Exception('status ${data['status']}');
       }
@@ -78,13 +79,14 @@ class NeteaseDiscoverService extends ChangeNotifier {
   /// 获取可选标签
   Future<void> fetchTags() async {
     try {
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/netease/playlist/highquality/tags';
-      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
-      if (resp.statusCode != 200) {
-        throw Exception('HTTP ${resp.statusCode}');
+      final result = await ApiClient().getJson(
+        '/netease/playlist/highquality/tags',
+        timeout: const Duration(seconds: 15),
+      );
+      if (!result.ok) {
+        throw Exception('HTTP ${result.statusCode}');
       }
-      final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+      final data = result.data as Map<String, dynamic>;
       if (data['status'] != 200) {
         throw Exception('status ${data['status']}');
       }
@@ -97,5 +99,3 @@ class NeteaseDiscoverService extends ChangeNotifier {
     }
   }
 }
-
-

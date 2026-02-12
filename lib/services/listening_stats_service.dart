@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import '../models/track.dart';
 import 'auth_service.dart';
-import 'url_service.dart';
+import 'api/api_client.dart';
 
 /// 听歌统计数据模型
 class ListeningStatsData {
@@ -106,6 +104,8 @@ class ListeningStatsService extends ChangeNotifier {
   factory ListeningStatsService() => _instance;
   ListeningStatsService._internal();
 
+  final ApiClient _api = ApiClient();
+
   Timer? _syncTimer;
   int _pendingSeconds = 0; // 待同步的秒数
   ListeningStatsData? _statsData;
@@ -132,7 +132,7 @@ class ListeningStatsService extends ChangeNotifier {
       print('📊 [ListeningStatsService] 无待同步数据（待同步: ${_pendingSeconds}秒）');
       return;
     }
-    
+
     if (!AuthService().isLoggedIn) {
       print('⚠️ [ListeningStatsService] 用户未登录，无法同步');
       return;
@@ -144,38 +144,18 @@ class ListeningStatsService extends ChangeNotifier {
     print('📤 [ListeningStatsService] 准备同步听歌时长: ${seconds}秒');
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-
-      if (token == null) {
-        print('❌ [ListeningStatsService] Token 为空，无法同步');
-        _pendingSeconds += seconds;
-        return;
-      }
-
-      print('📤 [ListeningStatsService] 发送同步请求到: $baseUrl/stats/listening-time');
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/stats/listening-time'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'seconds': seconds}),
+      final result = await _api.postJson(
+        '/stats/listening-time',
+        data: {'seconds': seconds},
       );
 
-      print('📥 [ListeningStatsService] 同步响应状态: ${response.statusCode}');
-      print('📥 [ListeningStatsService] 同步响应内容: ${response.body}');
+      print('📥 [ListeningStatsService] 同步响应状态: ${result.statusCode}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        print('✅ [ListeningStatsService] 听歌时长已同步: +${seconds}秒, 总计: ${data['data']['totalListeningTime']}秒');
-      } else if (response.statusCode == 401) {
-        print('⚠️ [ListeningStatsService] 未授权，登录态可能失效');
-        _pendingSeconds += seconds;
-        await AuthService().handleUnauthorized();
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>?;
+        print('✅ [ListeningStatsService] 听歌时长已同步: +${seconds}秒, 总计: ${data?['data']?['totalListeningTime']}秒');
       } else {
-        print('❌ [ListeningStatsService] 同步听歌时长失败: ${response.statusCode}');
+        print('❌ [ListeningStatsService] 同步听歌时长失败: ${result.statusCode}');
         // 同步失败，将秒数加回待同步队列
         _pendingSeconds += seconds;
       }
@@ -185,7 +165,7 @@ class ListeningStatsService extends ChangeNotifier {
       _pendingSeconds += seconds;
     }
   }
-  
+
   /// 立即同步听歌时长（用于调试）
   Future<void> syncNow() async {
     print('🔄 [ListeningStatsService] 手动触发同步，待同步: ${_pendingSeconds}秒');
@@ -197,34 +177,22 @@ class ListeningStatsService extends ChangeNotifier {
     if (!AuthService().isLoggedIn) return;
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-
-      if (token == null) return;
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/stats/play-count'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
+      final result = await _api.postJson(
+        '/stats/play-count',
+        data: {
           'trackId': track.id.toString(),
           'trackName': track.name,
           'artists': track.artists,
           'album': track.album,
           'picUrl': track.picUrl,
           'source': track.source.name,
-        }),
+        },
       );
 
-      if (response.statusCode == 200) {
+      if (result.ok) {
         print('✅ [ListeningStatsService] 播放次数已记录: ${track.name}');
-      } else if (response.statusCode == 401) {
-        print('⚠️ [ListeningStatsService] 未授权，登录态可能失效');
-        await AuthService().handleUnauthorized();
       } else {
-        print('❌ [ListeningStatsService] 记录播放次数失败: ${response.statusCode}');
+        print('❌ [ListeningStatsService] 记录播放次数失败: ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [ListeningStatsService] 记录播放次数异常: $e');
@@ -239,30 +207,15 @@ class ListeningStatsService extends ChangeNotifier {
     }
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
+      final result = await _api.getJson('/stats');
 
-      if (token == null) return null;
-
-      final response = await http.get(
-        Uri.parse('$baseUrl/stats'),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        _statsData = ListeningStatsData.fromJson(data['data']);
+      if (result.ok) {
+        _statsData = ListeningStatsData.fromJson(result.bodyData as Map<String, dynamic>);
         notifyListeners();
         print('✅ [ListeningStatsService] 统计数据已获取');
         return _statsData;
-      } else if (response.statusCode == 401) {
-        print('⚠️ [ListeningStatsService] 未授权，登录态可能失效');
-        await AuthService().handleUnauthorized();
-        return null;
       } else {
-        print('❌ [ListeningStatsService] 获取统计数据失败: ${response.statusCode}');
+        print('❌ [ListeningStatsService] 获取统计数据失败: ${result.statusCode}');
         return null;
       }
     } catch (e) {
@@ -302,4 +255,3 @@ class ListeningStatsService extends ChangeNotifier {
     super.dispose();
   }
 }
-

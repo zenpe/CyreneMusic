@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'url_service.dart';
+import 'api/api_client.dart';
 
 class WeatherService {
   static final WeatherService _instance = WeatherService._internal();
@@ -55,11 +55,13 @@ class WeatherService {
       if (now.difference(_cachedAt!) < _ttl) return _cachedText;
     }
 
-    final ipResp = await http
-        .get(Uri.parse('https://drive-backend.cyrene.ltd/api/userip'))
-        .timeout(const Duration(seconds: 8));
-    if (ipResp.statusCode != 200) return null;
-    final ipData = json.decode(utf8.decode(ipResp.bodyBytes)) as Map<String, dynamic>;
+    final ipResult = await ApiClient().getJson(
+      'https://drive-backend.cyrene.ltd/api/userip',
+      auth: false,
+      timeout: const Duration(seconds: 8),
+    );
+    if (!ipResult.ok) return null;
+    final ipData = ipResult.data as Map<String, dynamic>;
     final loc = (ipData['location'] as Map<String, dynamic>?) ?? const {};
     final province = (loc['province'] ?? '').toString();
     String city = (loc['city'] ?? '').toString();
@@ -74,16 +76,17 @@ class WeatherService {
     adcode ??= await _resolveAdcodeByDistrict(province: province, city: city);
 
     if (adcode == null || adcode.isEmpty) {
-      // 无法可靠解析到城市级 adcode，则不展示，避免误命中“西安区”等同名区县
+      // 无法可靠解析到城市级 adcode，则不展示，避免误命中"西安区"等同名区县
       return null;
     }
 
-    final backendUrl = '${UrlService().weatherUrl}?cityid=${Uri.encodeQueryComponent(adcode)}';
-    final resp = await http
-        .get(Uri.parse(backendUrl))
-        .timeout(const Duration(seconds: 10));
-    if (resp.statusCode != 200) return null;
-    final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    final weatherResult = await ApiClient().getJson(
+      '/weather',
+      queryParameters: {'cityid': adcode},
+      auth: false,
+    );
+    if (!weatherResult.ok) return null;
+    final data = weatherResult.data as Map<String, dynamic>;
     if ((data['status'] as num?)?.toInt() != 200) return null;
     final d = data['data'] as Map<String, dynamic>?;
     final text = d?['text']?.toString();

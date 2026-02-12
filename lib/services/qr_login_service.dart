@@ -1,7 +1,5 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'api/api_client.dart';
 import 'auth_service.dart';
-import 'url_service.dart';
 
 class QrLoginCreateResult {
   final String rid;
@@ -86,7 +84,7 @@ class QrLoginService {
   factory QrLoginService() => _instance;
   QrLoginService._internal();
 
-  String get _base => UrlService().baseUrl;
+  final ApiClient _api = ApiClient();
 
   Future<QrLoginCreateResult> create({
     String? desktopDeviceName,
@@ -94,33 +92,38 @@ class QrLoginService {
     String? desktopLocation,
     int expiresInSeconds = 120,
   }) async {
-    final url = Uri.parse('$_base/auth/qr-login/create');
-    final r = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
+    final result = await _api.postJson(
+      '/auth/qr-login/create',
+      data: {
         'desktopDeviceName': desktopDeviceName,
         'desktopIp': desktopIp,
         'desktopLocation': desktopLocation,
         'expiresInSeconds': expiresInSeconds,
-      }),
+      },
+      auth: false,
     );
 
-    final data = jsonDecode(r.body) as Map<String, dynamic>;
-    if (r.statusCode != 200) {
-      throw Exception(data['message'] ?? 'create failed');
+    if (!result.ok) {
+      throw Exception(result.message ?? 'create failed');
     }
-    return QrLoginCreateResult.fromJson((data['data'] as Map).cast<String, dynamic>());
+    return QrLoginCreateResult.fromJson(
+      (result.bodyData as Map).cast<String, dynamic>(),
+    );
   }
 
   Future<QrLoginPollResult> poll({required String rid, required String code}) async {
-    final url = Uri.parse('$_base/auth/qr-login/poll?rid=${Uri.encodeQueryComponent(rid)}&code=${Uri.encodeQueryComponent(code)}');
-    final r = await http.get(url);
-    final data = jsonDecode(r.body) as Map<String, dynamic>;
-    if (r.statusCode != 200) {
-      throw Exception(data['message'] ?? 'poll failed');
+    final result = await _api.getJson(
+      '/auth/qr-login/poll',
+      queryParameters: {'rid': rid, 'code': code},
+      auth: false,
+    );
+
+    if (!result.ok) {
+      throw Exception(result.message ?? 'poll failed');
     }
-    return QrLoginPollResult.fromJson((data['data'] as Map).cast<String, dynamic>());
+    return QrLoginPollResult.fromJson(
+      (result.bodyData as Map).cast<String, dynamic>(),
+    );
   }
 
   Future<QrLoginScanResult> scan({required String rid, required String code}) async {
@@ -129,21 +132,19 @@ class QrLoginService {
       throw Exception('not logged in');
     }
 
-    final url = Uri.parse('$_base/auth/qr-login/scan');
-    final r = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({'rid': rid, 'code': code}),
+    final result = await _api.postJson(
+      '/auth/qr-login/scan',
+      data: {'rid': rid, 'code': code},
+      headers: {'Authorization': 'Bearer $token'},
+      auth: false,
     );
 
-    final data = jsonDecode(r.body) as Map<String, dynamic>;
-    if (r.statusCode != 200) {
-      throw Exception(data['message'] ?? 'scan failed');
+    if (!result.ok) {
+      throw Exception(result.message ?? 'scan failed');
     }
-    return QrLoginScanResult.fromJson((data['data'] as Map).cast<String, dynamic>());
+    return QrLoginScanResult.fromJson(
+      (result.bodyData as Map).cast<String, dynamic>(),
+    );
   }
 
   Future<void> confirm({required String rid, required String code}) async {
@@ -152,33 +153,27 @@ class QrLoginService {
       throw Exception('not logged in');
     }
 
-    final url = Uri.parse('$_base/auth/qr-login/confirm');
-    final r = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({'rid': rid, 'code': code}),
+    final result = await _api.postJson(
+      '/auth/qr-login/confirm',
+      data: {'rid': rid, 'code': code},
+      headers: {'Authorization': 'Bearer $token'},
+      auth: false,
     );
 
-    final data = jsonDecode(r.body) as Map<String, dynamic>;
-    if (r.statusCode != 200) {
-      throw Exception(data['message'] ?? 'confirm failed');
+    if (!result.ok) {
+      throw Exception(result.message ?? 'confirm failed');
     }
   }
 
   Future<void> cancel({required String rid, required String code}) async {
-    final url = Uri.parse('$_base/auth/qr-login/cancel');
-    final r = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'rid': rid, 'code': code}),
+    final result = await _api.postJson(
+      '/auth/qr-login/cancel',
+      data: {'rid': rid, 'code': code},
+      auth: false,
     );
 
-    final data = jsonDecode(r.body) as Map<String, dynamic>;
-    if (r.statusCode != 200) {
-      throw Exception(data['message'] ?? 'cancel failed');
+    if (!result.ok) {
+      throw Exception(result.message ?? 'cancel failed');
     }
   }
 }

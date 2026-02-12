@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'dart:io';
-import 'package:http/http.dart' as http;
 import '../models/track.dart';
 import 'auth_service.dart';
-import 'url_service.dart';
+import 'api/api_client.dart';
 
 /// 播放状态持久化服务
 /// 用于记录用户上次播放的歌曲信息，以便下次启动时恢复
@@ -31,35 +29,26 @@ class PlaybackStateService {
   }) async {
     try {
       final currentPlatform = _getCurrentPlatform();
-      
+
       // 直接保存到云端（如果已登录）
       await _saveToCloud(track, position, isFromPlaylist, currentPlatform);
-      
-      print('💾 [PlaybackStateService] 播放状态已保存: ${track.name}, 位置: ${position.inSeconds}秒, 平台: $currentPlatform');
+
+      print('[PlaybackStateService] saved: ${track.name}, pos: ${position.inSeconds}s, platform: $currentPlatform');
     } catch (e) {
-      print('❌ [PlaybackStateService] 保存播放状态失败: $e');
+      print('[PlaybackStateService] savePlaybackState failed: $e');
     }
   }
 
   /// 保存到云端
   Future<void> _saveToCloud(Track track, Duration position, bool isFromPlaylist, String platform) async {
     try {
-      // 检查是否已登录
       if (!AuthService().isLoggedIn) {
-        print('⚠️ [PlaybackStateService] 未登录，无法保存到云端');
         return;
       }
 
-      final token = AuthService().token;
-      final baseUrl = UrlService().baseUrl;
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/playback/save'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode({
+      final result = await ApiClient().postJson(
+        '/playback/save',
+        data: {
           'trackId': track.id.toString(),
           'trackName': track.name,
           'artists': track.artists,
@@ -69,63 +58,53 @@ class PlaybackStateService {
           'position': position.inSeconds,
           'isFromPlaylist': isFromPlaylist,
           'platform': platform,
-        }),
-      ).timeout(const Duration(seconds: 5));
+        },
+        timeout: const Duration(seconds: 5),
+      );
 
-      if (response.statusCode == 200) {
-        print('☁️ [PlaybackStateService] 播放状态已保存到云端');
+      if (result.ok) {
+        print('[PlaybackStateService] saved to cloud');
       } else {
-        print('⚠️ [PlaybackStateService] 云端保存失败: ${response.statusCode}');
+        print('[PlaybackStateService] cloud save failed: ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [PlaybackStateService] 云端保存失败: $e');
+      print('[PlaybackStateService] cloud save failed: $e');
     }
   }
 
   /// 获取上次播放状态（仅从云端获取）
   Future<PlaybackState?> getLastPlaybackState() async {
-    print('🔍 [PlaybackStateService] 开始读取播放状态...');
-    
-    // 检查是否已登录
     if (!AuthService().isLoggedIn) {
-      print('ℹ️ [PlaybackStateService] 未登录，无法获取播放状态');
       return null;
     }
-    
-    // 从云端获取
-    print('☁️ [PlaybackStateService] 从云端获取播放状态...');
+
     return await _getFromCloud();
   }
 
   /// 从云端获取
   Future<PlaybackState?> _getFromCloud() async {
     try {
-      final token = AuthService().token;
-      final baseUrl = UrlService().baseUrl;
-      
-      final response = await http.get(
-        Uri.parse('$baseUrl/playback/last'),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 5));
+      final result = await ApiClient().getJson(
+        '/playback/last',
+        timeout: const Duration(seconds: 5),
+      );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-        
-        if (data['status'] == 200 && data['data'] != null) {
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>?;
+
+        if (data != null && data['status'] == 200 && data['data'] != null) {
           final playbackData = data['data'] as Map<String, dynamic>;
-          
+
           // 检查是否过期（24小时）
           final timestamp = playbackData['updatedAt'] as int;
           final lastPlayTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
           final timeDiff = DateTime.now().difference(lastPlayTime);
-          
+
           if (timeDiff.inHours > 24) {
-            print('⏰ [PlaybackStateService] 云端播放记录已过期（${timeDiff.inHours}小时前）');
+            print('[PlaybackStateService] cloud record expired (${timeDiff.inHours}h ago)');
             return null;
           }
-          
+
           // 解析数据
           final track = Track(
             id: _parseTrackId(playbackData['trackId']),
@@ -135,7 +114,7 @@ class PlaybackStateService {
             picUrl: playbackData['picUrl'] as String,
             source: _parseSource(playbackData['source'] as String),
           );
-          
+
           return PlaybackState(
             track: track,
             position: Duration(seconds: playbackData['position'] as int),
@@ -146,10 +125,10 @@ class PlaybackStateService {
           );
         }
       }
-      
+
       return null;
     } catch (e) {
-      print('⚠️ [PlaybackStateService] 云端获取失败: $e');
+      print('[PlaybackStateService] cloud fetch failed: $e');
       return null;
     }
   }
@@ -168,36 +147,26 @@ class PlaybackStateService {
   Future<void> clearPlaybackState() async {
     try {
       if (!AuthService().isLoggedIn) {
-        print('ℹ️ [PlaybackStateService] 未登录，无需清除');
         return;
       }
 
-      final token = AuthService().token;
-      final baseUrl = UrlService().baseUrl;
+      final result = await ApiClient().deleteJson(
+        '/playback/clear',
+        timeout: const Duration(seconds: 5),
+      );
 
-      final response = await http.delete(
-        Uri.parse('$baseUrl/playback/clear'),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 5));
-
-      if (response.statusCode == 200) {
-        print('🗑️ [PlaybackStateService] 云端播放状态已清除');
+      if (result.ok) {
+        print('[PlaybackStateService] cloud state cleared');
       }
     } catch (e) {
-      print('❌ [PlaybackStateService] 清除播放状态失败: $e');
+      print('[PlaybackStateService] clearPlaybackState failed: $e');
     }
   }
 
   /// 解析音乐源
-  /// 支持两种格式：
-  /// - 简短格式: "netease", "qq", "kugou", "kuwo", "local"
-  /// - 完整格式: "MusicSource.netease", "MusicSource.qq" 等
   MusicSource _parseSource(String source) {
-    // 统一处理：移除可能的前缀
     final normalizedSource = source.replaceFirst('MusicSource.', '').toLowerCase();
-    
+
     switch (normalizedSource) {
       case 'netease':
         return MusicSource.netease;
@@ -214,7 +183,7 @@ class PlaybackStateService {
       case 'local':
         return MusicSource.local;
       default:
-        print('⚠️ [PlaybackStateService] 未知音乐源: $source, 默认使用网易云');
+        print('[PlaybackStateService] unknown source: $source, defaulting to netease');
         return MusicSource.netease;
     }
   }
@@ -237,13 +206,13 @@ class PlaybackState {
     required this.lastPlatform,
     required this.currentPlatform,
   });
-  
+
   /// 获取封面URL
   String get coverUrl => track.picUrl;
-  
+
   /// 是否是跨平台播放（不同设备）
   bool get isCrossPlatform => lastPlatform != currentPlatform;
-  
+
   /// 获取平台显示文本
   String get platformDisplayText {
     if (!isCrossPlatform) return '';

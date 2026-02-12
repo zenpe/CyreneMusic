@@ -1,8 +1,6 @@
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-import 'url_service.dart';
+import 'api/api_client.dart';
 
 /// 用户数据模型（管理员视图）
 class AdminUserData {
@@ -323,6 +321,10 @@ class AdminService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
+  /// Admin auth headers (used for authenticated admin calls)
+  Map<String, String> get _authHeaders =>
+      {'Authorization': 'Bearer $_adminToken'};
+
   /// 从本地存储加载令牌
   Future<void> _loadToken() async {
     try {
@@ -368,19 +370,18 @@ class AdminService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final url = '${UrlService().baseUrl}/admin/login';
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'password': password}),
+      final result = await ApiClient().postJson(
+        '/admin/login',
+        data: {'password': password},
+        auth: false,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      print('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200) {
-        _adminToken = data['data']['token'];
+      if (result.ok) {
+        _adminToken = data?['data']?['token'];
         _isAuthenticated = true;
         await _saveToken(_adminToken!);
 
@@ -389,13 +390,13 @@ class AdminService extends ChangeNotifier {
         _isLoading = false;
         notifyListeners();
 
-        return {'success': true, 'message': data['message']};
+        return {'success': true, 'message': data?['message']};
       } else {
-        _errorMessage = data['message'];
+        _errorMessage = data?['message'];
         _isLoading = false;
         notifyListeners();
 
-        return {'success': false, 'message': data['message']};
+        return {'success': false, 'message': data?['message']};
       }
     } catch (e) {
       print('❌ [AdminService] 登录异常: $e');
@@ -413,13 +414,10 @@ class AdminService extends ChangeNotifier {
 
     if (_adminToken != null) {
       try {
-        final url = '${UrlService().baseUrl}/admin/logout';
-        await http.post(
-          Uri.parse(url),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $_adminToken',
-          },
+        await ApiClient().postJson(
+          '/admin/logout',
+          auth: false,
+          headers: _authHeaders,
         );
       } catch (e) {
         print('⚠️ [AdminService] 登出请求失败: $e');
@@ -449,18 +447,15 @@ class AdminService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final url = '${UrlService().baseUrl}/admin/users';
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
+      final result = await ApiClient().getJson(
+        '/admin/users',
+        auth: false,
+        headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      print('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      if (response.statusCode == 401) {
+      if (result.statusCode == 401) {
         // 令牌无效，但不立即登出，给用户一个重试机会
         _errorMessage = '令牌验证失败，请重新登录或重试';
         _isLoading = false;
@@ -468,10 +463,10 @@ class AdminService extends ChangeNotifier {
         return false;
       }
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200) {
-        final usersList = data['data']['users'] as List;
+      if (result.ok) {
+        final usersList = data?['data']?['users'] as List;
         _users = usersList.map((json) => AdminUserData.fromJson(json)).toList();
 
         print('✅ [AdminService] 获取用户列表成功: ${_users.length} 个用户');
@@ -480,7 +475,7 @@ class AdminService extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _errorMessage = data['message'];
+        _errorMessage = data?['message'];
         _isLoading = false;
         notifyListeners();
         return false;
@@ -507,18 +502,15 @@ class AdminService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final url = '${UrlService().baseUrl}/admin/stats';
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
+      final result = await ApiClient().getJson(
+        '/admin/stats',
+        auth: false,
+        headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      print('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      if (response.statusCode == 401) {
+      if (result.statusCode == 401) {
         // 令牌无效，但不立即登出，给用户一个重试机会
         _errorMessage = '令牌验证失败，请重新登录或重试';
         _isLoading = false;
@@ -526,10 +518,10 @@ class AdminService extends ChangeNotifier {
         return false;
       }
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200) {
-        _stats = UserStats.fromJson(data['data']);
+      if (result.ok) {
+        _stats = UserStats.fromJson(data!['data']);
 
         print('✅ [AdminService] 获取统计数据成功');
 
@@ -537,7 +529,7 @@ class AdminService extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _errorMessage = data['message'];
+        _errorMessage = data?['message'];
         _isLoading = false;
         notifyListeners();
         return false;
@@ -561,35 +553,32 @@ class AdminService extends ChangeNotifier {
     print('👑 [AdminService] 删除用户 ID: $userId');
 
     try {
-      final url = '${UrlService().baseUrl}/admin/users';
-      final response = await http.delete(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
-        body: jsonEncode({'userId': userId}),
+      final result = await ApiClient().deleteJson(
+        '/admin/users',
+        data: {'userId': userId},
+        auth: false,
+        headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      print('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      if (response.statusCode == 401) {
+      if (result.statusCode == 401) {
         await logout();
         return false;
       }
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200) {
+      if (result.ok) {
         print('✅ [AdminService] 用户已删除');
-        
+
         // 从本地列表中移除
         _users.removeWhere((user) => user.id == userId);
         notifyListeners();
-        
+
         return true;
       } else {
-        print('❌ [AdminService] 删除失败: ${data['message']}');
+        print('❌ [AdminService] 删除失败: ${data?['message']}');
         return false;
       }
     } catch (e) {
@@ -608,28 +597,25 @@ class AdminService extends ChangeNotifier {
     print('👑 [AdminService] 获取用户赞助详情 ID: $userId');
 
     try {
-      final url = '${UrlService().baseUrl}/admin/sponsors/$userId';
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
+      final result = await ApiClient().getJson(
+        '/admin/sponsors/$userId',
+        auth: false,
+        headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      print('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      if (response.statusCode == 401) {
+      if (result.statusCode == 401) {
         return null;
       }
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200 && data['data'] != null) {
+      if (result.ok && data?['data'] != null) {
         print('✅ [AdminService] 获取赞助详情成功');
-        return UserSponsorDetails.fromJson(data['data']);
+        return UserSponsorDetails.fromJson(data!['data']);
       } else {
-        print('❌ [AdminService] 获取赞助详情失败: ${data['message']}');
+        print('❌ [AdminService] 获取赞助详情失败: ${data?['message']}');
         return null;
       }
     } catch (e) {
@@ -648,29 +634,26 @@ class AdminService extends ChangeNotifier {
     print('👑 [AdminService] 更新用户赞助状态 ID: $userId, isSponsor: $isSponsor');
 
     try {
-      final url = '${UrlService().baseUrl}/admin/sponsors/$userId';
-      final response = await http.put(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
-        body: jsonEncode({'isSponsor': isSponsor}),
+      final result = await ApiClient().putJson(
+        '/admin/sponsors/$userId',
+        data: {'isSponsor': isSponsor},
+        auth: false,
+        headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      print('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      if (response.statusCode == 401) {
+      if (result.statusCode == 401) {
         return false;
       }
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200) {
+      if (result.ok) {
         print('✅ [AdminService] 赞助状态已更新');
         return true;
       } else {
-        print('❌ [AdminService] 更新失败: ${data['message']}');
+        print('❌ [AdminService] 更新失败: ${data?['message']}');
         return false;
       }
     } catch (e) {
@@ -689,33 +672,30 @@ class AdminService extends ChangeNotifier {
     print('👑 [AdminService] 添加赞助记录 userId: $userId, amount: $amount');
 
     try {
-      final url = '${UrlService().baseUrl}/admin/sponsors/$userId/donation';
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
-        body: jsonEncode({
+      final result = await ApiClient().postJson(
+        '/admin/sponsors/$userId/donation',
+        data: {
           'amount': amount,
           'paymentType': paymentType,
           'markAsPaid': true,
-        }),
+        },
+        auth: false,
+        headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      print('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      if (response.statusCode == 401) {
+      if (result.statusCode == 401) {
         return false;
       }
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200) {
+      if (result.ok) {
         print('✅ [AdminService] 赞助记录已添加');
         return true;
       } else {
-        print('❌ [AdminService] 添加失败: ${data['message']}');
+        print('❌ [AdminService] 添加失败: ${data?['message']}');
         return false;
       }
     } catch (e) {
@@ -734,28 +714,25 @@ class AdminService extends ChangeNotifier {
     print('👑 [AdminService] 删除赞助记录 ID: $donationId');
 
     try {
-      final url = '${UrlService().baseUrl}/admin/donations/$donationId';
-      final response = await http.delete(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
+      final result = await ApiClient().deleteJson(
+        '/admin/donations/$donationId',
+        auth: false,
+        headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      print('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      if (response.statusCode == 401) {
+      if (result.statusCode == 401) {
         return false;
       }
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200) {
+      if (result.ok) {
         print('✅ [AdminService] 赞助记录已删除');
         return true;
       } else {
-        print('❌ [AdminService] 删除失败: ${data['message']}');
+        print('❌ [AdminService] 删除失败: ${data?['message']}');
         return false;
       }
     } catch (e) {
@@ -774,28 +751,25 @@ class AdminService extends ChangeNotifier {
     print('👑 [AdminService] 获取赞助排行榜');
 
     try {
-      final url = '${UrlService().baseUrl}/admin/sponsors/ranking';
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
+      final result = await ApiClient().getJson(
+        '/admin/sponsors/ranking',
+        auth: false,
+        headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      print('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      if (response.statusCode == 401) {
+      if (result.statusCode == 401) {
         return null;
       }
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200 && data['data'] != null) {
+      if (result.ok && data?['data'] != null) {
         print('✅ [AdminService] 获取赞助排行榜成功');
-        return SponsorRankingData.fromJson(data['data']);
+        return SponsorRankingData.fromJson(data!['data']);
       } else {
-        print('❌ [AdminService] 获取赞助排行榜失败: ${data['message']}');
+        print('❌ [AdminService] 获取赞助排行榜失败: ${data?['message']}');
         return null;
       }
     } catch (e) {
@@ -804,4 +778,3 @@ class AdminService extends ChangeNotifier {
     }
   }
 }
-

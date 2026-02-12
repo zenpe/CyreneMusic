@@ -449,32 +449,92 @@ extension MyPageCupertinoUI on _MyPageState {
   }
 
   Widget _buildCupertinoDetailEmptyState(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(CupertinoIcons.music_note_2, size: 64, color: CupertinoColors.systemGrey),
-          const SizedBox(height: 16),
-          Text('歌单为空', style: TextStyle(fontSize: 16, color: isDark ? CupertinoColors.white : CupertinoColors.black)),
-          const SizedBox(height: 8),
-          Text('快去添加一些喜欢的歌曲吧', style: TextStyle(fontSize: 14, color: CupertinoColors.systemGrey)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.music_note_2,
+                      size: compact ? 52 : 64,
+                      color: CupertinoColors.systemGrey,
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '歌单为空',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '快去添加一些喜欢的歌曲吧',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: CupertinoColors.systemGrey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildCupertinoSearchEmptyState(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(CupertinoIcons.search, size: 64, color: CupertinoColors.systemGrey),
-          const SizedBox(height: 16),
-          Text('未找到匹配的歌曲', style: TextStyle(fontSize: 16, color: isDark ? CupertinoColors.white : CupertinoColors.black)),
-          const SizedBox(height: 8),
-          Text('尝试其他关键词', style: TextStyle(fontSize: 14, color: CupertinoColors.systemGrey)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.search,
+                      size: compact ? 52 : 64,
+                      color: CupertinoColors.systemGrey,
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '未找到匹配的歌曲',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '尝试其他关键词',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: CupertinoColors.systemGrey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

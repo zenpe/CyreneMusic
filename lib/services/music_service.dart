@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../models/toplist.dart';
 import '../models/track.dart';
 import '../models/song_detail.dart';
+import 'api/api_client.dart';
 import 'url_service.dart';
 import 'audio_source_service.dart';
 import 'developer_mode_service.dart';
@@ -54,77 +55,48 @@ class MusicService extends ChangeNotifier {
     try {
       print('🎵 [MusicService] 开始获取榜单列表...');
       print('🎵 [MusicService] 音乐源: ${source.name}');
-      DeveloperModeService().addLog('🎵 [MusicService] 开始获取榜单 (${source.name})');
-      
+
       if (forceRefresh) {
         print('🔄 [MusicService] 强制刷新模式');
-        DeveloperModeService().addLog('🔄 [MusicService] 强制刷新');
       }
 
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/toplists';
-      
-      print('🎵 [MusicService] 请求URL: $url');
-      DeveloperModeService().addLog('🌐 [Network] GET $url');
-
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      ).timeout(
-        const Duration(seconds: 15),
-        onTimeout: () {
-          DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
-          throw Exception('请求超时');
-        },
+      final result = await ApiClient().getJson(
+        '/toplists',
+        timeout: const Duration(seconds: 15),
       );
 
-      print('🎵 [MusicService] 响应状态码: ${response.statusCode}');
-      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
-      
-      // 记录响应体（前500字符）
-      final responseBody = utf8.decode(response.bodyBytes);
-      final truncatedBody = responseBody.length > 500 
-          ? '${responseBody.substring(0, 500)}...' 
-          : responseBody;
-      DeveloperModeService().addLog('📄 [Network] 响应体: $truncatedBody');
+      print('🎵 [MusicService] 响应状态码: ${result.statusCode}');
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-        
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
+
         if (data['status'] == 200) {
           final toplistsData = data['toplists'] as List<dynamic>;
           _toplists = toplistsData
               .map((item) => Toplist.fromJson(item as Map<String, dynamic>, source: source))
               .toList();
-          
+
           print('✅ [MusicService] 成功获取 ${_toplists.length} 个榜单');
-          DeveloperModeService().addLog('✅ [MusicService] 成功获取 ${_toplists.length} 个榜单');
-          
+
           // 打印每个榜单的歌曲数量
           for (var toplist in _toplists) {
             print('   📊 ${toplist.name}: ${toplist.tracks.length} 首歌曲');
           }
-          
+
           _errorMessage = null;
           _isCached = true; // 标记数据已缓存
           print('💾 [MusicService] 数据已缓存');
-          DeveloperModeService().addLog('💾 [MusicService] 数据已缓存');
         } else {
           _errorMessage = '获取榜单失败: 服务器返回状态 ${data['status']}';
           print('❌ [MusicService] $_errorMessage');
-          DeveloperModeService().addLog('❌ [MusicService] $_errorMessage');
         }
       } else {
-        _errorMessage = '获取榜单失败: HTTP ${response.statusCode}';
+        _errorMessage = '获取榜单失败: HTTP ${result.statusCode}';
         print('❌ [MusicService] $_errorMessage');
-        DeveloperModeService().addLog('❌ [MusicService] $_errorMessage');
       }
     } catch (e) {
       _errorMessage = '获取榜单失败: $e';
       print('❌ [MusicService] $_errorMessage');
-      DeveloperModeService().addLog('❌ [MusicService] 获取榜单失败: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -851,32 +823,31 @@ class MusicService extends ChangeNotifier {
 
   /// 从后端歌词 API 获取歌词（供洛雪音源使用）
   Future<Map<String, String>?> _fetchLyricFromBackend(MusicSource source, dynamic songId) async {
-    // 使用 OmniParse 后端的歌词 API
-    final baseUrl = UrlService().baseUrl;
-    if (baseUrl.isEmpty) {
-      print('⚠️ [MusicService] 后端 URL 未配置，无法获取歌词');
-      return null;
-    }
+    String path;
+    Map<String, dynamic> queryParameters;
 
-    String url;
     switch (source) {
       case MusicSource.netease:
-        url = '$baseUrl/lyrics/netease?id=$songId';
+        path = '/lyrics/netease';
+        queryParameters = {'id': songId.toString()};
         break;
       case MusicSource.qq:
-        url = '$baseUrl/lyrics/qq?id=$songId';
+        path = '/lyrics/qq';
+        queryParameters = {'id': songId.toString()};
         break;
       case MusicSource.kugou:
         // 酷狗可能使用 hash 或 emixsongid
         final idStr = songId.toString();
+        path = '/lyrics/kugou';
         if (idStr.length == 32 && RegExp(r'^[0-9A-Fa-f]+$').hasMatch(idStr)) {
-          url = '$baseUrl/lyrics/kugou?hash=$idStr';
+          queryParameters = {'hash': idStr};
         } else {
-          url = '$baseUrl/lyrics/kugou?emixsongid=$songId';
+          queryParameters = {'emixsongid': songId.toString()};
         }
         break;
       case MusicSource.kuwo:
-        url = '$baseUrl/lyrics/kuwo?mid=$songId';
+        path = '/lyrics/kuwo';
+        queryParameters = {'mid': songId.toString()};
         break;
       case MusicSource.navidrome:
         return null;
@@ -885,19 +856,17 @@ class MusicService extends ChangeNotifier {
         return null;
     }
 
-    print('📝 [MusicService] 获取歌词: GET $url');
-    DeveloperModeService().addLog('📝 [Network] GET $url');
+    print('📝 [MusicService] 获取歌词: $path $queryParameters');
 
     try {
-      final response = await http.get(Uri.parse(url)).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('歌词请求超时');
-        },
+      final result = await ApiClient().getJson(
+        path,
+        queryParameters: queryParameters,
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
         if (data['status'] == 200 && data['data'] != null) {
           final lyricData = data['data'] as Map<String, dynamic>;
           return {
@@ -908,7 +877,7 @@ class MusicService extends ChangeNotifier {
           };
         }
       }
-      print('⚠️ [MusicService] 歌词 API 返回异常: ${response.statusCode}');
+      print('⚠️ [MusicService] 歌词 API 返回异常: ${result.statusCode}');
     } catch (e) {
       print('❌ [MusicService] 歌词请求失败: $e');
     }
@@ -1120,25 +1089,14 @@ class MusicService extends ChangeNotifier {
     required dynamic songId,
     required AudioQuality quality,
   }) async {
-    final baseUrl = UrlService().baseUrl;
-    // 使用流端点获取可播放 URL
-    final url = '$baseUrl/spotify/stream/$songId';
-
-    DeveloperModeService().addLog('🌐 [Network] GET $url');
-
     try {
-      final response = await http.get(Uri.parse(url)).timeout(
-        const Duration(seconds: 30), // 流获取可能需要较长时间
-        onTimeout: () {
-          DeveloperModeService().addLog('⏱️ [Network] 请求超时 (30s)');
-          throw Exception('请求超时');
-        },
+      final result = await ApiClient().getJson(
+        '/spotify/stream/$songId',
+        timeout: const Duration(seconds: 30),
       );
 
-      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes));
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
         if (data['status'] == 200 && data['data'] != null) {
           final streamData = data['data'];
           final metadata = streamData['metadata'];
@@ -1161,7 +1119,6 @@ class MusicService extends ChangeNotifier {
       return null;
     } catch (e) {
       print('❌ [MusicService] Spotify fetch failed: $e');
-      DeveloperModeService().addLog('❌ [MusicService] Spotify异常: $e');
       return null;
     }
   }

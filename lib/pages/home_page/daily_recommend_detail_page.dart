@@ -250,39 +250,64 @@ class DailyRecommendDetailPage extends StatelessWidget {
 
   /// 空状态
   Widget _buildEmptyState(ColorScheme cs) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(28),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(32),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 220;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(compact ? 18 : 28),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(compact ? 24 : 32),
+                      ),
+                      child: Icon(
+                        Icons.music_off_rounded,
+                        size: compact ? 52 : 64,
+                        color: cs.onSurface.withOpacity(0.4),
+                      ),
+                    ),
+                    SizedBox(height: compact ? 14 : 24),
+                    Text(
+                      '暂无推荐',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: cs.onSurface.withOpacity(0.7),
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '稍后再来看看吧',
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: cs.onSurface.withOpacity(0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            child: Icon(Icons.music_off_rounded, size: 64, color: cs.onSurface.withOpacity(0.4)),
           ),
-          const SizedBox(height: 24),
-          Text(
-            '暂无推荐',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: cs.onSurface.withOpacity(0.7),
-              letterSpacing: -0.3,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '稍后再来看看吧',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: cs.onSurface.withOpacity(0.5),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
-import 'package:http/http.dart' as http;
 import '../../services/url_service.dart';
 import '../../services/audio_source_service.dart';
+import '../../services/api/api_client.dart';
 import '../../widgets/fluent_settings_card.dart';
 import '../../widgets/cupertino/cupertino_settings_widgets.dart';
 import '../../utils/theme_manager.dart';
@@ -714,21 +714,30 @@ void _showCustomUrlDialog(BuildContext context) {
 
     final stopwatch = Stopwatch()..start();
     try {
-      final uri = Uri.parse('$baseUrl/info');
-      await http
-          .get(uri)
-          .timeout(const Duration(seconds: 10));
+      final result = await ApiClient().getJson(
+        '/info',
+        auth: false,
+        timeout: const Duration(seconds: 10),
+      );
 
       stopwatch.stop();
       if (!mounted) return;
 
-      setState(() {
-        _latencyMs = stopwatch.elapsedMilliseconds == 0
-            ? 1
-            : stopwatch.elapsedMilliseconds;
-        _isTesting = false;
-        _errorMessage = null;
-      });
+      if (result.ok) {
+        setState(() {
+          _latencyMs = stopwatch.elapsedMilliseconds == 0
+              ? 1
+              : stopwatch.elapsedMilliseconds;
+          _isTesting = false;
+          _errorMessage = null;
+        });
+      } else {
+        setState(() {
+          _isTesting = false;
+          _latencyMs = null;
+          _errorMessage = 'HTTP ${result.statusCode}';
+        });
+      }
     } catch (e) {
       stopwatch.stop();
       if (!mounted) return;

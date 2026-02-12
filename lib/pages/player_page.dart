@@ -128,10 +128,16 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     LyricStyleService().initialize();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final currentTrack = PlayerService().currentTrack;
-      _lastTrackId = currentTrack != null 
-          ? '${currentTrack.source.name}_${currentTrack.id}' 
+      _lastTrackId = currentTrack != null
+          ? '${currentTrack.source.name}_${currentTrack.id}'
           : null;
-      _loadLyrics();
+      // 如果当前已有匹配的 currentSong，直接解析歌词
+      if (currentTrack != null) {
+        final song = PlayerService().currentSong;
+        if (song != null && song.id.toString() == currentTrack.id.toString()) {
+          _parseLyricsFromSong(song);
+        }
+      }
     });
   }
 
@@ -188,23 +194,27 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
   /// 播放器状态变化回调
   void _onPlayerStateChanged() {
     if (!mounted) return;
-    
+
     final currentTrack = PlayerService().currentTrack;
-    final currentTrackId = currentTrack != null 
-        ? '${currentTrack.source.name}_${currentTrack.id}' 
+    final currentTrackId = currentTrack != null
+        ? '${currentTrack.source.name}_${currentTrack.id}'
         : null;
-    
+
     if (currentTrackId != _lastTrackId) {
-      // 歌曲已切换，重新加载歌词
+      // 歌曲已切换，清空歌词等待新歌曲详情
       print('🎵 [PlayerPage] 检测到歌曲切换，重新加载歌词');
       _lastTrackId = currentTrackId;
       _lyrics = [];
       _currentLyricIndex = -1;
-      _loadLyrics();
       setState(() {});
-    } else {
-      // 只更新歌词行索引
-      _updateCurrentLyric();
+    }
+
+    // 检查 currentSong 是否已匹配 currentTrack（事件驱动，无需轮询）
+    if (currentTrack != null && _lyrics.isEmpty) {
+      final song = PlayerService().currentSong;
+      if (song != null && song.id.toString() == currentTrack.id.toString()) {
+        _parseLyricsFromSong(song);
+      }
     }
   }
 
@@ -245,86 +255,49 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     );
   }
 
-  /// 加载歌词（异步执行，不阻塞 UI）
-  Future<void> _loadLyrics() async {
-    final currentTrack = PlayerService().currentTrack;
-    if (currentTrack == null) return;
-
-    print('🔍 [PlayerPage] 开始加载歌词，当前 Track: ${currentTrack.name}');
-
-    // 等待 currentSong 更新
-    SongDetail? song;
-    final startTime = DateTime.now();
-    
-    while (song == null && DateTime.now().difference(startTime).inSeconds < 3) {
-      song = PlayerService().currentSong;
-      
-      if (song != null) {
-        final songId = song.id.toString();
-        final trackId = currentTrack.id.toString();
-        
-        if (songId != trackId) {
-          song = null;
-          await Future.delayed(const Duration(milliseconds: 100));
-        }
-      } else {
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
-    }
-    
-    if (song == null) {
-      print('❌ [PlayerPage] 等待歌曲详情超时！');
-      return;
-    }
-
+  /// 从 SongDetail 解析歌词（事件驱动，不再轮询）
+  void _parseLyricsFromSong(SongDetail song) {
     try {
-      print('📝 [PlayerPage] 开始解析歌词');
-      
-      await Future.microtask(() {
-        switch (song!.source.name) {
-          case 'netease':
-            _lyrics = LyricParser.parseNeteaseLyric(
-              song.lyric,
-              translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-              yrcLyric: song.yrc.isNotEmpty ? song.yrc : null,
-              yrcTranslation: song.ytlrc.isNotEmpty ? song.ytlrc : null,
-            );
-            break;
-          case 'qq':
-            _lyrics = LyricParser.parseQQLyric(
-              song.lyric,
-              translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-              qrcLyric: song.qrc.isNotEmpty ? song.qrc : null,
-              qrcTranslation: song.qrcTrans.isNotEmpty ? song.qrcTrans : null,
-            );
-            break;
-          case 'kugou':
-            _lyrics = LyricParser.parseKugouLyric(
-              song.lyric,
-              translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-            );
-            break;
-          default:
-            // 默认使用网易云/标准 LRC 格式解析（适用于酷我等）
-            _lyrics = LyricParser.parseNeteaseLyric(
-              song.lyric,
-              translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-              yrcLyric: song.yrc.isNotEmpty ? song.yrc : null,
-              yrcTranslation: song.ytlrc.isNotEmpty ? song.ytlrc : null,
-            );
-            break;
-        }
-      });
+      print('📝 [PlayerPage] 开始解析歌词: ${song.name}');
+
+      switch (song.source.name) {
+        case 'netease':
+          _lyrics = LyricParser.parseNeteaseLyric(
+            song.lyric,
+            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
+            yrcLyric: song.yrc.isNotEmpty ? song.yrc : null,
+            yrcTranslation: song.ytlrc.isNotEmpty ? song.ytlrc : null,
+          );
+          break;
+        case 'qq':
+          _lyrics = LyricParser.parseQQLyric(
+            song.lyric,
+            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
+            qrcLyric: song.qrc.isNotEmpty ? song.qrc : null,
+            qrcTranslation: song.qrcTrans.isNotEmpty ? song.qrcTrans : null,
+          );
+          break;
+        case 'kugou':
+          _lyrics = LyricParser.parseKugouLyric(
+            song.lyric,
+            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
+          );
+          break;
+        default:
+          _lyrics = LyricParser.parseNeteaseLyric(
+            song.lyric,
+            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
+            yrcLyric: song.yrc.isNotEmpty ? song.yrc : null,
+            yrcTranslation: song.ytlrc.isNotEmpty ? song.ytlrc : null,
+          );
+          break;
+      }
 
       print('🎵 [PlayerPage] 加载歌词: ${_lyrics.length} 行 (${song.name})');
-      
-      if (_lyrics.isNotEmpty && mounted) {
-        setState(() {
-          _updateCurrentLyric();
-        });
-      }
+      _currentLyricIndex = -1;
+      if (mounted) setState(() {});
     } catch (e) {
-      print('❌ [PlayerPage] 加载歌词失败: $e');
+      print('❌ [PlayerPage] 解析歌词失败: $e');
     }
   }
 

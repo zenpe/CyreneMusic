@@ -770,25 +770,48 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
     }
 
     if (_playlistDetail == null) {
-      return Center(
+      return LayoutBuilder(
         key: const ValueKey('playlist_error'),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, color: Colors.white.withOpacity(0.5), size: 48),
-            const SizedBox(height: 16),
-            Text('加载失败', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 16)),
-            const SizedBox(height: 24),
-            TextButton.icon(
-              onPressed: () => setState(() {
-                _selectedPlaylistId = null;
-                _playlistDetail = null;
-              }),
-              icon: const Icon(Icons.arrow_back, color: Colors.white70),
-              label: const Text('返回', style: TextStyle(color: Colors.white70)),
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 220;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: Colors.white.withOpacity(0.5),
+                        size: compact ? 40 : 48,
+                      ),
+                      SizedBox(height: compact ? 10 : 16),
+                      Text(
+                        '加载失败',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 16),
+                      ),
+                      SizedBox(height: compact ? 16 : 24),
+                      TextButton.icon(
+                        onPressed: () => setState(() {
+                          _selectedPlaylistId = null;
+                          _playlistDetail = null;
+                        }),
+                        icon: const Icon(Icons.arrow_back, color: Colors.white70),
+                        label: const Text('返回', style: TextStyle(color: Colors.white70)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ],
-        ),
+          );
+        },
       );
     }
 

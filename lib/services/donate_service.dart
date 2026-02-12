@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:http/http.dart' as http;
-import 'url_service.dart';
+import 'api/api_client.dart';
 
 class DonateService {
 
@@ -33,7 +31,6 @@ class DonateService {
     String? device,
     String? param,
   }) async {
-    final url = UrlService().payCreateUrl;
     final req = <String, dynamic>{
       'type': type,
       'name': name,
@@ -48,25 +45,19 @@ class DonateService {
     };
 
     try {
-      print('[DonateService] POST $url');
+      print('[DonateService] POST /pay/create');
       print('[DonateService] Request: $req');
 
-      final response = await http
-          .post(
-            Uri.parse(url),
-            headers: {
-              'Content-Type': 'application/json; charset=UTF-8',
-            },
-            body: jsonEncode(req),
-          )
-          .timeout(const Duration(seconds: 15));
+      final result = await ApiClient().postJson(
+        '/pay/create',
+        data: req,
+        timeout: const Duration(seconds: 15),
+      );
 
-      print('[DonateService] Status: ${response.statusCode}');
-      print('[DonateService] Body: ${response.body}');
+      print('[DonateService] Status: ${result.statusCode}');
+      print('[DonateService] Body: ${result.text}');
 
-      final body = response.body;
-      final data = jsonDecode(body) as Map<String, dynamic>;
-      return data;
+      return result.data as Map<String, dynamic>;
     } catch (e) {
       print('[DonateService] Exception: $e');
       rethrow;
@@ -78,7 +69,6 @@ class DonateService {
   static Future<Map<String, dynamic>> queryOrder({
     required String outTradeNo,
   }) async {
-    final url = UrlService().payQueryUrl;
     final req = <String, dynamic>{
       'out_trade_no': outTradeNo,
     };
@@ -86,22 +76,16 @@ class DonateService {
     try {
       print('[DonateService] Query order: $outTradeNo');
 
-      final response = await http
-          .post(
-            Uri.parse(url),
-            headers: {
-              'Content-Type': 'application/json; charset=UTF-8',
-            },
-            body: jsonEncode(req),
-          )
-          .timeout(const Duration(seconds: 10));
+      final result = await ApiClient().postJson(
+        '/pay/query',
+        data: req,
+        timeout: const Duration(seconds: 10),
+      );
 
-      print('[DonateService] Query Status: ${response.statusCode}');
-      print('[DonateService] Query Body: ${response.body}');
+      print('[DonateService] Query Status: ${result.statusCode}');
+      print('[DonateService] Query Body: ${result.text}');
 
-      final body = response.body;
-      final data = jsonDecode(body) as Map<String, dynamic>;
-      return data;
+      return result.data as Map<String, dynamic>;
     } catch (e) {
       print('[DonateService] Query Exception: $e');
       rethrow;
@@ -115,9 +99,6 @@ class DonateService {
     required double amount,
     required String paymentType,
   }) async {
-    final baseUrl = UrlService().baseUrl;
-    final url = '$baseUrl/sponsors/create';
-    
     final req = <String, dynamic>{
       'userId': userId,
       'outTradeNo': outTradeNo,
@@ -128,22 +109,16 @@ class DonateService {
     try {
       print('[DonateService] Creating donation record: $outTradeNo');
 
-      final response = await http
-          .post(
-            Uri.parse(url),
-            headers: {
-              'Content-Type': 'application/json; charset=UTF-8',
-            },
-            body: jsonEncode(req),
-          )
-          .timeout(const Duration(seconds: 10));
+      final result = await ApiClient().postJson(
+        '/sponsors/create',
+        data: req,
+        timeout: const Duration(seconds: 10),
+      );
 
-      print('[DonateService] Create donation Status: ${response.statusCode}');
-      print('[DonateService] Create donation Body: ${response.body}');
+      print('[DonateService] Create donation Status: ${result.statusCode}');
+      print('[DonateService] Create donation Body: ${result.text}');
 
-      final body = response.body;
-      final data = jsonDecode(body) as Map<String, dynamic>;
-      return data;
+      return result.data as Map<String, dynamic>;
     } catch (e) {
       print('[DonateService] Create donation Exception: $e');
       rethrow;
@@ -154,22 +129,18 @@ class DonateService {
   static Future<Map<String, dynamic>> getSponsorStatus({
     required int userId,
   }) async {
-    final baseUrl = UrlService().baseUrl;
-    final url = '$baseUrl/sponsors/status/$userId';
-
     try {
       print('[DonateService] Query sponsor status for user: $userId');
 
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 10));
+      final result = await ApiClient().getJson(
+        '/sponsors/status/$userId',
+        timeout: const Duration(seconds: 10),
+      );
 
-      print('[DonateService] Sponsor status: ${response.statusCode}');
-      print('[DonateService] Sponsor body: ${response.body}');
+      print('[DonateService] Sponsor status: ${result.statusCode}');
+      print('[DonateService] Sponsor body: ${result.text}');
 
-      final body = response.body;
-      final data = jsonDecode(body) as Map<String, dynamic>;
-      return data;
+      return result.data as Map<String, dynamic>;
     } catch (e) {
       print('[DonateService] Query sponsor status Exception: $e');
       rethrow;
@@ -178,22 +149,18 @@ class DonateService {
 
   /// 获取所有赞助用户列表
   static Future<Map<String, dynamic>> getSponsorList() async {
-    final baseUrl = UrlService().baseUrl;
-    final url = '$baseUrl/sponsors/list';
-
     try {
       print('[DonateService] Query sponsor list');
 
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 10));
+      final result = await ApiClient().getJson(
+        '/sponsors/list',
+        timeout: const Duration(seconds: 10),
+      );
 
-      print('[DonateService] Sponsor list status: ${response.statusCode}');
-      print('[DonateService] Sponsor list body: ${response.body}');
+      print('[DonateService] Sponsor list status: ${result.statusCode}');
+      print('[DonateService] Sponsor list body: ${result.text}');
 
-      final body = response.body;
-      final data = jsonDecode(body) as Map<String, dynamic>;
-      return data;
+      return result.data as Map<String, dynamic>;
     } catch (e) {
       print('[DonateService] Query sponsor list Exception: $e');
       rethrow;

@@ -1,10 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import '../models/playlist.dart';
 import '../models/track.dart';
 import 'auth_service.dart';
-import 'url_service.dart';
+import 'api/api_client.dart';
 
 class PlaylistSyncResult {
   final int insertedCount;
@@ -44,20 +42,15 @@ class PlaylistService extends ChangeNotifier {
   }) async {
     if (!AuthService().isLoggedIn) return false;
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token!;
-      final resp = await http.put(
-        Uri.parse('$baseUrl/playlists/$playlistId/import-config'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode({
+      final result = await ApiClient().putJson(
+        '/playlists/$playlistId/import-config',
+        data: {
           'source': source,
           'sourcePlaylistId': sourcePlaylistId,
-        }),
-      ).timeout(const Duration(seconds: 15));
-      if (resp.statusCode == 200) {
+        },
+        timeout: const Duration(seconds: 15),
+      );
+      if (result.ok) {
         final idx = _playlists.indexWhere((p) => p.id == playlistId);
         if (idx != -1) {
           final p = _playlists[idx];
@@ -83,23 +76,17 @@ class PlaylistService extends ChangeNotifier {
   Future<PlaylistSyncResult> syncPlaylist(int playlistId) async {
     if (!AuthService().isLoggedIn) return PlaylistSyncResult.empty();
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token!;
-      final url = '$baseUrl/playlists/$playlistId/sync';
-      print('🚀 [PlaylistService] 同步开始: $url (playlistId=$playlistId)');
-      final resp = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(minutes: 2));
-      print('📥 [PlaylistService] 同步响应: status=${resp.statusCode}');
-      if (resp.body.isNotEmpty) {
-        print('📄 [PlaylistService] 响应内容: ${resp.body}');
+      print('🚀 [PlaylistService] 同步开始: /playlists/$playlistId/sync (playlistId=$playlistId)');
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/sync',
+        timeout: const Duration(minutes: 2),
+      );
+      print('📥 [PlaylistService] 同步响应: status=${result.statusCode}');
+      if (result.text != null && result.text!.isNotEmpty) {
+        print('📄 [PlaylistService] 响应内容: ${result.text}');
       }
-      if (resp.statusCode == 200) {
-        final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
         if ((data['status'] as int?) != 200) {
           final failureMessage = data['message'] as String? ?? '同步失败';
           print('⚠️ [PlaylistService] 同步失败: $failureMessage');
@@ -119,12 +106,8 @@ class PlaylistService extends ChangeNotifier {
           newTracks: newTracks,
           message: message,
         );
-      } else if (resp.statusCode == 401) {
-        print('⚠️ [PlaylistService] 未授权，需要重新登录');
-        await AuthService().handleUnauthorized();
-        return PlaylistSyncResult.empty(message: '未登录或登录已过期');
       }
-      print('⚠️ [PlaylistService] 同步失败: HTTP ${resp.statusCode}');
+      print('⚠️ [PlaylistService] 同步失败: HTTP ${result.statusCode}');
     } catch (e) {
       print('❌ [PlaylistService] 同步异常: $e');
       return PlaylistSyncResult.empty(message: '同步失败: $e');
@@ -214,25 +197,13 @@ class PlaylistService extends ChangeNotifier {
       _isLoading = true;
       notifyListeners();
 
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-      if (token == null) {
-        throw Exception('无有效令牌');
-      }
-
-      final response = await http.get(
-        Uri.parse('$baseUrl/playlists'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().getJson(
+        '/playlists',
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
           final List<dynamic> playlistsJson = data['playlists'] ?? [];
@@ -244,11 +215,8 @@ class PlaylistService extends ChangeNotifier {
         } else {
           throw Exception(data['message'] ?? '加载失败');
         }
-      } else if (response.statusCode == 401) {
-        print('⚠️ [PlaylistService] 未授权，需要重新登录');
-        await AuthService().handleUnauthorized();
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [PlaylistService] 加载歌单列表失败: $e');
@@ -272,26 +240,14 @@ class PlaylistService extends ChangeNotifier {
     }
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-      if (token == null) {
-        throw Exception('无有效令牌');
-      }
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/playlists'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode({'name': name.trim()}),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().postJson(
+        '/playlists',
+        data: {'name': name.trim()},
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
           // 添加到本地列表
@@ -304,12 +260,8 @@ class PlaylistService extends ChangeNotifier {
         } else {
           throw Exception(data['message'] ?? '创建失败');
         }
-      } else if (response.statusCode == 401) {
-        print('⚠️ [PlaylistService] 未授权，需要重新登录');
-        await AuthService().handleUnauthorized();
-        return null;
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [PlaylistService] 创建歌单失败: $e');
@@ -330,26 +282,14 @@ class PlaylistService extends ChangeNotifier {
     }
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-      if (token == null) {
-        throw Exception('无有效令牌');
-      }
-
-      final response = await http.put(
-        Uri.parse('$baseUrl/playlists/$playlistId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode({'name': name.trim()}),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().putJson(
+        '/playlists/$playlistId',
+        data: {'name': name.trim()},
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
           // 更新本地列表
@@ -373,12 +313,8 @@ class PlaylistService extends ChangeNotifier {
         } else {
           throw Exception(data['message'] ?? '更新失败');
         }
-      } else if (response.statusCode == 401) {
-        print('⚠️ [PlaylistService] 未授权，需要重新登录');
-        AuthService().logout();
-        return false;
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [PlaylistService] 更新歌单失败: $e');
@@ -394,28 +330,14 @@ class PlaylistService extends ChangeNotifier {
     }
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-      if (token == null) {
-        throw Exception('无有效令牌');
-      }
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/playlists/$playlistId/delete'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        // Bun/Elysia 在检测到 Content-Type: application/json 时会尝试解析请求体，
-        // 即使是删除歌单这种无参数请求。传入空 JSON 保证解析阶段不会抛出 PARSE 错误。
-        body: json.encode({}),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/delete',
+        data: {},
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
           // 从本地列表删除
@@ -433,12 +355,8 @@ class PlaylistService extends ChangeNotifier {
         } else {
           throw Exception(data['message'] ?? '删除失败');
         }
-      } else if (response.statusCode == 401) {
-        print('⚠️ [PlaylistService] 未授权，需要重新登录');
-        AuthService().logout();
-        return false;
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [PlaylistService] 删除歌单失败: $e');
@@ -454,27 +372,16 @@ class PlaylistService extends ChangeNotifier {
     }
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-      if (token == null) {
-        throw Exception('无有效令牌');
-      }
       final playlistTrack = PlaylistTrack.fromTrack(track);
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/playlists/$playlistId/tracks'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(playlistTrack.toJson()),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/tracks',
+        data: playlistTrack.toJson(),
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
           // 更新歌单的歌曲数量
@@ -503,12 +410,8 @@ class PlaylistService extends ChangeNotifier {
         } else {
           throw Exception(data['message'] ?? '添加失败');
         }
-      } else if (response.statusCode == 401) {
-        print('⚠️ [PlaylistService] 未授权，需要重新登录');
-        AuthService().logout();
-        return false;
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [PlaylistService] 添加歌曲失败: $e');
@@ -529,32 +432,20 @@ class PlaylistService extends ChangeNotifier {
     }
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-      if (token == null) {
-        throw Exception('无有效令牌');
-      }
-
       // 转换为 API 需要的格式
       final tracksData = tracks.map((track) {
         final playlistTrack = PlaylistTrack.fromTrack(track);
         return playlistTrack.toJson();
       }).toList();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/playlists/$playlistId/tracks/batch'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode({'tracks': tracksData}),
-      ).timeout(
-        const Duration(seconds: 60), // 批量操作需要更长超时
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/tracks/batch',
+        data: {'tracks': tracksData},
+        timeout: const Duration(seconds: 60),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
           final successCount = data['successCount'] as int? ?? 0;
@@ -582,12 +473,8 @@ class PlaylistService extends ChangeNotifier {
         } else {
           throw Exception(data['message'] ?? '批量添加失败');
         }
-      } else if (response.statusCode == 401) {
-        print('⚠️ [PlaylistService] 未授权，需要重新登录');
-        AuthService().logout();
-        return {'successCount': 0, 'skipCount': 0, 'failCount': tracks.length};
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [PlaylistService] 批量添加歌曲失败: $e');
@@ -607,25 +494,13 @@ class PlaylistService extends ChangeNotifier {
       _currentPlaylistId = playlistId;
       notifyListeners();
 
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-      if (token == null) {
-        throw Exception('无有效令牌');
-      }
-
-      final response = await http.get(
-        Uri.parse('$baseUrl/playlists/$playlistId/tracks'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().getJson(
+        '/playlists/$playlistId/tracks',
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
           final List<dynamic> tracksJson = data['tracks'] ?? [];
@@ -637,11 +512,8 @@ class PlaylistService extends ChangeNotifier {
         } else {
           throw Exception(data['message'] ?? '加载失败');
         }
-      } else if (response.statusCode == 401) {
-        print('⚠️ [PlaylistService] 未授权，需要重新登录');
-        AuthService().logout();
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [PlaylistService] 加载歌曲列表失败: $e');
@@ -659,42 +531,30 @@ class PlaylistService extends ChangeNotifier {
     }
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-      if (token == null) {
-        throw Exception('无有效令牌');
-      }
-      
       // 诊断日志
       print('🗑️ [PlaylistService] 准备删除歌曲:');
       print('   PlaylistId: $playlistId');
       print('   TrackId: $trackId');
       print('   Source: $source');
-      print('   URL: $baseUrl/playlists/$playlistId/tracks/remove');
+      print('   URL: /playlists/$playlistId/tracks/remove');
 
       // 使用 POST 请求代替 DELETE（避免某些框架的解析问题）
-      final response = await http.post(
-        Uri.parse('$baseUrl/playlists/$playlistId/tracks/remove'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode({
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/tracks/remove',
+        data: {
           'trackId': trackId,
           'source': source,
-        }),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+        },
+        timeout: const Duration(seconds: 10),
       );
-      
-      print('📥 [PlaylistService] 删除请求响应状态码: ${response.statusCode}');
-      if (response.statusCode != 200) {
-        print('📄 [PlaylistService] 响应内容: ${response.body}');
+
+      print('📥 [PlaylistService] 删除请求响应状态码: ${result.statusCode}');
+      if (!result.ok) {
+        print('📄 [PlaylistService] 响应内容: ${result.text}');
       }
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
           // 更新歌单的歌曲数量
@@ -714,7 +574,7 @@ class PlaylistService extends ChangeNotifier {
 
           // 从当前列表删除
           if (_currentPlaylistId == playlistId) {
-            _currentTracks.removeWhere((t) => 
+            _currentTracks.removeWhere((t) =>
               t.trackId == trackId && t.source.name == source
             );
           }
@@ -725,12 +585,8 @@ class PlaylistService extends ChangeNotifier {
         } else {
           throw Exception(data['message'] ?? '删除失败');
         }
-      } else if (response.statusCode == 401) {
-        print('⚠️ [PlaylistService] 未授权，需要重新登录');
-        AuthService().logout();
-        return false;
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [PlaylistService] 删除歌曲失败: $e');
@@ -757,12 +613,6 @@ class PlaylistService extends ChangeNotifier {
     }
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-      if (token == null) {
-        throw Exception('无有效令牌');
-      }
-
       // 构建删除列表
       final tracksToDelete = tracks.map((track) => {
         'trackId': track.trackId,
@@ -771,24 +621,18 @@ class PlaylistService extends ChangeNotifier {
 
       print('🗑️ [PlaylistService] 准备批量删除 ${tracks.length} 首歌曲');
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/playlists/$playlistId/tracks/batch-remove'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode({
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/tracks/batch-remove',
+        data: {
           'tracks': tracksToDelete,
-        }),
-      ).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw Exception('请求超时'),
+        },
+        timeout: const Duration(seconds: 30),
       );
 
-      print('📥 [PlaylistService] 批量删除响应状态码: ${response.statusCode}');
+      print('📥 [PlaylistService] 批量删除响应状态码: ${result.statusCode}');
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
           final deletedCount = data['deletedCount'] as int? ?? 0;
@@ -811,7 +655,7 @@ class PlaylistService extends ChangeNotifier {
           // 从当前列表批量删除
           if (_currentPlaylistId == playlistId) {
             for (var track in tracks) {
-              _currentTracks.removeWhere((t) => 
+              _currentTracks.removeWhere((t) =>
                 t.trackId == track.trackId && t.source == track.source
               );
             }
@@ -823,12 +667,8 @@ class PlaylistService extends ChangeNotifier {
         } else {
           throw Exception(data['message'] ?? '批量删除失败');
         }
-      } else if (response.statusCode == 401) {
-        print('⚠️ [PlaylistService] 未授权，需要重新登录');
-        await AuthService().handleUnauthorized();
-        return 0;
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [PlaylistService] 批量删除失败: $e');
@@ -841,7 +681,7 @@ class PlaylistService extends ChangeNotifier {
     if (_currentPlaylistId != playlistId) {
       return false;
     }
-    return _currentTracks.any((t) => 
+    return _currentTracks.any((t) =>
       t.trackId == track.id.toString() && t.source == track.source
     );
   }
@@ -853,46 +693,41 @@ class PlaylistService extends ChangeNotifier {
     }
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token!;
       final trackId = track.id.toString();
       final source = track.source.name;
-      
-      final response = await http.get(
-        Uri.parse('$baseUrl/playlists/check-track?trackId=$trackId&source=$source'),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 10));
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final result = await ApiClient().getJson(
+        '/playlists/check-track',
+        queryParameters: {'trackId': trackId, 'source': source},
+        timeout: const Duration(seconds: 10),
+      );
+
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
         return TrackInPlaylistResult(
           inPlaylist: data['inPlaylist'] as bool? ?? false,
           playlistIds: (data['playlistIds'] as List<dynamic>?)?.map((e) => e as int).toList() ?? [],
           playlistNames: (data['playlistNames'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
         );
-      } else if (response.statusCode == 401) {
-        await AuthService().handleUnauthorized();
       }
     } catch (e) {
       print('❌ [PlaylistService] 检查歌曲是否在歌单中失败: $e');
     }
-    
+
     return TrackInPlaylistResult(inPlaylist: false, playlistIds: [], playlistNames: []);
   }
 
-  /// 检查歌曲是否在“我的收藏”中
+  /// 检查歌曲是否在"我的收藏"中
   bool isFavorite(Track? track) {
     if (track == null) return false;
     final favPlaylist = defaultPlaylist;
     if (favPlaylist == null) return false;
-    
+
     // 如果当前正在加载收藏歌单，优先从 _currentTracks 查找
     if (_currentPlaylistId == favPlaylist.id) {
       return _currentTracks.any((t) => t.trackId == track.id.toString() && t.source == track.source);
     }
-    
+
     // 否则只能返回 false 或等待 API 检查（同步调用不支持 Future）
     return false;
   }
@@ -926,4 +761,3 @@ class TrackInPlaylistResult {
     required this.playlistNames,
   });
 }
-

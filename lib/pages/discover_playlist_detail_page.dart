@@ -15,8 +15,7 @@ import '../services/player_service.dart';
 import '../services/auth_service.dart';
 import '../pages/auth/auth_page.dart';
 import '../utils/theme_manager.dart';
-import 'package:http/http.dart' as http;
-import '../services/url_service.dart';
+import '../services/api/api_client.dart';
 import '../services/playlist_service.dart';
 
 class DiscoverPlaylistDetailPage extends StatelessWidget {
@@ -343,30 +342,20 @@ class _DiscoverPlaylistDetailContentState
     );
     if (target == null) return;
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-      if (token == null) throw Exception('未登录');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      };
-      final putResp = await http
-          .put(
-            Uri.parse('$baseUrl/playlists/${target.id}/import-config'),
-            headers: headers,
-            body: '{"source":"netease","sourcePlaylistId":"$neteasePlaylistId"}',
-          )
-          .timeout(const Duration(seconds: 20));
-      if (putResp.statusCode != 200) {
+      final api = ApiClient();
+      final putResp = await api.putJson(
+        '/playlists/${target.id}/import-config',
+        data: {'source': 'netease', 'sourcePlaylistId': '$neteasePlaylistId'},
+        timeout: const Duration(seconds: 20),
+      );
+      if (!putResp.ok) {
         throw Exception('绑定来源失败: HTTP ${putResp.statusCode}');
       }
-      final postResp = await http
-          .post(
-            Uri.parse('$baseUrl/playlists/${target.id}/sync'),
-            headers: headers,
-          )
-          .timeout(const Duration(minutes: 2));
-      if (postResp.statusCode != 200) {
+      final postResp = await api.postJson(
+        '/playlists/${target.id}/sync',
+        timeout: const Duration(minutes: 2),
+      );
+      if (!postResp.ok) {
         throw Exception('同步失败: HTTP ${postResp.statusCode}');
       }
       if (!mounted) return;
@@ -1023,30 +1012,20 @@ class _DiscoverPlaylistDetailContentState
     if (target == null) return;
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-      if (token == null) throw Exception('未登录');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      };
-      final putResp = await http
-          .put(
-            Uri.parse('$baseUrl/playlists/${target.id}/import-config'),
-            headers: headers,
-            body: '{"source":"netease","sourcePlaylistId":"$neteasePlaylistId"}',
-          )
-          .timeout(const Duration(seconds: 20));
-      if (putResp.statusCode != 200) {
+      final api = ApiClient();
+      final putResp = await api.putJson(
+        '/playlists/${target.id}/import-config',
+        data: {'source': 'netease', 'sourcePlaylistId': '$neteasePlaylistId'},
+        timeout: const Duration(seconds: 20),
+      );
+      if (!putResp.ok) {
         throw Exception('绑定来源失败: HTTP ${putResp.statusCode}');
       }
-      final postResp = await http
-          .post(
-            Uri.parse('$baseUrl/playlists/${target.id}/sync'),
-            headers: headers,
-          )
-          .timeout(const Duration(minutes: 2));
-      if (postResp.statusCode != 200) {
+      final postResp = await api.postJson(
+        '/playlists/${target.id}/sync',
+        timeout: const Duration(minutes: 2),
+      );
+      if (!postResp.ok) {
         throw Exception('同步失败: HTTP ${postResp.statusCode}');
       }
       if (!mounted) return;

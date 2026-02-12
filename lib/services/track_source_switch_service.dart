@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import '../models/track.dart';
 import '../models/playlist.dart';
-import 'url_service.dart';
+import 'api/api_client.dart';
 
 /// 换源搜索结果
 class SourceSwitchResult {
@@ -104,7 +102,7 @@ class TrackSourceSwitchService extends ChangeNotifier {
 
       try {
         final searchResults = await _searchTrack(track, targetSource);
-        
+
         _results[i] = SourceSwitchResult(
           originalTrack: track,
           searchResults: searchResults,
@@ -144,7 +142,7 @@ class TrackSourceSwitchService extends ChangeNotifier {
   /// 更新选中的歌曲
   void updateSelectedTrack(int index, Track? track) {
     if (index < 0 || index >= _results.length) return;
-    
+
     _results[index] = _results[index].copyWith(
       selectedTrack: track,
     );
@@ -162,24 +160,23 @@ class TrackSourceSwitchService extends ChangeNotifier {
   /// 搜索单首歌曲
   Future<List<Track>> _searchTrack(PlaylistTrack track, MusicSource targetSource) async {
     final keyword = '${track.name} ${track.artists}';
-    final baseUrl = UrlService().baseUrl;
-    
+
     try {
       switch (targetSource) {
         case MusicSource.netease:
-          return await _searchNetease(keyword, baseUrl);
+          return await _searchNetease(keyword);
         case MusicSource.apple:
-          return await _searchApple(keyword, baseUrl);
+          return await _searchApple(keyword);
         case MusicSource.qq:
-          return await _searchQQ(keyword, baseUrl);
+          return await _searchQQ(keyword);
         case MusicSource.kugou:
-          return await _searchKugou(keyword, baseUrl);
+          return await _searchKugou(keyword);
         case MusicSource.kuwo:
-          return await _searchKuwo(keyword, baseUrl);
+          return await _searchKuwo(keyword);
         case MusicSource.navidrome:
           return [];
         case MusicSource.spotify:
-          return await _searchSpotify(keyword, baseUrl);
+          return await _searchSpotify(keyword);
         case MusicSource.local:
           return [];
       }
@@ -190,17 +187,15 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索 Apple Music
-  Future<List<Track>> _searchApple(String keyword, String baseUrl) async {
-    final url =
-        '$baseUrl/apple/search?keywords=${Uri.encodeComponent(keyword)}&limit=1';
-    final response = await http.get(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json'},
-    ).timeout(const Duration(seconds: 10));
+  Future<List<Track>> _searchApple(String keyword) async {
+    final result = await ApiClient().getJson(
+      '/apple/search',
+      queryParameters: {'keywords': keyword, 'limit': 1},
+      timeout: const Duration(seconds: 10),
+    );
 
-    if (response.statusCode == 200) {
-      final data =
-          json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (result.ok) {
+      final data = result.data as Map<String, dynamic>;
       if (data['status'] == 200) {
         return (data['result'] as List<dynamic>)
             .take(1)
@@ -219,16 +214,16 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索网易云音乐
-  Future<List<Track>> _searchNetease(String keyword, String baseUrl) async {
-    final url = '$baseUrl/search';
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: {'keywords': keyword, 'limit': '1'},
-    ).timeout(const Duration(seconds: 10));
+  Future<List<Track>> _searchNetease(String keyword) async {
+    final result = await ApiClient().postJson(
+      '/search',
+      data: {'keywords': keyword, 'limit': '1'},
+      contentType: 'application/x-www-form-urlencoded',
+      timeout: const Duration(seconds: 10),
+    );
 
-    if (response.statusCode == 200) {
-      final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (result.ok) {
+      final data = result.data as Map<String, dynamic>;
       if (data['status'] == 200) {
         return (data['result'] as List<dynamic>)
             .map((item) => Track(
@@ -246,15 +241,15 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索QQ音乐
-  Future<List<Track>> _searchQQ(String keyword, String baseUrl) async {
-    final url = '$baseUrl/qq/search?keywords=${Uri.encodeComponent(keyword)}&limit=1';
-    final response = await http.get(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json'},
-    ).timeout(const Duration(seconds: 10));
+  Future<List<Track>> _searchQQ(String keyword) async {
+    final result = await ApiClient().getJson(
+      '/qq/search',
+      queryParameters: {'keywords': keyword, 'limit': 1},
+      timeout: const Duration(seconds: 10),
+    );
 
-    if (response.statusCode == 200) {
-      final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (result.ok) {
+      final data = result.data as Map<String, dynamic>;
       if (data['status'] == 200) {
         return (data['result'] as List<dynamic>)
             .map((item) => Track(
@@ -272,15 +267,15 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索酷狗音乐
-  Future<List<Track>> _searchKugou(String keyword, String baseUrl) async {
-    final url = '$baseUrl/kugou/search?keywords=${Uri.encodeComponent(keyword)}';
-    final response = await http.get(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json'},
-    ).timeout(const Duration(seconds: 10));
+  Future<List<Track>> _searchKugou(String keyword) async {
+    final result = await ApiClient().getJson(
+      '/kugou/search',
+      queryParameters: {'keywords': keyword},
+      timeout: const Duration(seconds: 10),
+    );
 
-    if (response.statusCode == 200) {
-      final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (result.ok) {
+      final data = result.data as Map<String, dynamic>;
       if (data['status'] == 200) {
         return (data['result'] as List<dynamic>)
             .take(1)
@@ -299,15 +294,15 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索酷我音乐
-  Future<List<Track>> _searchKuwo(String keyword, String baseUrl) async {
-    final url = '$baseUrl/kuwo/search?keywords=${Uri.encodeComponent(keyword)}';
-    final response = await http.get(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json'},
-    ).timeout(const Duration(seconds: 10));
+  Future<List<Track>> _searchKuwo(String keyword) async {
+    final result = await ApiClient().getJson(
+      '/kuwo/search',
+      queryParameters: {'keywords': keyword},
+      timeout: const Duration(seconds: 10),
+    );
 
-    if (response.statusCode == 200) {
-      final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (result.ok) {
+      final data = result.data as Map<String, dynamic>;
       if (data['status'] == 200) {
         final songsData = data['data']?['songs'] as List<dynamic>? ?? [];
         return songsData
@@ -327,16 +322,15 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索 Spotify
-  Future<List<Track>> _searchSpotify(String keyword, String baseUrl) async {
-    final url = '$baseUrl/spotify/search?keywords=${Uri.encodeComponent(keyword)}&limit=1&type=track';
-    
-    final response = await http.get(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json'},
-    ).timeout(const Duration(seconds: 10));
+  Future<List<Track>> _searchSpotify(String keyword) async {
+    final result = await ApiClient().getJson(
+      '/spotify/search',
+      queryParameters: {'keywords': keyword, 'limit': 1, 'type': 'track'},
+      timeout: const Duration(seconds: 10),
+    );
 
-    if (response.statusCode == 200) {
-      final data = json.decode(utf8.decode(response.bodyBytes));
+    if (result.ok) {
+      final data = result.data as Map<String, dynamic>;
       // 兼容直接返回或 {status, data} 包装
       dynamic tracksData;
       if (data['tracks'] != null) {
@@ -354,7 +348,7 @@ class TrackSourceSwitchService extends ChangeNotifier {
               .join(',');
           final images = album['images'] as List<dynamic>;
           final picUrl = images.isNotEmpty ? images[0]['url'] as String : '';
-          
+
           return Track(
             id: item['id'],
             name: item['name'] as String,

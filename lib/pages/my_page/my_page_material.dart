@@ -548,17 +548,50 @@ extension MyPageMaterialUI on _MyPageState {
   }
 
   Widget _buildMaterialSearchEmptyState(ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.search_off, size: 64, color: colorScheme.onSurface.withOpacity(0.3)),
-          const SizedBox(height: 16),
-          Text('未找到匹配的歌曲', style: TextStyle(fontSize: 16, color: colorScheme.onSurface.withOpacity(0.6))),
-          const SizedBox(height: 8),
-          Text('尝试其他关键词', style: TextStyle(fontSize: 14, color: colorScheme.onSurface.withOpacity(0.5))),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.search_off,
+                      size: compact ? 52 : 64,
+                      color: colorScheme.onSurface.withOpacity(0.3),
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '未找到匹配的歌曲',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '尝试其他关键词',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: colorScheme.onSurface.withOpacity(0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -724,39 +757,60 @@ extension MyPageMaterialUI on _MyPageState {
   }
 
   Widget _buildMaterialDetailEmptyState(ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(28),
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(32),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 220;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(compact ? 18 : 28),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(compact ? 24 : 32),
+                      ),
+                      child: Icon(
+                        Icons.music_off_rounded,
+                        size: compact ? 52 : 64,
+                        color: colorScheme.onSurface.withOpacity(0.4),
+                      ),
+                    ),
+                    SizedBox(height: compact ? 14 : 24),
+                    Text(
+                      '歌单为空',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: colorScheme.onSurface.withOpacity(0.7),
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '快去添加一些喜欢的歌曲吧',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: colorScheme.onSurface.withOpacity(0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            child: Icon(Icons.music_off_rounded, size: 64, color: colorScheme.onSurface.withOpacity(0.4)),
           ),
-          const SizedBox(height: 24),
-          Text(
-            '歌单为空',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onSurface.withOpacity(0.7),
-              letterSpacing: -0.3,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '快去添加一些喜欢的歌曲吧',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: colorScheme.onSurface.withOpacity(0.5),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

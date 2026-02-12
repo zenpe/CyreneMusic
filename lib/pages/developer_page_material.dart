@@ -319,45 +319,62 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
     // 检查是否有错误信息
     if (AdminService().errorMessage != null &&
         AdminService().errorMessage!.contains('令牌验证失败')) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '数据加载失败',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              AdminService().errorMessage!,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 220;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: compact ? 52 : 64,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                      SizedBox(height: compact ? 12 : 16),
+                      Text(
+                        '数据加载失败',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        AdminService().errorMessage!,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: compact ? 3 : 5,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: compact ? 16 : 24),
+                      FilledButton.icon(
+                        onPressed: () async {
+                          await AdminService().fetchUsers();
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('重试'),
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () {
+                          AdminService().logout();
+                        },
+                        child: const Text('重新登录'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: () async {
-                await AdminService().fetchUsers();
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
-            ),
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () {
-                AdminService().logout();
-              },
-              child: const Text('重新登录'),
-            ),
-          ],
-        ),
+          );
+        },
       );
     }
 
@@ -437,21 +454,40 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
 
         final data = snapshot.data;
         if (data == null) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, size: 48, color: Colors.grey),
-                const SizedBox(height: 16),
-                const Text('加载赞助排行榜失败'),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: () => setState(() {}),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('重试'),
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+              final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+              return SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: minHeight),
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            size: compact ? 40 : 48,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: compact ? 12 : 16),
+                          const Text('加载赞助排行榜失败'),
+                          SizedBox(height: compact ? 12 : 16),
+                          FilledButton.icon(
+                            onPressed: () => setState(() {}),
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('重试'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ],
-            ),
+              );
+            },
           );
         }
 
@@ -687,45 +723,62 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
     // 检查是否有错误信息
     if (AdminService().errorMessage != null &&
         AdminService().errorMessage!.contains('令牌验证失败')) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '统计数据加载失败',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              AdminService().errorMessage!,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 260;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: compact ? 52 : 64,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                      SizedBox(height: compact ? 12 : 16),
+                      Text(
+                        '统计数据加载失败',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        AdminService().errorMessage!,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: compact ? 3 : 5,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: compact ? 16 : 24),
+                      FilledButton.icon(
+                        onPressed: () async {
+                          await AdminService().fetchStats();
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('重试'),
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () {
+                          AdminService().logout();
+                        },
+                        child: const Text('重新登录'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: () async {
-                await AdminService().fetchStats();
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
-            ),
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () {
-                AdminService().logout();
-              },
-              child: const Text('重新登录'),
-            ),
-          ],
-        ),
+          );
+        },
       );
     }
 

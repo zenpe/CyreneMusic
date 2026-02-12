@@ -1,12 +1,10 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:http/http.dart' as http;
+import '../services/api/api_client.dart';
 import '../services/playlist_service.dart';
 import '../services/player_service.dart';
 import '../services/playlist_queue_service.dart';
 import '../services/auth_service.dart';
-import '../services/url_service.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import '../widgets/import_playlist_dialog.dart';
@@ -164,15 +162,16 @@ class _PlaylistsPageState extends State<PlaylistsPage>
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );
     try {
-      final baseUrl = UrlService().baseUrl;
-      final url = platform == MusicPlatform.netease
-          ? '$baseUrl/playlist?id=$sourcePlaylistId&limit=1000'
-          : '$baseUrl/qq/playlist?id=$sourcePlaylistId&limit=1000';
-      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 30));
-      if (resp.statusCode != 200) {
+      final path = platform == MusicPlatform.netease ? '/playlist' : '/qq/playlist';
+      final resp = await ApiClient().getJson(
+        path,
+        queryParameters: {'id': sourcePlaylistId, 'limit': 1000},
+        timeout: const Duration(seconds: 30),
+      );
+      if (!resp.ok) {
         throw Exception('HTTP ${resp.statusCode}');
       }
-      final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+      final data = resp.data as Map<String, dynamic>;
       if ((data['status'] as int?) != 200 || data['success'] != true) {
         throw Exception(data['msg'] ?? '获取歌单失败');
       }
@@ -878,61 +877,105 @@ class _PlaylistsPageState extends State<PlaylistsPage>
 
   /// 构建空状态
   Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.library_music_outlined,
-            size: 80,
-            color: colorScheme.onSurfaceVariant.withOpacity(0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '暂无歌单',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+    final theme = Theme.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.library_music_outlined,
+                      size: compact ? 56 : 80,
+                      color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '暂无歌单',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '点击右下角按钮创建新歌单',
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '点击右下角按钮创建新歌单',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.7),
-                ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   /// 构建登录提示
   Widget _buildLoginPrompt(ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.login,
-            size: 80,
-            color: colorScheme.onSurfaceVariant.withOpacity(0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '请先登录',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+    final theme = Theme.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.login,
+                      size: compact ? 56 : 80,
+                      color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '请先登录',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '登录后即可使用歌单功能',
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '登录后即可使用歌单功能',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.7),
-                ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1355,6 +1398,8 @@ class _PlaylistsPageState extends State<PlaylistsPage>
         return '🎸';
       case MusicSource.navidrome:
         return '🎧';
+      case MusicSource.spotify:
+        return '💚';
       case MusicSource.local:
         return '📁';
     }
@@ -1362,31 +1407,53 @@ class _PlaylistsPageState extends State<PlaylistsPage>
 
   /// 构建详情页空状态
   Widget _buildDetailEmptyState(ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.music_note_outlined,
-            size: 80,
-            color: colorScheme.onSurfaceVariant.withOpacity(0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '歌单还是空的',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+    final theme = Theme.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.music_note_outlined,
+                      size: compact ? 56 : 80,
+                      color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '歌单还是空的',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '在播放器中可以将歌曲添加到歌单',
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '在播放器中可以将歌曲添加到歌单',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.7),
-                ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

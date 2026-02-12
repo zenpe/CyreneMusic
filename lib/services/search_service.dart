@@ -1,10 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/track.dart';
 import '../models/merged_track.dart';
-import 'url_service.dart';
+import 'api/api_client.dart';
 import 'audio_source_service.dart';
 
 /// 搜索结果模型
@@ -119,7 +117,7 @@ class SearchService extends ChangeNotifier {
   // 搜索历史记录
   List<String> _searchHistory = [];
   List<String> get searchHistory => _searchHistory;
-  
+
   static const String _historyKey = 'search_history';
   static const int _maxHistoryCount = 20; // 最多保存20条历史记录
 
@@ -130,14 +128,14 @@ class SearchService extends ChangeNotifier {
     }
 
     _currentKeyword = keyword;
-    
+
     // 保存到搜索历史
     await _addToSearchHistory(keyword);
-    
+
     // 获取当前音源支持的平台
     final supportedPlatforms = AudioSourceService().currentSupportedPlatforms;
     print('🔍 [SearchService] 当前音源支持的平台: $supportedPlatforms');
-    
+
     // 根据支持的平台设置加载状态
     _searchResult = SearchResult(
       neteaseLoading: supportedPlatforms.contains('netease'),
@@ -159,7 +157,7 @@ class SearchService extends ChangeNotifier {
     if (supportedPlatforms.contains('kugou')) futures.add(_searchKugou(keyword));
     if (supportedPlatforms.contains('kuwo')) futures.add(_searchKuwo(keyword));
     if (supportedPlatforms.contains('spotify')) futures.add(_searchSpotify(keyword));
-    
+
     await Future.wait(futures);
 
     print('✅ [SearchService] 搜索完成，共 ${_searchResult.totalCount} 条结果');
@@ -172,25 +170,17 @@ class SearchService extends ChangeNotifier {
   Future<void> _searchNetease(String keyword) async {
     try {
       print('🎵 [SearchService] 网易云搜索: $keyword');
-      
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/search';
 
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {
-          'keywords': keyword,
-          'limit': '20',
-        },
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().postJson(
+        '/search',
+        data: {'keywords': keyword, 'limit': '20'},
+        contentType: 'application/x-www-form-urlencoded',
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-        
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
+
         if (data['status'] == 200) {
           final results = (data['result'] as List<dynamic>)
               .map((item) => Track(
@@ -207,13 +197,13 @@ class SearchService extends ChangeNotifier {
             neteaseResults: results,
             neteaseLoading: false,
           );
-          
+
           print('✅ [SearchService] 网易云搜索完成: ${results.length} 条结果');
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [SearchService] 网易云搜索失败: $e');
@@ -230,21 +220,14 @@ class SearchService extends ChangeNotifier {
     try {
       print('🍎 [SearchService] Apple Music 搜索: $keyword');
 
-      final baseUrl = UrlService().baseUrl;
-      final url =
-          '$baseUrl/apple/search?keywords=${Uri.encodeComponent(keyword)}&limit=20';
-
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().getJson(
+        '/apple/search',
+        queryParameters: {'keywords': keyword, 'limit': 20},
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data =
-            json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
           final results = (data['result'] as List<dynamic>)
@@ -268,7 +251,7 @@ class SearchService extends ChangeNotifier {
           throw Exception('服务器返回状态 ${data['status']}');
         }
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [SearchService] Apple Music 搜索失败: $e');
@@ -284,21 +267,16 @@ class SearchService extends ChangeNotifier {
   Future<void> _searchQQ(String keyword) async {
     try {
       print('🎶 [SearchService] QQ音乐搜索: $keyword');
-      
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/qq/search?keywords=${Uri.encodeComponent(keyword)}&limit=10';
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().getJson(
+        '/qq/search',
+        queryParameters: {'keywords': keyword, 'limit': 10},
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-        
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
+
         if (data['status'] == 200) {
           final results = (data['result'] as List<dynamic>)
               .map((item) => Track(
@@ -315,13 +293,13 @@ class SearchService extends ChangeNotifier {
             qqResults: results,
             qqLoading: false,
           );
-          
+
           print('✅ [SearchService] QQ音乐搜索完成: ${results.length} 条结果');
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [SearchService] QQ音乐搜索失败: $e');
@@ -337,21 +315,16 @@ class SearchService extends ChangeNotifier {
   Future<void> _searchKugou(String keyword) async {
     try {
       print('🎼 [SearchService] 酷狗音乐搜索: $keyword');
-      
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/kugou/search?keywords=${Uri.encodeComponent(keyword)}';
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().getJson(
+        '/kugou/search',
+        queryParameters: {'keywords': keyword},
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-        
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
+
         if (data['status'] == 200) {
           final results = (data['result'] as List<dynamic>)
               .map((item) => Track(
@@ -368,13 +341,13 @@ class SearchService extends ChangeNotifier {
             kugouResults: results,
             kugouLoading: false,
           );
-          
+
           print('✅ [SearchService] 酷狗音乐搜索完成: ${results.length} 条结果');
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [SearchService] 酷狗音乐搜索失败: $e');
@@ -390,21 +363,16 @@ class SearchService extends ChangeNotifier {
   Future<void> _searchKuwo(String keyword) async {
     try {
       print('🎸 [SearchService] 酷我音乐搜索: $keyword');
-      
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/kuwo/search?keywords=${Uri.encodeComponent(keyword)}';
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().getJson(
+        '/kuwo/search',
+        queryParameters: {'keywords': keyword},
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-        
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
+
         if (data['status'] == 200) {
           final songsData = data['data']?['songs'] as List<dynamic>? ?? [];
           final results = songsData
@@ -422,13 +390,13 @@ class SearchService extends ChangeNotifier {
             kuwoResults: results,
             kuwoLoading: false,
           );
-          
+
           print('✅ [SearchService] 酷我音乐搜索完成: ${results.length} 条结果');
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [SearchService] 酷我音乐搜索失败: $e');
@@ -445,19 +413,14 @@ class SearchService extends ChangeNotifier {
     try {
       print('🟢 [SearchService] Spotify 搜索: $keyword');
 
-      final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/spotify/search?keywords=${Uri.encodeComponent(keyword)}';
-
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('请求超时'),
+      final result = await ApiClient().getJson(
+        '/spotify/search',
+        queryParameters: {'keywords': keyword},
+        timeout: const Duration(seconds: 10),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
           final tracksData = data['result']?['tracks'] as List<dynamic>? ?? [];
@@ -486,7 +449,7 @@ class SearchService extends ChangeNotifier {
           throw Exception('服务器返回状态 ${data['status']}');
         }
       } else {
-        throw Exception('HTTP ${response.statusCode}');
+        throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
       print('❌ [SearchService] Spotify 搜索失败: $e');
@@ -521,7 +484,7 @@ class SearchService extends ChangeNotifier {
     for (final track in allTracks) {
       // 生成唯一键（标准化后的歌曲名+歌手名）
       final key = _generateKey(track.name, track.artists);
-      
+
       if (mergedMap.containsKey(key)) {
         mergedMap[key]!.add(track);
       } else {
@@ -717,19 +680,19 @@ class SearchService extends ChangeNotifier {
 
       // 如果已存在，先移除（避免重复）
       _searchHistory.remove(trimmedKeyword);
-      
+
       // 添加到列表开头
       _searchHistory.insert(0, trimmedKeyword);
-      
+
       // 限制历史记录数量
       if (_searchHistory.length > _maxHistoryCount) {
         _searchHistory = _searchHistory.sublist(0, _maxHistoryCount);
       }
-      
+
       // 保存到本地
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_historyKey, _searchHistory);
-      
+
       print('💾 [SearchService] 保存搜索历史: $trimmedKeyword');
       notifyListeners();
     } catch (e) {
@@ -741,10 +704,10 @@ class SearchService extends ChangeNotifier {
   Future<void> removeSearchHistory(String keyword) async {
     try {
       _searchHistory.remove(keyword);
-      
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_historyKey, _searchHistory);
-      
+
       print('🗑️ [SearchService] 删除搜索历史: $keyword');
       notifyListeners();
     } catch (e) {
@@ -756,10 +719,10 @@ class SearchService extends ChangeNotifier {
   Future<void> clearSearchHistory() async {
     try {
       _searchHistory.clear();
-      
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_historyKey);
-      
+
       print('🗑️ [SearchService] 清空所有搜索历史');
       notifyListeners();
     } catch (e) {
@@ -767,4 +730,3 @@ class SearchService extends ChangeNotifier {
     }
   }
 }
-

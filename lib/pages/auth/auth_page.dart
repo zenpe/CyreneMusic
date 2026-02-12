@@ -817,27 +817,42 @@ class _RegisterViewState extends State<_RegisterView> {
     }
 
     if (!_registrationEnabled) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.block_rounded,
-              size: 64,
-              color: colorScheme.error,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '因滥用，我们暂时关闭了公开注册！',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: colorScheme.onSurface,
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.block_rounded,
+                        size: compact ? 52 : 64,
+                        color: colorScheme.error,
+                      ),
+                      SizedBox(height: compact ? 14 : 24),
+                      Text(
+                        '因滥用，我们暂时关闭了公开注册！',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ],
-        ),
+          );
+        },
       );
     }
 
@@ -1974,27 +1989,42 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
     }
 
     if (!_registrationEnabled) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              CupertinoIcons.xmark_circle_fill,
-              size: 64,
-              color: CupertinoColors.systemRed,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '因滥用，我们暂时关闭了公开注册！',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: widget.isDark ? CupertinoColors.white : CupertinoColors.black,
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        CupertinoIcons.xmark_circle_fill,
+                        size: compact ? 52 : 64,
+                        color: CupertinoColors.systemRed,
+                      ),
+                      SizedBox(height: compact ? 14 : 24),
+                      Text(
+                        '因滥用，我们暂时关闭了公开注册！',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: widget.isDark ? CupertinoColors.white : CupertinoColors.black,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ],
-        ),
+          );
+        },
       );
     }
 

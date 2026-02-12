@@ -158,37 +158,49 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     Future.delayed(const Duration(milliseconds: 350), () {
       if (!mounted) return;
       final currentTrack = PlayerService().currentTrack;
-      _lastTrackId = currentTrack != null 
-          ? '${currentTrack.source.name}_${currentTrack.id}' 
+      _lastTrackId = currentTrack != null
+          ? '${currentTrack.source.name}_${currentTrack.id}'
           : null;
-      _loadLyrics();
+      // 如果当前已有匹配的 currentSong，直接解析歌词
+      if (currentTrack != null) {
+        final song = PlayerService().currentSong;
+        if (song != null && song.id.toString() == currentTrack.id.toString()) {
+          _parseLyricsFromSong(song);
+        }
+      }
     });
   }
 
   /// 播放器状态变化回调（与桌面端保持一致的逻辑）
   void _onPlayerStateChanged() {
     if (!mounted) return;
-    
+
     final currentTrack = PlayerService().currentTrack;
-    final currentTrackId = currentTrack != null 
-        ? '${currentTrack.source.name}_${currentTrack.id}' 
+    final currentTrackId = currentTrack != null
+        ? '${currentTrack.source.name}_${currentTrack.id}'
         : null;
-    
+
     if (currentTrackId != _lastTrackId) {
-      // 歌曲已切换，重新加载歌词
+      // 歌曲已切换，清空歌词等待新歌曲详情
       print('🎵 [MobilePlayerPage] 检测到歌曲切换，重新加载歌词');
       print('   上一首ID: $_lastTrackId');
       print('   当前ID: $currentTrackId');
-      
+
       _lastTrackId = currentTrackId;
-        _lyrics = [];
-        _currentLyricIndex = -1;
-          _loadLyrics();
-      setState(() {}); // 触发重建以更新UI
-    } else {
-      // 这里的全局通知不再包含进度变化，主要是为了捕获除了切歌以外的状态变更（如暂停/恢复）
-      if (mounted) setState(() {}); 
+      _lyrics = [];
+      _currentLyricIndex = -1;
+      setState(() {});
     }
+
+    // 检查 currentSong 是否已匹配 currentTrack（事件驱动，无需轮询）
+    if (currentTrack != null && _lyrics.isEmpty) {
+      final song = PlayerService().currentSong;
+      if (song != null && song.id.toString() == currentTrack.id.toString()) {
+        _parseLyricsFromSong(song);
+      }
+    }
+
+    if (mounted) setState(() {});
   }
 
   /// 进度变化回调（高频，仅由 positionNotifier 触发）
@@ -197,134 +209,53 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     _updateCurrentLyric();
   }
 
-  /// 加载歌词（异步执行，不阻塞 UI）
-  Future<void> _loadLyrics() async {
-    final currentTrack = PlayerService().currentTrack;
-    if (currentTrack == null) return;
-
-    print('🔍 [MobilePlayerPage] 开始加载歌词，当前 Track: ${currentTrack.name}');
-    print('   Track ID: ${currentTrack.id} (类型: ${currentTrack.id.runtimeType})');
-
-    // 等待 currentSong 更新（最多等待3秒）
-    SongDetail? song;
-    final startTime = DateTime.now();
-    int attemptCount = 0;
-    
-    while (song == null && DateTime.now().difference(startTime).inSeconds < 3) {
-      song = PlayerService().currentSong;
-      attemptCount++;
-      
-      // 验证 currentSong 是否匹配 currentTrack
-      if (song != null) {
-        final songId = song.id.toString();
-      final trackId = currentTrack.id.toString();
-      
-        if (attemptCount == 1) {
-          print('🔍 [MobilePlayerPage] 找到 currentSong: ${song.name}');
-          print('   Song ID: ${song.id} (类型: ${song.id.runtimeType})');
-          print('   Track ID: ${currentTrack.id} (类型: ${currentTrack.id.runtimeType})');
-          print('   ID 匹配: ${songId == trackId}');
-        }
-        
-        // 如果 ID 不匹配，说明 currentSong 还没更新
-        if (songId != trackId) {
-          if (attemptCount <= 3) {
-            print('⚠️ [MobilePlayerPage] ID 不匹配！Song ID: "$songId" vs Track ID: "$trackId"');
-          }
-          song = null;
-          await Future.delayed(const Duration(milliseconds: 100));
-        }
-      } else {
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
-    }
-    
-    if (song == null) {
-      print('❌ [MobilePlayerPage] 等待歌曲详情超时！');
-      print('   尝试次数: $attemptCount');
-      print('   Track: ${currentTrack.name} (ID: ${currentTrack.id})');
-      final currentSong = PlayerService().currentSong;
-      if (currentSong != null) {
-        print('   CurrentSong 存在但 ID 不匹配: ${currentSong.name} (ID: ${currentSong.id})');
-      } else {
-        print('   CurrentSong 为 null');
-      }
-      return;
-    }
-
-    // 使用本地变量确保非空
-    final songDetail = song;
-
+  /// 从 SongDetail 解析歌词（事件驱动，不再轮询）
+  void _parseLyricsFromSong(SongDetail song) {
     try {
-      print('📝 [MobilePlayerPage] 开始解析歌词');
-      print('   歌曲名: ${songDetail.name}');
-      print('   歌曲ID: ${songDetail.id}');
-      print('   原始歌词长度: ${songDetail.lyric.length} 字符');
-      print('   翻译长度: ${songDetail.tlyric.length} 字符');
-      
-      // 关键诊断：检查歌词内容
-      if (songDetail.lyric.isEmpty) {
-        print('   ❌ 错误：MobilePlayerPage 读取到的 currentSong.lyric 为空！');
-        print('   这说明 PlayerService.currentSong 中的歌词确实是空的');
-      } else {
-        print('   ✅ MobilePlayerPage 成功读取到歌词数据');
-        print('   歌词预览: ${songDetail.lyric.substring(0, songDetail.lyric.length > 50 ? 50 : songDetail.lyric.length)}...');
-      }
-      
-      // 使用 Future.microtask 确保异步执行
-      await Future.microtask(() {
-        // 根据音乐来源选择不同的解析器
-        switch (songDetail.source.name) {
-          case 'netease':
-            _lyrics = LyricParser.parseNeteaseLyric(
-              songDetail.lyric,
-              translation: songDetail.tlyric.isNotEmpty ? songDetail.tlyric : null,
-              yrcLyric: songDetail.yrc.isNotEmpty ? songDetail.yrc : null,
-              yrcTranslation: songDetail.ytlrc.isNotEmpty ? songDetail.ytlrc : null,
-            );
-            break;
-          case 'qq':
-            _lyrics = LyricParser.parseQQLyric(
-              songDetail.lyric,
-              translation: songDetail.tlyric.isNotEmpty ? songDetail.tlyric : null,
-              qrcLyric: songDetail.qrc.isNotEmpty ? songDetail.qrc : null,
-              qrcTranslation: songDetail.qrcTrans.isNotEmpty ? songDetail.qrcTrans : null,
-            );
-            break;
-          case 'kugou':
-            _lyrics = LyricParser.parseKugouLyric(
-              songDetail.lyric,
-              translation: songDetail.tlyric.isNotEmpty ? songDetail.tlyric : null,
-            );
-            break;
-          default:
-            // 默认使用网易云/标准 LRC 格式解析（适用于酷我等）
-            _lyrics = LyricParser.parseNeteaseLyric(
-              songDetail.lyric,
-              translation: songDetail.tlyric.isNotEmpty ? songDetail.tlyric : null,
-              yrcLyric: songDetail.yrc.isNotEmpty ? songDetail.yrc : null,
-              yrcTranslation: songDetail.ytlrc.isNotEmpty ? songDetail.ytlrc : null,
-            );
-            break;
-        }
-      });
+      print('📝 [MobilePlayerPage] 开始解析歌词: ${song.name}');
 
-      if (_lyrics.isEmpty && songDetail.lyric.isNotEmpty) {
-        print('⚠️ [MobilePlayerPage] 歌词解析结果为空，但原始歌词不为空！');
-        print('   原始歌词前100字符: ${songDetail.lyric.substring(0, songDetail.lyric.length > 100 ? 100 : songDetail.lyric.length)}');
+      switch (song.source.name) {
+        case 'netease':
+          _lyrics = LyricParser.parseNeteaseLyric(
+            song.lyric,
+            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
+            yrcLyric: song.yrc.isNotEmpty ? song.yrc : null,
+            yrcTranslation: song.ytlrc.isNotEmpty ? song.ytlrc : null,
+          );
+          break;
+        case 'qq':
+          _lyrics = LyricParser.parseQQLyric(
+            song.lyric,
+            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
+            qrcLyric: song.qrc.isNotEmpty ? song.qrc : null,
+            qrcTranslation: song.qrcTrans.isNotEmpty ? song.qrcTrans : null,
+          );
+          break;
+        case 'kugou':
+          _lyrics = LyricParser.parseKugouLyric(
+            song.lyric,
+            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
+          );
+          break;
+        default:
+          _lyrics = LyricParser.parseNeteaseLyric(
+            song.lyric,
+            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
+            yrcLyric: song.yrc.isNotEmpty ? song.yrc : null,
+            yrcTranslation: song.ytlrc.isNotEmpty ? song.ytlrc : null,
+          );
+          break;
       }
 
-      print('🎵 [MobilePlayerPage] 加载歌词: ${_lyrics.length} 行 (${songDetail.name})');
-      
-      // 加载歌词后，更新并滚动到当前位置
+      print('🎵 [MobilePlayerPage] 加载歌词: ${_lyrics.length} 行 (${song.name})');
+      _currentLyricIndex = -1;
       if (_lyrics.isNotEmpty && mounted) {
         setState(() {
           _updateCurrentLyric();
         });
       }
     } catch (e) {
-      print('❌ [MobilePlayerPage] 加载歌词失败: $e');
-      print('   Stack trace: ${StackTrace.current}');
+      print('❌ [MobilePlayerPage] 解析歌词失败: $e');
     }
   }
 
@@ -349,11 +280,14 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     final currentTrack = PlayerService().currentTrack;
     if (currentTrack != null) {
       print('🔄 [MobilePlayerPage] 强制刷新歌词');
-      setState(() {
-        _lyrics = [];
-        _currentLyricIndex = -1;
-      });
-      _loadLyrics();
+      _lyrics = [];
+      _currentLyricIndex = -1;
+      final song = PlayerService().currentSong;
+      if (song != null && song.id.toString() == currentTrack.id.toString()) {
+        _parseLyricsFromSong(song);
+      } else {
+        setState(() {});
+      }
     }
   }
 

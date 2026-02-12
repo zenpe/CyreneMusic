@@ -1,8 +1,5 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'url_service.dart';
-import 'auth_service.dart';
+import 'api/api_client.dart';
 
 class NeteaseQrCreateResult {
   final String key;
@@ -25,11 +22,14 @@ class NeteaseLoginService extends ChangeNotifier {
 
   Future<NeteaseQrCreateResult> createQrKey() async {
     // align with reference: first get key, then build login url; optional create
-    final keyResp = await http.get(Uri.parse(UrlService().neteaseQrKeyUrl)).timeout(const Duration(seconds: 10));
-    if (keyResp.statusCode != 200) {
-      throw Exception('HTTP ${keyResp.statusCode}');
+    final keyResult = await ApiClient().getJson(
+      '/login/qr/key',
+      timeout: const Duration(seconds: 10),
+    );
+    if (!keyResult.ok) {
+      throw Exception('HTTP ${keyResult.statusCode}');
     }
-    final keyData = json.decode(utf8.decode(keyResp.bodyBytes)) as Map<String, dynamic>;
+    final keyData = keyResult.data as Map<String, dynamic>;
     if ((keyData['code'] as int?) != 200) {
       throw Exception(keyData['message'] ?? '获取二维码 key 失败');
     }
@@ -38,7 +38,14 @@ class NeteaseLoginService extends ChangeNotifier {
 
     // optional: try create image (not required since we render locally)
     try {
-      await http.get(Uri.parse('${UrlService().neteaseQrCreateUrl}?key=$unikey&qrimg=true&timestamp=${DateTime.now().millisecondsSinceEpoch}'));
+      await ApiClient().getJson(
+        '/login/qr/create',
+        queryParameters: {
+          'key': unikey,
+          'qrimg': 'true',
+          'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+        },
+      );
     } catch (_) {}
 
     return NeteaseQrCreateResult(key: unikey, qrUrl: qrUrl);
@@ -46,25 +53,31 @@ class NeteaseLoginService extends ChangeNotifier {
 
   Future<NeteaseQrCheckResult> checkQrStatus({required String key, int? userId}) async {
     final ts = DateTime.now().millisecondsSinceEpoch;
-    final primary = Uri.parse('${UrlService().neteaseQrCheckUrl}?key=$key${userId != null ? '&userId=$userId' : ''}&timestamp=$ts');
+    final queryParams = <String, dynamic>{
+      'key': key,
+      if (userId != null) 'userId': userId.toString(),
+      'timestamp': ts.toString(),
+    };
 
-    Future<Map<String, dynamic>> doGet(Uri u) async {
-      final r = await http.get(u).timeout(const Duration(seconds: 10));
-      if (r.statusCode != 200) {
+    Future<Map<String, dynamic>> doGet(String path) async {
+      final r = await ApiClient().getJson(
+        path,
+        queryParameters: queryParams,
+        timeout: const Duration(seconds: 10),
+      );
+      if (!r.ok) {
         throw Exception('HTTP ${r.statusCode}');
       }
-      return json.decode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+      return r.data as Map<String, dynamic>;
     }
 
-    Map<String, dynamic> data = await doGet(primary);
+    Map<String, dynamic> data = await doGet('/login/qr/check');
 
     // 兼容老服务路径：若返回 404/接口未找到，则尝试 /netease/login/qr/check
     final codeVal = data['code'];
     final msgVal = (data['message'] ?? data['msg']) as String?;
-    if ((codeVal == 404 || (msgVal != null && msgVal.contains('接口未找到'))) && UrlService().neteaseQrCheckUrl.contains('/login/qr/check')) {
-      final altUrl = UrlService().neteaseQrCheckUrl.replaceFirst('/login/qr/check', '/netease/login/qr/check');
-      final alt = Uri.parse('$altUrl?key=$key${userId != null ? '&userId=$userId' : ''}&timestamp=$ts');
-      data = await doGet(alt);
+    if (codeVal == 404 || (msgVal != null && msgVal.contains('接口未找到'))) {
+      data = await doGet('/netease/login/qr/check');
     }
 
     // 后端直接返回二维码状态码：800/801/802/803
@@ -78,38 +91,32 @@ class NeteaseLoginService extends ChangeNotifier {
       message: (data['message'] ?? data['msg']) as String?,
       profile: data['profile'] as Map<String, dynamic>?,
     );
-    
+
     // 如果绑定成功（803），通知监听者刷新 UI
     if (statusCode == 803) {
       notifyListeners();
     }
-    
+
     return result;
   }
 
   // ===== Third-party accounts =====
   Future<Map<String, dynamic>> fetchBindings() async {
-    final token = AuthService().token;
-    final r = await http.get(
-      Uri.parse(UrlService().accountsBindingsUrl),
-      headers: token != null ? { 'Authorization': 'Bearer $token' } : {},
-    ).timeout(const Duration(seconds: 10));
-    final data = json.decode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
-    return data;
+    final r = await ApiClient().getJson(
+      '/accounts/bindings',
+      timeout: const Duration(seconds: 10),
+    );
+    return r.data as Map<String, dynamic>;
   }
 
   Future<bool> unbindNetease() async {
-    final token = AuthService().token;
     final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000; // 秒级时间戳
-    final r = await http.post(
-      Uri.parse(UrlService().accountsUnbindNeteaseUrl),
-      headers: {
-        if (token != null) 'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: json.encode({'timestamp': timestamp}),
-    ).timeout(const Duration(seconds: 10));
-    final success = r.statusCode == 200;
+    final r = await ApiClient().postJson(
+      '/accounts/netease/unbind',
+      data: {'timestamp': timestamp},
+      timeout: const Duration(seconds: 10),
+    );
+    final success = r.ok;
     if (success) {
       notifyListeners();
     }
@@ -132,20 +139,18 @@ class NeteaseLoginService extends ChangeNotifier {
 
   /// 获取用户网易云歌单列表
   Future<List<NeteasePlaylistInfo>> fetchUserPlaylists({int limit = 50, int offset = 0}) async {
-    final token = AuthService().token;
-    if (token == null) {
-      throw Exception('未登录');
-    }
+    final r = await ApiClient().getJson(
+      '/netease/user/playlists',
+      queryParameters: {
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+      },
+      timeout: const Duration(seconds: 15),
+    );
 
-    final url = '${UrlService().neteaseUserPlaylistsUrl}?limit=$limit&offset=$offset';
-    final r = await http.get(
-      Uri.parse(url),
-      headers: { 'Authorization': 'Bearer $token' },
-    ).timeout(const Duration(seconds: 15));
+    final data = r.data as Map<String, dynamic>;
 
-    final data = json.decode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
-    
-    if (r.statusCode != 200 || data['code'] != 200) {
+    if (!r.ok || data['code'] != 200) {
       throw Exception(data['message'] ?? '获取歌单列表失败');
     }
 
@@ -192,5 +197,3 @@ class NeteasePlaylistInfo {
     );
   }
 }
-
-

@@ -267,50 +267,67 @@ class NavidromeErrorState extends StatelessWidget {
     final theme = Theme.of(context);
     final navTheme = NavidromeTheme.of(context);
 
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 56, color: navTheme.textSecondary),
-          const SizedBox(height: 12),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: navTheme.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onRetry,
-              borderRadius: BorderRadius.circular(22),
-              child: Ink(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: navTheme.card,
-                  shape: BoxShape.circle,
-                  boxShadow: navTheme.cardShadow,
-                ),
-                child: Icon(
-                  Icons.refresh,
-                  color: navTheme.textSecondary,
-                  size: 20,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 220;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: compact ? 48 : 56, color: navTheme.textSecondary),
+                    SizedBox(height: compact ? 10 : 12),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 2 : 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: navTheme.textSecondary,
+                      ),
+                    ),
+                    SizedBox(height: compact ? 12 : 16),
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: onRetry,
+                        borderRadius: BorderRadius.circular(22),
+                        child: Ink(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: navTheme.card,
+                            shape: BoxShape.circle,
+                            boxShadow: navTheme.cardShadow,
+                          ),
+                          child: Icon(
+                            Icons.refresh,
+                            color: navTheme.textSecondary,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      actionLabel,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: navTheme.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            actionLabel,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: navTheme.textSecondary,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

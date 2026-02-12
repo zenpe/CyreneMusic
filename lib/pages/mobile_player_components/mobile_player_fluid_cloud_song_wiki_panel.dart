@@ -1067,31 +1067,57 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
 
     // 加载失败
     if (_playlistDetail == null) {
-      return Center(
+      return LayoutBuilder(
         key: const ValueKey('playlist_error'),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, color: Colors.white.withOpacity(0.5), size: 40),
-            const SizedBox(height: 12),
-            Text('加载失败', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14)),
-            const SizedBox(height: 16),
-            GestureDetector(
-              onTap: () => setState(() {
-                _selectedPlaylistId = null;
-                _playlistDetail = null;
-              }),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(16),
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: Colors.white.withOpacity(0.5),
+                        size: compact ? 34 : 40,
+                      ),
+                      SizedBox(height: compact ? 10 : 12),
+                      Text(
+                        '加载失败',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
+                      ),
+                      SizedBox(height: compact ? 12 : 16),
+                      GestureDetector(
+                        onTap: () => setState(() {
+                          _selectedPlaylistId = null;
+                          _playlistDetail = null;
+                        }),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            '返回',
+                            style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Text('返回', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13)),
               ),
             ),
-          ],
-        ),
+          );
+        },
       );
     }
 

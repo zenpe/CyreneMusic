@@ -273,45 +273,63 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
   /// 构建空状态
   Widget _buildEmptyState() {
     final isSearching = _searchQuery.isNotEmpty;
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            isSearching ? Icons.search_off : Icons.music_off,
-            size: 64,
-            color: Colors.white.withOpacity(0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            isSearching ? '未找到匹配的歌曲' : '播放列表为空',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.6),
-              fontSize: 16,
-              fontFamily: 'Microsoft YaHei',
-            ),
-          ),
-          if (isSearching) ...[
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () {
-                _searchController.clear();
-                setState(() {
-                  _searchQuery = '';
-                });
-              },
-              child: Text(
-                '清除搜索',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.8),
-                  fontSize: 14,
-                  fontFamily: 'Microsoft YaHei',
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isSearching ? Icons.search_off : Icons.music_off,
+                      size: compact ? 52 : 64,
+                      color: Colors.white.withOpacity(0.3),
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      isSearching ? '未找到匹配的歌曲' : '播放列表为空',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 16,
+                        fontFamily: 'Microsoft YaHei',
+                      ),
+                    ),
+                    if (isSearching) ...[
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                          });
+                        },
+                        child: Text(
+                          '清除搜索',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 14,
+                            fontFamily: 'Microsoft YaHei',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
-          ],
-        ],
-      ),
+          ),
+        );
+      },
     );
   }
 

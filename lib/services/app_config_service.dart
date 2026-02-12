@@ -1,7 +1,5 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'url_service.dart';
+import 'api/api_client.dart';
 
 /// QQ群配置
 class QQGroupConfig {
@@ -72,21 +70,20 @@ class AppConfigService extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
-    final baseUrl = UrlService().baseUrl;
-    final url = '$baseUrl/config/public';
-
     try {
-      print('[AppConfigService] Fetching public config from: $url');
+      print('[AppConfigService] Fetching public config from: /config/public');
 
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 10));
+      final result = await ApiClient().getJson(
+        '/config/public',
+        auth: false,
+        timeout: const Duration(seconds: 10),
+      );
 
-      print('[AppConfigService] Status: ${response.statusCode}');
-      print('[AppConfigService] Body: ${response.body}');
+      print('[AppConfigService] Status: ${result.statusCode}');
+      print('[AppConfigService] Body: ${result.data}');
 
-      if (response.statusCode == 200) {
-        final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (result.ok && result.data != null) {
+        final body = result.data as Map<String, dynamic>;
         if (body['status'] == 200 && body['data'] != null) {
           _config = AppPublicConfig.fromJson(body['data']);
           _loading = false;
@@ -95,7 +92,7 @@ class AppConfigService extends ChangeNotifier {
         }
       }
 
-      throw Exception('获取配置失败: ${response.statusCode}');
+      throw Exception('获取配置失败: ${result.statusCode}');
     } catch (e) {
       print('[AppConfigService] Exception: $e');
       _error = e.toString();

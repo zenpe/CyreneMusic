@@ -553,23 +553,38 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
     }
 
     if (!_registrationEnabled) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              fluent.FluentIcons.blocked2,
-              size: 64,
-              color: Colors.red,
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        fluent.FluentIcons.blocked2,
+                        size: compact ? 52 : 64,
+                        color: Colors.red,
+                      ),
+                      SizedBox(height: compact ? 14 : 24),
+                      Text(
+                        '因滥用，我们暂时关闭了公开注册！',
+                        textAlign: TextAlign.center,
+                        style: theme.typography.subtitle,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            const SizedBox(height: 24),
-            Text(
-              '因滥用，我们暂时关闭了公开注册！',
-              textAlign: TextAlign.center,
-              style: theme.typography.subtitle,
-            ),
-          ],
-        ),
+          );
+        },
       );
     }
 
