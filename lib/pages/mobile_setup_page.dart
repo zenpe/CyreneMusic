@@ -542,7 +542,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
               backgroundColor: Colors.transparent,
               elevation: 0,
             ),
-      body: const AuthPage(initialTab: 0),
+      body: const AuthPage(initialTab: 0, embedded: true),
     );
   }
 

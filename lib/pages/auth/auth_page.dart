@@ -33,8 +33,11 @@ Future<bool?> showAuthDialog(BuildContext context, {int initialTab = 0}) {
 /// 统一的认证页面 - Material Expressive 设计
 class AuthPage extends StatefulWidget {
   final int initialTab;
-  
-  const AuthPage({super.key, this.initialTab = 0});
+  /// 嵌入模式：作为子 widget 嵌入父页面时为 true，登录成功后不执行路由操作，
+  /// 由父级监听 AuthService 状态变化自行处理导航。
+  final bool embedded;
+
+  const AuthPage({super.key, this.initialTab = 0, this.embedded = false});
 
   @override
   State<AuthPage> createState() => _AuthPageState();
@@ -124,9 +127,9 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
                         controller: _tabController,
                         physics: const NeverScrollableScrollPhysics(),
                         children: [
-                          _LoginView(),
-                          _RegisterView(),
-                          _ForgotPasswordView(),
+                          _LoginView(embedded: widget.embedded),
+                          _RegisterView(embedded: widget.embedded),
+                          _ForgotPasswordView(embedded: widget.embedded),
                         ],
                       ),
                     ),
@@ -224,13 +227,29 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
   Widget _buildCupertinoTabContent(bool isDark) {
     switch (_selectedSegment) {
       case 0:
-        return _CupertinoLoginView(key: const ValueKey('login'), isDark: isDark);
+        return _CupertinoLoginView(
+          key: const ValueKey('login'),
+          isDark: isDark,
+          embedded: widget.embedded,
+        );
       case 1:
-        return _CupertinoRegisterView(key: const ValueKey('register'), isDark: isDark);
+        return _CupertinoRegisterView(
+          key: const ValueKey('register'),
+          isDark: isDark,
+          embedded: widget.embedded,
+        );
       case 2:
-        return _CupertinoForgotPasswordView(key: const ValueKey('forgot'), isDark: isDark);
+        return _CupertinoForgotPasswordView(
+          key: const ValueKey('forgot'),
+          isDark: isDark,
+          embedded: widget.embedded,
+        );
       default:
-        return _CupertinoLoginView(key: const ValueKey('login'), isDark: isDark);
+        return _CupertinoLoginView(
+          key: const ValueKey('login'),
+          isDark: isDark,
+          embedded: widget.embedded,
+        );
     }
   }
 
@@ -319,7 +338,8 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
 
 /// 登录视图
 class _LoginView extends StatefulWidget {
-  const _LoginView();
+  final bool embedded;
+  const _LoginView({this.embedded = false});
 
   @override
   State<_LoginView> createState() => _LoginViewState();
@@ -393,13 +413,15 @@ class _LoginViewState extends State<_LoginView> {
           print('❌ [AuthPage] IP归属地更新异常: $error');
         });
         
-        // 覆盖层模式下关闭覆盖层，否则安全关闭路由
-        if (AuthOverlayService().isVisible) {
-          AuthOverlayService().hide(true);
-        } else {
-          final nav = Navigator.of(context);
-          if (nav.canPop()) {
-            nav.pop(true);
+        // 嵌入模式：不操作路由，由父级监听 AuthService 自行推进
+        if (!widget.embedded) {
+          if (AuthOverlayService().isVisible) {
+            AuthOverlayService().hide(true);
+          } else {
+            final nav = Navigator.of(context);
+            if (nav.canPop()) {
+              nav.pop(true);
+            }
           }
         }
       } else {
@@ -508,9 +530,13 @@ class _LoginViewState extends State<_LoginView> {
                     if (!mounted) return;
                     
                     if (result['success'] == true) {
-                      // 桌面端覆盖层：先关闭覆盖层，避免因 mounted 状态导致关闭失败
-                      // AuthOverlayService 是单例，不依赖于组件生命周期
-                      if (AuthOverlayService().isVisible) {
+                      if (widget.embedded) {
+                        // 嵌入模式：只更新状态，由父级监听 AuthService 推进
+                        if (mounted) {
+                          setState(() => _isLinuxDoLoading = false);
+                        }
+                        AuthService().updateLocation();
+                      } else if (AuthOverlayService().isVisible) {
                         // 先更新加载状态（如果还 mounted）
                         if (mounted) {
                           setState(() => _linuxDoLoadingText = '授权成功，正在登录...');
@@ -579,12 +605,14 @@ class _LoginViewState extends State<_LoginView> {
                       final ok = await showQrLoginDialog(context);
                       if (!mounted) return;
                       if (ok == true) {
-                        if (AuthOverlayService().isVisible) {
-                          AuthOverlayService().hide(true);
-                        } else {
-                          final nav = Navigator.of(context);
-                          if (nav.canPop()) {
-                            nav.pop(true);
+                        if (!widget.embedded) {
+                          if (AuthOverlayService().isVisible) {
+                            AuthOverlayService().hide(true);
+                          } else {
+                            final nav = Navigator.of(context);
+                            if (nav.canPop()) {
+                              nav.pop(true);
+                            }
                           }
                         }
                       }
@@ -616,7 +644,8 @@ class _LoginViewState extends State<_LoginView> {
 
 /// 注册视图
 class _RegisterView extends StatefulWidget {
-  _RegisterView({Key? key}) : super(key: key);
+  final bool embedded;
+  const _RegisterView({this.embedded = false});
 
   @override
   State<_RegisterView> createState() => _RegisterViewState();
@@ -781,15 +810,17 @@ class _RegisterViewState extends State<_RegisterView> {
             ),
           ),
         );
-        if (AuthOverlayService().isVisible) {
-          AuthOverlayService().hide(true);
-        } else {
-        if (mounted) {
-          final nav = Navigator.of(context);
-          if (nav.canPop()) {
-            nav.pop(true);
+        if (!widget.embedded) {
+          if (AuthOverlayService().isVisible) {
+            AuthOverlayService().hide(true);
+          } else {
+            if (mounted) {
+              final nav = Navigator.of(context);
+              if (nav.canPop()) {
+                nav.pop(true);
+              }
+            }
           }
-        }
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1091,7 +1122,8 @@ class _RegisterViewState extends State<_RegisterView> {
 
 /// 找回密码视图
 class _ForgotPasswordView extends StatefulWidget {
-  const _ForgotPasswordView();
+  final bool embedded;
+  const _ForgotPasswordView({this.embedded = false});
 
   @override
   State<_ForgotPasswordView> createState() => _ForgotPasswordViewState();
@@ -1229,15 +1261,17 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
             ),
           ),
         );
-        if (AuthOverlayService().isVisible) {
-          AuthOverlayService().hide(true);
-        } else {
-        if (mounted) {
-          final nav = Navigator.of(context);
-          if (nav.canPop()) {
-            nav.pop(true);
+        if (!widget.embedded) {
+          if (AuthOverlayService().isVisible) {
+            AuthOverlayService().hide(true);
+          } else {
+            if (mounted) {
+              final nav = Navigator.of(context);
+              if (nav.canPop()) {
+                nav.pop(true);
+              }
+            }
           }
-        }
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1572,7 +1606,12 @@ Widget _buildTextField({
 /// iOS 风格登录视图
 class _CupertinoLoginView extends StatefulWidget {
   final bool isDark;
-  const _CupertinoLoginView({super.key, required this.isDark});
+  final bool embedded;
+  const _CupertinoLoginView({
+    super.key,
+    required this.isDark,
+    this.embedded = false,
+  });
 
   @override
   State<_CupertinoLoginView> createState() => _CupertinoLoginViewState();
@@ -1628,15 +1667,17 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
       if (result['success']) {
         _showCupertinoToast(result['message'], isSuccess: true);
         AuthService().updateLocation();
-        if (AuthOverlayService().isVisible) {
-          AuthOverlayService().hide(true);
-        } else {
-        if (mounted) {
-          final nav = Navigator.of(context);
-          if (nav.canPop()) {
-            nav.pop(true);
+        if (!widget.embedded) {
+          if (AuthOverlayService().isVisible) {
+            AuthOverlayService().hide(true);
+          } else {
+            if (mounted) {
+              final nav = Navigator.of(context);
+              if (nav.canPop()) {
+                nav.pop(true);
+              }
+            }
           }
-        }
         }
       } else {
         _showCupertinoAlert(result['message']);
@@ -1741,8 +1782,13 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
                   if (!mounted) return;
                   
                   if (result['success'] == true) {
-                    // 桌面端覆盖层：先关闭覆盖层，避免因 mounted 状态导致关闭失败
-                    if (AuthOverlayService().isVisible) {
+                    if (widget.embedded) {
+                      if (mounted) {
+                        setState(() => _isLinuxDoLoading = false);
+                      }
+                      AuthService().updateLocation();
+                    } else if (AuthOverlayService().isVisible) {
+                      // 桌面端覆盖层：先关闭覆盖层，避免因 mounted 状态导致关闭失败
                       if (mounted) {
                         setState(() => _linuxDoLoadingText = '授权成功，正在登录...');
                       }
@@ -1812,7 +1858,12 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
 /// iOS 风格注册视图
 class _CupertinoRegisterView extends StatefulWidget {
   final bool isDark;
-  _CupertinoRegisterView({Key? key, required this.isDark}) : super(key: key);
+  final bool embedded;
+  const _CupertinoRegisterView({
+    super.key,
+    required this.isDark,
+    this.embedded = false,
+  });
 
   @override
   State<_CupertinoRegisterView> createState() => _CupertinoRegisterViewState();
@@ -1932,15 +1983,17 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
     if (mounted) {
       if (result['success']) {
         _showCupertinoToast(result['message'], isSuccess: true);
-        if (AuthOverlayService().isVisible) {
-          AuthOverlayService().hide(true);
-        } else {
-        if (mounted) {
-          final nav = Navigator.of(context);
-          if (nav.canPop()) {
-            nav.pop(true);
+        if (!widget.embedded) {
+          if (AuthOverlayService().isVisible) {
+            AuthOverlayService().hide(true);
+          } else {
+            if (mounted) {
+              final nav = Navigator.of(context);
+              if (nav.canPop()) {
+                nav.pop(true);
+              }
+            }
           }
-        }
         }
       } else {
         _showCupertinoAlert(result['message']);
@@ -2178,7 +2231,12 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
 /// iOS 风格找回密码视图
 class _CupertinoForgotPasswordView extends StatefulWidget {
   final bool isDark;
-  const _CupertinoForgotPasswordView({super.key, required this.isDark});
+  final bool embedded;
+  const _CupertinoForgotPasswordView({
+    super.key,
+    required this.isDark,
+    this.embedded = false,
+  });
 
   @override
   State<_CupertinoForgotPasswordView> createState() => _CupertinoForgotPasswordViewState();
@@ -2268,15 +2326,17 @@ class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordVi
     if (mounted) {
       if (result['success']) {
         _showCupertinoToast(result['message'], isSuccess: true);
-        if (AuthOverlayService().isVisible) {
-          AuthOverlayService().hide(true);
-        } else {
-        if (mounted) {
-          final nav = Navigator.of(context);
-          if (nav.canPop()) {
-            nav.pop(true);
+        if (!widget.embedded) {
+          if (AuthOverlayService().isVisible) {
+            AuthOverlayService().hide(true);
+          } else {
+            if (mounted) {
+              final nav = Navigator.of(context);
+              if (nav.canPop()) {
+                nav.pop(true);
+              }
+            }
           }
-        }
         }
       } else {
         _showCupertinoAlert(result['message']);
