@@ -396,10 +396,18 @@ class PlayerService extends ChangeNotifier {
       _errorMessage = null;
       _isAudioSourceNotConfigured = false;  // 重置标志
       final gen = ++_playGeneration; // 记录本次播放代数
+      final requestedTrackKey = '${track.source.name}_${track.id}';
+      bool isStalePlay() {
+        final currentTrack = _currentTrack;
+        if (gen != _playGeneration || currentTrack == null) return true;
+        final currentTrackKey = '${currentTrack.source.name}_${currentTrack.id}';
+        return currentTrackKey != requestedTrackKey;
+      }
       
       // ✅ 关键逻辑：如果是手动点击（未提供预取的 coverProvider），则强制刷新一次封面
       final shouldForceUpdate = coverProvider == null;
       await _updateCoverImage(track.picUrl, notify: false, force: shouldForceUpdate);
+      if (isStalePlay()) return;
       
       notifyListeners();
 
@@ -431,6 +439,7 @@ class PlayerService extends ChangeNotifier {
         // 获取缓存的元数据
         final metadata = CacheService().getCachedMetadata(track);
         final cachedFilePath = await CacheService().getCachedFilePath(track);
+        if (isStalePlay()) return;
 
         if (cachedFilePath != null && metadata != null) {
           // 记录临时文件路径（用于后续清理）
@@ -483,28 +492,41 @@ class PlayerService extends ChangeNotifier {
               title: track.name,
               artist: track.artists,
             ).then((detail) {
-               if (gen != _playGeneration) return; // 已切歌，丢弃
+               if (isStalePlay()) return; // 已切歌，丢弃
+
+               final currentTrack = _currentTrack;
+               final currentSong = _currentSong;
+               if (currentTrack == null || currentSong == null) return;
+
+               final currentTrackKey = '${currentTrack.source.name}_${currentTrack.id}';
+               final currentSongKey = '${currentSong.source.name}_${currentSong.id}';
+               if (currentTrackKey != requestedTrackKey || currentSongKey != requestedTrackKey) {
+                 return;
+               }
+
                if (detail != null && detail.lyric.isNotEmpty) {
                   print('✅ [PlayerService] 成功获取新歌词 (${detail.lyric.length}字符)');
-                  
+
                   // 更新当前歌曲对象（保留 URL 为缓存路径）
-                  _currentSong = SongDetail(
-                    id: _currentSong!.id,
-                    name: detail.name.isNotEmpty ? detail.name : _currentSong!.name,
-                    url: _currentSong!.url, // 保持缓存路径
-                    pic: detail.pic.isNotEmpty ? detail.pic : _currentSong!.pic,
-                    arName: detail.arName.isNotEmpty ? detail.arName : _currentSong!.arName,
-                    alName: detail.alName.isNotEmpty ? detail.alName : _currentSong!.alName,
-                    level: _currentSong!.level,
-                    size: _currentSong!.size,
+                  final updatedSong = SongDetail(
+                    id: currentSong.id,
+                    name: detail.name.isNotEmpty ? detail.name : currentSong.name,
+                    url: currentSong.url, // 保持缓存路径
+                    pic: detail.pic.isNotEmpty ? detail.pic : currentSong.pic,
+                    arName: detail.arName.isNotEmpty ? detail.arName : currentSong.arName,
+                    alName: detail.alName.isNotEmpty ? detail.alName : currentSong.alName,
+                    level: currentSong.level,
+                    size: currentSong.size,
                     lyric: detail.lyric,
                     tlyric: detail.tlyric,
-                    source: _currentSong!.source,
+                    source: currentSong.source,
                   );
-                  
+
+                  _currentSong = updatedSong;
+
                   // 更新缓存
-                  CacheService().cacheSong(track, _currentSong!, qualityStr);
-                  
+                  CacheService().cacheSong(track, updatedSong, qualityStr);
+
                   // 刷新 UI 和歌词
                   notifyListeners();
                   _loadLyricsForFloatingDisplay();
@@ -528,6 +550,7 @@ class PlayerService extends ChangeNotifier {
       if (track.source == MusicSource.local) {
         final filePath = track.id is String ? track.id as String : '';
         if (filePath.isEmpty || !(await File(filePath).exists())) {
+          if (isStalePlay()) return;
           _state = PlayerState.error;
           _errorMessage = '本地文件不存在';
           notifyListeners();
@@ -595,7 +618,7 @@ class PlayerService extends ChangeNotifier {
       );
 
       // 异步返回后检查是否已切歌
-      if (gen != _playGeneration) {
+      if (isStalePlay()) {
         print('⏭️ [PlayerService] 已切歌(gen=$gen→$_playGeneration)，丢弃 fetchSongDetail 结果');
         return;
       }
@@ -670,6 +693,7 @@ class PlayerService extends ChangeNotifier {
       // 如果获取到的详情封面与预期的不同才更新
       if (songDetail.pic != track.picUrl) {
         await _updateCoverImage(songDetail.pic, notify: false);
+        if (isStalePlay()) return;
       }
 
       // 🔧 修复：立即通知监听器，让 PlayerPage 能获取到包含歌词的 currentSong
@@ -712,6 +736,7 @@ class PlayerService extends ChangeNotifier {
           } catch (e) {
             print('❌ [PlayerService] Apple Music 解密流播放失败: $e');
             DeveloperModeService().addLog('❌ [PlayerService] Apple Music 解密流播放失败: $e');
+            if (isStalePlay()) return;
             _state = PlayerState.error;
             _errorMessage = 'Apple Music 播放失败: $e';
             notifyListeners();
@@ -805,6 +830,7 @@ class PlayerService extends ChangeNotifier {
                   DeveloperModeService().addLog('🔄 [PlayerService] Apple 尝试直接播放原始 URL');
                   await _audioPlayer!.play(ap.UrlSource(songDetail.url));
                 } catch (e) {
+                  if (isStalePlay()) return;
                   _state = PlayerState.error;
                   _errorMessage = 'Apple Music 播放失败（本地代理/直连均失败）';
                   notifyListeners();
@@ -834,6 +860,7 @@ class PlayerService extends ChangeNotifier {
                 DeveloperModeService().addLog('🔄 [PlayerService] Apple 尝试直接播放原始 URL');
                 await _audioPlayer!.play(ap.UrlSource(songDetail.url));
               } catch (e) {
+                if (isStalePlay()) return;
                 _state = PlayerState.error;
                 _errorMessage = 'Apple Music 播放失败（本地代理不可用且直连失败）';
                 notifyListeners();
@@ -875,6 +902,13 @@ class PlayerService extends ChangeNotifier {
       // 5. 后台提取主题色（为播放器页面预加载）
       _extractThemeColorInBackground(songDetail.pic);
     } on AudioSourceNotConfiguredException catch (e) {
+      final currentTrack = _currentTrack;
+      final currentTrackKey = currentTrack != null
+          ? '${currentTrack.source.name}_${currentTrack.id}'
+          : null;
+      final requestedTrackKey = '${track.source.name}_${track.id}';
+      if (currentTrackKey != requestedTrackKey) return;
+
       // 音源未配置，设置特殊错误状态
       _state = PlayerState.error;
       _errorMessage = e.message;
@@ -893,6 +927,13 @@ class PlayerService extends ChangeNotifier {
         ToastUtils.error('音源未配置: $_errorMessage');
       }
     } catch (e) {
+      final currentTrack = _currentTrack;
+      final currentTrackKey = currentTrack != null
+          ? '${currentTrack.source.name}_${currentTrack.id}'
+          : null;
+      final requestedTrackKey = '${track.source.name}_${track.id}';
+      if (currentTrackKey != requestedTrackKey) return;
+
       _state = PlayerState.error;
       _errorMessage = '播放失败: $e';
       _isAudioSourceNotConfigured = false;

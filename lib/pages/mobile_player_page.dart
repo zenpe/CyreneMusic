@@ -36,6 +36,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
   List<LyricLine> _lyrics = [];
   int _currentLyricIndex = -1;
   String? _lastTrackId;
+  String? _lastLyricsSignature;
   
   // 控制中心
   bool _showControlCenter = false;
@@ -164,7 +165,9 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
       // 如果当前已有匹配的 currentSong，直接解析歌词
       if (currentTrack != null) {
         final song = PlayerService().currentSong;
-        if (song != null && song.id.toString() == currentTrack.id.toString()) {
+        final trackKey = '${currentTrack.source.name}_${currentTrack.id}';
+        final songKey = song != null ? '${song.source.name}_${song.id}' : null;
+        if (song != null && songKey == trackKey) {
           _parseLyricsFromSong(song);
         }
       }
@@ -187,15 +190,21 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
       print('   当前ID: $currentTrackId');
 
       _lastTrackId = currentTrackId;
+      _lastLyricsSignature = null;
       _lyrics = [];
       _currentLyricIndex = -1;
       setState(() {});
     }
 
     // 检查 currentSong 是否已匹配 currentTrack（事件驱动，无需轮询）
-    if (currentTrack != null && _lyrics.isEmpty) {
+    if (currentTrack != null) {
       final song = PlayerService().currentSong;
-      if (song != null && song.id.toString() == currentTrack.id.toString()) {
+      final trackKey = '${currentTrack.source.name}_${currentTrack.id}';
+      final songKey = song != null ? '${song.source.name}_${song.id}' : null;
+      final songSignature = song == null
+          ? null
+          : '${songKey}_${song.lyric.length}_${song.tlyric.length}_${song.yrc.length}_${song.ytlrc.length}_${song.qrc.length}_${song.qrcTrans.length}';
+      if (song != null && songKey == trackKey && songSignature != _lastLyricsSignature) {
         _parseLyricsFromSong(song);
       }
     }
@@ -212,6 +221,8 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
   /// 从 SongDetail 解析歌词（事件驱动，不再轮询）
   void _parseLyricsFromSong(SongDetail song) {
     try {
+      _lastLyricsSignature =
+          '${song.source.name}_${song.id}_${song.lyric.length}_${song.tlyric.length}_${song.yrc.length}_${song.ytlrc.length}_${song.qrc.length}_${song.qrcTrans.length}';
       print('📝 [MobilePlayerPage] 开始解析歌词: ${song.name}');
 
       switch (song.source.name) {
@@ -282,8 +293,11 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
       print('🔄 [MobilePlayerPage] 强制刷新歌词');
       _lyrics = [];
       _currentLyricIndex = -1;
+      _lastLyricsSignature = null;
       final song = PlayerService().currentSong;
-      if (song != null && song.id.toString() == currentTrack.id.toString()) {
+      final trackKey = '${currentTrack.source.name}_${currentTrack.id}';
+      final songKey = song != null ? '${song.source.name}_${song.id}' : null;
+      if (song != null && songKey == trackKey) {
         _parseLyricsFromSong(song);
       } else {
         setState(() {});

@@ -38,6 +38,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
   List<LyricLine> _lyrics = [];
   int _currentLyricIndex = -1;
   String? _lastTrackId;
+  String? _lastLyricsSignature;
   
   // UI 状态
   bool _isMaximized = false;
@@ -134,7 +135,9 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
       // 如果当前已有匹配的 currentSong，直接解析歌词
       if (currentTrack != null) {
         final song = PlayerService().currentSong;
-        if (song != null && song.id.toString() == currentTrack.id.toString()) {
+        final trackKey = '${currentTrack.source.name}_${currentTrack.id}';
+        final songKey = song != null ? '${song.source.name}_${song.id}' : null;
+        if (song != null && songKey == trackKey) {
           _parseLyricsFromSong(song);
         }
       }
@@ -204,15 +207,21 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
       // 歌曲已切换，清空歌词等待新歌曲详情
       print('🎵 [PlayerPage] 检测到歌曲切换，重新加载歌词');
       _lastTrackId = currentTrackId;
+      _lastLyricsSignature = null;
       _lyrics = [];
       _currentLyricIndex = -1;
       setState(() {});
     }
 
     // 检查 currentSong 是否已匹配 currentTrack（事件驱动，无需轮询）
-    if (currentTrack != null && _lyrics.isEmpty) {
+    if (currentTrack != null) {
       final song = PlayerService().currentSong;
-      if (song != null && song.id.toString() == currentTrack.id.toString()) {
+      final trackKey = '${currentTrack.source.name}_${currentTrack.id}';
+      final songKey = song != null ? '${song.source.name}_${song.id}' : null;
+      final songSignature = song == null
+          ? null
+          : '${songKey}_${song.lyric.length}_${song.tlyric.length}_${song.yrc.length}_${song.ytlrc.length}_${song.qrc.length}_${song.qrcTrans.length}';
+      if (song != null && songKey == trackKey && songSignature != _lastLyricsSignature) {
         _parseLyricsFromSong(song);
       }
     }
@@ -258,6 +267,8 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
   /// 从 SongDetail 解析歌词（事件驱动，不再轮询）
   void _parseLyricsFromSong(SongDetail song) {
     try {
+      _lastLyricsSignature =
+          '${song.source.name}_${song.id}_${song.lyric.length}_${song.tlyric.length}_${song.yrc.length}_${song.ytlrc.length}_${song.qrc.length}_${song.qrcTrans.length}';
       print('📝 [PlayerPage] 开始解析歌词: ${song.name}');
 
       switch (song.source.name) {
