@@ -34,7 +34,7 @@ class OtherSettings extends StatelessWidget {
         MD3SettingsTile(
           leading: const Icon(Icons.tune_outlined),
           title: '其它设置',
-          subtitle: '启动提示、更新提示',
+          subtitle: '启动行为、更新提示',
           trailing: const Icon(Icons.chevron_right),
           onTap: onTap,
         ),
@@ -50,7 +50,7 @@ class OtherSettings extends StatelessWidget {
         FluentSettingsTile(
           icon: fluent_ui.FluentIcons.settings,
           title: '其它设置',
-          subtitle: '启动提示、更新提示',
+          subtitle: '启动行为、更新提示',
           trailing: const Icon(fluent_ui.FluentIcons.chevron_right, size: 12),
           onTap: onTap,
         ),
@@ -67,7 +67,7 @@ class OtherSettings extends StatelessWidget {
           icon: CupertinoIcons.ellipsis,
           iconColor: CupertinoColors.systemGrey,
           title: '其它设置',
-          subtitle: '启动提示、更新提示',
+          subtitle: '启动行为、更新提示',
           showChevron: true,
           onTap: onTap,
         ),
