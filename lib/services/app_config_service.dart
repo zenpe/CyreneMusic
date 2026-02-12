@@ -7,11 +7,7 @@ class QQGroupConfig {
   final String url;
   final String name;
 
-  QQGroupConfig({
-    required this.enabled,
-    required this.url,
-    required this.name,
-  });
+  QQGroupConfig({required this.enabled, required this.url, required this.name});
 
   factory QQGroupConfig.fromJson(Map<String, dynamic> json) {
     return QQGroupConfig(
@@ -29,19 +25,33 @@ class QQGroupConfig {
 /// 应用公共配置
 class AppPublicConfig {
   final QQGroupConfig qqGroup;
+  final List<String> lxScriptPresets;
 
-  AppPublicConfig({required this.qqGroup});
+  AppPublicConfig({required this.qqGroup, required this.lxScriptPresets});
 
   factory AppPublicConfig.fromJson(Map<String, dynamic> json) {
     return AppPublicConfig(
       qqGroup: json['qq_group'] != null
           ? QQGroupConfig.fromJson(json['qq_group'])
           : QQGroupConfig.disabled(),
+      lxScriptPresets: _parseStringList(json['lx_script_presets']),
     );
   }
 
   factory AppPublicConfig.empty() {
-    return AppPublicConfig(qqGroup: QQGroupConfig.disabled());
+    return AppPublicConfig(
+      qqGroup: QQGroupConfig.disabled(),
+      lxScriptPresets: const [],
+    );
+  }
+
+  static List<String> _parseStringList(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .whereType<String>()
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
   }
 }
 
