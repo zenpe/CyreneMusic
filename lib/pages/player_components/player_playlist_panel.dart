@@ -4,7 +4,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/player_service.dart';
 import '../../services/playlist_queue_service.dart';
 import '../../services/play_history_service.dart';
+import '../../services/playback/playback_service.dart';
 import '../../models/track.dart';
+import '../../widgets/track_action_menu.dart';
 
 /// 播放器播放列表面板
 /// 显示播放队列或播放历史，支持搜索功能
@@ -126,8 +128,8 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                       ),
                     ),
                     Text(
-                      _searchQuery.isEmpty 
-                          ? '${fullList.length} 首' 
+                      _searchQuery.isEmpty
+                          ? '${fullList.length} 首'
                           : '${displayList.length}/${fullList.length}',
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.6),
@@ -136,6 +138,19 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                       ),
                     ),
                     const SizedBox(width: 4),
+                    // 清空队列按钮（仅队列模式）
+                    if (hasQueue)
+                      IconButton(
+                        icon: Icon(
+                          Icons.delete_sweep_rounded,
+                          color: Colors.white.withOpacity(0.8),
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          PlaybackService().clearQueue();
+                        },
+                        tooltip: '清空队列',
+                      ),
                     // 搜索按钮
                     IconButton(
                       icon: Icon(
@@ -180,29 +195,50 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
               Expanded(
                 child: displayList.isEmpty
                     ? _buildEmptyState()
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        itemCount: displayList.length,
-                        // 固定高度优化：避免每次都计算子项高度
-                        itemExtent: 74,
-                        // 增加缓存范围，减少重建频率
-                        cacheExtent: 500,
-                        // 保持子项状态，减少不必要的重建
-                        addAutomaticKeepAlives: true,
-                        addRepaintBoundaries: true,
-                        itemBuilder: (context, index) {
-                          final item = displayList[index];
-                          // 转换为 Track
-                          final track = item is Track ? item : (item as PlayHistoryItem).toTrack();
-                          // 获取在原始列表中的索引（用于显示序号）
-                          final originalIndex = fullList.indexOf(item);
-                          final isCurrentTrack = currentTrack != null &&
-                              track.id.toString() == currentTrack.id.toString() &&
-                              track.source == currentTrack.source;
-
-                          return _buildPlaylistItem(context, track, originalIndex, isCurrentTrack);
-                        },
-                      ),
+                    : hasQueue && _searchQuery.isEmpty
+                        ? ReorderableListView.builder(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            buildDefaultDragHandles: false,
+                            onReorder: (oldIndex, newIndex) {
+                              if (newIndex > oldIndex) newIndex--;
+                              PlaybackService().reorder(oldIndex, newIndex);
+                            },
+                            itemCount: displayList.length,
+                            itemBuilder: (context, index) {
+                              final item = displayList[index];
+                              final track = item is Track ? item : (item as PlayHistoryItem).toTrack();
+                              final originalIndex = fullList.indexOf(item);
+                              final isCurrentTrack = currentTrack != null &&
+                                  track.id.toString() == currentTrack.id.toString() &&
+                                  track.source == currentTrack.source;
+                              return _buildPlaylistItem(
+                                context, track, originalIndex, isCurrentTrack,
+                                key: ValueKey('${track.source.name}_${track.id}'),
+                                hasQueue: true,
+                                queueIndex: index,
+                              );
+                            },
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            itemCount: displayList.length,
+                            itemExtent: 74,
+                            cacheExtent: 500,
+                            addAutomaticKeepAlives: true,
+                            addRepaintBoundaries: true,
+                            itemBuilder: (context, index) {
+                              final item = displayList[index];
+                              final track = item is Track ? item : (item as PlayHistoryItem).toTrack();
+                              final originalIndex = fullList.indexOf(item);
+                              final isCurrentTrack = currentTrack != null &&
+                                  track.id.toString() == currentTrack.id.toString() &&
+                                  track.source == currentTrack.source;
+                              return _buildPlaylistItem(
+                                context, track, originalIndex, isCurrentTrack,
+                                hasQueue: false,
+                              );
+                            },
+                          ),
               ),
             ],
           ),
@@ -334,9 +370,15 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
   }
 
   /// 构建播放列表项
-  Widget _buildPlaylistItem(BuildContext context, Track track, int index, bool isCurrentTrack) {
+  Widget _buildPlaylistItem(
+    BuildContext context, Track track, int index, bool isCurrentTrack, {
+    Key? key,
+    bool hasQueue = false,
+    int? queueIndex,
+  }) {
     // 使用 RepaintBoundary 隔离每个列表项的重绘
     return RepaintBoundary(
+      key: key,
       child: GestureDetector(
         onTap: () {
           final coverProvider = PlaylistQueueService().getCoverProvider(track);
@@ -349,8 +391,9 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
           );
         },
         child: Container(
-          color: isCurrentTrack 
-              ? Colors.white.withOpacity(0.1) 
+          height: 74,
+          color: isCurrentTrack
+              ? Colors.white.withOpacity(0.1)
               : Colors.transparent,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
@@ -375,7 +418,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                       ),
               ),
 
-              // 封面 - 简化配置，减少回调开销
+              // 封面
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: CachedNetworkImage(
@@ -383,7 +426,6 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                   width: 50,
                   height: 50,
                   fit: BoxFit.cover,
-                  // 使用简单的占位符，避免复杂的 builder 回调
                   placeholder: (context, url) => Container(
                     width: 50,
                     height: 50,
@@ -399,7 +441,6 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                       size: 24,
                     ),
                   ),
-                  // 启用内存缓存，减少重复加载
                   memCacheWidth: 100,
                   memCacheHeight: 100,
                   fadeInDuration: const Duration(milliseconds: 150),
@@ -440,6 +481,43 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                   ],
                 ),
               ),
+
+              // 更多菜单
+              TrackMoreButton(
+                track: track,
+                onPlay: () {
+                  final coverProvider = PlaylistQueueService().getCoverProvider(track);
+                  PlayerService().playTrack(track, coverProvider: coverProvider);
+                },
+                size: 32,
+              ),
+
+              // 移除按钮（仅队列模式）
+              if (hasQueue && queueIndex != null)
+                IconButton(
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: Colors.white.withOpacity(0.5),
+                    size: 18,
+                  ),
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  padding: EdgeInsets.zero,
+                  onPressed: () {
+                    PlaybackService().removeAt(queueIndex!);
+                  },
+                  tooltip: '移除',
+                ),
+
+              // 拖拽手柄（仅队列模式）
+              if (hasQueue && queueIndex != null)
+                ReorderableDragStartListener(
+                  index: queueIndex!,
+                  child: Icon(
+                    Icons.drag_handle_rounded,
+                    color: Colors.white.withOpacity(0.4),
+                    size: 20,
+                  ),
+                ),
             ],
           ),
         ),

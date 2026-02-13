@@ -513,18 +513,11 @@ class _FluentMyTrackTile extends StatelessWidget {
                 ),
                 if (!isEditMode) ...[
                   const SizedBox(width: 12),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      fluent.IconButton(
-                        icon: const Icon(fluent.FluentIcons.play),
-                        onPressed: onPlay,
-                      ),
-                      fluent.IconButton(
-                        icon: const Icon(fluent.FluentIcons.delete),
-                        onPressed: onDelete,
-                      ),
-                    ],
+                  TrackMoreButton(
+                    track: item.toTrack(),
+                    onPlay: onPlay,
+                    onDelete: onDelete,
+                    size: 32,
                   ),
                 ],
               ],
@@ -858,6 +851,12 @@ extension MyPageFluentUITopPlays on _MyPageState {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(width: 4),
+                    TrackMoreButton(
+                      track: item.toTrack(),
+                      onPlay: () => _playTrack(item),
+                      size: 28,
                     ),
                   ],
                 ),

@@ -10,6 +10,7 @@ import '../models/netease_discover.dart';
 import '../models/track.dart';
 import '../models/playlist.dart';
 import '../widgets/track_list_tile.dart';
+import '../widgets/track_action_menu.dart';
 import '../services/playlist_queue_service.dart';
 import '../services/player_service.dart';
 import '../services/auth_service.dart';
@@ -271,6 +272,22 @@ class _DiscoverPlaylistDetailContentState
             return TrackListTile(
               track: track,
               index: index,
+              showMoreButton: true,
+              onPlay: () async {
+                final ok = await _checkLoginStatus();
+                if (!ok) return;
+                PlaylistQueueService().setQueue(
+                  allTracks,
+                  index,
+                  QueueSource.playlist,
+                  coverProviders: _coverProviderCache,
+                );
+                final coverProvider = _coverProviderCache[_coverKey(track)];
+                await PlayerService().playTrack(
+                  track,
+                  coverProvider: coverProvider,
+                );
+              },
               onCoverReady: (provider) {
                 final key = _coverKey(track);
                 _coverProviderCache[key] = provider;
@@ -781,6 +798,10 @@ class _DiscoverPlaylistDetailContentState
                     ),
                   ],
                 ),
+              ),
+              TrackMoreButton(
+                track: track,
+                onPlay: onTap,
               ),
             ],
           ),
@@ -1666,6 +1687,10 @@ class _DiscoverPlaylistDetailContentState
                     ],
                   ),
                 ),
+                TrackMoreButton(
+                  track: track,
+                  onPlay: onTap,
+                ),
               ],
             ),
           ),
@@ -2035,9 +2060,9 @@ class _DiscoverPlaylistDetailContentState
                   ),
                 ),
                 const SizedBox(width: 12),
-                fluent.IconButton(
-                  icon: const Icon(fluent.FluentIcons.play),
-                  onPressed: onTap,
+                TrackMoreButton(
+                  track: track,
+                  onPlay: onTap,
                 ),
               ],
             ),

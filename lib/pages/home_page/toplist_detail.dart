@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/models/toplist.dart';
 import 'package:cyrene_music/widgets/track_list_tile.dart';
+import '../../widgets/track_action_menu.dart';
 import 'package:cyrene_music/utils/theme_manager.dart';
 import 'package:cyrene_music/services/player_service.dart';
 import 'package:cyrene_music/services/auth_service.dart';
@@ -508,7 +509,16 @@ class _FluentTrackListTileState extends State<_FluentTrackListTile> {
            ),
         ],
       ),
-      trailing: Icon(fluent.FluentIcons.play, size: 12, color: theme.resources.textFillColorSecondary),
+      trailing: TrackMoreButton(
+        track: widget.track,
+        onPlay: () async {
+          if (await _checkLoginStatus() && mounted) {
+            PlayerService().playTrack(widget.track);
+            _showToast(context, '正在加载: ${widget.track.name}');
+          }
+        },
+        size: 28,
+      ),
     );
   }
 
@@ -690,6 +700,7 @@ class _ToplistDetailContent extends StatelessWidget {
               return TrackListTile(
                 track: toplist.tracks[index],
                 index: index,
+                showMoreButton: true,
               );
             },
           ),

@@ -476,12 +476,22 @@ extension MyPageMaterialUI on _MyPageState {
               ),
               title: Text(item.trackName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(item.artists, maxLines: 1, overflow: TextOverflow.ellipsis),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('${item.playCount} 次', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary)),
-                  Text(item.toTrack().getSourceName(), style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('${item.playCount} 次', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary)),
+                      Text(item.toTrack().getSourceName(), style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
+                    ],
+                  ),
+                  TrackMoreButton(
+                    track: item.toTrack(),
+                    onPlay: () => _playTrack(item),
+                    size: 32,
+                  ),
                 ],
               ),
               onTap: () => _playTrack(item),
@@ -942,6 +952,13 @@ extension MyPageMaterialUI on _MyPageState {
                       ],
                     ),
                   ),
+                  if (!_isEditMode)
+                    TrackMoreButton(
+                      track: item.toTrack(),
+                      onPlay: () => _playDetailTrack(index),
+                      onDelete: () => _confirmRemoveTrack(item),
+                      size: 32,
+                    ),
                 ],
               ),
             ),

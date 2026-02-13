@@ -439,26 +439,14 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                 ),
               ),
               // 操作按钮
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CupertinoButton(
-                    padding: const EdgeInsets.all(8),
-                    minSize: 0,
-                    onPressed: () {
-                      PlayerService().playTrack(item.toTrack());
-                    },
-                    child: Icon(CupertinoIcons.play_fill, size: 20, color: CupertinoColors.activeBlue),
-                  ),
-                  CupertinoButton(
-                    padding: const EdgeInsets.all(8),
-                    minSize: 0,
-                    onPressed: () {
-                      _historyService.removeHistoryItem(item);
-                    },
-                    child: Icon(CupertinoIcons.trash, size: 18, color: CupertinoColors.systemGrey),
-                  ),
-                ],
+              TrackMoreButton(
+                track: item.toTrack(),
+                onPlay: () {
+                  PlayerService().playTrack(item.toTrack());
+                },
+                onDelete: () {
+                  _historyService.removeHistoryItem(item);
+                },
               ),
             ],
           ),
@@ -892,42 +880,26 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
             ),
           ],
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.play_arrow),
-              onPressed: () {
-                PlayerService().playTrack(item.toTrack());
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('正在播放: ${item.name}'),
-                    duration: const Duration(seconds: 1),
-                  ),
-                );
-              },
-              tooltip: '播放',
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, size: 20),
-              onPressed: () {
-                _historyService.removeHistoryItem(item);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('已删除'),
-                    duration: const Duration(seconds: 1),
-                    action: SnackBarAction(
-                      label: '撤销',
-                      onPressed: () {
-                        // TODO: 实现撤销功能
-                      },
-                    ),
-                  ),
-                );
-              },
-              tooltip: '删除',
-            ),
-          ],
+        trailing: TrackMoreButton(
+          track: item.toTrack(),
+          onPlay: () {
+            PlayerService().playTrack(item.toTrack());
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('正在播放: ${item.name}'),
+                duration: const Duration(seconds: 1),
+              ),
+            );
+          },
+          onDelete: () {
+            _historyService.removeHistoryItem(item);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('已删除'),
+                duration: const Duration(seconds: 1),
+              ),
+            );
+          },
         ),
         onTap: () {
           PlayerService().playTrack(item.toTrack());
@@ -1298,18 +1270,10 @@ class _FluentHistoryTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    fluent.IconButton(
-                      icon: const Icon(fluent.FluentIcons.play),
-                      onPressed: onPlay,
-                    ),
-                    fluent.IconButton(
-                      icon: const Icon(fluent.FluentIcons.delete),
-                      onPressed: onDelete,
-                    ),
-                  ],
+                TrackMoreButton(
+                  track: item.toTrack(),
+                  onPlay: onPlay,
+                  onDelete: onDelete,
                 ),
               ],
             ),

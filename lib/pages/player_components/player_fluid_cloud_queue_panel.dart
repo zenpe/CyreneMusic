@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/player_service.dart';
 import '../../services/playlist_queue_service.dart';
+import '../../services/playback/playback_service.dart';
 import '../../services/netease_artist_service.dart';
 import '../../models/track.dart';
+import '../../widgets/track_action_menu.dart';
 
 /// 流体云专用播放队列面板
 /// 对标 Apple Music 设计：无边框、半透明、大封面、沉浸式体验
@@ -284,6 +286,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
 
   Widget _buildQueueItem(Track track, bool isCurrent, int index, {double height = 76}) {
     return SizedBox(
+      key: ValueKey('${track.source.name}_${track.id}'),
       height: height,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -353,13 +356,36 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                   // 正在播放指示器
                   if (isCurrent)
                     const Padding(
-                      padding: EdgeInsets.only(left: 12),
+                      padding: EdgeInsets.only(left: 8),
                       child: Icon(
                         Icons.equalizer_rounded,
                         color: Colors.white,
                         size: 20,
                       ),
                     ),
+                  // 更多菜单
+                  TrackMoreButton(
+                    track: track,
+                    onPlay: () {
+                      final coverProvider = PlaylistQueueService().getCoverProvider(track);
+                      PlayerService().playTrack(track, coverProvider: coverProvider);
+                    },
+                    size: 30,
+                  ),
+                  // 移除按钮
+                  IconButton(
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: Colors.white.withOpacity(0.4),
+                      size: 16,
+                    ),
+                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                    padding: EdgeInsets.zero,
+                    onPressed: () {
+                      PlaybackService().removeAt(index);
+                    },
+                    tooltip: '移除',
+                  ),
                 ],
               ),
             ),
@@ -447,11 +473,13 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                       ],
                     ),
                   ),
-                  // 播放图标
-                  Icon(
-                    Icons.play_circle_outline_rounded,
-                    color: Colors.white.withOpacity(0.5),
-                    size: 22,
+                  // 更多菜单
+                  TrackMoreButton(
+                    track: track,
+                    onPlay: () {
+                      PlayerService().playTrack(track);
+                    },
+                    size: 28,
                   ),
                 ],
               ),

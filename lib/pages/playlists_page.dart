@@ -8,6 +8,7 @@ import '../services/auth_service.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import '../widgets/import_playlist_dialog.dart';
+import '../widgets/track_action_menu.dart';
 import '../models/music_platform.dart';
 
 /// 歌单页面
@@ -1268,21 +1269,10 @@ class _PlaylistsPageState extends State<PlaylistsPage>
         ),
         trailing: _isEditMode
             ? null
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.play_arrow),
-                    onPressed: () => _playTrack(index),
-                    tooltip: '播放',
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline, size: 20),
-                    color: Colors.redAccent,
-                    onPressed: () => _confirmRemoveTrack(item),
-                    tooltip: '从歌单移除',
-                  ),
-                ],
+            : TrackMoreButton(
+                track: item.toTrack(),
+                onPlay: () => _playTrack(index),
+                onDelete: () => _confirmRemoveTrack(item),
               ),
         onTap: _isEditMode
             ? () => _toggleTrackSelection(item)

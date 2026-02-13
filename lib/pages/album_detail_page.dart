@@ -8,6 +8,7 @@ import '../utils/theme_manager.dart';
 import '../services/netease_album_service.dart';
 import '../models/track.dart';
 import '../services/player_service.dart';
+import '../widgets/track_action_menu.dart';
 
 class AlbumDetailPage extends StatefulWidget {
   final int albumId;
@@ -489,13 +490,11 @@ Widget _buildSongListItem({
     ),
   );
 
-  final trailing = isExpressive
-      ? const SizedBox.shrink()
-      : isFluent
-          ? const fluent.Icon(fluent.FluentIcons.play)
-          : isCupertino
-              ? const Icon(CupertinoIcons.play_circle, color: CupertinoColors.systemGrey)
-              : const Icon(Icons.play_arrow);
+  final trailing = TrackMoreButton(
+    track: track,
+    onPlay: () => PlayerService().playTrack(track),
+    size: 32,
+  );
 
   if (isExpressive) {
     return Container(
@@ -603,13 +602,11 @@ Widget _buildSongsGrid({
         source: MusicSource.netease,
       );
 
-      final trailing = isExpressive
-          ? const SizedBox.shrink()
-          : isFluent
-              ? const fluent.Icon(fluent.FluentIcons.play)
-              : isCupertino
-                  ? const Icon(CupertinoIcons.play_circle_fill, color: CupertinoColors.activeBlue)
-                  : const Icon(Icons.play_arrow);
+      final trailing = TrackMoreButton(
+        track: track,
+        onPlay: () => PlayerService().playTrack(track),
+        size: 32,
+      );
 
       final cardContent = Row(
         children: [

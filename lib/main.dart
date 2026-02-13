@@ -28,7 +28,7 @@ import 'package:cyrene_music/services/player_service.dart';
 import 'package:cyrene_music/services/notification_service.dart';
 import 'package:cyrene_music/services/playback_resume_service.dart';
 import 'package:cyrene_music/services/permission_service.dart';
-import 'package:cyrene_music/services/startup_queue_loader_service.dart';
+import 'package:cyrene_music/services/playback/playback_service.dart';
 import 'package:cyrene_music/services/system_media_service.dart';
 import 'package:cyrene_music/services/tray_service.dart';
 import 'package:cyrene_music/services/url_service.dart';
@@ -316,7 +316,7 @@ Future<void> main() async {
       print(' [Main] 将在1秒后加载启动播放队列...');
       log(' 将在1秒后加载启动播放队列...');
       Future.delayed(const Duration(seconds: 1), () {
-        StartupQueueLoaderService()
+        PlaybackService()
             .loadStartupQueueIfNeeded()
             .then((_) {
               print(' [Main] 启动播放队列加载完成');

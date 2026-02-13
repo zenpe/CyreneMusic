@@ -12,6 +12,8 @@ import '../services/play_history_service.dart';
 import '../services/system_volume_service.dart';
 import '../models/track.dart';
 import '../utils/theme_manager.dart';
+import '../services/playback/playback_service.dart';
+import 'track_action_menu.dart';
 
 /// 迷你播放器组件（底部播放栏）
 class MiniPlayer extends StatefulWidget {
@@ -1850,6 +1852,15 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                     fluent.FluentTheme.of(context).resources.controlFillColorSecondary,
                                   )
                                 : null,
+                            trailing: TrackMoreButton(
+                              track: t,
+                              onPlay: () {
+                                final coverProvider = PlaylistQueueService().getCoverProvider(t);
+                                PlayerService().playTrack(t, coverProvider: coverProvider);
+                                Navigator.pop(context);
+                              },
+                              size: 28,
+                            ),
                             onPressed: () {
                               final coverProvider = PlaylistQueueService().getCoverProvider(t);
                               PlayerService().playTrack(t, coverProvider: coverProvider);
@@ -1878,7 +1889,6 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
       final media = MediaQuery.of(context);
       final isLandscape = media.orientation == Orientation.landscape;
       final sheetHeight = media.size.height * (isLandscape ? 0.72 : 0.6);
-      bool insertNextMode = false;
       await showCupertinoModalPopup(
         context: context,
         builder: (context) {
@@ -1923,20 +1933,6 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                     ),
                                   ),
                                   const Spacer(),
-                                  CupertinoButton(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    minSize: 0,
-                                    onPressed: () => setState(() => insertNextMode = !insertNextMode),
-                                    child: Text(
-                                      insertNextMode ? '取消追加' : '追加下一首',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: insertNextMode
-                                            ? CupertinoColors.activeBlue
-                                            : CupertinoColors.systemGrey,
-                                      ),
-                                    ),
-                                  ),
                                   CupertinoButton(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                     minSize: 0,
@@ -2053,6 +2049,15 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                                       color: CupertinoColors.activeBlue,
                                                       size: 18,
                                                     ),
+                                                  TrackMoreButton(
+                                                    track: t,
+                                                    onPlay: () {
+                                                      final coverProvider = PlaylistQueueService().getCoverProvider(t);
+                                                      PlayerService().playTrack(t, coverProvider: coverProvider);
+                                                      Navigator.pop(context);
+                                                    },
+                                                    size: 28,
+                                                  ),
                                                   const SizedBox(width: 4),
                                                   ReorderableDelayedDragStartListener(
                                                     index: i,
@@ -2083,13 +2088,6 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                               child: GestureDetector(
                                                 behavior: HitTestBehavior.opaque,
                                                 onTap: () {
-                                                  if (insertNextMode) {
-                                                    queueService.insertNext(t);
-                                                    ScaffoldMessenger.of(context).showSnackBar(
-                                                      const SnackBar(content: Text('已追加到下一首'), duration: Duration(seconds: 1)),
-                                                    );
-                                                    return;
-                                                  }
                                                   final coverProvider = PlaylistQueueService().getCoverProvider(t);
                                                   PlayerService().playTrack(t, coverProvider: coverProvider);
                                                   Navigator.pop(context);
@@ -2109,13 +2107,6 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                             return GestureDetector(
                                               behavior: HitTestBehavior.opaque,
                                               onTap: () {
-                                                if (insertNextMode) {
-                                                  queueService.insertNext(t);
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(content: Text('已追加到下一首'), duration: Duration(seconds: 1)),
-                                                  );
-                                                  return;
-                                                }
                                                 final coverProvider = PlaylistQueueService().getCoverProvider(t);
                                                 PlayerService().playTrack(t, coverProvider: coverProvider);
                                                 Navigator.pop(context);
@@ -2194,6 +2185,15 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                                         ],
                                                       ),
                                                     ),
+                                                    TrackMoreButton(
+                                                      track: t,
+                                                      onPlay: () {
+                                                        final coverProvider = PlaylistQueueService().getCoverProvider(t);
+                                                        PlayerService().playTrack(t, coverProvider: coverProvider);
+                                                        Navigator.pop(context);
+                                                      },
+                                                      size: 28,
+                                                    ),
                                                   ],
                                                 ),
                                               ),
@@ -2218,8 +2218,6 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
     final media = MediaQuery.of(context);
     final isLandscape = media.orientation == Orientation.landscape;
     final sheetHeight = media.size.height * (isLandscape ? 0.78 : 0.6);
-    bool insertNextMode = false;
-
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2248,10 +2246,6 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
                               const Spacer(),
-                              TextButton(
-                                onPressed: () => setState(() => insertNextMode = !insertNextMode),
-                                child: Text(insertNextMode ? '取消追加' : '追加下一首'),
-                              ),
                               TextButton(
                                 onPressed: hasQueueNow ? () => queueService.clear() : null,
                                 child: const Text('清空'),
@@ -2322,18 +2316,37 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                           ),
                                           title: Text(t.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                                           subtitle: Text(t.artists, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                          trailing: ReorderableDelayedDragStartListener(
-                                            index: i,
-                                            child: Icon(Icons.drag_handle_rounded, color: colorScheme.onSurfaceVariant),
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              TrackMoreButton(
+                                                track: t,
+                                                onPlay: () {
+                                                  final coverProvider = PlaylistQueueService().getCoverProvider(t);
+                                                  PlayerService().playTrack(t, coverProvider: coverProvider);
+                                                  Navigator.pop(context);
+                                                },
+                                                size: 32,
+                                              ),
+                                              IconButton(
+                                                icon: Icon(Icons.close_rounded, color: colorScheme.onSurfaceVariant, size: 18),
+                                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                                padding: EdgeInsets.zero,
+                                                onPressed: () {
+                                                  queueService.removeAt(i);
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    const SnackBar(content: Text('已移除'), duration: Duration(seconds: 1)),
+                                                  );
+                                                },
+                                                tooltip: '移除',
+                                              ),
+                                              ReorderableDelayedDragStartListener(
+                                                index: i,
+                                                child: Icon(Icons.drag_handle_rounded, color: colorScheme.onSurfaceVariant),
+                                              ),
+                                            ],
                                           ),
                                           onTap: () {
-                                            if (insertNextMode) {
-                                              queueService.insertNext(t);
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('已追加到下一首'), duration: Duration(seconds: 1)),
-                                              );
-                                              return;
-                                            }
                                             final coverProvider = PlaylistQueueService().getCoverProvider(t);
                                             PlayerService().playTrack(t, coverProvider: coverProvider);
                                             Navigator.pop(context);
@@ -2412,14 +2425,16 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                           ),
                                           title: Text(t.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                                           subtitle: Text(t.artists, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                          trailing: TrackMoreButton(
+                                            track: t,
+                                            onPlay: () {
+                                              final coverProvider = PlaylistQueueService().getCoverProvider(t);
+                                              PlayerService().playTrack(t, coverProvider: coverProvider);
+                                              Navigator.pop(context);
+                                            },
+                                            size: 32,
+                                          ),
                                           onTap: () {
-                                            if (insertNextMode) {
-                                              queueService.insertNext(t);
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('已追加到下一首'), duration: Duration(seconds: 1)),
-                                              );
-                                              return;
-                                            }
                                             final coverProvider = PlaylistQueueService().getCoverProvider(t);
                                             PlayerService().playTrack(t, coverProvider: coverProvider);
                                             Navigator.pop(context);

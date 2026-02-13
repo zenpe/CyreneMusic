@@ -7,6 +7,7 @@ import '../utils/theme_manager.dart';
 import '../services/netease_artist_service.dart';
 import '../services/player_service.dart';
 import '../models/track.dart';
+import '../widgets/track_action_menu.dart';
 import 'album_detail_page.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -438,9 +439,11 @@ class _SongsListView extends StatelessWidget {
           picUrl: m['picUrl']?.toString() ?? '',
           source: MusicSource.netease,
         );
-        final trailing = isFluent
-            ? const fluent.Icon(fluent.FluentIcons.play)
-            : const Icon(Icons.play_arrow);
+        final trailing = TrackMoreButton(
+          track: track,
+          onPlay: () => PlayerService().playTrack(track),
+          size: 32,
+        );
 
         final isExpressive = !isFluent && !isCupertino && (Platform.isAndroid || Platform.isIOS);
         if (isExpressive) {
@@ -631,10 +634,10 @@ class _SongsListView extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(
-              CupertinoIcons.play_fill,
-              color: CupertinoColors.activeBlue,
-              size: 20,
+            TrackMoreButton(
+              track: track,
+              onPlay: () => PlayerService().playTrack(track),
+              size: 32,
             ),
           ],
         ),
@@ -873,11 +876,11 @@ class _SongsThumbView extends StatelessWidget {
           final pic = m['picUrl']?.toString() ?? '';
           final track = Track(id: m['id'], name: name, artists: artists, album: album, picUrl: pic, source: MusicSource.netease);
           
-          final trailing = isFluent
-              ? const fluent.Icon(fluent.FluentIcons.play)
-              : isCupertino
-                  ? Icon(CupertinoIcons.play_fill, color: CupertinoColors.activeBlue, size: 20)
-                  : const Icon(Icons.play_arrow);
+          final trailing = TrackMoreButton(
+            track: track,
+            onPlay: () => PlayerService().playTrack(track),
+            size: 32,
+          );
           
           final cardContent = Row(
             children: [

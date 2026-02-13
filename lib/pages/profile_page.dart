@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/listening_stats_service.dart';
 import '../services/player_service.dart';
 import '../models/track.dart';
+import '../widgets/track_action_menu.dart';
 
 /// 个人中心页面
 class ProfilePage extends StatefulWidget {
@@ -414,22 +415,32 @@ class _ProfilePageState extends State<ProfilePage> {
           color: colorScheme.onSurface.withOpacity(0.6),
         ),
       ),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            '${item.playCount} 次',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${item.playCount} 次',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                item.toTrack().getSourceName(),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: colorScheme.onSurface.withOpacity(0.5),
+                ),
+              ),
+            ],
           ),
-          Text(
-            item.toTrack().getSourceName(),
-            style: TextStyle(
-              fontSize: 10,
-              color: colorScheme.onSurface.withOpacity(0.5),
-            ),
+          TrackMoreButton(
+            track: item.toTrack(),
+            onPlay: () => _playTrack(item),
+            size: 32,
           ),
         ],
       ),

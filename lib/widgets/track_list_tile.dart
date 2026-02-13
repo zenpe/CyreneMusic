@@ -4,6 +4,7 @@ import '../models/track.dart';
 import '../services/player_service.dart';
 import '../services/auth_service.dart';
 import '../pages/auth/auth_page.dart';
+import 'track_action_menu.dart';
 
 /// 歌曲列表项组件
 class TrackListTile extends StatefulWidget {
@@ -12,14 +13,26 @@ class TrackListTile extends StatefulWidget {
   final VoidCallback? onTap;
   final bool showIndex;
   final void Function(ImageProvider provider)? onCoverReady;
+  final double coverSize;
+  final Widget? trailing;
+  final bool showMoreButton;
+  final VoidCallback? onPlay;
+  final VoidCallback? onDelete;
+  final bool isPlaying;
 
   const TrackListTile({
     super.key,
     required this.track,
     this.index,
     this.onTap,
-    this.showIndex = true, // 默认显示索引
+    this.showIndex = true,
     this.onCoverReady,
+    this.coverSize = 50.0,
+    this.trailing,
+    this.showMoreButton = false,
+    this.onPlay,
+    this.onDelete,
+    this.isPlaying = false,
   });
 
   @override
@@ -119,14 +132,14 @@ class _TrackListTileState extends State<TrackListTile> {
                 }
                 return Image(
                   image: imageProvider,
-                  width: 50,
-                  height: 50,
+                  width: widget.coverSize,
+                  height: widget.coverSize,
                   fit: BoxFit.cover,
                 );
               },
               placeholder: (context, url) => Container(
-                width: 50,
-                height: 50,
+                width: widget.coverSize,
+                height: widget.coverSize,
                 color: colorScheme.surfaceContainerHighest,
                 child: const Center(
                   child: SizedBox(
@@ -137,8 +150,8 @@ class _TrackListTileState extends State<TrackListTile> {
                 ),
               ),
               errorWidget: (context, url, error) => Container(
-                width: 50,
-                height: 50,
+                width: widget.coverSize,
+                height: widget.coverSize,
                 color: colorScheme.surfaceContainerHighest,
                 child: Icon(
                   Icons.music_note,
@@ -154,7 +167,8 @@ class _TrackListTileState extends State<TrackListTile> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-          fontWeight: FontWeight.w500,
+          fontWeight: widget.isPlaying ? FontWeight.bold : FontWeight.w500,
+          color: widget.isPlaying ? colorScheme.primary : null,
         ),
       ),
       subtitle: Row(
@@ -177,10 +191,17 @@ class _TrackListTileState extends State<TrackListTile> {
           ),
         ],
       ),
-      trailing: Icon(
-        Icons.play_circle_outline,
-        color: colorScheme.primary,
-      ),
+      trailing: widget.trailing ??
+          (widget.showMoreButton
+              ? TrackMoreButton(
+                  track: widget.track,
+                  onPlay: widget.onPlay ?? widget.onTap,
+                  onDelete: widget.onDelete,
+                )
+              : Icon(
+                  Icons.play_circle_outline,
+                  color: colorScheme.primary,
+                )),
       onTap: widget.onTap ?? () async {
         // 检查登录状态
         final isLoggedIn = await _checkLoginStatus();

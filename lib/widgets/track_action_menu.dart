@@ -5,6 +5,7 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/track.dart';
 import '../services/playlist_service.dart';
+import '../services/playback/playback_service.dart';
 import '../utils/theme_manager.dart';
 
 
@@ -160,6 +161,28 @@ class TrackActionMenu {
             ],
           ),
         ),
+        // 下一首播放
+        PopupMenuItem<String>(
+          value: 'play_next',
+          height: 48,
+          child: Row(
+            children: [
+              Icon(
+                Icons.skip_next_rounded,
+                size: 20,
+                color: colorScheme.onSurface,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '下一首播放',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
         // 添加到播放队列
         PopupMenuItem<String>(
           value: 'queue',
@@ -174,6 +197,32 @@ class TrackActionMenu {
               const SizedBox(width: 12),
               Text(
                 '添加到播放队列',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // 收藏
+        PopupMenuItem<String>(
+          value: 'favorite',
+          height: 48,
+          child: Row(
+            children: [
+              Icon(
+                PlaylistService().isFavorite(track)
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                size: 20,
+                color: PlaylistService().isFavorite(track)
+                    ? Colors.red
+                    : colorScheme.onSurface,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                PlaylistService().isFavorite(track) ? '取消收藏' : '收藏',
                 style: TextStyle(
                   fontSize: 14,
                   color: colorScheme.onSurface,
@@ -212,8 +261,14 @@ class TrackActionMenu {
         case 'play':
           onPlay?.call();
           break;
+        case 'play_next':
+          _playNext(context, track);
+          break;
         case 'queue':
           _addToQueue(context, track);
+          break;
+        case 'favorite':
+          _toggleFavorite(context, track);
           break;
         case 'playlist':
           _showAddToPlaylistDialog(context, track);
@@ -239,7 +294,7 @@ class TrackActionMenu {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.45,
+        initialChildSize: 0.55,
         minChildSize: 0.3,
         maxChildSize: 0.8,
         expand: false,
@@ -377,11 +432,31 @@ class TrackActionMenu {
                     ),
                     _buildExpressiveActionItem(
                       context,
+                      icon: Icons.skip_next_rounded,
+                      label: '下一首播放',
+                      onTap: () {
+                        Navigator.pop(context);
+                        _playNext(context, track);
+                      },
+                    ),
+                    _buildExpressiveActionItem(
+                      context,
                       icon: Icons.queue_music_rounded,
                       label: '添加到播放队列',
                       onTap: () {
                         Navigator.pop(context);
                         _addToQueue(context, track);
+                      },
+                    ),
+                    _buildExpressiveActionItem(
+                      context,
+                      icon: PlaylistService().isFavorite(track)
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      label: PlaylistService().isFavorite(track) ? '取消收藏' : '收藏',
+                      onTap: () {
+                        Navigator.pop(context);
+                        _toggleFavorite(context, track);
                       },
                     ),
                     _buildExpressiveActionItem(
@@ -564,6 +639,20 @@ class TrackActionMenu {
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(context);
+              _playNext(context, track);
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(CupertinoIcons.forward_end_fill, size: 20),
+                const SizedBox(width: 8),
+                const Text('下一首播放'),
+              ],
+            ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
               _addToQueue(context, track);
             },
             child: Row(
@@ -572,6 +661,28 @@ class TrackActionMenu {
                 const Icon(CupertinoIcons.music_note_list, size: 20),
                 const SizedBox(width: 8),
                 const Text('添加到播放队列'),
+              ],
+            ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _toggleFavorite(context, track);
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  PlaylistService().isFavorite(track)
+                      ? CupertinoIcons.heart_fill
+                      : CupertinoIcons.heart,
+                  size: 20,
+                  color: PlaylistService().isFavorite(track)
+                      ? CupertinoColors.systemRed
+                      : null,
+                ),
+                const SizedBox(width: 8),
+                Text(PlaylistService().isFavorite(track) ? '取消收藏' : '收藏'),
               ],
             ),
           ),
@@ -796,7 +907,7 @@ class TrackActionMenu {
     double top = buttonPosition.dy + buttonSize.height;
     
     const menuWidth = 200.0;
-    const menuHeight = 140.0; // 估算高度
+    const menuHeight = 260.0; // 估算高度
     
     // 如果超出右边界，向左调整
     if (left + menuWidth > screenSize.width) {
@@ -868,6 +979,16 @@ class TrackActionMenu {
                             onPlay?.call();
                           },
                         ),
+                        // 下一首播放
+                        _buildWin11MenuItem(
+                          icon: fluent.FluentIcons.next,
+                          label: '下一首播放',
+                          isDark: isDark,
+                          onTap: () {
+                            overlayEntry.remove();
+                            _playNext(context, track);
+                          },
+                        ),
                         // 添加到播放队列
                         _buildWin11MenuItem(
                           icon: fluent.FluentIcons.playlist_music,
@@ -878,12 +999,24 @@ class TrackActionMenu {
                             _addToQueue(context, track);
                           },
                         ),
+                        // 收藏
+                        _buildWin11MenuItem(
+                          icon: PlaylistService().isFavorite(track)
+                              ? fluent.FluentIcons.heart_fill
+                              : fluent.FluentIcons.heart,
+                          label: PlaylistService().isFavorite(track) ? '取消收藏' : '收藏',
+                          isDark: isDark,
+                          onTap: () {
+                            overlayEntry.remove();
+                            _toggleFavorite(context, track);
+                          },
+                        ),
                         // 分隔线
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           child: Divider(
                             height: 1,
-                            color: isDark 
+                            color: isDark
                                 ? Colors.white.withOpacity(0.1)
                                 : Colors.black.withOpacity(0.1),
                           ),
@@ -1188,22 +1321,65 @@ class TrackActionMenu {
 
   /// 添加到播放队列
   static void _addToQueue(BuildContext context, Track track) {
-    // TODO: 实现添加到播放队列功能
-    // 目前 PlaylistQueueService 没有 addToQueue 方法
-    // 暂时显示提示信息
-    
+    PlaybackService().addToQueue(track);
+
     final themeManager = ThemeManager();
-    const message = '功能开发中，敬请期待';
-    
+    const message = '已添加到播放队列';
+
     if (themeManager.isCupertinoFramework) {
-      _showCupertinoToast(context, message, false);
+      _showCupertinoToast(context, message, true);
     } else if (themeManager.isFluentFramework && Platform.isWindows) {
-      _showFluentToast(context, message, false);
+      _showFluentToast(context, message, true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(message),
           duration: Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  /// 下一首播放
+  static void _playNext(BuildContext context, Track track) {
+    PlaybackService().playNext(track);
+
+    final themeManager = ThemeManager();
+    const message = '将在下一首播放';
+
+    if (themeManager.isCupertinoFramework) {
+      _showCupertinoToast(context, message, true);
+    } else if (themeManager.isFluentFramework && Platform.isWindows) {
+      _showFluentToast(context, message, true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(message),
+          duration: Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  /// 收藏 / 取消收藏
+  static Future<void> _toggleFavorite(BuildContext context, Track track) async {
+    await PlaylistService().toggleFavorite(track);
+    final isFav = PlaylistService().isFavorite(track);
+
+    if (!context.mounted) return;
+
+    final themeManager = ThemeManager();
+    final message = isFav ? '已添加到收藏' : '已取消收藏';
+
+    if (themeManager.isCupertinoFramework) {
+      _showCupertinoToast(context, message, true);
+    } else if (themeManager.isFluentFramework && Platform.isWindows) {
+      _showFluentToast(context, message, true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 1),
         ),
       );
     }
