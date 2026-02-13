@@ -396,6 +396,7 @@ class PlaybackService extends ChangeNotifier {
     if (mode == PlaybackMode.shuffle) {
       await _playRandomNext();
     } else {
+      // sequential, loopAll, repeatOne: 手动切歌都走顺序（允许循环）
       await _playSequentialNext();
     }
   }
@@ -405,6 +406,7 @@ class PlaybackService extends ChangeNotifier {
     if (mode == PlaybackMode.shuffle) {
       await _playRandomPrevious();
     } else {
+      // sequential, loopAll, repeatOne: 手动切歌都走顺序（允许循环）
       await _playSequentialPrevious();
     }
   }
@@ -841,13 +843,49 @@ class PlaybackService extends ChangeNotifier {
           await _commands.enqueue(() => _playCurrentTrack());
         }
         break;
-      case PlaybackMode.sequential:
+      case PlaybackMode.loopAll:
         await _playSequentialNext();
         break;
       case PlaybackMode.shuffle:
         await _playRandomNext();
         break;
+      case PlaybackMode.sequential:
+        await _playSequentialNextOrStop();
+        break;
     }
+  }
+
+  /// 顺序播放模式：播完最后一首停止
+  Future<void> _playSequentialNextOrStop() async {
+    return _commands.enqueue(() async {
+      if (_queue.isNotEmpty) {
+        final nextIdx = _currentIndex + 1;
+        if (nextIdx < _queue.length) {
+          _currentIndex = nextIdx;
+          await Future.delayed(const Duration(milliseconds: 500));
+          await _playCurrentTrack();
+          return;
+        }
+        // 到末尾了，停止播放
+        await _engine.stop();
+        _state = PBState.idle;
+        _pauseListeningTimeTracking();
+        _stopStateSaveTimer();
+        notifyListeners();
+        return;
+      }
+      // 无队列，用播放历史
+      final nextTrack = PlayHistoryService().getNextTrack();
+      if (nextTrack != null) {
+        _queue
+          ..clear()
+          ..add(nextTrack);
+        _currentIndex = 0;
+        _source = QueueSource.history;
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _playCurrentTrack();
+      }
+    });
   }
 
   Future<void> _playSequentialNext() async {

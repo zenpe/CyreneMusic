@@ -791,6 +791,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
   Widget _buildModeIndicator(PlaybackMode mode) {
     final labels = {
       PlaybackMode.sequential: '顺序',
+      PlaybackMode.loopAll: '循环',
       PlaybackMode.repeatOne: '单曲',
       PlaybackMode.shuffle: '随机',
     };
@@ -837,6 +838,8 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
   IconData _getPlaybackModeIcon(PlaybackMode mode) {
     switch (mode) {
       case PlaybackMode.sequential:
+        return Icons.arrow_forward_rounded;
+      case PlaybackMode.loopAll:
         return Icons.repeat_rounded;
       case PlaybackMode.repeatOne:
         return Icons.repeat_one_rounded;

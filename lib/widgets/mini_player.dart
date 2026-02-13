@@ -10,6 +10,7 @@ import '../pages/player_page.dart';
 import '../services/playlist_queue_service.dart';
 import '../services/play_history_service.dart';
 import '../services/system_volume_service.dart';
+import '../services/playback_mode_service.dart';
 import '../models/track.dart';
 import '../utils/theme_manager.dart';
 import '../services/playback/playback_service.dart';
@@ -463,6 +464,8 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                       compact: true,
                     ),
                     const SizedBox(width: 6),
+                    _buildPlaybackModeButton(context, colorScheme, compact: true),
+                    const SizedBox(width: 2),
                     _buildQueueButton(context, colorScheme, compact: true),
                   ],
                 ),
@@ -508,6 +511,8 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                   compact: true,
                 ),
                 const SizedBox(width: 6),
+                _buildPlaybackModeButton(context, colorScheme, compact: true),
+                const SizedBox(width: 4),
                 _buildVolumeButton(
                   context,
                   colorScheme,
@@ -564,6 +569,81 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
           : null,
       tooltip: '播放队列',
       onPressed: () => _showQueueSheet(context),
+    );
+  }
+
+  Widget _buildPlaybackModeButton(
+    BuildContext context,
+    ColorScheme colorScheme, {
+    bool compact = false,
+  }) {
+    return AnimatedBuilder(
+      animation: PlaybackModeService(),
+      builder: (context, _) {
+        final modeService = PlaybackModeService();
+        final icon = modeService.getModeIcon();
+
+        if (ThemeManager().isFluentFramework) {
+          final theme = fluent.FluentTheme.of(context);
+          return fluent.IconButton(
+            icon: Icon(
+              icon,
+              color: theme.resources.textFillColorPrimary,
+              size: compact ? 18 : 20,
+            ),
+            onPressed: () {
+              modeService.toggleMode();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('播放模式: ${modeService.getModeName()}'),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
+            },
+          );
+        }
+        if (_isCupertino) {
+          return CupertinoButton(
+            padding: compact ? const EdgeInsets.all(2) : const EdgeInsets.all(6),
+            minSize: 0,
+            onPressed: () {
+              modeService.toggleMode();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('播放模式: ${modeService.getModeName()}'),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
+            },
+            child: Icon(
+              icon,
+              color: CupertinoColors.activeBlue,
+              size: compact ? 18 : 20,
+            ),
+          );
+        }
+        return IconButton(
+          icon: Icon(
+            icon,
+            color: colorScheme.onSurface,
+            size: compact ? 18 : 20,
+          ),
+          padding: EdgeInsets.zero,
+          constraints: compact
+              ? const BoxConstraints.tightFor(width: 32, height: 32)
+              : null,
+          tooltip: modeService.getModeName(),
+          onPressed: () {
+            modeService.toggleMode();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('播放模式: ${modeService.getModeName()}'),
+                duration: const Duration(seconds: 1),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

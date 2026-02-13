@@ -373,6 +373,9 @@ class MobilePlayerClassicLayout extends StatelessWidget {
             IconData icon;
             switch (mode) {
               case PlaybackMode.sequential:
+                icon = Icons.arrow_forward_rounded;
+                break;
+              case PlaybackMode.loopAll:
                 icon = Icons.repeat_rounded;
                 break;
               case PlaybackMode.repeatOne:

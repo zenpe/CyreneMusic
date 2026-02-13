@@ -10,16 +10,16 @@ class PlaybackModeSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return AnimatedBuilder(
       animation: PlaybackModeService(),
       builder: (context, _) {
         final modeService = PlaybackModeService();
         final currentMode = modeService.currentMode;
-        
+
         // 获取当前选中索引
         final currentIndex = _getModeIndex(currentMode);
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Container(
@@ -56,14 +56,14 @@ class PlaybackModeSection extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 18),
-                
+
                 // 分段选择器
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final totalWidth = constraints.maxWidth;
-                    final tabWidth = totalWidth / 3;
+                    final tabWidth = totalWidth / 4;
                     const height = 88.0;
-                    
+
                     return SizedBox(
                       height: height,
                       child: Stack(
@@ -95,7 +95,7 @@ class PlaybackModeSection extends StatelessWidget {
                             children: [
                               _buildModeItem(
                                 context: context,
-                                icon: Icons.repeat_rounded,
+                                icon: Icons.arrow_forward_rounded,
                                 label: '顺序',
                                 isSelected: currentMode == PlaybackMode.sequential,
                                 onTap: () => modeService.setMode(PlaybackMode.sequential),
@@ -103,10 +103,10 @@ class PlaybackModeSection extends StatelessWidget {
                               ),
                               _buildModeItem(
                                 context: context,
-                                icon: Icons.repeat_one_rounded,
-                                label: '单曲循环',
-                                isSelected: currentMode == PlaybackMode.repeatOne,
-                                onTap: () => modeService.setMode(PlaybackMode.repeatOne),
+                                icon: Icons.repeat_rounded,
+                                label: '循环',
+                                isSelected: currentMode == PlaybackMode.loopAll,
+                                onTap: () => modeService.setMode(PlaybackMode.loopAll),
                                 colorScheme: colorScheme,
                               ),
                               _buildModeItem(
@@ -115,6 +115,14 @@ class PlaybackModeSection extends StatelessWidget {
                                 label: '随机',
                                 isSelected: currentMode == PlaybackMode.shuffle,
                                 onTap: () => modeService.setMode(PlaybackMode.shuffle),
+                                colorScheme: colorScheme,
+                              ),
+                              _buildModeItem(
+                                context: context,
+                                icon: Icons.repeat_one_rounded,
+                                label: '单曲',
+                                isSelected: currentMode == PlaybackMode.repeatOne,
+                                onTap: () => modeService.setMode(PlaybackMode.repeatOne),
                                 colorScheme: colorScheme,
                               ),
                             ],
@@ -136,10 +144,12 @@ class PlaybackModeSection extends StatelessWidget {
     switch (mode) {
       case PlaybackMode.sequential:
         return 0;
-      case PlaybackMode.repeatOne:
+      case PlaybackMode.loopAll:
         return 1;
       case PlaybackMode.shuffle:
         return 2;
+      case PlaybackMode.repeatOne:
+        return 3;
     }
   }
 
