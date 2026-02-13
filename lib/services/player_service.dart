@@ -1481,6 +1481,13 @@ class PlayerService extends ChangeNotifier {
 
   /// 继续播放
   Future<void> resume() async {
+    // 预载态：播放器尚未初始化，需走完整播放流程
+    if (_state == PlayerState.idle && _currentTrack != null &&
+        _audioPlayer == null && _mediaKitPlayer == null) {
+      await playTrack(_currentTrack!);
+      return;
+    }
+
     try {
       if (_useMediaKit && _mediaKitPlayer != null) {
         await _mediaKitPlayer!.play();
@@ -1788,12 +1795,32 @@ class PlayerService extends ChangeNotifier {
     }
   }
 
+  /// 预载轨道（不播放）：设置 currentTrack 和封面，使 MiniPlayer 以暂停态显示。
+  /// 用于启动时加载队列后让用户一键播放。
+  Future<void> preloadTrack(Track track, {ImageProvider? coverProvider}) async {
+    if (_currentTrack != null) return; // 已有轨道，不覆盖
+
+    _currentTrack = track;
+    _state = PlayerState.idle;
+    _duration = Duration.zero;
+    _position = Duration.zero;
+
+    if (coverProvider != null) {
+      setCurrentCoverImageProvider(coverProvider, shouldNotify: false, imageUrl: track.picUrl);
+    } else {
+      await _updateCoverImage(track.picUrl, notify: false, force: true);
+    }
+
+    print('🎵 [PlayerService] 已预载轨道: ${track.name}');
+    notifyListeners();
+  }
+
   /// 切换播放/暂停
   Future<void> togglePlayPause() async {
     if (isPlaying) {
       await pause();
-    } else if (isPaused) {
-      await resume();
+    } else {
+      await resume(); // resume() 内部已处理预载态
     }
   }
 

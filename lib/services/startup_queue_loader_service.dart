@@ -115,6 +115,8 @@ class StartupQueueLoaderService {
     }
 
     PlaylistQueueService().setQueue(tracks, 0, source);
+    // 预载第一首到 PlayerService，使 MiniPlayer 以暂停态显示
+    await PlayerService().preloadTrack(tracks.first);
     print(
       '✅ [StartupQueueLoader] 已加载启动队列: ${playlist.name} (${tracks.length} 首)',
     );
