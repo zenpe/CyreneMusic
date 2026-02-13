@@ -1826,10 +1826,9 @@ class _HomePageState extends State<HomePage>
 
     return SliverAppBar(
       primary: !shouldDisablePrimary,
-      floating: true,
-      snap: true,
-      backgroundColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
+      pinned: true,
+      backgroundColor: colorScheme.surface,
+      surfaceTintColor: colorScheme.surface,
       elevation: 0,
       scrolledUnderElevation: 0,
       systemOverlayStyle: Platform.isAndroid ? systemOverlayStyle : null,

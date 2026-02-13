@@ -45,7 +45,7 @@ class _MainLayoutState extends State<MainLayout>
   static const double _drawerWidth = 256.0;
   static const double _collapsedWidth = 80.0; // 折叠状态宽度，仅显示图标
   static const double _landscapeRailWidth = 84.0; // 横屏侧栏宽度（移动端）
-  bool _isDrawerCollapsed = false; // 抽屉是否处于折叠状态（默认展开）
+  bool _isDrawerCollapsed = true; // 抽屉是否处于折叠状态（默认收起）
 
   // 页面列表
   List<Widget> get _pages {
