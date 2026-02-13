@@ -398,9 +398,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
                   onBackPressed: () => Navigator.pop(context),
                   onMorePressed: () => MobilePlayerSettingsSheet.show(context),
                   onPlaylistPressed: () => MobilePlayerDialogs.showPlaylistBottomSheet(context),
-                  onVolumeControlPressed: () {
-                    // 移动端通过系统按键控制音量，此处保持为空
-                  },
+                  onVolumeControlPressed: _toggleControlCenter,
                 )
               // 流体云布局模式：完全接管背景和 Safe Area
               else if (useFluidCloudLayout)
