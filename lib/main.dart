@@ -754,24 +754,38 @@ class _WindowsRoundedContainerState extends State<_WindowsRoundedContainer>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    // 最大化时无边距和圆角，正常时有边距和圆角
+    // 最大化时无边距和圆角
+    if (_isMaximized) {
+      return Container(
+        color: colorScheme.surface,
+        child: widget.child,
+      );
+    }
+
+    // 正常窗口：8px 边距区域可拖动移动窗口
     return Container(
-      padding: _isMaximized ? EdgeInsets.zero : const EdgeInsets.all(8.0),
       color: Theme.of(context).colorScheme.background,
-      child: Container(
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: _isMaximized
-              ? BorderRadius.zero
-              : BorderRadius.circular(12),
-          // 移除阴影效果
-        ),
-        child: ClipRRect(
-          borderRadius: _isMaximized
-              ? BorderRadius.zero
-              : BorderRadius.circular(12),
-          child: widget.child,
-        ),
+      child: Stack(
+        children: [
+          // 底层：整个区域（含 8px 边距）可拖动
+          Positioned.fill(
+            child: DragToMoveArea(child: const SizedBox.expand()),
+          ),
+          // 上层：内容区域，内部事件正常处理
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: widget.child,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

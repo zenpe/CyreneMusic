@@ -580,30 +580,37 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
         child: Stack(
           alignment: Alignment.center,
           children: [
+            // 底层：可拖动区域铺满标题栏，双击最大化/还原
             Positioned.fill(
-              child: DragToMoveArea(
-                child: const SizedBox.expand(),
+              child: GestureDetector(
+                onDoubleTap: _handleCaptionMaximizeOrRestore,
+                child: DragToMoveArea(
+                  child: const SizedBox.expand(),
+                ),
               ),
             ),
+            // 左侧图标+标题：纯装饰，IgnorePointer 让拖动事件穿透
             Align(
               alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 1.0, right: 1.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Image.asset(
-                      'assets/icons/tray_icon.png',
-                      width: 16,
-                      height: 16,
-                    ),
-                    const SizedBox(width: 1),
-                    Text(
-                      'Cyrene Music',
-                      style: (typography.subtitle ?? typography.bodyLarge)?.copyWith(fontSize: 12) 
-                          ?? const TextStyle(fontSize: 12),
-                    ),
-                  ],
+              child: IgnorePointer(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 1.0, right: 1.0),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset(
+                        'assets/icons/tray_icon.png',
+                        width: 16,
+                        height: 16,
+                      ),
+                      const SizedBox(width: 1),
+                      Text(
+                        'Cyrene Music',
+                        style: (typography.subtitle ?? typography.bodyLarge)?.copyWith(fontSize: 12)
+                            ?? const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
