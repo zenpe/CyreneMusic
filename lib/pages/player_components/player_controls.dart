@@ -39,49 +39,67 @@ class PlayerControls extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 进度条
-          SliderTheme(
-            data: SliderThemeData(
-              trackHeight: 4,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
-              activeTrackColor: Colors.white,
-              inactiveTrackColor: Colors.white.withOpacity(0.3),
-              thumbColor: Colors.white,
-              overlayColor: Colors.white.withOpacity(0.2),
-            ),
-            child: Slider(
-              value: player.duration.inMilliseconds > 0
-                  ? player.position.inMilliseconds / player.duration.inMilliseconds
-                  : 0.0,
-              onChanged: (value) {
-                final position = Duration(
-                  milliseconds: (value * player.duration.inMilliseconds).round(),
-                );
-                player.seek(position);
-              },
-            ),
-          ),
-          
-          // 时间显示
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // 左侧：当前时间
-                Text(
-                  _formatDuration(player.position),
-                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
-                ),
-                
-                // 右侧：总时长
-                Text(
-                  _formatDuration(player.duration),
-                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
-                ),
-              ],
-            ),
+          ValueListenableBuilder<Duration>(
+            valueListenable: player.positionNotifier,
+            builder: (context, position, _) {
+              final sliderValue = player.duration.inMilliseconds > 0
+                  ? (position.inMilliseconds / player.duration.inMilliseconds)
+                      .clamp(0.0, 1.0)
+                  : 0.0;
+
+              return Column(
+                children: [
+                  // 进度条
+                  SliderTheme(
+                    data: SliderThemeData(
+                      trackHeight: 4,
+                      thumbShape:
+                          const RoundSliderThumbShape(enabledThumbRadius: 8),
+                      overlayShape:
+                          const RoundSliderOverlayShape(overlayRadius: 16),
+                      activeTrackColor: Colors.white,
+                      inactiveTrackColor: Colors.white.withOpacity(0.3),
+                      thumbColor: Colors.white,
+                      overlayColor: Colors.white.withOpacity(0.2),
+                    ),
+                    child: Slider(
+                      value: sliderValue.toDouble(),
+                      onChanged: (value) {
+                        final nextPosition = Duration(
+                          milliseconds:
+                              (value * player.duration.inMilliseconds).round(),
+                        );
+                        player.seek(nextPosition);
+                      },
+                    ),
+                  ),
+
+                  // 时间显示
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _formatDuration(position),
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 13,
+                          ),
+                        ),
+                        Text(
+                          _formatDuration(player.duration),
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           
           const SizedBox(height: 16),

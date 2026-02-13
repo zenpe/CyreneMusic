@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:cyrene_music/layouts/fluent_main_layout.dart';
 import 'package:cyrene_music/layouts/main_layout.dart';
+import 'package:cyrene_music/layouts/navidrome_main_layout.dart';
 import 'package:cyrene_music/services/android_floating_lyric_service.dart';
 import 'package:cyrene_music/services/announcement_service.dart';
 import 'package:cyrene_music/services/auto_update_service.dart';
@@ -46,6 +47,7 @@ import 'package:cyrene_music/pages/settings_page/audio_source_settings.dart';
 import 'package:cyrene_music/pages/mobile_setup_page.dart';
 import 'package:cyrene_music/pages/mobile_app_gate.dart';
 import 'package:cyrene_music/pages/desktop_app_gate.dart';
+import 'package:cyrene_music/pages/navidrome_setup_page.dart';
 
 // 条件导入 flutter_displaymode（仅 Android）
 import 'package:flutter_displaymode/flutter_displaymode.dart'
@@ -660,9 +662,27 @@ class _MyAppState extends State<MyApp> {
             }
             return content;
           },
-          home: Platform.isWindows
-              ? _WindowsRoundedContainer(child: const MainLayout())
-              : const MainLayout(),
+          home: AnimatedBuilder(
+            animation: Listenable.merge([
+              AudioSourceService(),
+              NavidromeSessionService(),
+            ]),
+            builder: (context, _) {
+              final audioSourceService = AudioSourceService();
+              final isTermsAccepted =
+                  PersistentStorageService().getBool('terms_accepted') ?? false;
+
+              final Widget home = audioSourceService.isNavidromeActive
+                  ? (audioSourceService.isConfigured && isTermsAccepted
+                      ? const NavidromeMainLayout()
+                      : const NavidromeSetupPage())
+                  : const MainLayout();
+
+              return Platform.isWindows
+                  ? _WindowsRoundedContainer(child: home)
+                  : home;
+            },
+          ),
         );
       },
     );

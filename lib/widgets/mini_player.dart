@@ -910,8 +910,9 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
             ? position.inMilliseconds / player.duration.inMilliseconds
             : 0.0;
         if (ThemeManager().isFluentFramework) {
+          final fluentProgress = (progress * 100).clamp(0.0, 100.0).toDouble();
           return fluent.ProgressBar(
-            value: progress,
+            value: fluentProgress,
           );
         }
         if (_isCupertino) {
@@ -949,7 +950,9 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
         final indicator = ThemeManager().isFluentFramework
             ? SizedBox(
                 height: 4,
-                child: fluent.ProgressBar(value: progress),
+                child: fluent.ProgressBar(
+                  value: (progress * 100).clamp(0.0, 100.0).toDouble(),
+                ),
               )
             : SizedBox(
                 height: 3,
