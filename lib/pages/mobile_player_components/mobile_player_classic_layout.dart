@@ -14,6 +14,7 @@ import '../../services/playback_mode_service.dart';
 import '../../services/download_service.dart';
 import '../../services/sleep_timer_service.dart';
 import '../../widgets/wavy_split_progress_bar.dart';
+import '../../widgets/player_error_banner.dart';
 
 /// 移动端经典播放器布局 (Material Design Expressive)
 /// 特点：
@@ -290,23 +291,19 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                 ],
               ),
             ),
-            if (player.errorMessage != null && player.errorMessage!.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  player.errorMessage!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
-                ),
-              ),
-            ],
+            PlayerErrorBanner(
+              message: player.errorMessage,
+              margin: const EdgeInsets.only(top: 6),
+              onRetry: () {
+                player.retryCurrent();
+              },
+              showSkip: player.hasNext,
+              onSkip: player.hasNext
+                  ? () {
+                      player.playNext();
+                    }
+                  : null,
+            ),
           ],
         );
       },

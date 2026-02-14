@@ -521,6 +521,17 @@ class PlaybackService extends ChangeNotifier {
     isPlaying ? await pause() : await resume();
   }
 
+  Future<void> retryCurrentTrack() async {
+    return _commands.enqueue(() async {
+      if (currentTrack == null) return;
+      _state = PBState.loading;
+      _errorMessage = null;
+      _isAudioSourceNotConfigured = false;
+      notifyListeners();
+      await _playCurrentTrack();
+    });
+  }
+
   Future<void> setVolume(double vol) async {
     final clamped = vol.clamp(0.0, 1.0);
     if ((clamped - _volume).abs() < 0.001) return;

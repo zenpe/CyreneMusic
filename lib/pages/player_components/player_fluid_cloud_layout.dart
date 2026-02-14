@@ -12,6 +12,7 @@ import '../../models/lyric_line.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/search_widget.dart';
+import '../../widgets/player_error_banner.dart';
 import '../artist_detail_page.dart';
 import 'player_fluid_cloud_background.dart';
 import 'player_window_controls.dart';
@@ -673,31 +674,19 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                     ),
                                   ],
                                 ),
-                                if (player.errorMessage != null &&
-                                    player.errorMessage!.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.redAccent.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      player.errorMessage!,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                                PlayerErrorBanner(
+                                  message: player.errorMessage,
+                                  margin: const EdgeInsets.only(top: 8),
+                                  onRetry: () {
+                                    player.retryCurrent();
+                                  },
+                                  showSkip: player.hasNext,
+                                  onSkip: player.hasNext
+                                      ? () {
+                                          player.playNext();
+                                        }
+                                      : null,
+                                ),
                               ],
                             );
                           },
@@ -891,31 +880,19 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                           ],
                         ),
                       ),
-                      if (player.errorMessage != null &&
-                          player.errorMessage!.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.redAccent.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            player.errorMessage!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
+                      PlayerErrorBanner(
+                        message: player.errorMessage,
+                        margin: const EdgeInsets.only(top: 8),
+                        onRetry: () {
+                          player.retryCurrent();
+                        },
+                        showSkip: player.hasNext,
+                        onSkip: player.hasNext
+                            ? () {
+                                player.playNext();
+                              }
+                            : null,
+                      ),
                     ],
                   );
                 },

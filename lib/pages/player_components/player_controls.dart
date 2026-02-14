@@ -7,6 +7,7 @@ import '../../services/playlist_service.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../models/lyric_line.dart';
+import '../../widgets/player_error_banner.dart';
 
 /// 播放器控制面板
 /// 包含进度条和所有播放控制按钮
@@ -54,28 +55,19 @@ class PlayerControls extends StatelessWidget {
 
               return Column(
                 children: [
-                  if (player.errorMessage != null && player.errorMessage!.isNotEmpty) ...[
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.redAccent.withOpacity(0.45)),
-                      ),
-                      child: Text(
-                        player.errorMessage!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
+                  PlayerErrorBanner(
+                    message: player.errorMessage,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    onRetry: () {
+                      player.retryCurrent();
+                    },
+                    showSkip: player.hasNext,
+                    onSkip: player.hasNext
+                        ? () {
+                            player.playNext();
+                          }
+                        : null,
+                  ),
                   // 进度条
                   SliderTheme(
                     data: SliderThemeData(

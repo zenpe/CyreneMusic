@@ -115,6 +115,7 @@ class PlayerService extends ChangeNotifier {
   Future<void> seek(Duration position) => _pb.seek(position);
   Future<void> playNext() => _pb.next();
   Future<void> playPrevious() => _pb.previous();
+  Future<void> retryCurrent() => _pb.retryCurrentTrack();
   Future<void> stop() => _pb.stop();
   Future<void> togglePlayPause() => _pb.togglePlayPause();
   Future<void> setVolume(double volume) => _pb.setVolume(volume);

@@ -20,6 +20,7 @@ import '../../services/audio_quality_service.dart';
 import '../../services/audio_source_service.dart';
 import '../../utils/toast_utils.dart';
 import '../../models/song_detail.dart';
+import '../../widgets/player_error_banner.dart';
 
 /// 移动端流体云播放器布局
 /// 参考 HTML 设计：统一在同一页面显示歌曲信息、歌词、控制按钮
@@ -1093,27 +1094,19 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                   ],
                 ),
               ),
-              if (player.errorMessage != null && player.errorMessage!.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    player.errorMessage!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
+              PlayerErrorBanner(
+                message: player.errorMessage,
+                margin: const EdgeInsets.only(top: 6),
+                onRetry: () {
+                  player.retryCurrent();
+                },
+                showSkip: player.hasNext,
+                onSkip: player.hasNext
+                    ? () {
+                        player.playNext();
+                      }
+                    : null,
+              ),
             ],
           ),
 
