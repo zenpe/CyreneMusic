@@ -342,6 +342,7 @@ class PlaybackService extends ChangeNotifier {
     Map<String, ImageProvider>? coverProviders,
   }) {
     return _commands.enqueue(() async {
+      _resetPreloadState();
       _queue
         ..clear()
         ..addAll(tracks);
@@ -357,6 +358,7 @@ class PlaybackService extends ChangeNotifier {
   /// 下一首播放（插入到当前之后）
   Future<void> playNext(Track track) {
     return _commands.enqueue(() async {
+      _resetPreloadState();
       _removeDuplicate(track);
       final insertAt = (_currentIndex + 1).clamp(0, _queue.length);
       _queue.insert(insertAt, track);
@@ -368,6 +370,7 @@ class PlaybackService extends ChangeNotifier {
   /// 加入队列末尾
   Future<void> addToQueue(Track track) {
     return _commands.enqueue(() async {
+      _resetPreloadState();
       _queue.add(track);
       _resetShuffle();
       notifyListeners();
@@ -377,6 +380,7 @@ class PlaybackService extends ChangeNotifier {
   /// 批量加入队列末尾
   Future<void> addAllToQueue(List<Track> tracks) {
     return _commands.enqueue(() async {
+      _resetPreloadState();
       _queue.addAll(tracks);
       _resetShuffle();
       notifyListeners();
@@ -387,6 +391,7 @@ class PlaybackService extends ChangeNotifier {
   Future<void> jumpTo(int index) {
     return _commands.enqueue(() async {
       if (index < 0 || index >= _queue.length) return;
+      _resetPreloadState();
       _currentIndex = index;
       await _playCurrentTrack();
     });
@@ -396,6 +401,7 @@ class PlaybackService extends ChangeNotifier {
   Future<void> removeAt(int index) {
     return _commands.enqueue(() async {
       if (index < 0 || index >= _queue.length) return;
+      _resetPreloadState();
       _queue.removeAt(index);
       if (_queue.isEmpty) {
         _currentIndex = -1;
@@ -418,6 +424,7 @@ class PlaybackService extends ChangeNotifier {
     return _commands.enqueue(() async {
       if (oldIndex < 0 || oldIndex >= _queue.length) return;
       if (newIndex < 0 || newIndex > _queue.length) return;
+      _resetPreloadState();
 
       final track = _queue.removeAt(oldIndex);
       _queue.insert(newIndex, track);
@@ -438,6 +445,7 @@ class PlaybackService extends ChangeNotifier {
   /// 清空队列
   Future<void> clearQueue() {
     return _commands.enqueue(() async {
+      _resetPreloadState();
       _queue.clear();
       _currentIndex = -1;
       _source = QueueSource.none;
@@ -697,6 +705,7 @@ class PlaybackService extends ChangeNotifier {
     final track = currentTrack;
     if (track == null) return;
 
+    _resetPreloadState();
     _preloadedTrack = null;
     final gen = ++_playGeneration;
     final requestedKey = '${track.source.name}_${track.id}';
@@ -1135,6 +1144,7 @@ class PlaybackService extends ChangeNotifier {
 
   /// setQueue 兼容：替换队列（不自动播放，仅更新状态）
   void setQueueSilent(List<Track> tracks, int index, QueueSource source, {Map<String, ImageProvider>? coverProviders}) {
+    _resetPreloadState();
     _queue
       ..clear()
       ..addAll(tracks);
@@ -1316,6 +1326,12 @@ class PlaybackService extends ChangeNotifier {
       });
       stream.addListener(listener);
     } catch (_) {}
+  }
+
+  void _resetPreloadState() {
+    _lastPreloadedTargetKey = null;
+    _preloadingNext = false;
+    _preloadOp++;
   }
 
   Future<void> _safeSetEngineVolume(double volume) async {
