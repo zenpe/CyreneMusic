@@ -80,6 +80,9 @@ class AuthService extends ChangeNotifier {
     _loadUserFromStorage();
   }
 
+  /// 外部触发状态刷新（代替直接调用 notifyListeners）
+  void refresh() => notifyListeners();
+
   User? _currentUser;
   bool _isLoggedIn = false;
   String? _authToken;

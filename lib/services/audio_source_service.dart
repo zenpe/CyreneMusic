@@ -27,6 +27,9 @@ class AudioSourceService extends ChangeNotifier {
   factory AudioSourceService() => _instance;
   AudioSourceService._internal();
 
+  /// 外部触发状态刷新（代替直接调用 notifyListeners）
+  void refresh() => notifyListeners();
+
   /// 所有已配置的音源列表
   List<AudioSourceConfig> _sources = [];
 

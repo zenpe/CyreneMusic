@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -21,6 +22,15 @@ class PersistentStorageService extends ChangeNotifier {
   File? _backupFile;
   bool _isInitialized = false;
   Map<String, dynamic> _backupData = {};
+  Timer? _backupDebounce;
+
+  /// 延迟备份：多次写入合并为一次磁盘写入
+  void _scheduleBackup() {
+    _backupDebounce?.cancel();
+    _backupDebounce = Timer(const Duration(seconds: 5), () {
+      _createBackup();
+    });
+  }
 
   bool get isInitialized => _isInitialized;
 
@@ -188,7 +198,7 @@ class PersistentStorageService extends ChangeNotifier {
       final result = await _prefs.setString(key, value);
       if (result) {
         _backupData[key] = value;
-        await _createBackup();
+        _scheduleBackup();
       }
       return result;
     } catch (e) {
@@ -208,7 +218,7 @@ class PersistentStorageService extends ChangeNotifier {
       final result = await _prefs.setInt(key, value);
       if (result) {
         _backupData[key] = value;
-        await _createBackup();
+        _scheduleBackup();
       }
       return result;
     } catch (e) {
@@ -228,7 +238,7 @@ class PersistentStorageService extends ChangeNotifier {
       final result = await _prefs.setBool(key, value);
       if (result) {
         _backupData[key] = value;
-        await _createBackup();
+        _scheduleBackup();
       }
       return result;
     } catch (e) {
@@ -248,7 +258,7 @@ class PersistentStorageService extends ChangeNotifier {
       final result = await _prefs.setDouble(key, value);
       if (result) {
         _backupData[key] = value;
-        await _createBackup();
+        _scheduleBackup();
       }
       return result;
     } catch (e) {
@@ -268,7 +278,7 @@ class PersistentStorageService extends ChangeNotifier {
       final result = await _prefs.setStringList(key, value);
       if (result) {
         _backupData[key] = value;
-        await _createBackup();
+        _scheduleBackup();
       }
       return result;
     } catch (e) {
@@ -288,7 +298,7 @@ class PersistentStorageService extends ChangeNotifier {
       final result = await _prefs.remove(key);
       if (result) {
         _backupData.remove(key);
-        await _createBackup();
+        _scheduleBackup();
       }
       return result;
     } catch (e) {
@@ -308,7 +318,7 @@ class PersistentStorageService extends ChangeNotifier {
       final result = await _prefs.clear();
       if (result) {
         _backupData.clear();
-        await _createBackup();
+        _scheduleBackup();
       }
       return result;
     } catch (e) {

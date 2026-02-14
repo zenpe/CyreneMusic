@@ -1011,8 +1011,8 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                     await storage.setEnableLocalMode(false);
                     
                     // 触发监听以切换 DesktopAppGate
-                    AudioSourceService().notifyListeners();
-                    AuthService().notifyListeners();
+                    AudioSourceService().refresh();
+                    AuthService().refresh();
                   },
                   child: const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
@@ -1101,8 +1101,8 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
     await storage.setEnableLocalMode(false);
     
     // 通知跳过 - 触发状态更新来进入主应用
-    AudioSourceService().notifyListeners();
-    AuthService().notifyListeners();
+    AudioSourceService().refresh();
+    AuthService().refresh();
   }
 
   void _enterLocalMode(BuildContext context) async {
@@ -1111,7 +1111,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
     await storage.setBool('terms_accepted', true);
     
     // 通知应用状态变化以进入主界面
-    AudioSourceService().notifyListeners();
-    AuthService().notifyListeners();
+    AudioSourceService().refresh();
+    AuthService().refresh();
   }
 }

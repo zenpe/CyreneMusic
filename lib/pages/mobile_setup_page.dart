@@ -766,8 +766,8 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                   await storage.setEnableLocalMode(false);
                   
                   // 触发监听以切换 MobileAppGate
-                  AudioSourceService().notifyListeners();
-                  AuthService().notifyListeners();
+                  AudioSourceService().refresh();
+                  AuthService().refresh();
                 }
               ),
             ),
@@ -813,8 +813,8 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
     await storage.setEnableLocalMode(false);
     
     // 通知跳过 - 触发 main.dart 中的状态更新来进入主应用
-    AudioSourceService().notifyListeners();
-    AuthService().notifyListeners();
+    AudioSourceService().refresh();
+    AuthService().refresh();
   }
 
   void _enterLocalMode() async {
@@ -823,7 +823,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
     await storage.setBool('terms_accepted', true);
     
     // 通知应用状态变化以进入主界面
-    AudioSourceService().notifyListeners();
-    AuthService().notifyListeners();
+    AudioSourceService().refresh();
+    AuthService().refresh();
   }
 }

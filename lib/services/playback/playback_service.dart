@@ -72,6 +72,7 @@ class PlaybackService extends ChangeNotifier {
   // ══════════════════════════════════════════════════════
   final CommandQueue _commands = CommandQueue();
   late final AudioEngine _engine;
+  final List<StreamSubscription> _engineSubs = [];
   final CoverManager coverManager = CoverManager();
 
   // ══════════════════════════════════════════════════════
@@ -80,6 +81,8 @@ class PlaybackService extends ChangeNotifier {
   PBState _state = PBState.idle;
   SongDetail? _currentSong;
   int _playGeneration = 0;
+  int _consecutiveErrors = 0;
+  static const int _maxConsecutiveErrors = 3;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   String? _errorMessage;
@@ -154,10 +157,10 @@ class PlaybackService extends ChangeNotifier {
     _engine = createEngine();
 
     // 监听引擎状态
-    _engine.stateStream.listen(_onEngineStateChanged);
-    _engine.positionStream.listen(_onPositionChanged);
-    _engine.durationStream.listen(_onDurationChanged);
-    _engine.completionStream.listen(_onCompletion);
+    _engineSubs.add(_engine.stateStream.listen(_onEngineStateChanged));
+    _engineSubs.add(_engine.positionStream.listen(_onPositionChanged));
+    _engineSubs.add(_engine.durationStream.listen(_onDurationChanged));
+    _engineSubs.add(_engine.completionStream.listen(_onCompletion));
   }
 
   Future<void> initialize() async {
@@ -199,6 +202,7 @@ class PlaybackService extends ChangeNotifier {
     switch (s) {
       case EngineState.playing:
         _state = PBState.playing;
+        _consecutiveErrors = 0;
         _startListeningTimeTracking();
         _startStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(true);
@@ -688,6 +692,7 @@ class PlaybackService extends ChangeNotifier {
           _state = PBState.error;
           _errorMessage = '本地文件不存在';
           notifyListeners();
+          _autoSkipOnError();
           return;
         }
         var lyricText = LocalLibraryService().getLyricByTrackId(filePath);
@@ -718,6 +723,7 @@ class PlaybackService extends ChangeNotifier {
         _state = PBState.error;
         _errorMessage = '无法获取播放链接';
         notifyListeners();
+        _autoSkipOnError();
         return;
       }
 
@@ -827,6 +833,7 @@ class PlaybackService extends ChangeNotifier {
       _errorMessage = '播放失败: $e';
       _isAudioSourceNotConfigured = false;
       notifyListeners();
+      _autoSkipOnError();
     }
   }
 
@@ -1175,12 +1182,16 @@ class PlaybackService extends ChangeNotifier {
       if (!url.startsWith('http')) return;
       final provider = CachedNetworkImageProvider(url);
       final stream = provider.resolve(ImageConfiguration.empty);
-      final listener = ImageStreamListener((_, __) {
+      late ImageStreamListener listener;
+      listener = ImageStreamListener((_, __) {
+        stream.removeListener(listener);
         final bg = PlayerBackgroundService();
         if (bg.enableGradient && bg.backgroundType == PlayerBackgroundType.adaptive) {
           coverManager.precacheThemeColor(url);
         }
-      }, onError: (_, __) {});
+      }, onError: (_, __) {
+        stream.removeListener(listener);
+      });
       stream.addListener(listener);
     } catch (_) {}
   }
@@ -1292,6 +1303,8 @@ class PlaybackService extends ChangeNotifier {
       title: track.name, artist: track.artists,
     ).then((detail) {
       if (isStale()) return;
+      final ct = currentTrack;
+      if (ct == null || '${ct.source.name}_${ct.id}' != requestedKey) return;
       if (detail != null && detail.lyric.isNotEmpty && _currentSong != null) {
         _currentSong = SongDetail(
           id: _currentSong!.id, name: detail.name.isNotEmpty ? detail.name : _currentSong!.name,
@@ -1306,6 +1319,22 @@ class PlaybackService extends ChangeNotifier {
         _loadLyricsForFloatingDisplay();
       }
     }).catchError((_) {});
+  }
+
+  // ── 播放失败自动跳过 ──
+
+  void _autoSkipOnError() {
+    _consecutiveErrors++;
+    if (_consecutiveErrors >= _maxConsecutiveErrors) {
+      print('[PlaybackService] 连续 $_consecutiveErrors 首播放失败，停止自动跳过');
+      return;
+    }
+    if (_queue.isEmpty || _queue.length <= 1) return;
+    print('[PlaybackService] 播放失败，2 秒后自动跳到下一首 ($_consecutiveErrors/$_maxConsecutiveErrors)');
+    Future.delayed(const Duration(seconds: 2), () {
+      if (_state != PBState.error) return; // 用户已手动操作
+      _playNextAuto();
+    });
   }
 
   // ── 听歌统计 ──
@@ -1538,6 +1567,11 @@ class PlaybackService extends ChangeNotifier {
 
   @override
   void dispose() {
+    for (final sub in _engineSubs) {
+      sub.cancel();
+    }
+    _engineSubs.clear();
+    PlaybackModeService().removeListener(_precacheNextCover);
     _pauseListeningTimeTracking();
     _stopStateSaveTimer();
     _cleanupCurrentTempFile();

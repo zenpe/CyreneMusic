@@ -151,7 +151,7 @@ class _DonateSettingsState extends State<DonateSettings> {
             if (currentUser != null) {
               print('[Donate] 支付成功，刷新用户状态...');
               // 触发 AuthService 的监听器，让用户卡片重新查询赞助状态
-              AuthService().notifyListeners();
+              AuthService().refresh();
             }
           }
         } else {

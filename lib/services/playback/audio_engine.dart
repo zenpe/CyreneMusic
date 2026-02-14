@@ -45,6 +45,7 @@ AudioEngine createEngine() {
 // ─────────────────────────────────────────────────────────
 class AudioPlayersEngine implements AudioEngine {
   ap.AudioPlayer? _player;
+  double _currentVolume = 1.0;
 
   final _positionController = StreamController<Duration>.broadcast();
   final _stateController = StreamController<EngineState>.broadcast();
@@ -131,11 +132,18 @@ class AudioPlayersEngine implements AudioEngine {
   @override
   Future<void> play(String url, {bool isLocal = false}) async {
     await _ensurePlayer();
+    // 先静音并停止，避免切歌时硬切杂音
+    if (_isPlaying) {
+      await _player!.setVolume(0);
+      await _player!.stop();
+    }
     if (isLocal) {
       await _player!.play(ap.DeviceFileSource(url));
     } else {
       await _player!.play(ap.UrlSource(url));
     }
+    // 恢复音量
+    await _player!.setVolume(_currentVolume);
   }
 
   @override
@@ -161,7 +169,8 @@ class AudioPlayersEngine implements AudioEngine {
 
   @override
   Future<void> setVolume(double volume) async {
-    await _player?.setVolume(volume.clamp(0.0, 1.0));
+    _currentVolume = volume.clamp(0.0, 1.0);
+    await _player?.setVolume(_currentVolume);
   }
 
   @override
@@ -181,6 +190,7 @@ class AudioPlayersEngine implements AudioEngine {
 // ─────────────────────────────────────────────────────────
 class MediaKitEngine implements AudioEngine {
   mk.Player? _player;
+  double _currentVolume = 70; // MediaKit 音量 0-100
 
   final _positionController = StreamController<Duration>.broadcast();
   final _stateController = StreamController<EngineState>.broadcast();
@@ -235,8 +245,10 @@ class MediaKitEngine implements AudioEngine {
     // 恢复保存的音量
     final savedVolume = PersistentStorageService().getDouble('player_volume');
     if (savedVolume != null) {
-      await _player!.setVolume((savedVolume.clamp(0.0, 1.0)) * 100);
+      _currentVolume = (savedVolume.clamp(0.0, 1.0)) * 100;
+      await _player!.setVolume(_currentVolume);
     } else {
+      _currentVolume = 70;
       await _player!.setVolume(70);
     }
 
@@ -275,11 +287,13 @@ class MediaKitEngine implements AudioEngine {
   @override
   Future<void> play(String url, {bool isLocal = false}) async {
     await _ensurePlayer();
-    // MediaKit 用 mk.Media 统一处理本地和网络
-    try {
-      await _player!.seek(Duration.zero);
-    } catch (_) {}
+    // 先静音并停止，避免切歌时硬切杂音
+    if (_isPlaying) {
+      await _player!.setVolume(0);
+      await _player!.stop();
+    }
     await _player!.open(mk.Media(url));
+    await _player!.setVolume(_currentVolume);
     await _player!.play();
   }
 
@@ -307,7 +321,8 @@ class MediaKitEngine implements AudioEngine {
   @override
   Future<void> setVolume(double volume) async {
     // MediaKit 音量范围是 0-100
-    await _player?.setVolume((volume.clamp(0.0, 1.0)) * 100);
+    _currentVolume = (volume.clamp(0.0, 1.0)) * 100;
+    await _player?.setVolume(_currentVolume);
   }
 
   @override
