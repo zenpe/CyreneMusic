@@ -581,7 +581,10 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                         ),
                         const SizedBox(height: 30),
                         AnimatedBuilder(
-                          animation: player.positionNotifier,
+                          animation: Listenable.merge([
+                            player.positionNotifier,
+                            player,
+                          ]),
                           builder: (context, _) {
                             final position = player
                                 .positionNotifier
@@ -593,19 +596,54 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                             final value = (duration > 0)
                                 ? (position / duration).clamp(0.0, 1.0)
                                 : 0.0;
+                            final bufferedValue = duration > 0
+                                ? (player.bufferedPosition.inMilliseconds /
+                                        duration)
+                                    .clamp(0.0, 1.0)
+                                : 0.0;
 
                             return Column(
                               children: [
                                 SizedBox(
                                   height: 24,
-                                  child: _AppleMusicSlider(
-                                    value: value,
-                                    onChanged: (v) {
-                                      final pos = Duration(
-                                        milliseconds: (v * duration).round(),
-                                      );
-                                      player.seek(pos);
-                                    },
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Container(
+                                        height: 3,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.14),
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                        ),
+                                      ),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: FractionallySizedBox(
+                                          widthFactor: bufferedValue,
+                                          child: Container(
+                                            height: 3,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withOpacity(
+                                                0.32,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      _AppleMusicSlider(
+                                        value: value,
+                                        onChanged: (v) {
+                                          final pos = Duration(
+                                            milliseconds: (v * duration)
+                                                .round(),
+                                          );
+                                          player.seek(pos);
+                                        },
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -635,6 +673,31 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                     ),
                                   ],
                                 ),
+                                if (player.errorMessage != null &&
+                                    player.errorMessage!.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.redAccent.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      player.errorMessage!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ],
                             );
                           },
@@ -680,6 +743,8 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                             ),
                           ],
                         ),
+                        const SizedBox(height: 12),
+                        _buildSpeedSelector(player),
                         const SizedBox(height: 20),
                         _buildVolumeSlider(player),
                       ],
@@ -747,7 +812,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
               const SizedBox(height: 24), // 缩小间距 (30 -> 24)
               // 3. 进度条 - Apple Music 风格 (Hover 显现滑块)
               AnimatedBuilder(
-                animation: player.positionNotifier,
+                animation: Listenable.merge([player.positionNotifier, player]),
                 builder: (context, _) {
                   final position = player.positionNotifier.value.inMilliseconds
                       .toDouble();
@@ -755,17 +820,49 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                   final value = (duration > 0)
                       ? (position / duration).clamp(0.0, 1.0)
                       : 0.0;
+                  final bufferedValue = duration > 0
+                      ? (player.bufferedPosition.inMilliseconds / duration)
+                          .clamp(0.0, 1.0)
+                      : 0.0;
 
                   return Column(
                     children: [
-                      _AppleMusicSlider(
-                        value: value,
-                        onChanged: (v) {
-                          final pos = Duration(
-                            milliseconds: (v * duration).round(),
-                          );
-                          player.seek(pos);
-                        },
+                      SizedBox(
+                        height: 24,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              height: 3,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.14),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: bufferedValue,
+                                child: Container(
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.32),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            _AppleMusicSlider(
+                              value: value,
+                              onChanged: (v) {
+                                final pos = Duration(
+                                  milliseconds: (v * duration).round(),
+                                );
+                                player.seek(pos);
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Padding(
@@ -794,6 +891,31 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                           ],
                         ),
                       ),
+                      if (player.errorMessage != null &&
+                          player.errorMessage!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            player.errorMessage!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   );
                 },
@@ -846,6 +968,8 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+              _buildSpeedSelector(player),
 
               const SizedBox(height: 16), // 缩小间距 (20 -> 16)
               // 5. 音量控制 (与进度条样式一致)
@@ -894,6 +1018,56 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
           ],
         );
       },
+    );
+  }
+
+  Widget _buildSpeedSelector(PlayerService player) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        PopupMenuButton<double>(
+          tooltip: '播放速度',
+          onSelected: (value) => player.setPlaybackSpeed(value),
+          color: Colors.black.withOpacity(0.85),
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: 0.75,
+              child: Text('0.75x', style: TextStyle(color: Colors.white)),
+            ),
+            PopupMenuItem(
+              value: 1.0,
+              child: Text('1.0x', style: TextStyle(color: Colors.white)),
+            ),
+            PopupMenuItem(
+              value: 1.25,
+              child: Text('1.25x', style: TextStyle(color: Colors.white)),
+            ),
+            PopupMenuItem(
+              value: 1.5,
+              child: Text('1.5x', style: TextStyle(color: Colors.white)),
+            ),
+            PopupMenuItem(
+              value: 2.0,
+              child: Text('2.0x', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white24),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '${player.playbackSpeed.toStringAsFixed(player.playbackSpeed == player.playbackSpeed.roundToDouble() ? 0 : 2)}x',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

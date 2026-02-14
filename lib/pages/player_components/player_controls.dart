@@ -46,9 +46,36 @@ class PlayerControls extends StatelessWidget {
                   ? (position.inMilliseconds / player.duration.inMilliseconds)
                       .clamp(0.0, 1.0)
                   : 0.0;
+              final bufferedValue = player.duration.inMilliseconds > 0
+                  ? (player.bufferedPosition.inMilliseconds /
+                          player.duration.inMilliseconds)
+                      .clamp(0.0, 1.0)
+                  : 0.0;
 
               return Column(
                 children: [
+                  if (player.errorMessage != null && player.errorMessage!.isNotEmpty) ...[
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.redAccent.withOpacity(0.45)),
+                      ),
+                      child: Text(
+                        player.errorMessage!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                   // 进度条
                   SliderTheme(
                     data: SliderThemeData(
@@ -59,11 +86,13 @@ class PlayerControls extends StatelessWidget {
                           const RoundSliderOverlayShape(overlayRadius: 16),
                       activeTrackColor: Colors.white,
                       inactiveTrackColor: Colors.white.withOpacity(0.3),
+                      secondaryActiveTrackColor: Colors.white.withOpacity(0.55),
                       thumbColor: Colors.white,
                       overlayColor: Colors.white.withOpacity(0.2),
                     ),
                     child: Slider(
                       value: sliderValue.toDouble(),
+                      secondaryTrackValue: bufferedValue.toDouble(),
                       onChanged: (value) {
                         final nextPosition = Duration(
                           milliseconds:
@@ -190,7 +219,7 @@ class PlayerControls extends StatelessWidget {
               ),
               const SizedBox(width: buttonSpacing),
               
-              // 睡眠定时器
+               // 睡眠定时器
               if (onSleepTimerPressed != null)
                 AnimatedBuilder(
                   animation: SleepTimerService(),
@@ -211,6 +240,31 @@ class PlayerControls extends StatelessWidget {
                 ),
               if (onSleepTimerPressed != null)
                 const SizedBox(width: buttonSpacing),
+
+              PopupMenuButton<double>(
+                tooltip: '播放速度',
+                onSelected: (value) => player.setPlaybackSpeed(value),
+                color: Colors.black.withOpacity(0.82),
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 0.75, child: Text('0.75x', style: TextStyle(color: Colors.white))),
+                  PopupMenuItem(value: 1.0, child: Text('1.0x', style: TextStyle(color: Colors.white))),
+                  PopupMenuItem(value: 1.25, child: Text('1.25x', style: TextStyle(color: Colors.white))),
+                  PopupMenuItem(value: 1.5, child: Text('1.5x', style: TextStyle(color: Colors.white))),
+                  PopupMenuItem(value: 2.0, child: Text('2.0x', style: TextStyle(color: Colors.white))),
+                ],
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.white24),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${player.playbackSpeed.toStringAsFixed(player.playbackSpeed == player.playbackSpeed.roundToDouble() ? 0 : 2)}x',
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const SizedBox(width: buttonSpacing),
               
               // 添加到歌单按钮
               if (currentTrack != null && onAddToPlaylistPressed != null) ...[
