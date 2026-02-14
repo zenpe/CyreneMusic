@@ -400,6 +400,18 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
     );
   }
 
+  void _seekByMiniProgressTap({
+    required PlayerService player,
+    required double width,
+    required double dx,
+  }) {
+    if (width <= 0 || player.duration.inMilliseconds <= 0) return;
+    final ratio = (dx / width).clamp(0.0, 1.0);
+    final targetMs = (player.duration.inMilliseconds * ratio).round();
+    player.seek(Duration(milliseconds: targetMs));
+    _resetCollapseTimer();
+  }
+
   Widget _buildExpandedPlayer({
     required BuildContext context,
     required PlayerService player,
@@ -428,22 +440,33 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
             SizedBox(
               height: 2,
               width: double.infinity,
-              child: ValueListenableBuilder<Duration>(
-                valueListenable: player.positionNotifier,
-                builder: (context, position, child) {
-                  final progress = player.duration.inMilliseconds > 0
-                      ? position.inMilliseconds /
-                          player.duration.inMilliseconds
-                      : 0.0;
-                  return LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 2,
-                    backgroundColor: progressBarTrackColor,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      progressBarActiveColor,
-                    ),
-                  );
-                },
+              child: LayoutBuilder(
+                builder: (context, constraints) => GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (details) => _seekByMiniProgressTap(
+                    player: player,
+                    width: constraints.maxWidth,
+                    dx: details.localPosition.dx,
+                  ),
+                  onTap: () {},
+                  child: ValueListenableBuilder<Duration>(
+                    valueListenable: player.positionNotifier,
+                    builder: (context, position, child) {
+                      final progress = player.duration.inMilliseconds > 0
+                          ? position.inMilliseconds /
+                              player.duration.inMilliseconds
+                          : 0.0;
+                      return LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 2,
+                        backgroundColor: progressBarTrackColor,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          progressBarActiveColor,
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
             ),
             Expanded(
@@ -983,36 +1006,47 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
   /// 构建进度条
   /// 使用 ValueListenableBuilder 监听 positionNotifier 以实时更新进度
   Widget _buildProgressBar(PlayerService player, ColorScheme colorScheme) {
-    return ValueListenableBuilder<Duration>(
-      valueListenable: player.positionNotifier,
-      builder: (context, position, child) {
-        final progress = player.duration.inMilliseconds > 0
-            ? position.inMilliseconds / player.duration.inMilliseconds
-            : 0.0;
-        if (ThemeManager().isFluentFramework) {
-          final fluentProgress = (progress * 100).clamp(0.0, 100.0).toDouble();
-          return fluent.ProgressBar(
-            value: fluentProgress,
-          );
-        }
-        if (_isCupertino) {
-          return Container(
-            height: 2,
-            child: LinearProgressIndicator(
+    return LayoutBuilder(
+      builder: (context, constraints) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (details) => _seekByMiniProgressTap(
+          player: player,
+          width: constraints.maxWidth,
+          dx: details.localPosition.dx,
+        ),
+        onTap: () {},
+        child: ValueListenableBuilder<Duration>(
+          valueListenable: player.positionNotifier,
+          builder: (context, position, child) {
+            final progress = player.duration.inMilliseconds > 0
+                ? position.inMilliseconds / player.duration.inMilliseconds
+                : 0.0;
+            if (ThemeManager().isFluentFramework) {
+              final fluentProgress = (progress * 100).clamp(0.0, 100.0).toDouble();
+              return fluent.ProgressBar(
+                value: fluentProgress,
+              );
+            }
+            if (_isCupertino) {
+              return Container(
+                height: 2,
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 2,
+                  backgroundColor: CupertinoColors.systemGrey.withOpacity(0.2),
+                  valueColor: const AlwaysStoppedAnimation<Color>(CupertinoColors.activeBlue),
+                ),
+              );
+            }
+            return LinearProgressIndicator(
               value: progress,
               minHeight: 2,
-              backgroundColor: CupertinoColors.systemGrey.withOpacity(0.2),
-              valueColor: const AlwaysStoppedAnimation<Color>(CupertinoColors.activeBlue),
-            ),
-          );
-        }
-        return LinearProgressIndicator(
-          value: progress,
-          minHeight: 2,
-          backgroundColor: colorScheme.surfaceContainerHighest,
-          valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
-        );
-      },
+              backgroundColor: colorScheme.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -1054,7 +1088,20 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
           children: [
             Text(_formatDuration(position), style: timeStyle),
             const SizedBox(width: 8),
-            Expanded(child: indicator),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) => GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (details) => _seekByMiniProgressTap(
+                    player: player,
+                    width: constraints.maxWidth,
+                    dx: details.localPosition.dx,
+                  ),
+                  onTap: () {},
+                  child: indicator,
+                ),
+              ),
+            ),
             const SizedBox(width: 8),
             Text(_formatDuration(player.duration), style: timeStyle),
           ],

@@ -85,13 +85,24 @@ class PlaybackService extends ChangeNotifier {
   static const int _maxConsecutiveErrors = 3;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
+  Duration _bufferedPosition = Duration.zero;
   String? _errorMessage;
   String? _currentTempFilePath;
   double _volume = 0.7;
+  double _playbackSpeed = 1.0;
   bool _isAudioSourceNotConfigured = false;
+  String? _retriedTrackKey;
+  String? _lastPreloadedTargetKey;
+  bool _preloadingNext = false;
+  int _preloadOp = 0;
+
+  static const int _switchFadeSteps = 8;
+  static const Duration _switchFadeStepDelay = Duration(milliseconds: 15);
 
   // 高频进度更新（解耦 ChangeNotifier，避免重建 widget 树）
   final ValueNotifier<Duration> positionNotifier = ValueNotifier(Duration.zero);
+  final ValueNotifier<Duration> bufferedPositionNotifier =
+      ValueNotifier(Duration.zero);
 
   // 听歌统计
   Timer? _statsTimer;
@@ -128,8 +139,10 @@ class PlaybackService extends ChangeNotifier {
   SongDetail? get currentSong => _currentSong;
   Duration get duration => _duration;
   Duration get position => _position;
+  Duration get bufferedPosition => _bufferedPosition;
   String? get errorMessage => _errorMessage;
   double get volume => _volume;
+  double get playbackSpeed => _playbackSpeed;
   bool get isAudioSourceNotConfigured => _isAudioSourceNotConfigured;
 
   bool get hasNext {
@@ -149,6 +162,7 @@ class PlaybackService extends ChangeNotifier {
   static List<int> get kEqualizerFrequencies => EqualizerService.kEqualizerFrequencies;
   List<double> get equalizerGains => EqualizerService().equalizerGains;
   bool get equalizerEnabled => EqualizerService().equalizerEnabled;
+  bool get isEqualizerAvailable => EqualizerService().isEqualizerAvailable;
 
   // ══════════════════════════════════════════════════════
   // 初始化
@@ -160,7 +174,11 @@ class PlaybackService extends ChangeNotifier {
     _engineSubs.add(_engine.stateStream.listen(_onEngineStateChanged));
     _engineSubs.add(_engine.positionStream.listen(_onPositionChanged));
     _engineSubs.add(_engine.durationStream.listen(_onDurationChanged));
+    _engineSubs.add(
+      _engine.bufferedPositionStream.listen(_onBufferedPositionChanged),
+    );
     _engineSubs.add(_engine.completionStream.listen(_onCompletion));
+    _engineSubs.add(_engine.errorStream.listen(_onEngineError));
   }
 
   Future<void> initialize() async {
@@ -169,6 +187,11 @@ class PlaybackService extends ChangeNotifier {
     if (savedVolume != null) {
       _volume = savedVolume.clamp(0.0, 1.0);
     }
+    final savedSpeed = PersistentStorageService().getDouble('player_speed');
+    if (savedSpeed != null) {
+      _playbackSpeed = savedSpeed.clamp(0.5, 2.0);
+    }
+    await _engine.setPlaybackSpeed(_playbackSpeed);
 
     EqualizerService().loadSettings();
 
@@ -203,6 +226,9 @@ class PlaybackService extends ChangeNotifier {
       case EngineState.playing:
         _state = PBState.playing;
         _consecutiveErrors = 0;
+        _retriedTrackKey = null;
+        _errorMessage = null;
+        _schedulePreloadNextTrack();
         _startListeningTimeTracking();
         _startStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(true);
@@ -237,6 +263,65 @@ class PlaybackService extends ChangeNotifier {
   void _onDurationChanged(Duration dur) {
     _duration = dur;
     notifyListeners();
+  }
+
+  void _onBufferedPositionChanged(Duration buffered) {
+    _bufferedPosition = buffered;
+    bufferedPositionNotifier.value = buffered;
+  }
+
+  void _onEngineError(EngineError error) {
+    final track = currentTrack;
+    if (track == null || _state == PBState.error) return;
+
+    final trackKey = '${track.source.name}_${track.id}';
+    final canRetry = _canRetryOnError(error) && _retriedTrackKey != trackKey;
+
+    if (canRetry) {
+      _retriedTrackKey = trackKey;
+      print('[PlaybackService] 引擎错误，尝试自动重试: $error');
+      unawaited(_commands.enqueue(() async {
+        final current = currentTrack;
+        if (current == null) return;
+        final currentKey = '${current.source.name}_${current.id}';
+        if (currentKey != trackKey) return;
+        await _playCurrentTrack();
+      }));
+      return;
+    }
+
+    _state = PBState.error;
+    _errorMessage = _buildErrorMessage(error);
+    _isAudioSourceNotConfigured = false;
+    notifyListeners();
+    _autoSkipOnError();
+  }
+
+  bool _canRetryOnError(EngineError error) {
+    switch (error.type) {
+      case EngineErrorType.networkTimeout:
+        return true;
+      case EngineErrorType.accessDenied:
+      case EngineErrorType.sourceLoad:
+      case EngineErrorType.playback:
+      case EngineErrorType.unknown:
+        return error.retriable;
+      case EngineErrorType.unsupportedFormat:
+        return false;
+    }
+  }
+
+  String _buildErrorMessage(EngineError error) {
+    switch (error.type) {
+      case EngineErrorType.unsupportedFormat:
+        return '播放失败: 当前格式不受支持';
+      case EngineErrorType.accessDenied:
+        return '播放失败: 资源访问受限';
+      case EngineErrorType.networkTimeout:
+        return '播放失败: 网络超时';
+      default:
+        return '播放失败: ${error.message}';
+    }
   }
 
   void _onCompletion(bool completed) {
@@ -425,7 +510,9 @@ class PlaybackService extends ChangeNotifier {
     _errorMessage = null;
     _duration = Duration.zero;
     _position = Duration.zero;
+    _bufferedPosition = Duration.zero;
     positionNotifier.value = Duration.zero;
+    bufferedPositionNotifier.value = Duration.zero;
     coverManager.setCover(null, notify: false);
     notifyListeners();
   }
@@ -440,6 +527,15 @@ class PlaybackService extends ChangeNotifier {
     _volume = clamped;
     await _engine.setVolume(clamped);
     _saveVolumeThrottled();
+    notifyListeners();
+  }
+
+  Future<void> setPlaybackSpeed(double speed) async {
+    final clamped = speed.clamp(0.5, 2.0);
+    if ((clamped - _playbackSpeed).abs() < 0.001) return;
+    _playbackSpeed = clamped;
+    await _engine.setPlaybackSpeed(clamped);
+    PersistentStorageService().setDouble('player_speed', _playbackSpeed);
     notifyListeners();
   }
 
@@ -497,7 +593,7 @@ class PlaybackService extends ChangeNotifier {
       _source = QueueSource.radio;
 
       notifyListeners();
-      await _engine.play(streamUrl);
+      await _playWithSoftSwitch(streamUrl);
       _state = PBState.playing;
       _startListeningTimeTracking();
       notifyListeners();
@@ -672,7 +768,7 @@ class PlaybackService extends ChangeNotifier {
           }
           notifyListeners();
           _loadLyricsForFloatingDisplay();
-          await _engine.play(cachedFilePath, isLocal: true);
+          await _playWithSoftSwitch(cachedFilePath, isLocal: true);
 
           // 后台补歌词
           if (_currentSong!.lyric.isEmpty) {
@@ -707,7 +803,7 @@ class PlaybackService extends ChangeNotifier {
         );
         notifyListeners();
         _loadLyricsForFloatingDisplay();
-        await _engine.play(filePath, isLocal: true);
+        await _playWithSoftSwitch(filePath, isLocal: true);
         await coverManager.extractThemeColor(track.picUrl);
         return;
       }
@@ -771,7 +867,7 @@ class PlaybackService extends ChangeNotifier {
             notifyListeners();
           }
         }
-        await _engine.play(songDetail.url);
+        await _playWithSoftSwitch(songDetail.url);
         if (!isCached) {
           final shouldSkip = songDetail.url.toLowerCase().contains('.m3u8');
           if (!shouldSkip) _cacheSongInBackground(track, songDetail, qualityStr);
@@ -789,7 +885,7 @@ class PlaybackService extends ChangeNotifier {
         if (mobileDirect) {
           final headers = _buildPlaybackHeaders(track.source);
           try {
-            await _engine.play(songDetail.url, headers: headers);
+            await _playWithSoftSwitch(songDetail.url, headers: headers);
           } catch (e) {
             final tempPath = await _downloadAndPlay(songDetail, headers: headers);
             if (tempPath != null) {
@@ -803,7 +899,7 @@ class PlaybackService extends ChangeNotifier {
           if (proxyReady) {
             final proxyUrl = ProxyService().getProxyUrl(songDetail.url, platform);
             try {
-              await _engine.play(proxyUrl);
+              await _playWithSoftSwitch(proxyUrl);
             } catch (_) {
               final tempPath = await _downloadAndPlay(songDetail);
               if (tempPath != null) _currentTempFilePath = tempPath;
@@ -815,7 +911,7 @@ class PlaybackService extends ChangeNotifier {
         }
       } else {
         // 网易云等直接播放
-        await _engine.play(songDetail.url);
+        await _playWithSoftSwitch(songDetail.url);
       }
 
       // 异步缓存
@@ -826,6 +922,10 @@ class PlaybackService extends ChangeNotifier {
       }
 
       await coverManager.extractThemeColor(songDetail.pic);
+    } on EngineReportedException {
+      // 错误已通过 errorStream 进入 _onEngineError，避免重复进入 catch 路径造成连跳。
+      if (isStale()) return;
+      return;
     } on AudioSourceNotConfiguredException catch (e) {
       if (isStale()) return;
       _state = PBState.error;
@@ -853,7 +953,12 @@ class PlaybackService extends ChangeNotifier {
       case PlaybackMode.repeatOne:
         if (currentTrack != null) {
           await Future.delayed(const Duration(milliseconds: 500));
-          await _commands.enqueue(() => _playCurrentTrack());
+          await _commands.enqueue(() async {
+            final replayed = await _replayCurrentSourceForRepeatOne();
+            if (!replayed) {
+              await _playCurrentTrack();
+            }
+          });
         }
         break;
       case PlaybackMode.loopAll:
@@ -1202,6 +1307,138 @@ class PlaybackService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> _safeSetEngineVolume(double volume) async {
+    try {
+      await _engine.setVolume(volume);
+    } catch (_) {}
+  }
+
+  Future<void> _playWithSoftSwitch(
+    String url, {
+    bool isLocal = false,
+    Map<String, String>? headers,
+  }) async {
+    final targetVolume = _volume.clamp(0.0, 1.0);
+    final canFade = _engine.isPlaying && targetVolume > 0;
+
+    if (!canFade) {
+      await _engine.play(url, isLocal: isLocal, headers: headers);
+      await _safeSetEngineVolume(targetVolume);
+      return;
+    }
+
+    final stepVolume = targetVolume / _switchFadeSteps;
+    for (int i = _switchFadeSteps; i > 0; i--) {
+      await _safeSetEngineVolume(stepVolume * (i - 1));
+      await Future.delayed(_switchFadeStepDelay);
+    }
+
+    try {
+      await _engine.play(url, isLocal: isLocal, headers: headers);
+    } catch (e) {
+      await _safeSetEngineVolume(targetVolume);
+      rethrow;
+    }
+
+    for (int i = 1; i <= _switchFadeSteps; i++) {
+      await _safeSetEngineVolume(stepVolume * i);
+      await Future.delayed(_switchFadeStepDelay);
+    }
+  }
+
+  void _schedulePreloadNextTrack() {
+    unawaited(_preloadNextTrack());
+  }
+
+  Future<void> _preloadNextTrack() async {
+    if (_preloadingNext) return;
+    final nextTrack = peekNext(PlaybackModeService().currentMode);
+    final current = currentTrack;
+    if (nextTrack == null || current == null) return;
+
+    final nextKey = '${nextTrack.source.name}_${nextTrack.id}';
+    final currentKey = '${current.source.name}_${current.id}';
+    if (nextKey == currentKey || nextKey == _lastPreloadedTargetKey) return;
+    if (nextTrack.source != MusicSource.local && !AudioSourceService().isConfigured) {
+      return;
+    }
+
+    _preloadingNext = true;
+    final op = ++_preloadOp;
+    try {
+      await _preloadTrackSource(nextTrack);
+      if (op == _preloadOp) {
+        _lastPreloadedTargetKey = nextKey;
+      }
+    } catch (e) {
+      print('[PlaybackService] 预加载下一首失败: $e');
+    } finally {
+      _preloadingNext = false;
+    }
+  }
+
+  Future<bool> _replayCurrentSourceForRepeatOne() async {
+    final track = currentTrack;
+    final song = _currentSong;
+    if (track == null || song == null || song.url.isEmpty) return false;
+
+    final url = song.url;
+    final isLocal = track.source == MusicSource.local || !url.startsWith('http');
+    Map<String, String>? headers;
+    if (!isLocal &&
+        (Platform.isAndroid || Platform.isIOS) &&
+        (track.source == MusicSource.qq || track.source == MusicSource.kugou)) {
+      headers = _buildPlaybackHeaders(track.source);
+    }
+
+    try {
+      await _playWithSoftSwitch(url, isLocal: isLocal, headers: headers);
+      return true;
+    } on EngineReportedException {
+      // 已由 _onEngineError 处理重试/跳过策略。
+      return true;
+    } catch (e) {
+      print('[PlaybackService] repeatOne 复用当前音源失败，回退重新拉流: $e');
+      return false;
+    }
+  }
+
+  Future<void> _preloadTrackSource(Track track) async {
+    if (track.source == MusicSource.local) {
+      final filePath = track.id is String ? track.id as String : '';
+      if (filePath.isEmpty || !(await File(filePath).exists())) return;
+      await _engine.preload(filePath, isLocal: true);
+      return;
+    }
+
+    // 命中本地缓存时跳过预加载：缓存播放已是本地文件链路。
+    if (CacheService().isCached(track)) return;
+
+    final selectedQuality = AudioQualityService().currentQuality;
+    var detail = await MusicService().fetchSongDetail(
+      songId: track.id,
+      quality: selectedQuality,
+      source: track.source,
+      title: track.name,
+      artist: track.artists,
+    );
+    if (detail == null || detail.url.isEmpty) return;
+
+    var url = detail.url;
+    if (track.source == MusicSource.apple && !url.contains('/apple/stream')) {
+      final baseUrl = UrlService().baseUrl;
+      final salableAdamId = Uri.encodeComponent(track.id.toString());
+      url = '$baseUrl/apple/stream?salableAdamId=$salableAdamId';
+    }
+
+    Map<String, String>? headers;
+    if ((Platform.isAndroid || Platform.isIOS) &&
+        (track.source == MusicSource.qq || track.source == MusicSource.kugou)) {
+      headers = _buildPlaybackHeaders(track.source);
+    }
+    await _engine.preload(url, headers: headers);
+  }
+
   Map<String, String> _buildPlaybackHeaders(MusicSource source) {
     final headers = <String, String>{
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -1236,7 +1473,7 @@ class PlaybackService extends ChangeNotifier {
       final response = await http.get(Uri.parse(proxyUrl));
       if (response.statusCode == 200) {
         await File(path).writeAsBytes(response.bodyBytes);
-        await _engine.play(path, isLocal: true);
+        await _playWithSoftSwitch(path, isLocal: true);
         return path;
       }
     } catch (e) {
@@ -1293,7 +1530,7 @@ class PlaybackService extends ChangeNotifier {
       }
 
       await File(path).writeAsBytes(bytes);
-      await _engine.play(path, isLocal: true);
+      await _playWithSoftSwitch(path, isLocal: true);
       return path;
     } on TimeoutException {
       print('[PlaybackService] 下载音频超时');
@@ -1588,8 +1825,10 @@ class PlaybackService extends ChangeNotifier {
     _preloadedTrack = null;
     _position = Duration.zero;
     _duration = Duration.zero;
+    _bufferedPosition = Duration.zero;
     _errorMessage = null;
     positionNotifier.value = Duration.zero;
+    bufferedPositionNotifier.value = Duration.zero;
     coverManager.setCover(null, notify: false);
     coverManager.themeColorNotifier.value = null;
     _coverProviders.clear();
@@ -1615,6 +1854,7 @@ class PlaybackService extends ChangeNotifier {
       _preloadedTrack = null;
       _position = Duration.zero;
       _duration = Duration.zero;
+      _bufferedPosition = Duration.zero;
       coverManager.setCover(null, notify: false);
       await _engine.dispose();
     } catch (e) {
@@ -1636,6 +1876,7 @@ class PlaybackService extends ChangeNotifier {
     ProxyService().stop();
     coverManager.dispose();
     positionNotifier.dispose();
+    bufferedPositionNotifier.dispose();
     super.dispose();
   }
 }

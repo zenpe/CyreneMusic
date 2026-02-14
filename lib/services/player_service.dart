@@ -49,11 +49,13 @@ class PlayerService extends ChangeNotifier {
   Track? get currentTrack => _pb.currentTrack;
   Duration get duration => _pb.duration;
   Duration get position => _pb.position;
+  Duration get bufferedPosition => _pb.bufferedPosition;
   String? get errorMessage => _pb.errorMessage;
   bool get isPlaying => _pb.isPlaying;
   bool get isPaused => _pb.isPaused;
   bool get isLoading => _pb.isLoading;
   double get volume => _pb.volume;
+  double get playbackSpeed => _pb.playbackSpeed;
   bool get isAudioSourceNotConfigured => _pb.isAudioSourceNotConfigured;
   bool get hasNext => _pb.hasNext;
   bool get hasPrevious => _pb.hasPrevious;
@@ -62,11 +64,14 @@ class PlayerService extends ChangeNotifier {
   String? get currentCoverUrl => _pb.coverManager.currentUrl;
   ValueNotifier<Color?> get themeColorNotifier => _pb.coverManager.themeColorNotifier;
   ValueNotifier<Duration> get positionNotifier => _pb.positionNotifier;
+  ValueNotifier<Duration> get bufferedPositionNotifier =>
+      _pb.bufferedPositionNotifier;
 
   // 均衡器
   static List<int> get kEqualizerFrequencies => EqualizerService.kEqualizerFrequencies;
   List<double> get equalizerGains => _pb.equalizerGains;
   bool get equalizerEnabled => _pb.equalizerEnabled;
+  bool get isEqualizerAvailable => _pb.isEqualizerAvailable;
 
   // 音源配置回调
   void Function()? get onAudioSourceNotConfigured => _pb.onAudioSourceNotConfigured;
@@ -113,6 +118,7 @@ class PlayerService extends ChangeNotifier {
   Future<void> stop() => _pb.stop();
   Future<void> togglePlayPause() => _pb.togglePlayPause();
   Future<void> setVolume(double volume) => _pb.setVolume(volume);
+  Future<void> setPlaybackSpeed(double speed) => _pb.setPlaybackSpeed(speed);
   Future<void> clearSession() => _pb.clearSession();
 
   Future<void> playRadioStream(String streamUrl, Track radioTrack) =>

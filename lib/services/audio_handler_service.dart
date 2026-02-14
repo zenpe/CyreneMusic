@@ -101,7 +101,12 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         }
         
         // 更新播放状态
-        _updatePlaybackState(player.state, player.position, player.duration);
+        _updatePlaybackState(
+          player.state,
+          player.position,
+          player.bufferedPosition,
+          player.playbackSpeed,
+        );
       }
     });
     print('✅ [AudioHandler] iOS 状态刷新定时器已启动（3秒间隔，保持锁屏显示）');
@@ -119,7 +124,8 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         final currentState = playbackState.value;
         final isPlaying = player.state == PlayerState.playing;
         final currentPosition = player.position;
-        final currentDuration = player.duration;
+        final currentBuffered = player.bufferedPosition;
+        final currentSpeed = player.playbackSpeed;
         
         // 🔧 性能优化：只有当位置变化超过 0.5 秒或状态改变时才更新
         // 这样可以大幅减少系统通知的更新频率
@@ -127,11 +133,11 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
             (currentPosition.inSeconds - _lastUpdatedPosition!.inSeconds).abs() >= 0.5;
         final stateChanged = _lastUpdatedState != player.state;
         final playingStateChanged = currentState.playing != isPlaying;
-        final durationChanged = currentState.bufferedPosition != currentDuration;
+        final bufferedChanged = currentState.bufferedPosition != currentBuffered;
         
         // 🍎 iOS 始终更新以保持锁屏显示活跃，Android 使用优化逻辑
         final shouldUpdate = Platform.isIOS || 
-            positionChanged || stateChanged || playingStateChanged || durationChanged;
+            positionChanged || stateChanged || playingStateChanged || bufferedChanged;
         
         // 只有当位置、状态或时长有显著变化时才更新（或 iOS 始终更新）
         if (shouldUpdate) {
@@ -139,8 +145,8 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
           playbackState.add(currentState.copyWith(
             playing: isPlaying,
             updatePosition: currentPosition,
-            bufferedPosition: currentDuration,
-            speed: isPlaying ? 1.0 : 0.0,
+            bufferedPosition: currentBuffered,
+            speed: isPlaying ? currentSpeed : 0.0,
           ));
           
           // 记录上次更新的值
@@ -307,7 +313,12 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     final track = player.currentTrack;
     
     // 更新播放状态
-    _updatePlaybackState(player.state, player.position, player.duration);
+    _updatePlaybackState(
+      player.state,
+      player.position,
+      player.bufferedPosition,
+      player.playbackSpeed,
+    );
 
     // 更新媒体信息
     if (song != null || track != null) {
@@ -765,7 +776,12 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
 
   /// 更新播放状态
-  void _updatePlaybackState(PlayerState playerState, Duration position, Duration duration) {
+  void _updatePlaybackState(
+    PlayerState playerState,
+    Duration position,
+    Duration bufferedPosition,
+    double playbackSpeed,
+  ) {
     // 只保留 3 个核心按钮：上一首、播放/暂停、下一首
     final controls = [
       MediaControl.skipToPrevious,  // 上一首
@@ -802,18 +818,18 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         processingState: processingState,
         playing: playing,
         updatePosition: position,
-        bufferedPosition: duration,
-        speed: playing ? 1.0 : 0.0,
+        bufferedPosition: bufferedPosition,
+        speed: playing ? playbackSpeed : 0.0,
         queueIndex: 0,
       ));
     } else {
       // 状态没变，只更新位置（如果位置有变化）
       final positionChanged = currentState.updatePosition != position ||
-          currentState.bufferedPosition != duration;
+          currentState.bufferedPosition != bufferedPosition;
       if (positionChanged) {
         playbackState.add(currentState.copyWith(
           updatePosition: position,
-          bufferedPosition: duration,
+          bufferedPosition: bufferedPosition,
         ));
       }
     }
@@ -839,8 +855,15 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     final currentState = player.state;
     final currentPosition = player.position;
     final currentDuration = player.duration;
+    final currentBuffered = player.bufferedPosition;
+    final currentSpeed = player.playbackSpeed;
     
-    _updatePlaybackState(currentState, currentPosition, currentDuration);
+    _updatePlaybackState(
+      currentState,
+      currentPosition,
+      currentBuffered,
+      currentSpeed,
+    );
     
     print('🔄 [AudioHandler] 强制更新播放状态: ${currentState.name}, 位置: ${currentPosition.inSeconds}s/${currentDuration.inSeconds}s');
   }
