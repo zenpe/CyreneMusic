@@ -15,6 +15,7 @@ import '../../services/download_service.dart';
 import '../../services/sleep_timer_service.dart';
 import '../../widgets/wavy_split_progress_bar.dart';
 import '../../widgets/player_error_banner.dart';
+import '../../widgets/player_speed_selector.dart';
 
 /// 移动端经典播放器布局 (Material Design Expressive)
 /// 特点：
@@ -455,28 +456,13 @@ class MobilePlayerClassicLayout extends StatelessWidget {
           onPressed: () => MobilePlayerDialogs.showSleepTimer(context),
         ),
 
-        PopupMenuButton<double>(
-          tooltip: '播放速度',
+        PlayerSpeedSelector(
+          speed: player.playbackSpeed,
           onSelected: (value) => player.setPlaybackSpeed(value),
-          color: Colors.black.withOpacity(0.85),
-          itemBuilder: (context) => const [
-            PopupMenuItem(value: 0.75, child: Text('0.75x', style: TextStyle(color: Colors.white))),
-            PopupMenuItem(value: 1.0, child: Text('1.0x', style: TextStyle(color: Colors.white))),
-            PopupMenuItem(value: 1.25, child: Text('1.25x', style: TextStyle(color: Colors.white))),
-            PopupMenuItem(value: 1.5, child: Text('1.5x', style: TextStyle(color: Colors.white))),
-            PopupMenuItem(value: 2.0, child: Text('2.0x', style: TextStyle(color: Colors.white))),
-          ],
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.white30),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '${player.playbackSpeed.toStringAsFixed(player.playbackSpeed == player.playbackSpeed.roundToDouble() ? 0 : 2)}x',
-              style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
-            ),
-          ),
+          menuColor: Colors.black.withOpacity(0.85),
+          borderColor: Colors.white30,
+          textColor: Colors.white70,
+          fontSize: 11,
         ),
 
         // 下载

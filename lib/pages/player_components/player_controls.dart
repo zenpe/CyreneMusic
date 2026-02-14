@@ -8,6 +8,7 @@ import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../models/lyric_line.dart';
 import '../../widgets/player_error_banner.dart';
+import '../../widgets/player_speed_selector.dart';
 
 /// 播放器控制面板
 /// 包含进度条和所有播放控制按钮
@@ -233,28 +234,13 @@ class PlayerControls extends StatelessWidget {
               if (onSleepTimerPressed != null)
                 const SizedBox(width: buttonSpacing),
 
-              PopupMenuButton<double>(
-                tooltip: '播放速度',
+              PlayerSpeedSelector(
+                speed: player.playbackSpeed,
                 onSelected: (value) => player.setPlaybackSpeed(value),
-                color: Colors.black.withOpacity(0.82),
-                itemBuilder: (context) => const [
-                  PopupMenuItem(value: 0.75, child: Text('0.75x', style: TextStyle(color: Colors.white))),
-                  PopupMenuItem(value: 1.0, child: Text('1.0x', style: TextStyle(color: Colors.white))),
-                  PopupMenuItem(value: 1.25, child: Text('1.25x', style: TextStyle(color: Colors.white))),
-                  PopupMenuItem(value: 1.5, child: Text('1.5x', style: TextStyle(color: Colors.white))),
-                  PopupMenuItem(value: 2.0, child: Text('2.0x', style: TextStyle(color: Colors.white))),
-                ],
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.white24),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '${player.playbackSpeed.toStringAsFixed(player.playbackSpeed == player.playbackSpeed.roundToDouble() ? 0 : 2)}x',
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
-                  ),
-                ),
+                menuColor: Colors.black.withOpacity(0.82),
+                borderColor: Colors.white24,
+                textColor: Colors.white,
+                fontSize: 12,
               ),
               const SizedBox(width: buttonSpacing),
               

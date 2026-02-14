@@ -21,6 +21,7 @@ import '../../services/audio_source_service.dart';
 import '../../utils/toast_utils.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/player_error_banner.dart';
+import '../../widgets/player_speed_selector.dart';
 
 /// 移动端流体云播放器布局
 /// 参考 HTML 设计：统一在同一页面显示歌曲信息、歌词、控制按钮
@@ -1272,33 +1273,15 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
 
   Widget _buildSpeedButton(BuildContext context) {
     final player = PlayerService();
-    return PopupMenuButton<double>(
-      tooltip: '播放速度',
+    return PlayerSpeedSelector(
+      speed: player.playbackSpeed,
       onSelected: (value) => player.setPlaybackSpeed(value),
-      color: Colors.black.withValues(alpha: 0.85),
-      itemBuilder: (context) => const [
-        PopupMenuItem(value: 0.75, child: Text('0.75x', style: TextStyle(color: Colors.white))),
-        PopupMenuItem(value: 1.0, child: Text('1.0x', style: TextStyle(color: Colors.white))),
-        PopupMenuItem(value: 1.25, child: Text('1.25x', style: TextStyle(color: Colors.white))),
-        PopupMenuItem(value: 1.5, child: Text('1.5x', style: TextStyle(color: Colors.white))),
-        PopupMenuItem(value: 2.0, child: Text('2.0x', style: TextStyle(color: Colors.white))),
-      ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          '${player.playbackSpeed.toStringAsFixed(player.playbackSpeed == player.playbackSpeed.roundToDouble() ? 0 : 2)}x',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
-            fontSize: 9.5,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.2,
-          ),
-        ),
-      ),
+      compact: true,
+      menuColor: Colors.black.withValues(alpha: 0.85),
+      borderColor: Colors.transparent,
+      fillColor: Colors.white.withValues(alpha: 0.1),
+      textColor: Colors.white.withValues(alpha: 0.7),
+      fontSize: 9.5,
     );
   }
 
