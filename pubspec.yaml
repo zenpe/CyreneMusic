@@ -43,7 +43,7 @@ dependencies:
   dio: ^5.4.0
   
   # Audio player
-  audioplayers: ^6.0.0
+  just_audio: ^0.9.43
   
   # System media controls (Android only, Windows uses native C++ implementation)
   audio_service: ^0.18.12

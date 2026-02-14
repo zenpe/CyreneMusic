@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:audioplayers/audioplayers.dart' as ap;
+import 'package:just_audio/just_audio.dart' as ja;
 import 'package:media_kit/media_kit.dart' as mk;
 
 import '../equalizer_service.dart';
@@ -11,11 +11,12 @@ import '../persistent_storage_service.dart';
 enum EngineState { idle, playing, paused }
 
 /// 统一音频引擎接口
-///
-/// 收敛 PlayerService 中 `if (_useMediaKit) ... else ...` 分支到此处。
-/// 各引擎实现仅负责底层播放控制，不涉及队列/封面/歌词等上层逻辑。
 abstract class AudioEngine {
-  Future<void> play(String url, {bool isLocal = false});
+  Future<void> play(
+    String url, {
+    bool isLocal = false,
+    Map<String, String>? headers,
+  });
   Future<void> pause();
   Future<void> resume();
   Future<void> seek(Duration position);
@@ -34,17 +35,17 @@ abstract class AudioEngine {
 
 /// 根据平台选择引擎
 AudioEngine createEngine() {
-  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux || Platform.isAndroid) {
+  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
     return MediaKitEngine();
   }
-  return AudioPlayersEngine();
+  return JustAudioEngine();
 }
 
 // ─────────────────────────────────────────────────────────
-// AudioPlayers 实现（iOS / Web）
+// JustAudio 实现（Android / iOS）
 // ─────────────────────────────────────────────────────────
-class AudioPlayersEngine implements AudioEngine {
-  ap.AudioPlayer? _player;
+class JustAudioEngine implements AudioEngine {
+  ja.AudioPlayer? _player;
   double _currentVolume = 1.0;
 
   final _positionController = StreamController<Duration>.broadcast();
@@ -52,98 +53,171 @@ class AudioPlayersEngine implements AudioEngine {
   final _completionController = StreamController<bool>.broadcast();
   final _durationController = StreamController<Duration>.broadcast();
 
+  StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<Duration?>? _durationSub;
+  StreamSubscription<ja.PlayerState>? _playerStateSub;
+  StreamSubscription<ja.PlaybackEvent>? _eventSub;
+
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   bool _isPlaying = false;
 
-  @override Duration get duration => _duration;
-  @override Duration get position => _position;
-  @override bool get isPlaying => _isPlaying;
+  @override
+  Duration get duration => _duration;
 
-  @override Stream<Duration> get positionStream => _positionController.stream;
-  @override Stream<EngineState> get stateStream => _stateController.stream;
-  @override Stream<bool> get completionStream => _completionController.stream;
-  @override Stream<Duration> get durationStream => _durationController.stream;
+  @override
+  Duration get position => _position;
+
+  @override
+  bool get isPlaying => _isPlaying;
+
+  @override
+  Stream<Duration> get positionStream => _positionController.stream;
+
+  @override
+  Stream<EngineState> get stateStream => _stateController.stream;
+
+  @override
+  Stream<bool> get completionStream => _completionController.stream;
+
+  @override
+  Stream<Duration> get durationStream => _durationController.stream;
 
   Future<void> _ensurePlayer() async {
     if (_player != null) return;
-    _player = ap.AudioPlayer();
 
-    if (Platform.isAndroid) {
-      try {
-        await _player!.setAudioContext(
-          ap.AudioContext(
-            android: const ap.AudioContextAndroid(
-              isSpeakerphoneOn: false,
-              stayAwake: true,
-              contentType: ap.AndroidContentType.music,
-              usageType: ap.AndroidUsageType.media,
-              audioFocus: ap.AndroidAudioFocus.gain,
-            ),
-          ),
-        );
-      } catch (e) {
-        print('[AudioPlayersEngine] setAudioContext 失败: $e');
-      }
-    }
+    // 移动端不使用 MediaKit 均衡器实现，避免 native EQ 路径影响播放稳定性。
+    EqualizerService().setPlayer(null, useMediaKit: false);
 
-    // 恢复保存的音量
+    final player = ja.AudioPlayer();
+    _player = player;
+
     final savedVolume = PersistentStorageService().getDouble('player_volume');
-    if (savedVolume != null) {
-      await _player!.setVolume(savedVolume.clamp(0.0, 1.0));
-    }
+    _currentVolume = (savedVolume ?? 0.7).clamp(0.0, 1.0);
+    await player.setVolume(_currentVolume);
 
-    _player!.onPlayerStateChanged.listen((state) {
-      switch (state) {
-        case ap.PlayerState.playing:
-          _isPlaying = true;
-          _stateController.add(EngineState.playing);
-          break;
-        case ap.PlayerState.paused:
-          _isPlaying = false;
-          _stateController.add(EngineState.paused);
-          break;
-        case ap.PlayerState.stopped:
-          _isPlaying = false;
-          _stateController.add(EngineState.idle);
-          break;
-        case ap.PlayerState.completed:
-          _isPlaying = false;
-          _position = Duration.zero;
-          _stateController.add(EngineState.idle);
-          _completionController.add(true);
-          break;
-        default:
-          break;
-      }
-    });
-
-    _player!.onPositionChanged.listen((pos) {
+    _positionSub = player.positionStream.listen((pos) {
       _position = pos;
       _positionController.add(pos);
     });
 
-    _player!.onDurationChanged.listen((dur) {
-      _duration = dur;
-      _durationController.add(dur);
+    _durationSub = player.durationStream.listen((dur) {
+      _duration = dur ?? Duration.zero;
+      _durationController.add(_duration);
     });
+
+    _playerStateSub = player.playerStateStream.listen((state) {
+      final processing = state.processingState;
+      if (processing == ja.ProcessingState.completed) {
+        _isPlaying = false;
+        _position = Duration.zero;
+        _stateController.add(EngineState.idle);
+        _completionController.add(true);
+        return;
+      }
+
+      if (state.playing) {
+        _isPlaying = true;
+        _stateController.add(EngineState.playing);
+        return;
+      }
+
+      if (_isPlaying) {
+        _isPlaying = false;
+        if (processing == ja.ProcessingState.idle) {
+          _stateController.add(EngineState.idle);
+        } else {
+          _stateController.add(EngineState.paused);
+        }
+      }
+    });
+
+    _eventSub = player.playbackEventStream.listen(
+      (_) {},
+      onError: (Object e, StackTrace st) {
+        if (!_stateController.isClosed) {
+          _stateController.add(EngineState.idle);
+        }
+        print('[JustAudioEngine] playbackEventStream 异常: $e');
+      },
+    );
+  }
+
+  void _fireAndForgetPlay() {
+    final player = _player;
+    if (player == null) return;
+    unawaited(
+      player.play().catchError((Object e, StackTrace st) {
+        if (!_stateController.isClosed) {
+          _stateController.add(EngineState.idle);
+        }
+        print('[JustAudioEngine] play 异常: $e');
+      }),
+    );
+  }
+
+  Future<void> _recreatePlayer() async {
+    await _disposePlayerOnly();
+    await _ensurePlayer();
+  }
+
+  Future<void> _disposePlayerOnly() async {
+    await _positionSub?.cancel();
+    await _durationSub?.cancel();
+    await _playerStateSub?.cancel();
+    await _eventSub?.cancel();
+    _positionSub = null;
+    _durationSub = null;
+    _playerStateSub = null;
+    _eventSub = null;
+
+    final player = _player;
+    _player = null;
+    if (player != null) {
+      try {
+        await player.stop();
+      } catch (_) {}
+      try {
+        await player.dispose();
+      } catch (_) {}
+    }
+
+    _isPlaying = false;
+    _position = Duration.zero;
+    _duration = Duration.zero;
   }
 
   @override
-  Future<void> play(String url, {bool isLocal = false}) async {
+  Future<void> play(
+    String url, {
+    bool isLocal = false,
+    Map<String, String>? headers,
+  }) async {
     await _ensurePlayer();
-    // 先静音并停止，避免切歌时硬切杂音
+
     if (_isPlaying) {
       await _player!.setVolume(0);
       await _player!.stop();
     }
-    if (isLocal) {
-      await _player!.play(ap.DeviceFileSource(url));
-    } else {
-      await _player!.play(ap.UrlSource(url));
+
+    final source = isLocal
+        ? ja.AudioSource.file(url)
+        : ja.AudioSource.uri(Uri.parse(url), headers: headers);
+
+    try {
+      await _player!
+          .setAudioSource(source)
+          .timeout(const Duration(seconds: 15));
+    } on TimeoutException {
+      await _recreatePlayer();
+      rethrow;
+    } catch (_) {
+      await _recreatePlayer();
+      rethrow;
     }
-    // 恢复音量
+
     await _player!.setVolume(_currentVolume);
+    _fireAndForgetPlay();
   }
 
   @override
@@ -153,7 +227,8 @@ class AudioPlayersEngine implements AudioEngine {
 
   @override
   Future<void> resume() async {
-    await _player?.resume();
+    await _ensurePlayer();
+    _fireAndForgetPlay();
   }
 
   @override
@@ -165,6 +240,10 @@ class AudioPlayersEngine implements AudioEngine {
   @override
   Future<void> stop() async {
     await _player?.stop();
+    _isPlaying = false;
+    if (!_stateController.isClosed) {
+      _stateController.add(EngineState.idle);
+    }
   }
 
   @override
@@ -175,9 +254,7 @@ class AudioPlayersEngine implements AudioEngine {
 
   @override
   Future<void> dispose() async {
-    await _player?.stop();
-    await _player?.dispose();
-    _player = null;
+    await _disposePlayerOnly();
     await _positionController.close();
     await _stateController.close();
     await _completionController.close();
@@ -186,9 +263,11 @@ class AudioPlayersEngine implements AudioEngine {
 }
 
 // ─────────────────────────────────────────────────────────
-// MediaKit 实现（Windows / macOS / Linux / Android）
+// MediaKit 实现（Windows / macOS / Linux）
 // ─────────────────────────────────────────────────────────
 class MediaKitEngine implements AudioEngine {
+  static Future<void>? _mediaKitInitFuture;
+
   mk.Player? _player;
   double _currentVolume = 70; // MediaKit 音量 0-100
 
@@ -206,17 +285,42 @@ class MediaKitEngine implements AudioEngine {
   Duration _position = Duration.zero;
   bool _isPlaying = false;
 
-  @override Duration get duration => _duration;
-  @override Duration get position => _position;
-  @override bool get isPlaying => _isPlaying;
+  @override
+  Duration get duration => _duration;
 
-  @override Stream<Duration> get positionStream => _positionController.stream;
-  @override Stream<EngineState> get stateStream => _stateController.stream;
-  @override Stream<bool> get completionStream => _completionController.stream;
-  @override Stream<Duration> get durationStream => _durationController.stream;
+  @override
+  Duration get position => _position;
+
+  @override
+  bool get isPlaying => _isPlaying;
+
+  @override
+  Stream<Duration> get positionStream => _positionController.stream;
+
+  @override
+  Stream<EngineState> get stateStream => _stateController.stream;
+
+  @override
+  Stream<bool> get completionStream => _completionController.stream;
+
+  @override
+  Stream<Duration> get durationStream => _durationController.stream;
+
+  Future<void> _ensureMediaKitInitialized() {
+    _mediaKitInitFuture ??= Future<void>(() {
+      try {
+        mk.MediaKit.ensureInitialized();
+      } catch (e) {
+        print('[MediaKitEngine] MediaKit.ensureInitialized 失败: $e');
+        rethrow;
+      }
+    });
+    return _mediaKitInitFuture!;
+  }
 
   Future<void> _ensurePlayer() async {
     if (_player != null) return;
+    await _ensureMediaKitInitialized();
 
     _player = mk.Player(
       configuration: const mk.PlayerConfiguration(
@@ -225,24 +329,10 @@ class MediaKitEngine implements AudioEngine {
       ),
     );
 
-    // Android 缓冲优化
-    if (Platform.isAndroid) {
-      try {
-        await (_player!.platform as dynamic)?.setProperty('audio-buffer', '10.0');
-        await (_player!.platform as dynamic)?.setProperty('cache', 'yes');
-        await (_player!.platform as dynamic)?.setProperty('demuxer-max-bytes', '10485760');
-        await (_player!.platform as dynamic)?.setProperty('demuxer-max-back-bytes', '5242880');
-        await (_player!.platform as dynamic)?.setProperty('demuxer-readahead-secs', '30');
-      } catch (e) {
-        print('[MediaKitEngine] 优化参数应用失败: $e');
-      }
-    }
-
-    // 注入均衡器
+    // 注入桌面端均衡器
     EqualizerService().setPlayer(_player, useMediaKit: true);
     await EqualizerService().applyEqualizer();
 
-    // 恢复保存的音量
     final savedVolume = PersistentStorageService().getDouble('player_volume');
     if (savedVolume != null) {
       _currentVolume = (savedVolume.clamp(0.0, 1.0)) * 100;
@@ -256,11 +346,9 @@ class MediaKitEngine implements AudioEngine {
       if (playing) {
         _isPlaying = true;
         _stateController.add(EngineState.playing);
-      } else {
-        if (_isPlaying) {
-          _isPlaying = false;
-          _stateController.add(EngineState.paused);
-        }
+      } else if (_isPlaying) {
+        _isPlaying = false;
+        _stateController.add(EngineState.paused);
       }
     });
 
@@ -285,14 +373,17 @@ class MediaKitEngine implements AudioEngine {
   }
 
   @override
-  Future<void> play(String url, {bool isLocal = false}) async {
+  Future<void> play(
+    String url, {
+    bool isLocal = false,
+    Map<String, String>? headers,
+  }) async {
     await _ensurePlayer();
-    // 先静音并停止，避免切歌时硬切杂音
     if (_isPlaying) {
       await _player!.setVolume(0);
       await _player!.stop();
     }
-    await _player!.open(mk.Media(url));
+    await _player!.open(mk.Media(url, httpHeaders: headers));
     await _player!.setVolume(_currentVolume);
     await _player!.play();
   }
@@ -320,7 +411,6 @@ class MediaKitEngine implements AudioEngine {
 
   @override
   Future<void> setVolume(double volume) async {
-    // MediaKit 音量范围是 0-100
     _currentVolume = (volume.clamp(0.0, 1.0)) * 100;
     await _player?.setVolume(_currentVolume);
   }
@@ -333,6 +423,7 @@ class MediaKitEngine implements AudioEngine {
     await _completedSub?.cancel();
     _player?.dispose();
     _player = null;
+    EqualizerService().setPlayer(null, useMediaKit: false);
     await _positionController.close();
     await _stateController.close();
     await _completionController.close();

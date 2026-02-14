@@ -780,17 +780,23 @@ class PlaybackService extends ChangeNotifier {
         return;
       }
 
-      // 需要代理的平台（QQ / 酷狗）
+      // QQ / 酷狗
       if (track.source == MusicSource.qq || track.source == MusicSource.kugou) {
         final platform = track.source == MusicSource.qq ? 'qq' : 'kugou';
-        final useServerProxy = Platform.isIOS;
-        if (useServerProxy) {
-          final serverProxyUrl = _getServerProxyUrl(songDetail.url, platform);
+        final mobileDirect = Platform.isAndroid || Platform.isIOS;
+
+        // 第一阶段：移动端统一直连 + headers，不走本地/服务端代理链。
+        if (mobileDirect) {
+          final headers = _buildPlaybackHeaders(track.source);
           try {
-            await _engine.play(serverProxyUrl);
-          } catch (_) {
-            final tempPath = await _downloadViaProxyAndPlay(serverProxyUrl, songDetail.name, songDetail.level);
-            if (tempPath != null) _currentTempFilePath = tempPath;
+            await _engine.play(songDetail.url, headers: headers);
+          } catch (e) {
+            final tempPath = await _downloadAndPlay(songDetail, headers: headers);
+            if (tempPath != null) {
+              _currentTempFilePath = tempPath;
+            } else {
+              throw Exception('移动端直连与下载回退均失败: $e');
+            }
           }
         } else {
           final proxyReady = await _ensureLocalProxyRunning(platform);
@@ -1196,6 +1202,20 @@ class PlaybackService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Map<String, String> _buildPlaybackHeaders(MusicSource source) {
+    final headers = <String, String>{
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    };
+    if (source == MusicSource.qq) {
+      headers['Referer'] = 'https://y.qq.com/';
+      headers['Origin'] = 'https://y.qq.com';
+    } else if (source == MusicSource.kugou) {
+      headers['Referer'] = 'https://www.kugou.com/';
+      headers['Origin'] = 'https://www.kugou.com';
+    }
+    return headers;
+  }
+
   String _getServerProxyUrl(String originalUrl, String platform) {
     final baseUrl = UrlService().baseUrl;
     final encodedUrl = Uri.encodeComponent(originalUrl);
@@ -1225,25 +1245,62 @@ class PlaybackService extends ChangeNotifier {
     return null;
   }
 
-  Future<String?> _downloadAndPlay(SongDetail songDetail) async {
+  Future<String?> _downloadAndPlay(
+    SongDetail songDetail, {
+    Map<String, String>? headers,
+  }) async {
+    final client = http.Client();
     try {
       final tempDir = await getTemporaryDirectory();
       final ts = DateTime.now().millisecondsSinceEpoch;
       final ext = AudioQualityService.getExtensionFromLevel(songDetail.level);
       final path = '${tempDir.path}/temp_audio_$ts.$ext';
-      final headers = <String, String>{
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      };
-      if (songDetail.source == MusicSource.qq) headers['referer'] = 'https://y.qq.com';
-      if (songDetail.source == MusicSource.kugou) headers['referer'] = 'https://www.kugou.com';
-      final response = await http.get(Uri.parse(songDetail.url), headers: headers);
-      if (response.statusCode == 200) {
-        await File(path).writeAsBytes(response.bodyBytes);
-        await _engine.play(path, isLocal: true);
-        return path;
+      final requestHeaders = headers ?? _buildPlaybackHeaders(songDetail.source);
+      final request = http.Request('GET', Uri.parse(songDetail.url))
+        ..headers.addAll(requestHeaders);
+
+      final response = await client
+          .send(request)
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode != 200) {
+        print('[PlaybackService] 下载音频失败: HTTP ${response.statusCode}');
+        return null;
       }
+
+      final bytesBuilder = BytesBuilder(copy: false);
+      var downloadedBytes = 0;
+      final totalBytes = response.contentLength ?? 0;
+      var nextProgressMark = 20;
+
+      await for (final chunk in response.stream.timeout(const Duration(seconds: 20))) {
+        bytesBuilder.add(chunk);
+        downloadedBytes += chunk.length;
+
+        if (totalBytes > 0) {
+          final progress = (downloadedBytes * 100 / totalBytes).floor();
+          if (progress >= nextProgressMark) {
+            print('[PlaybackService] 下载中: $progress% ($downloadedBytes/$totalBytes)');
+            nextProgressMark += 20;
+          }
+        }
+      }
+
+      final bytes = bytesBuilder.takeBytes();
+      if (bytes.isEmpty) {
+        print('[PlaybackService] 下载音频失败: 响应为空');
+        return null;
+      }
+
+      await File(path).writeAsBytes(bytes);
+      await _engine.play(path, isLocal: true);
+      return path;
+    } on TimeoutException {
+      print('[PlaybackService] 下载音频超时');
     } catch (e) {
       print('[PlaybackService] 下载音频失败: $e');
+    } finally {
+      client.close();
     }
     return null;
   }
