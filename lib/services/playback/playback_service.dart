@@ -194,6 +194,7 @@ class PlaybackService extends ChangeNotifier {
     await _engine.setPlaybackSpeed(_playbackSpeed);
 
     EqualizerService().loadSettings();
+    await EqualizerService().applyEqualizer();
 
     // 桌面歌词播放控制回调
     if (Platform.isWindows) {

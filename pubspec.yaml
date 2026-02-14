@@ -112,10 +112,11 @@ dependencies:
   # Video player for video backgrounds (Android/iOS)
   video_player: ^2.9.2
   
-  # Media kit for video playback on Windows/Desktop platforms
+  # Media kit for video playback on Desktop platforms only
   media_kit: ^1.1.11
   media_kit_video: ^1.2.5
-  media_kit_libs_video: ^1.0.7
+  media_kit_libs_windows_video: ^1.0.11
+  media_kit_libs_macos_video: ^1.1.4
   media_kit_libs_linux: ^1.2.1
   mobile_scanner: ^7.1.4
   

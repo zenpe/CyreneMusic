@@ -50,7 +50,9 @@ class EqualizerService extends ChangeNotifier {
 
   /// 注入当前播放引擎的均衡器能力
   void setBackend(EqualizerCapable? backend) {
+    if (identical(_equalizerBackend, backend)) return;
     _equalizerBackend = backend;
+    notifyListeners();
   }
 
   /// 更新均衡器增益

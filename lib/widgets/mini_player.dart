@@ -32,6 +32,10 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
   AnimationController? _breathingController;
   Animation<double>? _breathingScale;
   bool _breathingActive = false;
+  bool _isSeeking = false;   // 拖拽 seek 中，屏蔽外层 onTap 跳全屏
+  double? _seekRatio;         // 拖拽时的临时进度比例
+  DateTime? _lastSeekGestureAt;
+  int? _activeSeekPointer;
 
   bool get _isCupertino => ThemeManager().isCupertinoFramework;
 
@@ -362,6 +366,7 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                 behavior: HitTestBehavior.opaque,
                 excludeFromSemantics: true,
                 onTap: () {
+                  if (_isSeeking || _shouldBlockOpenFullPlayerTap()) return;
                   _resetCollapseTimer();
                   _openFullPlayer(context);
                 },
@@ -400,16 +405,87 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
     );
   }
 
-  void _seekByMiniProgressTap({
-    required PlayerService player,
-    required double width,
-    required double dx,
-  }) {
+  bool _shouldBlockOpenFullPlayerTap() {
+    final t = _lastSeekGestureAt;
+    if (t == null) return false;
+    return DateTime.now().difference(t) < const Duration(milliseconds: 220);
+  }
+
+  void _markSeekGesture() {
+    _lastSeekGestureAt = DateTime.now();
+  }
+
+  void _onSeekStart(PlayerService player, double width, double dx) {
     if (width <= 0 || player.duration.inMilliseconds <= 0) return;
-    final ratio = (dx / width).clamp(0.0, 1.0);
-    final targetMs = (player.duration.inMilliseconds * ratio).round();
-    player.seek(Duration(milliseconds: targetMs));
+    _markSeekGesture();
+    setState(() {
+      _isSeeking = true;
+      _seekRatio = (dx / width).clamp(0.0, 1.0);
+    });
+  }
+
+  void _onSeekUpdate(PlayerService player, double width, double dx) {
+    if (width <= 0 || player.duration.inMilliseconds <= 0) return;
+    _markSeekGesture();
+    setState(() {
+      _seekRatio = (dx / width).clamp(0.0, 1.0);
+    });
+  }
+
+  void _onSeekEnd(PlayerService player) {
+    _markSeekGesture();
+    final ratio = _seekRatio;
+    if (ratio != null && player.duration.inMilliseconds > 0) {
+      final targetMs = (player.duration.inMilliseconds * ratio).round();
+      player.seek(Duration(milliseconds: targetMs));
+    }
+    setState(() {
+      _isSeeking = false;
+      _seekRatio = null;
+    });
     _resetCollapseTimer();
+  }
+
+  void _onSeekCancel(PlayerService player) {
+    _markSeekGesture();
+    setState(() {
+      _isSeeking = false;
+      _seekRatio = null;
+    });
+  }
+
+  Widget _buildSeekableProgressBar({
+    required PlayerService player,
+    required Widget child,
+    double hitHeight = 24,
+  }) {
+    return SizedBox(
+      height: hitHeight,
+      child: LayoutBuilder(
+        builder: (context, constraints) => Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (event) {
+            _activeSeekPointer = event.pointer;
+            _onSeekStart(player, constraints.maxWidth, event.localPosition.dx);
+          },
+          onPointerMove: (event) {
+            if (_activeSeekPointer != event.pointer) return;
+            _onSeekUpdate(player, constraints.maxWidth, event.localPosition.dx);
+          },
+          onPointerUp: (event) {
+            if (_activeSeekPointer != event.pointer) return;
+            _activeSeekPointer = null;
+            _onSeekEnd(player);
+          },
+          onPointerCancel: (event) {
+            if (_activeSeekPointer != event.pointer) return;
+            _activeSeekPointer = null;
+            _onSeekCancel(player);
+          },
+          child: Center(child: child),
+        ),
+      ),
+    );
   }
 
   Widget _buildExpandedPlayer({
@@ -436,36 +512,29 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
         decoration: BoxDecoration(color: backgroundColor),
         child: Column(
           children: [
-            // Top-aligned full-width progress bar
-            SizedBox(
-              height: 2,
-              width: double.infinity,
-              child: LayoutBuilder(
-                builder: (context, constraints) => GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapDown: (details) => _seekByMiniProgressTap(
-                    player: player,
-                    width: constraints.maxWidth,
-                    dx: details.localPosition.dx,
-                  ),
-                  onTap: () {},
-                  child: ValueListenableBuilder<Duration>(
-                    valueListenable: player.positionNotifier,
-                    builder: (context, position, child) {
-                      final progress = player.duration.inMilliseconds > 0
-                          ? position.inMilliseconds /
-                              player.duration.inMilliseconds
-                          : 0.0;
-                      return LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 2,
-                        backgroundColor: progressBarTrackColor,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          progressBarActiveColor,
-                        ),
-                      );
-                    },
-                  ),
+            // Top-aligned full-width progress bar with expanded touch target
+            _buildSeekableProgressBar(
+              player: player,
+              hitHeight: 20,
+              child: SizedBox(
+                width: double.infinity,
+                child: ValueListenableBuilder<Duration>(
+                  valueListenable: player.positionNotifier,
+                  builder: (context, position, child) {
+                    final progress = _seekRatio ??
+                        (player.duration.inMilliseconds > 0
+                            ? position.inMilliseconds /
+                                player.duration.inMilliseconds
+                            : 0.0);
+                    return LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 2,
+                      backgroundColor: progressBarTrackColor,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        progressBarActiveColor,
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -1006,46 +1075,40 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
   /// 构建进度条
   /// 使用 ValueListenableBuilder 监听 positionNotifier 以实时更新进度
   Widget _buildProgressBar(PlayerService player, ColorScheme colorScheme) {
-    return LayoutBuilder(
-      builder: (context, constraints) => GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (details) => _seekByMiniProgressTap(
-          player: player,
-          width: constraints.maxWidth,
-          dx: details.localPosition.dx,
-        ),
-        onTap: () {},
-        child: ValueListenableBuilder<Duration>(
-          valueListenable: player.positionNotifier,
-          builder: (context, position, child) {
-            final progress = player.duration.inMilliseconds > 0
-                ? position.inMilliseconds / player.duration.inMilliseconds
-                : 0.0;
-            if (ThemeManager().isFluentFramework) {
-              final fluentProgress = (progress * 100).clamp(0.0, 100.0).toDouble();
-              return fluent.ProgressBar(
-                value: fluentProgress,
-              );
-            }
-            if (_isCupertino) {
-              return Container(
-                height: 2,
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 2,
-                  backgroundColor: CupertinoColors.systemGrey.withOpacity(0.2),
-                  valueColor: const AlwaysStoppedAnimation<Color>(CupertinoColors.activeBlue),
-                ),
-              );
-            }
-            return LinearProgressIndicator(
-              value: progress,
-              minHeight: 2,
-              backgroundColor: colorScheme.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+    return _buildSeekableProgressBar(
+      player: player,
+      hitHeight: 24,
+      child: ValueListenableBuilder<Duration>(
+        valueListenable: player.positionNotifier,
+        builder: (context, position, child) {
+          final progress = _seekRatio ??
+              (player.duration.inMilliseconds > 0
+                  ? position.inMilliseconds / player.duration.inMilliseconds
+                  : 0.0);
+          if (ThemeManager().isFluentFramework) {
+            final fluentProgress = (progress * 100).clamp(0.0, 100.0).toDouble();
+            return fluent.ProgressBar(
+              value: fluentProgress,
             );
-          },
-        ),
+          }
+          if (_isCupertino) {
+            return Container(
+              height: 2,
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 2,
+                backgroundColor: CupertinoColors.systemGrey.withOpacity(0.2),
+                valueColor: const AlwaysStoppedAnimation<Color>(CupertinoColors.activeBlue),
+              ),
+            );
+          }
+          return LinearProgressIndicator(
+            value: progress,
+            minHeight: 2,
+            backgroundColor: colorScheme.surfaceContainerHighest,
+            valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+          );
+        },
       ),
     );
   }
@@ -1058,9 +1121,13 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
     return ValueListenableBuilder<Duration>(
       valueListenable: player.positionNotifier,
       builder: (context, position, child) {
-        final progress = player.duration.inMilliseconds > 0
-            ? position.inMilliseconds / player.duration.inMilliseconds
-            : 0.0;
+        final progress = _seekRatio ??
+            (player.duration.inMilliseconds > 0
+                ? position.inMilliseconds / player.duration.inMilliseconds
+                : 0.0);
+        final displayPosition = _seekRatio != null
+            ? Duration(milliseconds: (player.duration.inMilliseconds * _seekRatio!).round())
+            : position;
         final indicator = ThemeManager().isFluentFramework
             ? SizedBox(
                 height: 4,
@@ -1083,28 +1150,24 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                 ),
               );
 
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(_formatDuration(position), style: timeStyle),
-            const SizedBox(width: 8),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) => GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapDown: (details) => _seekByMiniProgressTap(
-                    player: player,
-                    width: constraints.maxWidth,
-                    dx: details.localPosition.dx,
-                  ),
-                  onTap: () {},
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(_formatDuration(displayPosition), style: timeStyle),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildSeekableProgressBar(
+                  player: player,
+                  hitHeight: 24,
                   child: indicator,
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(_formatDuration(player.duration), style: timeStyle),
-          ],
+              const SizedBox(width: 8),
+              Text(_formatDuration(player.duration), style: timeStyle),
+            ],
+          ),
         );
       },
     );

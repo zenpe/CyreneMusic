@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import '../../utils/theme_manager.dart';
 import '../../services/auth_service.dart';
+import '../../services/player_service.dart';
 import '../../widgets/material/material_settings_widgets.dart';
 
 import '../../services/lab_functions_service.dart';
@@ -58,6 +59,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
   Widget _buildMaterialUI(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isSponsor = AuthService().currentUser?.isSponsor ?? false;
+    final eqAvailable = PlayerService().isEqualizerAvailable;
 
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -100,10 +102,10 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
             MD3SettingsTile(
               leading: const Icon(Icons.graphic_eq),
               title: '均衡器',
-              subtitle: '调节音频频率响应',
-              enabled: isSponsor,
+              subtitle: eqAvailable ? '调节音频频率响应' : '当前平台暂不支持',
+              enabled: isSponsor && eqAvailable,
               trailing: const Icon(Icons.chevron_right),
-              onTap: isSponsor
+              onTap: (isSponsor && eqAvailable)
                   ? () => Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const EqualizerPage()),
@@ -176,6 +178,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
   /// 构建 Cupertino UI 版本
   Widget _buildCupertinoUI(BuildContext context) {
     final isSponsor = AuthService().currentUser?.isSponsor ?? false;
+    final eqAvailable = PlayerService().isEqualizerAvailable;
 
     return ListView(
       children: [
@@ -197,9 +200,9 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
             CupertinoListTile(
               leading: const Icon(CupertinoIcons.waveform, color: CupertinoColors.systemBlue),
               title: const Text('均衡器'),
-              subtitle: const Text('调节音频效果'),
+              subtitle: Text(eqAvailable ? '调节音频效果' : '当前平台暂不支持'),
               trailing: const Icon(CupertinoIcons.chevron_forward, size: 18, color: CupertinoColors.systemGrey),
-              onTap: isSponsor
+              onTap: (isSponsor && eqAvailable)
                   ? () => Navigator.push(
                         context,
                         CupertinoPageRoute(builder: (_) => const EqualizerPage()),
@@ -237,6 +240,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
   Widget _buildFluentUI(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
     final isSponsor = AuthService().currentUser?.isSponsor ?? false;
+    final eqAvailable = PlayerService().isEqualizerAvailable;
 
     // 构建核心列表内容
     final content = Column(
@@ -263,9 +267,9 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
           child: fluent_ui.ListTile(
             leading: const Icon(fluent_ui.FluentIcons.equalizer),
             title: const Text('均衡器'),
-            subtitle: const Text('自定义音频频率响应'),
+            subtitle: Text(eqAvailable ? '自定义音频频率响应' : '当前平台暂不支持'),
             trailing: const Icon(fluent_ui.FluentIcons.chevron_right, size: 12),
-            onPressed: isSponsor
+            onPressed: (isSponsor && eqAvailable)
                 ? () => Navigator.push(
                       context,
                       fluent_ui.FluentPageRoute(builder: (_) => const EqualizerPage()),

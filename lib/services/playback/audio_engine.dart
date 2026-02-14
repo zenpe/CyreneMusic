@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:just_audio/just_audio.dart' as ja;
 import 'package:media_kit/media_kit.dart' as mk;
 
+import '../android_equalizer_service.dart';
 import '../equalizer_service.dart';
 import '../persistent_storage_service.dart';
 
@@ -99,11 +100,19 @@ AudioEngine createEngine() {
 // JustAudio 实现（Android / iOS）
 // ─────────────────────────────────────────────────────────
 class JustAudioEngine implements AudioEngine, EqualizerCapable {
+  JustAudioEngine() {
+    EqualizerService().setBackend(this);
+  }
+
   ja.AudioPlayer? _player;
   ja.AudioPlayer? _preloadPlayer;
   double _currentVolume = 1.0;
   double _playbackSpeed = 1.0;
   bool _hasSource = false;
+  int? _androidAudioSessionId;
+  bool _equalizerEnabled = true;
+  List<double> _equalizerGains = List.filled(10, 0.0);
+  List<int> _equalizerFrequencies = EqualizerService.kEqualizerFrequencies;
 
   final _positionController = StreamController<Duration>.broadcast();
   final _durationController = StreamController<Duration>.broadcast();
@@ -117,6 +126,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   StreamSubscription<Duration>? _bufferedPositionSub;
   StreamSubscription<ja.PlayerState>? _playerStateSub;
   StreamSubscription<ja.PlaybackEvent>? _eventSub;
+  StreamSubscription<int?>? _androidSessionSub;
 
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
@@ -221,6 +231,15 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         }
       },
     );
+
+    if (Platform.isAndroid) {
+      _androidSessionSub = player.androidAudioSessionIdStream.listen((id) {
+        _androidAudioSessionId = id;
+        if (id != null && id > 0) {
+          unawaited(_attachAndApplyAndroidEqualizer(id));
+        }
+      });
+    }
   }
 
   Future<void> _ensurePreloadPlayer() async {
@@ -321,6 +340,26 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     );
   }
 
+  Future<void> _attachAndApplyAndroidEqualizer(int sessionId) async {
+    final attached = await AndroidEqualizerService().attachToSession(sessionId);
+    if (!attached) return;
+    await _applyAndroidEqualizerIfReady();
+  }
+
+  Future<void> _applyAndroidEqualizerIfReady() async {
+    if (!Platform.isAndroid) return;
+    final sessionId = _androidAudioSessionId;
+    if (sessionId == null || sessionId <= 0) return;
+
+    final attached = await AndroidEqualizerService().attachToSession(sessionId);
+    if (!attached) return;
+    await AndroidEqualizerService().apply(
+      enabled: _equalizerEnabled,
+      gains: _equalizerGains,
+      frequencies: _equalizerFrequencies,
+    );
+  }
+
   Future<void> _recreatePlayer() async {
     await _disposePlayerOnly();
     await _ensurePlayer();
@@ -332,11 +371,13 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     await _bufferedPositionSub?.cancel();
     await _playerStateSub?.cancel();
     await _eventSub?.cancel();
+    await _androidSessionSub?.cancel();
     _positionSub = null;
     _durationSub = null;
     _bufferedPositionSub = null;
     _playerStateSub = null;
     _eventSub = null;
+    _androidSessionSub = null;
 
     final player = _player;
     _player = null;
@@ -354,6 +395,10 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     _position = Duration.zero;
     _duration = Duration.zero;
     _bufferedPosition = Duration.zero;
+    _androidAudioSessionId = null;
+    if (Platform.isAndroid) {
+      await AndroidEqualizerService().release();
+    }
   }
 
   Future<void> _disposePreloadPlayerOnly() async {
@@ -502,20 +547,31 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   }
 
   @override
-  bool get supportsEqualizer => false;
+  bool get supportsEqualizer => Platform.isAndroid;
 
   @override
   Future<void> applyEqualizer(
     bool enabled,
     List<double> gains,
     List<int> frequencies,
-  ) async {}
+  ) async {
+    _equalizerEnabled = enabled;
+    _equalizerGains = List<double>.from(gains);
+    _equalizerFrequencies = List<int>.from(frequencies);
+
+    if (!Platform.isAndroid) return;
+    await _applyAndroidEqualizerIfReady();
+  }
 }
 
 // ─────────────────────────────────────────────────────────
 // MediaKit 实现（Windows / macOS / Linux）
 // ─────────────────────────────────────────────────────────
 class MediaKitEngine implements AudioEngine, EqualizerCapable {
+  MediaKitEngine() {
+    EqualizerService().setBackend(this);
+  }
+
   static Future<void>? _mediaKitInitFuture;
 
   mk.Player? _player;

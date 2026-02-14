@@ -57,12 +57,14 @@ class _EqualizerContentState extends State<EqualizerContent> {
     return ListenableBuilder(
       listenable: playerService,
       builder: (context, _) {
+        final available = playerService.isEqualizerAvailable;
         final gains = playerService.equalizerGains;
         final enabled = playerService.equalizerEnabled;
+        if (!available) return _buildMaterialUnavailable(cs);
 
         return Column(
           children: [
-            // 提示：均衡器目前仅支持mp3格式
+            // 提示：不同音源/格式效果可能有差异
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               padding: const EdgeInsets.all(12),
@@ -76,7 +78,7 @@ class _EqualizerContentState extends State<EqualizerContent> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '均衡器目前仅支持mp3格式，暂时不支持无损音质和Hi-Res音质',
+                      '不同音源和编码格式的均衡器效果可能存在差异',
                       style: TextStyle(
                         color: cs.onSecondaryContainer,
                         fontSize: 12,
@@ -269,9 +271,11 @@ class _EqualizerContentState extends State<EqualizerContent> {
     return ListenableBuilder(
       listenable: playerService,
       builder: (context, _) {
+        final available = playerService.isEqualizerAvailable;
         final gains = playerService.equalizerGains;
         final enabled = playerService.equalizerEnabled;
         final primaryColor = CupertinoTheme.of(context).primaryColor;
+        if (!available) return _buildCupertinoUnavailable(context);
         
         return Material(
           type: MaterialType.transparency,
@@ -308,7 +312,7 @@ class _EqualizerContentState extends State<EqualizerContent> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '均衡器目前仅支持mp3格式，暂时不支持无损音质和Hi-Res音质',
+                        '不同音源和编码格式的均衡器效果可能存在差异',
                         style: TextStyle(
                           color: CupertinoColors.label.resolveFrom(context).withOpacity(0.6),
                           fontSize: 12,
@@ -464,9 +468,11 @@ class _EqualizerContentState extends State<EqualizerContent> {
     return ListenableBuilder(
       listenable: playerService,
       builder: (context, _) {
+        final available = playerService.isEqualizerAvailable;
         final gains = playerService.equalizerGains;
         final enabled = playerService.equalizerEnabled;
         final theme = fluent.FluentTheme.of(context);
+        if (!available) return _buildFluentUnavailable(context);
         
         return fluent.ListView(
           padding: widget.embed ? const EdgeInsets.all(24) : const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -502,7 +508,7 @@ class _EqualizerContentState extends State<EqualizerContent> {
             // 提示信息
             fluent.InfoBar(
               title: const Text('提示'),
-              content: const Text('均衡器目前仅支持 mp3 格式，暂时不支持无损音质和 Hi-Res 音质。'),
+              content: const Text('不同音源和编码格式的均衡器效果可能存在差异。'),
               severity: fluent.InfoBarSeverity.info,
               isIconVisible: true,
             ),
@@ -607,6 +613,54 @@ class _EqualizerContentState extends State<EqualizerContent> {
     );
   }
 
+  Widget _buildMaterialUnavailable(ColorScheme cs) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          '当前平台暂不支持均衡器',
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCupertinoUnavailable(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          '当前平台暂不支持均衡器',
+          style: TextStyle(
+            color: CupertinoColors.secondaryLabel.resolveFrom(context),
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFluentUnavailable(BuildContext context) {
+    return fluent.ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      children: const [
+        fluent.InfoBar(
+          title: Text('均衡器不可用'),
+          content: Text('当前平台暂不支持均衡器。'),
+          severity: fluent.InfoBarSeverity.warning,
+          isIconVisible: true,
+        ),
+      ],
+    );
+  }
+
   String? _getCurrentPresetName(List<double> gains) {
     for (var entry in _presets.entries) {
       bool matched = true;
@@ -638,10 +692,16 @@ class EqualizerPage extends StatelessWidget {
       return CupertinoPageScaffold(
         navigationBar: CupertinoNavigationBar(
           middle: const Text('均衡器'),
-          trailing: CupertinoSwitch(
-            value: PlayerService().equalizerEnabled,
-            onChanged: (value) {
-              PlayerService().setEqualizerEnabled(value);
+          trailing: ListenableBuilder(
+            listenable: PlayerService(),
+            builder: (context, _) {
+              final player = PlayerService();
+              return CupertinoSwitch(
+                value: player.equalizerEnabled,
+                onChanged: player.isEqualizerAvailable
+                    ? (value) => player.setEqualizerEnabled(value)
+                    : null,
+              );
             },
           ),
         ),
@@ -658,14 +718,20 @@ class EqualizerPage extends StatelessWidget {
           backgroundColor: colorScheme.surfaceContainerLow,
           surfaceTintColor: Colors.transparent,
           actions: [
-            Transform.scale(
-              scale: 0.8,
-              child: Switch(
-                value: PlayerService().equalizerEnabled,
-                onChanged: (value) {
-                  PlayerService().setEqualizerEnabled(value);
-                },
-              ),
+            ListenableBuilder(
+              listenable: PlayerService(),
+              builder: (context, _) {
+                final player = PlayerService();
+                return Transform.scale(
+                  scale: 0.8,
+                  child: Switch(
+                    value: player.equalizerEnabled,
+                    onChanged: player.isEqualizerAvailable
+                        ? (value) => player.setEqualizerEnabled(value)
+                        : null,
+                  ),
+                );
+              },
             ),
             const SizedBox(width: 8),
           ],
