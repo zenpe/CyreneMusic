@@ -17,7 +17,7 @@ import '../auth/qr_login_scan_page.dart';
 /// 全局函数：在 Fluent UI 中显示登录对话框
 /// 可在任意地方调用此函数来显示登录对话框
 Future<bool?> showFluentLoginDialog(BuildContext context) {
-  return _FluentLoginDialogHelper.show(context);
+  return showAuthDialog(context);
 }
 
 /// 用户卡片组件
@@ -1537,15 +1537,7 @@ class _UserCardState extends State<UserCard> {
   /// 处理登录
   Future<void> _handleLogin(BuildContext context) async {
     print('👤 [UserCard] 打开登录页面...');
-
-    // 在 Windows + Fluent UI 框架下，使用 Fluent 风格对话框承载登录
-    final isFluentUI = ThemeManager().isDesktopFluentUI;
-    bool? result;
-    if (isFluentUI) {
-      result = await _showLoginDialogFluent(context);
-    } else {
-      result = await showAuthDialog(context);
-    }
+    final result = await showAuthDialog(context);
 
     print('👤 [UserCard] 登录页面返回，结果: $result');
 

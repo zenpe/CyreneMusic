@@ -896,7 +896,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
           ),
         ),
         const Expanded(
-          child: FluentAuthPage(initialTab: 0),
+          child: FluentAuthPage(initialTab: 0, embedded: true),
         ),
       ],
     );

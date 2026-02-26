@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
+import '../../services/auth_overlay_service.dart';
 import '../../services/auth_service.dart';
 import 'qr_login_dialog.dart';
 import 'linuxdo_webview_login_page.dart';
@@ -11,8 +12,9 @@ import 'linuxdo_webview_login_page.dart';
 /// 支持账号密码登录、Linux Do 授权登录、手机扫码登录
 class FluentAuthPage extends StatefulWidget {
   final int initialTab;
+  final bool embedded;
   
-  const FluentAuthPage({super.key, this.initialTab = 0});
+  const FluentAuthPage({super.key, this.initialTab = 0, this.embedded = false});
 
   @override
   State<FluentAuthPage> createState() => _FluentAuthPageState();
@@ -134,20 +136,34 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
   Widget _buildTabContent() {
     switch (_selectedTab) {
       case 0:
-        return _FluentLoginView(key: const ValueKey('login'));
+        return _FluentLoginView(
+          key: const ValueKey('login'),
+          embedded: widget.embedded,
+        );
       case 1:
-        return _FluentRegisterView(key: const ValueKey('register'));
+        return _FluentRegisterView(
+          key: const ValueKey('register'),
+          embedded: widget.embedded,
+        );
       case 2:
-        return _FluentForgotPasswordView(key: const ValueKey('forgot'));
+        return _FluentForgotPasswordView(
+          key: const ValueKey('forgot'),
+          embedded: widget.embedded,
+        );
       default:
-        return _FluentLoginView(key: const ValueKey('login'));
+        return _FluentLoginView(
+          key: const ValueKey('login'),
+          embedded: widget.embedded,
+        );
     }
   }
 }
 
 /// Fluent UI 登录视图
 class _FluentLoginView extends StatefulWidget {
-  const _FluentLoginView({super.key});
+  final bool embedded;
+
+  const _FluentLoginView({super.key, required this.embedded});
 
   @override
   State<_FluentLoginView> createState() => _FluentLoginViewState();
@@ -205,9 +221,22 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
         _showInfoBar(result['message'], fluent.InfoBarSeverity.success);
         // 登录成功后，自动上报IP归属地
         AuthService().updateLocation();
+        _closeAuthEntry();
       } else {
         _showInfoBar(result['message'], fluent.InfoBarSeverity.error);
       }
+    }
+  }
+
+  void _closeAuthEntry() {
+    if (widget.embedded || !mounted) return;
+    if (AuthOverlayService().isVisible) {
+      AuthOverlayService().hide(true);
+      return;
+    }
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop(true);
     }
   }
   
@@ -320,6 +349,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
               final ok = await showQrLoginDialog(context);
               if (ok == true && mounted) {
                 _showInfoBar('登录成功', fluent.InfoBarSeverity.success);
+                _closeAuthEntry();
               }
             },
             child: const Row(
@@ -381,6 +411,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
       if (mounted) {
         setState(() => _isLinuxDoLoading = false);
         _showInfoBar('登录成功', fluent.InfoBarSeverity.success);
+        _closeAuthEntry();
       }
     } else {
       setState(() => _isLinuxDoLoading = false);
@@ -391,7 +422,9 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
 
 /// Fluent UI 注册视图
 class _FluentRegisterView extends StatefulWidget {
-  const _FluentRegisterView({super.key});
+  final bool embedded;
+
+  const _FluentRegisterView({super.key, required this.embedded});
 
   @override
   State<_FluentRegisterView> createState() => _FluentRegisterViewState();
@@ -745,7 +778,9 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
 
 /// Fluent UI 找回密码视图
 class _FluentForgotPasswordView extends StatefulWidget {
-  const _FluentForgotPasswordView({super.key});
+  final bool embedded;
+
+  const _FluentForgotPasswordView({super.key, required this.embedded});
 
   @override
   State<_FluentForgotPasswordView> createState() => _FluentForgotPasswordViewState();
