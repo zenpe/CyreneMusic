@@ -755,14 +755,29 @@ class AuthService extends ChangeNotifier {
       if (result.ok) {
         final body = result.bodyData as Map<String, dynamic>;
         _currentUser = User.fromJson(body);
+        final refreshedToken = body['token'] as String?;
+        if (refreshedToken != null && refreshedToken.isNotEmpty) {
+          _authToken = refreshedToken;
+          await _saveTokenToStorage(refreshedToken);
+        }
         _isLoggedIn = true;
         notifyListeners();
         return true;
       }
-      await handleUnauthorized();
-      return false;
-    } catch (_) {
-      return false;
+      // 仅在明确 401 时清理登录态，避免后端瞬时异常/网关错误导致误登出
+      if (result.statusCode == 401) {
+        await handleUnauthorized();
+        return false;
+      }
+      DeveloperModeService().addLog(
+        '⚠️ [AuthService] validate-token 非401失败，保留当前登录态: ${result.statusCode}',
+      );
+      return _isLoggedIn;
+    } catch (e) {
+      DeveloperModeService().addLog(
+        '⚠️ [AuthService] validate-token 异常，保留当前登录态: $e',
+      );
+      return _isLoggedIn;
     }
   }
 
@@ -772,7 +787,10 @@ class AuthService extends ChangeNotifier {
     try {
       await logout();
       print('当前登录态已失效，请重新登录');
-      AuthOverlayService().show();
+      // 仅桌面端使用覆盖层登录；移动端（含车机/平板 Android）交给 AppGate 回到引导页
+      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+        AuthOverlayService().show();
+      }
     } finally {
       _isHandlingUnauthorized = false;
     }

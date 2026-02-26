@@ -9,6 +9,52 @@ import '../../utils/theme_manager.dart';
 import 'qr_login_dialog.dart';
 import 'linuxdo_webview_login_page.dart';
 
+class _AuthRouteService {
+  static final _AuthRouteService _instance = _AuthRouteService._internal();
+  factory _AuthRouteService() => _instance;
+  _AuthRouteService._internal();
+
+  bool _showing = false;
+  Completer<bool?>? _completer;
+
+  Future<bool?> show(BuildContext context, {int initialTab = 0}) {
+    if (_showing && _completer != null) {
+      return _completer!.future;
+    }
+
+    _showing = true;
+    _completer = Completer<bool?>();
+
+    final isCupertino = ThemeManager().isCupertinoFramework;
+    final route = isCupertino
+        ? CupertinoPageRoute<bool>(
+            builder: (context) => AuthPage(initialTab: initialTab),
+          )
+        : MaterialPageRoute<bool>(
+            builder: (context) => AuthPage(initialTab: initialTab),
+          );
+
+    Navigator.of(context, rootNavigator: true)
+        .push<bool>(route)
+        .then((result) {
+          if (_completer != null && !_completer!.isCompleted) {
+            _completer!.complete(result);
+          }
+        })
+        .catchError((_) {
+          if (_completer != null && !_completer!.isCompleted) {
+            _completer!.complete(false);
+          }
+        })
+        .whenComplete(() {
+          _showing = false;
+          _completer = null;
+        });
+
+    return _completer!.future;
+  }
+}
+
 /// 显示认证页面（改为内嵌 Stack 页面，而非对话框）
 Future<bool?> showAuthDialog(BuildContext context, {int initialTab = 0}) {
   // 桌面端（Windows/macOS/Linux）：走内容区覆盖层服务，避免新路由拦截焦点
@@ -16,18 +62,8 @@ Future<bool?> showAuthDialog(BuildContext context, {int initialTab = 0}) {
     return AuthOverlayService().show(initialTab: initialTab);
   }
 
-  // 移动端：保持整页路由体验
-  final isCupertino = ThemeManager().isCupertinoFramework;
-  return Navigator.push<bool>(
-    context,
-    isCupertino
-        ? CupertinoPageRoute(
-            builder: (context) => AuthPage(initialTab: initialTab),
-          )
-        : MaterialPageRoute(
-            builder: (context) => AuthPage(initialTab: initialTab),
-          ),
-  );
+  // 移动端：使用全局防重入，避免登录页嵌套 push
+  return _AuthRouteService().show(context, initialTab: initialTab);
 }
 
 /// 统一的认证页面 - Material Expressive 设计

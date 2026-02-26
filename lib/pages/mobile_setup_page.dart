@@ -80,14 +80,16 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isLoggedIn = AuthService().isLoggedIn;
+    final effectiveStep = (_currentStep == 3 && isLoggedIn) ? 4 : _currentStep;
 
     // 主题选择页面
-    if (_currentStep == 0 && !_themeSelected) {
+    if (effectiveStep == 0 && !_themeSelected) {
       return _buildThemeSelectionPage(context, isDark);
     }
 
     // 音源配置页面
-    if (_currentStep == 2) {
+    if (effectiveStep == 2) {
       return AudioSourceSettingsContent(
         onBack: () => setState(() => _currentStep = 1),
         embed: false,
@@ -95,12 +97,12 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
     }
 
     // 登录页面
-    if (_currentStep == 3) {
+    if (effectiveStep == 3) {
       return _buildLoginPage(context, isCupertino, isDark);
     }
 
     // 协议确认页面
-    if (_currentStep == 4) {
+    if (effectiveStep == 4) {
       return _buildAgreementPage(context, isCupertino, colorScheme, isDark);
     }
 

@@ -194,6 +194,8 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
   Widget build(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final isLoggedIn = AuthService().isLoggedIn;
+    final effectiveStep = (_currentStep == 3 && isLoggedIn) ? 4 : _currentStep;
     
     // 判断是否使用透明背景（窗口效果启用时）
     final useWindowEffect = Platform.isWindows && ThemeManager().windowEffect != WindowEffect.disabled;
@@ -204,13 +206,13 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
     // 构建页面内容
     Widget pageContent;
     
-    if (_currentStep == 1) {
+    if (effectiveStep == 1) {
       pageContent = _buildThemeSettingsPage(context, theme, isDark);
-    } else if (_currentStep == 2) {
+    } else if (effectiveStep == 2) {
       pageContent = _buildAudioSourcePage(context, theme, isDark);
-    } else if (_currentStep == 3) {
+    } else if (effectiveStep == 3) {
       pageContent = _buildLoginPage(context, theme, isDark);
-    } else if (_currentStep == 4) {
+    } else if (effectiveStep == 4) {
       pageContent = _buildAgreementPage(context, theme, isDark);
     } else {
       pageContent = _buildWelcomePage(context, theme, isDark);

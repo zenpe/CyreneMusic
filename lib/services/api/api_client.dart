@@ -306,7 +306,10 @@ class _AuthInterceptor extends Interceptor {
     final authEnabled = options.extra['auth'] != false;
     if (authEnabled) {
       final token = AuthTokenStore.token;
-      if (token != null && token.isNotEmpty) {
+      final hasToken = token != null && token.isNotEmpty;
+      options.extra['hadAuthHeader'] = hasToken;
+      options.extra['authTokenSnapshot'] = hasToken ? token : null;
+      if (hasToken) {
         options.headers['Authorization'] = 'Bearer $token';
       }
     }
@@ -351,12 +354,33 @@ class _LogInterceptor extends Interceptor {
 }
 
 class _UnauthorizedInterceptor extends Interceptor {
+  bool _shouldHandleUnauthorized(RequestOptions options) {
+    final authEnabled = options.extra['auth'] != false;
+    if (!authEnabled) return false;
+
+    final hadAuthHeader = options.extra['hadAuthHeader'] == true;
+    if (!hadAuthHeader) return false;
+
+    final requestToken = options.extra['authTokenSnapshot'] as String?;
+    final currentToken = AuthTokenStore.token;
+    if (currentToken == null || currentToken.isEmpty) return false;
+
+    // 忽略“旧 token 请求晚到”的 401，避免新登录后被旧请求回包踢下线
+    if (requestToken != null && requestToken != currentToken) {
+      DeveloperModeService().addLog(
+        '[Auth] 忽略过期请求触发的 401（token 已更新）',
+      );
+      return false;
+    }
+    return true;
+  }
+
   // Primary path: validateStatus accepts all status codes, so 401 arrives here
   // as a normal response (not a DioException).
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
-    final authEnabled = response.requestOptions.extra['auth'] != false;
-    if (authEnabled && response.statusCode == 401) {
+    if (response.statusCode == 401 &&
+        _shouldHandleUnauthorized(response.requestOptions)) {
       AuthTokenStore.onUnauthorized?.call();
     }
     handler.next(response);
@@ -365,8 +389,8 @@ class _UnauthorizedInterceptor extends Interceptor {
   // Defensive fallback: in case validateStatus changes or a plugin throws.
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    final authEnabled = err.requestOptions.extra['auth'] != false;
-    if (authEnabled && err.response?.statusCode == 401) {
+    if (err.response?.statusCode == 401 &&
+        _shouldHandleUnauthorized(err.requestOptions)) {
       AuthTokenStore.onUnauthorized?.call();
     }
     handler.next(err);
