@@ -32,7 +32,6 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
   //   'hotSongs': List<Track>,     // 热门歌曲
   // }>
   List<Map<String, dynamic>> _artistsDataList = [];
-  String? _lastArtistsName; // 用于缓存比较是否变化 (比如 "Artist A / Artist B")
   
   bool _loading = true;
   dynamic _lastSongId;
@@ -108,8 +107,8 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
              NeteaseArtistDetailService().fetchArtistDetail(artistId),
            ]);
            
-           final descData = results[0] as Map<String, dynamic>?;
-           final detailData = results[1] as Map<String, dynamic>?;
+           final descData = results[0];
+           final detailData = results[1];
            
            // 简介: 优先使用 descData (artist/desc 接口)，其次使用 detailData (artist/detail 接口)
            String briefDesc = '';
@@ -175,7 +174,6 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
           _userMemory = baseResults[2] as Map<String, dynamic>?;
           
           _artistsDataList = newArtistsDataList;
-          _lastArtistsName = allArtistsName;
 
           _loading = false;
           _lastSongId = track.id;
@@ -462,11 +460,9 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
     String firstListenDesc = '';
     int playCount = 0;
     String playDescription = '';
-    bool isUserMemory = false; // 标记是否为用户自己的数据
     
     if (_userMemory != null) {
       // 用户自己的回忆坐标
-      isUserMemory = true;
       debugPrint('📊 [SongWikiPanel] 回忆坐标来源: 用户自己的播放记录 (来自后端 /stats/song-memory)');
       debugPrint('   _userMemory: $_userMemory');
       final firstPlayedAt = _userMemory!['firstPlayedAt'] as String?;

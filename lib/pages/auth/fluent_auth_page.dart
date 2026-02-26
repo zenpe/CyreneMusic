@@ -964,7 +964,6 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = fluent.FluentTheme.of(context);
     
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 400),

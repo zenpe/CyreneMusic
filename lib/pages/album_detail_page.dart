@@ -55,7 +55,6 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     
     final isFluent = fluent.FluentTheme.maybeOf(context) != null;
     final isCupertino = ThemeManager().isCupertinoFramework;
-    final isExpressive = !isFluent && !isCupertino && (Platform.isAndroid || Platform.isIOS);
 
     if (isFluent) {
       final useWindowEffect =
@@ -120,7 +119,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     if (_error != null) return Center(child: Text(_error!));
 
     final album = _data!['album'] as Map<String, dynamic>? ?? {};
-    final songs = (album['songs'] as List<dynamic>? ?? []) as List<dynamic>;
+    final songs = album['songs'] as List<dynamic>? ?? [];
     final coverUrl = (album['coverImgUrl'] ?? '') as String? ?? '';
     final fluentTheme = isFluent ? fluent.FluentTheme.of(context) : null;
     final placeholderColor = isFluent

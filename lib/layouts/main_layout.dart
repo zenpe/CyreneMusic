@@ -503,8 +503,6 @@ class _MainLayoutState extends State<MainLayout>
     final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
     final orientation = MediaQuery.of(context).orientation;
     final bool isLandscape = orientation == Orientation.landscape;
-    final double miniPlayerWidth =
-        (MediaQuery.of(context).size.width * 0.55).clamp(320.0, 520.0).toDouble();
 
     final scaffold = PopScope(
       canPop: false, // 始终拦截返回键

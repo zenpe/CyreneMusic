@@ -7,7 +7,6 @@ import 'dart:typed_data';
 import 'package:audio_service/audio_service.dart';
 import 'player_service.dart';
 import 'android_floating_lyric_service.dart';
-import 'android_media_notification_service.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:crypto/crypto.dart';
 import 'package:image/image.dart' as img;

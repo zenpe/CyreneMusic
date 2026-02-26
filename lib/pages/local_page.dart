@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../services/local_library_service.dart';
 import '../services/player_service.dart';

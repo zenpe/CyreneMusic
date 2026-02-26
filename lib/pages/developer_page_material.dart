@@ -1077,7 +1077,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                             final success = await AdminService().updateSponsorStatus(user.id, value);
                             if (success && mounted) {
                               // 刷新详情
-                              final newDetails = await AdminService().fetchUserSponsorDetails(user.id);
+                              await AdminService().fetchUserSponsorDetails(user.id);
                               setDialogState(() {
                                 // 用新数据
                               });

@@ -7,14 +7,12 @@ import '../services/layout_preference_service.dart';
 import '../services/lyric_style_service.dart';
 import '../utils/theme_manager.dart';
 import '../models/lyric_line.dart';
-import '../models/track.dart';
 import '../models/song_detail.dart';
 import '../utils/lyric_parser.dart';
 import 'mobile_player_page.dart';
 import 'player_components/player_window_controls.dart';
 import 'player_components/player_background.dart';
 import 'player_components/player_song_info.dart';
-import 'player_components/player_lyrics_panel.dart';
 import 'player_components/player_karaoke_lyrics_panel.dart';
 import 'player_components/player_fluid_cloud_lyrics_panel.dart';
 import 'player_components/player_fluid_cloud_layout.dart'; // 导入新布局

@@ -5,11 +5,9 @@ import '../../widgets/fluent_settings_card.dart';
 import '../../widgets/cupertino/cupertino_settings_widgets.dart';
 import '../../services/audio_quality_service.dart';
 import '../../services/audio_source_service.dart';
-import '../../services/player_service.dart';
 import '../../models/song_detail.dart';
 import '../../utils/theme_manager.dart';
 import '../../widgets/material/material_settings_widgets.dart';
-import 'equalizer_page.dart';
 
 
 /// 播放设置组件

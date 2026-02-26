@@ -107,7 +107,6 @@ class PlaybackService extends ChangeNotifier {
   // 听歌统计
   Timer? _statsTimer;
   DateTime? _playStartTime;
-  int _sessionListeningTime = 0;
 
   // 播放状态保存
   Timer? _stateSaveTimer;
@@ -1668,7 +1667,6 @@ class PlaybackService extends ChangeNotifier {
       if (_playStartTime != null) {
         final elapsed = DateTime.now().difference(_playStartTime!).inSeconds;
         if (elapsed > 0) {
-          _sessionListeningTime += elapsed;
           ListeningStatsService().accumulateListeningTime(elapsed);
           _playStartTime = DateTime.now();
         }
@@ -1681,7 +1679,6 @@ class PlaybackService extends ChangeNotifier {
       if (_playStartTime != null) {
         final elapsed = DateTime.now().difference(_playStartTime!).inSeconds;
         if (elapsed > 0) {
-          _sessionListeningTime += elapsed;
           ListeningStatsService().accumulateListeningTime(elapsed);
         }
       }

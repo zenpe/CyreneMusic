@@ -8,7 +8,6 @@ import '../../services/lyric_font_service.dart';
 import '../../services/playback_mode_service.dart';
 import '../../models/lyric_line.dart';
 import '../../models/track.dart';
-import '../../utils/theme_manager.dart';
 import 'player_fluid_cloud_background.dart';
 import 'player_window_controls.dart';
 import 'player_dialogs.dart';

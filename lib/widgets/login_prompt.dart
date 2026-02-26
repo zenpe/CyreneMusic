@@ -75,7 +75,6 @@ class _LoginPromptState extends State<LoginPrompt>
   /// Material Design 3 风格登录提示
   Widget _buildMaterialPrompt(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -430,7 +429,6 @@ class _LoginPromptState extends State<LoginPrompt>
   /// Fluent UI 风格登录提示
   Widget _buildFluentPrompt(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     
     return FadeTransition(
       opacity: _fadeAnimation,

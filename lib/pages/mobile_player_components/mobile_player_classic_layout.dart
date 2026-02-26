@@ -1,9 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../services/player_service.dart';
 import '../../services/player_background_service.dart';
-import '../../models/track.dart';
-import '../../models/song_detail.dart';
 import 'mobile_player_app_bar.dart';
 import 'mobile_player_dialogs.dart';
 // import 'mobile_player_song_info.dart';
@@ -11,8 +8,6 @@ import 'mobile_player_karaoke_lyric.dart';
 import '../mobile_lyric_page.dart';
 import '../../models/lyric_line.dart';
 import '../../services/playback_mode_service.dart';
-import '../../services/download_service.dart';
-import '../../services/sleep_timer_service.dart';
 import '../../widgets/wavy_split_progress_bar.dart';
 import '../../widgets/player_error_banner.dart';
 import '../../widgets/player_speed_selector.dart';

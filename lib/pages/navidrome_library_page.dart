@@ -6,7 +6,6 @@ import '../services/navidrome_session_service.dart';
 import '../services/player_service.dart';
 import '../services/playlist_queue_service.dart';
 import '../widgets/navidrome_ui.dart';
-import 'navidrome_search_page.dart';
 import 'navidrome_artists_page.dart';
 import 'navidrome_playlists_page.dart';
 

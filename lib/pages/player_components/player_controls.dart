@@ -3,7 +3,6 @@ import '../../services/player_service.dart';
 import '../../services/playback_mode_service.dart';
 import '../../services/sleep_timer_service.dart';
 import '../../services/download_service.dart';
-import '../../services/playlist_service.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../models/lyric_line.dart';

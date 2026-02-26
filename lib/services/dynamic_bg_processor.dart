@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'dart:math' as math;
 
 /// A processor that implements Apple Music-like fluid background generation.
 /// 

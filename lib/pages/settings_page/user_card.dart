@@ -6,7 +6,6 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
 import '../../services/donate_service.dart';
-import '../../services/url_service.dart';
 import '../../services/avatar_fetch_service.dart';
 import '../../utils/theme_manager.dart';
 import '../auth/auth_page.dart';
@@ -29,7 +28,6 @@ class UserCard extends StatefulWidget {
 class _UserCardState extends State<UserCard> {
   bool _isSponsor = false;
   int? _sponsorRank; // 赞助排名：1=金牌，2=银牌，3=铜牌，其他=赞助用户
-  bool _loadingSponsorStatus = false;
   final TextEditingController _usernameController = TextEditingController();
   bool _isUpdatingUsername = false;
   String? _usernameError;
@@ -287,12 +285,10 @@ class _UserCardState extends State<UserCard> {
       setState(() {
         _isSponsor = false;
         _sponsorRank = null;
-        _loadingSponsorStatus = false;
       });
       return;
     }
 
-    setState(() => _loadingSponsorStatus = true);
 
     try {
       final result = await DonateService.getSponsorStatus(userId: user.id);
@@ -301,14 +297,12 @@ class _UserCardState extends State<UserCard> {
         setState(() {
           _isSponsor = data['isSponsor'] == true;
           _sponsorRank = data['sponsorRank'] as int?;
-          _loadingSponsorStatus = false;
         });
         print('[UserCard] 赞助状态: $_isSponsor, 排名: $_sponsorRank');
       } else {
         setState(() {
           _isSponsor = false;
           _sponsorRank = null;
-          _loadingSponsorStatus = false;
         });
       }
     } catch (e) {
@@ -316,7 +310,6 @@ class _UserCardState extends State<UserCard> {
       setState(() {
         _isSponsor = false;
         _sponsorRank = null;
-        _loadingSponsorStatus = false;
       });
     }
   }

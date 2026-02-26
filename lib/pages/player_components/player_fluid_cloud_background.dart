@@ -6,7 +6,6 @@ import '../../services/player_background_service.dart';
 import '../../services/player_service.dart';
 import '../../services/color_extraction_service.dart';
 import '../../widgets/video_background_player.dart';
-import '../../widgets/mesh_gradient_background.dart';
 import '../../widgets/flowing_light_background.dart';
 
 /// 动态背景颜色缓存管理器（全局单例）
@@ -38,7 +37,6 @@ class PlayerFluidCloudBackground extends StatefulWidget {
 
 class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground> {
   // 动态背景颜色
-  List<Color> _dynamicColors = DynamicBackgroundColorExtractor.getDefaultColors();
   String? _currentImageUrl;
   bool _isFirstBuild = true;
   
@@ -109,7 +107,6 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
       _currentImageUrl = imageUrl;
       if (mounted) {
         setState(() {
-          _dynamicColors = cachedColors;
         });
       }
       return;
@@ -134,7 +131,6 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
     if (cachedColors != null) {
       _currentImageUrl = imageUrl;
       if (mounted) {
-        setState(() => _dynamicColors = cachedColors);
       }
       return;
     }
@@ -150,18 +146,7 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
       );
 
       if (result != null && mounted && _currentImageUrl == imageUrl) {
-        final colors = DynamicBackgroundColorExtractor.extractColors(
-          vibrantColor: result.vibrantColor,
-          mutedColor: result.mutedColor,
-          dominantColor: result.dominantColor,
-          lightVibrantColor: result.lightVibrantColor,
-          darkVibrantColor: result.darkVibrantColor,
-          lightMutedColor: result.lightMutedColor,
-          darkMutedColor: result.darkMutedColor,
-        );
-        
         setState(() {
-          _dynamicColors = colors;
         });
       }
     } catch (e) {

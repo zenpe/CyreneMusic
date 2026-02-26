@@ -1,10 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/track.dart';
 import '../../services/player_service.dart';
 import '../../services/playlist_queue_service.dart';
-import '../../utils/theme_manager.dart';
 
 /// 转换为 Track 对象
 Track convertToTrack(Map<String, dynamic> song) {
@@ -79,8 +77,6 @@ class _DailyRecommendHeroCardState extends State<DailyRecommendHeroCard> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final themeManager = ThemeManager();
-    final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final now = DateTime.now();
     
@@ -232,7 +228,6 @@ class PersonalFmCompactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final themeManager = ThemeManager();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     if (list.isEmpty) return const SizedBox.shrink();

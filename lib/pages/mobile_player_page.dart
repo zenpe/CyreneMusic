@@ -2,17 +2,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/player_service.dart';
-import '../services/player_background_service.dart';
 import '../models/lyric_line.dart';
 import '../models/song_detail.dart';
 import '../utils/lyric_parser.dart';
-import 'mobile_lyric_page.dart';
 import 'mobile_player_components/mobile_player_background.dart';
-import 'mobile_player_components/mobile_player_app_bar.dart';
-import 'mobile_player_components/mobile_player_song_info.dart';
-import 'mobile_player_components/mobile_player_controls.dart';
 import 'mobile_player_components/mobile_player_control_center.dart';
-import 'mobile_player_components/mobile_player_karaoke_lyric.dart';
 import 'mobile_player_components/mobile_player_fluid_cloud_layout.dart';
 import 'mobile_player_components/mobile_player_classic_layout.dart';
 import 'mobile_player_components/mobile_player_dialogs.dart';
@@ -366,7 +360,6 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     }
 
     // 构建主要内容
-    final backgroundService = PlayerBackgroundService();
     final lyricStyleService = LyricStyleService();
     // 流体云布局条件：全屏播放器样式设置为流体云（优先级最高）
     final useFluidCloudLayout = lyricStyleService.currentStyle == LyricStyle.fluidCloud;

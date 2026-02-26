@@ -91,7 +91,7 @@ class SystemMediaService {
           androidShowNotificationBadge: true,
           androidStopForegroundOnPause: false, // 保持核心逻辑：暂停时不停止前台服务，确保应用在 Android 12+ 后台存活
         ),
-      ) as CyreneAudioHandler;
+      );
       
       if (_audioHandler != null) {
         // 🔧 关键修复：强制启用媒体按钮（包括蓝牙控制）- 仅 Android

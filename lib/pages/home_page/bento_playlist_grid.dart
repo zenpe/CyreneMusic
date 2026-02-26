@@ -85,7 +85,6 @@ class _LargePlaylistCardState extends State<LargePlaylistCard> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final pic = (widget.playlist['picUrl'] ?? widget.playlist['coverImgUrl'] ?? '').toString();
     final name = widget.playlist['name']?.toString() ?? '';
     final id = int.tryParse(widget.playlist['id']?.toString() ?? '');

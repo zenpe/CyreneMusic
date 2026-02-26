@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../utils/theme_manager.dart';
-import '../services/audio_source_service.dart';
-import '../pages/settings_page/audio_source_settings.dart';
 
 /// 音源未配置状态下的精美配置提示组件
 /// 适配 iOS Cupertino、Material Design 3 和 Fluent UI 三种主题
@@ -75,7 +73,6 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
   /// Material Design 3 风格配置提示
   Widget _buildMaterialPrompt(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -422,7 +419,6 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
   /// Fluent UI 风格配置提示
   Widget _buildFluentPrompt(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     
     return FadeTransition(
       opacity: _fadeAnimation,

@@ -13,7 +13,6 @@ import '../services/system_volume_service.dart';
 import '../services/playback_mode_service.dart';
 import '../models/track.dart';
 import '../utils/theme_manager.dart';
-import '../services/playback/playback_service.dart';
 import 'track_action_menu.dart';
 
 /// 迷你播放器组件（底部播放栏）

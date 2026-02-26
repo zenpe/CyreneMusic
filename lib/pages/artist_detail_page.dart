@@ -20,31 +20,8 @@ class ArtistDetailPage extends StatefulWidget {
 }
 
 class _ArtistDetailPageState extends State<ArtistDetailPage> {
-  Map<String, dynamic>? _data;
-  bool _loading = true;
-  String? _error;
 
   bool get _isCupertino => ThemeManager().isCupertinoFramework;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    final data = await NeteaseArtistDetailService().fetchArtistDetail(widget.artistId);
-    if (!mounted) return;
-    setState(() {
-      _data = data;
-      _loading = false;
-      if (data == null) _error = '加载失败';
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1176,8 +1153,8 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
     }
     
     final artist = _data!['artist'] as Map<String, dynamic>? ?? {};
-    final albums = (_data!['albums'] as List<dynamic>? ?? []) as List<dynamic>;
-    final songs = (_data!['songs'] as List<dynamic>? ?? []) as List<dynamic>;
+    final albums = _data!['albums'] as List<dynamic>? ?? [];
+    final songs = _data!['songs'] as List<dynamic>? ?? [];
     final imageUrl = (artist['img1v1Url'] ?? artist['picUrl'] ?? '') as String;
     
     Widget avatar;

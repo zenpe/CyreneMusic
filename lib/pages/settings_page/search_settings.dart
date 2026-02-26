@@ -86,7 +86,6 @@ class _SearchSettingsState extends State<SearchSettings> {
 
   /// 构建 Cupertino UI 版本
   Widget _buildCupertinoUI(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return CupertinoSettingsTile(
       icon: CupertinoIcons.arrow_merge,

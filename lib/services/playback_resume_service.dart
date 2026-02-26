@@ -1,5 +1,3 @@
-import 'dart:io';
-import 'package:flutter/material.dart';
 import 'playback_state_service.dart';
 import 'notification_service.dart';
 import 'player_service.dart';

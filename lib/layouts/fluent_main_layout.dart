@@ -33,7 +33,6 @@ import '../widgets/video_background_player.dart';
 import '../pages/home_page/home_overlay_controller.dart';
 import '../pages/desktop_setup_page.dart';
 import '../services/persistent_storage_service.dart';
-import '../widgets/global_watermark.dart';
 
 /// Fluent UI 版本的主布局，使用 NavigationView
 /// 按照 Windows 设计规范实现左侧导航栏
@@ -770,7 +769,6 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
 
   @override
   Widget build(BuildContext context) {
-    final fluentTheme = fluent_ui.FluentTheme.of(context);
     
     // 构建 NavigationView（按照 README 文档标准实现）
     final navigationView = fluent_ui.NavigationView(

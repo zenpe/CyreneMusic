@@ -831,7 +831,6 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
       return const Center(child: Text('没有找到电台'));
     }
 
-    final navTheme = NavidromeTheme.of(context);
     final width = MediaQuery.of(context).size.width;
     final padding = NavidromeLayout.pagePadding(width);
     final bottomPadding = NavidromeLayout.bottomPadding(context);

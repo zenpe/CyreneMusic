@@ -26,9 +26,9 @@ class PlayerErrorBanner extends StatelessWidget {
       margin: margin,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.redAccent.withOpacity(0.2),
+        color: Colors.redAccent.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.redAccent.withOpacity(0.45)),
+        border: Border.all(color: Colors.redAccent.withValues(alpha: 0.45)),
       ),
       child: Row(
         children: [

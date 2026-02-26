@@ -2,7 +2,6 @@ import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -248,11 +247,9 @@ class _MeshGradientPainter extends CustomPainter {
     paint.shader = null;
 
     final double shortestSide = size.shortestSide;
-    final double longestSide = size.longestSide;
 
     // 2. 绘制 5 个动态光斑 (参考 bg.html)
     // 映射颜色：确保至少有 5 个颜色
-    final activeColors = colors;
     
     // ✅ 优化 0：配置静态化，消除每帧分配
     final blobConfigs = _blobConfigs;

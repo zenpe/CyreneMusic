@@ -1883,7 +1883,6 @@ class _ThemeColorGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentIndex = ThemeManager().getCurrentColorIndex();
-    final theme = Theme.of(context);
 
     return GridView.builder(
       shrinkWrap: true,

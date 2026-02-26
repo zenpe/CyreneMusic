@@ -689,7 +689,6 @@ class DailyRecommendDetailPage extends StatelessWidget {
         .where((e) => e.isNotEmpty)
         .join(' / ');
     final songName = song['name']?.toString() ?? '';
-    final songId = song['id'];
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8.0),

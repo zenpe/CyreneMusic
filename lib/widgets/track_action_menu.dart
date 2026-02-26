@@ -47,7 +47,6 @@ class TrackActionMenu {
     VoidCallback? onPlay,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     // 获取按钮位置
     final RenderBox? button = context.findRenderObject() as RenderBox?;

@@ -19,7 +19,6 @@ import 'player_fluid_cloud_background.dart';
 import 'player_window_controls.dart';
 import 'player_fluid_cloud_lyrics_panel.dart';
 import 'player_fluid_cloud_queue_panel.dart';
-import 'player_fluid_cloud_queue_panel.dart';
 import 'player_fluid_cloud_song_wiki_panel.dart';
 import '../mobile_player_components/mobile_player_settings_sheet.dart';
 import 'player_dialogs.dart';
@@ -63,7 +62,6 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   // 缓存当前歌曲的封面 URL，用于检测歌曲变化
   String? _currentImageUrl;
 
-  Future<void>? _pendingCoverPrecache;
 
   // 歌词折叠状态
   bool _isLyricsCollapsed = false;
@@ -150,7 +148,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
 
       final provider = player.currentCoverImageProvider;
       if (provider != null) {
-        _pendingCoverPrecache = precacheImage(
+        precacheImage(
           provider,
           context,
           size: const Size(512, 512),
@@ -456,7 +454,6 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   /// 构建左侧面板
   Widget _buildLeftPanel(BuildContext context) {
     final player = PlayerService();
-    final song = player.currentSong;
     final track = player.currentTrack;
     // ✅ 关键修复：使用 PlayerService 的封面 URL 和 Provider，避免详情加载导致重新请求
     final imageUrl = player.currentCoverUrl ?? track?.picUrl ?? '';

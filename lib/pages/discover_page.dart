@@ -15,7 +15,6 @@ import '../widgets/login_prompt.dart';
 import '../widgets/audio_source_prompt.dart';
 import '../services/audio_source_service.dart';
 import 'settings_page/audio_source_settings.dart';
-import 'auth/auth_page.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -748,7 +747,6 @@ class _DiscoverPageState extends State<DiscoverPage> {
       );
     }
 
-    final bool isDetail = _selectedPlaylistId != null;
 
     return fluent.ScaffoldPage(
       padding: EdgeInsets.zero,

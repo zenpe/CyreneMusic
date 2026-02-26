@@ -28,7 +28,6 @@ import 'settings_page/lyric_settings_page.dart';
 import 'settings_page/audio_source_settings_page.dart';
 import 'settings_page/about_settings_page.dart';
 import 'settings_page/other_settings_page.dart';
-import 'settings_page/equalizer_page.dart';
 import 'support_page.dart';
 import 'settings_page/lab_functions.dart';
 import 'settings_page/lab_functions_page.dart';
@@ -987,7 +986,6 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 构建 Fluent UI 二级页面标题
   Widget _buildFluentHeader(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     
     String pageName = '';
     switch (_currentSubPage) {

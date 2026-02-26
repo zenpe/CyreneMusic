@@ -103,8 +103,6 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
 
   /// 构建 Material UI 版本
   Widget _buildMaterialUI(BuildContext context) {
-    final latestVersion = _versionService.latestVersion;
-    final hasUpdate = _versionService.hasUpdate;
     final autoSupported = _autoUpdateService.isPlatformSupported;
     final showStatus = _autoUpdateService.isUpdating ||
         _autoUpdateService.requiresRestart ||

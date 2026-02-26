@@ -21,7 +21,6 @@ class DesktopLyricService {
   Function(String action)? _playbackControlCallback;
   
   // Color picker callback (for showing color picker dialog from Flutter)
-  Function()? _colorPickerCallback;
 
   // 配置项的SharedPreferences键
   static const String _keyEnabled = 'desktop_lyric_enabled';
@@ -39,7 +38,6 @@ class DesktopLyricService {
   bool _isCreated = false;
   bool _isVisible = false;
   String _currentLyric = '';
-  String _currentTranslation = '';
 
   // 默认配置
   int _fontSize = 32;
@@ -411,7 +409,6 @@ class DesktopLyricService {
   Future<void> setTranslationText(String text) async {
     if (!Platform.isWindows) return;
     
-    _currentTranslation = text;
     
     // 如果窗口未创建，只保存文本，不实际设置
     if (!_isCreated) return;
@@ -499,7 +496,6 @@ class DesktopLyricService {
   
   /// 设置颜色选择器回调
   void setColorPickerCallback(Function() callback) {
-    _colorPickerCallback = callback;
   }
   
   /// 处理来自原生代码的方法调用

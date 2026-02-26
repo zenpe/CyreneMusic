@@ -1,14 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'dart:convert';
-import 'dart:math' as math;
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../services/netease_recommend_service.dart';
-import '../models/track.dart';
-import '../services/player_service.dart';
-import '../services/playlist_queue_service.dart';
 import 'home_page/for_you_data.dart';
 import 'home_page/greeting_header.dart';
 import 'home_page/hero_section.dart';
@@ -21,19 +14,13 @@ import 'home_page/mobile_personal_fm.dart';
 import 'home_page/mobile_playlist_grid.dart';
 import 'home_page/mobile_newsong_list.dart';
 import 'home_page/login_prompt.dart';
-import 'home_page/daily_recommend_detail_page.dart';
-import 'discover_playlist_detail_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../utils/theme_manager.dart';
-import '../services/weather_service.dart';
 import '../widgets/skeleton_loader.dart';
-import '../services/auth_overlay_service.dart';
-import '../pages/settings_page/user_card.dart';
 import '../widgets/audio_source_prompt.dart';
 import '../services/audio_source_service.dart';
 import 'settings_page/audio_source_settings.dart';
-import 'auth/auth_page.dart';
 
 /// 首页 - 为你推荐 Tab 内容 (优化版)
 class HomeForYouTab extends StatefulWidget {

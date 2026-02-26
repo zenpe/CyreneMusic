@@ -27,7 +27,6 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
   
   // 歌手相关数据 (支持多位歌手)
   List<Map<String, dynamic>> _artistsDataList = [];
-  String? _lastArtistsName;
   
   bool _loading = true;
   dynamic _lastSongId;
@@ -101,8 +100,8 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
              NeteaseArtistDetailService().fetchArtistDetail(artistId),
            ]);
            
-           final descData = results[0] as Map<String, dynamic>?;
-           final detailData = results[1] as Map<String, dynamic>?;
+           final descData = results[0];
+           final detailData = results[1];
            
            String briefDesc = '';
            if (descData != null && descData['briefDesc'] != null) {
@@ -164,7 +163,6 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
           _userMemory = baseResults[2] as Map<String, dynamic>?;
           
           _artistsDataList = newArtistsDataList;
-          _lastArtistsName = allArtistsName;
 
           _loading = false;
           _lastSongId = track.id;

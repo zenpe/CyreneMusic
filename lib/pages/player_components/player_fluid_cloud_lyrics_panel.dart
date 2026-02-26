@@ -148,7 +148,6 @@ class _PlayerFluidCloudLyricsPanelState extends State<PlayerFluidCloudLyricsPane
               if (i < widget.lyrics.length - 1) {
                 final currentLine = widget.lyrics[i];
                 final nextLine = widget.lyrics[i+1];
-                final gap = (nextLine.startTime - currentLine.startTime).inSeconds;
                 
                 // 计算当前行结束时间
                 Duration lineEndTime = currentLine.startTime + const Duration(seconds: 3); // 默认兜底 3s
@@ -344,7 +343,6 @@ class _PlayerFluidCloudLyricsPanelState extends State<PlayerFluidCloudLyricsPane
 
   Widget _buildVirtualItem(_VirtualLyricEntry item, int index, int activeIndex, double centerYOffset, double relativeOffset, double itemHeight, double layoutWidth) {
     final diff = index - activeIndex;
-    final currentPos = PlayerService().position;
 
     // 1. 缩放逻辑
     double targetScale = _getScaleSync(diff);
@@ -519,12 +517,8 @@ class _ElasticLyricLineState extends State<_ElasticLyricLine> with TickerProvide
     });
   }
 
-  // HTML CSS: transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)
-  // 这是带回弹的曲线
-  static const Curve elasticCurve = Cubic(0.34, 1.56, 0.64, 1.0);
   static const Duration animDuration = Duration(milliseconds: 800);
   
-  bool _wasActive = false;
 
   @override
   void initState() {
@@ -533,7 +527,6 @@ class _ElasticLyricLineState extends State<_ElasticLyricLine> with TickerProvide
     _scale = widget.targetScale;
     _opacity = widget.targetOpacity;
     _blur = widget.targetBlur;
-    _wasActive = widget.isActive;
     _textColor = widget.isActive ? Colors.white : Colors.white.withOpacity(0.3);
   }
 
@@ -553,7 +546,6 @@ class _ElasticLyricLineState extends State<_ElasticLyricLine> with TickerProvide
     if (positionChanged || scaleChanged || opacityChanged || blurChanged) {
       _startAnimation(oldWidget);
     }
-    _wasActive = widget.isActive;
   }
 
   @override

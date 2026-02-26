@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -11,25 +10,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/announcement_service.dart';
 import '../services/music_service.dart';
-import '../services/player_service.dart';
 import '../services/version_service.dart';
 import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
 import '../services/home_search_service.dart';
 import '../widgets/announcement_dialog.dart';
-import '../models/toplist.dart';
 import '../models/track.dart';
 import '../models/version_info.dart';
-import '../widgets/toplist_card.dart';
-import '../widgets/track_list_tile.dart';
 import '../widgets/search_widget.dart';
 import '../utils/page_visibility_notifier.dart';
 import '../utils/theme_manager.dart';
 import '../pages/auth/auth_page.dart';
 import '../pages/auth/qr_login_scan_page.dart';
 import '../services/play_history_service.dart';
-import '../services/playlist_service.dart';
-import '../models/playlist.dart';
 import 'dart:math';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import '../services/netease_login_service.dart';
@@ -39,7 +32,6 @@ import 'discover_playlist_detail_page.dart';
 import 'home_page/daily_recommend_detail_page.dart';
 import 'home_page/home_breadcrumbs.dart';
 import 'home_page/home_overlay_controller.dart';
-import 'home_page/home_widgets.dart';
 import '../services/global_back_handler_service.dart';
 import 'home_page/toplist_detail.dart';
 import 'home_page/charts_tab.dart';
@@ -1293,7 +1285,6 @@ class _HomePageState extends State<HomePage>
 
   /// 构建 iOS 风格内容区域
   Widget _buildCupertinoContentArea(BuildContext context, bool showTabs) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
 
     if (_showSearch) {
       return SearchWidget(

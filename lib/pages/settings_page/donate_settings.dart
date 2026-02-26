@@ -21,7 +21,6 @@ class DonateSettings extends StatefulWidget {
 }
 
 class _DonateSettingsState extends State<DonateSettings> {
-  bool _submitting = false;
 
   @override
   Widget build(BuildContext context) {
@@ -80,7 +79,6 @@ class _DonateSettingsState extends State<DonateSettings> {
     final double amount = result.amount;
 
     print('[Donate] Selected method=$method amount=${amount.toStringAsFixed(2)}');
-    setState(() => _submitting = true);
 
     try {
       // Ensure client IP
@@ -167,7 +165,6 @@ class _DonateSettingsState extends State<DonateSettings> {
       print('[Donate] Exception: $e');
       _showSnack('请求失败: $e');
     } finally {
-      if (mounted) setState(() => _submitting = false);
     }
   }
 

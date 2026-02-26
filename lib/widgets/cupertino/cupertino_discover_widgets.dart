@@ -147,7 +147,6 @@ class CupertinoTagSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
 
     return GestureDetector(
       onTap: onTap,

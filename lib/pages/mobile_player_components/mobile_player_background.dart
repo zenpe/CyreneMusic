@@ -9,7 +9,6 @@ import '../../services/color_extraction_service.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/video_background_player.dart';
-import '../../widgets/mesh_gradient_background.dart';
 import '../../widgets/flowing_light_background.dart';
 
 /// 动态背景颜色缓存管理器（移动端）
@@ -55,7 +54,6 @@ class MobilePlayerBackground extends StatefulWidget {
 
 class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
   // 动态背景颜色
-  List<Color> _dynamicColors = DynamicBackgroundColorExtractor.getDefaultColors();
   String? _currentImageUrl;
   bool _isFirstBuild = true;
   int _pendingExtractionId = 0;
@@ -127,7 +125,6 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
     if (cachedColors != null) {
       _currentImageUrl = imageUrl;
       if (mounted) {
-        setState(() => _dynamicColors = cachedColors);
       }
       return;
     }
@@ -178,7 +175,6 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
     final cachedColors = _MobileDynamicColorCache().getColors(imageUrl);
     if (cachedColors != null) {
       _currentImageUrl = imageUrl;
-      if (mounted) setState(() => _dynamicColors = cachedColors);
       return;
     }
     
@@ -193,17 +189,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
       );
 
       if (result != null && mounted && _currentImageUrl == imageUrl) {
-        final colors = DynamicBackgroundColorExtractor.extractColors(
-          vibrantColor: result.vibrantColor,
-          mutedColor: result.mutedColor,
-          dominantColor: result.dominantColor,
-          lightVibrantColor: result.lightVibrantColor,
-          darkVibrantColor: result.darkVibrantColor,
-          lightMutedColor: result.lightMutedColor,
-          darkMutedColor: result.darkMutedColor,
-        );
 
-        setState(() => _dynamicColors = colors);
       }
     } catch (e) {
       debugPrint('⚠️ [移动端背景] 动态背景颜色提取失败: $e');

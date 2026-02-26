@@ -56,7 +56,6 @@ class MobilePlayerFluidCloudLyricsPanel extends StatefulWidget {
 class _MobilePlayerFluidCloudLyricsPanelState extends State<MobilePlayerFluidCloudLyricsPanel> {
   
   // 核心变量
-  final double _lineHeight = 80.0; 
 
   static const double _maxActiveScale = 1.0; // 1.1 -> 1.0 No magnification
   
@@ -160,7 +159,6 @@ class _MobilePlayerFluidCloudLyricsPanelState extends State<MobilePlayerFluidClo
               if (i < widget.lyrics.length - 1) {
                 final currentLine = widget.lyrics[i];
                 final nextLine = widget.lyrics[i+1];
-                final gap = (nextLine.startTime - currentLine.startTime).inSeconds;
                 
                 // 计算当前行结束时间
                 Duration lineEndTime = currentLine.startTime + const Duration(seconds: 3); // 默认兜底 3s
@@ -547,11 +545,8 @@ class _ElasticLyricLineState extends State<_ElasticLyricLine> with TickerProvide
   
   Timer? _delayTimer;
 
-  static const Curve elasticCurve = Cubic(0.34, 1.56, 0.64, 1.0);
   static const Duration animDuration = Duration(milliseconds: 800);
   
-  // 记录上一帧的状态，用于判断 Active -> Passed
-  bool _wasActive = false;
 
   @override
   void initState() {
@@ -560,7 +555,6 @@ class _ElasticLyricLineState extends State<_ElasticLyricLine> with TickerProvide
     _scale = widget.targetScale;
     _opacity = widget.targetOpacity;
     _blur = widget.targetBlur;
-    _wasActive = widget.isActive;
     _textColor = widget.isActive ? Colors.white : Colors.white.withOpacity(0.3);
   }
 
@@ -602,7 +596,6 @@ class _ElasticLyricLineState extends State<_ElasticLyricLine> with TickerProvide
     if (positionChanged || scaleChanged || opacityChanged || blurChanged) {
       _startAnimation(oldWidget);
     }
-    _wasActive = widget.isActive;
   }
 
   @override
@@ -873,11 +866,6 @@ class _KaraokeTextState extends State<_KaraokeText> with SingleTickerProviderSta
   double _cachedMaxWidth = 0.0;
   TextStyle? _cachedStyle;
   int _cachedLineCount = 1;
-  double _line1Width = 0.0;
-  double _line2Width = 0.0;
-  double _line1Height = 0.0;
-  double _line2Height = 0.0;
-  double _line1Ratio = 0.5;
 
   late Duration _duration;
 
