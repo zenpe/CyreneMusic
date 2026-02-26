@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:io';
 import '../../services/auth_overlay_service.dart';
+import '../../services/auth_credentials_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/theme_manager.dart';
 import 'qr_login_dialog.dart';
@@ -390,11 +391,14 @@ class _LoginViewState extends State<_LoginView> {
   String _linuxDoLoadingText = '正在授权...'; // 加载提示文字
   bool _obscurePassword = true;
   bool _linuxDoEnabled = true; // Linux Do 登录是否启用
+  bool _rememberLoginEnabled = true;
+  bool _rememberCredentials = true;
 
   @override
   void initState() {
     super.initState();
     _checkLinuxDoStatus();
+    _loadRememberedCredentials();
   }
 
   Future<void> _checkLinuxDoStatus() async {
@@ -404,6 +408,39 @@ class _LoginViewState extends State<_LoginView> {
         _linuxDoEnabled = result['enabled'] ?? true;
       });
     }
+  }
+
+  Future<void> _loadRememberedCredentials() async {
+    final credentialsService = AuthCredentialsService();
+    final enabled = credentialsService.isRememberLoginEnabled;
+    final credentials = await credentialsService.loadCredentials();
+    if (!mounted) return;
+    setState(() {
+      _rememberLoginEnabled = enabled;
+      _rememberCredentials = enabled;
+      if (credentials.account != null && credentials.account!.isNotEmpty) {
+        _accountController.text = credentials.account!;
+      }
+      if (credentials.password != null && credentials.password!.isNotEmpty) {
+        _passwordController.text = credentials.password!;
+      }
+    });
+  }
+
+  Future<void> _syncRememberedCredentials() async {
+    final credentialsService = AuthCredentialsService();
+    if (!credentialsService.isRememberLoginEnabled) {
+      await credentialsService.clearCredentials();
+      return;
+    }
+    if (_rememberCredentials) {
+      await credentialsService.saveCredentials(
+        account: _accountController.text.trim(),
+        password: _passwordController.text,
+      );
+      return;
+    }
+    await credentialsService.clearCredentials();
   }
 
   @override
@@ -429,6 +466,8 @@ class _LoginViewState extends State<_LoginView> {
 
     if (mounted) {
       if (result['success']) {
+        await _syncRememberedCredentials();
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
@@ -526,7 +565,26 @@ class _LoginViewState extends State<_LoginView> {
             },
             onFieldSubmitted: (_) => _handleLogin(),
           ),
-          const SizedBox(height: 32),
+          if (_rememberLoginEnabled) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Checkbox(
+                  value: _rememberCredentials,
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _rememberCredentials = value);
+                  },
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '记住账号密码',
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 24),
 
           // 登录按钮
           _buildGradientButton(
@@ -1661,11 +1719,14 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
   String _linuxDoLoadingText = '正在授权...'; // 加载提示文字
   bool _obscurePassword = true;
   bool _linuxDoEnabled = true; // Linux Do 登录是否启用
+  bool _rememberLoginEnabled = true;
+  bool _rememberCredentials = true;
 
   @override
   void initState() {
     super.initState();
     _checkLinuxDoStatus();
+    _loadRememberedCredentials();
   }
 
   Future<void> _checkLinuxDoStatus() async {
@@ -1675,6 +1736,39 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
         _linuxDoEnabled = result['enabled'] ?? true;
       });
     }
+  }
+
+  Future<void> _loadRememberedCredentials() async {
+    final credentialsService = AuthCredentialsService();
+    final enabled = credentialsService.isRememberLoginEnabled;
+    final credentials = await credentialsService.loadCredentials();
+    if (!mounted) return;
+    setState(() {
+      _rememberLoginEnabled = enabled;
+      _rememberCredentials = enabled;
+      if (credentials.account != null && credentials.account!.isNotEmpty) {
+        _accountController.text = credentials.account!;
+      }
+      if (credentials.password != null && credentials.password!.isNotEmpty) {
+        _passwordController.text = credentials.password!;
+      }
+    });
+  }
+
+  Future<void> _syncRememberedCredentials() async {
+    final credentialsService = AuthCredentialsService();
+    if (!credentialsService.isRememberLoginEnabled) {
+      await credentialsService.clearCredentials();
+      return;
+    }
+    if (_rememberCredentials) {
+      await credentialsService.saveCredentials(
+        account: _accountController.text.trim(),
+        password: _passwordController.text,
+      );
+      return;
+    }
+    await credentialsService.clearCredentials();
   }
 
   @override
@@ -1701,6 +1795,8 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
 
     if (mounted) {
       if (result['success']) {
+        await _syncRememberedCredentials();
+        if (!mounted) return;
         _showCupertinoToast(result['message'], isSuccess: true);
         AuthService().updateLocation();
         if (!widget.embedded) {
@@ -1785,6 +1881,30 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
             ),
           ),
         ),
+        if (_rememberLoginEnabled) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '记住账号密码',
+                  style: TextStyle(
+                    color: widget.isDark
+                        ? CupertinoColors.systemGrey2
+                        : CupertinoColors.systemGrey,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              CupertinoSwitch(
+                value: _rememberCredentials,
+                onChanged: (value) {
+                  setState(() => _rememberCredentials = value);
+                },
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 28),
 
         // 登录按钮

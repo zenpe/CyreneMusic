@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../../services/auth_overlay_service.dart';
+import '../../services/auth_credentials_service.dart';
 import '../../services/auth_service.dart';
 import 'qr_login_dialog.dart';
 import 'linuxdo_webview_login_page.dart';
@@ -177,11 +178,14 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
   String _linuxDoLoadingText = '正在授权...';
   bool _obscurePassword = true;
   bool _linuxDoEnabled = true;
+  bool _rememberLoginEnabled = true;
+  bool _rememberCredentials = true;
 
   @override
   void initState() {
     super.initState();
     _checkLinuxDoStatus();
+    _loadRememberedCredentials();
   }
 
   Future<void> _checkLinuxDoStatus() async {
@@ -191,6 +195,39 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
         _linuxDoEnabled = result['enabled'] ?? true;
       });
     }
+  }
+
+  Future<void> _loadRememberedCredentials() async {
+    final credentialsService = AuthCredentialsService();
+    final enabled = credentialsService.isRememberLoginEnabled;
+    final credentials = await credentialsService.loadCredentials();
+    if (!mounted) return;
+    setState(() {
+      _rememberLoginEnabled = enabled;
+      _rememberCredentials = enabled;
+      if (credentials.account != null && credentials.account!.isNotEmpty) {
+        _accountController.text = credentials.account!;
+      }
+      if (credentials.password != null && credentials.password!.isNotEmpty) {
+        _passwordController.text = credentials.password!;
+      }
+    });
+  }
+
+  Future<void> _syncRememberedCredentials() async {
+    final credentialsService = AuthCredentialsService();
+    if (!credentialsService.isRememberLoginEnabled) {
+      await credentialsService.clearCredentials();
+      return;
+    }
+    if (_rememberCredentials) {
+      await credentialsService.saveCredentials(
+        account: _accountController.text.trim(),
+        password: _passwordController.text,
+      );
+      return;
+    }
+    await credentialsService.clearCredentials();
   }
 
   @override
@@ -218,6 +255,8 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
 
     if (mounted) {
       if (result['success']) {
+        await _syncRememberedCredentials();
+        if (!mounted) return;
         _showInfoBar(result['message'], fluent.InfoBarSeverity.success);
         // 登录成功后，自动上报IP归属地
         AuthService().updateLocation();
@@ -297,6 +336,25 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
               onSubmitted: (_) => _handleLogin(),
             ),
           ),
+          if (_rememberLoginEnabled) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                fluent.Checkbox(
+                  checked: _rememberCredentials,
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _rememberCredentials = value);
+                  },
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '记住账号密码',
+                  style: theme.typography.body,
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 24),
           
           // 登录按钮

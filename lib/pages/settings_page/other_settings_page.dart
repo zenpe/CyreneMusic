@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import '../../models/playlist.dart';
 import '../../services/app_settings_service.dart';
+import '../../services/auth_credentials_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/playlist_service.dart';
 import '../../utils/theme_manager.dart';
@@ -324,9 +325,13 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
 
   Widget _buildMaterialUI(BuildContext context) {
     return AnimatedBuilder(
-      animation: AppSettingsService(),
+      animation: Listenable.merge([
+        AppSettingsService(),
+        AuthCredentialsService(),
+      ]),
       builder: (context, _) {
         final settings = AppSettingsService();
+        final credentials = AuthCredentialsService();
         return ListView(
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: [
@@ -369,6 +374,20 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
                 ),
               ],
             ),
+            MD3SettingsSection(
+              title: '登录',
+              children: [
+                MD3SwitchTile(
+                  leading: const Icon(Icons.lock_person_outlined),
+                  title: '记住登录信息',
+                  subtitle: '关闭后不显示记住选项，并清除已保存的账号密码',
+                  value: credentials.isRememberLoginEnabled,
+                  onChanged: (value) {
+                    credentials.setRememberLoginEnabled(value);
+                  },
+                ),
+              ],
+            ),
           ],
         );
       },
@@ -382,9 +401,13 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
         : CupertinoColors.systemGroupedBackground;
 
     final content = AnimatedBuilder(
-      animation: AppSettingsService(),
+      animation: Listenable.merge([
+        AppSettingsService(),
+        AuthCredentialsService(),
+      ]),
       builder: (context, _) {
         final settings = AppSettingsService();
+        final credentials = AuthCredentialsService();
         return ListView(
           padding: const EdgeInsets.only(top: 20),
           children: [
@@ -431,6 +454,21 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
                 ),
               ],
             ),
+            CupertinoSettingsSection(
+              header: '登录',
+              children: [
+                CupertinoSwitchTile(
+                  icon: CupertinoIcons.lock_shield,
+                  iconColor: CupertinoColors.systemPurple,
+                  title: '记住登录信息',
+                  subtitle: '关闭后不显示记住选项，并清除已保存的账号密码',
+                  value: credentials.isRememberLoginEnabled,
+                  onChanged: (value) {
+                    credentials.setRememberLoginEnabled(value);
+                  },
+                ),
+              ],
+            ),
           ],
         );
       },
@@ -458,9 +496,13 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
 
   Widget _buildFluentUI(BuildContext context) {
     return AnimatedBuilder(
-      animation: AppSettingsService(),
+      animation: Listenable.merge([
+        AppSettingsService(),
+        AuthCredentialsService(),
+      ]),
       builder: (context, _) {
         final settings = AppSettingsService();
+        final credentials = AuthCredentialsService();
         return fluent_ui.ListView(
           padding: const EdgeInsets.all(24),
           children: [
@@ -505,6 +547,20 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
                   value: settings.showUpdatePromptOnStartup,
                   onChanged: (value) {
                     settings.setShowUpdatePromptOnStartup(value);
+                  },
+                ),
+              ],
+            ),
+            FluentSettingsGroup(
+              title: '登录',
+              children: [
+                FluentSwitchTile(
+                  icon: fluent_ui.FluentIcons.lock,
+                  title: '记住登录信息',
+                  subtitle: '关闭后不显示记住选项，并清除已保存的账号密码',
+                  value: credentials.isRememberLoginEnabled,
+                  onChanged: (value) {
+                    credentials.setRememberLoginEnabled(value);
                   },
                 ),
               ],
