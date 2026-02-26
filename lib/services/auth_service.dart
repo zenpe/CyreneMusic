@@ -786,11 +786,13 @@ class AuthService extends ChangeNotifier {
     _isHandlingUnauthorized = true;
     try {
       await logout();
-      print('当前登录态已失效，请重新登录');
-      // 仅桌面端使用覆盖层登录；移动端（含车机/平板 Android）交给 AppGate 回到引导页
+      DeveloperModeService().addLog('[Auth] 登录态已失效');
+      // 桌面端：强制 overlay 重登
       if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
         AuthOverlayService().show();
       }
+      // Android/iOS：不强制弹 overlay，由各页面按需提示登录
+      // Gate 不再要求 isLoggedIn，用户留在主界面，功能受限时自然引导登录
     } finally {
       _isHandlingUnauthorized = false;
     }
