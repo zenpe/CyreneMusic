@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 import 'api/api_client.dart';
 
 class NeteaseArtistBrief {
@@ -19,7 +20,11 @@ class NeteaseArtistDetailService extends ChangeNotifier {
   NeteaseArtistDetailService._internal();
 
   /// 搜索歌手列表
-  Future<List<NeteaseArtistBrief>> searchArtists(String keywords, {int limit = 20}) async {
+  Future<List<NeteaseArtistBrief>> searchArtists(
+    String keywords, {
+    int limit = 20,
+    CancelToken? cancelToken,
+  }) async {
     try {
       if (keywords.trim().isEmpty) return [];
       final result = await ApiClient().postJson(
@@ -27,6 +32,7 @@ class NeteaseArtistDetailService extends ChangeNotifier {
         data: {'keywords': keywords, 'limit': '$limit'},
         contentType: 'application/x-www-form-urlencoded',
         timeout: const Duration(seconds: 12),
+        cancelToken: cancelToken,
       );
       if (!result.ok) return [];
       final data = result.data as Map<String, dynamic>?;

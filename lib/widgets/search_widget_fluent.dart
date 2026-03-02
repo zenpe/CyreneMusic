@@ -74,12 +74,10 @@ extension _SearchWidgetFluent on _SearchWidgetState {
                   suffix: value.text.isNotEmpty
                       ? fluent.IconButton(
                           icon: const Icon(fluent.FluentIcons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            _searchService.clear();
-                          },
+                          onPressed: _clearSearchInputAndResult,
                         )
                       : null,
+                  onChanged: _onSearchInputChanged,
                   onSubmitted: (_) => _performSearch(),
                 );
               },

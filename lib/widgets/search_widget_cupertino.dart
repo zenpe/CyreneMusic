@@ -79,11 +79,9 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
               controller: _searchController,
               autofocus: true,
               placeholder: '搜索歌曲、歌手...',
+              onChanged: _onSearchInputChanged,
               onSubmitted: (_) => _performSearch(),
-              onSuffixTap: () {
-                _searchController.clear();
-                _searchService.clear();
-              },
+              onSuffixTap: _clearSearchInputAndResult,
             ),
           ),
           const SizedBox(width: 8),

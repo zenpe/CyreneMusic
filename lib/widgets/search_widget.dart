@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -10,7 +13,7 @@ import '../services/netease_artist_service.dart';
 import '../pages/artist_detail_page.dart';
 import '../pages/album_detail_page.dart';
 import '../services/player_service.dart';
-import '../services/auth_service.dart';
+import '../features/auth/auth_feature.dart';
 import '../pages/auth/auth_page.dart';
 import '../utils/theme_manager.dart';
 import 'track_action_menu.dart';
@@ -199,10 +202,13 @@ class _SearchExpressiveTabs extends StatelessWidget {
 
 
 class _SearchWidgetState extends State<SearchWidget> {
+  final AuthFacade _authFacade = AuthFacade();
   final TextEditingController _searchController = TextEditingController();
   final SearchService _searchService = SearchService();
+  Timer? _searchDebounceTimer;
   int _currentTabIndex = 0;
   final ThemeManager _themeManager = ThemeManager();
+  static const Duration _searchDebounceDuration = Duration(milliseconds: 300);
 
   bool get _isFluent => _themeManager.isFluentFramework;
   bool get _isCupertino => _themeManager.isCupertinoFramework;
@@ -216,6 +222,10 @@ class _SearchWidgetState extends State<SearchWidget> {
   String? _secondaryArtistName;
   int? _secondaryAlbumId;
   String? _secondaryAlbumName;
+  int _artistSearchRequestId = 0;
+  CancelToken? _artistSearchCancelToken;
+  String _lastTrackSearchKeyword = '';
+  String _lastArtistSearchKeyword = '';
 
   @override
   void initState() {
@@ -237,6 +247,9 @@ class _SearchWidgetState extends State<SearchWidget> {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
+    _cancelArtistSearchRequests('SearchWidget disposed');
+    _artistSearchCancelToken = null;
     _searchController.dispose();
     _searchService.removeListener(_onSearchResultChanged);
     DeveloperModeService().removeListener(_onSearchResultChanged);
@@ -252,7 +265,7 @@ class _SearchWidgetState extends State<SearchWidget> {
   /// 检查登录状态，如果未登录则跳转到登录页面
   /// 返回 true 表示已登录或登录成功，返回 false 表示未登录或取消登录
   Future<bool> _checkLoginStatus() async {
-    if (AuthService().isLoggedIn) {
+    if (_authFacade.isLoggedIn) {
       return true;
     }
 
@@ -327,35 +340,95 @@ class _SearchWidgetState extends State<SearchWidget> {
       final result = await showAuthDialog(context);
 
       // 返回登录是否成功
-      return result == true && AuthService().isLoggedIn;
+      return result == true && _authFacade.isLoggedIn;
     }
 
     return false;
   }
 
   void _performSearch() async {
+    _searchDebounceTimer?.cancel();
+
     // 检查登录状态
     final isLoggedIn = await _checkLoginStatus();
     if (!isLoggedIn) return;
 
-    final keyword = _searchController.text.trim();
-    if (keyword.isNotEmpty) {
-      _searchService.search(keyword);
-      
-      final isMergeEnabled = DeveloperModeService().isSearchResultMergeEnabled;
-      // 合并模式: 歌手索引为 1，分平台模式: 歌手索引为平台数量
-      final artistTabIndex = isMergeEnabled ? 1 : _getSupportedPlatformCodes().length;
-      final isArtistTab = _currentTabIndex == artistTabIndex;
-      
-      if (isArtistTab) {
-        _searchArtists(keyword);
-      }
+    _runSearch(_searchController.text, saveHistory: true);
+  }
+
+  void _onSearchInputChanged(String rawInput) {
+    final keyword = rawInput.trim();
+
+    _searchDebounceTimer?.cancel();
+
+    if (keyword.isEmpty) {
+      _resetSearchOnEmptyInput();
+      return;
+    }
+
+    _searchDebounceTimer = Timer(_searchDebounceDuration, () {
+      if (!mounted) return;
+
+      // 输入联想式搜索不主动弹登录框，避免频繁打断用户输入。
+      if (!_authFacade.isLoggedIn) return;
+
+      _runSearch(keyword, saveHistory: false);
+    });
+  }
+
+  void _clearSearchInputAndResult() {
+    _searchController.clear();
+    _searchDebounceTimer?.cancel();
+    _resetSearchOnEmptyInput();
+  }
+
+  void _resetSearchOnEmptyInput() {
+    _lastTrackSearchKeyword = '';
+    _lastArtistSearchKeyword = '';
+    _artistSearchRequestId++;
+    _cancelArtistSearchRequests('搜索输入已清空');
+    _artistSearchCancelToken = null;
+    if (mounted) {
+      setState(() {
+        _artistLoading = false;
+        _artistError = null;
+        _artistResults = [];
+      });
+    }
+    _searchService.clear();
+  }
+
+  void _runSearch(String rawKeyword, {required bool saveHistory}) {
+    final keyword = rawKeyword.trim();
+    if (keyword.isEmpty) return;
+
+    final isMergeEnabled = DeveloperModeService().isSearchResultMergeEnabled;
+    // 合并模式: 歌手索引为 1，分平台模式: 歌手索引为平台数量
+    final artistTabIndex = isMergeEnabled ? 1 : _getSupportedPlatformCodes().length;
+    final isArtistTab = _currentTabIndex == artistTabIndex;
+
+    final shouldSearchTracks = keyword != _lastTrackSearchKeyword;
+    final shouldSearchArtists = isArtistTab && keyword != _lastArtistSearchKeyword;
+
+    if (!shouldSearchTracks && !shouldSearchArtists) {
+      return;
+    }
+
+    if (shouldSearchTracks) {
+      _lastTrackSearchKeyword = keyword;
+      _searchService.search(keyword, saveHistory: saveHistory);
+    }
+
+    if (shouldSearchArtists) {
+      _lastArtistSearchKeyword = keyword;
+      _searchArtists(keyword);
     }
   }
 
   void _triggerArtistSearchIfNeeded() {
     final keyword = _searchController.text.trim();
-    if (keyword.isNotEmpty) {
+    if (keyword.isNotEmpty && keyword != _lastArtistSearchKeyword) {
+      _lastArtistSearchKeyword = keyword;
       _searchArtists(keyword);
     }
   }
@@ -383,6 +456,16 @@ class _SearchWidgetState extends State<SearchWidget> {
   }
 
   Future<void> _searchArtists(String keyword) async {
+    final normalizedKeyword = keyword.trim();
+    if (normalizedKeyword.isEmpty) {
+      return;
+    }
+
+    final requestId = ++_artistSearchRequestId;
+    _cancelArtistSearchRequests('新的歌手搜索请求');
+    final cancelToken = CancelToken();
+    _artistSearchCancelToken = cancelToken;
+
     setState(() {
       _artistLoading = true;
       _artistError = null;
@@ -390,21 +473,42 @@ class _SearchWidgetState extends State<SearchWidget> {
     });
     try {
       final results = await NeteaseArtistDetailService().searchArtists(
-        keyword,
+        normalizedKeyword,
         limit: 20,
+        cancelToken: cancelToken,
       );
-      if (!mounted) return;
+      if (!mounted ||
+          requestId != _artistSearchRequestId ||
+          normalizedKeyword != _searchController.text.trim()) {
+        return;
+      }
       setState(() {
         _artistResults = results;
         _artistLoading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted ||
+          requestId != _artistSearchRequestId ||
+          normalizedKeyword != _searchController.text.trim()) {
+        return;
+      }
       setState(() {
         _artistLoading = false;
         _artistError = e.toString();
       });
+    } finally {
+      if (identical(_artistSearchCancelToken, cancelToken)) {
+        _artistSearchCancelToken = null;
+      }
     }
+  }
+
+  void _cancelArtistSearchRequests(String reason) {
+    final token = _artistSearchCancelToken;
+    if (token == null || token.isCancelled) {
+      return;
+    }
+    token.cancel(reason);
   }
 
   @override
@@ -475,10 +579,7 @@ class _SearchWidgetState extends State<SearchWidget> {
                                   return value.text.isNotEmpty
                                       ? IconButton(
                                           icon: const Icon(Icons.close, size: 20),
-                                          onPressed: () {
-                                            _searchController.clear();
-                                            _searchService.clear();
-                                          },
+                                          onPressed: _clearSearchInputAndResult,
                                         )
                                       : const SizedBox.shrink();
                                 },
@@ -490,6 +591,7 @@ class _SearchWidgetState extends State<SearchWidget> {
                               ),
                             ),
                             textInputAction: TextInputAction.search,
+                            onChanged: _onSearchInputChanged,
                             onSubmitted: (_) => _performSearch(),
                           ),
                         ),

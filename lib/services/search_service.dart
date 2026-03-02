@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/track.dart';
 import '../models/merged_track.dart';
@@ -113,6 +114,8 @@ class SearchService extends ChangeNotifier {
 
   String _currentKeyword = '';
   String get currentKeyword => _currentKeyword;
+  int _activeSearchSession = 0;
+  CancelToken? _activeSearchCancelToken;
 
   // 搜索历史记录
   List<String> _searchHistory = [];
@@ -122,15 +125,26 @@ class SearchService extends ChangeNotifier {
   static const int _maxHistoryCount = 20; // 最多保存20条历史记录
 
   /// 搜索歌曲（根据当前音源支持的平台并行搜索）
-  Future<void> search(String keyword) async {
-    if (keyword.trim().isEmpty) {
+  Future<void> search(String keyword, {bool saveHistory = true}) async {
+    final normalizedKeyword = keyword.trim();
+    if (normalizedKeyword.isEmpty) {
       return;
     }
 
-    _currentKeyword = keyword;
+    final sessionId = ++_activeSearchSession;
+    _cancelActiveSearchRequests('新的搜索请求');
+    final cancelToken = CancelToken();
+    _activeSearchCancelToken = cancelToken;
+    _currentKeyword = normalizedKeyword;
 
     // 保存到搜索历史
-    await _addToSearchHistory(keyword);
+    if (saveHistory) {
+      await _addToSearchHistory(normalizedKeyword);
+      if (!_isSessionActive(sessionId, normalizedKeyword)) {
+        print('⏭️ [SearchService] 忽略过期搜索（历史保存后）: $normalizedKeyword');
+        return;
+      }
+    }
 
     // 获取当前音源支持的平台
     final supportedPlatforms = AudioSourceService().currentSupportedPlatforms;
@@ -147,18 +161,27 @@ class SearchService extends ChangeNotifier {
     );
     notifyListeners();
 
-    print('🔍 [SearchService] 开始搜索: $keyword');
+    print('🔍 [SearchService] 开始搜索: $normalizedKeyword');
 
     // 只向支持的平台发送搜索请求
     final futures = <Future<void>>[];
-    if (supportedPlatforms.contains('netease')) futures.add(_searchNetease(keyword));
-    if (supportedPlatforms.contains('apple')) futures.add(_searchApple(keyword));
-    if (supportedPlatforms.contains('qq')) futures.add(_searchQQ(keyword));
-    if (supportedPlatforms.contains('kugou')) futures.add(_searchKugou(keyword));
-    if (supportedPlatforms.contains('kuwo')) futures.add(_searchKuwo(keyword));
-    if (supportedPlatforms.contains('spotify')) futures.add(_searchSpotify(keyword));
+    if (supportedPlatforms.contains('netease')) futures.add(_searchNetease(normalizedKeyword, sessionId, cancelToken));
+    if (supportedPlatforms.contains('apple')) futures.add(_searchApple(normalizedKeyword, sessionId, cancelToken));
+    if (supportedPlatforms.contains('qq')) futures.add(_searchQQ(normalizedKeyword, sessionId, cancelToken));
+    if (supportedPlatforms.contains('kugou')) futures.add(_searchKugou(normalizedKeyword, sessionId, cancelToken));
+    if (supportedPlatforms.contains('kuwo')) futures.add(_searchKuwo(normalizedKeyword, sessionId, cancelToken));
+    if (supportedPlatforms.contains('spotify')) futures.add(_searchSpotify(normalizedKeyword, sessionId, cancelToken));
 
     await Future.wait(futures);
+
+    if (!_isSessionActive(sessionId, normalizedKeyword)) {
+      print('⏭️ [SearchService] 忽略过期搜索（全部返回后）: $normalizedKeyword');
+      return;
+    }
+
+    if (identical(_activeSearchCancelToken, cancelToken)) {
+      _activeSearchCancelToken = null;
+    }
 
     print('✅ [SearchService] 搜索完成，共 ${_searchResult.totalCount} 条结果');
   }
@@ -167,7 +190,7 @@ class SearchService extends ChangeNotifier {
   List<String> get currentSupportedPlatforms => AudioSourceService().currentSupportedPlatforms;
 
   /// 搜索网易云音乐
-  Future<void> _searchNetease(String keyword) async {
+  Future<void> _searchNetease(String keyword, int sessionId, CancelToken cancelToken) async {
     try {
       print('🎵 [SearchService] 网易云搜索: $keyword');
 
@@ -176,6 +199,7 @@ class SearchService extends ChangeNotifier {
         data: {'keywords': keyword, 'limit': '20'},
         contentType: 'application/x-www-form-urlencoded',
         timeout: const Duration(seconds: 10),
+        cancelToken: cancelToken,
       );
 
       if (result.ok) {
@@ -193,6 +217,11 @@ class SearchService extends ChangeNotifier {
                   ))
               .toList();
 
+          if (!_isSessionActive(sessionId, keyword)) {
+            print('⏭️ [SearchService] 丢弃过期网易云结果: $keyword');
+            return;
+          }
+
           _searchResult = _searchResult.copyWith(
             neteaseResults: results,
             neteaseLoading: false,
@@ -207,16 +236,24 @@ class SearchService extends ChangeNotifier {
       }
     } catch (e) {
       print('❌ [SearchService] 网易云搜索失败: $e');
+      if (!_isSessionActive(sessionId, keyword)) {
+        print('⏭️ [SearchService] 丢弃过期网易云错误: $keyword');
+        return;
+      }
       _searchResult = _searchResult.copyWith(
         neteaseLoading: false,
         neteaseError: e.toString(),
       );
     }
+    if (!_isSessionActive(sessionId, keyword)) {
+      print('⏭️ [SearchService] 跳过过期网易云刷新: $keyword');
+      return;
+    }
     notifyListeners();
   }
 
   /// 搜索 Apple Music
-  Future<void> _searchApple(String keyword) async {
+  Future<void> _searchApple(String keyword, int sessionId, CancelToken cancelToken) async {
     try {
       print('🍎 [SearchService] Apple Music 搜索: $keyword');
 
@@ -224,6 +261,7 @@ class SearchService extends ChangeNotifier {
         '/apple/search',
         queryParameters: {'keywords': keyword, 'limit': 20},
         timeout: const Duration(seconds: 10),
+        cancelToken: cancelToken,
       );
 
       if (result.ok) {
@@ -241,6 +279,11 @@ class SearchService extends ChangeNotifier {
                   ))
               .toList();
 
+          if (!_isSessionActive(sessionId, keyword)) {
+            print('⏭️ [SearchService] 丢弃过期 Apple 结果: $keyword');
+            return;
+          }
+
           _searchResult = _searchResult.copyWith(
             appleResults: results,
             appleLoading: false,
@@ -255,16 +298,24 @@ class SearchService extends ChangeNotifier {
       }
     } catch (e) {
       print('❌ [SearchService] Apple Music 搜索失败: $e');
+      if (!_isSessionActive(sessionId, keyword)) {
+        print('⏭️ [SearchService] 丢弃过期 Apple 错误: $keyword');
+        return;
+      }
       _searchResult = _searchResult.copyWith(
         appleLoading: false,
         appleError: e.toString(),
       );
     }
+    if (!_isSessionActive(sessionId, keyword)) {
+      print('⏭️ [SearchService] 跳过过期 Apple 刷新: $keyword');
+      return;
+    }
     notifyListeners();
   }
 
   /// 搜索QQ音乐
-  Future<void> _searchQQ(String keyword) async {
+  Future<void> _searchQQ(String keyword, int sessionId, CancelToken cancelToken) async {
     try {
       print('🎶 [SearchService] QQ音乐搜索: $keyword');
 
@@ -272,6 +323,7 @@ class SearchService extends ChangeNotifier {
         '/qq/search',
         queryParameters: {'keywords': keyword, 'limit': 10},
         timeout: const Duration(seconds: 10),
+        cancelToken: cancelToken,
       );
 
       if (result.ok) {
@@ -289,6 +341,11 @@ class SearchService extends ChangeNotifier {
                   ))
               .toList();
 
+          if (!_isSessionActive(sessionId, keyword)) {
+            print('⏭️ [SearchService] 丢弃过期 QQ 结果: $keyword');
+            return;
+          }
+
           _searchResult = _searchResult.copyWith(
             qqResults: results,
             qqLoading: false,
@@ -303,16 +360,24 @@ class SearchService extends ChangeNotifier {
       }
     } catch (e) {
       print('❌ [SearchService] QQ音乐搜索失败: $e');
+      if (!_isSessionActive(sessionId, keyword)) {
+        print('⏭️ [SearchService] 丢弃过期 QQ 错误: $keyword');
+        return;
+      }
       _searchResult = _searchResult.copyWith(
         qqLoading: false,
         qqError: e.toString(),
       );
     }
+    if (!_isSessionActive(sessionId, keyword)) {
+      print('⏭️ [SearchService] 跳过过期 QQ 刷新: $keyword');
+      return;
+    }
     notifyListeners();
   }
 
   /// 搜索酷狗音乐
-  Future<void> _searchKugou(String keyword) async {
+  Future<void> _searchKugou(String keyword, int sessionId, CancelToken cancelToken) async {
     try {
       print('🎼 [SearchService] 酷狗音乐搜索: $keyword');
 
@@ -320,6 +385,7 @@ class SearchService extends ChangeNotifier {
         '/kugou/search',
         queryParameters: {'keywords': keyword},
         timeout: const Duration(seconds: 10),
+        cancelToken: cancelToken,
       );
 
       if (result.ok) {
@@ -337,6 +403,11 @@ class SearchService extends ChangeNotifier {
                   ))
               .toList();
 
+          if (!_isSessionActive(sessionId, keyword)) {
+            print('⏭️ [SearchService] 丢弃过期酷狗结果: $keyword');
+            return;
+          }
+
           _searchResult = _searchResult.copyWith(
             kugouResults: results,
             kugouLoading: false,
@@ -351,16 +422,24 @@ class SearchService extends ChangeNotifier {
       }
     } catch (e) {
       print('❌ [SearchService] 酷狗音乐搜索失败: $e');
+      if (!_isSessionActive(sessionId, keyword)) {
+        print('⏭️ [SearchService] 丢弃过期酷狗错误: $keyword');
+        return;
+      }
       _searchResult = _searchResult.copyWith(
         kugouLoading: false,
         kugouError: e.toString(),
       );
     }
+    if (!_isSessionActive(sessionId, keyword)) {
+      print('⏭️ [SearchService] 跳过过期酷狗刷新: $keyword');
+      return;
+    }
     notifyListeners();
   }
 
   /// 搜索酷我音乐
-  Future<void> _searchKuwo(String keyword) async {
+  Future<void> _searchKuwo(String keyword, int sessionId, CancelToken cancelToken) async {
     try {
       print('🎸 [SearchService] 酷我音乐搜索: $keyword');
 
@@ -368,6 +447,7 @@ class SearchService extends ChangeNotifier {
         '/kuwo/search',
         queryParameters: {'keywords': keyword},
         timeout: const Duration(seconds: 10),
+        cancelToken: cancelToken,
       );
 
       if (result.ok) {
@@ -386,6 +466,11 @@ class SearchService extends ChangeNotifier {
                   ))
               .toList();
 
+          if (!_isSessionActive(sessionId, keyword)) {
+            print('⏭️ [SearchService] 丢弃过期酷我结果: $keyword');
+            return;
+          }
+
           _searchResult = _searchResult.copyWith(
             kuwoResults: results,
             kuwoLoading: false,
@@ -400,16 +485,24 @@ class SearchService extends ChangeNotifier {
       }
     } catch (e) {
       print('❌ [SearchService] 酷我音乐搜索失败: $e');
+      if (!_isSessionActive(sessionId, keyword)) {
+        print('⏭️ [SearchService] 丢弃过期酷我错误: $keyword');
+        return;
+      }
       _searchResult = _searchResult.copyWith(
         kuwoLoading: false,
         kuwoError: e.toString(),
       );
     }
+    if (!_isSessionActive(sessionId, keyword)) {
+      print('⏭️ [SearchService] 跳过过期酷我刷新: $keyword');
+      return;
+    }
     notifyListeners();
   }
 
   /// 搜索 Spotify
-  Future<void> _searchSpotify(String keyword) async {
+  Future<void> _searchSpotify(String keyword, int sessionId, CancelToken cancelToken) async {
     try {
       print('🟢 [SearchService] Spotify 搜索: $keyword');
 
@@ -417,6 +510,7 @@ class SearchService extends ChangeNotifier {
         '/spotify/search',
         queryParameters: {'keywords': keyword},
         timeout: const Duration(seconds: 10),
+        cancelToken: cancelToken,
       );
 
       if (result.ok) {
@@ -439,6 +533,11 @@ class SearchService extends ChangeNotifier {
             );
           }).toList();
 
+          if (!_isSessionActive(sessionId, keyword)) {
+            print('⏭️ [SearchService] 丢弃过期 Spotify 结果: $keyword');
+            return;
+          }
+
           _searchResult = _searchResult.copyWith(
             spotifyResults: results,
             spotifyLoading: false,
@@ -453,10 +552,18 @@ class SearchService extends ChangeNotifier {
       }
     } catch (e) {
       print('❌ [SearchService] Spotify 搜索失败: $e');
+      if (!_isSessionActive(sessionId, keyword)) {
+        print('⏭️ [SearchService] 丢弃过期 Spotify 错误: $keyword');
+        return;
+      }
       _searchResult = _searchResult.copyWith(
         spotifyLoading: false,
         spotifyError: e.toString(),
       );
+    }
+    if (!_isSessionActive(sessionId, keyword)) {
+      print('⏭️ [SearchService] 跳过过期 Spotify 刷新: $keyword');
+      return;
     }
     notifyListeners();
   }
@@ -654,9 +761,32 @@ class SearchService extends ChangeNotifier {
 
   /// 清空搜索结果
   void clear() {
+    _activeSearchSession++;
+    _cancelActiveSearchRequests('搜索已清空');
+    _activeSearchCancelToken = null;
     _searchResult = SearchResult();
     _currentKeyword = '';
     notifyListeners();
+  }
+
+  bool _isSessionActive(int sessionId, String keyword) {
+    return sessionId == _activeSearchSession && keyword == _currentKeyword;
+  }
+
+  void _cancelActiveSearchRequests(String reason) {
+    final token = _activeSearchCancelToken;
+    if (token == null || token.isCancelled) {
+      return;
+    }
+    token.cancel(reason);
+  }
+
+  @override
+  void dispose() {
+    _activeSearchSession++;
+    _cancelActiveSearchRequests('SearchService disposed');
+    _activeSearchCancelToken = null;
+    super.dispose();
   }
 
   /// 加载搜索历史

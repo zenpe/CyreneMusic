@@ -61,6 +61,7 @@ class ApiClient {
     bool auth = true,
     Duration? timeout,
     String? contentType,
+    CancelToken? cancelToken,
   }) async {
     try {
       final options = _buildOptions(
@@ -77,6 +78,7 @@ class ApiClient {
         queryParameters: queryParameters,
         data: data,
         options: options,
+        cancelToken: cancelToken,
       );
 
       final bytes = response.data ?? const <int>[];
@@ -118,6 +120,7 @@ class ApiClient {
     bool auth = true,
     Duration? timeout,
     String? contentType,
+    CancelToken? cancelToken,
   }) async {
     try {
       final options = _buildOptions(
@@ -134,6 +137,7 @@ class ApiClient {
         queryParameters: queryParameters,
         data: data,
         options: options,
+        cancelToken: cancelToken,
       );
 
       return ApiResult<List<int>>(
@@ -162,6 +166,7 @@ class ApiClient {
     bool auth = true,
     Duration? timeout,
     String? contentType,
+    CancelToken? cancelToken,
   }) async {
     try {
       final options = _buildOptions(
@@ -178,6 +183,7 @@ class ApiClient {
         queryParameters: queryParameters,
         data: data,
         options: options,
+        cancelToken: cancelToken,
       );
     } on DioException catch (e) {
       DeveloperModeService().addLog(
@@ -193,6 +199,7 @@ class ApiClient {
     Map<String, String>? headers,
     bool auth = true,
     Duration? timeout,
+    CancelToken? cancelToken,
   }) {
     return requestJson(
       path,
@@ -201,6 +208,7 @@ class ApiClient {
       headers: headers,
       auth: auth,
       timeout: timeout,
+      cancelToken: cancelToken,
     );
   }
 
@@ -212,6 +220,7 @@ class ApiClient {
     bool auth = true,
     Duration? timeout,
     String? contentType,
+    CancelToken? cancelToken,
   }) {
     return requestJson(
       path,
@@ -222,6 +231,7 @@ class ApiClient {
       auth: auth,
       timeout: timeout,
       contentType: contentType,
+      cancelToken: cancelToken,
     );
   }
 
@@ -233,6 +243,7 @@ class ApiClient {
     bool auth = true,
     Duration? timeout,
     String? contentType,
+    CancelToken? cancelToken,
   }) {
     return requestJson(
       path,
@@ -243,6 +254,7 @@ class ApiClient {
       auth: auth,
       timeout: timeout,
       contentType: contentType,
+      cancelToken: cancelToken,
     );
   }
 
@@ -254,6 +266,7 @@ class ApiClient {
     bool auth = true,
     Duration? timeout,
     String? contentType,
+    CancelToken? cancelToken,
   }) {
     return requestJson(
       path,
@@ -264,6 +277,7 @@ class ApiClient {
       auth: auth,
       timeout: timeout,
       contentType: contentType,
+      cancelToken: cancelToken,
     );
   }
 
@@ -275,6 +289,7 @@ class ApiClient {
     bool auth = true,
     Duration? timeout,
     String? contentType,
+    CancelToken? cancelToken,
   }) {
     return requestJson(
       path,
@@ -285,6 +300,7 @@ class ApiClient {
       auth: auth,
       timeout: timeout,
       contentType: contentType,
+      cancelToken: cancelToken,
     );
   }
 }
