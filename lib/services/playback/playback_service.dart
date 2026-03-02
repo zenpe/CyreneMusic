@@ -95,9 +95,12 @@ class PlaybackService extends ChangeNotifier {
   String? _lastPreloadedTargetKey;
   bool _preloadingNext = false;
   int _preloadOp = 0;
+  final Map<String, SongDetail> _prefetchedPlayableDetails = {};
 
   static const int _switchFadeSteps = 8;
   static const Duration _switchFadeStepDelay = Duration(milliseconds: 15);
+  static const Duration _trackSwitchSettleDelay = Duration(milliseconds: 80);
+  static const int _maxPrefetchedPlayableDetails = 4;
 
   // 高频进度更新（解耦 ChangeNotifier，避免重建 widget 树）
   final ValueNotifier<Duration> positionNotifier = ValueNotifier(Duration.zero);
@@ -723,6 +726,7 @@ class PlaybackService extends ChangeNotifier {
       _duration = Duration.zero;
       _position = Duration.zero;
       positionNotifier.value = Duration.zero;
+      notifyListeners();
 
       // 音源配置检查（本地音乐不需要）
       if (track.source != MusicSource.local && !AudioSourceService().isConfigured) {
@@ -752,8 +756,6 @@ class PlaybackService extends ChangeNotifier {
         await coverManager.updateCover(track.picUrl, notify: false, force: existingProvider == null);
       }
       if (isStale()) return;
-
-      notifyListeners();
 
       // 预缓存下一首封面
       _precacheNextCover();
@@ -786,7 +788,6 @@ class PlaybackService extends ChangeNotifier {
           if (metadata.picUrl != track.picUrl) {
             await coverManager.updateCover(metadata.picUrl, notify: false);
           }
-          notifyListeners();
           _loadLyricsForFloatingDisplay();
           await _playWithSoftSwitch(cachedFilePath, isLocal: true);
 
@@ -821,7 +822,6 @@ class PlaybackService extends ChangeNotifier {
           arName: track.artists, alName: track.album, level: 'local', size: '',
           url: filePath, lyric: lyricText, tlyric: '', source: MusicSource.local,
         );
-        notifyListeners();
         _loadLyricsForFloatingDisplay();
         await _playWithSoftSwitch(filePath, isLocal: true);
         await coverManager.extractThemeColor(track.picUrl);
@@ -829,7 +829,8 @@ class PlaybackService extends ChangeNotifier {
       }
 
       // ──── 网络获取 ────
-      var songDetail = await MusicService().fetchSongDetail(
+      var songDetail = _takePrefetchedSongDetail(track, selectedQuality);
+      songDetail ??= await MusicService().fetchSongDetail(
         songId: track.id, quality: selectedQuality,
         source: track.source, title: track.name, artist: track.artists,
       );
@@ -843,38 +844,13 @@ class PlaybackService extends ChangeNotifier {
         return;
       }
 
-      // 填充缺失的元数据
-      if (songDetail.name.isEmpty || songDetail.arName.isEmpty || songDetail.pic.isEmpty) {
-        songDetail = SongDetail(
-          id: songDetail.id,
-          name: songDetail.name.isNotEmpty ? songDetail.name : track.name,
-          pic: songDetail.pic.isNotEmpty ? songDetail.pic : track.picUrl,
-          arName: songDetail.arName.isNotEmpty ? songDetail.arName : track.artists,
-          alName: songDetail.alName.isNotEmpty ? songDetail.alName : track.album,
-          level: songDetail.level, size: songDetail.size, url: songDetail.url,
-          lyric: songDetail.lyric, tlyric: songDetail.tlyric, source: songDetail.source,
-        );
-      }
-
-      // Apple Music 解密流 URL 重写
-      if (track.source == MusicSource.apple && !songDetail.url.contains('/apple/stream')) {
-        final baseUrl = UrlService().baseUrl;
-        final salableAdamId = Uri.encodeComponent(track.id.toString());
-        songDetail = SongDetail(
-          id: songDetail.id, name: songDetail.name, pic: songDetail.pic,
-          arName: songDetail.arName, alName: songDetail.alName,
-          level: songDetail.level, size: songDetail.size,
-          url: '$baseUrl/apple/stream?salableAdamId=$salableAdamId',
-          lyric: songDetail.lyric, tlyric: songDetail.tlyric, source: songDetail.source,
-        );
-      }
+      songDetail = _normalizeSongDetailForPlayback(track, songDetail);
 
       _currentSong = songDetail;
       if (songDetail.pic != track.picUrl) {
         await coverManager.updateCover(songDetail.pic, notify: false);
         if (isStale()) return;
       }
-      notifyListeners();
       _loadLyricsForFloatingDisplay();
 
       // Apple Music 特殊播放
@@ -972,8 +948,8 @@ class PlaybackService extends ChangeNotifier {
     switch (mode) {
       case PlaybackMode.repeatOne:
         if (currentTrack != null) {
-          await Future.delayed(const Duration(milliseconds: 500));
           await _commands.enqueue(() async {
+            await _waitForTrackSwitchSettle();
             final replayed = await _replayCurrentSourceForRepeatOne();
             if (!replayed) {
               await _playCurrentTrack();
@@ -1000,7 +976,7 @@ class PlaybackService extends ChangeNotifier {
         final nextIdx = _currentIndex + 1;
         if (nextIdx < _queue.length) {
           _currentIndex = nextIdx;
-          await Future.delayed(const Duration(milliseconds: 500));
+          await _waitForTrackSwitchSettle();
           await _playCurrentTrack();
           return;
         }
@@ -1020,7 +996,7 @@ class PlaybackService extends ChangeNotifier {
           ..add(nextTrack);
         _currentIndex = 0;
         _source = QueueSource.history;
-        await Future.delayed(const Duration(milliseconds: 500));
+        await _waitForTrackSwitchSettle();
         await _playCurrentTrack();
       }
     });
@@ -1032,13 +1008,13 @@ class PlaybackService extends ChangeNotifier {
         final nextIdx = _currentIndex + 1;
         if (nextIdx < _queue.length) {
           _currentIndex = nextIdx;
-          await Future.delayed(const Duration(milliseconds: 500));
+          await _waitForTrackSwitchSettle();
           await _playCurrentTrack();
           return;
         }
         // 列表循环
         _currentIndex = 0;
-        await Future.delayed(const Duration(milliseconds: 500));
+        await _waitForTrackSwitchSettle();
         await _playCurrentTrack();
         return;
       }
@@ -1050,7 +1026,7 @@ class PlaybackService extends ChangeNotifier {
           ..add(nextTrack);
         _currentIndex = 0;
         _source = QueueSource.history;
-        await Future.delayed(const Duration(milliseconds: 500));
+        await _waitForTrackSwitchSettle();
         await _playCurrentTrack();
       }
     });
@@ -1114,7 +1090,7 @@ class PlaybackService extends ChangeNotifier {
             ..add(history[idx].toTrack());
           _currentIndex = 0;
           _source = QueueSource.history;
-          await Future.delayed(const Duration(milliseconds: 500));
+          await _waitForTrackSwitchSettle();
           await _playCurrentTrack();
         }
         return;
@@ -1124,7 +1100,7 @@ class PlaybackService extends ChangeNotifier {
       }
       _shufflePosition++;
       _currentIndex = _shuffledIndices[_shufflePosition];
-      await Future.delayed(const Duration(milliseconds: 500));
+      await _waitForTrackSwitchSettle();
       await _playCurrentTrack();
     });
   }
@@ -1334,6 +1310,73 @@ class PlaybackService extends ChangeNotifier {
     _preloadOp++;
   }
 
+  String _buildTrackIdentity(Track track) => '${track.source.name}_${track.id}';
+
+  String _buildPrefetchCacheKey(Track track, AudioQuality quality) {
+    return '${_buildTrackIdentity(track)}_${quality.toString()}';
+  }
+
+  SongDetail? _takePrefetchedSongDetail(Track track, AudioQuality quality) {
+    final key = _buildPrefetchCacheKey(track, quality);
+    return _prefetchedPlayableDetails.remove(key);
+  }
+
+  void _savePrefetchedSongDetail(Track track, AudioQuality quality, SongDetail detail) {
+    final key = _buildPrefetchCacheKey(track, quality);
+    _prefetchedPlayableDetails[key] = detail;
+    if (_prefetchedPlayableDetails.length > _maxPrefetchedPlayableDetails) {
+      final oldestKey = _prefetchedPlayableDetails.keys.first;
+      _prefetchedPlayableDetails.remove(oldestKey);
+    }
+  }
+
+  SongDetail _normalizeSongDetailForPlayback(Track track, SongDetail detail) {
+    var normalized = detail;
+
+    if (normalized.name.isEmpty || normalized.arName.isEmpty || normalized.pic.isEmpty) {
+      normalized = SongDetail(
+        id: normalized.id,
+        name: normalized.name.isNotEmpty ? normalized.name : track.name,
+        pic: normalized.pic.isNotEmpty ? normalized.pic : track.picUrl,
+        arName: normalized.arName.isNotEmpty ? normalized.arName : track.artists,
+        alName: normalized.alName.isNotEmpty ? normalized.alName : track.album,
+        level: normalized.level,
+        size: normalized.size,
+        url: normalized.url,
+        lyric: normalized.lyric,
+        tlyric: normalized.tlyric,
+        source: normalized.source,
+      );
+    }
+
+    if (track.source == MusicSource.apple && !normalized.url.contains('/apple/stream')) {
+      final baseUrl = UrlService().baseUrl;
+      final salableAdamId = Uri.encodeComponent(track.id.toString());
+      normalized = SongDetail(
+        id: normalized.id,
+        name: normalized.name,
+        pic: normalized.pic,
+        arName: normalized.arName,
+        alName: normalized.alName,
+        level: normalized.level,
+        size: normalized.size,
+        url: '$baseUrl/apple/stream?salableAdamId=$salableAdamId',
+        lyric: normalized.lyric,
+        tlyric: normalized.tlyric,
+        source: normalized.source,
+      );
+    }
+
+    return normalized;
+  }
+
+  Future<void> _waitForTrackSwitchSettle() async {
+    if (!_engine.isPlaying) {
+      return;
+    }
+    await Future.delayed(_trackSwitchSettleDelay);
+  }
+
   Future<void> _safeSetEngineVolume(double volume) async {
     try {
       await _engine.setVolume(volume);
@@ -1450,13 +1493,9 @@ class PlaybackService extends ChangeNotifier {
       artist: track.artists,
     );
     if (detail == null || detail.url.isEmpty) return;
-
-    var url = detail.url;
-    if (track.source == MusicSource.apple && !url.contains('/apple/stream')) {
-      final baseUrl = UrlService().baseUrl;
-      final salableAdamId = Uri.encodeComponent(track.id.toString());
-      url = '$baseUrl/apple/stream?salableAdamId=$salableAdamId';
-    }
+    detail = _normalizeSongDetailForPlayback(track, detail);
+    _savePrefetchedSongDetail(track, selectedQuality, detail);
+    final url = detail.url;
 
     Map<String, String>? headers;
     if ((Platform.isAndroid || Platform.isIOS) &&
