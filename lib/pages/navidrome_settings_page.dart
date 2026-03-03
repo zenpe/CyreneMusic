@@ -3,15 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
+import '../features/audio_source/audio_source_feature.dart';
 import '../services/tray_service.dart';
 import '../services/player_service.dart';
 import '../widgets/navidrome_config_form.dart';
 import '../widgets/navidrome_ui.dart';
-import '../services/audio_source_service.dart';
 import 'settings_page/audio_source_settings.dart';
 
 class NavidromeSettingsPage extends StatelessWidget {
   const NavidromeSettingsPage({super.key});
+  static final AudioSourceFacade _audioSourceFacade = AudioSourceFacade();
 
   @override
   Widget build(BuildContext context) {
@@ -284,7 +285,7 @@ class NavidromeSettingsPage extends StatelessWidget {
             fluent_ui.FilledButton(
               onPressed: () async {
                 Navigator.pop(context);
-                AudioSourceService().clear();
+                await _audioSourceFacade.resetToInitialSourceSetup();
               },
               child: const fluent_ui.Text('确认'),
             ),
@@ -310,7 +311,7 @@ class NavidromeSettingsPage extends StatelessWidget {
               isDestructiveAction: true,
               onPressed: () async {
                 Navigator.pop(context);
-                AudioSourceService().clear();
+                await _audioSourceFacade.resetToInitialSourceSetup();
               },
               child: const Text('确认'),
             ),
@@ -333,7 +334,7 @@ class NavidromeSettingsPage extends StatelessWidget {
           FilledButton(
             onPressed: () async {
               Navigator.pop(context);
-              AudioSourceService().clear();
+              await _audioSourceFacade.resetToInitialSourceSetup();
             },
             child: const Text('确认'),
           ),

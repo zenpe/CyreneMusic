@@ -57,6 +57,17 @@ class ThemeManager extends ChangeNotifier {
     _loadSettings();
   }
 
+  // ============== Storage Keys ==============
+  // Theme
+  static const String _keyThemeMode = 'theme_mode';
+  static const String _keySeedColor = 'seed_color';
+  static const String _keyFollowSystemColor = 'follow_system_color';
+  // Framework
+  static const String _keyThemeFramework = 'theme_framework';
+  static const String keyMobileThemeFramework = 'mobile_theme_framework';
+  // Window
+  static const String _keyWindowEffect = 'window_effect';
+
   ThemeMode _themeMode = ThemeMode.light;
   Color _seedColor = Colors.deepPurple;
   bool _followSystemColor = true; // 默认跟随系统主题色
@@ -401,18 +412,19 @@ class ThemeManager extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       
       // 加载主题模式（默认为 light 亮色模式，避免首次启动跟随系统深色模式导致显示异常）
-      final themeModeIndex = prefs.getInt('theme_mode') ?? ThemeMode.light.index;
+      final themeModeIndex =
+          prefs.getInt(_keyThemeMode) ?? ThemeMode.light.index;
       _themeMode = ThemeMode.values[themeModeIndex];
       
       // 加载跟随系统主题色设置（默认为 true）
-      _followSystemColor = prefs.getBool('follow_system_color') ?? true;
+      _followSystemColor = prefs.getBool(_keyFollowSystemColor) ?? true;
       
       // 加载主题色
-      final colorValue = prefs.getInt('seed_color') ?? Colors.deepPurple.value;
+      final colorValue = prefs.getInt(_keySeedColor) ?? Colors.deepPurple.value;
       _seedColor = Color(colorValue);
 
         // 加载桌面主题框架（桌面端默认为 Fluent UI，移动端默认为 Material）
-        final savedFrameworkIndex = prefs.getInt('theme_framework');
+        final savedFrameworkIndex = prefs.getInt(_keyThemeFramework);
         if (savedFrameworkIndex != null && savedFrameworkIndex >= 0 && savedFrameworkIndex < ThemeFramework.values.length) {
           _themeFramework = ThemeFramework.values[savedFrameworkIndex];
         } else {
@@ -423,7 +435,7 @@ class ThemeManager extends ChangeNotifier {
         }
 
       // 加载移动端主题框架（默认为 Cupertino iOS 风格）
-      final savedMobileFrameworkIndex = prefs.getInt('mobile_theme_framework');
+      final savedMobileFrameworkIndex = prefs.getInt(keyMobileThemeFramework);
       if (savedMobileFrameworkIndex != null && savedMobileFrameworkIndex >= 0 && savedMobileFrameworkIndex < MobileThemeFramework.values.length) {
         _mobileThemeFramework = MobileThemeFramework.values[savedMobileFrameworkIndex];
       } else {
@@ -437,14 +449,14 @@ class ThemeManager extends ChangeNotifier {
       }
 
       // 加载窗口材质（默认：Windows 11 设为 Mica，Win10 及以下设为 Disabled）
-      final windowEffectIndex = prefs.getInt('window_effect');
+      final windowEffectIndex = prefs.getInt(_keyWindowEffect);
       if (windowEffectIndex != null && windowEffectIndex >= 0 && windowEffectIndex < WindowEffect.values.length) {
         _windowEffect = WindowEffect.values[windowEffectIndex];
         // 如果用户之前设置了 Mica 但当前系统不支持，自动回退到 disabled
         if (_windowEffect == WindowEffect.mica && !_isWindows11OrLater) {
           print('⚠️ [ThemeManager] 当前系统不支持 Mica，自动回退到 disabled');
           _windowEffect = WindowEffect.disabled;
-          await prefs.setInt('window_effect', _windowEffect.index);
+          await prefs.setInt(_keyWindowEffect, _windowEffect.index);
         }
       } else {
         if (Platform.isWindows) {
@@ -474,7 +486,7 @@ class ThemeManager extends ChangeNotifier {
   Future<void> _saveThemeMode() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('theme_mode', _themeMode.index);
+      await prefs.setInt(_keyThemeMode, _themeMode.index);
       print('💾 [ThemeManager] 主题模式已保存: ${_themeMode.name}');
     } catch (e) {
       print('❌ [ThemeManager] 保存主题模式失败: $e');
@@ -485,7 +497,7 @@ class ThemeManager extends ChangeNotifier {
   Future<void> _saveSeedColor() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('seed_color', _seedColor.value);
+      await prefs.setInt(_keySeedColor, _seedColor.value);
       print('💾 [ThemeManager] 主题色已保存: 0x${_seedColor.value.toRadixString(16)}');
     } catch (e) {
       print('❌ [ThemeManager] 保存主题色失败: $e');
@@ -496,7 +508,7 @@ class ThemeManager extends ChangeNotifier {
   Future<void> _saveFollowSystemColor() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('follow_system_color', _followSystemColor);
+      await prefs.setBool(_keyFollowSystemColor, _followSystemColor);
       print('💾 [ThemeManager] 跟随系统主题色设置已保存: $_followSystemColor');
     } catch (e) {
       print('❌ [ThemeManager] 保存跟随系统主题色设置失败: $e');
@@ -507,7 +519,7 @@ class ThemeManager extends ChangeNotifier {
   Future<void> _saveThemeFramework() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('theme_framework', _themeFramework.index);
+      await prefs.setInt(_keyThemeFramework, _themeFramework.index);
       print('💾 [ThemeManager] 桌面主题框架已保存: ${_themeFramework.name}');
     } catch (e) {
       print('❌ [ThemeManager] 保存桌面主题框架失败: $e');
@@ -518,7 +530,7 @@ class ThemeManager extends ChangeNotifier {
   Future<void> _saveMobileThemeFramework() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('mobile_theme_framework', _mobileThemeFramework.index);
+      await prefs.setInt(keyMobileThemeFramework, _mobileThemeFramework.index);
       print('💾 [ThemeManager] 移动端主题框架已保存: ${_mobileThemeFramework.name}');
     } catch (e) {
       print('❌ [ThemeManager] 保存移动端主题框架失败: $e');
@@ -616,7 +628,7 @@ class ThemeManager extends ChangeNotifier {
   Future<void> _saveWindowEffect() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('window_effect', _windowEffect.index);
+      await prefs.setInt(_keyWindowEffect, _windowEffect.index);
       print('💾 [ThemeManager] 窗口材质已保存: ${_windowEffect.name}');
     } catch (e) {
       print('❌ [ThemeManager] 保存窗口材质失败: $e');

@@ -18,6 +18,10 @@ class PersistentStorageService extends ChangeNotifier {
   factory PersistentStorageService() => _instance;
   PersistentStorageService._internal();
 
+  static const String _keyTermsAccepted = 'terms_accepted';
+  static const String _keyEnableLocalMode = 'enable_local_mode';
+  static const String _keyThemeConfigured = 'theme_configured';
+
   late SharedPreferences _prefs;
   File? _backupFile;
   bool _isInitialized = false;
@@ -394,10 +398,23 @@ class PersistentStorageService extends ChangeNotifier {
   }
   // ============== 业务便捷方法 ==============
 
+  /// 用户协议是否已确认
+  bool get termsAccepted => getBool(_keyTermsAccepted) ?? false;
+
+  /// 设置用户协议确认状态
+  Future<void> setTermsAccepted(bool value) => setBool(_keyTermsAccepted, value);
+
+  /// 主题是否已完成初始化配置
+  bool get themeConfigured => getBool(_keyThemeConfigured) ?? false;
+
+  /// 设置主题初始化配置状态
+  Future<void> setThemeConfigured(bool value) => setBool(_keyThemeConfigured, value);
+
   /// 是否启用本地模式
-  bool get enableLocalMode => getBool('enable_local_mode') ?? false;
+  bool get enableLocalMode => getBool(_keyEnableLocalMode) ?? false;
 
   /// 设置是否启用本地模式
-  Future<void> setEnableLocalMode(bool value) => setBool('enable_local_mode', value);
+  Future<void> setEnableLocalMode(bool value) =>
+      setBool(_keyEnableLocalMode, value);
 }
 

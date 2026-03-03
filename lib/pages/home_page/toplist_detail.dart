@@ -6,10 +6,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/models/toplist.dart';
 import 'package:cyrene_music/widgets/track_list_tile.dart';
+import 'package:cyrene_music/features/auth/auth_feature.dart';
 import '../../widgets/track_action_menu.dart';
 import 'package:cyrene_music/utils/theme_manager.dart';
 import 'package:cyrene_music/services/player_service.dart';
-import 'package:cyrene_music/services/auth_service.dart';
 import 'package:cyrene_music/pages/auth/auth_page.dart';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
@@ -410,9 +410,11 @@ class _FluentTrackListTile extends StatefulWidget {
 }
 
 class _FluentTrackListTileState extends State<_FluentTrackListTile> {
+  final AuthFacade _authFacade = AuthFacade();
+
   // 复用 track_list_tile.dart 中的登录检查逻辑
   Future<bool> _checkLoginStatus() async {
-     if (AuthService().isLoggedIn) return true;
+     if (_authFacade.isLoggedIn) return true;
      
      // Fluent UI Dialog
      final result = await fluent.showDialog<bool>(
@@ -438,7 +440,7 @@ class _FluentTrackListTileState extends State<_FluentTrackListTile> {
         // 由于是独立文件，我们需要确认 showAuthDialog 的可用性
         // 它在 auth_page.dart 中定义，我们有 import
         final authResult = await showAuthDialog(context);
-        return authResult == true && AuthService().isLoggedIn;
+        return authResult == true && _authFacade.isLoggedIn;
      }
      return false;
   }

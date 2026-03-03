@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-import '../../services/auth_service.dart';
+import '../../features/auth/auth_feature.dart';
 import '../../services/qr_login_service.dart';
 import '../../utils/theme_manager.dart';
+
+final AuthFacade _authFacade = AuthFacade();
 
 class QrLoginResultArgs {
   final String rid;
@@ -145,7 +147,7 @@ class _QrLoginResultPageState extends State<QrLoginResultPage> {
 
   @override
   Widget build(BuildContext context) {
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
     final now = DateTime.now();
 
     final deviceName = widget.args.desktopDeviceName?.trim().isNotEmpty == true
@@ -343,3 +345,6 @@ class _QrLoginResultPageState extends State<QrLoginResultPage> {
     );
   }
 }
+
+
+

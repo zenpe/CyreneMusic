@@ -1,9 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import '../services/audio_source_service.dart';
-import '../services/auth_service.dart';
-import '../services/persistent_storage_service.dart';
+import '../features/audio_source/audio_source_feature.dart';
 import '../utils/theme_manager.dart';
 import 'settings_page/audio_source_settings_page.dart';
 import 'auth/auth_page.dart';
@@ -19,6 +17,8 @@ class MobileSetupPage extends StatefulWidget {
 }
 
 class _MobileSetupPageState extends State<MobileSetupPage> {
+  final AudioSourceFacade _audioSourceFacade = AudioSourceFacade();
+
   /// 引导步骤
   /// 0 = 主题选择
   /// 1 = 欢迎/音源配置入口
@@ -36,14 +36,14 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
     // 检查主题是否已配置过
     _checkThemeConfigured();
     // 监听音源配置和登录状态变化
-    AudioSourceService().addListener(_onStateChanged);
-    AuthService().addListener(_onStateChanged);
+    _audioSourceFacade.addSetupStateListener(_onStateChanged);
   }
   
   /// 检查主题是否已配置过（通过检查本地存储）
   void _checkThemeConfigured() {
-    final storage = PersistentStorageService();
-    final hasThemeConfig = storage.containsKey('mobile_theme_framework');
+    final hasThemeConfig = _audioSourceFacade.containsStorageKey(
+      ThemeManager.keyMobileThemeFramework,
+    );
     if (hasThemeConfig) {
       setState(() {
         _themeSelected = true;
@@ -54,8 +54,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
 
   @override
   void dispose() {
-    AudioSourceService().removeListener(_onStateChanged);
-    AuthService().removeListener(_onStateChanged);
+    _audioSourceFacade.removeSetupStateListener(_onStateChanged);
     super.dispose();
   }
 
@@ -63,11 +62,11 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
     if (mounted) {
       setState(() {
         // 如果音源已配置且在配置步骤，自动进入下一步
-        if (_currentStep == 2 && AudioSourceService().isConfigured) {
+        if (_currentStep == 2 && _audioSourceFacade.isAudioConfigured) {
           _currentStep = 1; // 返回欢迎页（音源入口）
         }
         // 如果登录已完成且在登录步骤，自动进入协议页
-        if (_currentStep == 3 && AuthService().isLoggedIn) {
+        if (_currentStep == 3 && _audioSourceFacade.isLoggedIn) {
           _currentStep = 4; 
         }
       });
@@ -80,7 +79,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isLoggedIn = AuthService().isLoggedIn;
+    final isLoggedIn = _audioSourceFacade.isLoggedIn;
     final effectiveStep = (_currentStep == 3 && isLoggedIn) ? 4 : _currentStep;
 
     // 主题选择页面
@@ -302,8 +301,8 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
 
   /// 构建欢迎引导页面
   Widget _buildWelcomePage(BuildContext context, bool isCupertino, ColorScheme colorScheme, bool isDark) {
-    final audioConfigured = AudioSourceService().isConfigured;
-    final isLoggedIn = AuthService().isLoggedIn;
+    final audioConfigured = _audioSourceFacade.isAudioConfigured;
+    final isLoggedIn = _audioSourceFacade.isLoggedIn;
 
     // 决定当前显示的引导内容
     String title;
@@ -406,7 +405,9 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
               const SizedBox(height: 16),
               
                 TextButton(
-                  onPressed: () => _enterLocalMode(),
+                  onPressed: () async {
+                    await _enterLocalMode();
+                  },
                   child: Text(
                     '使用本地模式',
                     style: TextStyle(
@@ -588,7 +589,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
   }
 
   void _showSkipConfirmation(BuildContext context, bool isCupertino) {
-    final audioConfigured = AudioSourceService().isConfigured;
+    final audioConfigured = _audioSourceFacade.isAudioConfigured;
     String message;
     
     if (!audioConfigured) {
@@ -610,9 +611,9 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
             ),
             CupertinoDialogAction(
               isDestructiveAction: true,
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(context);
-                _skipSetup();
+                await _skipSetup();
               },
               child: const Text('确认跳过'),
             ),
@@ -631,9 +632,9 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
               child: const Text('返回'),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(context);
-                _skipSetup();
+                await _skipSetup();
               },
               child: const Text('确认跳过'),
             ),
@@ -761,15 +762,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                 isCupertino, 
                 '接受协议并进入', 
                 () async {
-                  // 持久化协议确认为 true
-                  final storage = PersistentStorageService();
-                  await storage.setBool('terms_accepted', true);
-                  // 退出本地模式，显示全功能界面
-                  await storage.setEnableLocalMode(false);
-                  
-                  // 触发监听以切换 MobileAppGate
-                  AudioSourceService().refresh();
-                  AuthService().refresh();
+                  await _audioSourceFacade.acceptTermsAndEnterMain();
                 }
               ),
             ),
@@ -807,25 +800,11 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
     );
   }
 
-  void _skipSetup() async {
-    // 标记协议为已确认
-    final storage = PersistentStorageService();
-    await storage.setBool('terms_accepted', true);
-    // 退出本地模式
-    await storage.setEnableLocalMode(false);
-    
-    // 通知跳过 - 触发 main.dart 中的状态更新来进入主应用
-    AudioSourceService().refresh();
-    AuthService().refresh();
+  Future<void> _skipSetup() async {
+    await _audioSourceFacade.skipSetupAndEnterMain();
   }
 
-  void _enterLocalMode() async {
-    final storage = PersistentStorageService();
-    await storage.setEnableLocalMode(true);
-    await storage.setBool('terms_accepted', true);
-    
-    // 通知应用状态变化以进入主界面
-    AudioSourceService().refresh();
-    AuthService().refresh();
+  Future<void> _enterLocalMode() async {
+    await _audioSourceFacade.enterLocalModeAndEnterMain();
   }
 }

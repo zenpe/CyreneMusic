@@ -1488,7 +1488,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
       return;
     }
 
-    final loginResult = await AuthService().login(
+    final loginResult = await _authFacade.login(
       account: account.trim(),
       password: password,
     );
@@ -1505,7 +1505,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
         );
 
         // 登录成功后上报IP归属地
-        AuthService().updateLocation().then((locationResult) {
+        _authFacade.updateLocation().then((locationResult) {
           if (locationResult['success']) {
             DeveloperModeService().addLog('✅ IP归属地已更新: ${locationResult['data']?['location']}');
           }

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import '../services/auth_service.dart';
+import '../features/auth/auth_feature.dart';
 import 'package:intl/intl.dart';
 
 /// 全局隐水印组件
@@ -18,6 +18,7 @@ class GlobalWatermark extends StatefulWidget {
 }
 
 class _GlobalWatermarkState extends State<GlobalWatermark> {
+  final AuthFacade _authFacade = AuthFacade();
   Timer? _timer;
   String _currentTime = '';
 
@@ -35,13 +36,13 @@ class _GlobalWatermarkState extends State<GlobalWatermark> {
     });
     
     // 监听认证状态，确保登录后及时更新水印内容
-    AuthService().addListener(_onAuthChanged);
+    _authFacade.addAuthStateListener(_onAuthChanged);
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    AuthService().removeListener(_onAuthChanged);
+    _authFacade.removeAuthStateListener(_onAuthChanged);
     super.dispose();
   }
 
@@ -56,7 +57,7 @@ class _GlobalWatermarkState extends State<GlobalWatermark> {
   @override
   Widget build(BuildContext context) {
     // 如果没有登录，可以显示一个默认占位符或不显示（考虑到追踪目的，登录后显示更有意义）
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
     final watermarkText = user != null 
         ? '${user.username} | ${user.email} | $_currentTime'
         : 'GUEST | ANONYMOUS | $_currentTime';

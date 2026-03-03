@@ -4,8 +4,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import '../features/auth/auth_feature.dart';
 import '../services/developer_mode_service.dart';
-import '../services/auth_service.dart';
 import '../services/admin_service.dart';
 import '../services/notification_service.dart';
 import '../services/playback_state_service.dart';
@@ -26,6 +26,7 @@ class DeveloperPage extends StatefulWidget {
 }
 
 class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProviderStateMixin {
+  final AuthFacade _authFacade = AuthFacade();
   late TabController _tabController;
   final ScrollController _logScrollController = ScrollController();
   int _fluentTabIndex = 0;

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import '../../utils/theme_manager.dart';
-import '../../services/auth_service.dart';
+import '../../features/auth/auth_feature.dart';
 import '../../services/player_service.dart';
 import '../../widgets/material/material_settings_widgets.dart';
 
@@ -26,6 +26,7 @@ class LabFunctionsContent extends StatefulWidget {
 }
 
 class _LabFunctionsContentState extends State<LabFunctionsContent> {
+  final AuthFacade _authFacade = AuthFacade();
   final LabFunctionsService _labService = LabFunctionsService();
 
   @override
@@ -58,7 +59,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
   /// 构建 Material UI 版本
   Widget _buildMaterialUI(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isSponsor = AuthService().currentUser?.isSponsor ?? false;
+    final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
     final eqAvailable = PlayerService().isEqualizerAvailable;
 
     return ListView(
@@ -177,7 +178,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
 
   /// 构建 Cupertino UI 版本
   Widget _buildCupertinoUI(BuildContext context) {
-    final isSponsor = AuthService().currentUser?.isSponsor ?? false;
+    final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
     final eqAvailable = PlayerService().isEqualizerAvailable;
 
     return ListView(
@@ -239,7 +240,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
   /// 构建 Fluent UI 版本
   Widget _buildFluentUI(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
-    final isSponsor = AuthService().currentUser?.isSponsor ?? false;
+    final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
     final eqAvailable = PlayerService().isEqualizerAvailable;
 
     // 构建核心列表内容

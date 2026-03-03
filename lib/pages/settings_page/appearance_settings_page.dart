@@ -10,7 +10,7 @@ import '../../services/player_background_service.dart';
 import '../../services/window_background_service.dart';
 import '../../services/lyric_style_service.dart';
 import '../../services/lyric_font_service.dart';
-import '../../services/auth_service.dart';
+import '../../features/auth/auth_feature.dart';
 import '../../widgets/custom_color_picker_dialog.dart';
 import '../../widgets/fluent_settings_card.dart';
 import '../../widgets/cupertino/cupertino_settings_widgets.dart';
@@ -76,6 +76,8 @@ class AppearanceSettingsContent extends StatefulWidget {
 }
 
 class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
+  final AuthFacade _authFacade = AuthFacade();
+
   @override
   Widget build(BuildContext context) {
     final isFluentUI = ThemeManager().isDesktopFluentUI;
@@ -623,7 +625,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
           ),
           FluentSettingsTile(
             icon: fluent_ui.FluentIcons.photo_collection,
-            title: '窗口背景${(AuthService().currentUser?.isSponsor ?? false) ? '' : ' 🎁'}',
+            title: '窗口背景${(_authFacade.currentUser?.isSponsor ?? false) ? '' : ' 🎁'}',
             subtitle: _getWindowBackgroundSubtitle(),
             trailing: const Icon(fluent_ui.FluentIcons.chevron_right, size: 12),
             onTap: () => _showWindowBackgroundDialog(),
@@ -773,7 +775,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
 
   String _getWindowBackgroundSubtitle() {
     final service = WindowBackgroundService();
-    final isSponsor = AuthService().currentUser?.isSponsor ?? false;
+    final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
     
     if (!isSponsor) {
       return '赞助用户可设置自定义窗口背景图片';

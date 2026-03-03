@@ -17,7 +17,7 @@ import '../pages/settings_page.dart';
 import '../pages/developer_page.dart';
 import '../pages/auth/auth_page.dart';
 import '../pages/support_page.dart';
-import '../services/auth_service.dart';
+import '../features/auth/auth_feature.dart';
 import '../services/auth_overlay_service.dart';
 import '../services/avatar_fetch_service.dart';
 import '../services/developer_mode_service.dart';
@@ -44,6 +44,7 @@ class FluentMainLayout extends StatefulWidget {
 }
 
 class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener {
+  final AuthFacade _authFacade = AuthFacade();
   // 导航状态管理
   final NavigationProvider _navigationProvider = NavigationProvider();
   final HomeOverlayController _homeOverlayController = HomeOverlayController();
@@ -228,7 +229,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
     }
     
     // 监听服务变化
-    AuthService().addListener(_onAuthChanged);
+    _authFacade.addAuthStateListener(_onAuthChanged);
     DeveloperModeService().addListener(_onDeveloperModeChanged);
     _navigationProvider.addListener(_onNavigationChanged);
     _homeOverlayController.addListener(_onHomeOverlayChanged);
@@ -243,7 +244,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
 
     // 应用启动后验证持久化的登录状态
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      AuthService().validateToken();
+      _authFacade.validateToken();
     });
   }
 
@@ -253,7 +254,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
       windowManager.removeListener(this);
     }
     _searchController?.dispose();
-    AuthService().removeListener(_onAuthChanged);
+    _authFacade.removeAuthStateListener(_onAuthChanged);
     DeveloperModeService().removeListener(_onDeveloperModeChanged);
     _navigationProvider.removeListener(_onNavigationChanged);
     // 注意: NavigationProvider 是单例，不应调用 dispose
@@ -409,7 +410,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
   }
 
   Future<void> _handleUserButtonTap() async {
-    if (AuthService().isLoggedIn) {
+    if (_authFacade.isLoggedIn) {
       await _showUserMenu();
     } else {
       await AuthOverlayService().show();
@@ -421,7 +422,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
 
   /// 显示用户菜单
   Future<void> _showUserMenu() async {
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
     if (user == null || !mounted) return;
 
     final result = await fluent_ui.showDialog<_FluentUserAction>(
@@ -492,7 +493,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
     );
 
     if (shouldLogout == true) {
-      AuthService().logout();
+      _authFacade.logout();
       if (!mounted) return;
       _showLogoutSnackBar();
     }
@@ -508,8 +509,8 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
 
   /// 构建用户操作组件（头像或登录按钮）
   Widget _buildUserActionWidget() {
-    final isLogged = AuthService().isLoggedIn;
-    final user = AuthService().currentUser;
+    final isLogged = _authFacade.isLoggedIn;
+    final user = _authFacade.currentUser;
     const double size = 28;
 
     if (isLogged && user?.avatarUrl != null && user!.avatarUrl!.isNotEmpty) {

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
+import '../features/audio_source/audio_source_feature.dart';
 import '../layouts/navidrome_main_layout.dart';
-import '../services/audio_source_service.dart';
-import '../services/navidrome_session_service.dart';
-import '../services/persistent_storage_service.dart';
 import '../layouts/main_layout.dart';
 import 'navidrome_setup_page.dart';
 import 'mobile_setup_page.dart';
@@ -19,17 +17,26 @@ class MobileAppGate extends StatefulWidget {
 }
 
 class _MobileAppGateState extends State<MobileAppGate> {
+  final AudioSourceFacade _audioSourceFacade = AudioSourceFacade();
+
+  Widget _buildHomeByRoute(AppGateRoute route) {
+    return switch (route) {
+      AppGateRoute.navidromeMain => const NavidromeMainLayout(),
+      AppGateRoute.navidromeSetup => const NavidromeSetupPage(),
+      AppGateRoute.regularMain => const MainLayout(),
+      AppGateRoute.regularSetup => const MobileSetupPage(),
+    };
+  }
+
   @override
   void initState() {
     super.initState();
-    AudioSourceService().addListener(_onStateChanged);
-    NavidromeSessionService().addListener(_onStateChanged);
+    _audioSourceFacade.addEntryStateListener(_onStateChanged);
   }
 
   @override
   void dispose() {
-    AudioSourceService().removeListener(_onStateChanged);
-    NavidromeSessionService().removeListener(_onStateChanged);
+    _audioSourceFacade.removeEntryStateListener(_onStateChanged);
     super.dispose();
   }
 
@@ -41,26 +48,8 @@ class _MobileAppGateState extends State<MobileAppGate> {
 
   @override
   Widget build(BuildContext context) {
-    final audioSourceService = AudioSourceService();
-    final isConfigured = audioSourceService.isConfigured;
-    final isNavidromeActive = audioSourceService.isNavidromeActive;
-    final isTermsAccepted = PersistentStorageService().getBool('terms_accepted') ?? false;
-    final isLocalMode = PersistentStorageService().enableLocalMode;
-
-    if (isNavidromeActive) {
-      if (isConfigured && isTermsAccepted) {
-        return const NavidromeMainLayout();
-      }
-      return const NavidromeSetupPage();
-    }
-
-    // 音源配置和协议确认都完成后，显示主布局；或者开启了本地模式且已确认协议
-    if ((isConfigured && isTermsAccepted) || (isLocalMode && isTermsAccepted)) {
-      return const MainLayout();
-    }
-
-    // 否则显示引导页
-    return const MobileSetupPage();
+    final route = _audioSourceFacade.resolveEntryRoute();
+    return _buildHomeByRoute(route);
   }
 }
 

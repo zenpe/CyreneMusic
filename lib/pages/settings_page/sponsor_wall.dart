@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import '../../services/donate_service.dart';
-import '../../services/auth_service.dart';
+import '../../features/auth/auth_feature.dart';
 import '../../utils/theme_manager.dart';
 
 /// 赞助墙组件 - 展示所有赞助用户
@@ -14,6 +14,7 @@ class SponsorWall extends StatefulWidget {
 }
 
 class _SponsorWallState extends State<SponsorWall> {
+  final AuthFacade _authFacade = AuthFacade();
   List<Map<String, dynamic>> _sponsors = [];
   bool _loading = true;
   bool _enabled = true; // 是否显示赞助墙
@@ -24,12 +25,12 @@ class _SponsorWallState extends State<SponsorWall> {
     super.initState();
     _loadSponsors();
     // 监听认证状态变化，当用户状态改变时刷新赞助列表
-    AuthService().addListener(_onAuthChanged);
+    _authFacade.addAuthStateListener(_onAuthChanged);
   }
 
   @override
   void dispose() {
-    AuthService().removeListener(_onAuthChanged);
+    _authFacade.removeAuthStateListener(_onAuthChanged);
     super.dispose();
   }
 

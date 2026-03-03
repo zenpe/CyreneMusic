@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../features/auth/auth_feature.dart';
 import '../services/api/api_client.dart';
 import '../services/playlist_service.dart';
 import '../services/player_service.dart';
 import '../services/playlist_queue_service.dart';
-import '../services/auth_service.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import '../widgets/import_playlist_dialog.dart';
@@ -21,6 +21,7 @@ class PlaylistsPage extends StatefulWidget {
 
 class _PlaylistsPageState extends State<PlaylistsPage>
     with AutomaticKeepAliveClientMixin {
+  final AuthFacade _authFacade = AuthFacade();
   final PlaylistService _playlistService = PlaylistService();
   Playlist? _selectedPlaylist; // 当前选中的歌单
   
@@ -37,7 +38,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     _playlistService.addListener(_onPlaylistsChanged);
 
     // 加载歌单列表
-    if (AuthService().isLoggedIn) {
+    if (_authFacade.isLoggedIn) {
       _playlistService.loadPlaylists();
     }
   }
@@ -304,7 +305,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     final colorScheme = Theme.of(context).colorScheme;
 
     // 检查登录状态
-    if (!AuthService().isLoggedIn) {
+    if (!_authFacade.isLoggedIn) {
       return Scaffold(
         backgroundColor: colorScheme.surface,
         body: CustomScrollView(
@@ -376,7 +377,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
           ],
         ],
       ),
-      floatingActionButton: AuthService().isLoggedIn
+      floatingActionButton: _authFacade.isLoggedIn
           ? FloatingActionButton.extended(
               onPressed: _showCreatePlaylistDialog,
               icon: const Icon(Icons.add),
@@ -404,7 +405,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
         IconButton(
           icon: const Icon(Icons.cloud_download),
           onPressed: () {
-            if (AuthService().isLoggedIn) {
+            if (_authFacade.isLoggedIn) {
               _showImportPlaylistDialog();
             }
           },
@@ -413,7 +414,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
         IconButton(
           icon: const Icon(Icons.refresh),
           onPressed: () {
-            if (AuthService().isLoggedIn) {
+            if (_authFacade.isLoggedIn) {
               _playlistService.loadPlaylists();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(

@@ -4,9 +4,7 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
-import '../services/audio_source_service.dart';
-import '../services/auth_service.dart';
-import '../services/persistent_storage_service.dart';
+import '../features/audio_source/audio_source_feature.dart';
 import '../utils/theme_manager.dart';
 import 'settings_page/audio_source_settings_page.dart';
 import 'auth/fluent_auth_page.dart';
@@ -22,6 +20,8 @@ class DesktopSetupPage extends StatefulWidget {
 }
 
 class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener {
+  final AudioSourceFacade _audioSourceFacade = AudioSourceFacade();
+
   /// 引导步骤
   /// 0 = 欢迎/引导入口
   /// 1 = 主题设置中
@@ -37,8 +37,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
   void initState() {
     super.initState();
     // 监听音源配置和登录状态变化
-    AudioSourceService().addListener(_onStateChanged);
-    AuthService().addListener(_onStateChanged);
+    _audioSourceFacade.addSetupStateListener(_onStateChanged);
     
     // Windows 平台初始化窗口监听
     if (Platform.isWindows) {
@@ -55,8 +54,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
 
   @override
   void dispose() {
-    AudioSourceService().removeListener(_onStateChanged);
-    AuthService().removeListener(_onStateChanged);
+    _audioSourceFacade.removeSetupStateListener(_onStateChanged);
     if (Platform.isWindows) {
       windowManager.removeListener(this);
     }
@@ -83,11 +81,11 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
     if (mounted) {
       setState(() {
         // 如果音源已配置且在配置步骤，自动返回欢迎页
-        if (_currentStep == 2 && AudioSourceService().isConfigured) {
+        if (_currentStep == 2 && _audioSourceFacade.isAudioConfigured) {
           _currentStep = 0;
         }
         // 如果登录已完成且在登录步骤，自动进入协议页
-        if (_currentStep == 3 && AuthService().isLoggedIn) {
+        if (_currentStep == 3 && _audioSourceFacade.isLoggedIn) {
           _currentStep = 4;
         }
       });
@@ -194,7 +192,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
   Widget build(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final isLoggedIn = AuthService().isLoggedIn;
+    final isLoggedIn = _audioSourceFacade.isLoggedIn;
     final effectiveStep = (_currentStep == 3 && isLoggedIn) ? 4 : _currentStep;
     
     // 判断是否使用透明背景（窗口效果启用时）
@@ -232,9 +230,9 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
 
   /// 构建欢迎引导页面
   Widget _buildWelcomePage(BuildContext context, fluent.FluentThemeData theme, bool isDark) {
-    final themeConfigured = PersistentStorageService().getBool('theme_configured') ?? false;
-    final audioConfigured = AudioSourceService().isConfigured;
-    final isLoggedIn = AuthService().isLoggedIn;
+    final themeConfigured = _audioSourceFacade.isThemeConfigured;
+    final audioConfigured = _audioSourceFacade.isAudioConfigured;
+    final isLoggedIn = _audioSourceFacade.isLoggedIn;
 
     // 决定当前显示的引导内容
     String title;
@@ -350,7 +348,9 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
               const SizedBox(height: 16),
               
                 fluent.HyperlinkButton(
-                  onPressed: () => _enterLocalMode(context),
+                  onPressed: () async {
+                    await _enterLocalMode();
+                  },
                   child: Text(
                     '使用本地模式',
                     style: TextStyle(
@@ -513,7 +513,9 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                     child: fluent.FilledButton(
                       onPressed: () async {
                         // 标记主题配置完成
-                        await PersistentStorageService().setBool('theme_configured', true);
+                        await _audioSourceFacade.setThemeConfigured(
+                          true,
+                        );
                         setState(() => _currentStep = 0);
                       },
                       child: const Padding(
@@ -1006,15 +1008,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: fluent.FilledButton(
                   onPressed: () async {
-                    // 持久化协议确认为 true
-                    final storage = PersistentStorageService();
-                    await storage.setBool('terms_accepted', true);
-                    // 退出本地模式
-                    await storage.setEnableLocalMode(false);
-                    
-                    // 触发监听以切换 DesktopAppGate
-                    AudioSourceService().refresh();
-                    AuthService().refresh();
+                    await _audioSourceFacade.acceptTermsAndEnterMain();
                   },
                   child: const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
@@ -1064,7 +1058,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
   }
 
   void _showSkipConfirmation(BuildContext context) {
-    final audioConfigured = AudioSourceService().isConfigured;
+    final audioConfigured = _audioSourceFacade.isAudioConfigured;
     String message;
     
     if (!audioConfigured) {
@@ -1084,9 +1078,9 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
             child: const Text('返回'),
           ),
           fluent.FilledButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              _skipSetup();
+              await _skipSetup();
             },
             child: const Text('确认跳过'),
           ),
@@ -1095,25 +1089,11 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
     );
   }
 
-  void _skipSetup() async {
-    // 直接标记协议为已确认并跳到主界面
-    final storage = PersistentStorageService();
-    await storage.setBool('terms_accepted', true);
-    // 退出本地模式
-    await storage.setEnableLocalMode(false);
-    
-    // 通知跳过 - 触发状态更新来进入主应用
-    AudioSourceService().refresh();
-    AuthService().refresh();
+  Future<void> _skipSetup() async {
+    await _audioSourceFacade.skipSetupAndEnterMain();
   }
 
-  void _enterLocalMode(BuildContext context) async {
-    final storage = PersistentStorageService();
-    await storage.setEnableLocalMode(true);
-    await storage.setBool('terms_accepted', true);
-    
-    // 通知应用状态变化以进入主界面
-    AudioSourceService().refresh();
-    AuthService().refresh();
+  Future<void> _enterLocalMode() async {
+    await _audioSourceFacade.enterLocalModeAndEnterMain();
   }
 }

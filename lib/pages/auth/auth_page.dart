@@ -5,10 +5,11 @@ import 'dart:async';
 import 'dart:io';
 import '../../services/auth_overlay_service.dart';
 import '../../services/auth_credentials_service.dart';
-import '../../services/auth_service.dart';
+import '../../features/auth/auth_feature.dart';
 import '../../utils/theme_manager.dart';
 import 'qr_login_dialog.dart';
-import 'linuxdo_webview_login_page.dart';
+
+final AuthFacade _authFacade = AuthFacade();
 
 class _AuthRouteService {
   static final _AuthRouteService _instance = _AuthRouteService._internal();
@@ -387,27 +388,14 @@ class _LoginViewState extends State<_LoginView> {
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
-  bool _isLinuxDoLoading = false; // Linux Do 授权登录加载状态
-  String _linuxDoLoadingText = '正在授权...'; // 加载提示文字
   bool _obscurePassword = true;
-  bool _linuxDoEnabled = true; // Linux Do 登录是否启用
   bool _rememberLoginEnabled = true;
   bool _rememberCredentials = true;
 
   @override
   void initState() {
     super.initState();
-    _checkLinuxDoStatus();
     _loadRememberedCredentials();
-  }
-
-  Future<void> _checkLinuxDoStatus() async {
-    final result = await AuthService().checkLinuxDoStatus();
-    if (mounted) {
-      setState(() {
-        _linuxDoEnabled = result['enabled'] ?? true;
-      });
-    }
   }
 
   Future<void> _loadRememberedCredentials() async {
@@ -457,7 +445,7 @@ class _LoginViewState extends State<_LoginView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().login(
+    final result = await _authFacade.login(
       account: _accountController.text.trim(),
       password: _passwordController.text,
     );
@@ -480,7 +468,7 @@ class _LoginViewState extends State<_LoginView> {
         );
         
         // 登录成功后，自动上报IP归属地
-        AuthService().updateLocation().then((locationResult) {
+        _authFacade.updateLocation().then((locationResult) {
           if (locationResult['success']) {
             print('✅ [AuthPage] IP归属地已更新: ${locationResult['data']?['location']}');
           }
@@ -594,101 +582,6 @@ class _LoginViewState extends State<_LoginView> {
             colorScheme: colorScheme,
           ),
 
-          if (_linuxDoEnabled) ...[
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: (_isLoading || _isLinuxDoLoading)
-                ? null
-                : () async {
-                    setState(() {
-                      _isLinuxDoLoading = true;
-                      _linuxDoLoadingText = '正在打开授权页面...';
-                    });
-                    
-                    // 使用 WebView 方式进行登录
-                    final code = await showLinuxDoWebViewLogin(context);
-                    
-                    if (!mounted) return;
-                    
-                    if (code == null) {
-                      // 用户取消或获取授权码失败
-                      setState(() => _isLinuxDoLoading = false);
-                      return;
-                    }
-                    
-                    // 获取到授权码，进行登录
-                    setState(() => _linuxDoLoadingText = '正在验证授权...');
-                    
-                    final result = await AuthService().loginWithLinuxDoCode(code);
-                    
-                    if (!mounted) return;
-                    
-                    if (result['success'] == true) {
-                      if (widget.embedded) {
-                        // 嵌入模式：只更新状态，由父级监听 AuthService 推进
-                        if (mounted) {
-                          setState(() => _isLinuxDoLoading = false);
-                        }
-                        AuthService().updateLocation();
-                      } else if (AuthOverlayService().isVisible) {
-                        // 先更新加载状态（如果还 mounted）
-                        if (mounted) {
-                          setState(() => _linuxDoLoadingText = '授权成功，正在登录...');
-                        }
-                        
-                        // 登录成功后，自动上报IP归属地（异步执行，不阻塞）
-                        AuthService().updateLocation();
-                        
-                        // 短暂延迟让用户看到成功提示
-                        await Future.delayed(const Duration(milliseconds: 500));
-                        
-                        // 无论 mounted 状态如何，都要关闭覆盖层
-                        AuthOverlayService().hide(true);
-                      } else {
-                        // 移动端路由模式
-                        if (mounted) {
-                          setState(() => _linuxDoLoadingText = '授权成功，正在登录...');
-                          AuthService().updateLocation();
-                          await Future.delayed(const Duration(milliseconds: 500));
-                          if (!mounted) return;
-                          setState(() => _isLinuxDoLoading = false);
-                          
-                          final nav = Navigator.of(context);
-                          if (nav.canPop()) {
-                            nav.pop(true);
-                          }
-                        }
-                      }
-                    } else {
-                      setState(() => _isLinuxDoLoading = false);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(result['message']),
-                          backgroundColor: colorScheme.error,
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    }
-                  },
-            icon: _isLinuxDoLoading
-                ? SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: const Color(0xFF007AFF),
-                    ),
-                  )
-                : const Icon(Icons.forum_outlined),
-            label: Text(_isLinuxDoLoading ? _linuxDoLoadingText : '通过linux do授权'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF007AFF),
-              side: const BorderSide(color: Color(0xFF007AFF)),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-          ),
-          ],
-
           if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) ...[
             const SizedBox(height: 12),
 
@@ -780,7 +673,7 @@ class _RegisterViewState extends State<_RegisterView> {
   }
 
   Future<void> _checkRegistrationStatus() async {
-    final result = await AuthService().checkRegistrationStatus();
+    final result = await _authFacade.checkRegistrationStatus();
     if (mounted) {
       setState(() {
         _registrationEnabled = result['enabled'] ?? false;
@@ -828,7 +721,7 @@ class _RegisterViewState extends State<_RegisterView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().sendRegisterCode(
+    final result = await _authFacade.sendRegisterCode(
       email: _getFullEmail(),
       username: _usernameController.text.trim(),
     );
@@ -883,7 +776,7 @@ class _RegisterViewState extends State<_RegisterView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().register(
+    final result = await _authFacade.register(
       email: _getFullEmail(),
       username: _usernameController.text.trim(),
       password: _passwordController.text,
@@ -1281,7 +1174,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().sendResetCode(
+    final result = await _authFacade.sendResetCode(
       email: _emailController.text.trim(),
     );
 
@@ -1335,7 +1228,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().resetPassword(
+    final result = await _authFacade.resetPassword(
       email: _emailController.text.trim(),
       code: _codeController.text.trim(),
       newPassword: _passwordController.text,
@@ -1715,27 +1608,14 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
-  bool _isLinuxDoLoading = false; // Linux Do 授权登录加载状态
-  String _linuxDoLoadingText = '正在授权...'; // 加载提示文字
   bool _obscurePassword = true;
-  bool _linuxDoEnabled = true; // Linux Do 登录是否启用
   bool _rememberLoginEnabled = true;
   bool _rememberCredentials = true;
 
   @override
   void initState() {
     super.initState();
-    _checkLinuxDoStatus();
     _loadRememberedCredentials();
-  }
-
-  Future<void> _checkLinuxDoStatus() async {
-    final result = await AuthService().checkLinuxDoStatus();
-    if (mounted) {
-      setState(() {
-        _linuxDoEnabled = result['enabled'] ?? true;
-      });
-    }
   }
 
   Future<void> _loadRememberedCredentials() async {
@@ -1786,7 +1666,7 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().login(
+    final result = await _authFacade.login(
       account: _accountController.text.trim(),
       password: _passwordController.text,
     );
@@ -1798,7 +1678,7 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
         await _syncRememberedCredentials();
         if (!mounted) return;
         _showCupertinoToast(result['message'], isSuccess: true);
-        AuthService().updateLocation();
+        _authFacade.updateLocation();
         if (!widget.embedded) {
           if (AuthOverlayService().isVisible) {
             AuthOverlayService().hide(true);
@@ -1913,85 +1793,6 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
           isLoading: _isLoading,
           onPressed: _handleLogin,
         ),
-        
-        if (_linuxDoEnabled) ...[
-        const SizedBox(height: 12),
-        CupertinoButton(
-          padding: EdgeInsets.zero,
-          onPressed: (_isLoading || _isLinuxDoLoading)
-              ? null
-              : () async {
-                  setState(() {
-                    _isLinuxDoLoading = true;
-                    _linuxDoLoadingText = '正在打开浏览器...';
-                  });
-                  
-                  // 延迟更新提示文字
-                  Future.delayed(const Duration(seconds: 2), () {
-                    if (mounted && _isLinuxDoLoading) {
-                      setState(() => _linuxDoLoadingText = '等待浏览器授权...');
-                    }
-                  });
-                  
-                  final result = await AuthService().loginWithLinuxDo();
-                  
-                  if (!mounted) return;
-                  
-                  if (result['success'] == true) {
-                    if (widget.embedded) {
-                      if (mounted) {
-                        setState(() => _isLinuxDoLoading = false);
-                      }
-                      AuthService().updateLocation();
-                    } else if (AuthOverlayService().isVisible) {
-                      // 桌面端覆盖层：先关闭覆盖层，避免因 mounted 状态导致关闭失败
-                      if (mounted) {
-                        setState(() => _linuxDoLoadingText = '授权成功，正在登录...');
-                      }
-                      AuthService().updateLocation();
-                      await Future.delayed(const Duration(milliseconds: 500));
-                      AuthOverlayService().hide(true);
-                    } else {
-                      // 移动端路由模式
-                      if (mounted) {
-                        setState(() => _linuxDoLoadingText = '授权成功，正在登录...');
-                        AuthService().updateLocation();
-                        await Future.delayed(const Duration(milliseconds: 500));
-                        if (!mounted) return;
-                        setState(() => _isLinuxDoLoading = false);
-                      if (mounted) {
-          final nav = Navigator.of(context);
-          if (nav.canPop()) {
-            nav.pop(true);
-          }
-        }
-                      }
-                    }
-                  } else {
-                    setState(() => _isLinuxDoLoading = false);
-                    _showCupertinoAlert(result['message']);
-                  }
-                },
-          child: Container(
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              border: Border.all(color: CupertinoColors.activeBlue),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: _isLinuxDoLoading
-                ? Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const CupertinoActivityIndicator(),
-                      const SizedBox(width: 8),
-                      Text(_linuxDoLoadingText),
-                    ],
-                  )
-                : const Text('通过linux do授权'),
-          ),
-        ),
-        ],
 
         const SizedBox(height: 20),
         
@@ -2059,7 +1860,7 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
   }
 
   Future<void> _checkRegistrationStatus() async {
-    final result = await AuthService().checkRegistrationStatus();
+    final result = await _authFacade.checkRegistrationStatus();
     if (mounted) {
       setState(() {
         _registrationEnabled = result['enabled'] ?? false;
@@ -2094,7 +1895,7 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
     }
 
     setState(() => _isLoading = true);
-    final result = await AuthService().sendRegisterCode(
+    final result = await _authFacade.sendRegisterCode(
       email: _getFullEmail(),
       username: _usernameController.text.trim(),
     );
@@ -2128,7 +1929,7 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
     }
 
     setState(() => _isLoading = true);
-    final result = await AuthService().register(
+    final result = await _authFacade.register(
       email: _getFullEmail(),
       username: _usernameController.text.trim(),
       password: _passwordController.text,
@@ -2445,7 +2246,7 @@ class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordVi
     }
 
     setState(() => _isLoading = true);
-    final result = await AuthService().sendResetCode(email: _emailController.text.trim());
+    final result = await _authFacade.sendResetCode(email: _emailController.text.trim());
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -2472,7 +2273,7 @@ class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordVi
     }
 
     setState(() => _isLoading = true);
-    final result = await AuthService().resetPassword(
+    final result = await _authFacade.resetPassword(
       email: _emailController.text.trim(),
       code: _codeController.text.trim(),
       newPassword: _passwordController.text,
@@ -2726,4 +2527,7 @@ Widget _buildCupertinoButton({
     ),
   );
 }
+
+
+
 

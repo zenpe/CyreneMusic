@@ -7,9 +7,9 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../features/auth/auth_feature.dart';
 import '../../services/donate_service.dart';
 import '../../services/location_service.dart';
-import '../../services/auth_service.dart';
 import '../../widgets/fluent_settings_card.dart';
 import '../../utils/theme_manager.dart';
 
@@ -21,6 +21,7 @@ class DonateSettings extends StatefulWidget {
 }
 
 class _DonateSettingsState extends State<DonateSettings> {
+  final AuthFacade _authFacade = AuthFacade();
 
   @override
   Widget build(BuildContext context) {
@@ -95,7 +96,7 @@ class _DonateSettingsState extends State<DonateSettings> {
       print('[Donate] clientip=$ip, creating order: $outTradeNo');
       
       // 获取当前用户ID（如果已登录）
-      final userId = AuthService().currentUser?.id;
+      final userId = _authFacade.currentUser?.id;
       
       // 先创建赞助记录
       if (userId != null) {
@@ -145,11 +146,11 @@ class _DonateSettingsState extends State<DonateSettings> {
             _showSnack('感谢您的赞助！');
             
             // 支付成功后，重新登录以刷新用户状态（包括赞助状态）
-            final currentUser = AuthService().currentUser;
+            final currentUser = _authFacade.currentUser;
             if (currentUser != null) {
               print('[Donate] 支付成功，刷新用户状态...');
               // 触发 AuthService 的监听器，让用户卡片重新查询赞助状态
-              AuthService().refresh();
+              _authFacade.refresh();
             }
           }
         } else {

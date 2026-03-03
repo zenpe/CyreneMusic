@@ -133,10 +133,6 @@ const String lxSandboxJs = r'''
   function sendToFlutter(handlerName, data) {
     if (typeof _global.__lx_native_send__ === 'function') {
       _global.__lx_native_send__(handlerName, data);
-      return;
-    }
-    if (window.flutter_inappwebview) {
-      window.flutter_inappwebview.callHandler(handlerName, data);
     }
   }
   

@@ -625,14 +625,14 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
 
                       Navigator.pop(context);
 
-                      final result = await AuthService().login(
+                      final result = await _authFacade.login(
                         account: accountController.text.trim(),
                         password: passwordController.text,
                       );
 
                       if (result['success']) {
                         _showCupertinoToast('✅ 登录成功', isSuccess: true);
-                        AuthService().updateLocation();
+                        _authFacade.updateLocation();
                       } else {
                         _showCupertinoToast('登录失败: ${result['message']}');
                       }

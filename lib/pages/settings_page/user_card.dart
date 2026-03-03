@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
-import '../../services/auth_service.dart';
+import '../../features/auth/auth_feature.dart';
 import '../../services/location_service.dart';
 import '../../services/donate_service.dart';
 import '../../services/avatar_fetch_service.dart';
@@ -26,6 +26,7 @@ class UserCard extends StatefulWidget {
 }
 
 class _UserCardState extends State<UserCard> {
+  final AuthFacade _authFacade = AuthFacade();
   bool _isSponsor = false;
   int? _sponsorRank; // 赞助排名：1=金牌，2=银牌，3=铜牌，其他=赞助用户
   final TextEditingController _usernameController = TextEditingController();
@@ -35,7 +36,7 @@ class _UserCardState extends State<UserCard> {
   @override
   void initState() {
     super.initState();
-    AuthService().addListener(_onAuthChanged);
+    _authFacade.addAuthStateListener(_onAuthChanged);
     LocationService().addListener(_onLocationChanged);
     _checkSponsorStatus();
   }
@@ -44,7 +45,7 @@ class _UserCardState extends State<UserCard> {
   @override
   void dispose() {
     _usernameController.dispose();
-    AuthService().removeListener(_onAuthChanged);
+    _authFacade.removeAuthStateListener(_onAuthChanged);
     LocationService().removeListener(_onLocationChanged);
     super.dispose();
   }
@@ -68,7 +69,7 @@ class _UserCardState extends State<UserCard> {
 
   /// 显示修改用户名对话框 - Material UI
   Future<void> _showUpdateUsernameDialogMaterial(BuildContext context) async {
-    final currentUser = AuthService().currentUser;
+    final currentUser = _authFacade.currentUser;
     if (currentUser == null) return;
 
     _usernameController.text = currentUser.username;
@@ -134,7 +135,7 @@ class _UserCardState extends State<UserCard> {
                         _usernameError = null;
                       });
 
-                      final result = await AuthService().updateUsername(newUsername);
+                      final result = await _authFacade.updateUsername(newUsername);
 
                       if (!mounted) return;
 
@@ -169,7 +170,7 @@ class _UserCardState extends State<UserCard> {
 
   /// 显示修改用户名对话框 - Fluent UI
   Future<void> _showUpdateUsernameDialogFluent(BuildContext context) async {
-    final currentUser = AuthService().currentUser;
+    final currentUser = _authFacade.currentUser;
     if (currentUser == null) return;
 
     _usernameController.text = currentUser.username;
@@ -243,7 +244,7 @@ class _UserCardState extends State<UserCard> {
                         _usernameError = null;
                       });
 
-                      final result = await AuthService().updateUsername(newUsername);
+                      final result = await _authFacade.updateUsername(newUsername);
 
                       if (!mounted) return;
 
@@ -280,7 +281,7 @@ class _UserCardState extends State<UserCard> {
 
   /// 查询用户赞助状态
   Future<void> _checkSponsorStatus() async {
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
     if (user == null) {
       setState(() {
         _isSponsor = false;
@@ -332,8 +333,8 @@ class _UserCardState extends State<UserCard> {
 
   @override
   Widget build(BuildContext context) {
-    final isLoggedIn = AuthService().isLoggedIn;
-    final user = AuthService().currentUser;
+    final isLoggedIn = _authFacade.isLoggedIn;
+    final user = _authFacade.currentUser;
     final isFluentUI = ThemeManager().isDesktopFluentUI;
     final isCupertinoUI = ThemeManager().isCupertinoFramework;
     
@@ -659,7 +660,7 @@ class _UserCardState extends State<UserCard> {
                     const SizedBox(width: 12),
                     // 退出按钮
                     IconButton(
-                      onPressed: () => AuthService().logout(),
+                      onPressed: () => _authFacade.logout(),
                       icon: Icon(Icons.logout_rounded, color: colorScheme.error),
                       tooltip: '退出登录',
                     ),
@@ -712,7 +713,7 @@ class _UserCardState extends State<UserCard> {
 
     print('👤 [UserCard] 登录页面返回，结果: $result');
 
-    if (result == true && AuthService().isLoggedIn) {
+    if (result == true && _authFacade.isLoggedIn) {
       print('👤 [UserCard] 登录成功，开始获取IP归属地...');
       LocationService().fetchLocation();
     }
@@ -732,7 +733,7 @@ class _UserCardState extends State<UserCard> {
           ),
           FilledButton(
             onPressed: () {
-              AuthService().logout();
+              _authFacade.logout();
               LocationService().clearLocation();
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
@@ -935,7 +936,7 @@ class _UserCardState extends State<UserCard> {
           CupertinoDialogAction(
             isDestructiveAction: true,
             onPressed: () {
-              AuthService().logout();
+              _authFacade.logout();
               LocationService().clearLocation();
               Navigator.pop(context);
             },
@@ -948,7 +949,7 @@ class _UserCardState extends State<UserCard> {
   
   /// 修改用户名对话框 - Cupertino
   void _showUpdateUsernameDialogCupertino(BuildContext context) {
-    final currentUser = AuthService().currentUser;
+    final currentUser = _authFacade.currentUser;
     if (currentUser == null) return;
     
     _usernameController.text = currentUser.username;
@@ -983,7 +984,7 @@ class _UserCardState extends State<UserCard> {
                 final newUsername = _usernameController.text.trim();
                 if (newUsername.isEmpty || newUsername == currentUser.username) return;
                 
-                final result = await AuthService().updateUsername(newUsername);
+                final result = await _authFacade.updateUsername(newUsername);
                 if (result['success'] == true && mounted) {
                   Navigator.pop(context);
                 }
@@ -1255,7 +1256,7 @@ class _UserCardState extends State<UserCard> {
           ),
           fluent_ui.FilledButton(
             onPressed: () {
-              AuthService().logout();
+              _authFacade.logout();
               LocationService().clearLocation();
               Navigator.pop(context);
             },

@@ -60,7 +60,7 @@ extension MyPageMaterialUI on _MyPageState {
       return _buildMaterialPlaylistDetail(_selectedPlaylist!, colorScheme);
     }
 
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
 
     return Scaffold(
       backgroundColor: Colors.transparent, // 允许背景底层颜色透出
@@ -969,7 +969,7 @@ extension MyPageMaterialUI on _MyPageState {
   }
 
   Widget _buildMaterialUserCard(ColorScheme colorScheme) {
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
     if (user == null) return const SizedBox.shrink();
 
     return Card(

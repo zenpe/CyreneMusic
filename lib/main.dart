@@ -33,6 +33,7 @@ import 'package:cyrene_music/services/system_media_service.dart';
 import 'package:cyrene_music/services/tray_service.dart';
 import 'package:cyrene_music/services/url_service.dart';
 import 'package:cyrene_music/services/audio_source_service.dart';
+import 'package:cyrene_music/features/audio_source/audio_source_feature.dart';
 import 'package:cyrene_music/services/version_service.dart';
 import 'package:cyrene_music/services/mini_player_window_service.dart';
 import 'package:cyrene_music/services/local_library_service.dart';
@@ -406,6 +407,19 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  final AudioSourceFacade _audioSourceFacade = AudioSourceFacade();
+
+  Widget _buildDesktopMaterialHomeByRoute(AppGateRoute route) {
+    // 保持当前桌面 Material 分支的既有行为：
+    // 非 Navidrome 情况统一进入 MainLayout。
+    return switch (route) {
+      AppGateRoute.navidromeMain => const NavidromeMainLayout(),
+      AppGateRoute.navidromeSetup => const NavidromeSetupPage(),
+      AppGateRoute.regularMain => const MainLayout(),
+      AppGateRoute.regularSetup => const MainLayout(),
+    };
+  }
+
   @override
   void initState() {
     super.initState();
@@ -664,15 +678,8 @@ class _MyAppState extends State<MyApp> {
               NavidromeSessionService(),
             ]),
             builder: (context, _) {
-              final audioSourceService = AudioSourceService();
-              final isTermsAccepted =
-                  PersistentStorageService().getBool('terms_accepted') ?? false;
-
-              final Widget home = audioSourceService.isNavidromeActive
-                  ? (audioSourceService.isConfigured && isTermsAccepted
-                      ? const NavidromeMainLayout()
-                      : const NavidromeSetupPage())
-                  : const MainLayout();
+              final route = _audioSourceFacade.resolveEntryRoute();
+              final home = _buildDesktopMaterialHomeByRoute(route);
 
               return Platform.isWindows
                   ? _WindowsRoundedContainer(child: home)

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../services/auth_service.dart';
+import '../features/auth/auth_feature.dart';
 import '../services/listening_stats_service.dart';
 import '../services/player_service.dart';
 import '../widgets/track_action_menu.dart';
@@ -14,6 +14,7 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  final AuthFacade _authFacade = AuthFacade();
   bool _isLoading = true;
   ListeningStatsData? _statsData;
   String? _errorMessage;
@@ -26,7 +27,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   /// 加载统计数据
   Future<void> _loadStats() async {
-    if (!AuthService().isLoggedIn) {
+    if (!_authFacade.isLoggedIn) {
       setState(() {
         _isLoading = false;
         _errorMessage = '请先登录';
@@ -86,7 +87,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
 
     return Scaffold(
       body: _isLoading

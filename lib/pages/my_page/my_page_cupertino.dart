@@ -87,7 +87,7 @@ extension MyPageCupertinoUI on _MyPageState {
   }
 
   Widget _buildCupertinoUserCard(bool isDark) {
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
     if (user == null) return const SizedBox.shrink();
 
     return Container(

@@ -17,7 +17,7 @@ import '../pages/local_page.dart';
 import '../pages/settings_page.dart';
 import '../pages/developer_page.dart';
 import '../pages/support_page.dart';
-import '../services/auth_service.dart';
+import '../features/auth/auth_feature.dart';
 import '../services/layout_preference_service.dart';
 import '../services/developer_mode_service.dart';
 import '../services/global_back_handler_service.dart';
@@ -40,6 +40,7 @@ class MainLayout extends StatefulWidget {
 
 class _MainLayoutState extends State<MainLayout>
     with SingleTickerProviderStateMixin {
+  final AuthFacade _authFacade = AuthFacade();
   int _selectedIndex = 0;
   // NavigationDrawer 固定宽度与 NavigationRail 展开状态一致（Material 3 默认 256）
   static const double _drawerWidth = 256.0;
@@ -157,7 +158,7 @@ class _MainLayoutState extends State<MainLayout>
   void initState() {
     super.initState();
     // 监听认证状态变化
-    AuthService().addListener(_onAuthChanged);
+    _authFacade.addAuthStateListener(_onAuthChanged);
     // 监听布局偏好变化
     LayoutPreferenceService().addListener(_onLayoutPreferenceChanged);
     // 监听页面可见性通知器（用于跨组件切换 Tab）
@@ -179,7 +180,7 @@ class _MainLayoutState extends State<MainLayout>
 
     // 应用启动后验证持久化的登录状态（Material 布局）
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      AuthService().validateToken();
+      _authFacade.validateToken();
     });
     
     // 初始化 PageVisibilityNotifier 状态与当前页面一致
@@ -189,7 +190,7 @@ class _MainLayoutState extends State<MainLayout>
 
   @override
   void dispose() {
-    AuthService().removeListener(_onAuthChanged);
+    _authFacade.removeAuthStateListener(_onAuthChanged);
     LayoutPreferenceService().removeListener(_onLayoutPreferenceChanged);
     PageVisibilityNotifier().removeListener(_onPageVisibilityNotifierChanged);
     DeveloperModeService().removeListener(_onDeveloperModeChanged);
@@ -288,7 +289,7 @@ class _MainLayoutState extends State<MainLayout>
   }
 
   void _handleUserButtonTap() {
-    if (AuthService().isLoggedIn) {
+    if (_authFacade.isLoggedIn) {
       // 已登录，显示用户菜单
       _showUserMenu();
     } else {
@@ -306,7 +307,7 @@ class _MainLayoutState extends State<MainLayout>
   }
 
   void _showUserMenu() {
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
     if (user == null) return;
 
     showModalBottomSheet(
@@ -365,7 +366,7 @@ class _MainLayoutState extends State<MainLayout>
           ),
           FilledButton(
             onPressed: () {
-              AuthService().logout();
+              _authFacade.logout();
               Navigator.pop(context);
               ScaffoldMessenger.of(
                 context,
@@ -1430,9 +1431,9 @@ class _MainLayoutState extends State<MainLayout>
 
   /// 构建用户头像
   Widget _buildUserAvatar({double size = 24}) {
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
 
-    if (user == null || !AuthService().isLoggedIn) {
+    if (user == null || !_authFacade.isLoggedIn) {
       return Icon(Icons.account_circle_outlined, size: size);
     }
 

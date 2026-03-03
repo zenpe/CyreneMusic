@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
+import '../../features/audio_source/audio_source_feature.dart';
 import '../../services/url_service.dart';
-import '../../services/audio_source_service.dart';
 import '../../services/api/api_client.dart';
 import '../../widgets/fluent_settings_card.dart';
 import '../../widgets/cupertino/cupertino_settings_widgets.dart';
@@ -24,6 +24,8 @@ class NetworkSettings extends StatefulWidget {
 
 class _NetworkSettingsState extends State<NetworkSettings> {
   static const String _selfHostedPresetUrl = 'https://niba.cc.cd';
+  final AudioSourceReadController _audioSourceReadController =
+      AudioSourceReadController();
   bool _isTesting = false;
   int? _latencyMs;
   String? _errorMessage;
@@ -33,6 +35,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
   void initState() {
     super.initState();
     UrlService().addListener(_handleUrlChanged);
+    _audioSourceReadController.addListener(_handleAudioSourceChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _testConnection();
       _startAutoRefresh();
@@ -42,6 +45,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
   @override
   void dispose() {
     UrlService().removeListener(_handleUrlChanged);
+    _audioSourceReadController.removeListener(_handleAudioSourceChanged);
     _autoRefreshTimer?.cancel();
     super.dispose();
   }
@@ -54,6 +58,11 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       _testConnection();
       _startAutoRefresh();
     });
+  }
+
+  void _handleAudioSourceChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _startAutoRefresh() {
@@ -84,9 +93,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
           FluentSettingsTile(
             icon: Icons.music_note,
             title: '音源设置',
-            subtitle: AudioSourceService().isConfigured
-                ? AudioSourceService().getSourceDescription()
-                : '未配置（点击配置）',
+            subtitle: _audioSourceReadController.sourceSummary,
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onAudioSourceTap,
           ),
@@ -118,9 +125,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
         MD3SettingsTile(
           leading: const Icon(Icons.music_note_outlined),
           title: '音源设置',
-          subtitle: AudioSourceService().isConfigured
-              ? AudioSourceService().getSourceDescription()
-              : '未配置（点击配置）',
+          subtitle: _audioSourceReadController.sourceSummary,
           trailing: const Icon(Icons.chevron_right),
           onTap: widget.onAudioSourceTap,
         ),
@@ -153,9 +158,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
           icon: CupertinoIcons.music_note,
           iconColor: CupertinoColors.systemPurple,
           title: '音源设置',
-          subtitle: AudioSourceService().isConfigured
-              ? AudioSourceService().getSourceDescription()
-              : '未配置（点击配置）',
+          subtitle: _audioSourceReadController.sourceSummary,
           showChevron: true,
           onTap: widget.onAudioSourceTap,
         ),

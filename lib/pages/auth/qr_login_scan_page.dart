@@ -3,13 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../../services/auth_service.dart';
+import '../../features/auth/auth_feature.dart';
 import '../../services/qr_login_service.dart';
 import '../../utils/theme_manager.dart';
 import 'qr_login_result_page.dart';
 
+final AuthFacade _authFacade = AuthFacade();
+
 Future<void> openQrLoginScanPage(BuildContext context) async {
-  if (!AuthService().isLoggedIn) {
+  if (!_authFacade.isLoggedIn) {
     return;
   }
 
@@ -254,3 +256,6 @@ class _QrLoginScanPageState extends State<QrLoginScanPage> {
     );
   }
 }
+
+
+

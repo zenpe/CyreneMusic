@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/navidrome_api.dart';
-import '../services/navidrome_session_service.dart';
-import '../services/persistent_storage_service.dart';
+import '../features/audio_source/audio_source_feature.dart';
 
 class NavidromeConfigForm extends StatefulWidget {
   final bool acceptTermsOnSave;
@@ -30,6 +28,7 @@ class NavidromeConfigForm extends StatefulWidget {
 }
 
 class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
+  final AudioSourceFacade _audioSourceFacade = AudioSourceFacade();
   final _formKey = GlobalKey<FormState>();
   final _baseUrlController = TextEditingController();
   final _usernameController = TextEditingController();
@@ -42,9 +41,8 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
   @override
   void initState() {
     super.initState();
-    final session = NavidromeSessionService();
-    _baseUrlController.text = session.baseUrl;
-    _usernameController.text = session.username;
+    _baseUrlController.text = _audioSourceFacade.navidromeBaseUrl;
+    _usernameController.text = _audioSourceFacade.navidromeUsername;
   }
 
   @override
@@ -68,12 +66,11 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
     });
 
     try {
-      final api = NavidromeApi(
+      final ok = await _audioSourceFacade.testNavidromeConnection(
         baseUrl: baseUrl,
         username: username,
         password: password,
       );
-      final ok = await api.ping();
       setState(() {
         _statusMessage = ok ? '连接成功' : '连接失败';
         _statusIsError = ok ? false : true;
@@ -105,13 +102,13 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
     });
 
     try {
-      await NavidromeSessionService().saveConfig(
+      await _audioSourceFacade.saveNavidromeConfig(
         baseUrl: baseUrl,
         username: username,
         password: password,
       );
       if (widget.acceptTermsOnSave) {
-        await PersistentStorageService().setBool('terms_accepted', true);
+        await _audioSourceFacade.acceptTermsAndEnterMain();
       }
       widget.onSaved?.call();
     } catch (e) {
@@ -153,7 +150,7 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
   }
 
   Future<void> _clearConfig() async {
-    await NavidromeSessionService().clear();
+    await _audioSourceFacade.clearNavidromeConfig();
     widget.onCleared?.call();
   }
 

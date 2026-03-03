@@ -3,14 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../../services/auth_overlay_service.dart';
 import '../../services/auth_credentials_service.dart';
-import '../../services/auth_service.dart';
+import '../../features/auth/auth_feature.dart';
 import 'qr_login_dialog.dart';
-import 'linuxdo_webview_login_page.dart';
+
+final AuthFacade _authFacade = AuthFacade();
 
 /// 桌面端 Fluent UI 风格认证页面
-/// 
+///
 /// 包含登录、注册、找回密码三个 Tab
-/// 支持账号密码登录、Linux Do 授权登录、手机扫码登录
+/// 支持账号密码登录、手机扫码登录
 class FluentAuthPage extends StatefulWidget {
   final int initialTab;
   final bool embedded;
@@ -174,27 +175,14 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
-  bool _isLinuxDoLoading = false;
-  String _linuxDoLoadingText = '正在授权...';
   bool _obscurePassword = true;
-  bool _linuxDoEnabled = true;
   bool _rememberLoginEnabled = true;
   bool _rememberCredentials = true;
 
   @override
   void initState() {
     super.initState();
-    _checkLinuxDoStatus();
     _loadRememberedCredentials();
-  }
-
-  Future<void> _checkLinuxDoStatus() async {
-    final result = await AuthService().checkLinuxDoStatus();
-    if (mounted) {
-      setState(() {
-        _linuxDoEnabled = result['enabled'] ?? true;
-      });
-    }
   }
 
   Future<void> _loadRememberedCredentials() async {
@@ -246,7 +234,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().login(
+    final result = await _authFacade.login(
       account: _accountController.text.trim(),
       password: _passwordController.text,
     );
@@ -259,7 +247,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
         if (!mounted) return;
         _showInfoBar(result['message'], fluent.InfoBarSeverity.success);
         // 登录成功后，自动上报IP归属地
-        AuthService().updateLocation();
+        _authFacade.updateLocation();
         _closeAuthEntry();
       } else {
         _showInfoBar(result['message'], fluent.InfoBarSeverity.error);
@@ -371,35 +359,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
                     child: Text('登录', style: TextStyle(fontWeight: FontWeight.w600)),
                   ),
           ),
-          
-          // Linux Do 授权登录
-          if (_linuxDoEnabled) ...[
-            const SizedBox(height: 12),
-            fluent.Button(
-              onPressed: (_isLoading || _isLinuxDoLoading) ? null : _handleLinuxDoLogin,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (_isLinuxDoLoading)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 8),
-                      child: SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: fluent.ProgressRing(strokeWidth: 2),
-                      ),
-                    )
-                  else
-                    const Padding(
-                      padding: EdgeInsets.only(right: 8),
-                      child: Icon(fluent.FluentIcons.comment, size: 16),
-                    ),
-                  Text(_isLinuxDoLoading ? _linuxDoLoadingText : '通过 Linux Do 授权'),
-                ],
-              ),
-            ),
-          ],
-          
+
           // 手机扫码登录
           const SizedBox(height: 12),
           fluent.Button(
@@ -438,44 +398,6 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
     );
   }
   
-  Future<void> _handleLinuxDoLogin() async {
-    setState(() {
-      _isLinuxDoLoading = true;
-      _linuxDoLoadingText = '正在打开授权页面...';
-    });
-    
-    // 使用 WebView 方式进行登录
-    final code = await showLinuxDoWebViewLogin(context);
-    
-    if (!mounted) return;
-    
-    if (code == null) {
-      // 用户取消或获取授权码失败
-      setState(() => _isLinuxDoLoading = false);
-      return;
-    }
-    
-    // 获取到授权码，进行登录
-    setState(() => _linuxDoLoadingText = '正在验证授权...');
-    
-    final result = await AuthService().loginWithLinuxDoCode(code);
-    
-    if (!mounted) return;
-    
-    if (result['success'] == true) {
-      setState(() => _linuxDoLoadingText = '授权成功，正在登录...');
-      AuthService().updateLocation();
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) {
-        setState(() => _isLinuxDoLoading = false);
-        _showInfoBar('登录成功', fluent.InfoBarSeverity.success);
-        _closeAuthEntry();
-      }
-    } else {
-      setState(() => _isLinuxDoLoading = false);
-      _showInfoBar(result['message'] ?? '授权失败', fluent.InfoBarSeverity.error);
-    }
-  }
 }
 
 /// Fluent UI 注册视图
@@ -522,7 +444,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
   }
 
   Future<void> _checkRegistrationStatus() async {
-    final result = await AuthService().checkRegistrationStatus();
+    final result = await _authFacade.checkRegistrationStatus();
     if (mounted) {
       setState(() {
         _registrationEnabled = result['enabled'] ?? false;
@@ -560,7 +482,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().sendRegisterCode(
+    final result = await _authFacade.sendRegisterCode(
       email: _getFullEmail(),
       username: _usernameController.text.trim(),
     );
@@ -606,7 +528,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().register(
+    final result = await _authFacade.register(
       email: _getFullEmail(),
       username: _usernameController.text.trim(),
       password: _passwordController.text,
@@ -893,7 +815,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().sendResetCode(
+    final result = await _authFacade.sendResetCode(
       email: _emailController.text.trim(),
     );
 
@@ -934,7 +856,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().resetPassword(
+    final result = await _authFacade.resetPassword(
       email: _emailController.text.trim(),
       code: _codeController.text.trim(),
       newPassword: _passwordController.text,
@@ -1088,3 +1010,6 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
     );
   }
 }
+
+
+

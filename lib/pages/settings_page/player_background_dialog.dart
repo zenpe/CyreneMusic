@@ -4,8 +4,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../features/auth/auth_feature.dart';
 import '../../services/player_background_service.dart';
-import '../../services/auth_service.dart';
 import '../../services/lyric_style_service.dart';
 import '../../utils/theme_manager.dart';
 
@@ -20,6 +20,8 @@ class PlayerBackgroundDialog extends StatefulWidget {
 }
 
 class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
+  final AuthFacade _authFacade = AuthFacade();
+
   @override
   Widget build(BuildContext context) {
     final backgroundService = PlayerBackgroundService();
@@ -28,8 +30,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
     
     // 检查用户是否为赞助用户
-    final authService = AuthService();
-    final isSponsor = authService.currentUser?.isSponsor ?? false;
+    final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
 
     if (isCupertino) {
       return _buildCupertinoDialog(context, backgroundService, currentType, isSponsor);

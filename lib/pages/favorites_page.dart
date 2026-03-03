@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../features/auth/auth_feature.dart';
 import '../services/favorite_service.dart';
 import '../services/player_service.dart';
-import '../services/auth_service.dart';
 import '../services/playlist_queue_service.dart';
 import '../models/track.dart';
 
@@ -16,6 +16,7 @@ class FavoritesPage extends StatefulWidget {
 
 class _FavoritesPageState extends State<FavoritesPage>
     with AutomaticKeepAliveClientMixin {
+  final AuthFacade _authFacade = AuthFacade();
   final FavoriteService _favoriteService = FavoriteService();
 
   @override
@@ -27,7 +28,7 @@ class _FavoritesPageState extends State<FavoritesPage>
     _favoriteService.addListener(_onFavoritesChanged);
     
     // 加载收藏列表
-    if (AuthService().isLoggedIn) {
+    if (_authFacade.isLoggedIn) {
       _favoriteService.loadFavorites();
     }
   }
@@ -50,7 +51,7 @@ class _FavoritesPageState extends State<FavoritesPage>
     final colorScheme = Theme.of(context).colorScheme;
 
     // 检查登录状态
-    if (!AuthService().isLoggedIn) {
+    if (!_authFacade.isLoggedIn) {
       return Scaffold(
         backgroundColor: colorScheme.surface,
         body: CustomScrollView(
@@ -137,7 +138,7 @@ class _FavoritesPageState extends State<FavoritesPage>
         IconButton(
           icon: const Icon(Icons.refresh),
           onPressed: () {
-            if (AuthService().isLoggedIn) {
+            if (_authFacade.isLoggedIn) {
               _favoriteService.loadFavorites();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../../features/auth/auth_feature.dart';
 import '../../../services/player_background_service.dart';
-import '../../../services/auth_service.dart';
 
 /// 背景设置区域 - Material Design Expressive 风格
 /// 全圆胶囊形芯片 + 赞助专属渐变装饰
@@ -14,6 +14,8 @@ class BackgroundSection extends StatefulWidget {
 }
 
 class _BackgroundSectionState extends State<BackgroundSection> {
+  final AuthFacade _authFacade = AuthFacade();
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -24,7 +26,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
       builder: (context, _) {
         final bgService = PlayerBackgroundService();
         final currentType = bgService.backgroundType;
-        final isSponsor = AuthService().currentUser?.isSponsor ?? false;
+        final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
         
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),

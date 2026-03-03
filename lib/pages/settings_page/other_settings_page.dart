@@ -5,7 +5,7 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import '../../models/playlist.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/auth_credentials_service.dart';
-import '../../services/auth_service.dart';
+import '../../features/auth/auth_feature.dart';
 import '../../services/playlist_service.dart';
 import '../../utils/theme_manager.dart';
 import '../../widgets/fluent_settings_card.dart';
@@ -28,6 +28,8 @@ class OtherSettingsContent extends StatefulWidget {
 }
 
 class _OtherSettingsContentState extends State<OtherSettingsContent> {
+  final AuthFacade _authFacade = AuthFacade();
+
   @override
   void initState() {
     super.initState();
@@ -72,14 +74,14 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
   }
 
   Future<List<Playlist>> _loadAvailablePlaylists() async {
-    if (!AuthService().isLoggedIn) return [];
+    if (!_authFacade.isLoggedIn) return [];
     final playlistService = PlaylistService();
     await playlistService.loadPlaylists();
     return List<Playlist>.from(playlistService.playlists);
   }
 
   Future<void> _selectStartupPlaylist() async {
-    if (!AuthService().isLoggedIn) {
+    if (!_authFacade.isLoggedIn) {
       _showMessage(context, '请先登录后再选择启动歌单');
       return;
     }

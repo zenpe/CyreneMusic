@@ -8,11 +8,11 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../features/auth/auth_feature.dart';
 import '../services/announcement_service.dart';
 import '../services/music_service.dart';
 import '../services/version_service.dart';
 import '../services/app_settings_service.dart';
-import '../services/auth_service.dart';
 import '../services/home_search_service.dart';
 import '../widgets/announcement_dialog.dart';
 import '../models/track.dart';
@@ -49,6 +49,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   static const String _homeFontFamily = 'Microsoft YaHei';
+  final AuthFacade _authFacade = AuthFacade();
   final PageController _bannerController = PageController();
   int _currentBannerIndex = 0;
   Timer? _bannerTimer;
@@ -91,7 +92,7 @@ class _HomePageState extends State<HomePage>
     PlayHistoryService().addListener(_onHistoryChanged);
 
     // 监听登录状态变化
-    AuthService().addListener(_onAuthChanged);
+    _authFacade.addAuthStateListener(_onAuthChanged);
 
     // 如果还没有数据，自动获取
     if (MusicService().toplists.isEmpty && !MusicService().isLoading) {
@@ -106,7 +107,7 @@ class _HomePageState extends State<HomePage>
     _prepareGuessYouLikeFuture();
 
     // 首次加载第三方绑定状态
-    _isBindingsLoading = AuthService().isLoggedIn;
+    _isBindingsLoading = _authFacade.isLoggedIn;
     _loadBindings();
 
     // 监听来自主布局的搜索请求
@@ -152,7 +153,7 @@ class _HomePageState extends State<HomePage>
   /// 加载第三方绑定状态（仅在登录后查询）
   Future<void> _loadBindings() async {
     try {
-      if (!AuthService().isLoggedIn) {
+      if (!_authFacade.isLoggedIn) {
         if (mounted) {
           setState(() {
             _isNeteaseBound = false;
@@ -241,7 +242,7 @@ class _HomePageState extends State<HomePage>
     MusicService().removeListener(_onMusicServiceChanged);
     PageVisibilityNotifier().removeListener(_onPageVisibilityChanged);
     PlayHistoryService().removeListener(_onHistoryChanged);
-    AuthService().removeListener(_onAuthChanged);
+    _authFacade.removeAuthStateListener(_onAuthChanged);
     _homeSearchService.removeListener(_onExternalSearchRequested);
     _bannerController.dispose();
     _homeOverlayController.setBackHandler(null);
@@ -1041,7 +1042,7 @@ class _HomePageState extends State<HomePage>
   /// 检查登录状态，如果未登录则跳转到登录页面
   /// 返回 true 表示已登录或登录成功，返回 false 表示未登录或取消登录
   Future<bool> _checkLoginStatus() async {
-    if (AuthService().isLoggedIn) {
+    if (_authFacade.isLoggedIn) {
       return true;
     }
 
@@ -1085,7 +1086,7 @@ class _HomePageState extends State<HomePage>
       final result = await showAuthDialog(context);
 
       // 返回登录是否成功
-      return result == true && AuthService().isLoggedIn;
+      return result == true && _authFacade.isLoggedIn;
     }
 
     return false;
@@ -1165,7 +1166,7 @@ class _HomePageState extends State<HomePage>
       final result = await showAuthDialog(context);
 
       // 返回登录是否成功
-      return result == true && AuthService().isLoggedIn;
+      return result == true && _authFacade.isLoggedIn;
     }
 
     return false;
@@ -1357,7 +1358,7 @@ class _HomePageState extends State<HomePage>
   /// 构建 iOS 风格首页 Slivers
   List<Widget> _buildCupertinoHomeSlivers(BuildContext context, bool showTabs) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final isLoggedIn = AuthService().isLoggedIn;
+    final isLoggedIn = _authFacade.isLoggedIn;
     
     final mediaQuery = MediaQuery.of(context);
     final windowHeight = mediaQuery.size.height;
@@ -1565,7 +1566,7 @@ class _HomePageState extends State<HomePage>
 
   Future<void> _clearForYouCache() async {
     final prefs = await SharedPreferences.getInstance();
-    final userId = AuthService().currentUser?.id?.toString() ?? 'guest';
+    final userId = _authFacade.currentUser?.id?.toString() ?? 'guest';
     final base = 'home_for_you_$userId';
     await prefs.remove('${base}_data');
     await prefs.remove('${base}_expire');
@@ -1853,7 +1854,7 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildHomeContentSliver(BuildContext context, bool showTabs) {
     // 未登录状态下直接显示登录提示（通过 HomeForYouTab）
-    final isLoggedIn = AuthService().isLoggedIn;
+    final isLoggedIn = _authFacade.isLoggedIn;
 
     if (_isBindingsLoading) {
       return SliverFillRemaining(

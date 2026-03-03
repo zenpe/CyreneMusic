@@ -3,8 +3,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import 'package:file_picker/file_picker.dart';
+import '../../features/auth/auth_feature.dart';
 import '../../services/window_background_service.dart';
-import '../../services/auth_service.dart';
 
 /// 窗口背景设置对话框（赞助用户独享）
 class WindowBackgroundDialog extends StatefulWidget {
@@ -17,11 +17,12 @@ class WindowBackgroundDialog extends StatefulWidget {
 }
 
 class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
+  final AuthFacade _authFacade = AuthFacade();
+
   @override
   Widget build(BuildContext context) {
     final service = WindowBackgroundService();
-    final authService = AuthService();
-    final isSponsor = authService.currentUser?.isSponsor ?? false;
+    final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
 
     return fluent_ui.ContentDialog(
       title: Row(

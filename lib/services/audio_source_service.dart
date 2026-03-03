@@ -38,6 +38,7 @@ class AudioSourceService extends ChangeNotifier {
 
   /// 是否已初始化
   bool _isInitialized = false;
+  Future<void> _mutationQueue = Future.value();
 
   // ==================== 存储键名 ====================
   static const String _keySources = 'audio_source_list';
@@ -73,6 +74,12 @@ class AudioSourceService extends ChangeNotifier {
   };
 
   static const List<String> tuneHubQualityOptions = ['128k', '320k', 'flac', 'flac24bit'];
+
+  Future<void> _enqueueMutation(Future<void> Function() mutation) {
+    final task = _mutationQueue.catchError((_) {}).then((_) => mutation());
+    _mutationQueue = task.catchError((_) {});
+    return task;
+  }
 
   /// 各音源类型默认支持的搜索平台
   static const Map<AudioSourceType, List<String>> defaultSupportedPlatforms = {
@@ -129,6 +136,9 @@ class AudioSourceService extends ChangeNotifier {
   String _generateId() {
     return '${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(10000)}';
   }
+
+  /// 提供给 UI 层统一生成音源 ID，避免各处重复规则
+  String createSourceId() => _generateId();
 
   /// 从本地存储加载设置
   Future<void> _loadSettings() async {
@@ -250,69 +260,79 @@ class AudioSourceService extends ChangeNotifier {
   bool get isNavidromeActive => _activeSourceId == navidromeSourceId;
 
   /// 添加新音源
-  Future<void> addSource(AudioSourceConfig config) async {
-    _sources.add(config);
-    await _saveSources();
-    
-    // 如果是第一个音源，自动设为活动
-    if (_sources.length == 1) {
-      await setActiveSource(config.id);
-    }
-    
-    notifyListeners();
+  Future<void> addSource(AudioSourceConfig config) {
+    return _enqueueMutation(() async {
+      _sources.add(config);
+      await _saveSources();
+
+      // 如果是第一个音源，自动设为活动
+      if (_sources.length == 1) {
+        await _setActiveSourceInternal(config.id);
+      }
+
+      notifyListeners();
+    });
   }
 
   /// 更新音源
-  Future<void> updateSource(AudioSourceConfig config) async {
-    final index = _sources.indexWhere((s) => s.id == config.id);
-    if (index != -1) {
-      _sources[index] = config;
-      await _saveSources();
-      
-      // 如果更新的是当前活动音源，可能需要重新初始化运行时
-      if (config.id == _activeSourceId && config.type == AudioSourceType.lxmusic) {
-        initializeLxRuntime();
+  Future<void> updateSource(AudioSourceConfig config) {
+    return _enqueueMutation(() async {
+      final index = _sources.indexWhere((s) => s.id == config.id);
+      if (index != -1) {
+        _sources[index] = config;
+        await _saveSources();
+
+        // 如果更新的是当前活动音源，可能需要重新初始化运行时
+        if (config.id == _activeSourceId && config.type == AudioSourceType.lxmusic) {
+          initializeLxRuntime();
+        }
+
+        notifyListeners();
       }
-      
-      notifyListeners();
-    }
+    });
   }
 
   /// 删除音源
-  Future<void> removeSource(String id) async {
-    if (id == navidromeSourceId) return;
-    _sources.removeWhere((s) => s.id == id);
-    await _saveSources();
+  Future<void> removeSource(String id) {
+    return _enqueueMutation(() async {
+      if (id == navidromeSourceId) return;
+      _sources.removeWhere((s) => s.id == id);
+      await _saveSources();
 
-    if (_activeSourceId == id) {
-      _activeSourceId = '';
-      if (_sources.isNotEmpty) {
-        _activeSourceId = _sources.first.id;
-        await _saveActiveSourceId();
-        
-        // 切换到新音源后初始化运行时（如果是洛雪）
-        if (activeSource?.type == AudioSourceType.lxmusic) {
-          initializeLxRuntime();
+      if (_activeSourceId == id) {
+        _activeSourceId = '';
+        if (_sources.isNotEmpty) {
+          _activeSourceId = _sources.first.id;
+          await _saveActiveSourceId();
+
+          // 切换到新音源后初始化运行时（如果是洛雪）
+          if (activeSource?.type == AudioSourceType.lxmusic) {
+            initializeLxRuntime();
+          }
+        } else {
+          await _saveActiveSourceId();
         }
-      } else {
-        await _saveActiveSourceId();
       }
-    }
-    
-    notifyListeners();
+
+      notifyListeners();
+    });
   }
 
   /// 设置当前活动音源
-  Future<void> setActiveSource(String id) async {
+  Future<void> setActiveSource(String id) {
+    return _enqueueMutation(() => _setActiveSourceInternal(id));
+  }
+
+  Future<void> _setActiveSourceInternal(String id) async {
     if (_activeSourceId != id) {
       _activeSourceId = id;
       await _saveActiveSourceId();
-      
+
       // 切换音源后，如果是洛雪，初始化运行时
       if (activeSource?.type == AudioSourceType.lxmusic) {
         initializeLxRuntime();
       }
-      
+
       notifyListeners();
       print('🔊 [AudioSourceService] 切换音源至: ${activeSource?.name}');
     }
@@ -439,16 +459,16 @@ class AudioSourceService extends ChangeNotifier {
 
   /// [Deprecated] Use addSource instead
   @Deprecated('Use addSource for creating new sources or updateSource for existing ones')
-  void configure(AudioSourceType type, String url, {String? lxApiKey}) {
+  Future<void> configure(AudioSourceType type, String url, {String? lxApiKey}) async {
      // Compatibility implementation: Update active source or create new if none
      if (activeSource != null) {
-       updateSource(activeSource!.copyWith(
+       await updateSource(activeSource!.copyWith(
          type: type.index != activeSource!.type.index ? null : activeSource!.type, 
          url: url,
          apiKey: lxApiKey
        ));
      } else {
-       addSource(AudioSourceConfig(
+       await addSource(AudioSourceConfig(
          id: _generateId(),
          type: type,
          name: type == AudioSourceType.tunehub ? 'TuneHub' : 'OmniParse',
@@ -460,7 +480,7 @@ class AudioSourceService extends ChangeNotifier {
 
   /// [Deprecated] Use addSource instead
   @Deprecated('Use addSource instead')
-  void configureLxMusicSource({
+  Future<void> configureLxMusicSource({
     required String name,
     required String version,
     required String apiUrl,
@@ -470,9 +490,9 @@ class AudioSourceService extends ChangeNotifier {
     String? urlPathTemplate,
     String author = '',
     String description = '',
-  }) {
+  }) async {
     // Creating a new source for LxMusic import
-    addSource(AudioSourceConfig(
+    await addSource(AudioSourceConfig(
       id: _generateId(),
       type: AudioSourceType.lxmusic,
       name: name,
@@ -503,11 +523,13 @@ class AudioSourceService extends ChangeNotifier {
     return null;
   }
   
-  /// 清除当前配置 
-  void clear() {
-     _activeSourceId = '';
-     _saveActiveSourceId();
-     notifyListeners();
+  /// 清除当前配置
+  Future<void> clear() {
+    return _enqueueMutation(() async {
+      _activeSourceId = '';
+      await _saveActiveSourceId();
+      notifyListeners();
+    });
   }
 
   // ==================== Source Logic (Proxies to Active Source) ====================

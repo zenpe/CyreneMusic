@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import 'package:qr_flutter/qr_flutter.dart';
 
-import '../../services/auth_service.dart';
+import '../../features/auth/auth_feature.dart';
 import '../../services/location_service.dart';
 import '../../services/qr_login_service.dart';
+
+final AuthFacade _authFacade = AuthFacade();
 
 Future<bool?> showQrLoginDialog(BuildContext context) async {
   final bool isFluent = fluent_ui.FluentTheme.maybeOf(context) != null;
@@ -121,7 +123,7 @@ class _QrLoginDialogState extends State<QrLoginDialog> {
             _statusText = '登录中...';
           });
 
-          await AuthService().loginWithToken(token: r.token!, userJson: r.user!);
+          await _authFacade.loginWithToken(token: r.token!, userJson: r.user!);
 
           if (!mounted) return;
           if (mounted) {
@@ -276,3 +278,6 @@ class _QrLoginDialogState extends State<QrLoginDialog> {
     );
   }
 }
+
+
+

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
+import '../../features/auth/auth_feature.dart';
 import '../../widgets/fluent_settings_card.dart';
 import '../../widgets/cupertino/cupertino_settings_widgets.dart';
-import '../../services/auth_service.dart';
 import '../../services/netease_login_service.dart';
 import '../../services/kugou_login_service.dart';
 import '../../utils/theme_manager.dart';
@@ -21,13 +21,14 @@ class ThirdPartyAccounts extends StatefulWidget {
 }
 
 class _ThirdPartyAccountsState extends State<ThirdPartyAccounts> {
+  final AuthFacade _authFacade = AuthFacade();
   int _boundCount = 0;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    AuthService().addListener(_onAuthChanged);
+    _authFacade.addAuthStateListener(_onAuthChanged);
     // 监听第三方登录服务的状态变化
     NeteaseLoginService().addListener(_onBindingChanged);
     KugouLoginService().addListener(_onBindingChanged);
@@ -36,7 +37,7 @@ class _ThirdPartyAccountsState extends State<ThirdPartyAccounts> {
 
   @override
   void dispose() {
-    AuthService().removeListener(_onAuthChanged);
+    _authFacade.removeAuthStateListener(_onAuthChanged);
     NeteaseLoginService().removeListener(_onBindingChanged);
     KugouLoginService().removeListener(_onBindingChanged);
     super.dispose();
@@ -54,7 +55,7 @@ class _ThirdPartyAccountsState extends State<ThirdPartyAccounts> {
   }
 
   Future<void> _loadBindingStatus() async {
-    if (!AuthService().isLoggedIn) {
+    if (!_authFacade.isLoggedIn) {
       if (mounted) {
         setState(() {
           _boundCount = 0;
@@ -100,7 +101,7 @@ class _ThirdPartyAccountsState extends State<ThirdPartyAccounts> {
 
   @override
   Widget build(BuildContext context) {
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
     
     // 如果未登录，不显示此组件
     if (user == null) {

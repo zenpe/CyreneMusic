@@ -2,9 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
+import '../features/auth/auth_feature.dart';
 import '../utils/theme_manager.dart';
 import '../services/url_service.dart';
-import '../services/auth_service.dart';
 import '../services/location_service.dart';
 import '../services/layout_preference_service.dart';
 import '../services/cache_service.dart';
@@ -61,6 +61,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final AuthFacade _authFacade = AuthFacade();
   bool _rebuildScheduled = false;
   
   // 当前显示的子页面
@@ -98,7 +99,7 @@ class _SettingsPageState extends State<SettingsPage> {
     // 监听 URL 服务变化
     UrlService().addListener(_onUrlServiceChanged);
     // 监听认证状态变化
-    AuthService().addListener(_onAuthChanged);
+    _authFacade.addAuthStateListener(_onAuthChanged);
     // 监听位置信息变化
     LocationService().addListener(_onLocationChanged);
     // 监听布局偏好变化
@@ -113,7 +114,7 @@ class _SettingsPageState extends State<SettingsPage> {
     PlayerBackgroundService().addListener(_onPlayerBackgroundChanged);
     
     // 如果已登录，获取 IP 归属地
-    final isLoggedIn = AuthService().isLoggedIn;
+    final isLoggedIn = _authFacade.isLoggedIn;
     print('⚙️ [SettingsPage] 当前登录状态: $isLoggedIn');
     
     if (isLoggedIn) {
@@ -141,7 +142,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     ThemeManager().removeListener(_onThemeChanged);
     UrlService().removeListener(_onUrlServiceChanged);
-    AuthService().removeListener(_onAuthChanged);
+    _authFacade.removeAuthStateListener(_onAuthChanged);
     LocationService().removeListener(_onLocationChanged);
     LayoutPreferenceService().removeListener(_onLayoutPreferenceChanged);
     CacheService().removeListener(_onCacheChanged);
@@ -163,7 +164,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _onAuthChanged() {
     // 登录状态变化时获取/清除位置信息
-    if (AuthService().isLoggedIn) {
+    if (_authFacade.isLoggedIn) {
       print('👤 [SettingsPage] 用户已登录，开始获取IP归属地...');
       LocationService().fetchLocation();
     } else {

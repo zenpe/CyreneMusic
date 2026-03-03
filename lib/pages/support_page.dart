@@ -4,11 +4,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../features/auth/auth_feature.dart';
 import 'settings_page/donate_settings.dart';
 import 'settings_page/sponsor_wall.dart';
 import '../utils/theme_manager.dart';
 import '../services/app_config_service.dart';
-import '../services/auth_service.dart';
 import '../widgets/fluent_settings_card.dart';
 
 class SupportPage extends StatefulWidget {
@@ -19,6 +19,7 @@ class SupportPage extends StatefulWidget {
 }
 
 class _SupportPageState extends State<SupportPage> {
+  final AuthFacade _authFacade = AuthFacade();
   AppPublicConfig? _config;
   bool _loading = true;
 
@@ -81,7 +82,7 @@ class _SupportPageState extends State<SupportPage> {
 
   /// Fluent UI 页面
   Widget _buildFluentPage() {
-    final isLoggedIn = AuthService().isLoggedIn;
+    final isLoggedIn = _authFacade.isLoggedIn;
     
     return fluent_ui.ScaffoldPage.scrollable(
       padding: const EdgeInsets.all(24.0),
@@ -130,7 +131,7 @@ class _SupportPageState extends State<SupportPage> {
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   // 只有登录后才显示赞助项目
-                  if (AuthService().isLoggedIn) ...[
+                  if (_authFacade.isLoggedIn) ...[
                     _buildCupertinoSettingsSection(
                       context,
                       title: '支持与赞助',
@@ -295,7 +296,7 @@ class _SupportPageState extends State<SupportPage> {
   /// Material Design 页面
   Widget _buildMaterialPage(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isLoggedIn = AuthService().isLoggedIn;
+    final isLoggedIn = _authFacade.isLoggedIn;
     
     // 检测是否为 Expressive 主题（移动端 Material Design）
     final isExpressive = !ThemeManager().isFluentFramework && 

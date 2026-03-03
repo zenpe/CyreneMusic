@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../features/auth/auth_feature.dart';
 import '../models/track.dart';
 import '../services/player_service.dart';
-import '../services/auth_service.dart';
 import '../pages/auth/auth_page.dart';
 import 'track_action_menu.dart';
 
@@ -40,6 +40,7 @@ class TrackListTile extends StatefulWidget {
 }
 
 class _TrackListTileState extends State<TrackListTile> {
+  final AuthFacade _authFacade = AuthFacade();
   bool _reportedCover = false;
 
   @override
@@ -53,7 +54,7 @@ class _TrackListTileState extends State<TrackListTile> {
   /// 检查登录状态，如果未登录则跳转到登录页面
   /// 返回 true 表示已登录或登录成功，返回 false 表示未登录或取消登录
   Future<bool> _checkLoginStatus() async {
-    if (AuthService().isLoggedIn) {
+    if (_authFacade.isLoggedIn) {
       return true;
     }
 
@@ -87,7 +88,7 @@ class _TrackListTileState extends State<TrackListTile> {
       final result = await showAuthDialog(context);
       
       // 返回登录是否成功
-      return result == true && AuthService().isLoggedIn;
+      return result == true && _authFacade.isLoggedIn;
     }
 
     return false;

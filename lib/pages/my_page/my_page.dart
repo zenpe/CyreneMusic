@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
+import '../../features/auth/auth_feature.dart';
 import '../../utils/theme_manager.dart';
-import '../../services/auth_service.dart';
 import '../../services/playlist_service.dart';
 import '../../services/listening_stats_service.dart';
 import '../../services/player_service.dart';
@@ -37,6 +37,7 @@ class MyPage extends StatefulWidget {
 }
 
 class _MyPageState extends State<MyPage> {
+  final AuthFacade _authFacade = AuthFacade();
   final PlaylistService _playlistService = PlaylistService();
   final ThemeManager _themeManager = ThemeManager();
   ListeningStatsData? _statsData;
@@ -55,7 +56,7 @@ class _MyPageState extends State<MyPage> {
     super.initState();
     _playlistService.addListener(_onPlaylistsChanged);
     
-    if (AuthService().isLoggedIn) {
+    if (_authFacade.isLoggedIn) {
       _playlistService.loadPlaylists();
       _loadStats();
     }
@@ -99,7 +100,7 @@ class _MyPageState extends State<MyPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isLoggedIn = AuthService().isLoggedIn;
+    final isLoggedIn = _authFacade.isLoggedIn;
 
     Widget page;
     if (_themeManager.isFluentFramework) {
