@@ -4,7 +4,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:file_picker/file_picker.dart';
-import '../../features/auth/auth_feature.dart';
 import '../../services/player_background_service.dart';
 import '../../services/lyric_style_service.dart';
 import '../../utils/theme_manager.dart';
@@ -20,39 +19,37 @@ class PlayerBackgroundDialog extends StatefulWidget {
 }
 
 class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
-  final AuthFacade _authFacade = AuthFacade();
-
   @override
   Widget build(BuildContext context) {
     final backgroundService = PlayerBackgroundService();
     final currentType = backgroundService.backgroundType;
     final isFluent = ThemeManager().isDesktopFluentUI;
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
-    
-    // 检查用户是否为赞助用户
-    final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
 
     if (isCupertino) {
-      return _buildCupertinoDialog(context, backgroundService, currentType, isSponsor);
+      return _buildCupertinoDialog(context, backgroundService, currentType);
     }
 
     if (isFluent) {
       return fluent_ui.ContentDialog(
         title: const Text('播放器背景设置'),
         content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          child: fluent_ui.RadioGroup<PlayerBackgroundType>(
+            groupValue: currentType,
+            onChanged: (value) async {
+              if (value == null) return;
+              await backgroundService.setBackgroundType(value);
+              setState(() {});
+              widget.onChanged();
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               // 自适应背景
-              fluent_ui.RadioButton(
+              const fluent_ui.RadioButton<PlayerBackgroundType>(
+                value: PlayerBackgroundType.adaptive,
                 content: const Text('自适应背景'),
-                checked: currentType == PlayerBackgroundType.adaptive,
-                onChanged: (v) async {
-                  await backgroundService.setBackgroundType(PlayerBackgroundType.adaptive);
-                  setState(() {});
-                  widget.onChanged();
-                },
               ),
               // 渐变开关（仅在自适应背景时显示，流体云样式下隐藏）
               if (currentType == PlayerBackgroundType.adaptive && 
@@ -85,14 +82,9 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
               const SizedBox(height: 8),
 
               // 纯色背景
-              fluent_ui.RadioButton(
+              const fluent_ui.RadioButton<PlayerBackgroundType>(
+                value: PlayerBackgroundType.solidColor,
                 content: const Text('纯色背景'),
-                checked: currentType == PlayerBackgroundType.solidColor,
-                onChanged: (v) async {
-                  await backgroundService.setBackgroundType(PlayerBackgroundType.solidColor);
-                  setState(() {});
-                  widget.onChanged();
-                },
               ),
               if (currentType == PlayerBackgroundType.solidColor) ...[
                 const SizedBox(height: 8),
@@ -111,8 +103,9 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
 
               const SizedBox(height: 8),
 
-              // 图片背景（赞助用户独享）
-              fluent_ui.RadioButton(
+              // 图片背景
+              fluent_ui.RadioButton<PlayerBackgroundType>(
+                value: PlayerBackgroundType.image,
                 content: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -121,30 +114,15 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                           ? '图片背景（已设置）' 
                           : '图片背景',
                     ),
-                    if (!isSponsor)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 4.0),
-                        child: Text(
-                          '🎁 赞助用户独享功能',
-                          style: TextStyle(fontSize: 11, color: Colors.orange),
-                        ),
-                      ),
                   ],
                 ),
-                checked: currentType == PlayerBackgroundType.image,
-                onChanged: isSponsor
-                    ? (v) async {
-                        await backgroundService.setBackgroundType(PlayerBackgroundType.image);
-                        setState(() {});
-                        widget.onChanged();
-                      }
-                    : null, // 非赞助用户禁用
               ),
-              
+               
               const SizedBox(height: 8),
-              
-              // 视频背景（赞助用户独享）
-              fluent_ui.RadioButton(
+               
+              // 视频背景
+              fluent_ui.RadioButton<PlayerBackgroundType>(
+                value: PlayerBackgroundType.video,
                 content: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -153,24 +131,8 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                           ? '视频背景（已设置）' 
                           : '视频背景',
                     ),
-                    if (!isSponsor)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 4.0),
-                        child: Text(
-                          '🎁 赞助用户独享功能',
-                          style: TextStyle(fontSize: 11, color: Colors.orange),
-                        ),
-                      ),
                   ],
                 ),
-                checked: currentType == PlayerBackgroundType.video,
-                onChanged: isSponsor
-                    ? (v) async {
-                        await backgroundService.setBackgroundType(PlayerBackgroundType.video);
-                        setState(() {});
-                        widget.onChanged();
-                      }
-                    : null, // 非赞助用户禁用
               ),
               if (currentType == PlayerBackgroundType.image || currentType == PlayerBackgroundType.video) ...[
                 const SizedBox(height: 8),
@@ -226,6 +188,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 ),
                 const SizedBox(height: 8),
                 fluent_ui.RadioButton(
+                  value: PlayerBackgroundType.dynamic,
                   content: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
@@ -239,15 +202,10 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                       ),
                     ],
                   ),
-                  checked: currentType == PlayerBackgroundType.dynamic,
-                  onChanged: (v) async {
-                    await backgroundService.setBackgroundType(PlayerBackgroundType.dynamic);
-                    setState(() {});
-                    widget.onChanged();
-                  },
                 ),
               ],
             ],
+            ),
           ),
         ),
         actions: [
@@ -344,86 +302,38 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
             
             const SizedBox(height: 8),
             
-            // 图片背景（赞助用户独享）
+            // 图片背景
             RadioListTile<PlayerBackgroundType>(
-              title: Row(
-                children: [
-                  const Text('图片背景'),
-                  if (!isSponsor) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.orange, width: 1),
-                      ),
-                      child: const Text(
-                        '赞助独享',
-                        style: TextStyle(fontSize: 10, color: Colors.orange),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+              title: const Text('图片背景'),
               subtitle: Text(
-                !isSponsor
-                    ? '成为赞助用户即可使用自定义图片背景'
-                    : (backgroundService.mediaPath != null && backgroundService.isImage
-                        ? '已设置自定义图片'
-                        : '未设置图片'),
+                backgroundService.mediaPath != null && backgroundService.isImage
+                    ? '已设置自定义图片'
+                    : '未设置图片',
               ),
               value: PlayerBackgroundType.image,
               groupValue: currentType,
-              enabled: isSponsor, // 非赞助用户禁用
-              onChanged: isSponsor
-                  ? (value) async {
-                      await backgroundService.setBackgroundType(value!);
-                      setState(() {});
-                      widget.onChanged();
-                    }
-                  : null,
+              onChanged: (value) async {
+                await backgroundService.setBackgroundType(value!);
+                setState(() {});
+                widget.onChanged();
+              },
             ),
-            
-            // 视频背景（赞助用户独享）
+             
+            // 视频背景
             RadioListTile<PlayerBackgroundType>(
-              title: Row(
-                children: [
-                  const Text('视频背景'),
-                  if (!isSponsor) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.orange, width: 1),
-                      ),
-                      child: const Text(
-                        '赞助独享',
-                        style: TextStyle(fontSize: 10, color: Colors.orange),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+              title: const Text('视频背景'),
               subtitle: Text(
-                !isSponsor
-                    ? '成为赞助用户即可使用自定义视频背景'
-                    : (backgroundService.mediaPath != null && backgroundService.isVideo
-                        ? '已设置自定义视频'
-                        : '未设置视频'),
+                backgroundService.mediaPath != null && backgroundService.isVideo
+                    ? '已设置自定义视频'
+                    : '未设置视频',
               ),
               value: PlayerBackgroundType.video,
               groupValue: currentType,
-              enabled: isSponsor, // 非赞助用户禁用
-              onChanged: isSponsor
-                  ? (value) async {
-                      await backgroundService.setBackgroundType(value!);
-                      setState(() {});
-                      widget.onChanged();
-                    }
-                  : null,
+              onChanged: (value) async {
+                await backgroundService.setBackgroundType(value!);
+                setState(() {});
+                widget.onChanged();
+              },
             ),
                 
             // 媒体选择和模糊设置（仅在选择图片或视频背景时显示）
@@ -824,7 +734,6 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
     BuildContext context,
     PlayerBackgroundService backgroundService,
     PlayerBackgroundType currentType,
-    bool isSponsor,
   ) {
     return CupertinoAlertDialog(
       title: const Text('播放器背景设置'),
@@ -913,42 +822,34 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
             
             // 图片背景
             _buildCupertinoRadioOption(
-              title: '图片背景${!isSponsor ? ' 🎁' : ''}',
-              subtitle: isSponsor
-                  ? (backgroundService.mediaPath != null && backgroundService.isImage
-                      ? '已设置自定义图片'
-                      : '未设置图片')
-                  : '赞助用户独享功能',
+              title: '图片背景',
+              subtitle: backgroundService.mediaPath != null && backgroundService.isImage
+                  ? '已设置自定义图片'
+                  : '未设置图片',
               isSelected: currentType == PlayerBackgroundType.image,
-              enabled: isSponsor,
-              onTap: isSponsor
-                  ? () async {
-                      await backgroundService.setBackgroundType(PlayerBackgroundType.image);
-                      setState(() {});
-                      widget.onChanged();
-                    }
-                  : null,
+              enabled: true,
+              onTap: () async {
+                await backgroundService.setBackgroundType(PlayerBackgroundType.image);
+                setState(() {});
+                widget.onChanged();
+              },
             ),
             
             const SizedBox(height: 8),
             
             // 视频背景
             _buildCupertinoRadioOption(
-              title: '视频背景${!isSponsor ? ' 🎁' : ''}',
-              subtitle: isSponsor
-                  ? (backgroundService.mediaPath != null && backgroundService.isVideo
-                      ? '已设置自定义视频'
-                      : '未设置视频')
-                  : '赞助用户独享功能',
+              title: '视频背景',
+              subtitle: backgroundService.mediaPath != null && backgroundService.isVideo
+                  ? '已设置自定义视频'
+                  : '未设置视频',
               isSelected: currentType == PlayerBackgroundType.video,
-              enabled: isSponsor,
-              onTap: isSponsor
-                  ? () async {
-                      await backgroundService.setBackgroundType(PlayerBackgroundType.video);
-                      setState(() {});
-                      widget.onChanged();
-                    }
-                  : null,
+              enabled: true,
+              onTap: () async {
+                await backgroundService.setBackgroundType(PlayerBackgroundType.video);
+                setState(() {});
+                widget.onChanged();
+              },
             ),
             
             // 媒体选择和模糊设置

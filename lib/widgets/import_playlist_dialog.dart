@@ -577,29 +577,29 @@ class ImportPlaylistDialog {
                   // 网易云音乐：支持两种导入方式
                   const Text('导入方式', style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      fluent.RadioButton(
-                        checked: neteaseImportMode == 'account',
-                        onChanged: (v) => setState(() {
-                          neteaseImportMode = 'account';
+                  fluent.RadioGroup<String>(
+                    groupValue: neteaseImportMode,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        neteaseImportMode = value;
+                        if (value == 'account') {
                           controller.clear();
-                          errorText = null;
-                        }),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('从绑定账号导入'),
-                      const SizedBox(width: 24),
-                      fluent.RadioButton(
-                        checked: neteaseImportMode == 'url',
-                        onChanged: (v) => setState(() {
-                          neteaseImportMode = 'url';
-                          errorText = null;
-                        }),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('输入歌单ID/URL'),
-                    ],
+                        }
+                        errorText = null;
+                      });
+                    },
+                    child: Row(
+                      children: [
+                        const fluent.RadioButton<String>(value: 'account'),
+                        const SizedBox(width: 8),
+                        const Text('从绑定账号导入'),
+                        const SizedBox(width: 24),
+                        const fluent.RadioButton<String>(value: 'url'),
+                        const SizedBox(width: 8),
+                        const Text('输入歌单ID/URL'),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   if (neteaseImportMode == 'account') ...[

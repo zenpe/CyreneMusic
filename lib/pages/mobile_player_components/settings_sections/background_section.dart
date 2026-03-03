@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:file_picker/file_picker.dart';
-import '../../../features/auth/auth_feature.dart';
 import '../../../services/player_background_service.dart';
 
 /// 背景设置区域 - Material Design Expressive 风格
-/// 全圆胶囊形芯片 + 赞助专属渐变装饰
+/// 全圆胶囊形芯片
 class BackgroundSection extends StatefulWidget {
   const BackgroundSection({super.key});
 
@@ -14,8 +13,6 @@ class BackgroundSection extends StatefulWidget {
 }
 
 class _BackgroundSectionState extends State<BackgroundSection> {
-  final AuthFacade _authFacade = AuthFacade();
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -26,7 +23,6 @@ class _BackgroundSectionState extends State<BackgroundSection> {
       builder: (context, _) {
         final bgService = PlayerBackgroundService();
         final currentType = bgService.backgroundType;
-        final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
         
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -101,12 +97,8 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                 ],
                 
                 const SizedBox(height: 20),
-                
-                // 赞助用户专属 - 渐变徽章
-                _buildSponsorBadge(colorScheme),
-                const SizedBox(height: 12),
-                
-                // 赞助专属背景选项
+
+                // 背景媒体选项
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
@@ -116,31 +108,23 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                       label: bgService.mediaPath != null && bgService.isImage 
                           ? '图片 ✓' : '图片',
                       isSelected: currentType == PlayerBackgroundType.image,
-                      onTap: isSponsor 
-                          ? () => bgService.setBackgroundType(PlayerBackgroundType.image)
-                          : () => _showSponsorOnlyMessage(),
+                      onTap: () => bgService.setBackgroundType(PlayerBackgroundType.image),
                       colorScheme: colorScheme,
-                      isDisabled: !isSponsor,
-                      isSponsorFeature: true,
                     ),
                     _buildPillChip(
                       icon: Icons.video_library_rounded,
                       label: bgService.mediaPath != null && bgService.isVideo 
                           ? '视频 ✓' : '视频',
                       isSelected: currentType == PlayerBackgroundType.video,
-                      onTap: isSponsor 
-                          ? () => bgService.setBackgroundType(PlayerBackgroundType.video)
-                          : () => _showSponsorOnlyMessage(),
+                      onTap: () => bgService.setBackgroundType(PlayerBackgroundType.video),
                       colorScheme: colorScheme,
-                      isDisabled: !isSponsor,
-                      isSponsorFeature: true,
                     ),
                   ],
                 ),
                 
                 // 图片/视频设置
                 if ((currentType == PlayerBackgroundType.image || 
-                     currentType == PlayerBackgroundType.video) && isSponsor) ...[
+                     currentType == PlayerBackgroundType.video)) ...[
                   const SizedBox(height: 16),
                   _buildMediaBackgroundSettings(bgService, currentType, colorScheme, isDark),
                 ],
@@ -152,26 +136,6 @@ class _BackgroundSectionState extends State<BackgroundSection> {
     );
   }
 
-  /// 显示赞助用户专属提示
-  void _showSponsorOnlyMessage() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Text('🎁'),
-            const SizedBox(width: 8),
-            const Expanded(
-              child: Text('此功能为赞助用户专属，成为赞助用户即可解锁'),
-            ),
-          ],
-        ),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
   /// 构建胶囊形芯片
   Widget _buildPillChip({
     required IconData icon,
@@ -180,7 +144,6 @@ class _BackgroundSectionState extends State<BackgroundSection> {
     required VoidCallback onTap,
     required ColorScheme colorScheme,
     bool isDisabled = false,
-    bool isSponsorFeature = false,
   }) {
     final effectiveColor = isDisabled 
         ? colorScheme.outline 
@@ -199,22 +162,13 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                     colorScheme.primaryContainer.withOpacity(0.7),
                   ],
                 )
-              : (isSponsorFeature && !isDisabled
-                  ? LinearGradient(
-                      colors: [
-                        Colors.orange.withOpacity(0.1),
-                        Colors.amber.withOpacity(0.05),
-                      ],
-                    )
-                  : null),
-          color: isSelected || isSponsorFeature ? null : colorScheme.surfaceContainerHigh,
+              : null,
+          color: isSelected ? null : colorScheme.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
             color: isSelected 
                 ? colorScheme.primary 
-                : (isSponsorFeature && !isDisabled 
-                    ? Colors.orange.withOpacity(0.3) 
-                    : colorScheme.outlineVariant.withOpacity(0.3)),
+                : colorScheme.outlineVariant.withOpacity(0.3),
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected && !isDisabled
@@ -246,41 +200,6 @@ class _BackgroundSectionState extends State<BackgroundSection> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  /// 赞助用户专属徽章
-  Widget _buildSponsorBadge(ColorScheme colorScheme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.orange.withOpacity(0.15),
-            Colors.amber.withOpacity(0.1),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: Colors.orange.withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('🎁', style: TextStyle(fontSize: 14)),
-          const SizedBox(width: 8),
-          Text(
-            '赞助用户专属',
-            style: TextStyle(
-              color: Colors.orange.shade700,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
       ),
     );
   }

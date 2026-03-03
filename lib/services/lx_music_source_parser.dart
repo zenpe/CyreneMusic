@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
+import 'package:charset/charset.dart';
 
 /// 洛雪音源脚本配置
 /// 
@@ -78,7 +80,10 @@ class LxMusicSourceParser {
         return null;
       }
 
-      final scriptContent = response.body;
+      final scriptContent = _decodeScriptBytes(
+        response.bodyBytes,
+        contentType: response.headers['content-type'],
+      );
       print('✅ [LxMusicSourceParser] 脚本下载成功，长度: ${scriptContent.length}');
 
       // 解析脚本内容
@@ -115,20 +120,22 @@ class LxMusicSourceParser {
       final file = result.files.first;
       String? scriptContent;
       String source;
+      List<int>? scriptBytes;
 
       if (file.path != null) {
-        // 桌面平台：直接读取文件
-        scriptContent = await File(file.path!).readAsString();
+        // 桌面平台：按字节读取，避免系统默认编码导致乱码
+        scriptBytes = await File(file.path!).readAsBytes();
         source = file.path!;
       } else if (file.bytes != null) {
         // Web/移动平台：从字节读取
-        scriptContent = String.fromCharCodes(file.bytes!);
+        scriptBytes = file.bytes!;
         source = file.name;
       } else {
         print('❌ [LxMusicSourceParser] 无法读取文件内容');
         return null;
       }
 
+      scriptContent = _decodeScriptBytes(scriptBytes);
       print('✅ [LxMusicSourceParser] 文件读取成功: ${file.name}，长度: ${scriptContent.length}');
 
       // 解析脚本内容
@@ -171,6 +178,12 @@ class LxMusicSourceParser {
       
       // 提取描述
       String description = headerMetadata['description'] ?? _extractDescription(scriptContent);
+
+      // 清洗元数据，尽量修复常见 UTF-8/Latin1 误解码乱码
+      name = _normalizeMetadataText(name, fallback: '洛雪音源');
+      version = _normalizeMetadataText(version, fallback: '1.0.0');
+      author = _normalizeMetadataText(author);
+      description = _normalizeMetadataText(description);
 
       print('📋 [LxMusicSourceParser] 解析结果:');
       print('   名称: $name');
@@ -410,5 +423,91 @@ class LxMusicSourceParser {
     });
     
     return metadata;
+  }
+
+  /// 按字节解码脚本内容，优先 UTF-8，兼容 GBK/GB18030。
+  String _decodeScriptBytes(List<int>? bytes, {String? contentType}) {
+    if (bytes == null || bytes.isEmpty) return '';
+
+    // 服务端显式声明 charset 时优先遵循。
+    final declaredCharset = _extractCharsetFromContentType(contentType);
+    if (declaredCharset != null) {
+      final declaredEncoding = Charset.getByName(declaredCharset);
+      if (declaredEncoding != null) {
+        try {
+          return _normalizeScriptText(declaredEncoding.decode(bytes));
+        } catch (_) {}
+      }
+    }
+
+    // 优先 UTF-8（多数脚本发布源使用 UTF-8）。
+    try {
+      return _normalizeScriptText(utf8.decode(bytes));
+    } catch (_) {}
+
+    // 兼容 GBK/GB18030 脚本。
+    try {
+      return _normalizeScriptText(gbk.decode(bytes));
+    } catch (_) {}
+
+    // 最后兜底，避免完全无法导入。
+    return _normalizeScriptText(utf8.decode(bytes, allowMalformed: true));
+  }
+
+  String? _extractCharsetFromContentType(String? contentType) {
+    if (contentType == null || contentType.isEmpty) return null;
+    final lower = contentType.toLowerCase();
+    for (final segment in lower.split(';')) {
+      final trimmed = segment.trim();
+      if (!trimmed.startsWith('charset=')) continue;
+      var charsetName = trimmed.substring('charset='.length).trim();
+      if (charsetName.startsWith('"') && charsetName.endsWith('"') && charsetName.length > 1) {
+        charsetName = charsetName.substring(1, charsetName.length - 1);
+      } else if (charsetName.startsWith("'") &&
+          charsetName.endsWith("'") &&
+          charsetName.length > 1) {
+        charsetName = charsetName.substring(1, charsetName.length - 1);
+      }
+      return charsetName.isEmpty ? null : charsetName;
+    }
+    return null;
+  }
+
+  String _normalizeScriptText(String text) {
+    if (text.isEmpty) return text;
+    return text.replaceFirst('\uFEFF', '');
+  }
+
+  String _normalizeMetadataText(String value, {String fallback = ''}) {
+    if (value.isEmpty) return fallback;
+    var normalized = _normalizeScriptText(value).trim();
+    if (normalized.isEmpty) return fallback;
+
+    final repaired = _repairUtf8Mojibake(normalized);
+    normalized = repaired.trim();
+    return normalized.isEmpty ? fallback : normalized;
+  }
+
+  String _repairUtf8Mojibake(String text) {
+    if (!_looksLikeMojibake(text)) return text;
+    try {
+      final repaired = utf8.decode(latin1.encode(text));
+      if (_countCjk(repaired) > _countCjk(text)) {
+        return repaired;
+      }
+    } catch (_) {}
+    return text;
+  }
+
+  bool _looksLikeMojibake(String text) {
+    const suspiciousTokens = ['Ã', 'Â', 'æ', 'ç', 'é', '¤', '»', '¿', 'ð', 'þ'];
+    for (final token in suspiciousTokens) {
+      if (text.contains(token)) return true;
+    }
+    return false;
+  }
+
+  int _countCjk(String text) {
+    return RegExp(r'[\u4E00-\u9FFF]').allMatches(text).length;
   }
 }

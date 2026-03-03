@@ -310,44 +310,50 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       builder: (context) {
         return fluent_ui.ContentDialog(
           title: const Text('选择后端源'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [              fluent_ui.RadioButton(
-                content: const Text('官方源'),
-                checked: UrlService().sourceType == BackendSourceType.official,
-                onChanged: (v) {
-                  UrlService().useOfficialSource();
-                  Navigator.pop(context);
-                  final messenger = ScaffoldMessenger.maybeOf(context);
-                  if (messenger != null) {
-                    messenger.showSnackBar(
-                      const SnackBar(content: Text('已切换到官方源')),
-                    );
-                  }
-                },
-              ),
-              const SizedBox(height: 8),
-              fluent_ui.RadioButton(
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('自定义源'),
-                    Text(
-                      UrlService().customBaseUrl.isNotEmpty
-                          ? UrlService().customBaseUrl
-                          : '点击设置自定义地址',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+          content: fluent_ui.RadioGroup<BackendSourceType>(
+            groupValue: UrlService().sourceType,
+            onChanged: (value) {
+              if (value == null) return;
+              if (value == BackendSourceType.official) {
+                UrlService().useOfficialSource();
+                Navigator.pop(context);
+                final messenger = ScaffoldMessenger.maybeOf(context);
+                if (messenger != null) {
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('已切换到官方源')),
+                  );
+                }
+                return;
+              }
+              Navigator.pop(context);
+              _showCustomUrlDialogFluent(context);
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const fluent_ui.RadioButton<BackendSourceType>(
+                  value: BackendSourceType.official,
+                  content: Text('官方源'),
                 ),
-                checked: UrlService().sourceType == BackendSourceType.custom,
-                onChanged: (v) {
-                  Navigator.pop(context);
-                  _showCustomUrlDialogFluent(context);
-                },
-              ),
-            ],
+                const SizedBox(height: 8),
+                fluent_ui.RadioButton<BackendSourceType>(
+                  value: BackendSourceType.custom,
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('自定义源'),
+                      Text(
+                        UrlService().customBaseUrl.isNotEmpty
+                            ? UrlService().customBaseUrl
+                            : '点击设置自定义地址',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             fluent_ui.Button(

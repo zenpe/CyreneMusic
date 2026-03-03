@@ -80,7 +80,7 @@ class FluentMyPageBreadcrumbs extends StatelessWidget {
           fluent.HyperlinkButton(
             onPressed: item.onTap,
             style: fluent.ButtonStyle(
-              padding: fluent.ButtonState.all(EdgeInsets.zero),
+              padding: WidgetStatePropertyAll(EdgeInsets.zero),
             ),
             child: Text(
               label,
@@ -107,3 +107,4 @@ class FluentMyPageBreadcrumbs extends StatelessWidget {
     );
   }
 }
+

@@ -3,10 +3,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import 'package:file_picker/file_picker.dart';
-import '../../features/auth/auth_feature.dart';
 import '../../services/window_background_service.dart';
 
-/// 窗口背景设置对话框（赞助用户独享）
+/// 窗口背景设置对话框
 class WindowBackgroundDialog extends StatefulWidget {
   final VoidCallback onChanged;
   
@@ -17,12 +16,9 @@ class WindowBackgroundDialog extends StatefulWidget {
 }
 
 class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
-  final AuthFacade _authFacade = AuthFacade();
-
   @override
   Widget build(BuildContext context) {
     final service = WindowBackgroundService();
-    final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
 
     return fluent_ui.ContentDialog(
       title: Row(
@@ -30,20 +26,6 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
           const Icon(fluent_ui.FluentIcons.picture_library),
           const SizedBox(width: 8),
           const Text('窗口背景设置'),
-          const SizedBox(width: 8),
-          if (!isSponsor)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Colors.orange, width: 1),
-              ),
-              child: const Text(
-                '赞助独享',
-                style: TextStyle(fontSize: 10, color: Colors.orange),
-              ),
-            ),
         ],
       ),
       content: SingleChildScrollView(
@@ -51,44 +33,17 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 赞助提示（非赞助用户）
-            if (!isSponsor) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(fluent_ui.FluentIcons.info, color: Colors.orange, size: 16),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '此功能为赞助用户独享，成为赞助用户即可使用自定义窗口背景（图片或视频）',
-                        style: TextStyle(fontSize: 12, color: Colors.orange),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
             // 启用开关
             Row(
               children: [
                 const Expanded(child: Text('启用窗口背景')),
                 fluent_ui.ToggleSwitch(
-                  checked: service.enabled && isSponsor,
-                  onChanged: isSponsor
-                      ? (value) async {
-                          await service.setEnabled(value);
-                          setState(() {});
-                          widget.onChanged();
-                        }
-                      : null,
+                  checked: service.enabled,
+                  onChanged: (value) async {
+                    await service.setEnabled(value);
+                    setState(() {});
+                    widget.onChanged();
+                  },
                 ),
               ],
             ),
@@ -99,7 +54,7 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
               style: TextStyle(fontSize: 11, color: Colors.grey),
             ),
 
-            if (service.enabled && isSponsor) ...[
+            if (service.enabled) ...[
               const SizedBox(height: 16),
               const fluent_ui.Divider(),
               const SizedBox(height: 16),

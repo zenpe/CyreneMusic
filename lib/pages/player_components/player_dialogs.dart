@@ -560,13 +560,13 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                 }
               },
               style: fluent.ButtonStyle(
-                backgroundColor: fluent.ButtonState.resolveWith((states) {
+                backgroundColor: WidgetStateProperty.resolveWith((states) {
                   if (isSelected) {
                     return fluentTheme.accentColor;
                   }
                   return fluentTheme.resources.controlFillColorDefault;
                 }),
-                foregroundColor: fluent.ButtonState.resolveWith((states) {
+                foregroundColor: WidgetStateProperty.resolveWith((states) {
                   if (isSelected) {
                     return Colors.white;
                   }
@@ -731,3 +731,4 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
     );
   }
 }
+

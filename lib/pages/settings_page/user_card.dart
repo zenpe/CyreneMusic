@@ -5,7 +5,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import '../../features/auth/auth_feature.dart';
 import '../../services/location_service.dart';
-import '../../services/donate_service.dart';
 import '../../services/avatar_fetch_service.dart';
 import '../../utils/theme_manager.dart';
 import '../auth/auth_page.dart';
@@ -27,8 +26,6 @@ class UserCard extends StatefulWidget {
 
 class _UserCardState extends State<UserCard> {
   final AuthFacade _authFacade = AuthFacade();
-  bool _isSponsor = false;
-  int? _sponsorRank; // 赞助排名：1=金牌，2=银牌，3=铜牌，其他=赞助用户
   final TextEditingController _usernameController = TextEditingController();
   bool _isUpdatingUsername = false;
   String? _usernameError;
@@ -38,7 +35,6 @@ class _UserCardState extends State<UserCard> {
     super.initState();
     _authFacade.addAuthStateListener(_onAuthChanged);
     LocationService().addListener(_onLocationChanged);
-    _checkSponsorStatus();
   }
 
 
@@ -55,7 +51,6 @@ class _UserCardState extends State<UserCard> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() {});
-      _checkSponsorStatus(); // 登录状态变化时重新查询赞助状态
     });
   }
 
@@ -279,58 +274,6 @@ class _UserCardState extends State<UserCard> {
     );
   }
 
-  /// 查询用户赞助状态
-  Future<void> _checkSponsorStatus() async {
-    final user = _authFacade.currentUser;
-    if (user == null) {
-      setState(() {
-        _isSponsor = false;
-        _sponsorRank = null;
-      });
-      return;
-    }
-
-
-    try {
-      final result = await DonateService.getSponsorStatus(userId: user.id);
-      if (result['code'] == 200 && result['data'] != null) {
-        final data = result['data'] as Map<String, dynamic>;
-        setState(() {
-          _isSponsor = data['isSponsor'] == true;
-          _sponsorRank = data['sponsorRank'] as int?;
-        });
-        print('[UserCard] 赞助状态: $_isSponsor, 排名: $_sponsorRank');
-      } else {
-        setState(() {
-          _isSponsor = false;
-          _sponsorRank = null;
-        });
-      }
-    } catch (e) {
-      print('[UserCard] 查询赞助状态失败: $e');
-      setState(() {
-        _isSponsor = false;
-        _sponsorRank = null;
-      });
-    }
-  }
-
-  /// 获取赞助标识文字
-  String _getSponsorBadgeText() {
-    if (_sponsorRank == 1) return '金牌赞助';
-    if (_sponsorRank == 2) return '银牌赞助';
-    if (_sponsorRank == 3) return '铜牌赞助';
-    return '赞助用户';
-  }
-
-  /// 获取赞助标识渐变色
-  List<Color> _getSponsorBadgeColors() {
-    if (_sponsorRank == 1) return [const Color(0xFFFFD700), const Color(0xFFFFA500)]; // 金
-    if (_sponsorRank == 2) return [const Color(0xFFC0C0C0), const Color(0xFF808080)]; // 银
-    if (_sponsorRank == 3) return [const Color(0xFFCD7F32), const Color(0xFF8B4513)]; // 铜
-    return [const Color(0xFF6366F1), const Color(0xFF8B5CF6)]; // 紫色（普通赞助用户）
-  }
-
   @override
   Widget build(BuildContext context) {
     final isLoggedIn = _authFacade.isLoggedIn;
@@ -507,7 +450,7 @@ class _UserCardState extends State<UserCard> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // 用户名 + 编辑图标 + 赞助角标
+                          // 用户名 + 编辑图标
                           Row(
                             children: [
                               Text(
@@ -529,37 +472,6 @@ class _UserCardState extends State<UserCard> {
                                   ),
                                 ),
                               ),
-                              if (_isSponsor) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: _getSponsorBadgeColors(),
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        Icons.workspace_premium,
-                                        size: 14,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        _getSponsorBadgeText(),
-                                        style: theme.textTheme.bodySmall?.copyWith(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
                             ],
                           ),
                           if (user.displayEmail != null) ...[
@@ -837,7 +749,7 @@ class _UserCardState extends State<UserCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 用户名 + 赞助
+                  // 用户名
                   Row(
                     children: [
                       Text(
@@ -849,10 +761,6 @@ class _UserCardState extends State<UserCard> {
                           decoration: TextDecoration.none,
                         ),
                       ),
-                      if (_isSponsor) ...[
-                        const SizedBox(width: 6),
-                        const Icon(CupertinoIcons.checkmark_seal_fill, size: 16, color: CupertinoColors.systemYellow),
-                      ],
                     ],
                   ),
                   if (user.displayEmail != null) ...[
@@ -1105,7 +1013,7 @@ class _UserCardState extends State<UserCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 用户名 + 编辑图标 + 赞助角标
+                      // 用户名 + 编辑图标
                       Row(
                         children: [
                           Text(
@@ -1117,37 +1025,6 @@ class _UserCardState extends State<UserCard> {
                             icon: const Icon(fluent_ui.FluentIcons.edit, size: 14),
                             onPressed: () => _showUpdateUsernameDialogFluent(context),
                           ),
-                          if (_isSponsor) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: _getSponsorBadgeColors(),
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    fluent_ui.FluentIcons.trophy2,
-                                    size: 12,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _getSponsorBadgeText(),
-                                    style: fluent_ui.FluentTheme.of(context).typography.caption?.copyWith(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
                         ],
                       ),
                       if (user.displayEmail != null) ...[

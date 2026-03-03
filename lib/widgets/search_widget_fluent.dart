@@ -342,7 +342,7 @@ class _FluentPivotTabs extends StatelessWidget {
           return fluent.HoverButton(
             onPressed: () => onChanged(index),
             builder: (context, states) {
-              final isHovering = states.isHovering;
+              final isHovering = states.contains(WidgetState.hovered);
               final textColor = isSelected
                   ? theme.typography.body?.color
                   : theme.typography.body?.color?.withOpacity(0.7);
@@ -375,3 +375,4 @@ class _FluentPivotTabs extends StatelessWidget {
     );
   }
 }
+

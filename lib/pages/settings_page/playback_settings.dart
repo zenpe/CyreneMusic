@@ -149,29 +149,37 @@ class PlaybackSettings extends StatelessWidget {
       builder: (context) {
         return fluent_ui.ContentDialog(
           title: const Text('选择音质'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: supportedQualities.map((quality) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4.0),
-              child: fluent_ui.RadioButton(
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(qualityService.getQualityName(quality)),
-                    Text(
-                      qualityService.getQualityDescription(quality),
-                      style: fluent_ui.FluentTheme.of(context).typography.caption,
+          content: fluent_ui.RadioGroup<AudioQuality>(
+            groupValue: currentQuality,
+            onChanged: (value) {
+              if (value == null) return;
+              qualityService.setQuality(value);
+              Navigator.pop(context);
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: supportedQualities
+                  .map(
+                    (quality) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4.0),
+                      child: fluent_ui.RadioButton<AudioQuality>(
+                        value: quality,
+                        content: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(qualityService.getQualityName(quality)),
+                            Text(
+                              qualityService.getQualityDescription(quality),
+                              style: fluent_ui.FluentTheme.of(context).typography.caption,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ],
-                ),
-                checked: currentQuality == quality,
-                onChanged: (v) {
-                  qualityService.setQuality(quality);
-                  Navigator.pop(context);
-                },
-              ),
-            )).toList(),
+                  )
+                  .toList(),
+            ),
           ),
           actions: [
             fluent_ui.Button(

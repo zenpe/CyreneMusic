@@ -28,7 +28,6 @@ import 'settings_page/lyric_settings_page.dart';
 import 'settings_page/audio_source_settings_page.dart';
 import 'settings_page/about_settings_page.dart';
 import 'settings_page/other_settings_page.dart';
-import 'support_page.dart';
 import 'settings_page/lab_functions.dart';
 import 'settings_page/lab_functions_page.dart';
 import '../widgets/material/material_settings_widgets.dart';
@@ -372,11 +371,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     // 用户卡片（需随登录状态刷新，不能使用 const）
                     UserCard(),
                     const SizedBox(height: 12),
-                    
-                    // 赞助与支持
-                    _buildSupportTile(context),
-                    const SizedBox(height: 12),
-                    
+
                     // 实验室功能
                     LabFunctions(onTap: () => openSubPage(SettingsSubPage.labFunctions)),
                     const SizedBox(height: 12),
@@ -421,37 +416,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
       ),
-    );
-  }
-  
-  /// 构建赞助与支持卡片 (Material Design)
-  Widget _buildSupportTile(BuildContext context) {
-    return MD3SettingsSection(
-      children: [
-        MD3SettingsTile(
-          leading: const Icon(Icons.favorite_outline),
-          title: '赞助与支持',
-          subtitle: '您的支持是我们持续维护与改进的动力',
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _openSupportPage(context),
-        ),
-      ],
-    );
-  }
-  
-  /// 构建赞助与支持卡片 (Fluent UI)
-  Widget _buildFluentSupportTile(BuildContext context) {
-    return FluentSettingsGroup(
-      title: '支持',
-      children: [
-        FluentSettingsTile(
-          icon: fluent_ui.FluentIcons.heart,
-          title: '赞助与支持',
-          subtitle: '您的支持是我们持续维护与改进的动力',
-          trailing: const Icon(fluent_ui.FluentIcons.chevron_right, size: 12),
-          onTap: () => _openSupportPage(context),
-        ),
-      ],
     );
   }
   
@@ -535,26 +499,7 @@ class _SettingsPageState extends State<SettingsPage> {
               _buildCupertinoUserSection(context, isDark),
               
               const SizedBox(height: 24),
-              
-              // 赞助与支持
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: null,
-                children: [
-                  _buildCupertinoSettingsItem(
-                    context,
-                    isDark: isDark,
-                    icon: CupertinoIcons.heart_fill,
-                    iconColor: const Color(0xFFFF2D55),
-                    title: '赞助与支持',
-                    subtitle: '您的支持是我们持续改进的动力',
-                    onTap: () => _openSupportPage(context),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
+
               
               // 账号设置分组
               _buildCupertinoSettingsGroup(
@@ -829,25 +774,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
   
-  /// 打开支持页面
-  void _openSupportPage(BuildContext context) {
-    final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
-    
-    if (isCupertinoUI) {
-      Navigator.of(context).push(
-        CupertinoPageRoute(
-          builder: (context) => const SupportPage(),
-        ),
-      );
-    } else {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => const SupportPage(),
-        ),
-      );
-    }
-  }
-  
   Widget _buildCupertinoSubPage(BuildContext context) {
     switch (_currentSubPage) {
       case SettingsSubPage.appearance:
@@ -922,10 +848,6 @@ class _SettingsPageState extends State<SettingsPage> {
       children: [
         // 用户卡片
         UserCard(),
-        const SizedBox(height: 16),
-        
-        // 赞助与支持
-        _buildFluentSupportTile(context),
         const SizedBox(height: 16),
 
         // 实验室功能

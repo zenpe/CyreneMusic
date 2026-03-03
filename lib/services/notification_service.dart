@@ -66,7 +66,7 @@ class NotificationService {
 
     try {
       await _flutterLocalNotificationsPlugin.initialize(
-        initializationSettings,
+        settings: initializationSettings,
         onDidReceiveNotificationResponse: (NotificationResponse details) async {
           print('🔔 [NotificationService] Notification clicked: ${details.payload}');
           print('🔔 [NotificationService] Action ID: ${details.actionId}');
@@ -157,10 +157,10 @@ class NotificationService {
     try {
       DeveloperModeService().addLog('🔔 尝试发送通知: $title');
       await _flutterLocalNotificationsPlugin.show(
-        id,
-        title,
-        body,
-        notificationDetails,
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: notificationDetails,
         payload: payload,
       );
       DeveloperModeService().addLog('✅ 通知发送请求已发出');
@@ -328,10 +328,10 @@ class NotificationService {
       }
       
       await _flutterLocalNotificationsPlugin.show(
-        100, // 使用固定ID，避免重复通知
-        '从上次离开的位置继续？',
-        notificationBody,
-        notificationDetails,
+        id: 100, // 使用固定ID，避免重复通知
+        title: '从上次离开的位置继续？',
+        body: notificationBody,
+        notificationDetails: notificationDetails,
         payload: payload,
       );
       DeveloperModeService().addLog('✅ 恢复播放通知已显示');
@@ -489,7 +489,7 @@ class NotificationService {
   /// 取消特定通知
   Future<void> cancelNotification(int id) async {
     try {
-      await _flutterLocalNotificationsPlugin.cancel(id);
+      await _flutterLocalNotificationsPlugin.cancel(id: id);
       print('🔔 [NotificationService] 已取消通知 ID: $id');
     } catch (e) {
       print('❌ [NotificationService] 取消通知失败: $e');
@@ -600,10 +600,10 @@ class NotificationService {
       DeveloperModeService().addLog('📁 保存路径: $folderPath');
       
       await _flutterLocalNotificationsPlugin.show(
-        notificationId,
-        '下载完成',
-        '$trackName - $artist',
-        notificationDetails,
+        id: notificationId,
+        title: '下载完成',
+        body: '$trackName - $artist',
+        notificationDetails: notificationDetails,
         payload: 'download_complete:$folderPath',
       );
       DeveloperModeService().addLog('✅ 下载完成通知已显示');

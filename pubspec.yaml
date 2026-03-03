@@ -43,13 +43,13 @@ dependencies:
   dio: ^5.4.0
   
   # Audio player
-  just_audio: ^0.9.43
+  just_audio: ^0.10.5
   
   # System media controls (Android only, Windows uses native C++ implementation)
   audio_service: ^0.18.12
   
   # System tray (Windows/macOS/Linux)
-  tray_manager: ^0.2.3
+  tray_manager: ^0.5.2
   window_manager: ^0.5.0
   flutter_acrylic: ^1.1.4
   
@@ -63,10 +63,10 @@ dependencies:
   crypto: ^3.0.3
   
   # AES-GCM encryption for secure config files
-  pointycastle: ^3.9.1
+  pointycastle: ^4.0.0
   
   # File picker for directory selection
-  file_picker: ^8.0.0
+  file_picker: ^10.3.10
   
   # Path utilities for file operations
   path: ^1.9.0
@@ -84,13 +84,13 @@ dependencies:
   qr_flutter: ^4.1.0
   
   # Permission handler for Android runtime permissions
-  permission_handler: ^11.0.0
+  permission_handler: ^12.0.1
   
   # High refresh rate support for Android
   flutter_displaymode: ^0.7.0
   
   # Package info for version checking
-  package_info_plus: ^8.0.0
+  package_info_plus: ^9.0.0
   
   # URL launcher for opening update links
   url_launcher: ^6.3.0
@@ -105,16 +105,16 @@ dependencies:
   fluent_ui: ^4.11.0
 
   # Secure storage for sensitive data (Navidrome password)
-  flutter_secure_storage: ^9.2.2
+  flutter_secure_storage: ^10.0.0
   flutter_svg: ^2.0.10+1
-  flutter_local_notifications: 19.5.0
+  flutter_local_notifications: ^20.1.0
   
   # Video player for video backgrounds (Android/iOS)
   video_player: ^2.9.2
   
   # Media kit for video playback on Desktop platforms only
   media_kit: ^1.1.11
-  media_kit_video: ^1.2.5
+  media_kit_video: ^2.0.1
   media_kit_libs_windows_video: ^1.0.11
   media_kit_libs_macos_video: ^1.1.4
   media_kit_libs_linux: ^1.2.1
@@ -144,10 +144,10 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
   
   # Icon generation
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

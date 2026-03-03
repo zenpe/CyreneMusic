@@ -408,7 +408,7 @@ class _AudioSourceSettingsContentState
                   ),
                   fluent.FilledButton(
                     style: fluent.ButtonStyle(
-                      backgroundColor: fluent.ButtonState.all(fluent.Colors.red),
+                      backgroundColor: WidgetStatePropertyAll(fluent.Colors.red),
                     ),
                     onPressed: () => Navigator.pop(context, true),
                     child: const Text('删除'),
@@ -755,8 +755,8 @@ class _AudioSourceSettingsContentState
                       ? null
                       : () => _deleteSource(config.id),
                   style: fluent.ButtonStyle(
-                    foregroundColor: fluent.ButtonState.resolveWith((states) {
-                      if (states.isHovering) return fluent.Colors.red;
+                    foregroundColor: WidgetStateProperty.resolveWith((states) {
+                      if (states.contains(WidgetState.hovered)) return fluent.Colors.red;
                       return fluent.Colors.red.withOpacity(0.8);
                     }),
                   ),
@@ -1950,4 +1950,5 @@ class _AudioSourceSettingsContentState
     );
   }
 }
+
 

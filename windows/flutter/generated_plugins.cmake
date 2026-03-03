@@ -13,7 +13,6 @@ list(APPEND FLUTTER_PLUGIN_LIST
   screen_retriever_windows
   tray_manager
   url_launcher_windows
-  volume_controller
   window_manager
 )
 

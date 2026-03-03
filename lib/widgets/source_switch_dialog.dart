@@ -1274,10 +1274,10 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
               ),
               child: Row(
                 children: [
-                  fluent.RadioButton(
+                  fluent.Checkbox(
                     checked: isTrackSelected,
                     onChanged: (checked) {
-                      if (checked) _changeSelectedTrack(index, track);
+                      if (checked == true) _changeSelectedTrack(index, track);
                     },
                   ),
                   const SizedBox(width: 8),

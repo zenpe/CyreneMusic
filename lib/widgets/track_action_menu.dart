@@ -1057,7 +1057,7 @@ class TrackActionMenu {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: states.isHovering
+            color: states.contains(WidgetState.hovered)
                 ? (isDark 
                     ? Colors.white.withOpacity(0.06)
                     : Colors.black.withOpacity(0.04))
@@ -1514,3 +1514,4 @@ class TrackMoreButton extends StatelessWidget {
     }
   }
 }
+

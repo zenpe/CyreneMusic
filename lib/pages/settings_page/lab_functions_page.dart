@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import '../../utils/theme_manager.dart';
-import '../../features/auth/auth_feature.dart';
 import '../../services/player_service.dart';
 import '../../widgets/material/material_settings_widgets.dart';
 
@@ -26,7 +25,6 @@ class LabFunctionsContent extends StatefulWidget {
 }
 
 class _LabFunctionsContentState extends State<LabFunctionsContent> {
-  final AuthFacade _authFacade = AuthFacade();
   final LabFunctionsService _labService = LabFunctionsService();
 
   @override
@@ -59,7 +57,6 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
   /// 构建 Material UI 版本
   Widget _buildMaterialUI(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
     final eqAvailable = PlayerService().isEqualizerAvailable;
 
     return ListView(
@@ -67,36 +64,6 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
       children: [
         _buildMaterialHeader(context, colorScheme),
         const SizedBox(height: 16),
-        if (!isSponsor)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Card(
-              elevation: 0,
-              color: colorScheme.secondaryContainer.withOpacity(0.3),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: colorScheme.secondary.withOpacity(0.1)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Icon(Icons.stars, color: colorScheme.primary),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        '实验室功能仅对赞助用户开放。您的支持是我们持续创新的动力。',
-                        style: TextStyle(
-                          color: colorScheme.onSecondaryContainer,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
         MD3SettingsSection(
           title: '实验性功能',
           children: [
@@ -104,9 +71,9 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
               leading: const Icon(Icons.graphic_eq),
               title: '均衡器',
               subtitle: eqAvailable ? '调节音频频率响应' : '当前平台暂不支持',
-              enabled: isSponsor && eqAvailable,
+              enabled: eqAvailable,
               trailing: const Icon(Icons.chevron_right),
-              onTap: (isSponsor && eqAvailable)
+              onTap: eqAvailable
                   ? () => Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const EqualizerPage()),
@@ -118,10 +85,10 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                 leading: const Icon(Icons.widgets_outlined),
                 title: '安卓桌面小部件',
                 subtitle: '开启安卓主屏幕音乐控制小部件',
-                enabled: isSponsor,
+                enabled: true,
                 trailing: Switch(
                   value: _labService.enableAndroidWidget,
-                  onChanged: isSponsor ? (value) => _labService.setEnableAndroidWidget(value) : null,
+                  onChanged: (value) => _labService.setEnableAndroidWidget(value),
                 ),
               ),
           ],
@@ -178,7 +145,6 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
 
   /// 构建 Cupertino UI 版本
   Widget _buildCupertinoUI(BuildContext context) {
-    final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
     final eqAvailable = PlayerService().isEqualizerAvailable;
 
     return ListView(
@@ -187,7 +153,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-            '在这里可以抢先体验还没有正式上线的功能，仅赞助用户可用。',
+            '在这里可以抢先体验还没有正式上线的功能。',
             style: TextStyle(
               fontSize: 13,
               color: CupertinoColors.systemGrey.resolveFrom(context),
@@ -203,7 +169,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
               title: const Text('均衡器'),
               subtitle: Text(eqAvailable ? '调节音频效果' : '当前平台暂不支持'),
               trailing: const Icon(CupertinoIcons.chevron_forward, size: 18, color: CupertinoColors.systemGrey),
-              onTap: (isSponsor && eqAvailable)
+              onTap: eqAvailable
                   ? () => Navigator.push(
                         context,
                         CupertinoPageRoute(builder: (_) => const EqualizerPage()),
@@ -217,22 +183,11 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                 subtitle: const Text('开启安卓主屏幕音乐控制小部件'),
                 trailing: CupertinoSwitch(
                   value: _labService.enableAndroidWidget,
-                  onChanged: isSponsor ? (value) => _labService.setEnableAndroidWidget(value) : null,
+                  onChanged: (value) => _labService.setEnableAndroidWidget(value),
                 ),
               ),
           ],
         ),
-        if (!isSponsor)
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              '注：实验室功能仅对赞助用户开放。',
-              style: TextStyle(
-                fontSize: 12,
-                color: CupertinoColors.systemRed.resolveFrom(context).withOpacity(0.8),
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -240,7 +195,6 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
   /// 构建 Fluent UI 版本
   Widget _buildFluentUI(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
-    final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
     final eqAvailable = PlayerService().isEqualizerAvailable;
 
     // 构建核心列表内容
@@ -249,19 +203,11 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
       children: [
         const fluent_ui.InfoBar(
           title: Text('欢迎来到实验室'),
-          content: Text('在这里可以抢先体验还没有正式上线的功能，仅赞助用户可用。'),
+          content: Text('在这里可以抢先体验还没有正式上线的功能。'),
           severity: fluent_ui.InfoBarSeverity.info,
           isIconVisible: true,
         ),
         const SizedBox(height: 24),
-        if (!isSponsor) ...[
-          const fluent_ui.InfoBar(
-            title: Text('权限受限'),
-            content: Text('实验室功能仅对赞助用户开放。'),
-            severity: fluent_ui.InfoBarSeverity.warning,
-          ),
-          const SizedBox(height: 24),
-        ],
         Text('实验性功能', style: theme.typography.subtitle),
         const SizedBox(height: 12),
         fluent_ui.Card(
@@ -270,7 +216,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
             title: const Text('均衡器'),
             subtitle: Text(eqAvailable ? '自定义音频频率响应' : '当前平台暂不支持'),
             trailing: const Icon(fluent_ui.FluentIcons.chevron_right, size: 12),
-            onPressed: (isSponsor && eqAvailable)
+            onPressed: eqAvailable
                 ? () => Navigator.push(
                       context,
                       fluent_ui.FluentPageRoute(builder: (_) => const EqualizerPage()),
@@ -296,7 +242,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                 ),
                 fluent_ui.ToggleSwitch(
                   checked: _labService.enableAndroidWidget,
-                  onChanged: isSponsor ? (value) => _labService.setEnableAndroidWidget(value) : null,
+                  onChanged: (value) => _labService.setEnableAndroidWidget(value),
                 ),
               ],
             ),

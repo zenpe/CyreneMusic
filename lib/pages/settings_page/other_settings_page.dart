@@ -249,19 +249,23 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
       context: context,
       builder: (dialogContext) => fluent_ui.ContentDialog(
         title: const Text('启动队列来源'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: StartupQueueMode.values.map((mode) {
-            return fluent_ui.RadioButton(
-              content: Text(_startupQueueModeLabel(mode)),
-              checked: settings.startupQueueMode == mode,
-              onChanged: (_) async {
-                Navigator.pop(dialogContext);
-                await _applyStartupQueueMode(mode);
-              },
-            );
-          }).toList(),
+        content: fluent_ui.RadioGroup<StartupQueueMode>(
+          groupValue: settings.startupQueueMode,
+          onChanged: (value) async {
+            if (value == null) return;
+            Navigator.pop(dialogContext);
+            await _applyStartupQueueMode(value);
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: StartupQueueMode.values.map((mode) {
+              return fluent_ui.RadioButton<StartupQueueMode>(
+                value: mode,
+                content: Text(_startupQueueModeLabel(mode)),
+              );
+            }).toList(),
+          ),
         ),
         actions: [
           fluent_ui.Button(

@@ -10,7 +10,6 @@ import '../../services/player_background_service.dart';
 import '../../services/window_background_service.dart';
 import '../../services/lyric_style_service.dart';
 import '../../services/lyric_font_service.dart';
-import '../../features/auth/auth_feature.dart';
 import '../../widgets/custom_color_picker_dialog.dart';
 import '../../widgets/fluent_settings_card.dart';
 import '../../widgets/cupertino/cupertino_settings_widgets.dart';
@@ -76,8 +75,6 @@ class AppearanceSettingsContent extends StatefulWidget {
 }
 
 class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
-  final AuthFacade _authFacade = AuthFacade();
-
   @override
   Widget build(BuildContext context) {
     final isFluentUI = ThemeManager().isDesktopFluentUI;
@@ -625,7 +622,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
           ),
           FluentSettingsTile(
             icon: fluent_ui.FluentIcons.photo_collection,
-            title: '窗口背景${(_authFacade.currentUser?.isSponsor ?? false) ? '' : ' 🎁'}',
+            title: '窗口背景',
             subtitle: _getWindowBackgroundSubtitle(),
             trailing: const Icon(fluent_ui.FluentIcons.chevron_right, size: 12),
             onTap: () => _showWindowBackgroundDialog(),
@@ -775,21 +772,17 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
 
   String _getWindowBackgroundSubtitle() {
     final service = WindowBackgroundService();
-    final isSponsor = _authFacade.currentUser?.isSponsor ?? false;
-    
-    if (!isSponsor) {
-      return '赞助用户可设置自定义窗口背景图片';
-    }
-    
+
     if (!service.enabled) {
       return '未启用';
     }
     
-    if (service.hasValidImage) {
-      return '已启用 - 模糊度: ${service.blurAmount.toStringAsFixed(0)}';
+    if (service.hasValidMedia) {
+      final mediaType = service.isVideo ? '视频' : '图片';
+      return '已启用$mediaType - 模糊度: ${service.blurAmount.toStringAsFixed(0)}';
     }
     
-    return '已启用但未设置图片';
+    return '已启用但未设置背景';
   }
   
   String _windowEffectLabel(WindowEffect effect) {
@@ -1014,48 +1007,47 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
         context: context,
         builder: (context) => fluent_ui.ContentDialog(
           title: const Text('选择布局模式'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              fluent_ui.RadioButton(
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('桌面模式'),
-                    Text(
-                      '侧边导航栏，横屏宽屏布局 (1320x880)',
-                      style: fluent_ui.FluentTheme.of(context).typography.caption,
-                    ),
-                  ],
+          content: fluent_ui.RadioGroup<LayoutMode>(
+            groupValue: LayoutPreferenceService().layoutMode,
+            onChanged: (value) {
+              if (value == null) return;
+              LayoutPreferenceService().setLayoutMode(value);
+              Navigator.pop(context);
+              setState(() {});
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                fluent_ui.RadioButton<LayoutMode>(
+                  value: LayoutMode.desktop,
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('桌面模式'),
+                      Text(
+                        '侧边导航栏，横屏宽屏布局 (1320x880)',
+                        style: fluent_ui.FluentTheme.of(context).typography.caption,
+                      ),
+                    ],
+                  ),
                 ),
-                checked: LayoutPreferenceService().layoutMode == LayoutMode.desktop,
-                onChanged: (v) {
-                  LayoutPreferenceService().setLayoutMode(LayoutMode.desktop);
-                  Navigator.pop(context);
-                  setState(() {});
-                },
-              ),
-              const SizedBox(height: 8),
-              fluent_ui.RadioButton(
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('移动模式'),
-                    Text(
-                      '底部导航栏，竖屏手机布局 (400x850)',
-                      style: fluent_ui.FluentTheme.of(context).typography.caption,
-                    ),
-                  ],
+                const SizedBox(height: 8),
+                fluent_ui.RadioButton<LayoutMode>(
+                  value: LayoutMode.mobile,
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('移动模式'),
+                      Text(
+                        '底部导航栏，竖屏手机布局 (400x850)',
+                        style: fluent_ui.FluentTheme.of(context).typography.caption,
+                      ),
+                    ],
+                  ),
                 ),
-                checked: LayoutPreferenceService().layoutMode == LayoutMode.mobile,
-                onChanged: (v) {
-                  LayoutPreferenceService().setLayoutMode(LayoutMode.mobile);
-                  Navigator.pop(context);
-                  setState(() {});
-                },
-              ),
-            ],
+              ],
+            ),
           ),
           actions: [
             fluent_ui.Button(
@@ -1280,48 +1272,47 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
         context: context,
         builder: (context) => fluent_ui.ContentDialog(
           title: const Text('选择桌面主题样式'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              fluent_ui.RadioButton(
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Material Design 3'),
-                    Text(
-                      '保持现有设计语言，适合跨平台体验',
-                      style: fluent_ui.FluentTheme.of(context).typography.caption,
-                    ),
-                  ],
+          content: fluent_ui.RadioGroup<ThemeFramework>(
+            groupValue: ThemeManager().themeFramework,
+            onChanged: (value) {
+              if (value == null) return;
+              ThemeManager().setThemeFramework(value);
+              Navigator.pop(context);
+              setState(() {});
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                fluent_ui.RadioButton<ThemeFramework>(
+                  value: ThemeFramework.material,
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Material Design 3'),
+                      Text(
+                        '保持现有设计语言，适合跨平台体验',
+                        style: fluent_ui.FluentTheme.of(context).typography.caption,
+                      ),
+                    ],
+                  ),
                 ),
-                checked: ThemeManager().themeFramework == ThemeFramework.material,
-                onChanged: (v) {
-                  ThemeManager().setThemeFramework(ThemeFramework.material);
-                  Navigator.pop(context);
-                  setState(() {});
-                },
-              ),
-              const SizedBox(height: 8),
-              fluent_ui.RadioButton(
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Fluent UI'),
-                    Text(
-                      '与 Windows 11 外观保持一致',
-                      style: fluent_ui.FluentTheme.of(context).typography.caption,
-                    ),
-                  ],
+                const SizedBox(height: 8),
+                fluent_ui.RadioButton<ThemeFramework>(
+                  value: ThemeFramework.fluent,
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Fluent UI'),
+                      Text(
+                        '与 Windows 11 外观保持一致',
+                        style: fluent_ui.FluentTheme.of(context).typography.caption,
+                      ),
+                    ],
+                  ),
                 ),
-                checked: ThemeManager().themeFramework == ThemeFramework.fluent,
-                onChanged: (v) {
-                  ThemeManager().setThemeFramework(ThemeFramework.fluent);
-                  Navigator.pop(context);
-                  setState(() {});
-                },
-              ),
-            ],
+              ],
+            ),
           ),
           actions: [
             fluent_ui.Button(
@@ -1474,37 +1465,44 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                     style: fluent_ui.FluentTheme.of(context).typography.subtitle,
                   ),
                   const SizedBox(height: 8),
-                  ...LyricFontService.platformFonts.map((font) {
-                    final isSelected = LyricFontService().fontType == 'preset' && 
-                                       LyricFontService().presetFontId == font.id;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: fluent_ui.RadioButton(
-                        checked: isSelected,
-                        onChanged: (v) async {
-                          await LyricFontService().setPresetFont(font.id);
-                          setDialogState(() {});
-                          if (mounted) setState(() {});
-                        },
-                        content: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              font.name,
-                              style: TextStyle(
-                                fontFamily: font.fontFamily,
-                                fontWeight: FontWeight.w600,
-                              ),
+                  fluent_ui.RadioGroup<String>(
+                    groupValue: LyricFontService().fontType == 'preset'
+                        ? LyricFontService().presetFontId
+                        : null,
+                    onChanged: (value) async {
+                      if (value == null) return;
+                      await LyricFontService().setPresetFont(value);
+                      setDialogState(() {});
+                      if (mounted) setState(() {});
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: LyricFontService.platformFonts.map((font) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: fluent_ui.RadioButton<String>(
+                            value: font.id,
+                            content: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  font.name,
+                                  style: TextStyle(
+                                    fontFamily: font.fontFamily,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  font.description,
+                                  style: fluent_ui.FluentTheme.of(context).typography.caption,
+                                ),
+                              ],
                             ),
-                            Text(
-                              font.description,
-                              style: fluent_ui.FluentTheme.of(context).typography.caption,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
                   
                   const SizedBox(height: 16),
                   const fluent_ui.Divider(),

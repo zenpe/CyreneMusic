@@ -512,25 +512,27 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
           style: TextStyle(color: theme.resources.textFillColorSecondary),
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            fluent.RadioButton(
-              checked: _mode == MusicTasteMode.professional,
-              onChanged: (v) {
-                if (v == true) setState(() => _mode = MusicTasteMode.professional);
-              },
-              content: Text(MusicTasteMode.professional.displayName),
-            ),
-            fluent.RadioButton(
-              checked: _mode == MusicTasteMode.tieba,
-              onChanged: (v) {
-                if (v == true) setState(() => _mode = MusicTasteMode.tieba);
-              },
-              content: Text(MusicTasteMode.tieba.displayName),
-            ),
-          ],
+        fluent.RadioGroup<MusicTasteMode>(
+          groupValue: _mode,
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => _mode = value);
+            }
+          },
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              fluent.RadioButton<MusicTasteMode>(
+                value: MusicTasteMode.professional,
+                content: Text(MusicTasteMode.professional.displayName),
+              ),
+              fluent.RadioButton<MusicTasteMode>(
+                value: MusicTasteMode.tieba,
+                content: Text(MusicTasteMode.tieba.displayName),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         Expanded(

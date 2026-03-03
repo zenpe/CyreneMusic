@@ -16,7 +16,6 @@ import '../pages/my_page/my_page.dart';
 import '../pages/settings_page.dart';
 import '../pages/developer_page.dart';
 import '../pages/auth/auth_page.dart';
-import '../pages/support_page.dart';
 import '../features/auth/auth_feature.dart';
 import '../services/auth_overlay_service.dart';
 import '../services/avatar_fetch_service.dart';
@@ -122,15 +121,6 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
       );
     }
 
-    // 支持（在设置上方展示）
-    items.add(
-      fluent_ui.PaneItem(
-        icon: _svgIcon('assets/ui/FluentColorHeart16.svg'),
-        title: const Text('支持'),
-        body: _buildAnimatedContent(),
-      ),
-    );
-
     return items;
   }
 
@@ -193,8 +183,6 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
     if (DeveloperModeService().isDeveloperMode) {
       children.add(const DeveloperPage());
     }
-    // 支持页（与 _paneItems 顺序保持一致）
-    children.add(const SupportPage());
     // footer: 设置
     children.add(const _DeferredSettingsPage());
     return children;
@@ -204,7 +192,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
   void _togglePane() {
     setState(() {
       if (_displayMode == fluent_ui.PaneDisplayMode.compact) {
-        _displayMode = fluent_ui.PaneDisplayMode.open;
+        _displayMode = fluent_ui.PaneDisplayMode.expanded;
       } else {
         _displayMode = fluent_ui.PaneDisplayMode.compact;
       }
@@ -551,17 +539,20 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
     );
   }
 
-  /// 构建应用栏（标题栏）
-  fluent_ui.NavigationAppBar _buildAppBar(BuildContext context) {
+  /// 构建标题栏
+  Widget _buildAppBar(BuildContext context) {
     final userActionWidget = _buildUserActionWidget();
 
     if (!Platform.isWindows) {
-      return fluent_ui.NavigationAppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('Cyrene Music'),
-        actions: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [userActionWidget],
+      return Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            const Text('Cyrene Music'),
+            const Spacer(),
+            userActionWidget,
+          ],
         ),
       );
     }
@@ -570,89 +561,90 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
     _searchController ??= TextEditingController();
     final typography = fluentTheme.typography;
 
-    return fluent_ui.NavigationAppBar(
-      automaticallyImplyLeading: false,
-      // 移除顶部折叠按钮
-      leading: Platform.isWindows ? _buildLeadingBackButton() : null,
+    return SizedBox(
       height: 50,
-      title: SizedBox(
-        height: double.infinity,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // 底层：可拖动区域铺满标题栏，双击最大化/还原
-            Positioned.fill(
-              child: GestureDetector(
-                onDoubleTap: _handleCaptionMaximizeOrRestore,
-                child: DragToMoveArea(
-                  child: const SizedBox.expand(),
-                ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // 底层：可拖动区域铺满标题栏，双击最大化/还原
+          Positioned.fill(
+            child: GestureDetector(
+              onDoubleTap: _handleCaptionMaximizeOrRestore,
+              child: DragToMoveArea(
+                child: const SizedBox.expand(),
               ),
             ),
-            // 左侧图标+标题：纯装饰，IgnorePointer 让拖动事件穿透
-            Align(
-              alignment: Alignment.centerLeft,
-              child: IgnorePointer(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 1.0, right: 1.0),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Image.asset(
-                        'assets/icons/tray_icon.png',
-                        width: 16,
-                        height: 16,
-                      ),
-                      const SizedBox(width: 1),
-                      Text(
-                        'Cyrene Music',
-                        style: (typography.subtitle ?? typography.bodyLarge)?.copyWith(fontSize: 12)
-                            ?? const TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: _buildLeadingBackButton(),
             ),
-            Align(
-              alignment: Alignment.center,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: SizedBox(
-                  height: 36,
-                  child: fluent_ui.TextBox(
-                    controller: _searchController,
-                    placeholder: '搜索音乐、歌手或专辑',
-                    prefix: const Padding(
-                      padding: EdgeInsets.only(left: 8.0, right: 4.0),
-                      child: Icon(fluent_ui.FluentIcons.search),
-                    ),
-                    prefixMode: fluent_ui.OverlayVisibilityMode.always,
-                    onSubmitted: _onSearchSubmitted,
-                  ),
-                ),
-              ),
-            ),
-            Align(
-              alignment: Alignment.centerRight,
+          ),
+          // 左侧图标+标题：纯装饰，IgnorePointer 让拖动事件穿透
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IgnorePointer(
               child: Padding(
-                padding: const EdgeInsets.only(right: 0),
+                padding: const EdgeInsets.only(left: 32, right: 1.0),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: userActionWidget,
+                    Image.asset(
+                      'assets/icons/tray_icon.png',
+                      width: 16,
+                      height: 16,
                     ),
-                    _buildWindowCaptionButtons(context),
+                    const SizedBox(width: 1),
+                    Text(
+                      'Cyrene Music',
+                      style: (typography.subtitle ?? typography.bodyLarge)
+                              ?.copyWith(fontSize: 12) ??
+                          const TextStyle(fontSize: 12),
+                    ),
                   ],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+          Align(
+            alignment: Alignment.center,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: SizedBox(
+                height: 36,
+                child: fluent_ui.TextBox(
+                  controller: _searchController,
+                  placeholder: '搜索音乐、歌手或专辑',
+                  prefix: const Padding(
+                    padding: EdgeInsets.only(left: 8.0, right: 4.0),
+                    child: Icon(fluent_ui.FluentIcons.search),
+                  ),
+                  prefixMode: fluent_ui.OverlayVisibilityMode.always,
+                  onSubmitted: _onSearchSubmitted,
+                ),
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: userActionWidget,
+                  ),
+                  _buildWindowCaptionButtons(context),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
-      actions: const SizedBox.shrink(),
     );
   }
 
@@ -674,7 +666,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
       icon: const Icon(fluent_ui.FluentIcons.back),
       onPressed: _handleGlobalBack,
       style: fluent_ui.ButtonStyle(
-        padding: fluent_ui.ButtonState.all(const EdgeInsets.all(4)),
+        padding: WidgetStatePropertyAll(const EdgeInsets.all(4)),
       ),
     );
   }
@@ -773,7 +765,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
     
     // 构建 NavigationView（按照 README 文档标准实现）
     final navigationView = fluent_ui.NavigationView(
-      appBar: _buildAppBar(context),
+      titleBar: _buildAppBar(context),
       pane: fluent_ui.NavigationPane(
         selected: _navigationProvider.currentIndex,
         onChanged: _onPaneIndexChanged,
@@ -837,7 +829,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
       }
     }
 
-    // 添加窗口背景（赞助用户独享）
+    // 添加窗口背景
     return AnimatedBuilder(
       animation: WindowBackgroundService(),
       builder: (context, child) {
@@ -1025,3 +1017,4 @@ class _LinuxDoAvatarTitleBarState extends State<_LinuxDoAvatarTitleBar> {
     );
   }
 }
+

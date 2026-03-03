@@ -2040,7 +2040,8 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
                                     ),
                             ),
                             tileColor: isCurrent
-                                ? WidgetStateProperty.all(
+                                ? WidgetStateColor.resolveWith(
+                                    (_) =>
                                     fluent.FluentTheme.of(context).resources.controlFillColorSecondary,
                                   )
                                 : null,

@@ -16,7 +16,6 @@ import '../pages/my_page/my_page.dart';
 import '../pages/local_page.dart';
 import '../pages/settings_page.dart';
 import '../pages/developer_page.dart';
-import '../pages/support_page.dart';
 import '../features/auth/auth_feature.dart';
 import '../services/layout_preference_service.dart';
 import '../services/developer_mode_service.dart';
@@ -65,7 +64,6 @@ class _MainLayoutState extends State<MainLayout>
       const HistoryPage(),
       const LocalPage(), // 本地
       const MyPage(), // 我的（歌单+听歌统计）
-      const SupportPage(), // 支持
       const SettingsPage(),
     ];
 
@@ -77,7 +75,6 @@ class _MainLayoutState extends State<MainLayout>
     return pages;
   }
 
-  int get _supportIndex => _pages.indexWhere((w) => w is SupportPage);
   int get _settingsIndex => _pages.indexWhere((w) => w is SettingsPage);
 
   Future<void> _openMoreBottomSheet(BuildContext context) async {
@@ -125,17 +122,6 @@ class _MainLayoutState extends State<MainLayout>
                     DeveloperModeService().onSettingsClicked();
                   },
                 ),
-                if (isPortrait)
-                  ListTile(
-                    leading: const Icon(Icons.favorite_outline),
-                    title: const Text('支持'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      final idx = _supportIndex;
-                      setState(() => _selectedIndex = idx); // 支持
-                      PageVisibilityNotifier().setCurrentPage(idx);
-                    },
-                  ),
                 if (DeveloperModeService().isDeveloperMode)
                   ListTile(
                     leading: const Icon(Icons.code),
@@ -630,7 +616,6 @@ class _MainLayoutState extends State<MainLayout>
 
   Widget _buildLandscapeSideNavigation(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final int supportIndex = _supportIndex;
     final int myIndex = _pages.indexWhere((w) => w is MyPage);
 
     final List<NavigationRailDestination> destinations = const [
@@ -650,11 +635,6 @@ class _MainLayoutState extends State<MainLayout>
         label: Text('我的'),
       ),
       NavigationRailDestination(
-        icon: Icon(Icons.favorite_outline),
-        selectedIcon: Icon(Icons.favorite),
-        label: Text('支持'),
-      ),
-      NavigationRailDestination(
         icon: Icon(Icons.more_horiz),
         selectedIcon: Icon(Icons.more_horiz),
         label: Text('更多'),
@@ -665,8 +645,7 @@ class _MainLayoutState extends State<MainLayout>
       if (_selectedIndex == 0) return 0; // 首页
       if (_selectedIndex == 1) return 1; // 发现
       if (_selectedIndex == myIndex) return 2; // 我的
-      if (_selectedIndex == supportIndex) return 3; // 支持
-      return 4; // 更多
+      return 3; // 更多
     }
 
     final Color? themeTint = PlayerService().themeColorNotifier.value;
@@ -748,7 +727,6 @@ class _MainLayoutState extends State<MainLayout>
                     if (tabIndex == 0) targetPageIndex = 0; // 首页
                     if (tabIndex == 1) targetPageIndex = 1; // 发现
                     if (tabIndex == 2) targetPageIndex = myIndex; // 我的
-                    if (tabIndex == 3) targetPageIndex = supportIndex; // 支持
 
                     setState(() {
                       _selectedIndex = targetPageIndex;
@@ -770,7 +748,6 @@ class _MainLayoutState extends State<MainLayout>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final orientation = MediaQuery.of(context).orientation;
     final bool isLandscape = orientation == Orientation.landscape;
-    final int supportIndex = _supportIndex;
     final int myIndex = _pages.indexWhere((w) => w is MyPage);
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     
@@ -779,8 +756,7 @@ class _MainLayoutState extends State<MainLayout>
       if (_selectedIndex == 0) return 0; // 首页
       if (_selectedIndex == 1) return 1; // 发现
       if (_selectedIndex == myIndex) return 2; // 我的
-      if (isLandscape && _selectedIndex == supportIndex) return 3; // 支持
-      return isLandscape ? 4 : 3; // 更多
+      return 3; // 更多
     }
     
     final isLocalMode = PersistentStorageService().enableLocalMode;
@@ -810,11 +786,6 @@ class _MainLayoutState extends State<MainLayout>
               svgAsset: 'assets/ui/FluentColorPerson16.svg',
               label: '我的',
             ),
-            if (isLandscape)
-              _FloatingTabItem(
-                svgAsset: 'assets/ui/FluentColorHeart16.svg',
-                label: '支持',
-              ),
             _FloatingTabItem(
               svgAsset: 'assets/ui/FluentColorAppsList20.svg',
               label: '更多',
@@ -870,8 +841,6 @@ class _MainLayoutState extends State<MainLayout>
                     targetPageIndex = 1; // 发现
                   } else if (index == 2) {
                     targetPageIndex = myIndex; // 我的
-                  } else if (isLandscape && index == 3) {
-                    targetPageIndex = supportIndex; // 支持 (横屏下才有)
                   } else {
                     // 理论上不会走到这里，因为 moreTab 已经提前拦截了
                     return;
@@ -944,9 +913,6 @@ class _MainLayoutState extends State<MainLayout>
   
   /// Cupertino 风格的更多菜单
   Future<void> _openCupertinoMoreSheet(BuildContext context) async {
-    final orientation = MediaQuery.of(context).orientation;
-    final bool isPortrait = orientation == Orientation.portrait;
-    
     await showCupertinoMoreSheet(
       context: context,
       onHistoryTap: () {
@@ -963,16 +929,10 @@ class _MainLayoutState extends State<MainLayout>
         PageVisibilityNotifier().setCurrentPage(idx);
         DeveloperModeService().onSettingsClicked();
       },
-      onSupportTap: () {
-        final idx = _supportIndex;
-        setState(() => _selectedIndex = idx);
-        PageVisibilityNotifier().setCurrentPage(idx);
-      },
       onDevTap: () {
         setState(() => _selectedIndex = _pages.length - 1);
         PageVisibilityNotifier().setCurrentPage(_pages.length - 1);
       },
-      showSupport: isPortrait,
       showDev: DeveloperModeService().isDeveloperMode,
     );
   }
@@ -984,9 +944,8 @@ class _MainLayoutState extends State<MainLayout>
     final bool useGlass = Platform.isAndroid || orientation == Orientation.portrait;
 
     final bool isLandscape = orientation == Orientation.landscape;
-    final int supportIndex = _supportIndex;
     final int myIndex = _pages.indexWhere((w) => w is MyPage);
-    // Build destinations: landscape adds Support tab before More
+    // Build destinations: core tabs + more
     final List<NavigationDestination> destinations = isLocalMode
         ? [
             const NavigationDestination(
@@ -1016,12 +975,6 @@ class _MainLayoutState extends State<MainLayout>
               selectedIcon: Icon(Icons.person),
               label: '我的',
             ),
-            if (isLandscape)
-              const NavigationDestination(
-                icon: Icon(Icons.favorite_outline),
-                selectedIcon: Icon(Icons.favorite),
-                label: '支持',
-              ),
             const NavigationDestination(
               icon: Icon(Icons.more_horiz),
               selectedIcon: Icon(Icons.more_horiz),
@@ -1036,7 +989,6 @@ class _MainLayoutState extends State<MainLayout>
       if (_selectedIndex == 0) return 0; // 首页
       if (_selectedIndex == 1) return 1; // 发现
       if (_selectedIndex == myIndex) return 2; // 我的
-      if (isLandscape && _selectedIndex == supportIndex) return 3; // 支持
       return destinations.length - 1; // 更多
     }
 
@@ -1062,8 +1014,6 @@ class _MainLayoutState extends State<MainLayout>
             targetIndex = 1;
           } else if (tabIndex == 2) {
             targetIndex = myIndex;
-          } else if (isLandscape && tabIndex == 3) {
-            targetIndex = supportIndex;
           }
         }
 
@@ -1289,11 +1239,6 @@ class _MainLayoutState extends State<MainLayout>
                                 label: Text('我的'),
                               ),
                               const NavigationDrawerDestination(
-                                icon: Icon(Icons.favorite_outline),
-                                selectedIcon: Icon(Icons.favorite),
-                                label: Text('支持'),
-                              ),
-                              const NavigationDrawerDestination(
                                 icon: Icon(Icons.settings_outlined),
                                 selectedIcon: Icon(Icons.settings),
                                 label: Text('设置'),
@@ -1357,11 +1302,6 @@ class _MainLayoutState extends State<MainLayout>
               icon: Icons.person_outlined,
               selectedIcon: Icons.person,
               label: '我的',
-            ),
-            _CollapsedItem(
-              icon: Icons.favorite_outline,
-              selectedIcon: Icons.favorite,
-              label: '支持',
             ),
             _CollapsedItem(
               icon: Icons.settings_outlined,

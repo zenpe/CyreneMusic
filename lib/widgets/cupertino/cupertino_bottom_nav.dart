@@ -56,9 +56,7 @@ Future<void> showCupertinoMoreSheet({
   required VoidCallback onHistoryTap,
   required VoidCallback onLocalTap,
   required VoidCallback onSettingsTap,
-  required VoidCallback onSupportTap,
   VoidCallback? onDevTap,
-  bool showSupport = true,
   bool showDev = false,
 }) async {
   await showCupertinoModalPopup<void>(
@@ -87,14 +85,6 @@ Future<void> showCupertinoMoreSheet({
           },
           child: const Text('设置'),
         ),
-        if (showSupport)
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.pop(context);
-              onSupportTap();
-            },
-            child: const Text('支持'),
-          ),
         if (showDev && onDevTap != null)
           CupertinoActionSheetAction(
             onPressed: () {

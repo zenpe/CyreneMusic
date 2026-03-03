@@ -722,7 +722,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
           decoration: BoxDecoration(
             color: isSelected
                 ? theme.accentColor.withOpacity(0.15)
-                : (states.isHovering && enabled
+                : (states.contains(WidgetState.hovered) && enabled
                     ? (isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03))
                     : Colors.transparent),
             borderRadius: BorderRadius.circular(8),
@@ -1097,3 +1097,4 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
     await _audioSourceFacade.enterLocalModeAndEnterMain();
   }
 }
+

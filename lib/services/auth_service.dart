@@ -19,8 +19,6 @@ class User {
   final bool isVerified;
   final String? lastLogin;
   final String? avatarUrl;
-  final bool isSponsor;
-  final String? sponsorSince;
 
   User({
     required this.id,
@@ -29,8 +27,6 @@ class User {
     required this.isVerified,
     this.lastLogin,
     this.avatarUrl,
-    this.isSponsor = false,
-    this.sponsorSince,
   });
 
   /// 获取用于显示的邮箱
@@ -52,8 +48,6 @@ class User {
       isVerified: json['isVerified'] as bool? ?? false,
       lastLogin: json['lastLogin'] as String?,
       avatarUrl: json['avatarUrl'] as String?,
-      isSponsor: json['isSponsor'] as bool? ?? false,
-      sponsorSince: json['sponsorSince'] as String?,
     );
   }
 
@@ -65,8 +59,6 @@ class User {
       'isVerified': isVerified,
       'lastLogin': lastLogin,
       'avatarUrl': avatarUrl,
-      'isSponsor': isSponsor,
-      'sponsorSince': sponsorSince,
     };
   }
 }
@@ -825,8 +817,6 @@ class AuthService extends ChangeNotifier {
             isVerified: _currentUser!.isVerified,
             lastLogin: _currentUser!.lastLogin,
             avatarUrl: _currentUser!.avatarUrl,
-            isSponsor: _currentUser!.isSponsor,
-            sponsorSince: _currentUser!.sponsorSince,
           );
           await _saveUserToStorage(_currentUser!);
           notifyListeners();

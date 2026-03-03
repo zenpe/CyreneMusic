@@ -341,7 +341,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   Future<void> _updateWidget(PlayerState state, dynamic songOrTrack) async {
     if (!Platform.isAndroid) return;
     
-    // 检查小部件是否开启（仅赞助用户可用且由用户在实验室设置中手动开启）
+    // 检查小部件是否在实验室设置中手动开启
     if (!LabFunctionsService().enableAndroidWidget) {
       // 如果未开启，将小部件内容替换为提示文字
       try {
