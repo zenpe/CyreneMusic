@@ -169,7 +169,7 @@ class NeteaseDiscoverService extends ChangeNotifier {
     if (cancelToken != null && cancelToken.isCancelled) {
       return true;
     }
-    if (CancelToken.isCancel(error)) {
+    if (error is DioException && CancelToken.isCancel(error)) {
       return true;
     }
     return error is DioException && error.type == DioExceptionType.cancel;
