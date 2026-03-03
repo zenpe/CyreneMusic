@@ -12,6 +12,9 @@ class ApiClient {
   factory ApiClient() => _instance;
 
   final Dio _dio;
+  final Map<String, _JsonCacheEntry> _getJsonCache = <String, _JsonCacheEntry>{};
+  final Map<String, Future<ApiResult<dynamic>>> _inFlightGetJsonRequests =
+      <String, Future<ApiResult<dynamic>>>{};
 
   ApiClient._internal()
       : _dio = Dio(BaseOptions(
@@ -59,6 +62,75 @@ class ApiClient {
     dynamic data,
     Map<String, String>? headers,
     bool auth = true,
+    Duration? timeout,
+    String? contentType,
+    CancelToken? cancelToken,
+    bool dedupe = true,
+    Duration? cacheTtl,
+  }) async {
+    final normalizedMethod = method.toUpperCase();
+    final isGetRequest = normalizedMethod == 'GET' && data == null;
+    final shouldCache = isGetRequest && _isCacheTtlEnabled(cacheTtl);
+    final shouldDedupe = isGetRequest && dedupe && cancelToken == null;
+
+    final getRequestKey = (shouldCache || shouldDedupe)
+        ? _buildGetJsonRequestKey(
+            path: path,
+            queryParameters: queryParameters,
+            headers: headers,
+            auth: auth,
+            timeout: timeout,
+          )
+        : null;
+
+    if (shouldCache && getRequestKey != null) {
+      final cached = _readGetJsonCache(getRequestKey);
+      if (cached != null) {
+        return cached;
+      }
+    }
+
+    if (shouldDedupe && getRequestKey != null) {
+      final inFlight = _inFlightGetJsonRequests[getRequestKey];
+      if (inFlight != null) {
+        return inFlight;
+      }
+    }
+
+    final requestFuture = _sendJsonRequest(
+      path,
+      method: method,
+      queryParameters: queryParameters,
+      data: data,
+      headers: headers,
+      auth: auth,
+      timeout: timeout,
+      contentType: contentType,
+      cancelToken: cancelToken,
+    ).then((result) {
+      if (shouldCache && getRequestKey != null && result.ok) {
+        _writeGetJsonCache(getRequestKey, result, cacheTtl!);
+      }
+      return result;
+    });
+
+    if (shouldDedupe && getRequestKey != null) {
+      _inFlightGetJsonRequests[getRequestKey] = requestFuture;
+      requestFuture.whenComplete(() {
+        _inFlightGetJsonRequests.remove(getRequestKey);
+      });
+    }
+
+    return requestFuture;
+  }
+
+  Future<ApiResult<dynamic>> _sendJsonRequest(
+    String path, {
+    required String method,
+    Map<String, dynamic>? queryParameters,
+    dynamic data,
+    Map<String, String>? headers,
+    required bool auth,
     Duration? timeout,
     String? contentType,
     CancelToken? cancelToken,
@@ -200,6 +272,8 @@ class ApiClient {
     bool auth = true,
     Duration? timeout,
     CancelToken? cancelToken,
+    bool dedupe = true,
+    Duration? cacheTtl,
   }) {
     return requestJson(
       path,
@@ -209,6 +283,8 @@ class ApiClient {
       auth: auth,
       timeout: timeout,
       cancelToken: cancelToken,
+      dedupe: dedupe,
+      cacheTtl: cacheTtl,
     );
   }
 
@@ -303,6 +379,89 @@ class ApiClient {
       cancelToken: cancelToken,
     );
   }
+
+  bool _isCacheTtlEnabled(Duration? cacheTtl) {
+    return cacheTtl != null && cacheTtl > Duration.zero;
+  }
+
+  ApiResult<dynamic>? _readGetJsonCache(String key) {
+    final entry = _getJsonCache[key];
+    if (entry == null) {
+      return null;
+    }
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (nowMs >= entry.expiresAtMs) {
+      _getJsonCache.remove(key);
+      return null;
+    }
+    return entry.result;
+  }
+
+  void _writeGetJsonCache(String key, ApiResult<dynamic> result, Duration ttl) {
+    _pruneExpiredGetJsonCache();
+    final expiresAtMs = DateTime.now().millisecondsSinceEpoch + ttl.inMilliseconds;
+    _getJsonCache[key] = _JsonCacheEntry(result: result, expiresAtMs: expiresAtMs);
+  }
+
+  void _pruneExpiredGetJsonCache() {
+    if (_getJsonCache.isEmpty) {
+      return;
+    }
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    _getJsonCache.removeWhere((_, entry) => nowMs >= entry.expiresAtMs);
+  }
+
+  String _buildGetJsonRequestKey({
+    required String path,
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+    required bool auth,
+    Duration? timeout,
+  }) {
+    final payload = <String, dynamic>{
+      'path': path,
+      'query': _normalizeCacheKeyValue(queryParameters ?? const <String, dynamic>{}),
+      'headers': _normalizeCacheKeyValue(headers ?? const <String, String>{}),
+      'auth': auth,
+      'timeoutMs': timeout?.inMilliseconds,
+      if (auth) 'token': AuthTokenStore.token ?? '',
+    };
+    return jsonEncode(payload);
+  }
+
+  dynamic _normalizeCacheKeyValue(dynamic value) {
+    if (value is Map) {
+      final entries = value.entries
+          .map((entry) => MapEntry(entry.key.toString(), entry.value))
+          .toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+      final normalized = <String, dynamic>{};
+      for (final entry in entries) {
+        normalized[entry.key] = _normalizeCacheKeyValue(entry.value);
+      }
+      return normalized;
+    }
+    if (value is List) {
+      return value.map(_normalizeCacheKeyValue).toList(growable: false);
+    }
+    if (value is DateTime) {
+      return value.toIso8601String();
+    }
+    if (value is Duration) {
+      return value.inMilliseconds;
+    }
+    return value;
+  }
+}
+
+class _JsonCacheEntry {
+  final ApiResult<dynamic> result;
+  final int expiresAtMs;
+
+  _JsonCacheEntry({
+    required this.result,
+    required this.expiresAtMs,
+  });
 }
 
 class _BaseUrlInterceptor extends Interceptor {

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 import 'api/api_client.dart';
 
 class NeteaseRecommendService extends ChangeNotifier {
@@ -7,11 +8,14 @@ class NeteaseRecommendService extends ChangeNotifier {
   NeteaseRecommendService._internal();
 
   final ApiClient _api = ApiClient();
+  CancelToken? _forYouCombinedCancelToken;
+  int _forYouCombinedRequestId = 0;
 
   Future<List<Map<String, dynamic>>> fetchDailySongs() async {
     final result = await _api.getJson(
       '/recommend/songs',
       timeout: const Duration(seconds: 15),
+      cacheTtl: const Duration(seconds: 10),
     );
     if (!result.ok) throw Exception('HTTP ${result.statusCode}');
     final data = result.data as Map<String, dynamic>;
@@ -24,6 +28,7 @@ class NeteaseRecommendService extends ChangeNotifier {
     final result = await _api.getJson(
       '/recommend/resource',
       timeout: const Duration(seconds: 15),
+      cacheTtl: const Duration(seconds: 10),
     );
     if (!result.ok) throw Exception('HTTP ${result.statusCode}');
     final data = result.data as Map<String, dynamic>;
@@ -36,6 +41,7 @@ class NeteaseRecommendService extends ChangeNotifier {
     final result = await _api.getJson(
       '/personal_fm',
       timeout: const Duration(seconds: 15),
+      cacheTtl: const Duration(seconds: 10),
     );
     if (!result.ok) throw Exception('HTTP ${result.statusCode}');
     final data = result.data as Map<String, dynamic>;
@@ -59,6 +65,7 @@ class NeteaseRecommendService extends ChangeNotifier {
       '/personalized',
       queryParameters: {'limit': limit},
       timeout: const Duration(seconds: 15),
+      cacheTtl: const Duration(seconds: 10),
     );
     if (!result.ok) throw Exception('HTTP ${result.statusCode}');
     final data = result.data as Map<String, dynamic>;
@@ -72,6 +79,7 @@ class NeteaseRecommendService extends ChangeNotifier {
       '/personalized/newsong',
       queryParameters: {'limit': limit},
       timeout: const Duration(seconds: 15),
+      cacheTtl: const Duration(seconds: 10),
     );
     if (!result.ok) throw Exception('HTTP ${result.statusCode}');
     final data = result.data as Map<String, dynamic>;
@@ -98,6 +106,7 @@ class NeteaseRecommendService extends ChangeNotifier {
         '/playlist',
         queryParameters: {'id': id, 'limit': 0},
         timeout: const Duration(seconds: 15),
+        cacheTtl: const Duration(seconds: 12),
       );
       if (!result.ok) throw Exception('HTTP ${result.statusCode}');
       final data = result.data as Map<String, dynamic>;
@@ -120,27 +129,77 @@ class NeteaseRecommendService extends ChangeNotifier {
 
   /// 聚合接口：一次性获取为你推荐所需的全部数据
   Future<Map<String, List<Map<String, dynamic>>>> fetchForYouCombined({int personalizedLimit = 12, int newsongLimit = 10}) async {
-    final result = await _api.getJson(
-      '/recommend/for_you',
-      queryParameters: {
-        'personalizedLimit': personalizedLimit,
-        'newsongLimit': newsongLimit,
-      },
-      timeout: const Duration(seconds: 20),
-    );
-    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
-    final data = result.data as Map<String, dynamic>;
-    if ((data['status'] as num?)?.toInt() != 200 || data['data'] == null) {
-      throw Exception('status ${data['status']}');
+    final requestId = ++_forYouCombinedRequestId;
+    _cancelForYouCombinedRequest('新的首页推荐请求');
+    final cancelToken = CancelToken();
+    _forYouCombinedCancelToken = cancelToken;
+
+    try {
+      final result = await _api.getJson(
+        '/recommend/for_you',
+        queryParameters: {
+          'personalizedLimit': personalizedLimit,
+          'newsongLimit': newsongLimit,
+        },
+        timeout: const Duration(seconds: 20),
+        cancelToken: cancelToken,
+        cacheTtl: const Duration(seconds: 10),
+      );
+      if (!_isCurrentForYouCombinedRequest(requestId, cancelToken)) {
+        throw StateError('request_cancelled');
+      }
+      if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+      final data = result.data as Map<String, dynamic>;
+      if ((data['status'] as num?)?.toInt() != 200 || data['data'] == null) {
+        throw Exception('status ${data['status']}');
+      }
+      final d = data['data'] as Map<String, dynamic>;
+      return <String, List<Map<String, dynamic>>>{
+        'dailySongs': (d['dailySongs'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+        'fm': (d['fm'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+        'dailyPlaylists': (d['dailyPlaylists'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+        'personalizedPlaylists': (d['personalizedPlaylists'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+        'radarPlaylists': (d['radarPlaylists'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+        'personalizedNewsongs': (d['personalizedNewsongs'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+      };
+    } catch (e) {
+      if (_isRequestCancelled(e, cancelToken) || !_isCurrentForYouCombinedRequest(requestId, cancelToken)) {
+        throw StateError('request_cancelled');
+      }
+      rethrow;
+    } finally {
+      if (identical(_forYouCombinedCancelToken, cancelToken)) {
+        _forYouCombinedCancelToken = null;
+      }
     }
-    final d = data['data'] as Map<String, dynamic>;
-    return <String, List<Map<String, dynamic>>>{
-      'dailySongs': (d['dailySongs'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
-      'fm': (d['fm'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
-      'dailyPlaylists': (d['dailyPlaylists'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
-      'personalizedPlaylists': (d['personalizedPlaylists'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
-      'radarPlaylists': (d['radarPlaylists'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
-      'personalizedNewsongs': (d['personalizedNewsongs'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
-    };
+  }
+
+  bool _isCurrentForYouCombinedRequest(int requestId, CancelToken cancelToken) {
+    return requestId == _forYouCombinedRequestId && identical(_forYouCombinedCancelToken, cancelToken);
+  }
+
+  void _cancelForYouCombinedRequest(String reason) {
+    final token = _forYouCombinedCancelToken;
+    if (token == null || token.isCancelled) {
+      return;
+    }
+    token.cancel(reason);
+  }
+
+  bool _isRequestCancelled(Object error, CancelToken? cancelToken) {
+    if (cancelToken != null && cancelToken.isCancelled) {
+      return true;
+    }
+    if (CancelToken.isCancel(error)) {
+      return true;
+    }
+    return error is DioException && error.type == DioExceptionType.cancel;
+  }
+
+  @override
+  void dispose() {
+    _cancelForYouCombinedRequest('NeteaseRecommendService disposed');
+    _forYouCombinedCancelToken = null;
+    super.dispose();
   }
 }

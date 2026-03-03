@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/cupertino.dart';
+import '../features/auth/auth_feature.dart';
 import '../services/netease_discover_service.dart';
-import '../services/auth_service.dart';
 import '../models/netease_discover.dart';
 import '../utils/theme_manager.dart';
 import 'discover_playlist_detail_page.dart';
@@ -13,7 +13,7 @@ import '../widgets/cupertino/cupertino_discover_widgets.dart';
 import '../widgets/skeleton_loader.dart';
 import '../widgets/login_prompt.dart';
 import '../widgets/audio_source_prompt.dart';
-import '../services/audio_source_service.dart';
+import '../features/audio_source/audio_source_feature.dart';
 import 'settings_page/audio_source_settings.dart';
 
 class DiscoverPage extends StatefulWidget {
@@ -27,9 +27,13 @@ class _DiscoverPageState extends State<DiscoverPage> {
   int? _selectedPlaylistId;
   String? _selectedPlaylistName;
   final ThemeManager _themeManager = ThemeManager();
+  final AuthFacade _authFacade = AuthFacade();
+  final AudioSourceFacade _audioSourceFacade = AudioSourceFacade();
+  late bool _lastAudioConfigured;
   @override
   void initState() {
     super.initState();
+    _lastAudioConfigured = _audioSourceFacade.isAudioConfigured;
     if (NeteaseDiscoverService().playlists.isEmpty && !NeteaseDiscoverService().isLoading) {
       NeteaseDiscoverService().fetchDiscoverPlaylists();
     }
@@ -37,16 +41,27 @@ class _DiscoverPageState extends State<DiscoverPage> {
       NeteaseDiscoverService().fetchTags();
     }
     NeteaseDiscoverService().addListener(_onChanged);
+    _audioSourceFacade.addAudioSourceStateListener(_onAudioSourceChanged);
   }
 
   @override
   void dispose() {
     NeteaseDiscoverService().removeListener(_onChanged);
+    _audioSourceFacade.removeAudioSourceStateListener(_onAudioSourceChanged);
     super.dispose();
   }
 
   void _onChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _onAudioSourceChanged() {
+    final isConfigured = _audioSourceFacade.isAudioConfigured;
+    if (!mounted || isConfigured == _lastAudioConfigured) {
+      return;
+    }
+    _lastAudioConfigured = isConfigured;
+    setState(() {});
   }
 
   /// 导航到音源设置页面
@@ -78,7 +93,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     NeteaseDiscoverService service,
   ) {
     // 未登录状态下显示登录提示
-    if (!AuthService().isLoggedIn) {
+    if (!_authFacade.isLoggedIn) {
       return CupertinoPageScaffold(
         child: CustomScrollView(
           slivers: [
@@ -93,7 +108,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 subtitle: '登录即可浏览热门歌单、发现新音乐',
                 onLoginPressed: () {
                   // LoginPrompt 内部已处理登录，这里只需刷新状态
-                  if (mounted && AuthService().isLoggedIn) {
+                  if (mounted && _authFacade.isLoggedIn) {
                     setState(() {});
                   }
                 },
@@ -105,7 +120,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
 
     // 已登录但音源未配置时，显示音源配置提示
-    if (!AudioSourceService().isConfigured) {
+    if (!_audioSourceFacade.isAudioConfigured) {
       return CupertinoPageScaffold(
         child: CustomScrollView(
           slivers: [
@@ -115,20 +130,10 @@ class _DiscoverPageState extends State<DiscoverPage> {
               backgroundColor: null,
             ),
             SliverFillRemaining(
-              child: AnimatedBuilder(
-                animation: AudioSourceService(),
-                builder: (context, _) {
-                  if (AudioSourceService().isConfigured) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) setState(() {});
-                    });
-                  }
-                  return AudioSourcePrompt(
-                    title: '配置音源后发现更多',
-                    subtitle: '配置音源服务后即可浏览热门歌单、发现新音乐',
-                    onConfigurePressed: () => _navigateToAudioSourceSettings(context),
-                  );
-                },
+              child: AudioSourcePrompt(
+                title: '配置音源后发现更多',
+                subtitle: '配置音源服务后即可浏览热门歌单、发现新音乐',
+                onConfigurePressed: () => _navigateToAudioSourceSettings(context),
               ),
             ),
           ],
@@ -185,13 +190,17 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   List<Widget> _buildCupertinoSlivers(NeteaseDiscoverService service) {
-    if (service.isLoading) {
+    final items = service.playlists;
+    final hasItems = items.isNotEmpty;
+
+    if (service.isLoading && !hasItems) {
       return [
         // 使用骨架屏替代简单的加载指示器
         const MobileDiscoverPageSliverSkeleton(),
       ];
     }
-    if (service.errorMessage != null) {
+
+    if (service.errorMessage != null && !hasItems && !service.isLoading) {
       return [
         SliverFillRemaining(
           child: Center(
@@ -222,9 +231,62 @@ class _DiscoverPageState extends State<DiscoverPage> {
       ];
     }
 
-    final items = service.playlists;
+    final slivers = <Widget>[
+      if (service.isLoading)
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Center(child: CupertinoActivityIndicator()),
+          ),
+        ),
+      if (service.errorMessage != null && hasItems)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: CupertinoColors.systemRed.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    CupertinoIcons.exclamationmark_triangle_fill,
+                    color: CupertinoColors.systemRed,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      service.errorMessage!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: CupertinoColors.systemRed,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minSize: 0,
+                    onPressed: () {
+                      final currentCat = NeteaseDiscoverService().currentCat;
+                      NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+                    },
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+    ];
+
     if (items.isEmpty) {
       return [
+        ...slivers,
         const SliverFillRemaining(
           child: Center(child: Text('暂无数据')),
         ),
@@ -232,6 +294,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
 
     return [
+      ...slivers,
       // 1. 分类选择器
       SliverToBoxAdapter(
         child: Padding(
@@ -329,7 +392,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
 
     // 未登录状态下显示登录提示
-    if (!AuthService().isLoggedIn) {
+    if (!_authFacade.isLoggedIn) {
       return Scaffold(
         backgroundColor: colorScheme.surface,
         body: CustomScrollView(
@@ -353,7 +416,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 subtitle: '登录即可浏览热门歌单、发现新音乐',
                 onLoginPressed: () {
                   // LoginPrompt 内部已处理登录，这里只需刷新状态
-                  if (mounted && AuthService().isLoggedIn) {
+                  if (mounted && _authFacade.isLoggedIn) {
                     setState(() {});
                   }
                 },
@@ -365,7 +428,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
 
     // 已登录但音源未配置时，显示音源配置提示
-    if (!AudioSourceService().isConfigured) {
+    if (!_audioSourceFacade.isAudioConfigured) {
       return Scaffold(
         backgroundColor: colorScheme.surface,
         body: CustomScrollView(
@@ -381,23 +444,13 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
-              ),
+                ),
             ),
             SliverFillRemaining(
-              child: AnimatedBuilder(
-                animation: AudioSourceService(),
-                builder: (context, _) {
-                  if (AudioSourceService().isConfigured) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) setState(() {});
-                    });
-                  }
-                  return AudioSourcePrompt(
-                    title: '配置音源后发现更多',
-                    subtitle: '配置音源服务后即可浏览热门歌单、发现新音乐',
-                    onConfigurePressed: () => _navigateToAudioSourceSettings(context),
-                  );
-                },
+              child: AudioSourcePrompt(
+                title: '配置音源后发现更多',
+                subtitle: '配置音源服务后即可浏览热门歌单、发现新音乐',
+                onConfigurePressed: () => _navigateToAudioSourceSettings(context),
               ),
             ),
           ],
@@ -481,16 +534,17 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   Widget _buildMaterialContent(NeteaseDiscoverService service, bool isExpressive) {
+    final items = service.playlists;
+    final hasItems = items.isNotEmpty;
 
-
-    if (service.isLoading) {
+    if (service.isLoading && !hasItems) {
       // 使用骨架屏替代简单的加载指示器
       return const Padding(
         padding: EdgeInsets.symmetric(horizontal: 16.0),
         child: MobileDiscoverPageSkeleton(),
       );
     }
-    if (service.errorMessage != null) {
+    if (service.errorMessage != null && !hasItems && !service.isLoading) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -518,53 +572,101 @@ class _DiscoverPageState extends State<DiscoverPage> {
       );
     }
 
-    final items = service.playlists;
     if (items.isEmpty) {
-      return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (service.isLoading)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
+          const SizedBox(height: 24),
+          const Center(child: Text('暂无数据')),
+        ],
+      );
     }
 
     // 顶部分类选择 + 自适应网格
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        int crossAxisCount = 2;
-        if (width >= 1200) crossAxisCount = 6;
-        else if (width >= 1000) crossAxisCount = 5;
-        else if (width >= 800) crossAxisCount = 4;
-        else if (width >= 600) crossAxisCount = 3;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildMaterialTagSelector(service, isExpressive),
-            const SizedBox(height: 16),
-
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: crossAxisCount,
-                mainAxisSpacing: 16,
-                crossAxisSpacing: 16,
-                // 调整纵横比，由 0.72 减至 0.7，为卡片文本区提供更多空间
-                childAspectRatio: isExpressive ? 0.7 : 0.72,
-              ),
-              itemCount: items.length,
-              itemBuilder: (context, index) => _MaterialPlaylistCard(
-                summary: items[index],
-                isExpressive: isExpressive,
-                onOpen: (id, name) {
-                  setState(() {
-                    _selectedPlaylistId = id;
-                    _selectedPlaylistName = name;
-                  });
-                },
-              ),
-
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (service.isLoading)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
+        if (service.errorMessage != null && hasItems)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.errorContainer.withOpacity(0.65),
+              borderRadius: BorderRadius.circular(12),
             ),
-          ],
-        );
-      },
+            child: Row(
+              children: [
+                Icon(Icons.error_outline, color: Theme.of(context).colorScheme.onErrorContainer, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    service.errorMessage!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final currentCat = NeteaseDiscoverService().currentCat;
+                    NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+                  },
+                  child: const Text('重试'),
+                ),
+              ],
+            ),
+          ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            int crossAxisCount = 2;
+            if (width >= 1200) crossAxisCount = 6;
+            else if (width >= 1000) crossAxisCount = 5;
+            else if (width >= 800) crossAxisCount = 4;
+            else if (width >= 600) crossAxisCount = 3;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildMaterialTagSelector(service, isExpressive),
+                const SizedBox(height: 16),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 16,
+                    // 调整纵横比，由 0.72 减至 0.7，为卡片文本区提供更多空间
+                    childAspectRatio: isExpressive ? 0.7 : 0.72,
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) => _MaterialPlaylistCard(
+                    summary: items[index],
+                    isExpressive: isExpressive,
+                    onOpen: (id, name) {
+                      setState(() {
+                        _selectedPlaylistId = id;
+                        _selectedPlaylistName = name;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -670,7 +772,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     NeteaseDiscoverService service,
   ) {
     // 未登录状态下显示登录提示
-    if (!AuthService().isLoggedIn) {
+    if (!_authFacade.isLoggedIn) {
       return fluent.ScaffoldPage(
         padding: EdgeInsets.zero,
         content: Column(
@@ -694,7 +796,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 title: '登录后发现更多精彩',
                 subtitle: '登录即可浏览热门歌单、发现新音乐',
                 onLoginPressed: () {
-                  if (mounted && AuthService().isLoggedIn) {
+                  if (mounted && _authFacade.isLoggedIn) {
                     setState(() {});
                   }
                 },
@@ -706,7 +808,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
 
     // 已登录但音源未配置时，显示音源配置提示
-    if (!AudioSourceService().isConfigured) {
+    if (!_audioSourceFacade.isAudioConfigured) {
       return fluent.ScaffoldPage(
         padding: EdgeInsets.zero,
         content: Column(
@@ -723,23 +825,13 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   ),
                 ],
                 padding: EdgeInsets.zero,
-              ),
+                ),
             ),
             Expanded(
-              child: AnimatedBuilder(
-                animation: AudioSourceService(),
-                builder: (context, _) {
-                  if (AudioSourceService().isConfigured) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) setState(() {});
-                    });
-                  }
-                  return AudioSourcePrompt(
-                    title: '配置音源后发现更多',
-                    subtitle: '配置音源服务后即可浏览热门歌单、发现新音乐',
-                    onConfigurePressed: () => _navigateToAudioSourceSettings(context),
-                  );
-                },
+              child: AudioSourcePrompt(
+                title: '配置音源后发现更多',
+                subtitle: '配置音源服务后即可浏览热门歌单、发现新音乐',
+                onConfigurePressed: () => _navigateToAudioSourceSettings(context),
               ),
             ),
           ],
@@ -824,13 +916,16 @@ class _DiscoverPageState extends State<DiscoverPage> {
       );
     }
 
-    if (service.isLoading) {
+    final items = service.playlists;
+    final hasItems = items.isNotEmpty;
+
+    if (service.isLoading && !hasItems) {
       return const DiscoverPageSkeleton(
         key: ValueKey('discover_loading'),
       );
     }
 
-    if (service.errorMessage != null) {
+    if (service.errorMessage != null && !hasItems && !service.isLoading) {
       return Padding(
         key: const ValueKey('discover_error'),
         padding: padding,
@@ -855,7 +950,6 @@ class _DiscoverPageState extends State<DiscoverPage> {
       );
     }
 
-    final items = service.playlists;
     if (items.isEmpty) {
       return Padding(
         key: const ValueKey('discover_empty'),
@@ -888,6 +982,26 @@ class _DiscoverPageState extends State<DiscoverPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (service.isLoading)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: fluent.ProgressBar(),
+                ),
+              if (service.errorMessage != null && hasItems) ...[
+                fluent.InfoBar(
+                  title: const Text('刷新失败'),
+                  content: Text(service.errorMessage!),
+                  severity: fluent.InfoBarSeverity.warning,
+                  action: fluent.Button(
+                    onPressed: () {
+                      final currentCat = NeteaseDiscoverService().currentCat;
+                      NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+                    },
+                    child: const Text('重试'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               _buildFluentTagSelector(service),
               const SizedBox(height: 16),
               GridView.builder(

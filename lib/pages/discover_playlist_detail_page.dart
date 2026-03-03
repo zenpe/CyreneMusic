@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:dio/dio.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
+import '../features/auth/auth_feature.dart';
 import '../services/netease_discover_service.dart';
 import '../models/netease_discover.dart';
 import '../models/track.dart';
@@ -13,7 +15,6 @@ import '../widgets/track_list_tile.dart';
 import '../widgets/track_action_menu.dart';
 import '../services/playlist_queue_service.dart';
 import '../services/player_service.dart';
-import '../services/auth_service.dart';
 import '../pages/auth/auth_page.dart';
 import '../utils/theme_manager.dart';
 import '../services/api/api_client.dart';
@@ -104,12 +105,15 @@ class DiscoverPlaylistDetailContent extends StatefulWidget {
 
 class _DiscoverPlaylistDetailContentState
     extends State<DiscoverPlaylistDetailContent> {
+  final AuthFacade _authFacade = AuthFacade();
   NeteasePlaylistDetail? _detail;
   bool _loading = true;
   String? _error;
   final ScrollController _scrollController = ScrollController();
   final Map<String, ImageProvider> _coverProviderCache = {};
   bool _descExpanded = false;
+  int _detailLoadRequestId = 0;
+  CancelToken? _detailLoadCancelToken;
 
   String _coverKey(Track track) => '${track.source.name}_${track.id}';
 
@@ -130,6 +134,11 @@ class _DiscoverPlaylistDetailContentState
   }
 
   Future<void> _load() async {
+    final requestId = ++_detailLoadRequestId;
+    _cancelDetailLoadRequest('新的歌单详情请求');
+    final cancelToken = CancelToken();
+    _detailLoadCancelToken = cancelToken;
+
     setState(() {
       _loading = true;
       _error = null;
@@ -137,8 +146,9 @@ class _DiscoverPlaylistDetailContentState
     _coverProviderCache.clear();
     final detail = await NeteaseDiscoverService().fetchPlaylistDetail(
       widget.playlistId,
+      cancelToken: cancelToken,
     );
-    if (!mounted) return;
+    if (!mounted || !_isCurrentDetailLoad(requestId, cancelToken)) return;
     setState(() {
       _detail = detail;
       _loading = false;
@@ -146,6 +156,9 @@ class _DiscoverPlaylistDetailContentState
         _error = NeteaseDiscoverService().errorMessage ?? '加载失败';
       }
     });
+    if (identical(_detailLoadCancelToken, cancelToken)) {
+      _detailLoadCancelToken = null;
+    }
     _scrollToTop();
   }
 
@@ -2083,12 +2096,27 @@ class _DiscoverPlaylistDetailContentState
 
   @override
   void dispose() {
+    _detailLoadRequestId++;
+    _cancelDetailLoadRequest('DiscoverPlaylistDetailContent disposed');
+    _detailLoadCancelToken = null;
     _scrollController.dispose();
     super.dispose();
   }
 
+  bool _isCurrentDetailLoad(int requestId, CancelToken cancelToken) {
+    return requestId == _detailLoadRequestId && identical(_detailLoadCancelToken, cancelToken);
+  }
+
+  void _cancelDetailLoadRequest(String reason) {
+    final token = _detailLoadCancelToken;
+    if (token == null || token.isCancelled) {
+      return;
+    }
+    token.cancel(reason);
+  }
+
   Future<bool> _checkLoginStatus() async {
-    if (AuthService().isLoggedIn) return true;
+    if (_authFacade.isLoggedIn) return true;
     final themeManager = ThemeManager();
 
     // Fluent UI 风格
@@ -2112,7 +2140,7 @@ class _DiscoverPlaylistDetailContentState
       );
       if (shouldLogin == true && mounted) {
         final result = await showAuthDialog(context);
-        return result == true && AuthService().isLoggedIn;
+        return result == true && _authFacade.isLoggedIn;
       }
       return false;
     }
@@ -2139,7 +2167,7 @@ class _DiscoverPlaylistDetailContentState
       );
       if (shouldLogin == true && mounted) {
         final result = await showAuthDialog(context);
-        return result == true && AuthService().isLoggedIn;
+        return result == true && _authFacade.isLoggedIn;
       }
       return false;
     }
@@ -2170,7 +2198,7 @@ class _DiscoverPlaylistDetailContentState
     );
     if (shouldLogin == true && mounted) {
       final result = await showAuthDialog(context);
-      return result == true && AuthService().isLoggedIn;
+      return result == true && _authFacade.isLoggedIn;
     }
     return false;
   }
