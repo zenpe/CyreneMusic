@@ -26,9 +26,8 @@ import 'package:cyrene_music/services/navidrome_session_service.dart';
 import 'package:cyrene_music/services/player_background_service.dart';
 import 'package:cyrene_music/services/player_service.dart';
 import 'package:cyrene_music/services/notification_service.dart';
-import 'package:cyrene_music/services/playback_resume_service.dart';
 import 'package:cyrene_music/services/permission_service.dart';
-import 'package:cyrene_music/services/playback/playback_service.dart';
+import 'package:cyrene_music/services/playback/startup_playback_coordinator.dart';
 import 'package:cyrene_music/services/system_media_service.dart';
 import 'package:cyrene_music/services/tray_service.dart';
 import 'package:cyrene_music/services/url_service.dart';
@@ -312,41 +311,10 @@ Future<void> main() async {
         log(' Android悬浮歌词服务已初始化');
       }
 
-      print(' [Main] 将在1秒后加载启动播放队列...');
-      log(' 将在1秒后加载启动播放队列...');
-      Future.delayed(const Duration(seconds: 1), () {
-        PlaybackService()
-            .loadStartupQueueIfNeeded()
-            .then((_) {
-              print(' [Main] 启动播放队列加载完成');
-              log(' 启动播放队列加载完成');
-            })
-            .catchError((e, st) {
-              print(' [Main] 启动播放队列加载失败: $e');
-              log(' 启动播放队列加载失败: $e');
-              StartupLogger().log(' 启动播放队列加载失败 stack: $st');
-            });
+      await timed('StartupPlaybackCoordinator.restorePlaybackOnStartup', () async {
+        await StartupPlaybackCoordinator().restorePlaybackOnStartup();
       });
-
-      print(' [Main] 将在2秒后检查播放恢复状态...');
-      log(' 将在2秒后检查播放恢复状态...');
-
-      Future.delayed(const Duration(seconds: 2), () {
-        print(' [Main] 开始检查播放恢复状态...');
-        log(' 开始检查播放恢复状态...');
-
-        PlaybackResumeService()
-            .checkAndShowResumeNotification()
-            .then((_) {
-              print(' [Main] 播放恢复检查完成');
-              log(' 播放恢复检查完成');
-            })
-            .catchError((e, st) {
-              print(' [Main] 播放恢复检查失败: $e');
-              log(' 播放恢复检查失败: $e');
-              StartupLogger().log(' 播放恢复检查失败 stack: $st');
-            });
-      });
+      log(' 启动播放会话恢复流程已完成');
 
       await timed('runApp(MyApp)', () {
         runApp(const MyApp());

@@ -28,18 +28,16 @@ import '../desktop_lyric_service.dart';
 import '../android_floating_lyric_service.dart';
 import '../player_background_service.dart';
 import '../local_library_service.dart';
-import '../playback_state_service.dart';
 import '../url_service.dart';
 import '../notification_service.dart';
 import '../persistent_storage_service.dart';
 import '../equalizer_service.dart';
-import '../app_settings_service.dart';
-import '../auth_service.dart';
-import '../playlist_service.dart';
 
 import 'command_queue.dart';
 import 'audio_engine.dart';
 import 'cover_manager.dart';
+import 'playback_session_snapshot.dart';
+import 'playback_session_store.dart';
 
 /// 播放状态枚举（复用 PlayerService 的定义）
 enum PBState { idle, loading, playing, paused, error }
@@ -113,6 +111,9 @@ class PlaybackService extends ChangeNotifier {
 
   // 播放状态保存
   Timer? _stateSaveTimer;
+  Timer? _sessionPersistDebounce;
+  Duration? _pendingRestorePosition;
+  bool _hasRestoredSessionOnStartup = false;
 
   // 桌面/悬浮歌词
   List<LyricLine> _lyrics = [];
@@ -221,6 +222,89 @@ class PlaybackService extends ChangeNotifier {
     print('[PlaybackService] 初始化完成');
   }
 
+  Future<bool> restoreSessionOnStartup() async {
+    if (_hasRestoredSessionOnStartup) return currentTrack != null;
+    _hasRestoredSessionOnStartup = true;
+
+    try {
+      final snapshot = await PlaybackSessionStore().loadSnapshot();
+      if (snapshot == null || !snapshot.isValid) return false;
+
+      await _restoreFromSnapshot(snapshot);
+      _scheduleSessionPersist();
+      return true;
+    } catch (e) {
+      print('[PlaybackService] 恢复本地播放会话失败: $e');
+      return false;
+    }
+  }
+
+  PlaybackSessionSnapshot? _buildSessionSnapshot() {
+    final sessionQueue = _queue.isNotEmpty
+        ? List<Track>.from(_queue)
+        : (currentTrack != null ? [currentTrack!] : const <Track>[]);
+    if (sessionQueue.isEmpty) return null;
+
+    final currentIndex = _queue.isNotEmpty
+        ? _currentIndex.clamp(0, sessionQueue.length - 1)
+        : 0;
+    final state = switch (_state) {
+      PBState.playing => PlaybackSessionState.playing,
+      PBState.paused => PlaybackSessionState.paused,
+      _ => PlaybackSessionState.idle,
+    };
+
+    return PlaybackSessionSnapshot(
+      version: 1,
+      savedAt: DateTime.now(),
+      queue: sessionQueue,
+      currentIndex: currentIndex,
+      source: _queue.isNotEmpty ? _source : QueueSource.none,
+      position: _position,
+      state: state,
+      playbackMode: PlaybackModeService().currentMode,
+    );
+  }
+
+  Future<void> _restoreFromSnapshot(PlaybackSessionSnapshot snapshot) async {
+    await PlaybackModeService().setMode(snapshot.playbackMode);
+
+    _pendingRestorePosition =
+        snapshot.position > Duration.zero ? snapshot.position : null;
+
+    if (snapshot.state == PlaybackSessionState.playing) {
+      await playNow(snapshot.queue, snapshot.currentIndex, snapshot.source);
+      _pendingRestorePosition =
+          snapshot.position > Duration.zero ? snapshot.position : null;
+      await _applyPendingRestorePosition();
+      return;
+    }
+
+    _resetPreloadState();
+    _queue
+      ..clear()
+      ..addAll(snapshot.queue);
+    _currentIndex = snapshot.currentIndex.clamp(0, snapshot.queue.length - 1);
+    _source = snapshot.source;
+    _coverProviders.clear();
+    _state = PBState.idle;
+    _currentSong = null;
+    _errorMessage = null;
+    _isAudioSourceNotConfigured = false;
+    _duration = Duration.zero;
+    _bufferedPosition = Duration.zero;
+    _position = snapshot.position;
+    positionNotifier.value = snapshot.position;
+    bufferedPositionNotifier.value = Duration.zero;
+    if (currentTrack != null) {
+      await coverManager.updateCover(currentTrack!.picUrl, notify: false, force: true);
+    } else {
+      coverManager.setCover(null, notify: false);
+      coverManager.themeColorNotifier.value = null;
+    }
+    notifyListeners();
+  }
+
   // ══════════════════════════════════════════════════════
   // 引擎事件处理
   // ══════════════════════════════════════════════════════
@@ -236,14 +320,15 @@ class PlaybackService extends ChangeNotifier {
         _startStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(true);
         if (Platform.isAndroid) AndroidFloatingLyricService().setPlayingState(true);
+        _scheduleSessionPersist();
         break;
       case EngineState.paused:
         _state = PBState.paused;
         _pauseListeningTimeTracking();
-        _saveCurrentPlaybackState();
         _stopStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(false);
         if (Platform.isAndroid) AndroidFloatingLyricService().setPlayingState(false);
+        _scheduleSessionPersist();
         break;
       case EngineState.idle:
         _state = PBState.idle;
@@ -251,6 +336,7 @@ class PlaybackService extends ChangeNotifier {
         _stopStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(false);
         if (Platform.isAndroid) AndroidFloatingLyricService().setPlayingState(false);
+        _scheduleSessionPersist();
         break;
     }
     notifyListeners();
@@ -346,6 +432,7 @@ class PlaybackService extends ChangeNotifier {
   }) {
     return _commands.enqueue(() async {
       _resetPreloadState();
+      _pendingRestorePosition = null;
       _queue
         ..clear()
         ..addAll(tracks);
@@ -355,6 +442,7 @@ class PlaybackService extends ChangeNotifier {
       _resetShuffle();
       _preloadedTrack = null;
       await _playCurrentTrack();
+      _scheduleSessionPersist();
     });
   }
 
@@ -362,11 +450,13 @@ class PlaybackService extends ChangeNotifier {
   Future<void> playNext(Track track) {
     return _commands.enqueue(() async {
       _resetPreloadState();
+      _pendingRestorePosition = null;
       _removeDuplicate(track);
       final insertAt = (_currentIndex + 1).clamp(0, _queue.length);
       _queue.insert(insertAt, track);
       _resetShuffle();
       notifyListeners();
+      _scheduleSessionPersist();
     });
   }
 
@@ -374,9 +464,11 @@ class PlaybackService extends ChangeNotifier {
   Future<void> addToQueue(Track track) {
     return _commands.enqueue(() async {
       _resetPreloadState();
+      _pendingRestorePosition = null;
       _queue.add(track);
       _resetShuffle();
       notifyListeners();
+      _scheduleSessionPersist();
     });
   }
 
@@ -384,9 +476,11 @@ class PlaybackService extends ChangeNotifier {
   Future<void> addAllToQueue(List<Track> tracks) {
     return _commands.enqueue(() async {
       _resetPreloadState();
+      _pendingRestorePosition = null;
       _queue.addAll(tracks);
       _resetShuffle();
       notifyListeners();
+      _scheduleSessionPersist();
     });
   }
 
@@ -395,8 +489,10 @@ class PlaybackService extends ChangeNotifier {
     return _commands.enqueue(() async {
       if (index < 0 || index >= _queue.length) return;
       _resetPreloadState();
+      _pendingRestorePosition = null;
       _currentIndex = index;
       await _playCurrentTrack();
+      _scheduleSessionPersist();
     });
   }
 
@@ -405,6 +501,7 @@ class PlaybackService extends ChangeNotifier {
     return _commands.enqueue(() async {
       if (index < 0 || index >= _queue.length) return;
       _resetPreloadState();
+      _pendingRestorePosition = null;
       _queue.removeAt(index);
       if (_queue.isEmpty) {
         _currentIndex = -1;
@@ -419,6 +516,7 @@ class PlaybackService extends ChangeNotifier {
       }
       _resetShuffle();
       notifyListeners();
+      _scheduleSessionPersist();
     });
   }
 
@@ -428,6 +526,7 @@ class PlaybackService extends ChangeNotifier {
       if (oldIndex < 0 || oldIndex >= _queue.length) return;
       if (newIndex < 0 || newIndex > _queue.length) return;
       _resetPreloadState();
+      _pendingRestorePosition = null;
 
       final track = _queue.removeAt(oldIndex);
       _queue.insert(newIndex, track);
@@ -442,6 +541,7 @@ class PlaybackService extends ChangeNotifier {
       }
       _resetShuffle();
       notifyListeners();
+      _scheduleSessionPersist();
     });
   }
 
@@ -449,6 +549,7 @@ class PlaybackService extends ChangeNotifier {
   Future<void> clearQueue() {
     return _commands.enqueue(() async {
       _resetPreloadState();
+      _pendingRestorePosition = null;
       _queue.clear();
       _currentIndex = -1;
       _source = QueueSource.none;
@@ -458,6 +559,7 @@ class PlaybackService extends ChangeNotifier {
       _state = PBState.idle;
       _currentSong = null;
       notifyListeners();
+      await PlaybackSessionStore().clear();
     });
   }
 
@@ -469,19 +571,25 @@ class PlaybackService extends ChangeNotifier {
     // 预载态：播放器尚未初始化，走完整播放
     if (_state == PBState.idle && currentTrack != null) {
       if (_queue.isNotEmpty && _currentIndex >= 0) {
-        await _commands.enqueue(() => _playCurrentTrack());
+        await _commands.enqueue(() async {
+          await _playCurrentTrack();
+          await _applyPendingRestorePosition();
+        });
       } else if (_preloadedTrack != null) {
         await playNow([_preloadedTrack!], 0, QueueSource.none);
       }
+      _scheduleSessionPersist();
       return;
     }
     await _engine.resume();
     _startListeningTimeTracking();
+    _scheduleSessionPersist();
   }
 
   Future<void> pause() async {
     await _engine.pause();
     _pauseListeningTimeTracking();
+    _scheduleSessionPersist();
   }
 
   Future<void> seek(Duration position) async {
@@ -489,6 +597,8 @@ class PlaybackService extends ChangeNotifier {
     _position = position;
     positionNotifier.value = position;
     _syncPositionToNative(position, force: true);
+    _pendingRestorePosition = null;
+    _scheduleSessionPersist();
   }
 
   Future<void> next() async {
@@ -526,6 +636,8 @@ class PlaybackService extends ChangeNotifier {
     bufferedPositionNotifier.value = Duration.zero;
     coverManager.setCover(null, notify: false);
     notifyListeners();
+    _pendingRestorePosition = null;
+    _scheduleSessionPersist();
   }
 
   Future<void> togglePlayPause() async {
@@ -576,20 +688,7 @@ class PlaybackService extends ChangeNotifier {
     }
 
     notifyListeners();
-  }
-
-  /// 从保存的状态恢复播放
-  Future<void> resumeFromSavedState(PlaybackState state) async {
-    try {
-      // 建队列并播放
-      await playNow([state.track], 0, QueueSource.none);
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (state.position.inSeconds > 0) {
-        await seek(state.position);
-      }
-    } catch (e) {
-      print('[PlaybackService] 恢复播放失败: $e');
-    }
+    _scheduleSessionPersist();
   }
 
   /// 播放网络电台流
@@ -1121,6 +1220,7 @@ class PlaybackService extends ChangeNotifier {
   /// setQueue 兼容：替换队列（不自动播放，仅更新状态）
   void setQueueSilent(List<Track> tracks, int index, QueueSource source, {Map<String, ImageProvider>? coverProviders}) {
     _resetPreloadState();
+    _pendingRestorePosition = null;
     _queue
       ..clear()
       ..addAll(tracks);
@@ -1131,6 +1231,7 @@ class PlaybackService extends ChangeNotifier {
       ..addAll(coverProviders ?? {});
     _resetShuffle();
     notifyListeners();
+    _scheduleSessionPersist();
   }
 
   /// getNext 兼容：更新索引到下一首并返回
@@ -1200,73 +1301,6 @@ class PlaybackService extends ChangeNotifier {
     _currentIndex = _shuffledIndices[_shufflePosition];
     notifyListeners();
     return _queue[_currentIndex];
-  }
-
-  // ══════════════════════════════════════════════════════
-  // 启动队列加载（原 StartupQueueLoaderService）
-  // ══════════════════════════════════════════════════════
-  bool _hasLoadedStartupQueue = false;
-
-  Future<void> loadStartupQueueIfNeeded() async {
-    if (_hasLoadedStartupQueue) return;
-    _hasLoadedStartupQueue = true;
-
-    try {
-      final settings = AppSettingsService();
-      await settings.ensureInitialized();
-
-      if (settings.startupQueueMode == StartupQueueMode.none) return;
-      if (hasQueue) return;
-      if (currentTrack != null) return;
-      if (!AuthService().isLoggedIn) return;
-
-      switch (settings.startupQueueMode) {
-        case StartupQueueMode.none:
-          break;
-        case StartupQueueMode.favorites:
-          await _loadFavoritesQueue();
-          break;
-        case StartupQueueMode.specificPlaylist:
-          final playlistId = settings.startupQueuePlaylistId;
-          if (playlistId == null) return;
-          await _loadPlaylistQueue(playlistId, QueueSource.playlist);
-          break;
-      }
-    } catch (e) {
-      print('[PlaybackService] 加载启动队列失败: $e');
-    }
-  }
-
-  Future<void> _loadFavoritesQueue() async {
-    final ps = PlaylistService();
-    await ps.loadPlaylists();
-    final fav = ps.defaultPlaylist;
-    if (fav == null || fav.id <= 0) return;
-    await _loadTracksAndSetQueue(playlistService: ps, playlistId: fav.id, source: QueueSource.favorites);
-  }
-
-  Future<void> _loadPlaylistQueue(int playlistId, QueueSource source) async {
-    final ps = PlaylistService();
-    await ps.loadPlaylists();
-    final idx = ps.playlists.indexWhere((p) => p.id == playlistId);
-    if (idx == -1) {
-      await AppSettingsService().clearStartupQueuePlaylist();
-      return;
-    }
-    await _loadTracksAndSetQueue(playlistService: ps, playlistId: playlistId, source: source);
-  }
-
-  Future<void> _loadTracksAndSetQueue({
-    required PlaylistService playlistService,
-    required int playlistId,
-    required QueueSource source,
-  }) async {
-    await playlistService.loadPlaylistTracks(playlistId);
-    final tracks = playlistService.currentTracks.map((item) => item.toTrack()).toList();
-    if (tracks.isEmpty) return;
-
-    setQueueSilent(tracks, 0, source);
-    await preload(tracks.first);
   }
 
   // ══════════════════════════════════════════════════════
@@ -1727,13 +1761,12 @@ class PlaybackService extends ChangeNotifier {
     }
   }
 
-  // ── 播放状态保存 ──
+  // ── 本地播放会话保存 ──
 
   void _startStateSaveTimer() {
     if (_stateSaveTimer != null && _stateSaveTimer!.isActive) return;
-    if (!AppSettingsService().showResumePromptOnStartup) return;
     _stateSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      _saveCurrentPlaybackState();
+      _scheduleSessionPersist();
     });
   }
 
@@ -1742,13 +1775,29 @@ class PlaybackService extends ChangeNotifier {
     _stateSaveTimer = null;
   }
 
-  void _saveCurrentPlaybackState() {
-    if (!AppSettingsService().showResumePromptOnStartup) return;
-    final track = currentTrack;
-    if (track == null || _state != PBState.playing || _position.inSeconds < 5) return;
-    PlaybackStateService().savePlaybackState(
-      track: track, position: _position, isFromPlaylist: hasQueue,
+  void _scheduleSessionPersist() {
+    _sessionPersistDebounce?.cancel();
+    _sessionPersistDebounce = Timer(
+      const Duration(milliseconds: 600),
+      () => unawaited(_persistSessionNow()),
     );
+  }
+
+  Future<void> _persistSessionNow() async {
+    final snapshot = _buildSessionSnapshot();
+    if (snapshot == null) {
+      await PlaybackSessionStore().clear();
+      return;
+    }
+    await PlaybackSessionStore().saveSnapshot(snapshot);
+  }
+
+  Future<void> _applyPendingRestorePosition() async {
+    final pending = _pendingRestorePosition;
+    if (pending == null || pending <= Duration.zero) return;
+    _pendingRestorePosition = null;
+    await Future.delayed(const Duration(milliseconds: 500));
+    await seek(pending);
   }
 
   // ── 音量保存 ──
@@ -1899,8 +1948,10 @@ class PlaybackService extends ChangeNotifier {
     _resetShuffle();
     await _cleanupCurrentTempFile();
     _stopStateSaveTimer();
+    _pendingRestorePosition = null;
     _pauseListeningTimeTracking();
     notifyListeners();
+    await PlaybackSessionStore().clear();
     if (Platform.isAndroid) {
       AndroidFloatingLyricService().setPlayingState(false);
       AndroidFloatingLyricService().updatePosition(Duration.zero);
@@ -1920,6 +1971,7 @@ class PlaybackService extends ChangeNotifier {
       _duration = Duration.zero;
       _bufferedPosition = Duration.zero;
       coverManager.setCover(null, notify: false);
+      _sessionPersistDebounce?.cancel();
       await _engine.dispose();
     } catch (e) {
       print('[PlaybackService] 释放资源失败: $e');
@@ -1935,6 +1987,7 @@ class PlaybackService extends ChangeNotifier {
     PlaybackModeService().removeListener(_precacheNextCover);
     _pauseListeningTimeTracking();
     _stopStateSaveTimer();
+    _sessionPersistDebounce?.cancel();
     _cleanupCurrentTempFile();
     _engine.dispose();
     ProxyService().stop();

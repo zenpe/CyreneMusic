@@ -4,7 +4,6 @@ import '../models/track.dart';
 import 'equalizer_service.dart';
 import 'playback/playback_service.dart';
 import 'playlist_queue_service.dart';
-import 'playback_state_service.dart';
 
 /// 播放状态枚举
 enum PlayerState {
@@ -127,9 +126,6 @@ class PlayerService extends ChangeNotifier {
 
   Future<void> preloadTrack(Track track, {ImageProvider? coverProvider}) =>
       _pb.preload(track, coverProvider: coverProvider);
-
-  Future<void> resumeFromSavedState(PlaybackState state) =>
-      _pb.resumeFromSavedState(state);
 
   /// 设置封面（兼容旧代码）
   void setCurrentCoverImageProvider(

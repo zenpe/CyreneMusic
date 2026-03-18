@@ -1033,33 +1033,13 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
   /// 测试播放恢复通知
   Future<void> _testPlaybackResumeNotification() async {
     try {
-      // 获取上次播放状态（如果有的话）
-      final state = await PlaybackStateService().getLastPlaybackState();
+      const trackName = '测试歌曲';
+      const artist = '测试歌手';
+      const coverUrl =
+          'https://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg';
+      const String? platformInfo = null;
 
-      String trackName;
-      String artist;
-      String? coverUrl;
-      String? platformInfo;
-
-      if (state != null) {
-        // 使用实际保存的播放状态
-        trackName = state.track.name;
-        artist = state.track.artists;
-        coverUrl = state.coverUrl;
-        platformInfo = state.isCrossPlatform ? state.platformDisplayText : null;
-        DeveloperModeService().addLog('📱 使用真实播放状态: $trackName - $artist');
-        DeveloperModeService().addLog('🖼️ 封面URL: $coverUrl');
-        if (platformInfo != null) {
-          DeveloperModeService().addLog('🌐 平台信息: $platformInfo');
-        }
-      } else {
-        // 如果没有保存的状态，使用测试数据
-        trackName = '测试歌曲';
-        artist = '测试歌手';
-        coverUrl = 'https://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg';
-        platformInfo = null; // 测试时不显示平台信息
-        DeveloperModeService().addLog('📱 使用测试数据（没有保存的播放状态）');
-      }
+      DeveloperModeService().addLog('📱 使用固定测试数据发送恢复通知');
 
       // 显示恢复播放通知
       await NotificationService().showResumePlaybackNotification(
