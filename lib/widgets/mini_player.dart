@@ -1,9 +1,7 @@
-import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
-import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/player_service.dart';
 import '../pages/player_page.dart';
@@ -23,25 +21,13 @@ class MiniPlayer extends StatefulWidget {
   State<MiniPlayer> createState() => _MiniPlayerState();
 }
 
-class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateMixin {
-  bool _isCollapsed = false;
-  bool _autoCollapseEnabled = false;
-  Timer? _collapseTimer;
-  String? _lastTrackKey;
-  AnimationController? _breathingController;
-  Animation<double>? _breathingScale;
-  bool _breathingActive = false;
+class _MiniPlayerState extends State<MiniPlayer> {
   bool _isSeeking = false;   // 拖拽 seek 中，屏蔽外层 onTap 跳全屏
   double? _seekRatio;         // 拖拽时的临时进度比例
   DateTime? _lastSeekGestureAt;
   int? _activeSeekPointer;
 
   bool get _isCupertino => ThemeManager().isCupertinoFramework;
-
-  @override
-  void initState() {
-    super.initState();
-  }
 
   /// iOS Cupertino 风格的控制按钮
   Widget _buildCenterControlsCupertino(
@@ -190,105 +176,6 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
   }
 
   @override
-  void dispose() {
-    _collapseTimer?.cancel();
-    _breathingController?.dispose();
-    super.dispose();
-  }
-
-  void _configureAutoCollapse(bool enable) {
-    if (_autoCollapseEnabled == enable) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      setState(() {
-        _autoCollapseEnabled = enable;
-        if (!_autoCollapseEnabled) {
-          _collapseTimer?.cancel();
-          _isCollapsed = false;
-        } else {
-          _scheduleCollapseTimer();
-        }
-      });
-      if (!enable) {
-        _setBreathingActive(false);
-      }
-    });
-  }
-
-  void _scheduleCollapseTimer() {
-    _collapseTimer?.cancel();
-    if (!_autoCollapseEnabled) return;
-    _collapseTimer = Timer(const Duration(seconds: 5), () {
-      if (!mounted || !_autoCollapseEnabled) return;
-      setState(() {
-        _isCollapsed = true;
-      });
-      _setBreathingActive(true);
-    });
-  }
-
-  void _resetCollapseTimer({bool expand = false}) {
-    if (!_autoCollapseEnabled) return;
-    _collapseTimer?.cancel();
-    if (expand && _isCollapsed) {
-      setState(() {
-        _isCollapsed = false;
-      });
-      _setBreathingActive(false);
-    }
-    _scheduleCollapseTimer();
-  }
-
-  void _handlePointerDown() {
-    if (!_autoCollapseEnabled) return;
-    _collapseTimer?.cancel();
-  }
-
-  void _setBreathingActive(bool active) {
-    if (_breathingActive == active) return;
-    _breathingActive = active;
-    if (active) {
-      final controller = _breathingController ??= AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 2800),
-      );
-      _breathingScale ??= Tween<double>(begin: 0.94, end: 1.06).animate(
-        CurvedAnimation(parent: controller, curve: Curves.easeInOut),
-      );
-      controller
-        ..reset()
-        ..repeat(reverse: true);
-    } else {
-      _breathingController?.stop();
-      _breathingController?.reset();
-    }
-  }
-
-  void _handleTrackChange(String? trackKey) {
-    if (_lastTrackKey == trackKey) return;
-    _lastTrackKey = trackKey;
-    if (!_autoCollapseEnabled) {
-      if (_isCollapsed) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() => _isCollapsed = false);
-          }
-        });
-        _setBreathingActive(false);
-      }
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      setState(() {
-        _isCollapsed = false;
-      });
-      _setBreathingActive(false);
-      _scheduleCollapseTimer();
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: PlayerService(),
@@ -299,80 +186,30 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
 
         final mediaQuery = MediaQuery.of(context);
         final bool isCompactWidth = mediaQuery.size.width < 600;
-        final bool isPortrait = mediaQuery.orientation == Orientation.portrait;
-        final bool isMobile = Platform.isAndroid || Platform.isIOS;
         final bool hasContent = track != null || song != null;
-
-        final bool shouldAutoCollapse =
-            hasContent && isMobile && (isPortrait ? isCompactWidth : true);
-        _configureAutoCollapse(shouldAutoCollapse);
-
-        final String? trackKey;
-        if (track != null) {
-          final sourceName = track.source.name;
-          trackKey = 'track_${track.id}_$sourceName';
-        } else if (song != null) {
-          trackKey = 'song_${song.id}_${song.source.name}';
-        } else {
-          trackKey = null;
-        }
-        _handleTrackChange(trackKey);
 
         if (!hasContent) {
           return const SizedBox.shrink();
         }
 
         final colorScheme = Theme.of(context).colorScheme;
-        final Color? themeTint = PlayerService().themeColorNotifier.value;
-        final bool showCollapsed = _autoCollapseEnabled && _isCollapsed;
-
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _setBreathingActive(showCollapsed);
-        });
-
         final expanded = _buildExpandedPlayer(
           context: context,
           player: player,
           song: song,
           track: track,
           colorScheme: colorScheme,
-          themeTint: themeTint,
           isCompactWidth: isCompactWidth,
-          isPortrait: isPortrait,
         );
 
-        final collapsed = _buildCollapsedPlayer(
-          context: context,
-          song: song,
-          track: track,
-          colorScheme: colorScheme,
-          isCompactWidth: isCompactWidth,
-          isActive: showCollapsed,
-        );
-
-        return Listener(
-          onPointerDown: (_) => _handlePointerDown(),
-          onPointerUp: (_) => _resetCollapseTimer(),
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOutCubic,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              child: showCollapsed ? collapsed : GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                excludeFromSemantics: true,
-                onTap: () {
-                  if (_isSeeking || _shouldBlockOpenFullPlayerTap()) return;
-                  _resetCollapseTimer();
-                  _openFullPlayer(context);
-                },
-                child: expanded,
-              ),
-            ),
-          ),
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          excludeFromSemantics: true,
+          onTap: () {
+            if (_isSeeking || _shouldBlockOpenFullPlayerTap()) return;
+            _openFullPlayer(context);
+          },
+          child: expanded,
         );
       },
     );
@@ -442,7 +279,6 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
       _isSeeking = false;
       _seekRatio = null;
     });
-    _resetCollapseTimer();
   }
 
   void _onSeekCancel(PlayerService player) {
@@ -493,9 +329,7 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
     required dynamic song,
     required dynamic track,
     required ColorScheme colorScheme,
-    required Color? themeTint,
     required bool isCompactWidth,
-    required bool isPortrait,
   }) {
     final backgroundColor = colorScheme.surfaceContainerHighest;
     final progressBarTrackColor = colorScheme.surfaceContainerHighest;
@@ -979,95 +813,6 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
           ],
         );
       },
-    );
-  }
-
-  Widget _buildCollapsedPlayer({
-    required BuildContext context,
-    required dynamic song,
-    required dynamic track,
-    required ColorScheme colorScheme,
-    required bool isCompactWidth,
-    required bool isActive,
-  }) {
-    final margin = isCompactWidth ? const EdgeInsets.fromLTRB(12, 8, 12, 8) : EdgeInsets.zero;
-    final cover = _buildCover(song, track, colorScheme, size: 64);
-
-    final backgroundColor = colorScheme.surface;
-
-    if (!isActive) {
-      return Container(
-        key: const ValueKey('mini_collapsed'),
-        margin: margin,
-        alignment: Alignment.bottomLeft,
-        child: GestureDetector(
-          onTap: () => _resetCollapseTimer(expand: true),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: backgroundColor,
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.12),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: cover,
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      key: const ValueKey('mini_collapsed'),
-      margin: margin,
-      alignment: Alignment.bottomLeft,
-      child: GestureDetector(
-        onTap: () => _resetCollapseTimer(expand: true),
-        child: AnimatedBuilder(
-          animation: _breathingController ?? kAlwaysCompleteAnimation,
-          child: cover,
-          builder: (context, child) {
-            final controller = _breathingController;
-            final scaleAnim = _breathingScale;
-            final t = controller?.value ?? 1.0;
-            final scale = scaleAnim?.value ?? 1.0;
-            final glowColor = colorScheme.primary.withOpacity(
-              ui.lerpDouble(0.35, 0.6, t) ?? 0.45,
-            );
-            final blur = ui.lerpDouble(18, 32, t) ?? 24;
-            final spread = ui.lerpDouble(3, 10, t) ?? 6;
-
-            return Transform.scale(
-              scale: scale,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  boxShadow: [
-                    BoxShadow(
-                      color: glowColor,
-                      blurRadius: blur,
-                      spreadRadius: spread,
-                    ),
-                  ],
-                ),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: colorScheme.primary
-                          .withOpacity(ui.lerpDouble(0.25, 0.4, t) ?? 0.3),
-                    ),
-                    color: backgroundColor,
-                  ),
-                  child: child,
-                ),
-              ),
-            );
-          },
-        ),
-      ),
     );
   }
 
