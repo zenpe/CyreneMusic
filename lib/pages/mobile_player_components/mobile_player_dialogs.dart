@@ -6,6 +6,7 @@ import '../../services/playlist_service.dart';
 import '../../services/playlist_queue_service.dart';
 import '../../services/play_history_service.dart';
 import '../../services/player_service.dart';
+import '../../utils/image_utils.dart';
 import '../../models/track.dart';
 import '../../widgets/track_action_menu.dart';
 
@@ -464,6 +465,7 @@ class MobilePlayerDialogs {
     if (isNetwork) {
       return CachedNetworkImage(
         imageUrl: imageUrl,
+        httpHeaders: getImageHeaders(imageUrl),
         width: 48,
         height: 48,
         fit: BoxFit.cover,

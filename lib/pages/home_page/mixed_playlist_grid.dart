@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../utils/image_utils.dart';
 
 /// 雷达歌单网格 - 统一尺寸
 class MixedSizePlaylistGrid extends StatelessWidget {
@@ -79,7 +80,13 @@ class _MixedPlaylistCardState extends State<MixedPlaylistCard> {
                       AnimatedScale(
                         scale: _hovering ? 1.08 : 1.0,
                         duration: const Duration(milliseconds: 200),
-                        child: CachedNetworkImage(imageUrl: pic, fit: BoxFit.cover, memCacheWidth: 280, memCacheHeight: 280),
+                        child: CachedNetworkImage(
+                          imageUrl: pic,
+                          httpHeaders: getImageHeaders(pic),
+                          fit: BoxFit.cover,
+                          memCacheWidth: 280,
+                          memCacheHeight: 280,
+                        ),
                       ),
                       AnimatedOpacity(
                         opacity: _hovering ? 1.0 : 0.0,

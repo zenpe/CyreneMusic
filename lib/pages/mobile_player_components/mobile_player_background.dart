@@ -6,6 +6,7 @@ import '../../services/player_service.dart';
 import '../../services/player_background_service.dart';
 import '../../services/lyric_style_service.dart';
 import '../../services/color_extraction_service.dart';
+import '../../utils/image_utils.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/video_background_player.dart';
@@ -114,7 +115,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
 
     final song = PlayerService().currentSong;
     final track = PlayerService().currentTrack;
-    final imageUrl = song?.pic ?? track?.picUrl ?? '';
+    final imageUrl = PlayerService().currentCoverUrl ?? '';
 
     if (imageUrl.isEmpty || imageUrl == _currentImageUrl) return;
     if (imageUrl == _lastScheduledImageUrl) return;
@@ -145,7 +146,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
 
     final song = PlayerService().currentSong;
     final track = PlayerService().currentTrack;
-    final imageUrl = song?.pic ?? track?.picUrl ?? '';
+    final imageUrl = PlayerService().currentCoverUrl ?? '';
 
     if (imageUrl.isEmpty || imageUrl == _currentThemeColorImageUrl) return;
     if (imageUrl == _lastScheduledThemeColorImageUrl) return;
@@ -303,14 +304,17 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
         if (imageProvider == null) {
             final currentSong = player.currentSong;
             final currentTrack = player.currentTrack;
-            final imageUrl = currentSong?.pic ?? currentTrack?.picUrl ?? song?.pic ?? track?.picUrl;
+            final imageUrl = player.currentCoverUrl ?? '';
             
-            if (imageUrl != null && imageUrl.isNotEmpty) {
-               if (imageUrl.startsWith('http')) {
-                 imageProvider = CachedNetworkImageProvider(imageUrl);
-               } else {
-                 imageProvider = FileImage(File(imageUrl));
-               }
+             if (imageUrl != null && imageUrl.isNotEmpty) {
+                if (imageUrl.startsWith('http')) {
+                 imageProvider = CachedNetworkImageProvider(
+                   imageUrl,
+                   headers: getImageHeaders(imageUrl),
+                 );
+                } else {
+                  imageProvider = FileImage(File(imageUrl));
+                }
             }
         }
 
@@ -333,7 +337,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
       builder: (context, _) {
         final currentSong = PlayerService().currentSong;
         final currentTrack = PlayerService().currentTrack;
-        final imageUrl = currentSong?.pic ?? currentTrack?.picUrl ?? '';
+        final imageUrl = PlayerService().currentCoverUrl ?? '';
         
         // 如果图片URL变化，触发主题色提取
         if (imageUrl.isNotEmpty && imageUrl != _currentThemeColorImageUrl) {
@@ -426,7 +430,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
       builder: (context, _) {
         final currentSong = PlayerService().currentSong;
         final currentTrack = PlayerService().currentTrack;
-        final imageUrl = currentSong?.pic ?? currentTrack?.picUrl ?? '';
+        final imageUrl = PlayerService().currentCoverUrl ?? '';
         
         // 如果图片URL变化，触发主题色提取
         if (imageUrl.isNotEmpty && imageUrl != _currentThemeColorImageUrl) {
@@ -539,6 +543,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
     if (isNetwork) {
       return CachedNetworkImage(
         imageUrl: imageUrl,
+        httpHeaders: getImageHeaders(imageUrl),
         fit: BoxFit.cover,
         memCacheWidth: 1080,
         memCacheHeight: 1080,

@@ -8,6 +8,7 @@ import '../../services/player_service.dart';
 import '../../services/playlist_service.dart';
 import '../../services/netease_artist_service.dart';
 import '../../utils/theme_manager.dart';
+import '../../utils/image_utils.dart';
 import '../../models/lyric_line.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
@@ -456,7 +457,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
     final player = PlayerService();
     final track = player.currentTrack;
     // ✅ 关键修复：使用 PlayerService 的封面 URL 和 Provider，避免详情加载导致重新请求
-    final imageUrl = player.currentCoverUrl ?? track?.picUrl ?? '';
+    final imageUrl = player.currentCoverUrl ?? '';
     final coverProvider = player.currentCoverImageProvider;
 
     // 获取折叠动画值
@@ -1074,6 +1075,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
       return CachedNetworkImage(
         key: ValueKey(imageUrl),
         imageUrl: imageUrl,
+        httpHeaders: getImageHeaders(imageUrl),
         fit: BoxFit.cover,
         memCacheWidth: 1024,
         memCacheHeight: 1024,

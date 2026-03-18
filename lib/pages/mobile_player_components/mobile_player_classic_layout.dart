@@ -147,7 +147,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
     // 复用现有逻辑获取封面URL
     final song = player.currentSong;
     final track = player.currentTrack;
-    final picUrl = song?.pic ?? track?.picUrl;
+    final picUrl = player.currentCoverUrl;
 
     if (picUrl == null || picUrl.isEmpty) {
       return Container(

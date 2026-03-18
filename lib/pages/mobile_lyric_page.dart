@@ -5,6 +5,7 @@ import 'dart:ui'; // 导入 ImageFilter
 import '../services/player_service.dart';
 import '../services/lyric_style_service.dart';
 import '../models/lyric_line.dart';
+import '../utils/image_utils.dart';
 import '../utils/lyric_parser.dart';
 import 'mobile_player_components/mobile_player_fluid_cloud_lyric.dart';
 
@@ -212,7 +213,7 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
     final player = PlayerService();
     final song = player.currentSong;
     final track = player.currentTrack;
-    final picUrl = song?.pic ?? track?.picUrl ?? '';
+    final picUrl = player.currentCoverUrl ?? '';
 
     // 歌词页面始终使用深色背景，状态栏图标应为浅色
     const lyricOverlayStyle = SystemUiOverlayStyle(
@@ -232,6 +233,7 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
             Positioned.fill(
               child: CachedNetworkImage(
                 imageUrl: picUrl,
+                httpHeaders: getImageHeaders(picUrl),
                 fit: BoxFit.cover,
                 imageBuilder: (context, imageProvider) => Container(
                   decoration: BoxDecoration(

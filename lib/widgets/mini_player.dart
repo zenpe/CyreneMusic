@@ -11,6 +11,7 @@ import '../services/system_volume_service.dart';
 import '../services/playback_mode_service.dart';
 import '../models/track.dart';
 import '../utils/theme_manager.dart';
+import '../utils/image_utils.dart';
 import 'track_action_menu.dart';
 
 /// 迷你播放器组件（底部播放栏）
@@ -919,22 +920,44 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
   /// 构建封面
   Widget _buildCover(dynamic song, dynamic track, ColorScheme colorScheme, {double size = 48}) {
-    final imageUrl = song?.pic ?? track?.picUrl ?? '';
+    final imageUrl = _resolveCoverUrl(song, track);
+    final provider = PlayerService().currentCoverImageProvider;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
-      child: imageUrl.isNotEmpty
-          ? _optimizedCover(imageUrl, size, colorScheme)
-          : Container(
+      child: provider != null
+          ? Image(
+              image: provider,
               width: size,
               height: size,
-              color: colorScheme.surfaceContainerHighest,
-              child: Icon(
-                Icons.music_note,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
+              fit: BoxFit.cover,
+            )
+          : imageUrl.isNotEmpty
+              ? _optimizedCover(imageUrl, size, colorScheme)
+              : Container(
+                  width: size,
+                  height: size,
+                  color: colorScheme.surfaceContainerHighest,
+                  child: Icon(
+                    Icons.music_note,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
     );
+  }
+
+  String _resolveCoverUrl(dynamic song, dynamic track) {
+    final songPic = song?.pic;
+    if (songPic is String && songPic.isNotEmpty) {
+      return songPic;
+    }
+
+    final trackPic = track?.picUrl;
+    if (trackPic is String && trackPic.isNotEmpty) {
+      return trackPic;
+    }
+
+    return '';
   }
 
   Widget _optimizedCover(String imageUrl, double size, ColorScheme colorScheme) {
@@ -971,6 +994,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
     return CachedNetworkImage(
       imageUrl: imageUrl,
+      httpHeaders: getImageHeaders(imageUrl),
       width: size,
       height: size,
       memCacheWidth: 128,
@@ -1757,6 +1781,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
                                   ? CachedNetworkImage(
                                       imageUrl: t.picUrl,
+                                      httpHeaders: getImageHeaders(t.picUrl),
                                       memCacheWidth: 128,
                                       memCacheHeight: 128,
                                       imageBuilder: (context, imageProvider) {
@@ -1921,6 +1946,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                     child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
                                                         ? CachedNetworkImage(
                                                             imageUrl: t.picUrl,
+                                                            httpHeaders: getImageHeaders(t.picUrl),
                                                             memCacheWidth: 128,
                                                             memCacheHeight: 128,
                                                             imageBuilder: (context, imageProvider) {
@@ -2063,6 +2089,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                       child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
                                                           ? CachedNetworkImage(
                                                               imageUrl: t.picUrl,
+                                                              httpHeaders: getImageHeaders(t.picUrl),
                                                               memCacheWidth: 128,
                                                               memCacheHeight: 128,
                                                               imageBuilder: (context, imageProvider) {
@@ -2220,6 +2247,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                             child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
                                               ? CachedNetworkImage(
                                                   imageUrl: t.picUrl,
+                                                  httpHeaders: getImageHeaders(t.picUrl),
                                                   memCacheWidth: 128,
                                                   memCacheHeight: 128,
                                                   imageBuilder: (context, imageProvider) {
@@ -2329,6 +2357,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                             child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
                                               ? CachedNetworkImage(
                                                   imageUrl: t.picUrl,
+                                                  httpHeaders: getImageHeaders(t.picUrl),
                                                   memCacheWidth: 128,
                                                   memCacheHeight: 128,
                                                   imageBuilder: (context, imageProvider) {

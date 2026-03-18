@@ -7,6 +7,7 @@ import '../../services/music_service.dart';
 import '../../services/play_history_service.dart';
 import '../../services/player_service.dart';
 import '../../utils/theme_manager.dart';
+import '../../utils/image_utils.dart';
 import '../skeleton_loader.dart';
 
 /// iOS 风格的分段控制器（替代胶囊 Tabs）
@@ -193,6 +194,7 @@ class CupertinoTrackBannerCard extends StatelessWidget {
               // 封面图片
               CachedNetworkImage(
                 imageUrl: track.picUrl,
+                httpHeaders: getImageHeaders(track.picUrl),
                 fit: BoxFit.cover,
                 memCacheWidth: 280,
                 memCacheHeight: 280,
@@ -463,23 +465,33 @@ class CupertinoHistorySection extends StatelessWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: CachedNetworkImage(
-                      imageUrl: history.first.picUrl,
-                      width: 60,
+                   ClipRRect(
+                     borderRadius: BorderRadius.circular(8),
+                     child: CachedNetworkImage(
+                       imageUrl: history.first.picUrl,
+                       httpHeaders: getImageHeaders(history.first.picUrl),
+                       width: 60,
                       height: 60,
                       fit: BoxFit.cover,
                       memCacheWidth: 128,
                       memCacheHeight: 128,
-                      placeholder: (context, url) => Container(
-                        width: 60,
-                        height: 60,
-                        color: CupertinoColors.systemGrey6,
-                        child: const CupertinoActivityIndicator(),
-                      ),
-                    ),
-                  ),
+                       placeholder: (context, url) => Container(
+                         width: 60,
+                         height: 60,
+                         color: CupertinoColors.systemGrey6,
+                         child: const CupertinoActivityIndicator(),
+                        ),
+                       errorWidget: (context, url, error) => Container(
+                         width: 60,
+                         height: 60,
+                         color: CupertinoColors.systemGrey6,
+                         child: const Icon(
+                           CupertinoIcons.music_note,
+                           color: CupertinoColors.systemGrey,
+                         ),
+                       ),
+                     ),
+                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -601,17 +613,33 @@ class CupertinoGuessYouLikeSection extends StatelessWidget {
 
         return Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: CachedNetworkImage(
-                imageUrl: sampleTracks.first.picUrl,
-                width: 60,
-                height: 60,
-                fit: BoxFit.cover,
-                memCacheWidth: 128,
-                memCacheHeight: 128,
-              ),
-            ),
+             ClipRRect(
+               borderRadius: BorderRadius.circular(8),
+               child: CachedNetworkImage(
+                 imageUrl: sampleTracks.first.picUrl,
+                 httpHeaders: getImageHeaders(sampleTracks.first.picUrl),
+                 width: 60,
+                 height: 60,
+                 fit: BoxFit.cover,
+                 memCacheWidth: 128,
+                 memCacheHeight: 128,
+                 placeholder: (context, url) => Container(
+                   width: 60,
+                   height: 60,
+                   color: CupertinoColors.systemGrey6,
+                   child: const CupertinoActivityIndicator(),
+                 ),
+                 errorWidget: (context, url, error) => Container(
+                   width: 60,
+                   height: 60,
+                   color: CupertinoColors.systemGrey6,
+                   child: const Icon(
+                     CupertinoIcons.music_note,
+                     color: CupertinoColors.systemGrey,
+                   ),
+                 ),
+               ),
+             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -792,6 +820,7 @@ class CupertinoToplistsGrid extends StatelessWidget {
                       ),
                       child: CachedNetworkImage(
                         imageUrl: track.picUrl,
+                        httpHeaders: getImageHeaders(track.picUrl),
                         width: coverSize,
                         height: coverSize,
                         fit: BoxFit.cover,

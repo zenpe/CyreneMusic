@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/toplist.dart';
+import '../utils/image_utils.dart';
 
 /// 榜单卡片组件
 class ToplistCard extends StatelessWidget {
@@ -33,6 +34,7 @@ class ToplistCard extends StatelessWidget {
                 children: [
                   CachedNetworkImage(
                     imageUrl: toplist.coverImgUrl,
+                    httpHeaders: getImageHeaders(toplist.coverImgUrl),
                     fit: BoxFit.cover,
                     memCacheWidth: 280,
                     memCacheHeight: 280,

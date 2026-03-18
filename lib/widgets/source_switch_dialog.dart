@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/track.dart';
 import '../models/playlist.dart';
 import '../services/track_source_switch_service.dart';
+import '../utils/image_utils.dart';
 import '../utils/theme_manager.dart';
 
 /// 换源选择对话框 - 第一步：选择平台和歌曲
@@ -255,6 +256,7 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                           borderRadius: BorderRadius.circular(4),
                           child: CachedNetworkImage(
                             imageUrl: track.picUrl,
+                            httpHeaders: getImageHeaders(track.picUrl),
                             width: 40,
                             height: 40,
                             memCacheWidth: 128,
@@ -463,6 +465,7 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                               borderRadius: BorderRadius.circular(4),
                               child: CachedNetworkImage(
                                 imageUrl: track.picUrl,
+                                httpHeaders: getImageHeaders(track.picUrl),
                                 width: 40,
                                 height: 40,
                                 memCacheWidth: 128,
@@ -904,6 +907,7 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                   borderRadius: BorderRadius.circular(4),
                   child: CachedNetworkImage(
                     imageUrl: original.picUrl,
+                    httpHeaders: getImageHeaders(original.picUrl),
                     width: 48,
                     height: 48,
                     memCacheWidth: 128,
@@ -1005,6 +1009,7 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                     borderRadius: BorderRadius.circular(4),
                     child: CachedNetworkImage(
                       imageUrl: track.picUrl,
+                      httpHeaders: getImageHeaders(track.picUrl),
                       width: 40,
                       height: 40,
                       memCacheWidth: 128,
@@ -1177,6 +1182,7 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                   borderRadius: BorderRadius.circular(4),
                   child: CachedNetworkImage(
                     imageUrl: original.picUrl,
+                    httpHeaders: getImageHeaders(original.picUrl),
                     width: 48,
                     height: 48,
                     memCacheWidth: 128,
@@ -1285,6 +1291,7 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                     borderRadius: BorderRadius.circular(4),
                     child: CachedNetworkImage(
                       imageUrl: track.picUrl,
+                      httpHeaders: getImageHeaders(track.picUrl),
                       width: 40,
                       height: 40,
                       memCacheWidth: 128,

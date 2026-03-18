@@ -9,6 +9,7 @@ import '../services/desktop_lyric_service.dart';
 import '../services/player_service.dart';
 import '../services/mini_player_window_service.dart';
 import '../services/playlist_queue_service.dart';
+import '../utils/image_utils.dart';
 
 /// 迷你播放器窗口页面
 /// 类似 Apple Music 的迷你播放器
@@ -365,7 +366,7 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
         );
 
         // 获取封面URL
-        final coverUrl = song?.pic ?? track?.picUrl ?? '';
+        final coverUrl = PlayerService().currentCoverUrl ?? '';
 
         return ValueListenableBuilder<Color?>(
           valueListenable: PlayerService().themeColorNotifier,
@@ -535,6 +536,7 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
 
     return CachedNetworkImage(
       imageUrl: t.picUrl,
+      httpHeaders: getImageHeaders(t.picUrl),
       imageBuilder: (context, imageProvider) {
         PlaylistQueueService().updateCoverProvider(t, imageProvider);
         return Image(image: imageProvider, width: 44, height: 44, fit: BoxFit.cover);
@@ -562,6 +564,7 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
         if (coverUrl.isNotEmpty)
           CachedNetworkImage(
             imageUrl: coverUrl,
+            httpHeaders: getImageHeaders(coverUrl),
             fit: BoxFit.cover,
             memCacheWidth: 1080,
             memCacheHeight: 1080,
@@ -620,6 +623,7 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
             child: coverUrl.isNotEmpty
                 ? CachedNetworkImage(
                     imageUrl: coverUrl,
+                    httpHeaders: getImageHeaders(coverUrl),
                     fit: BoxFit.cover,
                     placeholder: (_, __) => Container(
                       color: Colors.grey[700],

@@ -7,6 +7,7 @@ import '../../models/toplist.dart';
 import '../../services/player_service.dart';
 import '../../services/music_service.dart';
 import '../../utils/theme_manager.dart';
+import '../../utils/image_utils.dart';
 import 'home_widgets.dart';
 import 'toplist_detail.dart';
 import '../../widgets/skeleton_loader.dart';
@@ -284,16 +285,26 @@ class _FeaturedCardState extends State<_FeaturedCard> {
                   scale: _isHovering ? 1.1 : 1.0,
                   duration: const Duration(milliseconds: 700),
                   curve: Curves.easeOutCubic,
-                  child: CachedNetworkImage(
-                    imageUrl: widget.track.picUrl,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 280,
-                    memCacheHeight: 280,
-                    placeholder: (context, url) => Container(
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                ),
+                    child: CachedNetworkImage(
+                      imageUrl: widget.track.picUrl,
+                      httpHeaders: getImageHeaders(widget.track.picUrl),
+                      fit: BoxFit.cover,
+                     memCacheWidth: 280,
+                     memCacheHeight: 280,
+                     placeholder: (context, url) => Container(
+                       color: Colors.grey[800],
+                     ),
+                     errorWidget: (context, url, error) => Container(
+                       color: Colors.grey[800],
+                       alignment: Alignment.center,
+                       child: const Icon(
+                         Icons.music_note,
+                         color: Colors.white54,
+                         size: 40,
+                       ),
+                     ),
+                   ),
+                 ),
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -509,13 +520,26 @@ class _ToplistTrackCardState extends State<_ToplistTrackCard> {
                       child: AnimatedScale(
                         scale: _isHovering ? 1.05 : 1.0,
                         duration: const Duration(milliseconds: 200),
-                        child: CachedNetworkImage(
-                          imageUrl: widget.track.picUrl,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 280,
-                          memCacheHeight: 280,
-                        ),
-                      ),
+                       child: CachedNetworkImage(
+                         imageUrl: widget.track.picUrl,
+                         httpHeaders: getImageHeaders(widget.track.picUrl),
+                         fit: BoxFit.cover,
+                         memCacheWidth: 280,
+                         memCacheHeight: 280,
+                         placeholder: (context, url) => Container(
+                           color: theme.colorScheme.surfaceContainerHighest,
+                         ),
+                         errorWidget: (context, url, error) => Container(
+                           color: theme.colorScheme.surfaceContainerHighest,
+                           alignment: Alignment.center,
+                           child: Icon(
+                             Icons.music_note,
+                             color: theme.colorScheme.onSurfaceVariant,
+                             size: 36,
+                           ),
+                         ),
+                       ),
+                     ),
                     ),
                     Positioned(
                       top: 4,

@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/track.dart';
 import '../services/playlist_service.dart';
 import '../services/playback/playback_service.dart';
+import '../utils/image_utils.dart';
 import '../utils/theme_manager.dart';
 
 
@@ -80,6 +81,7 @@ class TrackActionMenu {
                 borderRadius: BorderRadius.circular(6),
                 child: CachedNetworkImage(
                   imageUrl: track.picUrl,
+                  httpHeaders: getImageHeaders(track.picUrl),
                   width: 48,
                   height: 48,
                   memCacheWidth: 128,
@@ -353,6 +355,7 @@ class TrackActionMenu {
                         borderRadius: BorderRadius.circular(16),
                         child: CachedNetworkImage(
                           imageUrl: track.picUrl,
+                          httpHeaders: getImageHeaders(track.picUrl),
                           memCacheWidth: 200,
                           memCacheHeight: 200,
                           fit: BoxFit.cover,
@@ -557,6 +560,7 @@ class TrackActionMenu {
                   borderRadius: BorderRadius.circular(8),
                   child: CachedNetworkImage(
                     imageUrl: track.picUrl,
+                    httpHeaders: getImageHeaders(track.picUrl),
                     width: 48,
                     height: 48,
                     memCacheWidth: 128,

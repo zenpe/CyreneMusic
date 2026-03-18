@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/player_background_service.dart';
 import '../../services/player_service.dart';
 import '../../services/color_extraction_service.dart';
+import '../../utils/image_utils.dart';
 import '../../widgets/video_background_player.dart';
 import '../../widgets/flowing_light_background.dart';
 
@@ -210,14 +211,17 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
         if (imageProvider == null) {
             final song = player.currentSong;
             final track = player.currentTrack;
-            final imageUrl = song?.pic ?? track?.picUrl;
+            final imageUrl = player.currentCoverUrl;
             
-            if (imageUrl != null && imageUrl.isNotEmpty) {
-               if (imageUrl.startsWith('http')) {
-                 imageProvider = CachedNetworkImageProvider(imageUrl);
-               } else {
-                 imageProvider = FileImage(File(imageUrl));
-               }
+             if (imageUrl != null && imageUrl.isNotEmpty) {
+                if (imageUrl.startsWith('http')) {
+                 imageProvider = CachedNetworkImageProvider(
+                   imageUrl,
+                   headers: getImageHeaders(imageUrl),
+                 );
+                } else {
+                  imageProvider = FileImage(File(imageUrl));
+                }
             }
         }
 
@@ -242,7 +246,7 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
       builder: (context, _) {
         final song = PlayerService().currentSong;
         final track = PlayerService().currentTrack;
-        final imageUrl = song?.pic ?? track?.picUrl ?? '';
+        final imageUrl = PlayerService().currentCoverUrl ?? '';
         
         return ValueListenableBuilder<Color?>(
           valueListenable: PlayerService().themeColorNotifier,
@@ -365,6 +369,7 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
     if (isNetwork) {
       return CachedNetworkImage(
         imageUrl: imageUrl,
+        httpHeaders: getImageHeaders(imageUrl),
         fit: BoxFit.cover,
         width: fullCover ? double.infinity : null,
         height: fullCover ? double.infinity : null,

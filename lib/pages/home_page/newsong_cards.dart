@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/player_service.dart';
 import '../../services/playlist_queue_service.dart';
+import '../../utils/image_utils.dart';
 import 'hero_section.dart'; // 复用 convertToTrack 函数
 
 /// 新歌卡片网格
@@ -89,7 +90,13 @@ class _NewsongCardState extends State<NewsongCard> {
                         scale: _hovering ? 1.05 : 1.0,
                         duration: const Duration(milliseconds: 200),
                         child: SizedBox.expand(
-                          child: CachedNetworkImage(imageUrl: pic, fit: BoxFit.cover, memCacheWidth: 280, memCacheHeight: 280),
+                          child: CachedNetworkImage(
+                            imageUrl: pic,
+                            httpHeaders: getImageHeaders(pic),
+                            fit: BoxFit.cover,
+                            memCacheWidth: 280,
+                            memCacheHeight: 280,
+                          ),
                         ),
                       ),
                       if (_hovering)

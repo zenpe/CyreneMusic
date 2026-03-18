@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../utils/image_utils.dart';
 
 /// 横向滚动歌单 - Microsoft Store 风格
 class HorizontalPlaylistCarousel extends StatelessWidget {
@@ -81,7 +82,13 @@ class _CarouselPlaylistCardState extends State<CarouselPlaylistCard> {
                       AnimatedScale(
                         scale: _hovering ? 1.05 : 1.0,
                         duration: const Duration(milliseconds: 200),
-                        child: CachedNetworkImage(imageUrl: pic, fit: BoxFit.cover, memCacheWidth: 280, memCacheHeight: 280),
+                        child: CachedNetworkImage(
+                          imageUrl: pic,
+                          httpHeaders: getImageHeaders(pic),
+                          fit: BoxFit.cover,
+                          memCacheWidth: 280,
+                          memCacheHeight: 280,
+                        ),
                       ),
                       // 播放按钮
                       Center(

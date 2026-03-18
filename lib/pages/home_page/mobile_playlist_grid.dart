@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../utils/image_utils.dart';
 import '../../utils/theme_manager.dart';
 
 /// 歌单网格（移动端）
@@ -107,6 +108,7 @@ class _MobileHoverPlaylistCardState extends State<MobileHoverPlaylistCard> {
                                   tag: 'playlist_cover_${widget.id}',
                                   child: CachedNetworkImage(
                                     imageUrl: widget.picUrl,
+                                    httpHeaders: getImageHeaders(widget.picUrl),
                                     fit: BoxFit.cover,
                                     memCacheWidth: 280,
                                     memCacheHeight: 280,
@@ -215,6 +217,7 @@ class _MobileHoverPlaylistCardState extends State<MobileHoverPlaylistCard> {
                             tag: 'playlist_cover_${widget.id}',
                             child: CachedNetworkImage(
                               imageUrl: widget.picUrl,
+                              httpHeaders: getImageHeaders(widget.picUrl),
                               fit: BoxFit.cover,
                               memCacheWidth: 280,
                               memCacheHeight: 280,

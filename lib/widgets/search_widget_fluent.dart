@@ -209,6 +209,7 @@ extension _SearchWidgetFluent on _SearchWidgetState {
                           )
                         : CachedNetworkImage(
                             imageUrl: artist.picUrl,
+                            httpHeaders: getImageHeaders(artist.picUrl),
                             width: 64,
                             height: 64,
                             memCacheWidth: 128,

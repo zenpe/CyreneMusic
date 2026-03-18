@@ -5,6 +5,7 @@ import '../../services/player_service.dart';
 import '../../services/playlist_queue_service.dart';
 import '../../services/playback/playback_service.dart';
 import '../../services/netease_artist_service.dart';
+import '../../utils/image_utils.dart';
 import '../../models/track.dart';
 import '../../widgets/track_action_menu.dart';
 
@@ -312,6 +313,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                     borderRadius: BorderRadius.circular(6),
                     child: CachedNetworkImage(
                       imageUrl: track.picUrl,
+                      httpHeaders: getImageHeaders(track.picUrl),
                       width: 44,
                       height: 44,
                       fit: BoxFit.cover,
@@ -427,6 +429,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                     borderRadius: BorderRadius.circular(5),
                     child: CachedNetworkImage(
                       imageUrl: track.picUrl,
+                      httpHeaders: getImageHeaders(track.picUrl),
                       width: 40,
                       height: 40,
                       fit: BoxFit.cover,

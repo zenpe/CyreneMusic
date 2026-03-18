@@ -6,6 +6,7 @@ import 'package:cyrene_music/services/play_history_service.dart';
 import 'package:cyrene_music/services/player_service.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
+import '../../utils/image_utils.dart';
 import '../../utils/page_visibility_notifier.dart';
 import '../../utils/theme_manager.dart';
 
@@ -130,6 +131,7 @@ class TrackBannerCard extends StatelessWidget {
             // 封面图片
             CachedNetworkImage(
               imageUrl: track.picUrl,
+              httpHeaders: getImageHeaders(track.picUrl),
               fit: BoxFit.cover,
               memCacheWidth: 280,
               memCacheHeight: 280,
@@ -467,6 +469,7 @@ class HistorySection extends StatelessWidget {
                           borderRadius: BorderRadius.circular(16),
                           child: CachedNetworkImage(
                             imageUrl: history.first.picUrl,
+                            httpHeaders: getImageHeaders(history.first.picUrl),
                             width: 88,
                             height: 88,
                             fit: BoxFit.cover,
@@ -576,6 +579,7 @@ class HistorySection extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                     child: CachedNetworkImage(
                       imageUrl: history.first.picUrl,
+                      httpHeaders: getImageHeaders(history.first.picUrl),
                       width: 64,
                       height: 64,
                       fit: BoxFit.cover,
@@ -798,6 +802,7 @@ class GuessYouLikeSection extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                     child: CachedNetworkImage(
                       imageUrl: sampleTracks.first.picUrl,
+                      httpHeaders: getImageHeaders(sampleTracks.first.picUrl),
                       width: 88,
                       height: 88,
                       fit: BoxFit.cover,
@@ -899,6 +904,7 @@ class GuessYouLikeSection extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               child: CachedNetworkImage(
                 imageUrl: sampleTracks.first.picUrl,
+                httpHeaders: getImageHeaders(sampleTracks.first.picUrl),
                 width: 64,
                 height: 64,
                 fit: BoxFit.cover,
@@ -1124,6 +1130,7 @@ class ToplistsGrid extends StatelessWidget {
                             curve: Curves.easeOut,
                             child: CachedNetworkImage(
                               imageUrl: track.picUrl,
+                              httpHeaders: getImageHeaders(track.picUrl),
                               width: coverSize,
                               height: coverSize,
                               fit: BoxFit.cover,

@@ -7,6 +7,7 @@ import 'package:flutter_acrylic/flutter_acrylic.dart';
 import '../../services/player_service.dart';
 import '../../services/playlist_queue_service.dart';
 import '../../models/track.dart';
+import '../../utils/image_utils.dart';
 import '../../utils/theme_manager.dart';
 
 /// 每日推荐详情页
@@ -571,6 +572,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(14),
                         child: CachedNetworkImage(
                           imageUrl: picUrl,
+                          httpHeaders: getImageHeaders(picUrl),
                           width: 56,
                           height: 56,
                           memCacheWidth: 128,
@@ -718,6 +720,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 child: CachedNetworkImage(
                   imageUrl: picUrl,
+                  httpHeaders: getImageHeaders(picUrl),
                   width: 56,
                   height: 56,
                   memCacheWidth: 128,
@@ -1140,6 +1143,7 @@ class _FluentDailyRecommendPage extends StatelessWidget {
             )
           : CachedNetworkImage(
               imageUrl: picUrl,
+              httpHeaders: getImageHeaders(picUrl),
               width: 48,
               height: 48,
               memCacheWidth: 128,

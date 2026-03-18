@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../../services/player_service.dart';
 import '../../services/player_background_service.dart';
+import '../../utils/image_utils.dart';
 import '../../utils/theme_manager.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
@@ -112,6 +113,7 @@ class PlayerSongInfo extends StatelessWidget {
 
     return CachedNetworkImage(
       imageUrl: imageUrl,
+      httpHeaders: getImageHeaders(imageUrl),
       fit: BoxFit.cover,
       memCacheWidth: 1080,
       memCacheHeight: 1080,

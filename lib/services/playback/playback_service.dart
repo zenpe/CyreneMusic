@@ -15,6 +15,7 @@ import '../../models/lyric_line.dart';
 import '../../utils/lyric_parser.dart';
 import '../../utils/toast_utils.dart';
 import '../../utils/metadata_reader.dart';
+import '../../utils/image_utils.dart';
 import '../music_service.dart';
 import '../audio_source_service.dart';
 import '../cache_service.dart';
@@ -1322,7 +1323,10 @@ class PlaybackService extends ChangeNotifier {
       if (nextTrack == null || nextTrack.picUrl.isEmpty) return;
       final url = nextTrack.picUrl;
       if (!url.startsWith('http')) return;
-      final provider = CachedNetworkImageProvider(url);
+      final provider = CachedNetworkImageProvider(
+        url,
+        headers: getImageHeaders(url),
+      );
       final stream = provider.resolve(ImageConfiguration.empty);
       late ImageStreamListener listener;
       listener = ImageStreamListener((_, __) {

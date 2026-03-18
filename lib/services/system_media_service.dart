@@ -287,7 +287,7 @@ class SystemMediaService {
     final title = song?.name ?? track?.name ?? '未知歌曲';
     final artist = song?.arName ?? track?.artists ?? '未知艺术家';
     final album = song?.alName ?? track?.album ?? '未知专辑';
-    var thumbnail = song?.pic ?? track?.picUrl ?? '';
+    var thumbnail = PlayerService().currentCoverUrl ?? '';
     
     // 确保使用 HTTPS 协议（SMTC 要求）
     if (thumbnail.startsWith('http://')) {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/player_background_service.dart';
 import '../../services/player_service.dart';
+import '../../utils/image_utils.dart';
 import '../../widgets/video_background_player.dart';
 
 /// 播放器背景组件
@@ -57,7 +58,7 @@ class PlayerBackground extends StatelessWidget {
   Widget _buildCoverGradientBackground(Color greyColor) {
     final song = PlayerService().currentSong;
     final track = PlayerService().currentTrack;
-    final imageUrl = song?.pic ?? track?.picUrl ?? '';
+    final imageUrl = PlayerService().currentCoverUrl ?? '';
     
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
@@ -88,6 +89,7 @@ class PlayerBackground extends StatelessWidget {
                         // 封面图片
                         CachedNetworkImage(
                           imageUrl: imageUrl,
+                          httpHeaders: getImageHeaders(imageUrl),
                           fit: BoxFit.cover,
                           memCacheWidth: 1080,
                           memCacheHeight: 1080,

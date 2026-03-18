@@ -15,6 +15,7 @@ import '../pages/album_detail_page.dart';
 import '../services/player_service.dart';
 import '../features/auth/auth_feature.dart';
 import '../pages/auth/auth_page.dart';
+import '../utils/image_utils.dart';
 import '../utils/theme_manager.dart';
 import 'track_action_menu.dart';
 

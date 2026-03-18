@@ -147,7 +147,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
 
   Widget _buildSongInfo(BuildContext context, Track? track) {
     final player = PlayerService();
-    final imageUrl = player.currentCoverUrl ?? track?.picUrl ?? '';
+    final imageUrl = player.currentCoverUrl ?? '';
     final coverProvider = player.currentCoverImageProvider;
 
     return Row(

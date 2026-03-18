@@ -60,7 +60,24 @@ class PlayerService extends ChangeNotifier {
   bool get hasPrevious => _pb.hasPrevious;
 
   ImageProvider? get currentCoverImageProvider => _pb.coverManager.currentCover;
-  String? get currentCoverUrl => _pb.coverManager.currentUrl;
+  String? get currentCoverUrl {
+    final coverUrl = _pb.coverManager.currentUrl;
+    if (coverUrl != null && coverUrl.isNotEmpty) {
+      return coverUrl;
+    }
+
+    final songPic = _pb.currentSong?.pic;
+    if (songPic != null && songPic.isNotEmpty) {
+      return songPic;
+    }
+
+    final trackPic = _pb.currentTrack?.picUrl;
+    if (trackPic != null && trackPic.isNotEmpty) {
+      return trackPic;
+    }
+
+    return null;
+  }
   ValueNotifier<Color?> get themeColorNotifier => _pb.coverManager.themeColorNotifier;
   ValueNotifier<Duration> get positionNotifier => _pb.positionNotifier;
   ValueNotifier<Duration> get bufferedPositionNotifier =>

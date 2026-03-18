@@ -5,6 +5,7 @@ import '../../services/player_service.dart';
 import '../../services/playlist_queue_service.dart';
 import '../../services/play_history_service.dart';
 import '../../services/playback/playback_service.dart';
+import '../../utils/image_utils.dart';
 import '../../models/track.dart';
 import '../../widgets/track_action_menu.dart';
 
@@ -423,6 +424,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                 borderRadius: BorderRadius.circular(4),
                 child: CachedNetworkImage(
                   imageUrl: track.picUrl,
+                  httpHeaders: getImageHeaders(track.picUrl),
                   width: 50,
                   height: 50,
                   fit: BoxFit.cover,

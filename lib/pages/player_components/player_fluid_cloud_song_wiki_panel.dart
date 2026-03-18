@@ -7,6 +7,7 @@ import '../../services/song_memory_service.dart';
 import '../../services/netease_artist_service.dart';
 import '../../services/netease_discover_service.dart';
 import '../../services/playlist_queue_service.dart';
+import '../../utils/image_utils.dart';
 import '../../models/track.dart';
 import '../../models/netease_discover.dart';
 
@@ -667,6 +668,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                             ClipOval(
                               child: CachedNetworkImage(
                                 imageUrl: avatarUrl,
+                                httpHeaders: getImageHeaders(avatarUrl),
                                 width: 40,
                                 height: 40,
                                 fit: BoxFit.cover,
@@ -854,6 +856,9 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                       borderRadius: BorderRadius.circular(12),
                       child: CachedNetworkImage(
                         imageUrl: detail.coverImgUrl.replaceAll('http://', 'https://'),
+                        httpHeaders: getImageHeaders(
+                          detail.coverImgUrl.replaceAll('http://', 'https://'),
+                        ),
                         width: 140,
                         height: 140,
                         memCacheWidth: 280,
@@ -1033,6 +1038,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                 borderRadius: BorderRadius.circular(6),
                 child: CachedNetworkImage(
                   imageUrl: track.picUrl,
+                  httpHeaders: getImageHeaders(track.picUrl),
                   width: 44,
                   height: 44,
                   fit: BoxFit.cover,
@@ -1139,6 +1145,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                 borderRadius: BorderRadius.circular(8),
                 child: CachedNetworkImage(
                   imageUrl: song['imageUrl'] ?? '',
+                  httpHeaders: getImageHeaders(song['imageUrl'] ?? ''),
                   width: 52,
                   height: 52,
                   fit: BoxFit.cover,
@@ -1226,6 +1233,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                   borderRadius: BorderRadius.circular(6),
                   child: CachedNetworkImage(
                     imageUrl: track.picUrl,
+                    httpHeaders: getImageHeaders(track.picUrl),
                     width: 44,
                     height: 44,
                     fit: BoxFit.cover,
@@ -1304,6 +1312,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                   children: [
                     CachedNetworkImage(
                       imageUrl: playlist['imageUrl'] ?? '',
+                      httpHeaders: getImageHeaders(playlist['imageUrl'] ?? ''),
                       fit: BoxFit.cover,
                       memCacheWidth: 280,
                       memCacheHeight: 280,

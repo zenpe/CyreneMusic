@@ -462,6 +462,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     borderRadius: BorderRadius.circular(8),
                     child: CachedNetworkImage(
                       imageUrl: track.picUrl,
+                      httpHeaders: getImageHeaders(track.picUrl),
                       width: 64,
                       height: 64,
                       memCacheWidth: 128,
@@ -564,6 +565,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                   borderRadius: BorderRadius.circular(14),
                   child: CachedNetworkImage(
                     imageUrl: track.picUrl,
+                    httpHeaders: getImageHeaders(track.picUrl),
                     fit: BoxFit.cover,
                     memCacheWidth: 128,
                     memCacheHeight: 128,
@@ -634,7 +636,10 @@ extension _SearchWidgetShared on _SearchWidgetState {
     // 播放前注入封面 Provider，避免播放器再次请求
     ImageProvider? provider;
     if (track.picUrl.isNotEmpty) {
-      provider = CachedNetworkImageProvider(track.picUrl);
+      provider = CachedNetworkImageProvider(
+        track.picUrl,
+        headers: getImageHeaders(track.picUrl),
+      );
       PlayerService().setCurrentCoverImageProvider(provider);
     }
     PlayerService().playTrack(track, coverProvider: provider);
@@ -782,6 +787,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     )
                   : CachedNetworkImage(
                       imageUrl: artist.picUrl,
+                      httpHeaders: getImageHeaders(artist.picUrl),
                       fit: BoxFit.cover,
                       memCacheWidth: 128,
                       memCacheHeight: 128,
@@ -920,6 +926,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     borderRadius: BorderRadius.circular(8),
                     child: CachedNetworkImage(
                       imageUrl: mergedTrack.picUrl,
+                      httpHeaders: getImageHeaders(mergedTrack.picUrl),
                       width: 64,
                       height: 64,
                       memCacheWidth: 128,
@@ -1019,6 +1026,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                   borderRadius: BorderRadius.circular(14),
                   child: CachedNetworkImage(
                     imageUrl: mergedTrack.picUrl,
+                    httpHeaders: getImageHeaders(mergedTrack.picUrl),
                     fit: BoxFit.cover,
                     memCacheWidth: 128,
                     memCacheHeight: 128,
@@ -1092,7 +1100,10 @@ extension _SearchWidgetShared on _SearchWidgetState {
     // 播放前注入封面 Provider，避免播放器再次请求
     ImageProvider? provider;
     if (bestTrack.picUrl.isNotEmpty) {
-      provider = CachedNetworkImageProvider(bestTrack.picUrl);
+      provider = CachedNetworkImageProvider(
+        bestTrack.picUrl,
+        headers: getImageHeaders(bestTrack.picUrl),
+      );
       PlayerService().setCurrentCoverImageProvider(provider);
     }
     PlayerService().playTrack(bestTrack, coverProvider: provider);
@@ -1143,6 +1154,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                       if (track.picUrl.isNotEmpty) {
                         final provider = CachedNetworkImageProvider(
                           track.picUrl,
+                          headers: getImageHeaders(track.picUrl),
                         );
                         PlayerService().setCurrentCoverImageProvider(provider);
                         PlayerService().playTrack(
@@ -1209,7 +1221,10 @@ extension _SearchWidgetShared on _SearchWidgetState {
                   final isLoggedIn = await _checkLoginStatus();
                   if (isLoggedIn && mounted) {
                     if (track.picUrl.isNotEmpty) {
-                      final provider = CachedNetworkImageProvider(track.picUrl);
+                      final provider = CachedNetworkImageProvider(
+                        track.picUrl,
+                        headers: getImageHeaders(track.picUrl),
+                      );
                       PlayerService().setCurrentCoverImageProvider(provider);
                       PlayerService().playTrack(track, coverProvider: provider);
                     } else {

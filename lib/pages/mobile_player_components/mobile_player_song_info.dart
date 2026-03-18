@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/player_service.dart';
 import '../../services/player_background_service.dart';
+import '../../utils/image_utils.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/search_widget.dart';
@@ -69,7 +70,8 @@ class MobilePlayerSongInfo extends StatelessWidget {
 
   /// 构建专辑封面
   Widget _buildAlbumCover(SongDetail? song, Track? track) {
-    final picUrl = song?.pic ?? track?.picUrl ?? '';
+    final picUrl = _resolveCoverUrl(song, track);
+    final provider = PlayerService().currentCoverImageProvider;
     
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -112,22 +114,41 @@ class MobilePlayerSongInfo extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: picUrl.isNotEmpty
-                    ? _buildOptimizedCover(picUrl, coverSize)
-                    : Container(
-                        color: Colors.grey[900],
-                        child: Icon(
-                          Icons.music_note,
-                          size: coverSize * 0.3,
-                          color: Colors.white30,
-                        ),
-                      ),
+                child: provider != null
+                    ? Image(
+                        image: provider,
+                        fit: BoxFit.cover,
+                      )
+                    : picUrl.isNotEmpty
+                        ? _buildOptimizedCover(picUrl, coverSize)
+                        : Container(
+                            color: Colors.grey[900],
+                            child: Icon(
+                              Icons.music_note,
+                              size: coverSize * 0.3,
+                              color: Colors.white30,
+                            ),
+                          ),
               ),
             ),
           ),
         );
       },
     );
+  }
+
+  String _resolveCoverUrl(SongDetail? song, Track? track) {
+    final songPic = song?.pic;
+    if (songPic != null && songPic.isNotEmpty) {
+      return songPic;
+    }
+
+    final trackPic = track?.picUrl;
+    if (trackPic != null && trackPic.isNotEmpty) {
+      return trackPic;
+    }
+
+    return '';
   }
 
   /// 构建优化的封面图片，优先使用预取的 Provider 避免重复加载
@@ -163,6 +184,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
     // 回退到 CachedNetworkImage（首次加载或 Provider 不可用时）
     return CachedNetworkImage(
       imageUrl: imageUrl,
+      httpHeaders: getImageHeaders(imageUrl),
       fit: BoxFit.cover,
       memCacheWidth: 1080,
       memCacheHeight: 1080,

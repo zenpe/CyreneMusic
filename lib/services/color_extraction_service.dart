@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'package:cached_network_image/cached_network_image.dart';
+import '../utils/image_utils.dart';
 
 /// 颜色提取结果
 class ColorExtractionResult {
@@ -108,7 +109,10 @@ class ColorExtractionService {
       
       if (isNetwork) {
         // 1. 下载网络图片数据（在主线程，但使用 http 异步）
-        final response = await http.get(Uri.parse(imageUrl)).timeout(timeout);
+        final response = await http.get(
+          Uri.parse(imageUrl),
+          headers: getImageHeaders(imageUrl),
+        ).timeout(timeout);
         if (response.statusCode != 200) {
           debugPrint('⚠️ [ColorExtraction] 图片下载失败: ${response.statusCode}');
           return null;
@@ -185,7 +189,10 @@ class ColorExtractionService {
         if (result != null) return result;
 
         // 如果缓存获取失败，降级到下载
-        final response = await http.get(Uri.parse(imageUrl)).timeout(timeout);
+        final response = await http.get(
+          Uri.parse(imageUrl),
+          headers: getImageHeaders(imageUrl),
+        ).timeout(timeout);
         if (response.statusCode != 200) return null;
         imageBytes = response.bodyBytes;
       } else {
@@ -265,7 +272,10 @@ class ColorExtractionService {
 
     try {
       // 2. 使用 CachedNetworkImageProvider 获取图片（会自动使用缓存）
-      final provider = CachedNetworkImageProvider(imageUrl);
+      final provider = CachedNetworkImageProvider(
+        imageUrl,
+        headers: getImageHeaders(imageUrl),
+      );
       final imageInfo = await _loadImageFromProvider(provider, timeout);
       
       if (imageInfo != null) {

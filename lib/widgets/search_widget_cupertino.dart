@@ -451,6 +451,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
               borderRadius: BorderRadius.circular(6),
               child: CachedNetworkImage(
                 imageUrl: track.picUrl,
+                httpHeaders: getImageHeaders(track.picUrl),
                 width: 48,
                 height: 48,
                 fit: BoxFit.cover,
@@ -537,6 +538,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                 borderRadius: BorderRadius.circular(6),
                 child: CachedNetworkImage(
                   imageUrl: mergedTrack.picUrl,
+                  httpHeaders: getImageHeaders(mergedTrack.picUrl),
                   width: 48,
                   height: 48,
                   fit: BoxFit.cover,
@@ -707,6 +709,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                     borderRadius: BorderRadius.circular(24),
                     child: CachedNetworkImage(
                       imageUrl: artist.picUrl,
+                      httpHeaders: getImageHeaders(artist.picUrl),
                       width: 48,
                       height: 48,
                       fit: BoxFit.cover,
@@ -999,7 +1002,10 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                       final isLoggedIn = await _checkLoginStatus();
                       if (isLoggedIn && mounted) {
                         if (track.picUrl.isNotEmpty) {
-                          final provider = CachedNetworkImageProvider(track.picUrl);
+                          final provider = CachedNetworkImageProvider(
+                            track.picUrl,
+                            headers: getImageHeaders(track.picUrl),
+                          );
                           PlayerService().setCurrentCoverImageProvider(provider);
                           PlayerService().playTrack(track, coverProvider: provider);
                         } else {

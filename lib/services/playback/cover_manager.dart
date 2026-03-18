@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../color_extraction_service.dart';
 import '../player_background_service.dart';
+import '../../utils/image_utils.dart';
 import 'dart:ui' as ui;
 import 'dart:async';
 
@@ -54,7 +55,10 @@ class CoverManager extends ChangeNotifier {
       final isNetwork = imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
       ImageProvider provider;
       if (isNetwork) {
-        provider = CachedNetworkImageProvider(imageUrl);
+        provider = CachedNetworkImageProvider(
+          imageUrl,
+          headers: getImageHeaders(imageUrl),
+        );
       } else {
         final file = File(imageUrl);
         if (!await file.exists()) {
@@ -63,13 +67,35 @@ class CoverManager extends ChangeNotifier {
         }
         provider = FileImage(file);
       }
-      // 预热缓存
-      provider.resolve(const ImageConfiguration());
+      // 主动监听图片流，拦截 403 等异步加载错误，避免冒泡成全局 FlutterError。
+      await _warmUpProvider(provider);
       setCover(provider, url: imageUrl, notify: notify);
     } catch (e) {
       print('[CoverManager] 预加载封面失败: $e');
       setCover(null, notify: notify);
     }
+  }
+
+  Future<void> _warmUpProvider(ImageProvider provider) async {
+    final completer = Completer<void>();
+    final stream = provider.resolve(const ImageConfiguration());
+    late ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (_, __) {
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
+        stream.removeListener(listener);
+      },
+      onError: (error, stackTrace) {
+        if (!completer.isCompleted) {
+          completer.completeError(error, stackTrace);
+        }
+        stream.removeListener(listener);
+      },
+    );
+    stream.addListener(listener);
+    await completer.future.timeout(const Duration(seconds: 5));
   }
 
   /// 后台提取主题色
@@ -136,7 +162,10 @@ class CoverManager extends ChangeNotifier {
   Future<Color?> _extractColorFromBottomRegion(String imageUrl) async {
     try {
       final ImageProvider imageProvider = imageUrl.startsWith('http')
-          ? CachedNetworkImageProvider(imageUrl)
+          ? CachedNetworkImageProvider(
+              imageUrl,
+              headers: getImageHeaders(imageUrl),
+            )
           : FileImage(File(imageUrl));
 
       final Completer<ui.Image> completer = Completer();

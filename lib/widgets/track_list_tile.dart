@@ -4,6 +4,7 @@ import '../features/auth/auth_feature.dart';
 import '../models/track.dart';
 import '../services/player_service.dart';
 import '../pages/auth/auth_page.dart';
+import '../utils/image_utils.dart';
 import 'track_action_menu.dart';
 
 /// 歌曲列表项组件
@@ -124,6 +125,7 @@ class _TrackListTileState extends State<TrackListTile> {
             borderRadius: BorderRadius.circular(6),
             child: CachedNetworkImage(
               imageUrl: widget.track.picUrl,
+              httpHeaders: getImageHeaders(widget.track.picUrl),
               memCacheWidth: 128,
               memCacheHeight: 128,
               imageBuilder: (context, imageProvider) {
@@ -210,7 +212,10 @@ class _TrackListTileState extends State<TrackListTile> {
           // 预取封面 Provider，供播放器复用，避免再次请求
           ImageProvider? provider;
           if (widget.track.picUrl.isNotEmpty) {
-            provider = CachedNetworkImageProvider(widget.track.picUrl);
+            provider = CachedNetworkImageProvider(
+              widget.track.picUrl,
+              headers: getImageHeaders(widget.track.picUrl),
+            );
           }
           PlayerService().playTrack(widget.track, coverProvider: provider);
           ScaffoldMessenger.of(context).showSnackBar(

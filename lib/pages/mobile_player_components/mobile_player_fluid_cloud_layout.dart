@@ -18,6 +18,7 @@ import 'mobile_player_background.dart';
 import '../../services/auto_collapse_service.dart';
 import '../../services/audio_quality_service.dart';
 import '../../services/audio_source_service.dart';
+import '../../utils/image_utils.dart';
 import '../../utils/toast_utils.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/player_error_banner.dart';
@@ -200,7 +201,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     final player = PlayerService();
     final song = player.currentSong;
     final track = player.currentTrack;
-    final imageUrl = song?.pic ?? track?.picUrl ?? '';
+    final imageUrl = player.currentCoverUrl ?? '';
 
     // 检测屏幕方向
     final orientation = MediaQuery.of(context).orientation;
@@ -1365,6 +1366,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     if (isNetwork) {
       return CachedNetworkImage(
         imageUrl: imageUrl,
+        httpHeaders: getImageHeaders(imageUrl),
         fit: BoxFit.cover,
         memCacheWidth: 1080,
         memCacheHeight: 1080,

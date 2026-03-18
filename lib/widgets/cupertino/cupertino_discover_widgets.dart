@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/netease_discover.dart';
+import '../../utils/image_utils.dart';
 import '../../utils/theme_manager.dart';
 
 /// iOS 风格的歌单卡片
@@ -46,6 +47,7 @@ class CupertinoDiscoverPlaylistCard extends StatelessWidget {
                   children: [
                     CachedNetworkImage(
                       imageUrl: summary.coverImgUrl,
+                      httpHeaders: getImageHeaders(summary.coverImgUrl),
                       fit: BoxFit.cover,
                       memCacheWidth: 280,
                       memCacheHeight: 280,

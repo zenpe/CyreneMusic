@@ -14,6 +14,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'lab_functions_service.dart';
+import '../utils/image_utils.dart';
 
 
 /// Android 媒体通知处理器
@@ -374,7 +375,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
       // --- 专辑封面同步逻辑 (优化：识别切歌并强制刷新) ---
       String? albumArtPath = _lastWidgetArtPath;
-      final artUri = songOrTrack?.pic ?? songOrTrack?.picUrl ?? '';
+      final artUri = PlayerService().currentCoverUrl ?? '';
       final currentSongKey = '$title-$artist';
       final songChanged = currentSongKey != _lastWidgetSongKey;
 
@@ -384,7 +385,10 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
           // 网络图片：下载并保存到固定文件（覆盖式）
           try {
             print('🌐 [AudioHandler] 歌曲或封面变化，更新小部件封面: $artUri');
-            final response = await http.get(Uri.parse(artUri)).timeout(const Duration(seconds: 5));
+            final response = await http.get(
+              Uri.parse(artUri),
+              headers: getImageHeaders(artUri),
+            ).timeout(const Duration(seconds: 5));
             if (response.statusCode == 200) {
               final tempDir = await getTemporaryDirectory();
               final file = File('${tempDir.path}/widget_art.png');
@@ -450,7 +454,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     final title = song?.name ?? track?.name ?? '未知歌曲';
     final artist = song?.arName ?? track?.artists ?? '未知歌手';
     final album = song?.alName ?? track?.album ?? '';
-    final artUri = song?.pic ?? track?.picUrl ?? '';
+    final artUri = PlayerService().currentCoverUrl ?? '';
     final mediaId = track?.id.toString() ?? '0';
     final duration = PlayerService().duration;
 
@@ -616,6 +620,10 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         final client = http.Client();
         try {
           final request = http.Request('GET', Uri.parse(artUri));
+          final headers = getImageHeaders(artUri);
+          if (headers != null) {
+            request.headers.addAll(headers);
+          }
           final response = await client.send(request).timeout(const Duration(seconds: 6));
           if (response.statusCode != 200) {
             print('⚠️ [AudioHandler] 下载封面失败: HTTP ${response.statusCode}');
