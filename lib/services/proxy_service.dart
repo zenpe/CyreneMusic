@@ -377,6 +377,10 @@ class ProxyService {
       );
     }
 
+    if (!filePath.toLowerCase().endsWith('.cyrene')) {
+      return shelf.Response.badRequest(body: 'Invalid cyrene cache file');
+    }
+
     final file = File(filePath);
     if (!await file.exists()) {
       return shelf.Response.notFound('Cyrene cache file not found');

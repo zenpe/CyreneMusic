@@ -675,7 +675,10 @@ class CacheService extends ChangeNotifier {
       final payloadOffset = 4 + metadataLength;
       final audioLength = totalLength - payloadOffset;
 
-      if (metadataLength < 0 || audioLength < 0) {
+      if (metadataLength <= 0 ||
+          payloadOffset <= 4 ||
+          payloadOffset > totalLength ||
+          audioLength <= 0) {
         throw Exception('文件格式错误');
       }
 
@@ -958,8 +961,12 @@ class CacheService extends ChangeNotifier {
       for (final cacheKey in cacheKeys) {
         final cacheFilePath = _getCacheFilePath(cacheKey);
         final cacheFile = File(cacheFilePath);
-        if (await cacheFile.exists()) {
-          await cacheFile.delete();
+        try {
+          if (await cacheFile.exists()) {
+            await cacheFile.delete();
+          }
+        } catch (e) {
+          print('⚠️ [CacheService] 删除缓存文件失败，将仅移除索引: $cacheFilePath, $e');
         }
         _cacheIndex.remove(cacheKey);
       }

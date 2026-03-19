@@ -102,6 +102,7 @@ class PlaybackService extends ChangeNotifier {
   String? _errorMessage;
   String? _currentTempFilePath;
   CyreneFileInfo? _currentCachedStreamInfo;
+  final Set<String> _cacheBypassKeys = <String>{};
   double _volume = 0.7;
   double _playbackSpeed = 1.0;
   bool _isAudioSourceNotConfigured = false;
@@ -417,16 +418,29 @@ class PlaybackService extends ChangeNotifier {
     if (track == null || _state == PBState.error) return;
 
     final trackKey = '${track.source.name}_${track.id}';
-    final canRetry = _canRetryOnError(error) && _retriedTrackKey != trackKey;
+    final cacheQuality = _currentCachedStreamInfo?.metadata.quality;
+    final shouldRetryWithoutCache =
+        cacheQuality != null && _retriedTrackKey != trackKey;
+    final canRetry =
+        shouldRetryWithoutCache ||
+        (_canRetryOnError(error) && _retriedTrackKey != trackKey);
 
     if (canRetry) {
       _retriedTrackKey = trackKey;
-      print('[PlaybackService] 引擎错误，尝试自动重试: $error');
+      if (cacheQuality != null) {
+        print('[PlaybackService] 缓存流播放失败，绕过当前缓存后重试: $error');
+      } else {
+        print('[PlaybackService] 引擎错误，尝试自动重试: $error');
+      }
       unawaited(_commands.enqueue(() async {
         final current = currentTrack;
         if (current == null) return;
         final currentKey = '${current.source.name}_${current.id}';
         if (currentKey != trackKey) return;
+        if (cacheQuality != null) {
+          _cacheBypassKeys.add(_cachePlaybackKey(current, cacheQuality));
+          _currentCachedStreamInfo = null;
+        }
         await _playCurrentTrack();
       }));
       return;
@@ -833,6 +847,10 @@ class PlaybackService extends ChangeNotifier {
     );
   }
 
+  String _cachePlaybackKey(Track track, String quality) {
+    return '${track.source.name}_${track.id}_$quality';
+  }
+
   Future<void> _deleteTempFilePath(String? filePath) async {
     if (filePath == null || filePath.isEmpty) return;
     try {
@@ -971,12 +989,15 @@ class PlaybackService extends ChangeNotifier {
       final selectedQuality = AudioQualityService().currentQuality;
       final qualityStr = selectedQuality.toString().split('.').last;
       _currentCachedStreamInfo = null;
+      final cachePlaybackKey = _cachePlaybackKey(track, qualityStr);
 
       // ──── 缓存命中 ────
-      final cacheInfo = await CacheService().getCyreneFileInfo(
-        track,
-        quality: qualityStr,
-      );
+      final cacheInfo = _cacheBypassKeys.contains(cachePlaybackKey)
+          ? null
+          : await CacheService().getCyreneFileInfo(
+              track,
+              quality: qualityStr,
+            );
       final isCached = cacheInfo != null;
       if (cacheInfo != null) {
         final metadata = cacheInfo.metadata;
@@ -1779,6 +1800,12 @@ class PlaybackService extends ChangeNotifier {
       }
 
       _currentCachedStreamInfo = cacheInfo;
+      final track = currentTrack;
+      if (track != null) {
+        _cacheBypassKeys.remove(
+          _cachePlaybackKey(track, cacheInfo.metadata.quality),
+        );
+      }
       await _replaceCurrentTempFilePath(null);
       return true;
     } catch (e) {
@@ -2221,6 +2248,7 @@ class PlaybackService extends ChangeNotifier {
     _bufferedPosition = Duration.zero;
     _errorMessage = null;
     _currentCachedStreamInfo = null;
+    _cacheBypassKeys.clear();
     positionNotifier.value = Duration.zero;
     bufferedPositionNotifier.value = Duration.zero;
     coverManager.setCoverImmediate(null, notify: false);
@@ -2253,6 +2281,7 @@ class PlaybackService extends ChangeNotifier {
       _duration = Duration.zero;
       _bufferedPosition = Duration.zero;
       _currentCachedStreamInfo = null;
+      _cacheBypassKeys.clear();
       coverManager.setCoverImmediate(null, notify: false);
       _sessionPersistDebounce?.cancel();
       await _engine.dispose();
