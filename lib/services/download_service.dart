@@ -170,14 +170,36 @@ class DownloadService extends ChangeNotifier {
     return '$safeName.$extension';
   }
 
+  String _resolveCacheQualityKey(String? level) {
+    final quality = AudioQualityService.stringToQuality(level);
+    if (quality != null) {
+      return quality.toString().split('.').last;
+    }
+    if (level != null && level.isNotEmpty) {
+      return level;
+    }
+    return AudioQualityService().currentQuality.toString().split('.').last;
+  }
+
   /// 从缓存下载（解密缓存文件）
-  Future<bool> _downloadFromCache(Track track, String outputPath) async {
+  Future<bool> _downloadFromCache(
+    Track track,
+    String outputPath, {
+    String? quality,
+  }) async {
     try {
       print('📦 [DownloadService] 从缓存下载: ${track.name}');
 
       final cacheService = CacheService();
-      final cacheKey = '${track.source.name}_${track.id}';
-      final cacheFilePath = '${cacheService.currentCacheDir}/$cacheKey.cyrene';
+      final cacheQuality = _resolveCacheQualityKey(quality);
+      final cacheFilePath = cacheService.getCachedContainerFilePath(
+        track,
+        quality: cacheQuality,
+      );
+      if (cacheFilePath == null) {
+        print('⚠️ [DownloadService] 未找到匹配音质的缓存文件');
+        return false;
+      }
       final cacheFile = File(cacheFilePath);
 
       if (!await cacheFile.exists()) {
@@ -297,9 +319,14 @@ class DownloadService extends ChangeNotifier {
       bool success = false;
 
       // 优先从缓存下载
-      if (CacheService().isCached(track)) {
+      final cacheQuality = _resolveCacheQualityKey(songDetail.level);
+      if (CacheService().isCached(track, quality: cacheQuality)) {
         print('📦 [DownloadService] 尝试从缓存下载');
-        success = await _downloadFromCache(track, outputPath);
+        success = await _downloadFromCache(
+          track,
+          outputPath,
+          quality: cacheQuality,
+        );
       }
 
       // 如果缓存下载失败或没有缓存，从网络下载

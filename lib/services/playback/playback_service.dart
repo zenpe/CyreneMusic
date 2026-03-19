@@ -930,40 +930,47 @@ class PlaybackService extends ChangeNotifier {
       final qualityStr = selectedQuality.toString().split('.').last;
 
       // ──── 缓存命中 ────
-      final isCached = CacheService().isCached(track);
+      final isCached = CacheService().isCached(track, quality: qualityStr);
       if (isCached) {
-        final metadata = CacheService().getCachedMetadata(track);
-        final cachedFilePath = await CacheService().getCachedFilePath(track);
+        final metadata = CacheService().getCachedMetadata(track, quality: qualityStr);
+        final cachedFilePath = await CacheService().getCachedFilePath(
+          track,
+          quality: qualityStr,
+        );
         if (isStale()) {
           await _deleteTempFilePath(cachedFilePath);
           return;
         }
 
         if (cachedFilePath != null && metadata != null) {
-          _applyResolvedSongDetail(SongDetail(
-            id: track.id, name: track.name, url: cachedFilePath,
-            pic: metadata.picUrl, arName: metadata.artists, alName: metadata.album,
-            level: metadata.quality, size: metadata.fileSize.toString(),
-            lyric: metadata.lyric, tlyric: metadata.tlyric, source: track.source,
-          ));
-          if (metadata.picUrl != track.picUrl) {
-            coverManager.updateCoverNonBlocking(metadata.picUrl, notify: true, force: true);
-          }
-          _loadLyricsForFloatingDisplay();
-          await _playWithSoftSwitch(cachedFilePath, isLocal: true);
-          if (isStale()) {
-            await _deleteTempFilePath(cachedFilePath);
+          if (metadata.quality != qualityStr) {
+            print('[PlaybackService] 跳过缓存命中，音质不匹配: ${metadata.quality} != $qualityStr');
+          } else {
+            _applyResolvedSongDetail(SongDetail(
+              id: track.id, name: track.name, url: cachedFilePath,
+              pic: metadata.picUrl, arName: metadata.artists, alName: metadata.album,
+              level: metadata.quality, size: metadata.fileSize.toString(),
+              lyric: metadata.lyric, tlyric: metadata.tlyric, source: track.source,
+            ));
+            if (metadata.picUrl != track.picUrl) {
+              coverManager.updateCoverNonBlocking(metadata.picUrl, notify: true, force: true);
+            }
+            _loadLyricsForFloatingDisplay();
+            await _playWithSoftSwitch(cachedFilePath, isLocal: true);
+            if (isStale()) {
+              await _deleteTempFilePath(cachedFilePath);
+              return;
+            }
+            await _replaceCurrentTempFilePath(cachedFilePath);
+
+            // 后台补歌词
+            if (_currentSong!.lyric.isEmpty) {
+              _bgUpdateLyrics(track, selectedQuality, qualityStr, requestedKey, isStale);
+            }
+
+            _extractThemeColorAsync(metadata.picUrl);
             return;
           }
-          await _replaceCurrentTempFilePath(cachedFilePath);
-
-          // 后台补歌词
-          if (_currentSong!.lyric.isEmpty) {
-            _bgUpdateLyrics(track, selectedQuality, qualityStr, requestedKey, isStale);
-          }
-
-          _extractThemeColorAsync(metadata.picUrl);
-          return;
         }
       }
 
@@ -1615,10 +1622,15 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
 
-    // 命中本地缓存时跳过预加载：缓存播放已是本地文件链路。
-    if (CacheService().isCached(track)) return;
-
     final selectedQuality = AudioQualityService().currentQuality;
+
+    // 命中本地缓存时跳过预加载：缓存播放已是本地文件链路。
+    if (CacheService().isCached(
+      track,
+      quality: selectedQuality.toString().split('.').last,
+    )) {
+      return;
+    }
     var detail = await MusicService().fetchSongDetail(
       songId: track.id,
       quality: selectedQuality,
