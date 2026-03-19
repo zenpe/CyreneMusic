@@ -8,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/track.dart';
 import '../models/song_detail.dart';
+import '../utils/audio_request_headers.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'audio_quality_service.dart';
@@ -744,7 +745,10 @@ class CacheService extends ChangeNotifier {
       print('💾 [CacheService] 开始缓存: ${track.name} (${track.getSourceName()})');
 
       // 下载音频数据
-      final response = await http.get(Uri.parse(songDetail.url));
+      final response = await http.get(
+        Uri.parse(songDetail.url),
+        headers: buildAudioRequestHeaders(track.source),
+      );
       if (response.statusCode != 200) {
         print('❌ [CacheService] 下载失败: ${response.statusCode}');
         return false;

@@ -17,6 +17,7 @@ import '../../utils/lyric_parser.dart';
 import '../../utils/toast_utils.dart';
 import '../../utils/metadata_reader.dart';
 import '../../utils/image_utils.dart';
+import '../../utils/audio_request_headers.dart';
 import '../music_service.dart';
 import '../audio_source_service.dart';
 import '../cache_service.dart';
@@ -1846,17 +1847,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Map<String, String> _buildPlaybackHeaders(MusicSource source) {
-    final headers = <String, String>{
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    };
-    if (source == MusicSource.qq) {
-      headers['Referer'] = 'https://y.qq.com/';
-      headers['Origin'] = 'https://y.qq.com';
-    } else if (source == MusicSource.kugou) {
-      headers['Referer'] = 'https://www.kugou.com/';
-      headers['Origin'] = 'https://www.kugou.com';
-    }
-    return headers;
+    return buildAudioRequestHeaders(source);
   }
 
   String _getServerProxyUrl(String originalUrl, String platform) {
