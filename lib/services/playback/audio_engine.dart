@@ -61,6 +61,10 @@ abstract class AudioEngine {
     bool isLocal = false,
     Map<String, String>? headers,
   });
+  Future<void> playAudioSource(
+    ja.AudioSource source, {
+    String? sourceUrl,
+  });
   Future<void> pause();
   Future<void> resume();
   Future<void> seek(Duration position);
@@ -420,16 +424,23 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     bool isLocal = false,
     Map<String, String>? headers,
   }) async {
+    final source = isLocal
+        ? ja.AudioSource.file(url)
+        : ja.AudioSource.uri(Uri.parse(url), headers: headers);
+    await playAudioSource(source, sourceUrl: url);
+  }
+
+  @override
+  Future<void> playAudioSource(
+    ja.AudioSource source, {
+    String? sourceUrl,
+  }) async {
     await _ensurePlayer();
 
     if (_isPlaying) {
       await _player!.setVolume(0);
       await _player!.stop();
     }
-
-    final source = isLocal
-        ? ja.AudioSource.file(url)
-        : ja.AudioSource.uri(Uri.parse(url), headers: headers);
 
     try {
       await _player!
@@ -439,14 +450,14 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     } on TimeoutException catch (e) {
       final mapped = _mapJustAudioError(
         e,
-        sourceUrl: url,
+        sourceUrl: sourceUrl,
         retriable: true,
       );
       _emitError(mapped);
       await _recreatePlayer();
       throw EngineReportedException(mapped);
     } catch (e) {
-      final mapped = _mapJustAudioError(e, sourceUrl: url);
+      final mapped = _mapJustAudioError(e, sourceUrl: sourceUrl);
       _emitError(mapped);
       await _recreatePlayer();
       throw EngineReportedException(mapped);
@@ -789,6 +800,16 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     await _player!.setVolume(_currentVolume);
     await _player!.setRate(_playbackSpeed);
     await _player!.play();
+  }
+
+  @override
+  Future<void> playAudioSource(
+    ja.AudioSource source, {
+    String? sourceUrl,
+  }) async {
+    throw UnsupportedError(
+      'Custom audio sources are only supported on just_audio platforms.',
+    );
   }
 
   @override

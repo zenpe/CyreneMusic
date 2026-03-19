@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:http/http.dart' as http;
+import 'cache_service.dart';
 import 'developer_mode_service.dart';
 
 /// 本地 HTTP 代理服务
@@ -82,6 +83,10 @@ class ProxyService {
       final method = request.method.toUpperCase();
       if (method != 'GET' && method != 'HEAD') {
         return shelf.Response(405, body: 'Method Not Allowed');
+      }
+
+      if (request.url.path == 'cyrene') {
+        return _handleCyreneRequest(request, method);
       }
 
       // 获取原始 URL
@@ -347,6 +352,151 @@ class ProxyService {
     }
   }
 
+  Future<shelf.Response> _handleCyreneRequest(
+    shelf.Request request,
+    String method,
+  ) async {
+    final filePath = request.url.queryParameters['path'];
+    final payloadOffset = int.tryParse(
+      request.url.queryParameters['payloadOffset'] ?? '',
+    );
+    final audioLength = int.tryParse(
+      request.url.queryParameters['audioLength'] ?? '',
+    );
+    final contentType =
+        request.url.queryParameters['contentType'] ?? 'audio/mpeg';
+
+    if (filePath == null ||
+        filePath.isEmpty ||
+        payloadOffset == null ||
+        audioLength == null ||
+        payloadOffset < 0 ||
+        audioLength < 0) {
+      return shelf.Response.badRequest(
+        body: 'Missing or invalid cyrene stream parameters',
+      );
+    }
+
+    final file = File(filePath);
+    if (!await file.exists()) {
+      return shelf.Response.notFound('Cyrene cache file not found');
+    }
+
+    final rangeHeader = request.headers['range'];
+    final range = _parseRange(rangeHeader, audioLength);
+    if (rangeHeader != null && range == null) {
+      return shelf.Response(
+        416,
+        headers: <String, String>{
+          'Content-Type': contentType,
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'no-cache',
+          'Content-Range': 'bytes */$audioLength',
+          'Content-Length': '0',
+        },
+      );
+    }
+    final start = range?.start ?? 0;
+    final endExclusive = range?.endExclusive ?? audioLength;
+    final contentLength = endExclusive - start;
+    final statusCode = range != null ? 206 : 200;
+
+    final headers = <String, String>{
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'no-cache',
+      'Content-Length': contentLength.toString(),
+    };
+    if (range != null) {
+      headers['Content-Range'] =
+          'bytes $start-${endExclusive - 1}/$audioLength';
+    }
+
+    if (method == 'HEAD') {
+      return shelf.Response(statusCode, headers: headers);
+    }
+
+    final stream = _openCyreneDecryptedStream(
+      file: file,
+      fileStart: payloadOffset + start,
+      fileEnd: payloadOffset + endExclusive,
+      audioOffsetStart: start,
+    );
+    return shelf.Response(
+      statusCode,
+      body: stream,
+      headers: headers,
+    );
+  }
+
+  _ByteRange? _parseRange(String? header, int sourceLength) {
+    if (header == null || header.isEmpty) return null;
+    final match = RegExp(r'^bytes=(\d*)-(\d*)$').firstMatch(header.trim());
+    if (match == null) return null;
+
+    final startGroup = match.group(1);
+    final endGroup = match.group(2);
+    if ((startGroup == null || startGroup.isEmpty) &&
+        (endGroup == null || endGroup.isEmpty)) {
+      return null;
+    }
+
+    int start;
+    int endInclusive;
+
+    if (startGroup != null && startGroup.isNotEmpty) {
+      start = int.tryParse(startGroup) ?? 0;
+      if (start < 0) start = 0;
+      if (start >= sourceLength) {
+        return null;
+      }
+
+      if (endGroup != null && endGroup.isNotEmpty) {
+        endInclusive = int.tryParse(endGroup) ?? (sourceLength - 1);
+      } else {
+        endInclusive = sourceLength - 1;
+      }
+    } else {
+      final suffixLength = int.tryParse(endGroup ?? '') ?? 0;
+      if (suffixLength <= 0) return null;
+      if (suffixLength >= sourceLength) {
+        start = 0;
+      } else {
+        start = sourceLength - suffixLength;
+      }
+      endInclusive = sourceLength - 1;
+    }
+
+    if (endInclusive < start) return null;
+    if (endInclusive >= sourceLength) {
+      endInclusive = sourceLength - 1;
+    }
+
+    final endExclusive = endInclusive + 1;
+    return _ByteRange(start: start, endExclusive: endExclusive);
+  }
+
+  Stream<List<int>> _openCyreneDecryptedStream({
+    required File file,
+    required int fileStart,
+    required int fileEnd,
+    required int audioOffsetStart,
+  }) async* {
+    if (fileEnd <= fileStart) {
+      return;
+    }
+
+    var audioOffset = audioOffsetStart;
+    await for (final chunk in file.openRead(fileStart, fileEnd)) {
+      final decrypted = CacheService.decryptAudioBytes(
+        chunk,
+        startOffset: audioOffset,
+      );
+      audioOffset += chunk.length;
+      yield decrypted;
+    }
+  }
+
   /// 生成代理 URL
   String getProxyUrl(String originalUrl, String platform) {
     if (!_isRunning) {
@@ -363,9 +513,38 @@ class ProxyService {
     return proxyUrl;
   }
 
+  String getCyreneStreamUrl(CyreneFileInfo fileInfo) {
+    if (!_isRunning) {
+      throw StateError('ProxyService is not running');
+    }
+
+    return Uri(
+      scheme: 'http',
+      host: 'localhost',
+      port: _port,
+      path: '/cyrene',
+      queryParameters: {
+        'path': fileInfo.filePath,
+        'payloadOffset': fileInfo.payloadOffset.toString(),
+        'audioLength': fileInfo.audioLength.toString(),
+        'contentType': fileInfo.contentType,
+      },
+    ).toString();
+  }
+
   /// 清理资源
   Future<void> dispose() async {
     await stop();
   }
+}
+
+class _ByteRange {
+  final int start;
+  final int endExclusive;
+
+  const _ByteRange({
+    required this.start,
+    required this.endExclusive,
+  });
 }
 

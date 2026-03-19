@@ -129,6 +129,26 @@ class _ResolvedCacheEntry {
   });
 }
 
+class CyreneFileInfo {
+  final String cacheKey;
+  final String filePath;
+  final CacheMetadata metadata;
+  final int metadataLength;
+  final int payloadOffset;
+  final int audioLength;
+  final String contentType;
+
+  const CyreneFileInfo({
+    required this.cacheKey,
+    required this.filePath,
+    required this.metadata,
+    required this.metadataLength,
+    required this.payloadOffset,
+    required this.audioLength,
+    required this.contentType,
+  });
+}
+
 /// 缓存统计信息
 class CacheStats {
   final int totalFiles;
@@ -543,22 +563,44 @@ class CacheService extends ChangeNotifier {
     return '${_cacheDir!.path}/$cacheKey.cyrene';
   }
 
-  /// 加密数据（简单的异或加密，防止直接播放）
-  Uint8List _encryptData(Uint8List data) {
-    final keyBytes = utf8.encode(_encryptionKey);
-    final encrypted = Uint8List(data.length);
+  static String _contentTypeForQuality(String quality) {
+    final extension = AudioQualityService.getExtensionFromLevel(quality);
+    switch (extension) {
+      case 'flac':
+        return 'audio/flac';
+      case 'mp3':
+      default:
+        return 'audio/mpeg';
+    }
+  }
 
-    for (int i = 0; i < data.length; i++) {
-      encrypted[i] = data[i] ^ keyBytes[i % keyBytes.length];
+  static Uint8List decryptAudioBytes(
+    List<int> encryptedData, {
+    int startOffset = 0,
+  }) {
+    final keyBytes = utf8.encode(_encryptionKey);
+    final decrypted = Uint8List(encryptedData.length);
+
+    for (int i = 0; i < encryptedData.length; i++) {
+      decrypted[i] =
+          encryptedData[i] ^ keyBytes[(startOffset + i) % keyBytes.length];
     }
 
-    return encrypted;
+    return decrypted;
+  }
+
+  /// 加密数据（简单的异或加密，防止直接播放）
+  Uint8List _encryptData(Uint8List data) {
+    return decryptAudioBytes(data);
   }
 
   /// 解密数据
-  Uint8List _decryptData(Uint8List encryptedData) {
+  Uint8List _decryptData(
+    Uint8List encryptedData, {
+    int startOffset = 0,
+  }) {
     // 异或加密是对称的，加密和解密使用相同的方法
-    return _encryptData(encryptedData);
+    return decryptAudioBytes(encryptedData, startOffset: startOffset);
   }
 
   /// 计算文件校验和
@@ -586,12 +628,11 @@ class CacheService extends ChangeNotifier {
     return _getCacheFilePath(resolved.key);
   }
 
-  /// 获取缓存文件路径（用于播放）
-  Future<String?> getCachedFilePath(Track track, {String? quality}) async {
-    if (!_isInitialized) {
-      print('⚠️ [CacheService] 缓存服务未初始化');
-      return null;
-    }
+  Future<CyreneFileInfo?> getCyreneFileInfo(
+    Track track, {
+    String? quality,
+  }) async {
+    if (!_isInitialized || !_cacheEnabled || _cacheDir == null) return null;
 
     final resolved = _resolveCacheEntry(track, quality: quality);
     if (resolved == null) {
@@ -600,7 +641,9 @@ class CacheService extends ChangeNotifier {
 
     final expectedQuality = _qualityKey(quality);
     if (resolved.metadata.quality != expectedQuality) {
-      print('⚠️ [CacheService] 缓存音质不匹配: ${resolved.metadata.quality} != $expectedQuality');
+      print(
+        '⚠️ [CacheService] 缓存音质不匹配: ${resolved.metadata.quality} != $expectedQuality',
+      );
       return null;
     }
 
@@ -616,50 +659,44 @@ class CacheService extends ChangeNotifier {
       return null;
     }
 
-    // 读取并解析 .cyrene 文件
+    RandomAccessFile? raf;
     try {
-      final fileData = await cacheFile.readAsBytes();
-
-      // 读取元数据长度（前4字节）
-      if (fileData.length < 4) {
+      raf = await cacheFile.open(mode: FileMode.read);
+      final header = await raf.read(4);
+      if (header.length < 4) {
         throw Exception('文件格式错误');
       }
 
-      final metadataLength = (fileData[0] << 24) |
-          (fileData[1] << 16) |
-          (fileData[2] << 8) |
-          fileData[3];
+      final metadataLength = (header[0] << 24) |
+          (header[1] << 16) |
+          (header[2] << 8) |
+          header[3];
+      final totalLength = await raf.length();
+      final payloadOffset = 4 + metadataLength;
+      final audioLength = totalLength - payloadOffset;
 
-      if (fileData.length < 4 + metadataLength) {
+      if (metadataLength < 0 || audioLength < 0) {
         throw Exception('文件格式错误');
       }
 
-      // 跳过元数据，读取加密的音频数据
-      final encryptedAudioData = Uint8List.sublistView(
-        fileData,
-        4 + metadataLength,
-      );
-
-      // 解密音频数据
-      final decryptedData = _decryptData(encryptedAudioData);
-
-      // 🔍 优化：根据音质选择正确的文件后缀
-      final extension = AudioQualityService.getExtensionFromLevel(metadata.quality);
-
-      // 创建临时文件
-      final tempDir = await getTemporaryDirectory();
-      final tempFilePath = '${tempDir.path}/temp_${cacheKey}_${DateTime.now().millisecondsSinceEpoch}.$extension';
-      final tempFile = File(tempFilePath);
-      await tempFile.writeAsBytes(decryptedData);
       _touchCacheEntry(cacheKey, metadata);
 
-      print('✅ [CacheService] 解密缓存文件: $tempFilePath');
-      return tempFilePath;
+      return CyreneFileInfo(
+        cacheKey: cacheKey,
+        filePath: cacheFilePath,
+        metadata: metadata,
+        metadataLength: metadataLength,
+        payloadOffset: payloadOffset,
+        audioLength: audioLength,
+        contentType: _contentTypeForQuality(metadata.quality),
+      );
     } catch (e) {
-      print('❌ [CacheService] 解密缓存失败: $e');
+      print('❌ [CacheService] 读取缓存容器信息失败: $e');
       _cacheIndex.remove(cacheKey);
       await _saveCacheIndex();
       return null;
+    } finally {
+      await raf?.close();
     }
   }
 

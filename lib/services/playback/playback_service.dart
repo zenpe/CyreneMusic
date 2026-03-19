@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:http/http.dart' as http;
+import 'package:just_audio/just_audio.dart' as ja;
 import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -37,6 +38,7 @@ import '../equalizer_service.dart';
 import 'command_queue.dart';
 import 'audio_engine.dart';
 import 'cover_manager.dart';
+import 'cyrene_stream_source.dart';
 import 'playback_session_snapshot.dart';
 import 'playback_session_store.dart';
 
@@ -99,6 +101,7 @@ class PlaybackService extends ChangeNotifier {
   Duration _bufferedPosition = Duration.zero;
   String? _errorMessage;
   String? _currentTempFilePath;
+  CyreneFileInfo? _currentCachedStreamInfo;
   double _volume = 0.7;
   double _playbackSpeed = 1.0;
   bool _isAudioSourceNotConfigured = false;
@@ -810,6 +813,26 @@ class PlaybackService extends ChangeNotifier {
     coverManager.extractThemeColorNonBlocking(imageUrl);
   }
 
+  SongDetail _buildCachedSongDetail(
+    Track track,
+    CacheMetadata metadata, {
+    required String playbackUrl,
+  }) {
+    return SongDetail(
+      id: track.id,
+      name: track.name,
+      url: playbackUrl,
+      pic: metadata.picUrl,
+      arName: metadata.artists,
+      alName: metadata.album,
+      level: metadata.quality,
+      size: metadata.fileSize.toString(),
+      lyric: metadata.lyric,
+      tlyric: metadata.tlyric,
+      source: track.source,
+    );
+  }
+
   Future<void> _deleteTempFilePath(String? filePath) async {
     if (filePath == null || filePath.isEmpty) return;
     try {
@@ -947,49 +970,58 @@ class PlaybackService extends ChangeNotifier {
 
       final selectedQuality = AudioQualityService().currentQuality;
       final qualityStr = selectedQuality.toString().split('.').last;
+      _currentCachedStreamInfo = null;
 
       // ──── 缓存命中 ────
-      final isCached = CacheService().isCached(track, quality: qualityStr);
-      if (isCached) {
-        final metadata = CacheService().getCachedMetadata(track, quality: qualityStr);
-        final cachedFilePath = await CacheService().getCachedFilePath(
-          track,
-          quality: qualityStr,
-        );
-        if (isStale()) {
-          await _deleteTempFilePath(cachedFilePath);
-          return;
-        }
+      final cacheInfo = await CacheService().getCyreneFileInfo(
+        track,
+        quality: qualityStr,
+      );
+      final isCached = cacheInfo != null;
+      if (cacheInfo != null) {
+        final metadata = cacheInfo.metadata;
+        if (metadata.quality != qualityStr) {
+          print(
+            '[PlaybackService] 跳过缓存命中，音质不匹配: ${metadata.quality} != $qualityStr',
+          );
+        } else {
+          _applyResolvedSongDetail(
+            _buildCachedSongDetail(
+              track,
+              metadata,
+              playbackUrl: metadata.originalUrl.isNotEmpty
+                  ? metadata.originalUrl
+                  : cacheInfo.filePath,
+            ),
+          );
+          if (metadata.picUrl != track.picUrl) {
+            coverManager.updateCoverNonBlocking(
+              metadata.picUrl,
+              notify: true,
+              force: true,
+            );
+          }
+          _loadLyricsForFloatingDisplay();
 
-        if (cachedFilePath != null && metadata != null) {
-          if (metadata.quality != qualityStr) {
-            print('[PlaybackService] 跳过缓存命中，音质不匹配: ${metadata.quality} != $qualityStr');
-          } else {
-            _applyResolvedSongDetail(SongDetail(
-              id: track.id, name: track.name, url: cachedFilePath,
-              pic: metadata.picUrl, arName: metadata.artists, alName: metadata.album,
-              level: metadata.quality, size: metadata.fileSize.toString(),
-              lyric: metadata.lyric, tlyric: metadata.tlyric, source: track.source,
-            ));
-            if (metadata.picUrl != track.picUrl) {
-              coverManager.updateCoverNonBlocking(metadata.picUrl, notify: true, force: true);
-            }
-            _loadLyricsForFloatingDisplay();
-            await _playWithSoftSwitch(cachedFilePath, isLocal: true);
-            if (isStale()) {
-              await _deleteTempFilePath(cachedFilePath);
-              return;
-            }
-            await _replaceCurrentTempFilePath(cachedFilePath);
-
-            // 后台补歌词
+          final playedFromStream = await _playCachedStreamSource(cacheInfo);
+          if (isStale()) {
+            return;
+          }
+          if (playedFromStream) {
             if (_currentSong!.lyric.isEmpty) {
-              _bgUpdateLyrics(track, selectedQuality, qualityStr, requestedKey, isStale);
+              _bgUpdateLyrics(
+                track,
+                selectedQuality,
+                qualityStr,
+                requestedKey,
+                isStale,
+              );
             }
-
             _extractThemeColorAsync(metadata.picUrl);
             return;
           }
+
+          print('[PlaybackService] 缓存流式播放失败，回退网络解析链路');
         }
       }
 
@@ -1587,12 +1619,29 @@ class PlaybackService extends ChangeNotifier {
     bool isLocal = false,
     Map<String, String>? headers,
   }) async {
+    await _performSoftSwitch(
+      () => _engine.play(url, isLocal: isLocal, headers: headers),
+    );
+  }
+
+  Future<void> _playAudioSourceWithSoftSwitch(
+    ja.AudioSource source, {
+    String? sourceUrl,
+  }) async {
+    await _performSoftSwitch(
+      () => _engine.playAudioSource(source, sourceUrl: sourceUrl),
+    );
+  }
+
+  Future<void> _performSoftSwitch(
+    Future<void> Function() startPlayback,
+  ) async {
     final targetVolume = _volume.clamp(0.0, 1.0);
     final canFade = _engine.isPlaying && targetVolume > 0;
     final fadeGeneration = _playGeneration;
 
     if (!canFade) {
-      await _engine.play(url, isLocal: isLocal, headers: headers);
+      await startPlayback();
       await _safeSetEngineVolume(targetVolume);
       return;
     }
@@ -1604,7 +1653,7 @@ class PlaybackService extends ChangeNotifier {
     }
 
     try {
-      await _engine.play(url, isLocal: isLocal, headers: headers);
+      await startPlayback();
     } catch (e) {
       await _safeSetEngineVolume(targetVolume);
       rethrow;
@@ -1678,6 +1727,14 @@ class PlaybackService extends ChangeNotifier {
     final song = _currentSong;
     if (track == null || song == null || song.url.isEmpty) return false;
 
+    final cachedStreamInfo = _currentCachedStreamInfo;
+    if (cachedStreamInfo != null) {
+      final replayedFromCache = await _playCachedStreamSource(cachedStreamInfo);
+      if (replayedFromCache) {
+        return true;
+      }
+    }
+
     final url = song.url;
     final isLocal = track.source == MusicSource.local || !url.startsWith('http');
     Map<String, String>? headers;
@@ -1699,6 +1756,38 @@ class PlaybackService extends ChangeNotifier {
     }
   }
 
+  Future<bool> _playCachedStreamSource(CyreneFileInfo cacheInfo) async {
+    try {
+      if (Platform.isAndroid || Platform.isIOS) {
+        final source = CyreneStreamSource(
+          filePath: cacheInfo.filePath,
+          payloadOffset: cacheInfo.payloadOffset,
+          audioLength: cacheInfo.audioLength,
+          contentType: cacheInfo.contentType,
+        );
+        await _playAudioSourceWithSoftSwitch(
+          source,
+          sourceUrl: cacheInfo.metadata.originalUrl,
+        );
+      } else {
+        final proxyReady = await _ensureLocalProxyRunning('cache');
+        if (!proxyReady) {
+          return false;
+        }
+        final streamUrl = ProxyService().getCyreneStreamUrl(cacheInfo);
+        await _playWithSoftSwitch(streamUrl);
+      }
+
+      _currentCachedStreamInfo = cacheInfo;
+      await _replaceCurrentTempFilePath(null);
+      return true;
+    } catch (e) {
+      print('[PlaybackService] 缓存流式播放失败，回退网络链路: $e');
+      _currentCachedStreamInfo = null;
+      return false;
+    }
+  }
+
   Future<void> _preloadTrackSource(
     Track track,
     AudioQuality selectedQuality,
@@ -1708,7 +1797,7 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
 
-    // 命中本地缓存时跳过预加载：缓存播放已是本地文件链路。
+    // 命中本地缓存时跳过预加载：缓存播放已走本地流式解密链路。
     if (CacheService().isCached(
       track,
       quality: selectedQuality.toString().split('.').last,
@@ -1871,6 +1960,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> _cleanupCurrentTempFile() async {
+    _currentCachedStreamInfo = null;
     if (_currentTempFilePath != null) {
       try {
         final f = File(_currentTempFilePath!);
@@ -2130,6 +2220,7 @@ class PlaybackService extends ChangeNotifier {
     _duration = Duration.zero;
     _bufferedPosition = Duration.zero;
     _errorMessage = null;
+    _currentCachedStreamInfo = null;
     positionNotifier.value = Duration.zero;
     bufferedPositionNotifier.value = Duration.zero;
     coverManager.setCoverImmediate(null, notify: false);
@@ -2161,6 +2252,7 @@ class PlaybackService extends ChangeNotifier {
       _position = Duration.zero;
       _duration = Duration.zero;
       _bufferedPosition = Duration.zero;
+      _currentCachedStreamInfo = null;
       coverManager.setCoverImmediate(null, notify: false);
       _sessionPersistDebounce?.cancel();
       await _engine.dispose();
