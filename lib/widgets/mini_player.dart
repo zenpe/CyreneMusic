@@ -1031,8 +1031,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
     BuildContext context, {
     bool singleLine = false,
   }) {
-    final name = song?.name ?? track?.name ?? '未知歌曲';
-    final artist = song?.arName ?? track?.artists ?? '未知艺术家';
+    final player = PlayerService();
+    final name = player.displayTitle.isNotEmpty ? player.displayTitle : '未知歌曲';
+    final artist = player.displayArtist.isNotEmpty ? player.displayArtist : '未知艺术家';
     final bool isFluent = ThemeManager().isFluentFramework;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 

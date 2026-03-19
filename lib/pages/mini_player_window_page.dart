@@ -595,9 +595,10 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
 
   /// 构建顶部行：封面 + 歌曲信息 + 返回按钮
   Widget _buildTopRow(dynamic track, dynamic song, String coverUrl) {
-    final name = song?.name ?? track?.name ?? '未知歌曲';
-    final artist = song?.arName ?? track?.artists ?? '未知歌手';
-    final album = song?.alName ?? track?.album ?? '';
+    final player = PlayerService();
+    final name = player.displayTitle.isNotEmpty ? player.displayTitle : '未知歌曲';
+    final artist = player.displayArtist.isNotEmpty ? player.displayArtist : '未知歌手';
+    final album = player.displayAlbum;
     
     // 组合歌手和专辑名
     final subtitle = album.isNotEmpty ? '$artist — $album' : artist;

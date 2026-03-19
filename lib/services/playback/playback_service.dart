@@ -141,6 +141,36 @@ class PlaybackService extends ChangeNotifier {
   bool get isLoading => _state == PBState.loading;
   PBState get state => _state;
   SongDetail? get currentSong => _currentSong;
+  String get displayTitle {
+    final songName = _currentSong?.name;
+    if (songName != null && songName.isNotEmpty) return songName;
+    final trackName = currentTrack?.name;
+    if (trackName != null && trackName.isNotEmpty) return trackName;
+    return '';
+  }
+  String get displayArtist {
+    final songArtist = _currentSong?.arName;
+    if (songArtist != null && songArtist.isNotEmpty) return songArtist;
+    final trackArtist = currentTrack?.artists;
+    if (trackArtist != null && trackArtist.isNotEmpty) return trackArtist;
+    return '';
+  }
+  String get displayAlbum {
+    final songAlbum = _currentSong?.alName;
+    if (songAlbum != null && songAlbum.isNotEmpty) return songAlbum;
+    final trackAlbum = currentTrack?.album;
+    if (trackAlbum != null && trackAlbum.isNotEmpty) return trackAlbum;
+    return '';
+  }
+  String? get displayCoverUrl {
+    final coverUrl = coverManager.currentUrl;
+    if (coverUrl != null && coverUrl.isNotEmpty) return coverUrl;
+    final songPic = _currentSong?.pic;
+    if (songPic != null && songPic.isNotEmpty) return songPic;
+    final trackPic = currentTrack?.picUrl;
+    if (trackPic != null && trackPic.isNotEmpty) return trackPic;
+    return null;
+  }
   Duration get duration => _duration;
   Duration get position => _position;
   Duration get bufferedPosition => _bufferedPosition;
@@ -300,7 +330,7 @@ class PlaybackService extends ChangeNotifier {
     if (currentTrack != null) {
       await coverManager.updateCover(currentTrack!.picUrl, notify: false, force: true);
     } else {
-      coverManager.setCover(null, notify: false);
+      coverManager.setCoverImmediate(null, notify: false);
       coverManager.themeColorNotifier.value = null;
     }
     notifyListeners();
@@ -635,7 +665,7 @@ class PlaybackService extends ChangeNotifier {
     _bufferedPosition = Duration.zero;
     positionNotifier.value = Duration.zero;
     bufferedPositionNotifier.value = Duration.zero;
-    coverManager.setCover(null, notify: false);
+    coverManager.setCoverImmediate(null, notify: false);
     notifyListeners();
     _pendingRestorePosition = null;
     _scheduleSessionPersist();
@@ -683,7 +713,7 @@ class PlaybackService extends ChangeNotifier {
     _position = Duration.zero;
 
     if (coverProvider != null) {
-      coverManager.setCover(coverProvider, url: track.picUrl, notify: false);
+      coverManager.setCoverImmediate(coverProvider, url: track.picUrl, notify: false);
     } else {
       await coverManager.updateCover(track.picUrl, notify: false, force: true);
     }
@@ -704,7 +734,7 @@ class PlaybackService extends ChangeNotifier {
       _duration = Duration.zero;
       _position = Duration.zero;
       positionNotifier.value = Duration.zero;
-      coverManager.setCover(null, notify: false);
+      coverManager.setCoverImmediate(null, notify: false);
       coverManager.themeColorNotifier.value = null;
 
       // 设置电台的 track 到队列
@@ -740,6 +770,42 @@ class PlaybackService extends ChangeNotifier {
 
   void updateCoverProviders(Map<String, ImageProvider> providers) {
     _coverProviders.addAll(providers);
+  }
+
+  void _primeDisplayStateForTrack(Track track) {
+    final existingProvider = getCoverProvider(track);
+    if (existingProvider != null) {
+      coverManager.setCoverImmediate(existingProvider, url: track.picUrl, notify: false);
+      return;
+    }
+    coverManager.updateCoverNonBlocking(track.picUrl, notify: false, force: true);
+  }
+
+  void _applyResolvedSongDetail(SongDetail songDetail) {
+    _currentSong = songDetail;
+    notifyListeners();
+  }
+
+  void _extractThemeColorAsync(String imageUrl) {
+    if (imageUrl.isEmpty) return;
+    coverManager.extractThemeColorNonBlocking(imageUrl);
+  }
+
+  Future<void> _deleteTempFilePath(String? filePath) async {
+    if (filePath == null || filePath.isEmpty) return;
+    try {
+      final file = File(filePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _replaceCurrentTempFilePath(String? filePath) async {
+    final previousPath = _currentTempFilePath;
+    if (previousPath == filePath) return;
+    _currentTempFilePath = filePath;
+    await _deleteTempFilePath(previousPath);
   }
 
   int _indexOfTrack(Track track) {
@@ -826,6 +892,8 @@ class PlaybackService extends ChangeNotifier {
       _duration = Duration.zero;
       _position = Duration.zero;
       positionNotifier.value = Duration.zero;
+      coverManager.resetThemeColor();
+      _primeDisplayStateForTrack(track);
       notifyListeners();
 
       // 音源配置检查（本地音乐不需要）
@@ -848,15 +916,6 @@ class PlaybackService extends ChangeNotifier {
         return;
       }
 
-      // 封面
-      final existingProvider = getCoverProvider(track);
-      if (existingProvider != null) {
-        coverManager.setCover(existingProvider, url: track.picUrl, notify: false);
-      } else {
-        await coverManager.updateCover(track.picUrl, notify: false, force: existingProvider == null);
-      }
-      if (isStale()) return;
-
       // 预缓存下一首封面
       _precacheNextCover();
 
@@ -875,28 +934,35 @@ class PlaybackService extends ChangeNotifier {
       if (isCached) {
         final metadata = CacheService().getCachedMetadata(track);
         final cachedFilePath = await CacheService().getCachedFilePath(track);
-        if (isStale()) return;
+        if (isStale()) {
+          await _deleteTempFilePath(cachedFilePath);
+          return;
+        }
 
         if (cachedFilePath != null && metadata != null) {
-          _currentTempFilePath = cachedFilePath;
-          _currentSong = SongDetail(
+          _applyResolvedSongDetail(SongDetail(
             id: track.id, name: track.name, url: cachedFilePath,
             pic: metadata.picUrl, arName: metadata.artists, alName: metadata.album,
             level: metadata.quality, size: metadata.fileSize.toString(),
             lyric: metadata.lyric, tlyric: metadata.tlyric, source: track.source,
-          );
+          ));
           if (metadata.picUrl != track.picUrl) {
-            await coverManager.updateCover(metadata.picUrl, notify: false);
+            coverManager.updateCoverNonBlocking(metadata.picUrl, notify: true, force: true);
           }
           _loadLyricsForFloatingDisplay();
           await _playWithSoftSwitch(cachedFilePath, isLocal: true);
+          if (isStale()) {
+            await _deleteTempFilePath(cachedFilePath);
+            return;
+          }
+          await _replaceCurrentTempFilePath(cachedFilePath);
 
           // 后台补歌词
           if (_currentSong!.lyric.isEmpty) {
             _bgUpdateLyrics(track, selectedQuality, qualityStr, requestedKey, isStale);
           }
 
-          await coverManager.extractThemeColor(metadata.picUrl);
+          _extractThemeColorAsync(metadata.picUrl);
           return;
         }
       }
@@ -917,14 +983,17 @@ class PlaybackService extends ChangeNotifier {
           final embedded = await MetadataReader.extractLyrics(filePath);
           if (embedded != null && embedded.isNotEmpty) lyricText = embedded;
         }
-        _currentSong = SongDetail(
+        if (isStale()) return;
+        _applyResolvedSongDetail(SongDetail(
           id: filePath, name: track.name, pic: track.picUrl,
           arName: track.artists, alName: track.album, level: 'local', size: '',
           url: filePath, lyric: lyricText, tlyric: '', source: MusicSource.local,
-        );
+        ));
         _loadLyricsForFloatingDisplay();
         await _playWithSoftSwitch(filePath, isLocal: true);
-        await coverManager.extractThemeColor(track.picUrl);
+        if (isStale()) return;
+        await _replaceCurrentTempFilePath(null);
+        _extractThemeColorAsync(track.picUrl);
         return;
       }
 
@@ -946,9 +1015,9 @@ class PlaybackService extends ChangeNotifier {
 
       songDetail = _normalizeSongDetailForPlayback(track, songDetail);
 
-      _currentSong = songDetail;
+      _applyResolvedSongDetail(songDetail);
       if (songDetail.pic != track.picUrl) {
-        await coverManager.updateCover(songDetail.pic, notify: false);
+        coverManager.updateCoverNonBlocking(songDetail.pic, notify: true, force: true);
         if (isStale()) return;
       }
       _loadLyricsForFloatingDisplay();
@@ -958,17 +1027,20 @@ class PlaybackService extends ChangeNotifier {
         final isDecrypted = songDetail.url.contains('/apple/stream');
         if (isDecrypted) {
           final durationMs = await _getAppleStreamDuration(songDetail.url);
+          if (isStale()) return;
           if (durationMs != null && durationMs > 0) {
             _duration = Duration(milliseconds: durationMs);
             notifyListeners();
           }
         }
         await _playWithSoftSwitch(songDetail.url);
+        if (isStale()) return;
+        await _replaceCurrentTempFilePath(null);
         if (!isCached) {
           final shouldSkip = songDetail.url.toLowerCase().contains('.m3u8');
           if (!shouldSkip) _cacheSongInBackground(track, songDetail, qualityStr);
         }
-        await coverManager.extractThemeColor(songDetail.pic);
+        _extractThemeColorAsync(songDetail.pic);
         return;
       }
 
@@ -982,10 +1054,16 @@ class PlaybackService extends ChangeNotifier {
           final headers = _buildPlaybackHeaders(track.source);
           try {
             await _playWithSoftSwitch(songDetail.url, headers: headers);
+            if (isStale()) return;
+            await _replaceCurrentTempFilePath(null);
           } catch (e) {
             final tempPath = await _downloadAndPlay(songDetail, headers: headers);
+            if (isStale()) {
+              await _deleteTempFilePath(tempPath);
+              return;
+            }
             if (tempPath != null) {
-              _currentTempFilePath = tempPath;
+              await _replaceCurrentTempFilePath(tempPath);
             } else {
               throw Exception('移动端直连与下载回退均失败: $e');
             }
@@ -996,18 +1074,30 @@ class PlaybackService extends ChangeNotifier {
             final proxyUrl = ProxyService().getProxyUrl(songDetail.url, platform);
             try {
               await _playWithSoftSwitch(proxyUrl);
+              if (isStale()) return;
+              await _replaceCurrentTempFilePath(null);
             } catch (_) {
               final tempPath = await _downloadAndPlay(songDetail);
-              if (tempPath != null) _currentTempFilePath = tempPath;
+              if (isStale()) {
+                await _deleteTempFilePath(tempPath);
+                return;
+              }
+              if (tempPath != null) await _replaceCurrentTempFilePath(tempPath);
             }
           } else {
             final tempPath = await _downloadAndPlay(songDetail);
-            if (tempPath != null) _currentTempFilePath = tempPath;
+            if (isStale()) {
+              await _deleteTempFilePath(tempPath);
+              return;
+            }
+            if (tempPath != null) await _replaceCurrentTempFilePath(tempPath);
           }
         }
       } else {
         // 网易云等直接播放
         await _playWithSoftSwitch(songDetail.url);
+        if (isStale()) return;
+        await _replaceCurrentTempFilePath(null);
       }
 
       // 异步缓存
@@ -1017,7 +1107,7 @@ class PlaybackService extends ChangeNotifier {
         _cacheSongInBackground(track, songDetail, qualityStr);
       }
 
-      await coverManager.extractThemeColor(songDetail.pic);
+      _extractThemeColorAsync(songDetail.pic);
     } on EngineReportedException {
       // 错误已通过 errorStream 进入 _onEngineError，避免重复进入 catch 路径造成连跳。
       if (isStale()) return;
@@ -1428,6 +1518,7 @@ class PlaybackService extends ChangeNotifier {
   }) async {
     final targetVolume = _volume.clamp(0.0, 1.0);
     final canFade = _engine.isPlaying && targetVolume > 0;
+    final fadeGeneration = _playGeneration;
 
     if (!canFade) {
       await _engine.play(url, isLocal: isLocal, headers: headers);
@@ -1448,7 +1539,12 @@ class PlaybackService extends ChangeNotifier {
       rethrow;
     }
 
+    unawaited(_fadeInAfterSwitch(stepVolume, fadeGeneration));
+  }
+
+  Future<void> _fadeInAfterSwitch(double stepVolume, int fadeGeneration) async {
     for (int i = 1; i <= _switchFadeSteps; i++) {
+      if (fadeGeneration != _playGeneration) return;
       await _safeSetEngineVolume(stepVolume * i);
       await Future.delayed(_switchFadeStepDelay);
     }
@@ -1946,7 +2042,7 @@ class PlaybackService extends ChangeNotifier {
     _errorMessage = null;
     positionNotifier.value = Duration.zero;
     bufferedPositionNotifier.value = Duration.zero;
-    coverManager.setCover(null, notify: false);
+    coverManager.setCoverImmediate(null, notify: false);
     coverManager.themeColorNotifier.value = null;
     _coverProviders.clear();
     _resetShuffle();
@@ -1974,7 +2070,7 @@ class PlaybackService extends ChangeNotifier {
       _position = Duration.zero;
       _duration = Duration.zero;
       _bufferedPosition = Duration.zero;
-      coverManager.setCover(null, notify: false);
+      coverManager.setCoverImmediate(null, notify: false);
       _sessionPersistDebounce?.cancel();
       await _engine.dispose();
     } catch (e) {

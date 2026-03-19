@@ -16,6 +16,8 @@ class CoverManager extends ChangeNotifier {
   String? _currentUrl;
   final Map<String, Color> _themeColorCache = {};
   final ValueNotifier<Color?> themeColorNotifier = ValueNotifier<Color?>(null);
+  int _coverRequestId = 0;
+  int _themeRequestId = 0;
 
   ImageProvider? get currentCover => _currentCover;
   String? get currentUrl => _currentUrl;
@@ -33,10 +35,22 @@ class CoverManager extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
+  /// 直接设置封面，并使之前未完成的封面请求失效。
+  void setCoverImmediate(ImageProvider? provider, {String? url, bool notify = true}) {
+    _coverRequestId++;
+    setCover(provider, url: url, notify: notify);
+  }
+
   /// 从 URL 更新封面
-  Future<void> updateCover(String? imageUrl, {bool notify = true, bool force = false}) async {
+  Future<void> updateCover(
+    String? imageUrl, {
+    bool notify = true,
+    bool force = false,
+    bool warmUp = true,
+  }) async {
+    final requestId = ++_coverRequestId;
     if (imageUrl == null || imageUrl.isEmpty) {
-      if (_currentCover != null) {
+      if (requestId == _coverRequestId && _currentCover != null) {
         setCover(null, notify: notify);
       }
       return;
@@ -49,31 +63,74 @@ class CoverManager extends ChangeNotifier {
       return;
     }
 
-    _currentUrl = imageUrl;
-
     try {
-      final isNetwork = imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
-      ImageProvider provider;
-      if (isNetwork) {
-        provider = CachedNetworkImageProvider(
-          imageUrl,
-          headers: getImageHeaders(imageUrl),
-        );
-      } else {
-        final file = File(imageUrl);
-        if (!await file.exists()) {
+      final provider = await _createProvider(imageUrl);
+      if (provider == null) {
+        if (requestId == _coverRequestId) {
           setCover(null, notify: notify);
-          return;
         }
-        provider = FileImage(file);
+        return;
       }
-      // 主动监听图片流，拦截 403 等异步加载错误，避免冒泡成全局 FlutterError。
-      await _warmUpProvider(provider);
+
+      if (warmUp) {
+        // 主动监听图片流，拦截 403 等异步加载错误，避免冒泡成全局 FlutterError。
+        await _warmUpProvider(provider);
+        if (requestId != _coverRequestId) return;
+        setCover(provider, url: imageUrl, notify: notify);
+        return;
+      }
+
+      if (requestId != _coverRequestId) return;
       setCover(provider, url: imageUrl, notify: notify);
+      unawaited(
+        _warmUpProvider(provider).catchError((error, stackTrace) {
+          print('[CoverManager] 后台预热封面失败: $error');
+          if (requestId == _coverRequestId &&
+              _currentUrl == imageUrl &&
+              identical(_currentCover, provider)) {
+            setCover(null, notify: notify);
+          }
+        }),
+      );
     } catch (e) {
       print('[CoverManager] 预加载封面失败: $e');
-      setCover(null, notify: notify);
+      if (requestId == _coverRequestId) {
+        setCover(null, notify: notify);
+      }
     }
+  }
+
+  /// 非阻塞更新封面，用于切歌热路径。
+  void updateCoverNonBlocking(
+    String? imageUrl, {
+    bool notify = true,
+    bool force = false,
+  }) {
+    unawaited(
+      updateCover(
+        imageUrl,
+        notify: notify,
+        force: force,
+        warmUp: false,
+      ),
+    );
+  }
+
+  Future<ImageProvider?> _createProvider(String imageUrl) async {
+    final isNetwork =
+        imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
+    if (isNetwork) {
+      return CachedNetworkImageProvider(
+        imageUrl,
+        headers: getImageHeaders(imageUrl),
+      );
+    }
+
+    final file = File(imageUrl);
+    if (!await file.exists()) {
+      return null;
+    }
+    return FileImage(file);
   }
 
   Future<void> _warmUpProvider(ImageProvider provider) async {
@@ -98,10 +155,18 @@ class CoverManager extends ChangeNotifier {
     await completer.future.timeout(const Duration(seconds: 5));
   }
 
+  void resetThemeColor([Color? fallback]) {
+    _themeRequestId++;
+    themeColorNotifier.value = fallback ?? Colors.grey[700]!;
+  }
+
   /// 后台提取主题色
   Future<void> extractThemeColor(String imageUrl) async {
+    final requestId = ++_themeRequestId;
     if (imageUrl.isEmpty) {
-      themeColorNotifier.value = Colors.grey[700]!;
+      if (requestId == _themeRequestId) {
+        themeColorNotifier.value = Colors.grey[700]!;
+      }
       return;
     }
 
@@ -109,11 +174,15 @@ class CoverManager extends ChangeNotifier {
       // 检查缓存
       final cachedResult = ColorExtractionService().getCachedColors(imageUrl);
       if (cachedResult != null && cachedResult.themeColor != null) {
-        themeColorNotifier.value = cachedResult.themeColor!;
+        if (requestId == _themeRequestId) {
+          themeColorNotifier.value = cachedResult.themeColor!;
+        }
         return;
       }
 
-      themeColorNotifier.value = Colors.grey[700]!;
+      if (requestId == _themeRequestId) {
+        themeColorNotifier.value = Colors.grey[700]!;
+      }
 
       // 跳过后台提取
       final isAppInBackground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused ||
@@ -132,13 +201,17 @@ class CoverManager extends ChangeNotifier {
         themeColor = result?.themeColor;
       }
 
-      if (themeColor != null) {
+      if (themeColor != null && requestId == _themeRequestId) {
         themeColorNotifier.value = themeColor;
         _themeColorCache[imageUrl] = themeColor;
       }
     } catch (e) {
       print('[CoverManager] 主题色提取失败: $e');
     }
+  }
+
+  void extractThemeColorNonBlocking(String imageUrl) {
+    unawaited(extractThemeColor(imageUrl));
   }
 
   /// 预缓存下一首封面的主题色

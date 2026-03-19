@@ -28,6 +28,9 @@ class PlayerSongInfo extends StatelessWidget {
         final song = player.currentSong;
         final track = player.currentTrack;
         final imageUrl = player.currentCoverUrl ?? '';
+        final displayTitle = player.displayTitle;
+        final displayArtist = player.displayArtist;
+        final displayAlbum = player.displayAlbum;
         final backgroundService = PlayerBackgroundService();
         
         return RepaintBoundary(
@@ -49,7 +52,14 @@ class PlayerSongInfo extends StatelessWidget {
                     const SizedBox(height: 40),
                   
                   // 歌曲信息
-                  _buildSongInfo(context, song, track),
+                  _buildSongInfo(
+                    context,
+                    song,
+                    track,
+                    displayTitle: displayTitle,
+                    displayArtist: displayArtist,
+                    displayAlbum: displayAlbum,
+                  ),
                   const SizedBox(height: 20),
                 ],
               ),
@@ -138,10 +148,17 @@ class PlayerSongInfo extends StatelessWidget {
   }
 
   /// 构建歌曲信息
-  Widget _buildSongInfo(BuildContext context, SongDetail? song, Track? track) {
-    final name = song?.name ?? track?.name ?? '未知歌曲';
-    final artistsStr = song?.arName ?? track?.artists ?? '未知艺术家';
-    final album = song?.alName ?? track?.album ?? '';
+  Widget _buildSongInfo(
+    BuildContext context,
+    SongDetail? song,
+    Track? track, {
+    required String displayTitle,
+    required String displayArtist,
+    required String displayAlbum,
+  }) {
+    final name = displayTitle.isNotEmpty ? displayTitle : '未知歌曲';
+    final artistsStr = displayArtist.isNotEmpty ? displayArtist : '未知艺术家';
+    final album = displayAlbum;
 
     // 分割歌手（支持多种分隔符：/ , 、）
     final artists = _splitArtists(artistsStr);

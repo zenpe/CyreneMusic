@@ -46,6 +46,9 @@ class PlayerService extends ChangeNotifier {
 
   SongDetail? get currentSong => _pb.currentSong;
   Track? get currentTrack => _pb.currentTrack;
+  String get displayTitle => _pb.displayTitle;
+  String get displayArtist => _pb.displayArtist;
+  String get displayAlbum => _pb.displayAlbum;
   Duration get duration => _pb.duration;
   Duration get position => _pb.position;
   Duration get bufferedPosition => _pb.bufferedPosition;
@@ -60,24 +63,7 @@ class PlayerService extends ChangeNotifier {
   bool get hasPrevious => _pb.hasPrevious;
 
   ImageProvider? get currentCoverImageProvider => _pb.coverManager.currentCover;
-  String? get currentCoverUrl {
-    final coverUrl = _pb.coverManager.currentUrl;
-    if (coverUrl != null && coverUrl.isNotEmpty) {
-      return coverUrl;
-    }
-
-    final songPic = _pb.currentSong?.pic;
-    if (songPic != null && songPic.isNotEmpty) {
-      return songPic;
-    }
-
-    final trackPic = _pb.currentTrack?.picUrl;
-    if (trackPic != null && trackPic.isNotEmpty) {
-      return trackPic;
-    }
-
-    return null;
-  }
+  String? get currentCoverUrl => _pb.displayCoverUrl;
   ValueNotifier<Color?> get themeColorNotifier => _pb.coverManager.themeColorNotifier;
   ValueNotifier<Duration> get positionNotifier => _pb.positionNotifier;
   ValueNotifier<Duration> get bufferedPositionNotifier =>
@@ -109,7 +95,7 @@ class PlayerService extends ChangeNotifier {
   }) async {
     // 如果有封面，先设置
     if (coverProvider != null) {
-      _pb.coverManager.setCover(coverProvider, url: track.picUrl, notify: false);
+      _pb.coverManager.setCoverImmediate(coverProvider, url: track.picUrl, notify: false);
       _pb.updateCoverProvider(track, coverProvider);
     }
     // 单曲播放：如果有队列，直接跳转或重建
@@ -150,7 +136,11 @@ class PlayerService extends ChangeNotifier {
     bool shouldNotify = false,
     String? imageUrl,
   }) {
-    _pb.coverManager.setCover(provider, url: imageUrl, notify: shouldNotify);
+    _pb.coverManager.setCoverImmediate(
+      provider,
+      url: imageUrl,
+      notify: shouldNotify,
+    );
   }
 
   /// 手动更新悬浮歌词（供后台服务调用）
