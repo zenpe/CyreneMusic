@@ -43,6 +43,18 @@ import 'playback_session_store.dart';
 /// 播放状态枚举（复用 PlayerService 的定义）
 enum PBState { idle, loading, playing, paused, error }
 
+class _PrefetchedSongDetailEntry {
+  final SongDetail detail;
+  final DateTime expiresAt;
+
+  const _PrefetchedSongDetailEntry({
+    required this.detail,
+    required this.expiresAt,
+  });
+
+  bool get isExpired => DateTime.now().isAfter(expiresAt);
+}
+
 /// 核心播放服务
 ///
 /// 统一管理队列状态（原 PlaylistQueueService）和播放控制（原 PlayerService）。
@@ -94,11 +106,15 @@ class PlaybackService extends ChangeNotifier {
   String? _lastPreloadedTargetKey;
   bool _preloadingNext = false;
   int _preloadOp = 0;
-  final Map<String, SongDetail> _prefetchedPlayableDetails = {};
+  final Map<String, _PrefetchedSongDetailEntry> _prefetchedPlayableDetails = {};
+  Timer? _preloadTriggerTimer;
+  bool _preloadDependencyListenersBound = false;
 
   static const int _switchFadeSteps = 8;
   static const Duration _switchFadeStepDelay = Duration(milliseconds: 15);
   static const Duration _trackSwitchSettleDelay = Duration(milliseconds: 80);
+  static const Duration _preloadTriggerDelay = Duration(seconds: 3);
+  static const Duration _prefetchedSongDetailTtl = Duration(seconds: 45);
   static const int _maxPrefetchedPlayableDetails = 4;
 
   // 高频进度更新（解耦 ChangeNotifier，避免重建 widget 树）
@@ -249,6 +265,7 @@ class PlaybackService extends ChangeNotifier {
 
     // 监听播放模式变化，触发预缓存
     PlaybackModeService().addListener(_precacheNextCover);
+    _bindPreloadDependencyListeners();
 
     print('[PlaybackService] 初始化完成');
   }
@@ -346,12 +363,12 @@ class PlaybackService extends ChangeNotifier {
         _consecutiveErrors = 0;
         _retriedTrackKey = null;
         _errorMessage = null;
-        _schedulePreloadNextTrack();
         _startListeningTimeTracking();
         _startStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(true);
         if (Platform.isAndroid) AndroidFloatingLyricService().setPlayingState(true);
         _scheduleSessionPersist();
+        _schedulePreloadNextTrack();
         break;
       case EngineState.paused:
         _state = PBState.paused;
@@ -359,6 +376,7 @@ class PlaybackService extends ChangeNotifier {
         _stopStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(false);
         if (Platform.isAndroid) AndroidFloatingLyricService().setPlayingState(false);
+        _cancelScheduledPreload();
         _scheduleSessionPersist();
         break;
       case EngineState.idle:
@@ -367,6 +385,7 @@ class PlaybackService extends ChangeNotifier {
         _stopStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(false);
         if (Platform.isAndroid) AndroidFloatingLyricService().setPlayingState(false);
+        _cancelScheduledPreload();
         _scheduleSessionPersist();
         break;
     }
@@ -874,7 +893,7 @@ class PlaybackService extends ChangeNotifier {
     final track = currentTrack;
     if (track == null) return;
 
-    _resetPreloadState();
+    _resetPreloadState(clearPrefetchedDetails: false);
     _preloadedTrack = null;
     final gen = ++_playGeneration;
     final requestedKey = '${track.source.name}_${track.id}';
@@ -1439,10 +1458,40 @@ class PlaybackService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  void _resetPreloadState() {
+  void _bindPreloadDependencyListeners() {
+    if (_preloadDependencyListenersBound) return;
+    AudioQualityService().addListener(_handlePreloadInputsChanged);
+    AudioSourceService().addListener(_handlePreloadInputsChanged);
+    _preloadDependencyListenersBound = true;
+  }
+
+  void _unbindPreloadDependencyListeners() {
+    if (!_preloadDependencyListenersBound) return;
+    AudioQualityService().removeListener(_handlePreloadInputsChanged);
+    AudioSourceService().removeListener(_handlePreloadInputsChanged);
+    _preloadDependencyListenersBound = false;
+  }
+
+  void _handlePreloadInputsChanged() {
+    _resetPreloadState();
+    if (_state == PBState.playing) {
+      _schedulePreloadNextTrack();
+    }
+  }
+
+  void _cancelScheduledPreload() {
+    _preloadTriggerTimer?.cancel();
+    _preloadTriggerTimer = null;
+  }
+
+  void _resetPreloadState({bool clearPrefetchedDetails = true}) {
+    _cancelScheduledPreload();
     _lastPreloadedTargetKey = null;
     _preloadingNext = false;
     _preloadOp++;
+    if (clearPrefetchedDetails) {
+      _prefetchedPlayableDetails.clear();
+    }
   }
 
   String _buildTrackIdentity(Track track) => '${track.source.name}_${track.id}';
@@ -1451,14 +1500,29 @@ class PlaybackService extends ChangeNotifier {
     return '${_buildTrackIdentity(track)}_${quality.toString()}';
   }
 
+  void _pruneExpiredPrefetchedSongDetails() {
+    _prefetchedPlayableDetails.removeWhere(
+      (_, entry) => entry.isExpired,
+    );
+  }
+
   SongDetail? _takePrefetchedSongDetail(Track track, AudioQuality quality) {
+    _pruneExpiredPrefetchedSongDetails();
     final key = _buildPrefetchCacheKey(track, quality);
-    return _prefetchedPlayableDetails.remove(key);
+    final entry = _prefetchedPlayableDetails.remove(key);
+    if (entry == null || entry.isExpired) {
+      return null;
+    }
+    return entry.detail;
   }
 
   void _savePrefetchedSongDetail(Track track, AudioQuality quality, SongDetail detail) {
+    _pruneExpiredPrefetchedSongDetails();
     final key = _buildPrefetchCacheKey(track, quality);
-    _prefetchedPlayableDetails[key] = detail;
+    _prefetchedPlayableDetails[key] = _PrefetchedSongDetailEntry(
+      detail: detail,
+      expiresAt: DateTime.now().add(_prefetchedSongDetailTtl),
+    );
     if (_prefetchedPlayableDetails.length > _maxPrefetchedPlayableDetails) {
       final oldestKey = _prefetchedPlayableDetails.keys.first;
       _prefetchedPlayableDetails.remove(oldestKey);
@@ -1558,7 +1622,24 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _schedulePreloadNextTrack() {
-    unawaited(_preloadNextTrack());
+    if (_state != PBState.playing) return;
+    final current = currentTrack;
+    if (current == null) return;
+
+    final scheduledTrackKey = _buildTrackIdentity(current);
+    final scheduledOp = _preloadOp;
+    _cancelScheduledPreload();
+    _preloadTriggerTimer = Timer(_preloadTriggerDelay, () {
+      _preloadTriggerTimer = null;
+      final playingTrack = currentTrack;
+      if (scheduledOp != _preloadOp ||
+          _state != PBState.playing ||
+          playingTrack == null ||
+          _buildTrackIdentity(playingTrack) != scheduledTrackKey) {
+        return;
+      }
+      unawaited(_preloadNextTrack());
+    });
   }
 
   Future<void> _preloadNextTrack() async {
@@ -1567,9 +1648,13 @@ class PlaybackService extends ChangeNotifier {
     final current = currentTrack;
     if (nextTrack == null || current == null) return;
 
-    final nextKey = '${nextTrack.source.name}_${nextTrack.id}';
-    final currentKey = '${current.source.name}_${current.id}';
-    if (nextKey == currentKey || nextKey == _lastPreloadedTargetKey) return;
+    final selectedQuality = AudioQualityService().currentQuality;
+    final nextIdentity = _buildTrackIdentity(nextTrack);
+    final nextKey = _buildPrefetchCacheKey(nextTrack, selectedQuality);
+    final currentIdentity = _buildTrackIdentity(current);
+    if (nextIdentity == currentIdentity || nextKey == _lastPreloadedTargetKey) {
+      return;
+    }
     if (nextTrack.source != MusicSource.local && !AudioSourceService().isConfigured) {
       return;
     }
@@ -1577,7 +1662,7 @@ class PlaybackService extends ChangeNotifier {
     _preloadingNext = true;
     final op = ++_preloadOp;
     try {
-      await _preloadTrackSource(nextTrack);
+      await _preloadTrackSource(nextTrack, selectedQuality, op);
       if (op == _preloadOp) {
         _lastPreloadedTargetKey = nextKey;
       }
@@ -1614,15 +1699,14 @@ class PlaybackService extends ChangeNotifier {
     }
   }
 
-  Future<void> _preloadTrackSource(Track track) async {
+  Future<void> _preloadTrackSource(
+    Track track,
+    AudioQuality selectedQuality,
+    int op,
+  ) async {
     if (track.source == MusicSource.local) {
-      final filePath = track.id is String ? track.id as String : '';
-      if (filePath.isEmpty || !(await File(filePath).exists())) return;
-      await _engine.preload(filePath, isLocal: true);
       return;
     }
-
-    final selectedQuality = AudioQualityService().currentQuality;
 
     // 命中本地缓存时跳过预加载：缓存播放已是本地文件链路。
     if (CacheService().isCached(
@@ -1638,17 +1722,11 @@ class PlaybackService extends ChangeNotifier {
       title: track.name,
       artist: track.artists,
     );
+    if (op != _preloadOp) return;
     if (detail == null || detail.url.isEmpty) return;
     detail = _normalizeSongDetailForPlayback(track, detail);
+    if (op != _preloadOp) return;
     _savePrefetchedSongDetail(track, selectedQuality, detail);
-    final url = detail.url;
-
-    Map<String, String>? headers;
-    if ((Platform.isAndroid || Platform.isIOS) &&
-        (track.source == MusicSource.qq || track.source == MusicSource.kugou)) {
-      headers = _buildPlaybackHeaders(track.source);
-    }
-    await _engine.preload(url, headers: headers);
   }
 
   Map<String, String> _buildPlaybackHeaders(MusicSource source) {
@@ -2073,6 +2151,7 @@ class PlaybackService extends ChangeNotifier {
   /// 强制释放所有资源
   Future<void> forceDispose() async {
     try {
+      _resetPreloadState();
       await _cleanupCurrentTempFile();
       await CacheService().cleanTempFiles();
       await ProxyService().stop();
@@ -2092,6 +2171,8 @@ class PlaybackService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _resetPreloadState();
+    _unbindPreloadDependencyListeners();
     for (final sub in _engineSubs) {
       sub.cancel();
     }
