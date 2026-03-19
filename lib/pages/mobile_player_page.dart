@@ -280,6 +280,20 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     }
   }
 
+  PlayerLyricState _resolveLyricState() {
+    final player = PlayerService();
+    if (player.currentTrack == null) {
+      return PlayerLyricState.idle;
+    }
+    if (_lyrics.isNotEmpty) {
+      return PlayerLyricState.ready;
+    }
+    if (player.lyricState == PlayerLyricState.ready) {
+      return PlayerLyricState.empty;
+    }
+    return player.lyricState;
+  }
+
   /// 强制刷新歌词（用于调试）
   void _forceRefreshLyrics() {
     final currentTrack = PlayerService().currentTrack;
@@ -361,6 +375,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
 
     // 构建主要内容
     final lyricStyleService = LyricStyleService();
+    final lyricState = _resolveLyricState();
     // 流体云布局条件：全屏播放器样式设置为流体云（优先级最高）
     final useFluidCloudLayout = lyricStyleService.currentStyle == LyricStyle.fluidCloud;
     
@@ -386,6 +401,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
                   lyrics: _lyrics,
                   currentLyricIndex: _currentLyricIndex,
                   showTranslation: _showTranslation,
+                  lyricState: lyricState,
                   isMaximized: true,
                   uiScale: 0.5, // 适配移动端，缩小 50%
                   onBackPressed: () => Navigator.pop(context),
@@ -396,11 +412,12 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
               // 流体云布局模式：完全接管背景和 Safe Area
               else if (useFluidCloudLayout)
                 ThemeManager().isTablet
-                    ? PlayerFluidCloudLayout(
-                        lyrics: _lyrics,
-                        currentLyricIndex: _currentLyricIndex,
-                        showTranslation: _showTranslation,
-                        isMaximized: true,
+                     ? PlayerFluidCloudLayout(
+                         lyrics: _lyrics,
+                         currentLyricIndex: _currentLyricIndex,
+                         showTranslation: _showTranslation,
+                         lyricState: lyricState,
+                         isMaximized: true,
                         onBackPressed: () => Navigator.pop(context),
                         onPlaylistPressed: () => MobilePlayerDialogs.showPlaylistBottomSheet(context),
                         onVolumeControlPressed: () {

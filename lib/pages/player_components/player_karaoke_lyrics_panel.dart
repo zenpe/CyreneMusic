@@ -12,12 +12,14 @@ class PlayerKaraokeLyricsPanel extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final bool showTranslation;
+  final PlayerLyricState lyricState;
 
   const PlayerKaraokeLyricsPanel({
     super.key,
     required this.lyrics,
     required this.currentLyricIndex,
     required this.showTranslation,
+    required this.lyricState,
   });
 
   @override
@@ -159,7 +161,7 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
           Listener(
             onPointerSignal: _handleScrollEvent,
             child: widget.lyrics.isEmpty
-                ? _buildNoLyric()
+                ? _buildLyricStatus()
                 : _buildKaraokeLyricList(),
           ),
           
@@ -177,14 +179,20 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
   }
 
   /// 构建无歌词提示
-  Widget _buildNoLyric() {
+  Widget _buildLyricStatus() {
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         final textColor = _getAdaptiveLyricColor(themeColor, false).withOpacity(0.5);
+        var message = '歌词加载中';
+        if (widget.lyricState == PlayerLyricState.failed) {
+          message = '歌词加载失败';
+        } else if (widget.lyricState == PlayerLyricState.empty) {
+          message = '暂无歌词';
+        }
         return Center(
           child: Text(
-            '暂无歌词',
+            message,
             style: TextStyle(
               color: textColor,
               fontSize: 16,

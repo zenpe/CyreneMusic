@@ -14,6 +14,14 @@ enum PlayerState {
   error,    // 错误
 }
 
+enum PlayerLyricState {
+  idle,
+  loading,
+  ready,
+  empty,
+  failed,
+}
+
 /// 音乐播放器服务 — 委托到 PlaybackService
 ///
 /// 保留原有单例和 API 签名，所有方法委托到 PlaybackService。
@@ -59,6 +67,20 @@ class PlayerService extends ChangeNotifier {
   String get pendingDisplayArtist => _pb.pendingDisplayArtist;
   String get pendingDisplayAlbum => _pb.pendingDisplayAlbum;
   String? get pendingDisplayCoverUrl => _pb.pendingDisplayCoverUrl;
+  PlayerLyricState get lyricState {
+    switch (_pb.lyricLoadState) {
+      case LyricLoadState.idle:
+        return PlayerLyricState.idle;
+      case LyricLoadState.loading:
+        return PlayerLyricState.loading;
+      case LyricLoadState.ready:
+        return PlayerLyricState.ready;
+      case LyricLoadState.empty:
+        return PlayerLyricState.empty;
+      case LyricLoadState.failed:
+        return PlayerLyricState.failed;
+    }
+  }
   Duration get duration => _pb.duration;
   Duration get position => _pb.position;
   Duration get bufferedPosition => _pb.bufferedPosition;

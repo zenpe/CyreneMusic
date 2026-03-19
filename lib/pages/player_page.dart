@@ -326,9 +326,24 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     }
   }
 
+  PlayerLyricState _resolveLyricState() {
+    final player = PlayerService();
+    if (player.currentTrack == null) {
+      return PlayerLyricState.idle;
+    }
+    if (_lyrics.isNotEmpty) {
+      return PlayerLyricState.ready;
+    }
+    if (player.lyricState == PlayerLyricState.ready) {
+      return PlayerLyricState.empty;
+    }
+    return player.lyricState;
+  }
+
   /// 根据样式选择构建歌词面板
   Widget _buildLyricPanel() {
     final lyricStyle = LyricStyleService().currentStyle;
+    final lyricState = _resolveLyricState();
     
     switch (lyricStyle) {
       case LyricStyle.defaultStyle:
@@ -336,6 +351,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
           lyrics: _lyrics,
           currentLyricIndex: _currentLyricIndex,
           showTranslation: _showTranslation,
+          lyricState: lyricState,
         );
       
       case LyricStyle.fluidCloud:
@@ -343,6 +359,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
           lyrics: _lyrics,
           currentLyricIndex: _currentLyricIndex,
           showTranslation: _showTranslation,
+          lyricState: lyricState,
         );
 
       case LyricStyle.immersive:
@@ -368,6 +385,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     final player = PlayerService();
     final song = player.currentSong;
     final track = player.currentTrack;
+    final lyricState = _resolveLyricState();
 
     if (song == null && track == null) {
       return Scaffold(
@@ -393,6 +411,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
                 lyrics: _lyrics,
                 currentLyricIndex: _currentLyricIndex,
                 showTranslation: _showTranslation,
+                lyricState: lyricState,
                 isMaximized: _isMaximized,
                 onBackPressed: () => Navigator.pop(context),
                 onPlaylistPressed: _togglePlaylist,
@@ -405,6 +424,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
                 lyrics: _lyrics,
                 currentLyricIndex: _currentLyricIndex,
                 showTranslation: _showTranslation,
+                lyricState: lyricState,
                 isMaximized: _isMaximized,
                 onBackPressed: () => Navigator.pop(context),
                 onPlaylistPressed: _togglePlaylist,

@@ -37,6 +37,7 @@ class PlayerFluidCloudLyricsPanel extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final bool showTranslation;
+  final PlayerLyricState lyricState;
   final int visibleLineCount;
 
   const PlayerFluidCloudLyricsPanel({
@@ -44,6 +45,7 @@ class PlayerFluidCloudLyricsPanel extends StatefulWidget {
     required this.lyrics,
     required this.currentLyricIndex,
     required this.showTranslation,
+    required this.lyricState,
     this.visibleLineCount = 7,
   });
 
@@ -412,10 +414,16 @@ class _PlayerFluidCloudLyricsPanelState extends State<PlayerFluidCloudLyricsPane
   }
 
   Widget _buildNoLyric() {
-    return const Center(
+    var message = '歌词加载中';
+    if (widget.lyricState == PlayerLyricState.failed) {
+      message = '歌词加载失败';
+    } else if (widget.lyricState == PlayerLyricState.empty) {
+      message = '暂无歌词';
+    }
+    return Center(
       child: Text(
-        '暂无歌词',
-        style: TextStyle(color: Colors.white54, fontSize: 24),
+        message,
+        style: const TextStyle(color: Colors.white54, fontSize: 24),
       ),
     );
   }

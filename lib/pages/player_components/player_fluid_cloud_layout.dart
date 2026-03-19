@@ -32,6 +32,7 @@ class PlayerFluidCloudLayout extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final bool showTranslation;
+  final PlayerLyricState lyricState;
   final bool isMaximized;
   final VoidCallback onBackPressed;
   final VoidCallback onPlaylistPressed;
@@ -45,6 +46,7 @@ class PlayerFluidCloudLayout extends StatefulWidget {
     required this.lyrics,
     required this.currentLyricIndex,
     required this.showTranslation,
+    required this.lyricState,
     required this.isMaximized,
     required this.onBackPressed,
     required this.onPlaylistPressed,
@@ -1049,6 +1051,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
       lyrics: widget.lyrics,
       currentLyricIndex: widget.currentLyricIndex,
       showTranslation: widget.showTranslation,
+      lyricState: widget.lyricState,
     );
   }
 

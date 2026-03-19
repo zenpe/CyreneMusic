@@ -48,6 +48,8 @@ import 'playable_source.dart';
 /// 播放状态枚举（复用 PlayerService 的定义）
 enum PBState { idle, loading, playing, paused, error }
 
+enum LyricLoadState { idle, loading, ready, empty, failed }
+
 class _PrefetchedPlayablePlanEntry {
   final _TrackSwitchPlaybackPlan plan;
   final DateTime expiresAt;
@@ -211,6 +213,8 @@ class PlaybackService extends ChangeNotifier {
   final Set<String> _settledCacheMetadataRefreshKeys = <String>{};
   final Map<String, _SongDetailRequestEntry> _pendingSongDetailRequests =
       <String, _SongDetailRequestEntry>{};
+  LyricLoadState _lyricLoadState = LyricLoadState.idle;
+  String? _lyricLoadTrackKey;
   double _volume = 0.7;
   double _playbackSpeed = 1.0;
   bool _isAudioSourceNotConfigured = false;
@@ -279,6 +283,7 @@ class PlaybackService extends ChangeNotifier {
   bool get isPaused => _state == PBState.paused;
   bool get isLoading => _state == PBState.loading;
   PBState get state => _state;
+  LyricLoadState get lyricLoadState => _lyricLoadState;
   SongDetail? get currentSong => _activeSong;
   String get displayTitle {
     final songName = _activeSong?.name;
@@ -872,6 +877,7 @@ class PlaybackService extends ChangeNotifier {
       _primeDisplayStateForTrack(_activeTrack!);
     } else {
       coverManager.setCoverImmediate(null, notify: false);
+      _setLyricLoadState(LyricLoadState.idle, notify: false);
     }
     notifyListeners();
     _pendingRestorePosition = null;
@@ -922,6 +928,7 @@ class PlaybackService extends ChangeNotifier {
     _state = PBState.idle;
     _duration = Duration.zero;
     _position = Duration.zero;
+    _setLyricLoadState(LyricLoadState.idle, track: track, notify: false);
 
     if (coverProvider != null) {
       coverManager.setCoverImmediate(coverProvider, url: track.picUrl, notify: false);
@@ -1224,30 +1231,58 @@ class PlaybackService extends ChangeNotifier {
     final cacheInfo = resolvedSong.cacheInfo;
 
     if (cacheInfo != null && cacheInfo.metadata.quality == tx.qualityStr) {
-      final playableSource = (Platform.isAndroid || Platform.isIOS)
-          ? CachedCyrenePlayableSource.stream(
-              cacheInfo: cacheInfo,
-              playbackAudioSource: CyreneStreamSource(
-                filePath: cacheInfo.filePath,
-                payloadOffset: cacheInfo.payloadOffset,
-                audioLength: cacheInfo.audioLength,
-                contentType: cacheInfo.contentType,
-              ),
-            )
-          : CachedCyrenePlayableSource.proxy(
-              cacheInfo: cacheInfo,
-              playbackUrl: ProxyService().getCyreneStreamUrl(cacheInfo),
-            );
-      return _TrackSwitchPlaybackPlan(
-        resolvedSong: resolvedSong,
-        usesCachedStream: true,
-        source: playableSource,
-        retainedTempFilePath: null,
-        coverRefreshUrl: cacheInfo.metadata.picUrl,
-        themeImageUrl: cacheInfo.metadata.picUrl,
-        themeReason: 'cache-hit',
-        shouldWriteBackgroundCache: false,
-        cacheMetadataRefreshReason: null,
+      if (Platform.isAndroid || Platform.isIOS) {
+        final playableSource = CachedCyrenePlayableSource.stream(
+          cacheInfo: cacheInfo,
+          playbackAudioSource: CyreneStreamSource(
+            filePath: cacheInfo.filePath,
+            payloadOffset: cacheInfo.payloadOffset,
+            audioLength: cacheInfo.audioLength,
+            contentType: cacheInfo.contentType,
+          ),
+        );
+        return _TrackSwitchPlaybackPlan(
+          resolvedSong: resolvedSong,
+          usesCachedStream: true,
+          source: playableSource,
+          retainedTempFilePath: null,
+          coverRefreshUrl: cacheInfo.metadata.picUrl,
+          themeImageUrl: cacheInfo.metadata.picUrl,
+          themeReason: 'cache-hit',
+          shouldWriteBackgroundCache: false,
+          cacheMetadataRefreshReason: null,
+        );
+      }
+
+      final proxyReady = await _ensureLocalProxyRunning('cache');
+      if (isStale()) return null;
+      if (proxyReady) {
+        final playableSource = CachedCyrenePlayableSource.proxy(
+          cacheInfo: cacheInfo,
+          playbackUrl: ProxyService().getCyreneStreamUrl(cacheInfo),
+        );
+        return _TrackSwitchPlaybackPlan(
+          resolvedSong: resolvedSong,
+          usesCachedStream: true,
+          source: playableSource,
+          retainedTempFilePath: null,
+          coverRefreshUrl: cacheInfo.metadata.picUrl,
+          themeImageUrl: cacheInfo.metadata.picUrl,
+          themeReason: 'cache-hit',
+          shouldWriteBackgroundCache: false,
+          cacheMetadataRefreshReason: null,
+        );
+      }
+
+      _markCachePlaybackBypassed(
+        track,
+        tx.qualityStr,
+        reason: 'proxy-unavailable',
+      );
+      _logPlaybackDebug(
+        '[PlaybackService] 桌面缓存命中回退网络链路: '
+        '${_buildTrackIdentity(track)} quality=${tx.qualityStr}',
+        toDeveloperPanel: true,
       );
     }
 
@@ -1397,6 +1432,11 @@ class PlaybackService extends ChangeNotifier {
 
     final track = tx.track;
     final songDetail = plan.resolvedSong.songDetail;
+    _setLyricLoadState(
+      _deriveLyricLoadStateForPlan(track, songDetail, plan, tx.qualityStr),
+      track: track,
+      notify: false,
+    );
     _commitActivePresentation(
       track,
       songDetail: songDetail,
@@ -1421,13 +1461,22 @@ class PlaybackService extends ChangeNotifier {
       );
     }
 
+    bool isPresentationStale() {
+      final pending = _pendingTrack;
+      if (pending != null && !_matchesTrackIdentity(pending, tx.requestedKey)) {
+        return true;
+      }
+      if (_activePlaybackToken != tx.token) return true;
+      return !_matchesTrackIdentity(_activeTrack, tx.requestedKey);
+    }
+
     if (plan.usesCachedStream && plan.resolvedSong.shouldRefreshCachedMetadata) {
       _bgUpdateCachedMetadata(
         track,
         tx.selectedQuality,
         tx.qualityStr,
         tx.requestedKey,
-        isStale,
+        isPresentationStale,
       );
       return;
     }
@@ -1440,7 +1489,7 @@ class PlaybackService extends ChangeNotifier {
           tx.selectedQuality,
           tx.qualityStr,
           tx.requestedKey,
-          isStale,
+          isPresentationStale,
         );
       }
       return;
@@ -1452,7 +1501,7 @@ class PlaybackService extends ChangeNotifier {
         tx.selectedQuality,
         tx.qualityStr,
         tx.requestedKey,
-        isStale,
+        isPresentationStale,
       );
       return;
     }
@@ -1577,6 +1626,15 @@ class PlaybackService extends ChangeNotifier {
         song.qrc.isNotEmpty;
   }
 
+  bool _hasAnyLyricPayload(SongDetail song) {
+    return song.lyric.isNotEmpty ||
+        song.tlyric.isNotEmpty ||
+        song.yrc.isNotEmpty ||
+        song.ytlrc.isNotEmpty ||
+        song.qrc.isNotEmpty ||
+        song.qrcTrans.isNotEmpty;
+  }
+
   bool _shouldScheduleDeferredSupplementalRefresh(SongDetail song) {
     if (song.source == MusicSource.local) return false;
     final sourceType = AudioSourceService().sourceType;
@@ -1590,6 +1648,13 @@ class PlaybackService extends ChangeNotifier {
         song.ytlrc.isEmpty &&
         song.qrc.isEmpty &&
         song.qrcTrans.isEmpty;
+  }
+
+  bool _shouldUseLyricOnlySupplementalFetch() {
+    final sourceType = AudioSourceService().sourceType;
+    return sourceType == AudioSourceType.lxmusic ||
+        sourceType == AudioSourceType.tunehub ||
+        sourceType == AudioSourceType.navidrome;
   }
 
   bool _needsCachedMetadataRefresh(CacheMetadata metadata) {
@@ -1631,6 +1696,48 @@ class PlaybackService extends ChangeNotifier {
     if (toDeveloperPanel) {
       DeveloperModeService().addLog(message);
     }
+  }
+
+  void _setLyricLoadState(
+    LyricLoadState nextState, {
+    Track? track,
+    bool notify = true,
+  }) {
+    final nextTrackKey = track == null ? null : _buildTrackIdentity(track);
+    if (_lyricLoadState == nextState && _lyricLoadTrackKey == nextTrackKey) {
+      return;
+    }
+    _lyricLoadState = nextState;
+    _lyricLoadTrackKey = nextTrackKey;
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  bool _isLyricStateBoundToTrack(Track track) {
+    return _lyricLoadTrackKey == _buildTrackIdentity(track);
+  }
+
+  LyricLoadState _deriveLyricLoadStateForPlan(
+    Track track,
+    SongDetail songDetail,
+    _TrackSwitchPlaybackPlan plan,
+    String qualityStr,
+  ) {
+    if (_hasAnyLyricPayload(songDetail)) {
+      return LyricLoadState.ready;
+    }
+    final lyricRefreshKey = _lyricRefreshKey(track, qualityStr);
+    final refreshAlreadySettled =
+        _settledCacheMetadataRefreshKeys.contains(lyricRefreshKey);
+    final shouldRefreshLyrics =
+        !refreshAlreadySettled &&
+        ((plan.usesCachedStream && plan.resolvedSong.shouldRefreshCachedMetadata) ||
+            _shouldScheduleDeferredSupplementalRefresh(songDetail));
+    if (shouldRefreshLyrics) {
+      return LyricLoadState.loading;
+    }
+    return LyricLoadState.empty;
   }
 
   void _rememberCacheBypassKey(
@@ -2337,6 +2444,10 @@ class PlaybackService extends ChangeNotifier {
         url: normalized.url,
         lyric: normalized.lyric,
         tlyric: normalized.tlyric,
+        yrc: normalized.yrc,
+        ytlrc: normalized.ytlrc,
+        qrc: normalized.qrc,
+        qrcTrans: normalized.qrcTrans,
         source: normalized.source,
       );
     }
@@ -2355,6 +2466,10 @@ class PlaybackService extends ChangeNotifier {
         url: '$baseUrl/apple/stream?salableAdamId=$salableAdamId',
         lyric: normalized.lyric,
         tlyric: normalized.tlyric,
+        yrc: normalized.yrc,
+        ytlrc: normalized.ytlrc,
+        qrc: normalized.qrc,
+        qrcTrans: normalized.qrcTrans,
         source: normalized.source,
       );
     }
@@ -2744,20 +2859,32 @@ class PlaybackService extends ChangeNotifier {
             ? cacheInfo.metadata.originalUrl
             : cacheInfo.filePath,
       );
-      final cachedSource = (Platform.isAndroid || Platform.isIOS)
-          ? CachedCyrenePlayableSource.stream(
-              cacheInfo: cacheInfo,
-              playbackAudioSource: CyreneStreamSource(
-                filePath: cacheInfo.filePath,
-                payloadOffset: cacheInfo.payloadOffset,
-                audioLength: cacheInfo.audioLength,
-                contentType: cacheInfo.contentType,
-              ),
-            )
-          : CachedCyrenePlayableSource.proxy(
-              cacheInfo: cacheInfo,
-              playbackUrl: ProxyService().getCyreneStreamUrl(cacheInfo),
-            );
+      final CachedCyrenePlayableSource? cachedSource;
+      if (Platform.isAndroid || Platform.isIOS) {
+        cachedSource = CachedCyrenePlayableSource.stream(
+          cacheInfo: cacheInfo,
+          playbackAudioSource: CyreneStreamSource(
+            filePath: cacheInfo.filePath,
+            payloadOffset: cacheInfo.payloadOffset,
+            audioLength: cacheInfo.audioLength,
+            contentType: cacheInfo.contentType,
+          ),
+        );
+      } else {
+        final proxyReady = await _ensureLocalProxyRunning('cache');
+        if (!proxyReady) {
+          _logPlaybackDebug(
+            '[PlaybackService] 跳过缓存预取: 本地缓存代理不可用 '
+            'track=${_buildTrackIdentity(track)} quality=$qualityStr',
+            toDeveloperPanel: true,
+          );
+          return null;
+        }
+        cachedSource = CachedCyrenePlayableSource.proxy(
+          cacheInfo: cacheInfo,
+          playbackUrl: ProxyService().getCyreneStreamUrl(cacheInfo),
+        );
+      }
       return _TrackSwitchPlaybackPlan(
         resolvedSong: _ResolvedTrackSwitchSong(
           songDetail: cachedSong,
@@ -3088,25 +3215,77 @@ class PlaybackService extends ChangeNotifier {
     }
     _pendingLyricRefreshKeys.add(lyricRefreshKey);
     _logPlaybackDebug(
-      '[PlaybackService] 调度缓存补全: $lyricRefreshKey',
+      '[PlaybackService] 歌词补全开始: $lyricRefreshKey',
       toDeveloperPanel: true,
     );
+    if (_matchesTrackIdentity(currentTrack, requestedKey)) {
+      _setLyricLoadState(LyricLoadState.loading, track: track);
+    }
 
-    _fetchSongDetailWithTimeout(
-      songId: track.id,
-      source: track.source,
-      quality: quality,
-      title: track.name,
-      artist: track.artists,
-      timeout: _lyricSongDetailTimeout,
-      purpose: 'cache-refresh',
-      fetchLyrics: true,
-    ).then((detail) async {
+    var lyricStateFinalized = false;
+    void finalizeLyricState(LyricLoadState state, {bool notify = true}) {
+      lyricStateFinalized = true;
+      if (_isLyricStateBoundToTrack(track)) {
+        _setLyricLoadState(state, track: track, notify: notify);
+      }
+    }
+
+    final Future<SongDetail?> detailFuture;
+    if (_shouldUseLyricOnlySupplementalFetch()) {
+      _logPlaybackDebug(
+        '[PlaybackService] 使用纯歌词补全链路: $lyricRefreshKey',
+        toDeveloperPanel: true,
+      );
+      detailFuture = MusicService()
+          .fetchLyricOnlySongDetail(
+            songId: track.id,
+            source: track.source,
+            title: track.name,
+            artist: track.artists,
+          )
+          .timeout(
+            _lyricSongDetailTimeout,
+            onTimeout: () {
+              _logPlaybackDebug(
+                '[PlaybackService] 纯歌词补全超时: $lyricRefreshKey after '
+                '${_lyricSongDetailTimeout.inSeconds}s',
+                toDeveloperPanel: true,
+              );
+              return null;
+            },
+          );
+    } else {
+      detailFuture = _fetchSongDetailWithTimeout(
+        songId: track.id,
+        source: track.source,
+        quality: quality,
+        title: track.name,
+        artist: track.artists,
+        timeout: _lyricSongDetailTimeout,
+        purpose: 'cache-refresh',
+        fetchLyrics: true,
+      );
+    }
+
+    detailFuture.then((detail) async {
       if (isStale()) return;
       final ct = currentTrack;
       if (!_matchesTrackIdentity(ct, requestedKey)) return;
       final currentSong = _activeSong;
-      if (detail == null || currentSong == null) return;
+      if (detail == null || currentSong == null) {
+        _logPlaybackDebug(
+          '[PlaybackService] 歌词补全未命中任何新增信息: $lyricRefreshKey',
+          toDeveloperPanel: true,
+        );
+        if (currentSong != null && _isLyricStateBoundToTrack(track)) {
+          finalizeLyricState(
+            _hasAnyLyricPayload(currentSong)
+                ? LyricLoadState.ready
+                : LyricLoadState.empty,
+          );
+        }
+        return;
+      }
 
       final normalizedDetail = _normalizeSongDetailForPlayback(track, detail);
       final mergedSong = _mergeSupplementalSongDetail(
@@ -3119,7 +3298,13 @@ class PlaybackService extends ChangeNotifier {
       );
       if (_isSameSongPresentation(currentSong, mergedSong)) {
         _logPlaybackDebug(
-          '[PlaybackService] 缓存补全未产生展示更新: $lyricRefreshKey',
+          '[PlaybackService] 歌词补全未命中任何新增信息: $lyricRefreshKey',
+          toDeveloperPanel: true,
+        );
+        finalizeLyricState(
+          _hasAnyLyricPayload(currentSong)
+              ? LyricLoadState.ready
+              : LyricLoadState.empty,
         );
         final cached = await _cacheSongInBackground(
           track,
@@ -3133,8 +3318,16 @@ class PlaybackService extends ChangeNotifier {
       }
 
       _logPlaybackDebug(
-        '[PlaybackService] 应用缓存补全结果: $lyricRefreshKey',
+        _hasAnyLyricPayload(normalizedDetail)
+            ? '[PlaybackService] 歌词补全成功: $lyricRefreshKey'
+            : '[PlaybackService] 歌词补全未命中任何新增信息: $lyricRefreshKey',
         toDeveloperPanel: true,
+      );
+      finalizeLyricState(
+        _hasAnyLyricPayload(mergedSong)
+            ? LyricLoadState.ready
+            : LyricLoadState.empty,
+        notify: false,
       );
       _applyResolvedSongDetail(mergedSong);
       final cached = await _cacheSongInBackground(
@@ -3148,11 +3341,25 @@ class PlaybackService extends ChangeNotifier {
       _loadLyricsForFloatingDisplay();
     }).catchError((e) {
       _logPlaybackDebug(
-        '[PlaybackService] 缓存补全失败: $lyricRefreshKey, $e',
+        '[PlaybackService] 歌词补全失败: $lyricRefreshKey, $e',
         toDeveloperPanel: true,
       );
+      finalizeLyricState(LyricLoadState.failed);
     }).whenComplete(() {
       _pendingLyricRefreshKeys.remove(lyricRefreshKey);
+      if (!lyricStateFinalized && _isLyricStateBoundToTrack(track)) {
+        final currentSong = _activeSong;
+        final fallbackState =
+            currentSong != null && _hasAnyLyricPayload(currentSong)
+            ? LyricLoadState.ready
+            : LyricLoadState.empty;
+        _logPlaybackDebug(
+          '[PlaybackService] 歌词补全完成后触发状态兜底: '
+          '$lyricRefreshKey -> $fallbackState',
+          toDeveloperPanel: true,
+        );
+        _setLyricLoadState(fallbackState, track: track);
+      }
     });
   }
 
@@ -3405,6 +3612,7 @@ class PlaybackService extends ChangeNotifier {
     _pendingLyricRefreshKeys.clear();
     _settledCacheMetadataRefreshKeys.clear();
     _pendingSongDetailRequests.clear();
+    _setLyricLoadState(LyricLoadState.idle, notify: false);
     positionNotifier.value = Duration.zero;
     bufferedPositionNotifier.value = Duration.zero;
     coverManager.setCoverImmediate(null, notify: false);
@@ -3443,6 +3651,7 @@ class PlaybackService extends ChangeNotifier {
       _pendingLyricRefreshKeys.clear();
       _settledCacheMetadataRefreshKeys.clear();
       _pendingSongDetailRequests.clear();
+      _setLyricLoadState(LyricLoadState.idle, notify: false);
       coverManager.setCoverImmediate(null, notify: false);
       _sessionPersistDebounce?.cancel();
       await _engine.dispose();

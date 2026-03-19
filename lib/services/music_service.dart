@@ -706,6 +706,105 @@ class MusicService extends ChangeNotifier {
     }
   }
 
+  Future<SongDetail?> fetchLyricOnlySongDetail({
+    required dynamic songId,
+    required MusicSource source,
+    String? title,
+    String? artist,
+  }) async {
+    try {
+      DeveloperModeService().addLog(
+        '📝 [MusicService] 获取歌词补全: $songId (${source.name})',
+      );
+
+      if (source == MusicSource.local) {
+        DeveloperModeService().addLog(
+          '⚠️ [MusicService] 跳过歌词补全: 本地歌曲 $songId',
+        );
+        return null;
+      }
+
+      if (source == MusicSource.navidrome) {
+        final session = NavidromeSessionService();
+        if (!session.isConfigured ||
+            !(artist?.isNotEmpty ?? false) ||
+            !(title?.isNotEmpty ?? false)) {
+          DeveloperModeService().addLog(
+            '⚠️ [MusicService] Navidrome 歌词补全条件不足: $songId',
+          );
+          return null;
+        }
+        try {
+          final fetched = await session.api!
+              .getLyrics(artist: artist!, title: title!)
+              .timeout(const Duration(seconds: 4));
+          if (fetched == null || fetched.isEmpty) {
+            DeveloperModeService().addLog(
+              '⚠️ [MusicService] Navidrome 歌词补全无结果: $songId',
+            );
+            return null;
+          }
+          DeveloperModeService().addLog(
+            '✅ [MusicService] Navidrome 歌词补全成功: $songId',
+          );
+          return SongDetail(
+            id: songId,
+            name: title ?? '',
+            pic: '',
+            arName: artist ?? '',
+            alName: '',
+            level: '',
+            size: '0',
+            url: '',
+            lyric: fetched,
+            tlyric: '',
+            source: source,
+          );
+        } catch (e) {
+          print('⚠️ [MusicService] Navidrome 歌词补全失败: $e');
+          DeveloperModeService().addLog(
+            '❌ [MusicService] Navidrome 歌词补全失败: $e',
+          );
+          return null;
+        }
+      }
+
+      final lyricData = await _fetchLyricFromBackend(source, songId);
+      if (lyricData == null) {
+        DeveloperModeService().addLog(
+          '⚠️ [MusicService] 歌词补全无结果: $songId (${source.name})',
+        );
+        return null;
+      }
+
+      DeveloperModeService().addLog(
+        '✅ [MusicService] 歌词补全成功: $songId (${source.name})',
+      );
+
+      return SongDetail(
+        id: songId,
+        name: title ?? '',
+        pic: '',
+        arName: artist ?? '',
+        alName: '',
+        level: '',
+        size: '0',
+        url: '',
+        lyric: lyricData['lyric'] ?? '',
+        tlyric: lyricData['tlyric'] ?? '',
+        yrc: lyricData['yrc'] ?? '',
+        ytlrc: lyricData['ytlrc'] ?? '',
+        qrc: lyricData['qrc'] ?? '',
+        qrcTrans: lyricData['qrcTrans'] ?? '',
+        source: source,
+      );
+    } catch (e) {
+      print('❌ [MusicService] 歌词补全异常: $e');
+      DeveloperModeService().addLog('❌ [MusicService] 歌词补全异常: $e');
+      return null;
+    }
+  }
+
   /// 🎵 洛雪音源：获取歌曲详情
   /// 
   /// 洛雪音源 API 格式: GET ${baseUrl}/url/${source}/${songId}/${quality}
@@ -783,6 +882,8 @@ class MusicService extends ChangeNotifier {
       // 🎵 尝试从后端歌词 API 获取歌词
       String lyric = '';
       String tlyric = '';
+      String yrc = '';
+      String ytlrc = '';
       String qrc = '';
       String qrcTrans = '';
       if (fetchLyrics) {
@@ -791,6 +892,8 @@ class MusicService extends ChangeNotifier {
           if (lyricData != null) {
             lyric = lyricData['lyric'] ?? '';
             tlyric = lyricData['tlyric'] ?? '';
+            yrc = lyricData['yrc'] ?? '';
+            ytlrc = lyricData['ytlrc'] ?? '';
             qrc = lyricData['qrc'] ?? '';
             qrcTrans = lyricData['qrcTrans'] ?? '';
             print('📝 [MusicService] 成功从后端获取歌词: ${lyric.length} 字符');
@@ -818,6 +921,8 @@ class MusicService extends ChangeNotifier {
         url: audioUrl,
         lyric: lyric,
         tlyric: tlyric,
+        yrc: yrc,
+        ytlrc: ytlrc,
         qrc: qrc,
         qrcTrans: qrcTrans,
         source: source,
@@ -881,6 +986,8 @@ class MusicService extends ChangeNotifier {
           return {
             'lyric': (lyricData['lyric'] ?? '') as String,
             'tlyric': (lyricData['tlyric'] ?? '') as String,
+            'yrc': (lyricData['yrc'] ?? '') as String,
+            'ytlrc': (lyricData['ytlrc'] ?? '') as String,
             'qrc': (lyricData['qrc'] ?? '') as String,
             'qrcTrans': (lyricData['qrcTrans'] ?? '') as String,
           };
@@ -1031,6 +1138,8 @@ class MusicService extends ChangeNotifier {
           // 🎵 使用后端歌词 API 获取歌词（与洛雪音源保持一致）
           String lyricText = '';
           String tlyricText = '';
+          String yrcText = '';
+          String ytlrcText = '';
           String qrcText = '';
           String qrcTransText = '';
           if (fetchLyrics) {
@@ -1039,6 +1148,8 @@ class MusicService extends ChangeNotifier {
               if (lyricData != null) {
                 lyricText = lyricData['lyric'] ?? '';
                 tlyricText = lyricData['tlyric'] ?? '';
+                yrcText = lyricData['yrc'] ?? '';
+                ytlrcText = lyricData['ytlrc'] ?? '';
                 qrcText = lyricData['qrc'] ?? '';
                 qrcTransText = lyricData['qrcTrans'] ?? '';
                 print('📝 [MusicService] TuneHub v3 成功从后端获取歌词: ${lyricText.length} 字符');
@@ -1074,6 +1185,8 @@ class MusicService extends ChangeNotifier {
             url: audioUrl,
             lyric: lyricText,
             tlyric: tlyricText,
+            yrc: yrcText,
+            ytlrc: ytlrcText,
             qrc: qrcText,
             qrcTrans: qrcTransText,
             source: source,
