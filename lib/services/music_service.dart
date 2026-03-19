@@ -170,6 +170,7 @@ class MusicService extends ChangeNotifier {
     MusicSource source = MusicSource.netease,
     String? title,
     String? artist,
+    bool fetchLyrics = true,
   }) async {
     try {
       print('🎵 [MusicService] 获取歌曲详情: $songId (${source.name}), 音质: ${quality.displayName}');
@@ -191,7 +192,9 @@ class MusicService extends ChangeNotifier {
         final api = session.api!;
         final streamUrl = api.buildStreamUrl(songId.toString());
         String lyricText = '';
-        if ((artist?.isNotEmpty ?? false) && (title?.isNotEmpty ?? false)) {
+        if (fetchLyrics &&
+            (artist?.isNotEmpty ?? false) &&
+            (title?.isNotEmpty ?? false)) {
           try {
             print('📝 [MusicService] Navidrome 获取歌词: getLyrics(artist="$artist", title="$title")');
             final fetched = await api
@@ -237,6 +240,7 @@ class MusicService extends ChangeNotifier {
           quality: quality,
           source: source,
           audioSourceService: audioSourceService,
+          fetchLyrics: fetchLyrics,
         );
       }
 
@@ -247,6 +251,7 @@ class MusicService extends ChangeNotifier {
           quality: quality,
           source: source,
           audioSourceService: audioSourceService,
+          fetchLyrics: fetchLyrics,
         );
       }
 
@@ -710,6 +715,7 @@ class MusicService extends ChangeNotifier {
     required AudioQuality quality,
     required MusicSource source,
     required AudioSourceService audioSourceService,
+    required bool fetchLyrics,
   }) async {
     print('🎵 [MusicService] 使用洛雪音源获取歌曲: $songId');
     DeveloperModeService().addLog('🎵 [MusicService] 使用洛雪音源');
@@ -779,20 +785,24 @@ class MusicService extends ChangeNotifier {
       String tlyric = '';
       String qrc = '';
       String qrcTrans = '';
-      try {
-        final lyricData = await _fetchLyricFromBackend(source, songId);
-        if (lyricData != null) {
-          lyric = lyricData['lyric'] ?? '';
-          tlyric = lyricData['tlyric'] ?? '';
-          qrc = lyricData['qrc'] ?? '';
-          qrcTrans = lyricData['qrcTrans'] ?? '';
-          print('📝 [MusicService] 成功从后端获取歌词: ${lyric.length} 字符');
-          if (qrc.isNotEmpty) {
-            print('   逐字歌词(QRC): ${qrc.length} 字符');
+      if (fetchLyrics) {
+        try {
+          final lyricData = await _fetchLyricFromBackend(source, songId);
+          if (lyricData != null) {
+            lyric = lyricData['lyric'] ?? '';
+            tlyric = lyricData['tlyric'] ?? '';
+            qrc = lyricData['qrc'] ?? '';
+            qrcTrans = lyricData['qrcTrans'] ?? '';
+            print('📝 [MusicService] 成功从后端获取歌词: ${lyric.length} 字符');
+            if (qrc.isNotEmpty) {
+              print('   逐字歌词(QRC): ${qrc.length} 字符');
+            }
           }
+        } catch (e) {
+          print('⚠️ [MusicService] 获取歌词失败（不影响播放）: $e');
         }
-      } catch (e) {
-        print('⚠️ [MusicService] 获取歌词失败（不影响播放）: $e');
+      } else {
+        print('ℹ️ [MusicService] 跳过同步歌词拉取，优先返回可播放链接');
       }
 
       // 洛雪音源只返回 URL，创建一个简化的 SongDetail
@@ -934,6 +944,7 @@ class MusicService extends ChangeNotifier {
     required AudioQuality quality,
     required MusicSource source,
     required AudioSourceService audioSourceService,
+    required bool fetchLyrics,
   }) async {
     print('🎵 [MusicService] 使用 TuneHub v3 音源获取歌曲: $songId');
     DeveloperModeService().addLog('🎵 [MusicService] 使用 TuneHub v3 音源');
@@ -1022,20 +1033,24 @@ class MusicService extends ChangeNotifier {
           String tlyricText = '';
           String qrcText = '';
           String qrcTransText = '';
-          try {
-            final lyricData = await _fetchLyricFromBackend(source, songId);
-            if (lyricData != null) {
-              lyricText = lyricData['lyric'] ?? '';
-              tlyricText = lyricData['tlyric'] ?? '';
-              qrcText = lyricData['qrc'] ?? '';
-              qrcTransText = lyricData['qrcTrans'] ?? '';
-              print('📝 [MusicService] TuneHub v3 成功从后端获取歌词: ${lyricText.length} 字符');
-              if (qrcText.isNotEmpty) {
-                print('   逐字歌词(QRC): ${qrcText.length} 字符');
+          if (fetchLyrics) {
+            try {
+              final lyricData = await _fetchLyricFromBackend(source, songId);
+              if (lyricData != null) {
+                lyricText = lyricData['lyric'] ?? '';
+                tlyricText = lyricData['tlyric'] ?? '';
+                qrcText = lyricData['qrc'] ?? '';
+                qrcTransText = lyricData['qrcTrans'] ?? '';
+                print('📝 [MusicService] TuneHub v3 成功从后端获取歌词: ${lyricText.length} 字符');
+                if (qrcText.isNotEmpty) {
+                  print('   逐字歌词(QRC): ${qrcText.length} 字符');
+                }
               }
+            } catch (e) {
+              print('⚠️ [MusicService] TuneHub v3 获取歌词失败（不影响播放）: $e');
             }
-          } catch (e) {
-            print('⚠️ [MusicService] TuneHub v3 获取歌词失败（不影响播放）: $e');
+          } else {
+            print('ℹ️ [MusicService] TuneHub v3 跳过同步歌词拉取，优先返回可播放链接');
           }
           
           // 获取实际音质信息

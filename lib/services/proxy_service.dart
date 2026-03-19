@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as path;
 import 'cache_service.dart';
 import 'developer_mode_service.dart';
 
@@ -381,7 +382,23 @@ class ProxyService {
       return shelf.Response.badRequest(body: 'Invalid cyrene cache file');
     }
 
-    final file = File(filePath);
+    final cacheDir = CacheService().currentCacheDir;
+    if (cacheDir == null || cacheDir.isEmpty) {
+      return shelf.Response.internalServerError(
+        body: 'Cache directory is unavailable',
+      );
+    }
+
+    final normalizedCacheDir = path.canonicalize(path.absolute(cacheDir));
+    final normalizedFilePath = path.canonicalize(path.absolute(filePath));
+    if (!path.isWithin(normalizedCacheDir, normalizedFilePath)) {
+      DeveloperModeService().addLog(
+        '🚫 [ProxyService] 拒绝越权缓存访问: $normalizedFilePath',
+      );
+      return shelf.Response.forbidden('Invalid cyrene cache path');
+    }
+
+    final file = File(normalizedFilePath);
     if (!await file.exists()) {
       return shelf.Response.notFound('Cyrene cache file not found');
     }

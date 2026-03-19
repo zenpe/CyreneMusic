@@ -311,6 +311,11 @@ Future<void> main() async {
         log(' Android悬浮歌词服务已初始化');
       }
 
+      await timed('CacheService.initialize', () async {
+        await CacheService().initialize();
+      });
+      log(' 缓存服务已初始化');
+
       await timed('StartupPlaybackCoordinator.restorePlaybackOnStartup', () async {
         await StartupPlaybackCoordinator().restorePlaybackOnStartup();
       });
@@ -346,13 +351,6 @@ Future<void> main() async {
         });
       });
 
-      // P2: 缓存服务初始化延迟到 runApp 之后
-      Future.microtask(() async {
-        await timed('CacheService.initialize', () async {
-          await CacheService().initialize();
-          log(' 缓存服务已初始化');
-        });
-      });
     },
     (error, stack) {
       StartupLogger().log('runZonedGuarded: $error\n$stack');

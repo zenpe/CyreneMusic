@@ -171,14 +171,16 @@ class DownloadService extends ChangeNotifier {
   }
 
   String _resolveCacheQualityKey(String? level) {
-    final quality = AudioQualityService.stringToQuality(level);
+    final quality = (level != null && level.isNotEmpty)
+        ? AudioQualityService.stringToQuality(level)
+        : null;
     if (quality != null) {
-      return quality.toString().split('.').last;
+      return quality.value;
     }
     if (level != null && level.isNotEmpty) {
       return level;
     }
-    return AudioQualityService().currentQuality.toString().split('.').last;
+    return AudioQuality.standard.value;
   }
 
   /// 从缓存下载（解密缓存文件）

@@ -30,11 +30,14 @@ class PlaylistQueueService extends ChangeNotifier {
   }
 
   List<Track> get queue => _pb.queue;
-  int get currentIndex => _pb.currentIndex;
+  int get currentIndex => _pb.currentIndex; // 队列指针，不等于主播放器展示态
   QueueSource get source => _pb.source;
   bool get hasQueue => _pb.hasQueue;
   bool get hasNext => _pb.hasNext;
   bool get hasPrevious => _pb.hasPrevious;
+  Track? get activeTrack => _pb.activeTrack;
+  Track? get pendingTrack => _pb.pendingTrack;
+  String? get pendingReason => _pb.pendingReason;
 
   ImageProvider? getCoverProvider(Track track) => _pb.getCoverProvider(track);
   void updateCoverProvider(Track track, ImageProvider provider) =>

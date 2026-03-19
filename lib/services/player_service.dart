@@ -46,9 +46,19 @@ class PlayerService extends ChangeNotifier {
 
   SongDetail? get currentSong => _pb.currentSong;
   Track? get currentTrack => _pb.currentTrack;
+  SongDetail? get activeSong => _pb.activeSong;
+  Track? get activeTrack => _pb.activeTrack;
+  int get activePlaybackToken => _pb.activePlaybackToken;
+  Track? get pendingTrack => _pb.pendingTrack;
+  int? get pendingSwitchToken => _pb.pendingSwitchToken;
+  String? get pendingReason => _pb.pendingReason;
   String get displayTitle => _pb.displayTitle;
   String get displayArtist => _pb.displayArtist;
   String get displayAlbum => _pb.displayAlbum;
+  String get pendingDisplayTitle => _pb.pendingDisplayTitle;
+  String get pendingDisplayArtist => _pb.pendingDisplayArtist;
+  String get pendingDisplayAlbum => _pb.pendingDisplayAlbum;
+  String? get pendingDisplayCoverUrl => _pb.pendingDisplayCoverUrl;
   Duration get duration => _pb.duration;
   Duration get position => _pb.position;
   Duration get bufferedPosition => _pb.bufferedPosition;

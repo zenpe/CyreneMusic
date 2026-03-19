@@ -7,6 +7,7 @@ import 'package:media_kit/media_kit.dart' as mk;
 import '../android_equalizer_service.dart';
 import '../equalizer_service.dart';
 import '../persistent_storage_service.dart';
+import 'playable_source.dart';
 
 /// 统一播放状态
 enum EngineState { idle, playing, paused }
@@ -65,17 +66,29 @@ abstract class AudioEngine {
     ja.AudioSource source, {
     String? sourceUrl,
   });
+  Future<void> playSource(PlayableSource source) async {
+    final customSource = source.audioSource;
+    if (customSource != null) {
+      await playAudioSource(customSource, sourceUrl: source.sourceUrl);
+      return;
+    }
+
+    final pathOrUrl = source.playbackPathOrUrl;
+    if (pathOrUrl == null || pathOrUrl.isEmpty) {
+      throw StateError('PlayableSource has no playable path or url');
+    }
+    await play(
+      pathOrUrl,
+      isLocal: source.isLocal,
+      headers: source.headers,
+    );
+  }
   Future<void> pause();
   Future<void> resume();
   Future<void> seek(Duration position);
   Future<void> stop();
   Future<void> setVolume(double volume);
   Future<void> setPlaybackSpeed(double speed);
-  Future<void> preload(
-    String url, {
-    bool isLocal = false,
-    Map<String, String>? headers,
-  });
   Future<void> dispose();
 
   Stream<Duration> get positionStream;
@@ -109,7 +122,6 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   }
 
   ja.AudioPlayer? _player;
-  ja.AudioPlayer? _preloadPlayer;
   double _currentVolume = 1.0;
   double _playbackSpeed = 1.0;
   bool _hasSource = false;
@@ -244,14 +256,6 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         }
       });
     }
-  }
-
-  Future<void> _ensurePreloadPlayer() async {
-    if (_preloadPlayer != null) return;
-    final preloadPlayer = ja.AudioPlayer();
-    _preloadPlayer = preloadPlayer;
-    await preloadPlayer.setVolume(0.0);
-    await preloadPlayer.setSpeed(_playbackSpeed);
   }
 
   void _emitError(EngineError error) {
@@ -405,19 +409,6 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     }
   }
 
-  Future<void> _disposePreloadPlayerOnly() async {
-    final preloadPlayer = _preloadPlayer;
-    _preloadPlayer = null;
-    if (preloadPlayer != null) {
-      try {
-        await preloadPlayer.stop();
-      } catch (_) {}
-      try {
-        await preloadPlayer.dispose();
-      } catch (_) {}
-    }
-  }
-
   @override
   Future<void> play(
     String url, {
@@ -428,6 +419,25 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         ? ja.AudioSource.file(url)
         : ja.AudioSource.uri(Uri.parse(url), headers: headers);
     await playAudioSource(source, sourceUrl: url);
+  }
+
+  @override
+  Future<void> playSource(PlayableSource source) async {
+    final customSource = source.audioSource;
+    if (customSource != null) {
+      await playAudioSource(customSource, sourceUrl: source.sourceUrl);
+      return;
+    }
+
+    final pathOrUrl = source.playbackPathOrUrl;
+    if (pathOrUrl == null || pathOrUrl.isEmpty) {
+      throw StateError('PlayableSource has no playable path or url');
+    }
+    await play(
+      pathOrUrl,
+      isLocal: source.isLocal,
+      headers: source.headers,
+    );
   }
 
   @override
@@ -515,39 +525,11 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   Future<void> setPlaybackSpeed(double speed) async {
     _playbackSpeed = speed.clamp(0.5, 2.0);
     await _player?.setSpeed(_playbackSpeed);
-    await _preloadPlayer?.setSpeed(_playbackSpeed);
-  }
-
-  @override
-  Future<void> preload(
-    String url, {
-    bool isLocal = false,
-    Map<String, String>? headers,
-  }) async {
-    await _ensurePreloadPlayer();
-    final source = isLocal
-        ? ja.AudioSource.file(url)
-        : ja.AudioSource.uri(Uri.parse(url), headers: headers);
-
-    try {
-      await _preloadPlayer!
-          .setAudioSource(source)
-          .timeout(const Duration(seconds: 10));
-    } on TimeoutException {
-      await _disposePreloadPlayerOnly();
-      await _ensurePreloadPlayer();
-      rethrow;
-    } catch (_) {
-      await _disposePreloadPlayerOnly();
-      await _ensurePreloadPlayer();
-      rethrow;
-    }
   }
 
   @override
   Future<void> dispose() async {
     await _disposePlayerOnly();
-    await _disposePreloadPlayerOnly();
     EqualizerService().setBackend(null);
     await _positionController.close();
     await _durationController.close();
@@ -803,6 +785,25 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   }
 
   @override
+  Future<void> playSource(PlayableSource source) async {
+    final customSource = source.audioSource;
+    if (customSource != null) {
+      await playAudioSource(customSource, sourceUrl: source.sourceUrl);
+      return;
+    }
+
+    final pathOrUrl = source.playbackPathOrUrl;
+    if (pathOrUrl == null || pathOrUrl.isEmpty) {
+      throw StateError('PlayableSource has no playable path or url');
+    }
+    await play(
+      pathOrUrl,
+      isLocal: source.isLocal,
+      headers: source.headers,
+    );
+  }
+
+  @override
   Future<void> playAudioSource(
     ja.AudioSource source, {
     String? sourceUrl,
@@ -854,16 +855,6 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   Future<void> setPlaybackSpeed(double speed) async {
     _playbackSpeed = speed.clamp(0.5, 2.0);
     await _player?.setRate(_playbackSpeed);
-  }
-
-  @override
-  Future<void> preload(
-    String url, {
-    bool isLocal = false,
-    Map<String, String>? headers,
-  }) async {
-    // 当前桌面实现为单播放器模型，预加载不做实际打开，避免打断当前播放。
-    return;
   }
 
   @override

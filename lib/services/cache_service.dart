@@ -12,6 +12,7 @@ import '../utils/audio_request_headers.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'audio_quality_service.dart';
+import 'developer_mode_service.dart';
 
 /// 缓存元数据模型
 class CacheMetadata {
@@ -29,6 +30,10 @@ class CacheMetadata {
   final String checksum;
   final String lyric;
   final String tlyric;
+  final String yrc;
+  final String ytlrc;
+  final String qrc;
+  final String qrcTrans;
 
   CacheMetadata({
     required this.songId,
@@ -45,6 +50,10 @@ class CacheMetadata {
     required this.checksum,
     required this.lyric,
     required this.tlyric,
+    this.yrc = '',
+    this.ytlrc = '',
+    this.qrc = '',
+    this.qrcTrans = '',
   });
 
   factory CacheMetadata.fromJson(Map<String, dynamic> json) {
@@ -63,6 +72,10 @@ class CacheMetadata {
       checksum: json['checksum'],
       lyric: json['lyric'] ?? '',
       tlyric: json['tlyric'] ?? '',
+      yrc: json['yrc'] ?? '',
+      ytlrc: json['ytlrc'] ?? '',
+      qrc: json['qrc'] ?? '',
+      qrcTrans: json['qrcTrans'] ?? '',
     );
   }
 
@@ -82,6 +95,10 @@ class CacheMetadata {
       'checksum': checksum,
       'lyric': lyric,
       'tlyric': tlyric,
+      'yrc': yrc,
+      'ytlrc': ytlrc,
+      'qrc': qrc,
+      'qrcTrans': qrcTrans,
     };
   }
 
@@ -100,6 +117,10 @@ class CacheMetadata {
     String? checksum,
     String? lyric,
     String? tlyric,
+    String? yrc,
+    String? ytlrc,
+    String? qrc,
+    String? qrcTrans,
   }) {
     return CacheMetadata(
       songId: songId ?? this.songId,
@@ -116,6 +137,10 @@ class CacheMetadata {
       checksum: checksum ?? this.checksum,
       lyric: lyric ?? this.lyric,
       tlyric: tlyric ?? this.tlyric,
+      yrc: yrc ?? this.yrc,
+      ytlrc: ytlrc ?? this.ytlrc,
+      qrc: qrc ?? this.qrc,
+      qrcTrans: qrcTrans ?? this.qrcTrans,
     );
   }
 }
@@ -190,9 +215,11 @@ class CacheService extends ChangeNotifier {
   static const String _encryptionKey = 'CyreneMusicCacheKey2025';
   static const int _defaultMaxCacheSizeBytes = 2 * 1024 * 1024 * 1024;
   static const Duration _maintenanceDebounce = Duration(seconds: 2);
+  static const Duration _cacheDownloadTimeout = Duration(seconds: 30);
 
   Directory? _cacheDir;
   Map<String, CacheMetadata> _cacheIndex = {};
+  final Map<String, Future<bool>> _pendingCacheWrites = {};
   bool _isInitialized = false;
   bool _cacheEnabled = false;  // 缓存开关，默认关闭
   String? _customCacheDir;    // 自定义缓存目录
@@ -213,12 +240,30 @@ class CacheService extends ChangeNotifier {
         final lowered = trimmed.toLowerCase();
         final parsed = AudioQualityService.stringToQuality(lowered);
         if (parsed != null) {
-          return parsed.toString().split('.').last;
+          return parsed.value;
         }
         return lowered;
       }
     }
-    return AudioQualityService().currentQuality.toString().split('.').last;
+    return AudioQuality.standard.value;
+  }
+
+  static bool _isRemoteUrl(String url) {
+    return url.startsWith('http://') || url.startsWith('https://');
+  }
+
+  static String _preferNonEmpty(String primary, String fallback) {
+    return primary.isNotEmpty ? primary : fallback;
+  }
+
+  void _logCacheDebug(
+    String message, {
+    bool toDeveloperPanel = false,
+  }) {
+    print(message);
+    if (toDeveloperPanel) {
+      DeveloperModeService().addLog(message);
+    }
   }
 
   /// 初始化缓存服务
@@ -298,7 +343,7 @@ class CacheService extends ChangeNotifier {
   }
 
   String _generateCacheKey(String songId, MusicSource source, [String? quality]) {
-    return '${source.name}_$songId_${_qualityKey(quality)}';
+    return '${source.name}_${songId}_${_qualityKey(quality)}';
   }
 
   String _generateCacheKeyFromMetadata(CacheMetadata metadata) {
@@ -451,13 +496,30 @@ class CacheService extends ChangeNotifier {
         changed = true;
         final sourceFile = File(sourcePath);
         final targetFile = File(targetPath);
+        var migrationFailed = false;
         if (await sourceFile.exists() && !await targetFile.exists()) {
           try {
             await sourceFile.rename(targetPath);
-          } catch (_) {
-            await sourceFile.copy(targetPath);
-            await sourceFile.delete();
+          } catch (renameError) {
+            try {
+              await sourceFile.copy(targetPath);
+              await sourceFile.delete();
+            } catch (copyError) {
+              migrationFailed = true;
+              print(
+                '⚠️ [CacheService] 迁移旧缓存文件失败: $sourcePath -> $targetPath, '
+                'rename=$renameError, copy=$copyError',
+              );
+            }
           }
+        }
+        if (migrationFailed) {
+          final existing = migratedIndex[sourceKey];
+          if (existing == null ||
+              metadata.lastAccessedAt.isAfter(existing.lastAccessedAt)) {
+            migratedIndex[sourceKey] = metadata;
+          }
+          continue;
         }
       }
 
@@ -509,13 +571,16 @@ class CacheService extends ChangeNotifier {
 
   Future<int> _removeOrphanCacheFiles() async {
     if (_cacheDir == null || !await _cacheDir!.exists()) return 0;
-    final expectedPaths = _cacheIndex.keys.map(_getCacheFilePath).toSet();
+    final expectedPaths = _cacheIndex.keys
+        .map(_getCacheFilePath)
+        .map(path.normalize)
+        .toSet();
     var removed = 0;
     await for (final entity in _cacheDir!.list()) {
       if (entity is! File) continue;
       if (!entity.path.endsWith('.cyrene')) continue;
       if (path.basename(entity.path) == 'cache_index.cyrene') continue;
-      if (expectedPaths.contains(entity.path)) continue;
+      if (expectedPaths.contains(path.normalize(entity.path))) continue;
       try {
         await entity.delete();
         removed++;
@@ -561,7 +626,7 @@ class CacheService extends ChangeNotifier {
 
   /// 获取缓存文件路径
   String _getCacheFilePath(String cacheKey) {
-    return '${_cacheDir!.path}/$cacheKey.cyrene';
+    return path.join(_cacheDir!.path, '$cacheKey.cyrene');
   }
 
   static String _contentTypeForQuality(String quality) {
@@ -627,6 +692,113 @@ class CacheService extends ChangeNotifier {
     final resolved = _resolveCacheEntry(track, quality: quality);
     if (resolved == null) return null;
     return _getCacheFilePath(resolved.key);
+  }
+
+  CacheMetadata _buildCacheMetadata(
+    Track track,
+    SongDetail songDetail, {
+    required String normalizedQuality,
+    required int fileSize,
+    required DateTime cachedAt,
+    required DateTime lastAccessedAt,
+    required String checksum,
+  }) {
+    return CacheMetadata(
+      songId: track.id.toString(),
+      songName: _preferNonEmpty(songDetail.name, track.name),
+      artists: _preferNonEmpty(songDetail.arName, track.artists),
+      album: _preferNonEmpty(songDetail.alName, track.album),
+      picUrl: _preferNonEmpty(songDetail.pic, track.picUrl),
+      source: track.source.name,
+      quality: normalizedQuality,
+      originalUrl: _isRemoteUrl(songDetail.url) ? songDetail.url : '',
+      fileSize: fileSize,
+      cachedAt: cachedAt,
+      lastAccessedAt: lastAccessedAt,
+      checksum: checksum,
+      lyric: songDetail.lyric,
+      tlyric: songDetail.tlyric,
+      yrc: songDetail.yrc,
+      ytlrc: songDetail.ytlrc,
+      qrc: songDetail.qrc,
+      qrcTrans: songDetail.qrcTrans,
+    );
+  }
+
+  CacheMetadata _mergeCacheMetadata(
+    CacheMetadata existing,
+    Track track,
+    SongDetail songDetail, {
+    required String normalizedQuality,
+  }) {
+    return existing.copyWith(
+      songName: _preferNonEmpty(
+        songDetail.name,
+        _preferNonEmpty(existing.songName, track.name),
+      ),
+      artists: _preferNonEmpty(
+        songDetail.arName,
+        _preferNonEmpty(existing.artists, track.artists),
+      ),
+      album: _preferNonEmpty(
+        songDetail.alName,
+        _preferNonEmpty(existing.album, track.album),
+      ),
+      picUrl: _preferNonEmpty(
+        songDetail.pic,
+        _preferNonEmpty(existing.picUrl, track.picUrl),
+      ),
+      quality: normalizedQuality,
+      originalUrl: _isRemoteUrl(songDetail.url)
+          ? songDetail.url
+          : existing.originalUrl,
+      lyric: _preferNonEmpty(songDetail.lyric, existing.lyric),
+      tlyric: _preferNonEmpty(songDetail.tlyric, existing.tlyric),
+      yrc: _preferNonEmpty(songDetail.yrc, existing.yrc),
+      ytlrc: _preferNonEmpty(songDetail.ytlrc, existing.ytlrc),
+      qrc: _preferNonEmpty(songDetail.qrc, existing.qrc),
+      qrcTrans: _preferNonEmpty(songDetail.qrcTrans, existing.qrcTrans),
+    );
+  }
+
+  bool _isSameCacheMetadataPayload(CacheMetadata a, CacheMetadata b) {
+    return a.songName == b.songName &&
+        a.artists == b.artists &&
+        a.album == b.album &&
+        a.picUrl == b.picUrl &&
+        a.quality == b.quality &&
+        a.originalUrl == b.originalUrl &&
+        a.lyric == b.lyric &&
+        a.tlyric == b.tlyric &&
+        a.yrc == b.yrc &&
+        a.ytlrc == b.ytlrc &&
+        a.qrc == b.qrc &&
+        a.qrcTrans == b.qrcTrans;
+  }
+
+  Future<bool> _refreshExistingCacheMetadata(
+    String cacheKey,
+    CacheMetadata existing,
+    Track track,
+    SongDetail songDetail, {
+    required String normalizedQuality,
+  }) async {
+    final updated = _mergeCacheMetadata(
+      existing,
+      track,
+      songDetail,
+      normalizedQuality: normalizedQuality,
+    );
+    if (_isSameCacheMetadataPayload(existing, updated)) {
+      print('ℹ️ [CacheService] 歌曲已缓存: ${track.name}');
+      return true;
+    }
+
+    _cacheIndex[cacheKey] = updated;
+    await _saveCacheIndex();
+    print('📝 [CacheService] 更新缓存元数据: ${track.name}');
+    notifyListeners();
+    return true;
   }
 
   Future<CyreneFileInfo?> getCyreneFileInfo(
@@ -710,117 +882,210 @@ class CacheService extends ChangeNotifier {
     SongDetail songDetail,
     String quality,
   ) async {
+    final sw = Stopwatch()..start();
     if (!_isInitialized) {
-      print('⚠️ [CacheService] 缓存服务未初始化');
+      _logCacheDebug(
+        '⚠️ [CacheService] 跳过缓存(未初始化): ${track.name} '
+        'source=${track.source.name} quality=$quality',
+        toDeveloperPanel: true,
+      );
       return false;
     }
 
     if (!_cacheEnabled) {
-      print('ℹ️ [CacheService] 缓存功能已禁用，跳过缓存');
+      _logCacheDebug(
+        'ℹ️ [CacheService] 跳过缓存(功能禁用): ${track.name} '
+        'source=${track.source.name} quality=$quality',
+        toDeveloperPanel: true,
+      );
       return false;
     }
 
+    final normalizedQuality = _qualityKey(quality);
+    final cacheKey = _generateCacheKey(
+      track.id.toString(),
+      track.source,
+      normalizedQuality,
+    );
+
+    // Apple Music 常用 HLS(m3u8)；当前缓存逻辑是整文件下载，不适用于 HLS。
+    if (track.source == MusicSource.apple ||
+        songDetail.url.toLowerCase().contains('.m3u8')) {
+      _logCacheDebug(
+        'ℹ️ [CacheService] 跳过缓存(Apple/HLS): ${track.name} '
+        'source=${track.getSourceName()} url=${songDetail.url}',
+        toDeveloperPanel: true,
+      );
+      return false;
+    }
+
+    _logCacheDebug(
+      '💾 [CacheService] 接收缓存请求: ${track.name} '
+      'key=$cacheKey quality=$normalizedQuality dir=${_cacheDir?.path} '
+      'url=${songDetail.url}',
+      toDeveloperPanel: true,
+    );
+
+    final pending = _pendingCacheWrites[cacheKey];
+    if (pending != null) {
+      _logCacheDebug(
+        'ℹ️ [CacheService] 复用进行中的缓存任务: ${track.name} '
+        'key=$cacheKey elapsed=${sw.elapsedMilliseconds}ms',
+        toDeveloperPanel: true,
+      );
+      return pending.then((cached) async {
+        if (!cached) return false;
+        final resolved = _resolveCacheEntry(track, quality: normalizedQuality);
+        if (resolved == null) {
+          return false;
+        }
+        return _refreshExistingCacheMetadata(
+          resolved.key,
+          resolved.metadata,
+          track,
+          songDetail,
+          normalizedQuality: normalizedQuality,
+        );
+      });
+    }
+
+    final task = _cacheSongInternal(
+      track,
+      songDetail,
+      normalizedQuality: normalizedQuality,
+      cacheKey: cacheKey,
+    );
+    _pendingCacheWrites[cacheKey] = task;
+
     try {
-      final normalizedQuality = _qualityKey(quality);
-      final cacheKey = _generateCacheKey(
-        track.id.toString(),
-        track.source,
-        normalizedQuality,
+      return await task;
+    } finally {
+      if (identical(_pendingCacheWrites[cacheKey], task)) {
+        _pendingCacheWrites.remove(cacheKey);
+      }
+    }
+  }
+
+  Future<bool> _cacheSongInternal(
+    Track track,
+    SongDetail songDetail, {
+    required String normalizedQuality,
+    required String cacheKey,
+  }) async {
+    final sw = Stopwatch()..start();
+    try {
+      final resolved = _resolveCacheEntry(track, quality: normalizedQuality);
+      if (resolved != null) {
+        _logCacheDebug(
+          'ℹ️ [CacheService] 命中已存在缓存，转为元数据刷新: ${track.name} '
+          'key=${resolved.key}',
+          toDeveloperPanel: true,
+        );
+        return await _refreshExistingCacheMetadata(
+          resolved.key,
+          resolved.metadata,
+          track,
+          songDetail,
+          normalizedQuality: normalizedQuality,
+        );
+      }
+
+      _logCacheDebug(
+        '💾 [CacheService] 开始缓存音频: ${track.name} '
+        'source=${track.getSourceName()} key=$cacheKey',
+        toDeveloperPanel: true,
       );
 
-      // Apple Music 常用 HLS(m3u8)；当前缓存逻辑是整文件下载，不适用于 HLS。
-      if (track.source == MusicSource.apple ||
-          songDetail.url.toLowerCase().contains('.m3u8')) {
-        print('ℹ️ [CacheService] 跳过缓存: ${track.name} (${track.getSourceName()})');
-        return false;
-      }
-
-      // 检查是否已缓存
-      final resolved = _resolveCacheEntry(track, quality: quality);
-      if (resolved != null) {
-        print('ℹ️ [CacheService] 歌曲已缓存: ${track.name}');
-        return true;
-      }
-
-      print('💾 [CacheService] 开始缓存: ${track.name} (${track.getSourceName()})');
-
-      // 下载音频数据
       final response = await http.get(
         Uri.parse(songDetail.url),
         headers: buildAudioRequestHeaders(track.source),
-      );
+      ).timeout(_cacheDownloadTimeout);
       if (response.statusCode != 200) {
-        print('❌ [CacheService] 下载失败: ${response.statusCode}');
+        _logCacheDebug(
+          '❌ [CacheService] 缓存下载失败: HTTP ${response.statusCode} '
+          'track=${track.name} url=${songDetail.url}',
+          toDeveloperPanel: true,
+        );
         return false;
       }
 
       final audioData = response.bodyBytes;
-      print('📥 [CacheService] 下载完成: ${audioData.length} bytes');
-
-      // 计算校验和
-      final checksum = _calculateChecksum(audioData);
-
-      // 加密音频数据
-      final encryptedAudioData = _encryptData(audioData);
-
-      // 创建元数据
-      final metadata = CacheMetadata(
-        songId: track.id.toString(),
-        songName: track.name,
-        artists: track.artists,
-        album: track.album,
-        picUrl: track.picUrl,
-        source: track.source.name,
-        quality: normalizedQuality,
-        originalUrl: songDetail.url,
-        fileSize: audioData.length,
-        cachedAt: DateTime.now(),
-        lastAccessedAt: DateTime.now(),
-        checksum: checksum,
-        lyric: songDetail.lyric,
-        tlyric: songDetail.tlyric,
+      _logCacheDebug(
+        '📥 [CacheService] 下载完成: ${audioData.length} bytes key=$cacheKey',
+        toDeveloperPanel: true,
       );
 
-      // 将元数据转换为字节
+      final checksum = _calculateChecksum(audioData);
+      final encryptedAudioData = _encryptData(audioData);
+
+      final now = DateTime.now();
+      final metadata = _buildCacheMetadata(
+        track,
+        songDetail,
+        normalizedQuality: normalizedQuality,
+        fileSize: audioData.length,
+        cachedAt: now,
+        lastAccessedAt: now,
+        checksum: checksum,
+      );
+
       final metadataJson = jsonEncode(metadata.toJson());
       final metadataBytes = utf8.encode(metadataJson);
       final metadataLength = metadataBytes.length;
 
-      // 构建 .cyrene 文件
-      // 格式: [4字节元数据长度] [元数据JSON] [加密的音频数据]
       final cyreneFile = BytesBuilder();
-      
-      // 写入元数据长度（4字节，大端序）
       cyreneFile.addByte((metadataLength >> 24) & 0xFF);
       cyreneFile.addByte((metadataLength >> 16) & 0xFF);
       cyreneFile.addByte((metadataLength >> 8) & 0xFF);
       cyreneFile.addByte(metadataLength & 0xFF);
-      
-      // 写入元数据
       cyreneFile.add(metadataBytes);
-      
-      // 写入加密的音频数据
       cyreneFile.add(encryptedAudioData);
 
-      // 保存 .cyrene 文件
       final cacheFilePath = _getCacheFilePath(cacheKey);
+      final tempFilePath = '$cacheFilePath.part';
       final cacheFile = File(cacheFilePath);
-      await cacheFile.writeAsBytes(cyreneFile.toBytes());
+      final tempFile = File(tempFilePath);
 
-      print('🔒 [CacheService] 保存缓存文件: $cacheFilePath');
-      print('📊 [CacheService] 文件大小: ${cyreneFile.length} bytes (元数据: $metadataLength bytes)');
+      try {
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+        await tempFile.writeAsBytes(cyreneFile.toBytes(), flush: true);
+        if (await cacheFile.exists()) {
+          await cacheFile.delete();
+        }
+        await tempFile.rename(cacheFilePath);
+      } catch (e) {
+        try {
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+          }
+        } catch (_) {}
+        rethrow;
+      }
 
-      // 更新缓存索引
+      _logCacheDebug('🔒 [CacheService] 保存缓存文件: $cacheFilePath');
+      _logCacheDebug(
+        '📊 [CacheService] 文件大小: ${cyreneFile.length} bytes (元数据: $metadataLength bytes)',
+      );
+
       _cacheIndex[cacheKey] = metadata;
       await _saveCacheIndex();
       _scheduleMaintenance();
 
-      print('✅ [CacheService] 缓存完成: ${track.name}');
+      _logCacheDebug(
+        '✅ [CacheService] 缓存完成: ${track.name} key=$cacheKey '
+        'elapsed=${sw.elapsedMilliseconds}ms',
+        toDeveloperPanel: true,
+      );
       notifyListeners();
-
       return true;
     } catch (e) {
-      print('❌ [CacheService] 缓存失败: $e');
+      _logCacheDebug(
+        '❌ [CacheService] 缓存失败: ${track.name} '
+        'key=$cacheKey url=${songDetail.url} error=$e',
+        toDeveloperPanel: true,
+      );
       return false;
     }
   }

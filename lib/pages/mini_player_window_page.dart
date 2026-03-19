@@ -263,7 +263,8 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
 
     final queueService = PlaylistQueueService();
     final queue = queueService.queue;
-    final currentIndex = queueService.currentIndex;
+    final activeTrack = queueService.activeTrack;
+    final pendingTrack = queueService.pendingTrack;
 
     await fluent.showDialog<void>(
       context: context,
@@ -288,10 +289,17 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
                     itemCount: queue.length,
                     itemBuilder: (context, index) {
                       final Track t = queue[index];
-                      final bool isCurrent = index == currentIndex;
+                      final bool isCurrent = activeTrack != null &&
+                          t.id.toString() == activeTrack.id.toString() &&
+                          t.source == activeTrack.source;
+                      final bool isPending = pendingTrack != null &&
+                          t.id.toString() == pendingTrack.id.toString() &&
+                          t.source == pendingTrack.source;
                       return Container(
                         decoration: BoxDecoration(
-                          color: isCurrent ? theme.resources.controlFillColorSecondary : null,
+                          color: (isCurrent || isPending)
+                              ? theme.resources.controlFillColorSecondary
+                              : null,
                           border: Border(
                             bottom: BorderSide(
                               color: theme.resources.dividerStrokeColorDefault,
@@ -305,7 +313,9 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w400,
+                              fontWeight: (isCurrent || isPending)
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
                             ),
                           ),
                           subtitle: Text(
@@ -315,7 +325,9 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
                           ),
                           trailing: isCurrent
                               ? const Icon(Icons.equalizer_rounded, size: 18)
-                              : null,
+                              : isPending
+                                  ? const Icon(Icons.schedule_rounded, size: 18)
+                                  : null,
                           onPressed: () async {
                             final coverProvider = queueService.getCoverProvider(t);
                             queueService.playTrack(t);

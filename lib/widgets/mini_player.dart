@@ -380,7 +380,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     _buildCover(song, track, colorScheme, size: 40),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: _buildSongInfo(song, track, context),
+                      child: _buildSongInfo(context),
                     ),
                     _buildAdaptiveControls(
                       player,
@@ -419,7 +419,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSongInfo(song, track, context, singleLine: true),
+                  _buildSongInfo(context, singleLine: true),
                   const SizedBox(height: 6),
                   _buildAlignedProgressRow(player, colorScheme),
                 ],
@@ -1026,8 +1026,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
   /// 构建歌曲信息
   Widget _buildSongInfo(
-    dynamic song,
-    dynamic track,
     BuildContext context, {
     bool singleLine = false,
   }) {
@@ -1744,103 +1742,113 @@ class _MiniPlayerState extends State<MiniPlayer> {
   Future<void> _showQueueSheet(BuildContext context) async {
     final queueService = PlaylistQueueService();
     final history = PlayHistoryService().history;
-    final currentTrack = PlayerService().currentTrack;
     final historyTracks = history.map((h) => h.toTrack()).toList();
 
-    // 与全屏播放器一致：优先展示播放队列，否则展示播放历史
-    final bool hasQueue = queueService.hasQueue;
-    final List<dynamic> displayList = hasQueue
-        ? queueService.queue
-        : historyTracks;
-
+    bool isHighlightedTrack(Track track) {
+      final activeTrack = PlayerService().activeTrack;
+      final pendingTrack = PlayerService().pendingTrack;
+      final isActive = activeTrack != null &&
+          track.id.toString() == activeTrack.id.toString() &&
+          track.source == activeTrack.source;
+      final isPending = pendingTrack != null &&
+          track.id.toString() == pendingTrack.id.toString() &&
+          track.source == pendingTrack.source;
+      return isActive || isPending;
+    }
     if (ThemeManager().isFluentFramework) {
       await fluent.showDialog(
         context: context,
         builder: (context) {
-          return fluent.ContentDialog(
-            title: Text(hasQueue ? '播放队列' : '播放历史'),
-            content: SizedBox(
-              width: 520,
-              height: 420,
-              child: displayList.isEmpty
-                  ? const Center(child: Text('播放列表为空'))
-                  : ListView.separated(
-                      itemCount: displayList.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (context, i) {
-                        final Track t = displayList[i] as Track;
-                        final isCurrent = currentTrack != null &&
-                            t.id.toString() == currentTrack.id.toString() &&
-                            t.source == currentTrack.source;
-                        return fluent.Card(
-                          padding: const EdgeInsets.all(8),
-                          child: fluent.ListTile(
-                            title: Text(t.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(t.artists, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            leading: ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
-                                  ? CachedNetworkImage(
-                                      imageUrl: t.picUrl,
-                                      httpHeaders: getImageHeaders(t.picUrl),
-                                      memCacheWidth: 128,
-                                      memCacheHeight: 128,
-                                      imageBuilder: (context, imageProvider) {
-                                        PlaylistQueueService().updateCoverProvider(t, imageProvider);
-                                        return Image(image: imageProvider, width: 44, height: 44, fit: BoxFit.cover);
-                                      },
-                                      placeholder: (context, url) => Container(width: 44, height: 44, color: fluent.Colors.grey[20]),
-                                      errorWidget: (context, url, error) => Container(
-                                        width: 44,
-                                        height: 44,
-                                        color: fluent.Colors.grey[20],
-                                        child: const Icon(Icons.music_note),
-                                      ),
-                                    )
-                                  : Image.file(
-                                      File(t.picUrl),
-                                      width: 44,
-                                      height: 44,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) => Container(
-                                        width: 44,
-                                        height: 44,
-                                        color: fluent.Colors.grey[20],
-                                        child: const Icon(Icons.music_note),
-                                      ),
-                                    ),
-                            ),
-                            tileColor: isCurrent
-                                ? WidgetStateColor.resolveWith(
-                                    (_) =>
-                                    fluent.FluentTheme.of(context).resources.controlFillColorSecondary,
-                                  )
-                                : null,
-                            trailing: TrackMoreButton(
-                              track: t,
-                              onPlay: () {
-                                final coverProvider = PlaylistQueueService().getCoverProvider(t);
-                                PlayerService().playTrack(t, coverProvider: coverProvider);
-                                Navigator.pop(context);
-                              },
-                              size: 28,
-                            ),
-                            onPressed: () {
-                              final coverProvider = PlaylistQueueService().getCoverProvider(t);
-                              PlayerService().playTrack(t, coverProvider: coverProvider);
-                              Navigator.pop(context);
-                            },
-                          ),
-                        );
-                      },
-                    ),
-            ),
-            actions: [
-              fluent.FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('关闭'),
-              ),
-            ],
+          return AnimatedBuilder(
+            animation: queueService,
+            builder: (context, _) {
+              final hasQueueNow = queueService.hasQueue;
+              final List<dynamic> displayListNow =
+                  hasQueueNow ? queueService.queue : historyTracks;
+              return fluent.ContentDialog(
+                title: Text(hasQueueNow ? '播放队列' : '播放历史'),
+                content: SizedBox(
+                  width: 520,
+                  height: 420,
+                  child: displayListNow.isEmpty
+                      ? const Center(child: Text('播放列表为空'))
+                      : ListView.separated(
+                          itemCount: displayListNow.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (context, i) {
+                            final Track t = displayListNow[i] as Track;
+                            final isCurrent = isHighlightedTrack(t);
+                            return fluent.Card(
+                              padding: const EdgeInsets.all(8),
+                              child: fluent.ListTile(
+                                title: Text(t.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                subtitle: Text(t.artists, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                leading: ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
+                                      ? CachedNetworkImage(
+                                          imageUrl: t.picUrl,
+                                          httpHeaders: getImageHeaders(t.picUrl),
+                                          memCacheWidth: 128,
+                                          memCacheHeight: 128,
+                                          imageBuilder: (context, imageProvider) {
+                                            PlaylistQueueService().updateCoverProvider(t, imageProvider);
+                                            return Image(image: imageProvider, width: 44, height: 44, fit: BoxFit.cover);
+                                          },
+                                          placeholder: (context, url) => Container(width: 44, height: 44, color: fluent.Colors.grey[20]),
+                                          errorWidget: (context, url, error) => Container(
+                                            width: 44,
+                                            height: 44,
+                                            color: fluent.Colors.grey[20],
+                                            child: const Icon(Icons.music_note),
+                                          ),
+                                        )
+                                      : Image.file(
+                                          File(t.picUrl),
+                                          width: 44,
+                                          height: 44,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => Container(
+                                            width: 44,
+                                            height: 44,
+                                            color: fluent.Colors.grey[20],
+                                            child: const Icon(Icons.music_note),
+                                          ),
+                                        ),
+                                ),
+                                tileColor: isCurrent
+                                    ? WidgetStateColor.resolveWith(
+                                        (_) =>
+                                        fluent.FluentTheme.of(context).resources.controlFillColorSecondary,
+                                      )
+                                    : null,
+                                trailing: TrackMoreButton(
+                                  track: t,
+                                  onPlay: () {
+                                    final coverProvider = PlaylistQueueService().getCoverProvider(t);
+                                    PlayerService().playTrack(t, coverProvider: coverProvider);
+                                    Navigator.pop(context);
+                                  },
+                                  size: 28,
+                                ),
+                                onPressed: () {
+                                  final coverProvider = PlaylistQueueService().getCoverProvider(t);
+                                  PlayerService().playTrack(t, coverProvider: coverProvider);
+                                  Navigator.pop(context);
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                actions: [
+                  fluent.FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('关闭'),
+                  ),
+                ],
+              );
+            },
           );
         },
       );
@@ -1930,9 +1938,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                           itemCount: list.length,
                                           itemBuilder: (context, i) {
                                             final Track t = list[i];
-                                            final isCurrent = currentTrack != null &&
-                                                t.id.toString() == currentTrack.id.toString() &&
-                                                t.source == currentTrack.source;
+                                            final isCurrent = isHighlightedTrack(t);
                                             final content = Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                               decoration: BoxDecoration(
@@ -2066,9 +2072,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                           itemCount: list.length,
                                           itemBuilder: (context, i) {
                                             final Track t = list[i];
-                                            final isCurrent = currentTrack != null &&
-                                                t.id.toString() == currentTrack.id.toString() &&
-                                                t.source == currentTrack.source;
+                                            final isCurrent = isHighlightedTrack(t);
                                             return GestureDetector(
                                               behavior: HitTestBehavior.opaque,
                                               onTap: () {
@@ -2237,9 +2241,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                       itemCount: list.length,
                                       itemBuilder: (context, i) {
                                         final Track t = list[i];
-                                        final isCurrent = currentTrack != null &&
-                                            t.id.toString() == currentTrack.id.toString() &&
-                                            t.source == currentTrack.source;
+                                        final isCurrent = isHighlightedTrack(t);
 
                                         final tile = ListTile(
                                           tileColor: isCurrent ? colorScheme.surfaceContainerHigh : null,
@@ -2347,9 +2349,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                       separatorBuilder: (_, __) => const Divider(height: 1),
                                       itemBuilder: (context, i) {
                                         final Track t = list[i];
-                                        final isCurrent = currentTrack != null &&
-                                            t.id.toString() == currentTrack.id.toString() &&
-                                            t.source == currentTrack.source;
+                                        final isCurrent = isHighlightedTrack(t);
 
                                         return ListTile(
                                           tileColor: isCurrent ? colorScheme.surfaceContainerHigh : null,

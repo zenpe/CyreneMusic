@@ -4,9 +4,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../../services/player_service.dart';
 import '../../services/player_background_service.dart';
+import '../../models/track.dart';
 import '../../utils/image_utils.dart';
 import '../../utils/theme_manager.dart';
-import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/search_widget.dart';
 import '../../services/netease_artist_service.dart';
@@ -26,13 +26,12 @@ class PlayerSongInfo extends StatelessWidget {
       builder: (context, child) {
         final player = PlayerService();
         final song = player.currentSong;
-        final track = player.currentTrack;
         final imageUrl = player.currentCoverUrl ?? '';
         final displayTitle = player.displayTitle;
         final displayArtist = player.displayArtist;
         final displayAlbum = player.displayAlbum;
         final backgroundService = PlayerBackgroundService();
-        
+
         return RepaintBoundary(
           child: SingleChildScrollView(
             child: Padding(
@@ -55,7 +54,6 @@ class PlayerSongInfo extends StatelessWidget {
                   _buildSongInfo(
                     context,
                     song,
-                    track,
                     displayTitle: displayTitle,
                     displayArtist: displayArtist,
                     displayAlbum: displayAlbum,
@@ -150,8 +148,7 @@ class PlayerSongInfo extends StatelessWidget {
   /// 构建歌曲信息
   Widget _buildSongInfo(
     BuildContext context,
-    SongDetail? song,
-    Track? track, {
+    SongDetail? song, {
     required String displayTitle,
     required String displayArtist,
     required String displayAlbum,
