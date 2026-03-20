@@ -60,6 +60,7 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
       builder: (context, _) {
         final settings = AppSettingsService();
         final credentials = AuthCredentialsService();
+        final canToggleAutoPlay = settings.restorePlaybackSessionOnStartup;
         return ListView(
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: [
@@ -69,10 +70,20 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
                 MD3SwitchTile(
                   leading: const Icon(Icons.restore_outlined),
                   title: '启动时恢复播放会话',
-                  subtitle: '仅使用本地保存的播放会话恢复播放器状态',
+                  subtitle: '恢复上次的队列、当前歌曲和播放进度',
                   value: settings.restorePlaybackSessionOnStartup,
                   onChanged: (value) {
                     settings.setRestorePlaybackSessionOnStartup(value);
+                  },
+                ),
+                MD3SwitchTile(
+                  leading: const Icon(Icons.play_circle_outline),
+                  title: '启动时自动播放',
+                  subtitle: '需先开启恢复播放会话，恢复后自动开始播放，默认关闭',
+                  value: settings.autoPlayAfterRestoreOnStartup,
+                  enabled: canToggleAutoPlay,
+                  onChanged: (value) {
+                    settings.setAutoPlayAfterRestoreOnStartup(value);
                   },
                 ),
                 MD3SwitchTile(
@@ -120,6 +131,7 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
       builder: (context, _) {
         final settings = AppSettingsService();
         final credentials = AuthCredentialsService();
+        final canToggleAutoPlay = settings.restorePlaybackSessionOnStartup;
         return ListView(
           padding: const EdgeInsets.only(top: 20),
           children: [
@@ -130,11 +142,23 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
                   icon: CupertinoIcons.arrow_counterclockwise,
                   iconColor: CupertinoColors.systemBlue,
                   title: '启动时恢复播放会话',
-                  subtitle: '仅使用本地保存的播放会话恢复播放器状态',
+                  subtitle: '恢复上次的队列、当前歌曲和播放进度',
                   value: settings.restorePlaybackSessionOnStartup,
                   onChanged: (value) {
                     settings.setRestorePlaybackSessionOnStartup(value);
                   },
+                ),
+                CupertinoSwitchTile(
+                  icon: CupertinoIcons.play_circle,
+                  iconColor: CupertinoColors.systemGreen,
+                  title: '启动时自动播放',
+                  subtitle: '需先开启恢复播放会话，恢复后自动开始播放，默认关闭',
+                  value: settings.autoPlayAfterRestoreOnStartup,
+                  onChanged: canToggleAutoPlay
+                      ? (value) {
+                          settings.setAutoPlayAfterRestoreOnStartup(value);
+                        }
+                      : null,
                 ),
                 CupertinoSwitchTile(
                   icon: CupertinoIcons.arrow_down_circle,
@@ -197,6 +221,7 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
       builder: (context, _) {
         final settings = AppSettingsService();
         final credentials = AuthCredentialsService();
+        final canToggleAutoPlay = settings.restorePlaybackSessionOnStartup;
         return fluent_ui.ListView(
           padding: const EdgeInsets.all(24),
           children: [
@@ -206,11 +231,22 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
                 FluentSwitchTile(
                   icon: fluent_ui.FluentIcons.history,
                   title: '启动时恢复播放会话',
-                  subtitle: '仅使用本地保存的播放会话恢复播放器状态',
+                  subtitle: '恢复上次的队列、当前歌曲和播放进度',
                   value: settings.restorePlaybackSessionOnStartup,
                   onChanged: (value) {
                     settings.setRestorePlaybackSessionOnStartup(value);
                   },
+                ),
+                FluentSwitchTile(
+                  icon: fluent_ui.FluentIcons.play,
+                  title: '启动时自动播放',
+                  subtitle: '需先开启恢复播放会话，恢复后自动开始播放，默认关闭',
+                  value: settings.autoPlayAfterRestoreOnStartup,
+                  onChanged: canToggleAutoPlay
+                      ? (value) {
+                          settings.setAutoPlayAfterRestoreOnStartup(value);
+                        }
+                      : null,
                 ),
                 FluentSwitchTile(
                   icon: fluent_ui.FluentIcons.sync,

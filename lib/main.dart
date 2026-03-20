@@ -19,6 +19,7 @@ import 'package:cyrene_music/services/developer_mode_service.dart';
 import 'package:cyrene_music/services/app_settings_service.dart';
 import 'package:cyrene_music/services/desktop_lyric_service.dart';
 import 'package:cyrene_music/services/listening_stats_service.dart';
+import 'package:cyrene_music/services/lyric/lyric_cache_service.dart';
 import 'package:cyrene_music/services/lyric_style_service.dart';
 import 'package:cyrene_music/services/lyric_font_service.dart';
 import 'package:cyrene_music/services/persistent_storage_service.dart';
@@ -315,6 +316,11 @@ Future<void> main() async {
         await CacheService().initialize();
       });
       log(' 缓存服务已初始化');
+
+      await timed('LyricCacheService.initialize', () async {
+        await LyricCacheService().initialize();
+      });
+      log(' 歌词缓存服务已初始化');
 
       await timed('StartupPlaybackCoordinator.restorePlaybackOnStartup', () async {
         await StartupPlaybackCoordinator().restorePlaybackOnStartup();

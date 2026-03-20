@@ -14,7 +14,7 @@ class UrlService extends ChangeNotifier {
   UrlService._internal();
 
   /// 官方源地址
-  static const String officialBaseUrl = 'https://server.cyrene.cyou:4449';
+  static const String officialBaseUrl = 'https://niba.cc.cd';
 
   /// 当前源类型
   BackendSourceType _sourceType = BackendSourceType.official;

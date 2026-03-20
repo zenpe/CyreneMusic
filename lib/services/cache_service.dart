@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import '../utils/format_utils.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -195,14 +196,7 @@ class CacheStats {
     required this.kuwoCount,
   });
 
-  String get formattedSize {
-    if (totalSize < 1024) return '$totalSize B';
-    if (totalSize < 1024 * 1024) return '${(totalSize / 1024).toStringAsFixed(2)} KB';
-    if (totalSize < 1024 * 1024 * 1024) {
-      return '${(totalSize / (1024 * 1024)).toStringAsFixed(2)} MB';
-    }
-    return '${(totalSize / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-  }
+  String get formattedSize => formatFileSize(totalSize);
 }
 
 /// 音乐缓存服务
@@ -216,6 +210,8 @@ class CacheService extends ChangeNotifier {
   static const int _defaultMaxCacheSizeBytes = 2 * 1024 * 1024 * 1024;
   static const Duration _maintenanceDebounce = Duration(seconds: 2);
   static const Duration _cacheDownloadTimeout = Duration(seconds: 30);
+  static const String _maxCacheSizePrefsKey = 'max_cache_size_bytes_v2';
+  static const String _legacyMaxCacheSizePrefsKey = 'max_cache_size_bytes';
 
   Directory? _cacheDir;
   Map<String, CacheMetadata> _cacheIndex = {};
@@ -223,6 +219,7 @@ class CacheService extends ChangeNotifier {
   bool _isInitialized = false;
   bool _cacheEnabled = false;  // 缓存开关，默认关闭
   String? _customCacheDir;    // 自定义缓存目录
+  int _maxCacheSizeBytes = _defaultMaxCacheSizeBytes;
   Timer? _indexSaveDebounce;
   Timer? _maintenanceTimer;
   bool _maintenanceRunning = false;
@@ -232,6 +229,12 @@ class CacheService extends ChangeNotifier {
   bool get cacheEnabled => _cacheEnabled;
   String? get customCacheDir => _customCacheDir;
   String? get currentCacheDir => _cacheDir?.path;
+  int get maxCacheSizeBytes => _maxCacheSizeBytes;
+  String get formattedMaxCacheSize => formatFileSize(
+    _maxCacheSizeBytes,
+    fractionDigits: 1,
+    trimTrailingZeros: true,
+  );
 
   static String normalizeQualityValue(String? quality) {
     if (quality != null) {
@@ -592,6 +595,7 @@ class CacheService extends ChangeNotifier {
   Future<int> _enforceCacheSizeLimit() async {
     if (_cacheDir == null || _cacheIndex.isEmpty) return 0;
 
+    final maxCacheSizeBytes = _normalizedMaxCacheSizeBytes(_maxCacheSizeBytes);
     final entries = <MapEntry<String, CacheMetadata>>[];
     var totalSize = 0;
     for (final entry in _cacheIndex.entries) {
@@ -602,7 +606,7 @@ class CacheService extends ChangeNotifier {
       entries.add(entry);
     }
 
-    if (totalSize <= _defaultMaxCacheSizeBytes) return 0;
+    if (totalSize <= maxCacheSizeBytes) return 0;
 
     entries.sort(
       (a, b) => a.value.lastAccessedAt.compareTo(b.value.lastAccessedAt),
@@ -610,7 +614,7 @@ class CacheService extends ChangeNotifier {
 
     var removed = 0;
     for (final entry in entries) {
-      if (totalSize <= _defaultMaxCacheSizeBytes) break;
+      if (totalSize <= maxCacheSizeBytes) break;
       final file = File(_getCacheFilePath(entry.key));
       if (await file.exists()) {
         final fileLength = await file.length();
@@ -1290,12 +1294,19 @@ class CacheService extends ChangeNotifier {
       
       // 加载自定义缓存目录
       _customCacheDir = prefs.getString('custom_cache_dir');
+      _maxCacheSizeBytes = await _loadStoredMaxCacheSizeBytes(prefs);
       
-      print('⚙️ [CacheService] 加载设置 - 缓存开关: $_cacheEnabled, 自定义目录: ${_customCacheDir ?? "无"}');
+      print(
+        '⚙️ [CacheService] 加载设置 - '
+        '缓存开关: $_cacheEnabled, '
+        '自定义目录: ${_customCacheDir ?? "无"}, '
+        '空间上限: ${formatFileSize(_maxCacheSizeBytes)}',
+      );
     } catch (e) {
       print('❌ [CacheService] 加载设置失败: $e');
       _cacheEnabled = false;  // 加载失败时默认关闭
       _customCacheDir = null;
+      _maxCacheSizeBytes = _defaultMaxCacheSizeBytes;
     }
   }
 
@@ -1326,6 +1337,43 @@ class CacheService extends ChangeNotifier {
     }
   }
 
+  int _normalizedMaxCacheSizeBytes(int? bytes) {
+    if (bytes == null || bytes <= 0) {
+      return _defaultMaxCacheSizeBytes;
+    }
+    return bytes;
+  }
+
+  Future<int> _loadStoredMaxCacheSizeBytes(SharedPreferences prefs) async {
+    final stored = prefs.getString(_maxCacheSizePrefsKey);
+    final parsed = int.tryParse(stored ?? '');
+    if (parsed != null && parsed > 0) {
+      return _normalizedMaxCacheSizeBytes(parsed);
+    }
+
+    final legacy = prefs.getInt(_legacyMaxCacheSizePrefsKey);
+    final normalized = _normalizedMaxCacheSizeBytes(legacy);
+    if (legacy != null && legacy > 0) {
+      await prefs.setString(_maxCacheSizePrefsKey, normalized.toString());
+    }
+    return normalized;
+  }
+
+  /// 保存缓存空间上限
+  Future<void> _saveMaxCacheSizeBytes() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_maxCacheSizePrefsKey, _maxCacheSizeBytes.toString());
+      await prefs.remove(_legacyMaxCacheSizePrefsKey);
+      print(
+        '💾 [CacheService] 缓存空间上限已保存: '
+        '${formatFileSize(_maxCacheSizeBytes)} ($_maxCacheSizeBytes bytes)',
+      );
+    } catch (e) {
+      print('❌ [CacheService] 保存缓存空间上限失败: $e');
+    }
+  }
+
   /// 设置缓存开关
   Future<void> setCacheEnabled(bool enabled) async {
     if (_cacheEnabled != enabled) {
@@ -1336,6 +1384,30 @@ class CacheService extends ChangeNotifier {
         _scheduleMaintenance();
       }
       notifyListeners();
+    }
+  }
+
+  /// 设置缓存空间上限
+  Future<void> setMaxCacheSizeBytes(int bytes) async {
+    final normalizedBytes = _normalizedMaxCacheSizeBytes(bytes);
+    if (_maxCacheSizeBytes == normalizedBytes) {
+      return;
+    }
+
+    _maxCacheSizeBytes = normalizedBytes;
+    await _saveMaxCacheSizeBytes();
+    print(
+      '🔧 [CacheService] 缓存空间上限已更新: '
+      '${formatFileSize(_maxCacheSizeBytes)} ($_maxCacheSizeBytes bytes)',
+    );
+    notifyListeners();
+
+    if (_isInitialized && _cacheDir != null) {
+      if (_maintenanceRunning) {
+        _scheduleMaintenance();
+      } else {
+        await _runMaintenance();
+      }
     }
   }
 
@@ -1390,4 +1462,3 @@ class CacheService extends ChangeNotifier {
     }
   }
 }
-

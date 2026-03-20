@@ -5,6 +5,8 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import 'package:file_picker/file_picker.dart';
 import '../../services/cache_service.dart';
 import '../../services/download_service.dart';
+import '../../services/media_cache_service.dart';
+import '../../utils/format_utils.dart';
 import '../../widgets/fluent_settings_card.dart';
 import '../../widgets/cupertino/cupertino_settings_widgets.dart';
 import '../../utils/theme_manager.dart';
@@ -20,6 +22,53 @@ class StorageSettings extends StatefulWidget {
 }
 
 class _StorageSettingsState extends State<StorageSettings> {
+  static const List<int> _cacheSizeLimitOptions = <int>[
+    512 * 1024 * 1024,
+    1024 * 1024 * 1024,
+    2 * 1024 * 1024 * 1024,
+    4 * 1024 * 1024 * 1024,
+    8 * 1024 * 1024 * 1024,
+  ];
+
+  Future<MediaCacheStats> _loadCombinedCacheStats() async {
+    return MediaCacheService().getCombinedCacheStats();
+  }
+
+  Future<void> _clearAllCaches() async {
+    await MediaCacheService().clearAllCaches();
+  }
+
+  String _formatCacheSizeLimitOption(int bytes) {
+    return formatFileSize(
+      bytes,
+      fractionDigits: 1,
+      trimTrailingZeros: true,
+    );
+  }
+
+  Future<void> _applyCacheSizeLimit(int bytes) async {
+    final previous = CacheService().maxCacheSizeBytes;
+    await CacheService().setMaxCacheSizeBytes(bytes);
+    if (!mounted) return;
+
+    setState(() {});
+
+    if (previous == bytes) {
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger != null) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '缓存空间上限已更新为 ${_formatCacheSizeLimitOption(bytes)}',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isFluent = fluent_ui.FluentTheme.maybeOf(context) != null;
@@ -31,7 +80,7 @@ class _StorageSettingsState extends State<StorageSettings> {
         children: [
           FluentSwitchTile(
             icon: Icons.cloud_download,
-            title: '启用缓存',
+            title: '启用音频缓存',
             subtitle: CacheService().cacheEnabled
                 ? '自动缓存播放过的歌曲'
                 : '缓存已禁用',
@@ -40,6 +89,13 @@ class _StorageSettingsState extends State<StorageSettings> {
               await CacheService().setCacheEnabled(value);
               setState(() {});
             },
+          ),
+          FluentSettingsTile(
+            icon: Icons.sd_storage,
+            title: '缓存空间限制',
+            subtitle: _getCacheSizeLimitSubtitle(),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showCacheSizeLimitSettingsFluent(),
           ),
           if (Platform.isWindows)
             FluentSettingsTile(
@@ -76,7 +132,7 @@ class _StorageSettingsState extends State<StorageSettings> {
       children: [
         MD3SwitchTile(
           leading: const Icon(Icons.cloud_download_outlined),
-          title: '启用缓存',
+          title: '启用音频缓存',
           subtitle: CacheService().cacheEnabled
               ? '自动缓存播放过的歌曲'
               : '缓存已禁用',
@@ -85,6 +141,13 @@ class _StorageSettingsState extends State<StorageSettings> {
             await CacheService().setCacheEnabled(value);
             setState(() {});
           },
+        ),
+        MD3SettingsTile(
+          leading: const Icon(Icons.sd_storage_outlined),
+          title: '缓存空间限制',
+          subtitle: _getCacheSizeLimitSubtitle(),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showCacheSizeLimitSettings(),
         ),
         if (Platform.isWindows)
           MD3SettingsTile(
@@ -121,7 +184,7 @@ class _StorageSettingsState extends State<StorageSettings> {
         CupertinoSwitchTile(
           icon: CupertinoIcons.cloud_download,
           iconColor: CupertinoColors.systemBlue,
-          title: '启用缓存',
+          title: '启用音频缓存',
           subtitle: CacheService().cacheEnabled
               ? '自动缓存播放过的歌曲'
               : '缓存已禁用',
@@ -130,6 +193,14 @@ class _StorageSettingsState extends State<StorageSettings> {
             await CacheService().setCacheEnabled(value);
             setState(() {});
           },
+        ),
+        CupertinoSettingsTile(
+          icon: CupertinoIcons.archivebox,
+          iconColor: CupertinoColors.systemPurple,
+          title: '缓存空间限制',
+          subtitle: _getCacheSizeLimitSubtitle(),
+          showChevron: true,
+          onTap: () => _showCacheSizeLimitSettingsCupertino(),
         ),
         // 缓存管理
         CupertinoSettingsTile(
@@ -144,9 +215,42 @@ class _StorageSettingsState extends State<StorageSettings> {
     );
   }
 
+  Future<void> _showCacheSizeLimitSettingsCupertino() async {
+    final currentLimit = CacheService().maxCacheSizeBytes;
+    if (!mounted) return;
+
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text('缓存空间限制'),
+        message: Text(
+          '当前上限 ${_formatCacheSizeLimitOption(currentLimit)}\n'
+          '超出上限后会自动清理较早使用的音频缓存',
+        ),
+        actions: _cacheSizeLimitOptions.map((option) {
+          final label = _formatCacheSizeLimitOption(option);
+          final isCurrent = option == currentLimit;
+          return CupertinoActionSheetAction(
+            isDefaultAction: isCurrent,
+            onPressed: () async {
+              Navigator.pop(context);
+              await _applyCacheSizeLimit(option);
+            },
+            child: Text(isCurrent ? '$label（当前）' : label),
+          );
+        }).toList(),
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+  }
+
   /// 显示 Cupertino 风格的缓存管理对话框
   Future<void> _showCacheManagementCupertino() async {
-    final stats = await CacheService().getCacheStats();
+    final stats = await _loadCombinedCacheStats();
     if (!mounted) return;
     
     showCupertinoModalPopup<void>(
@@ -155,7 +259,10 @@ class _StorageSettingsState extends State<StorageSettings> {
         title: const Text('缓存管理'),
         message: Text(
           '占用空间: ${stats.formattedSize}\n'
-          '已缓存 ${stats.totalFiles} 首歌曲',
+          '空间上限: ${CacheService().formattedMaxCacheSize}\n'
+          '音频缓存 ${stats.audio.totalFiles} 首歌曲\n'
+          '歌词缓存 ${stats.lyric.totalFiles} 条记录\n'
+          '歌词详情 可用 ${stats.lyric.readyCount} / 空结果 ${stats.lyric.emptyCount} / 失败退避 ${stats.lyric.failedCount}',
         ),
         actions: [
           if (stats.totalFiles > 0)
@@ -179,7 +286,7 @@ class _StorageSettingsState extends State<StorageSettings> {
 
   /// 确认清除缓存 - Cupertino 风格
   Future<void> _confirmClearCacheCupertino() async {
-    final stats = await CacheService().getCacheStats();
+    final stats = await _loadCombinedCacheStats();
     if (!mounted) return;
     
     showCupertinoDialog<void>(
@@ -188,7 +295,8 @@ class _StorageSettingsState extends State<StorageSettings> {
         title: const Text('清除缓存'),
         content: Text(
           '确定要清除所有缓存吗？\n\n'
-          '将删除 ${stats.totalFiles} 首歌曲的缓存\n'
+          '将删除音频缓存 ${stats.audio.totalFiles} 首歌曲\n'
+          '清除歌词缓存 ${stats.lyric.totalFiles} 条记录\n'
           '释放 ${stats.formattedSize} 空间',
         ),
         actions: [
@@ -201,7 +309,7 @@ class _StorageSettingsState extends State<StorageSettings> {
             isDestructiveAction: true,
             onPressed: () async {
               Navigator.pop(context);
-              await CacheService().clearAllCache();
+              await _clearAllCaches();
               if (mounted) {
                 setState(() {});
               }
@@ -232,15 +340,10 @@ class _StorageSettingsState extends State<StorageSettings> {
     }
 
     if (!CacheService().cacheEnabled) {
-      return '缓存功能已禁用';
+      return '音频缓存已禁用，可管理已有缓存';
     }
 
-    final count = CacheService().cachedCount;
-    if (count == 0) {
-      return '暂无缓存';
-    }
-
-    return '已缓存 $count 首歌曲';
+    return '管理音频与歌词缓存';
   }
 
   String _getCacheDirSubtitle() {
@@ -249,6 +352,10 @@ class _StorageSettingsState extends State<StorageSettings> {
       return '自定义：$customDir';
     }
     return '默认位置';
+  }
+
+  String _getCacheSizeLimitSubtitle() {
+    return '当前上限 ${_formatCacheSizeLimitOption(CacheService().maxCacheSizeBytes)}';
   }
 
   String _getDownloadDirSubtitle() {
@@ -260,7 +367,7 @@ class _StorageSettingsState extends State<StorageSettings> {
   }
 
   Future<void> _showCacheManagement() async {
-    final stats = await CacheService().getCacheStats();
+    final stats = await _loadCombinedCacheStats();
 
     if (!mounted) return;
 
@@ -324,7 +431,52 @@ class _StorageSettingsState extends State<StorageSettings> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '已缓存 ${stats.totalFiles} 首歌曲',
+                  '音频缓存 ${stats.audio.totalFiles} 首歌曲',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  Icons.sd_storage_outlined,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '空间上限 ${CacheService().formattedMaxCacheSize}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  Icons.lyrics_outlined,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '歌词缓存 ${stats.lyric.totalFiles} 条记录',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  Icons.fact_check_outlined,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '歌词详情 可用 ${stats.lyric.readyCount} / 空结果 ${stats.lyric.emptyCount} / 失败退避 ${stats.lyric.failedCount}',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
@@ -354,7 +506,7 @@ class _StorageSettingsState extends State<StorageSettings> {
   }
 
   Future<void> _confirmClearCache() async {
-    final stats = await CacheService().getCacheStats();
+    final stats = await _loadCombinedCacheStats();
 
     if (stats.totalFiles == 0) {
       if (mounted) {
@@ -376,7 +528,8 @@ class _StorageSettingsState extends State<StorageSettings> {
         title: const Text('清除缓存'),
         content: Text(
           '确定要清除所有缓存吗？\n\n'
-          '将删除 ${stats.totalFiles} 首歌曲的缓存\n'
+          '将删除音频缓存 ${stats.audio.totalFiles} 首歌曲\n'
+          '清除歌词缓存 ${stats.lyric.totalFiles} 条记录\n'
           '释放 ${stats.formattedSize} 空间',
         ),
         actions: [
@@ -413,7 +566,7 @@ class _StorageSettingsState extends State<StorageSettings> {
                 }
               }
 
-              await CacheService().clearAllCache();
+              await _clearAllCaches();
 
               if (mounted) {
                 final messenger = ScaffoldMessenger.maybeOf(context);
@@ -421,7 +574,9 @@ class _StorageSettingsState extends State<StorageSettings> {
                   messenger.hideCurrentSnackBar();
                   messenger.showSnackBar(
                     SnackBar(
-                      content: Text('已清除 ${stats.totalFiles} 首歌曲的缓存'),
+                      content: Text(
+                        '已清除音频缓存 ${stats.audio.totalFiles} 首，歌词缓存 ${stats.lyric.totalFiles} 条',
+                      ),
                       backgroundColor: Colors.green,
                     ),
                   );
@@ -439,7 +594,7 @@ class _StorageSettingsState extends State<StorageSettings> {
   }
 
   Future<void> _showCacheManagementFluent() async {
-    final stats = await CacheService().getCacheStats();
+    final stats = await _loadCombinedCacheStats();
     if (!mounted) return;
     fluent_ui.showDialog(
       context: context,
@@ -451,7 +606,15 @@ class _StorageSettingsState extends State<StorageSettings> {
           children: [
             Text('占用空间: ${stats.formattedSize}'),
             const SizedBox(height: 8),
-            Text('已缓存 ${stats.totalFiles} 首歌曲'),
+            Text('空间上限: ${CacheService().formattedMaxCacheSize}'),
+            const SizedBox(height: 8),
+            Text('音频缓存 ${stats.audio.totalFiles} 首歌曲'),
+            const SizedBox(height: 4),
+            Text('歌词缓存 ${stats.lyric.totalFiles} 条记录'),
+            const SizedBox(height: 4),
+            Text(
+              '歌词详情 可用 ${stats.lyric.readyCount} / 空结果 ${stats.lyric.emptyCount} / 失败退避 ${stats.lyric.failedCount}',
+            ),
           ],
         ),
         actions: [
@@ -472,15 +635,151 @@ class _StorageSettingsState extends State<StorageSettings> {
     );
   }
 
+  Future<void> _showCacheSizeLimitSettings() async {
+    final currentLimit = CacheService().maxCacheSizeBytes;
+    var selectedLimit = currentLimit;
+
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.sd_storage_outlined),
+              SizedBox(width: 8),
+              Text('缓存空间限制'),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '超出上限后会自动清理较早使用的音频缓存。',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  ..._cacheSizeLimitOptions.map(
+                    (option) => RadioListTile<int>(
+                      contentPadding: EdgeInsets.zero,
+                      value: option,
+                      groupValue: selectedLimit,
+                      title: Text(_formatCacheSizeLimitOption(option)),
+                      subtitle: Text(
+                        option == currentLimit ? '当前设置' : '达到上限后自动清理旧缓存',
+                      ),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialogState(() {
+                          selectedLimit = value;
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _applyCacheSizeLimit(selectedLimit);
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCacheSizeLimitSettingsFluent() async {
+    final currentLimit = CacheService().maxCacheSizeBytes;
+    var selectedLimit = currentLimit;
+    if (!mounted) return;
+
+    fluent_ui.showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => fluent_ui.ContentDialog(
+          title: const Text('缓存空间限制'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('超出上限后会自动清理较早使用的音频缓存。'),
+                const SizedBox(height: 12),
+                fluent_ui.RadioGroup<int>(
+                  groupValue: selectedLimit,
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setDialogState(() {
+                      selectedLimit = value;
+                    });
+                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: _cacheSizeLimitOptions.map((option) {
+                      final isCurrent = option == currentLimit;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: fluent_ui.RadioButton<int>(
+                          value: option,
+                          content: Text(
+                            isCurrent
+                                ? '${_formatCacheSizeLimitOption(option)}（当前）'
+                                : _formatCacheSizeLimitOption(option),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            fluent_ui.Button(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            fluent_ui.FilledButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _applyCacheSizeLimit(selectedLimit);
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _confirmClearCacheFluent() async {
-    final stats = await CacheService().getCacheStats();
+    final stats = await _loadCombinedCacheStats();
     if (!mounted) return;
     fluent_ui.showDialog(
       context: context,
       builder: (context) => fluent_ui.ContentDialog(
         title: const Text('清除缓存'),
         content: Text(
-          '确定要清除所有缓存吗？\n\n将删除 ${stats.totalFiles} 首歌曲的缓存\n释放 ${stats.formattedSize} 空间',
+          '确定要清除所有缓存吗？\n\n'
+          '将删除音频缓存 ${stats.audio.totalFiles} 首歌曲\n'
+          '清除歌词缓存 ${stats.lyric.totalFiles} 条记录\n'
+          '释放 ${stats.formattedSize} 空间',
         ),
         actions: [
           fluent_ui.Button(
@@ -490,12 +789,14 @@ class _StorageSettingsState extends State<StorageSettings> {
           fluent_ui.FilledButton(
             onPressed: () async {
               Navigator.pop(context);
-              await CacheService().clearAllCache();
+              await _clearAllCaches();
               final messenger = ScaffoldMessenger.maybeOf(context);
               if (messenger != null) {
                 messenger.showSnackBar(
                   SnackBar(
-                    content: Text('已清除 ${stats.totalFiles} 首歌曲的缓存'),
+                    content: Text(
+                      '已清除音频缓存 ${stats.audio.totalFiles} 首，歌词缓存 ${stats.lyric.totalFiles} 条',
+                    ),
                     backgroundColor: Colors.green,
                   ),
                 );

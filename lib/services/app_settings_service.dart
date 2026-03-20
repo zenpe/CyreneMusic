@@ -9,12 +9,15 @@ class AppSettingsService extends ChangeNotifier {
 
   static const String _keyRestorePlaybackSessionOnStartup =
       'app_setting_restore_playback_session_on_startup';
+  static const String _keyAutoPlayAfterRestoreOnStartup =
+      'app_setting_auto_play_after_restore_on_startup';
   static const String _legacyKeyResumePromptOnStartup =
       'app_setting_resume_prompt_on_startup';
   static const String _keyUpdatePromptOnStartup =
       'app_setting_update_prompt_on_startup';
 
   bool _restorePlaybackSessionOnStartup = true;
+  bool _autoPlayAfterRestoreOnStartup = false;
   bool _showUpdatePromptOnStartup = true;
 
   Future<void>? _initFuture;
@@ -22,6 +25,7 @@ class AppSettingsService extends ChangeNotifier {
 
   bool get isInitialized => _isInitialized;
   bool get restorePlaybackSessionOnStartup => _restorePlaybackSessionOnStartup;
+  bool get autoPlayAfterRestoreOnStartup => _autoPlayAfterRestoreOnStartup;
   bool get showUpdatePromptOnStartup => _showUpdatePromptOnStartup;
 
   /// 初始化服务（首次读取本地设置）
@@ -40,6 +44,8 @@ class AppSettingsService extends ChangeNotifier {
           prefs.getBool(_keyRestorePlaybackSessionOnStartup) ??
           prefs.getBool(_legacyKeyResumePromptOnStartup) ??
           true;
+      _autoPlayAfterRestoreOnStartup =
+          prefs.getBool(_keyAutoPlayAfterRestoreOnStartup) ?? false;
       _showUpdatePromptOnStartup =
           prefs.getBool(_keyUpdatePromptOnStartup) ?? true;
     } catch (e) {
@@ -58,6 +64,10 @@ class AppSettingsService extends ChangeNotifier {
         _keyRestorePlaybackSessionOnStartup,
         _restorePlaybackSessionOnStartup,
       );
+      await prefs.setBool(
+        _keyAutoPlayAfterRestoreOnStartup,
+        _autoPlayAfterRestoreOnStartup,
+      );
       await prefs.remove(_legacyKeyResumePromptOnStartup);
       await prefs.setBool(
         _keyUpdatePromptOnStartup,
@@ -71,6 +81,13 @@ class AppSettingsService extends ChangeNotifier {
   Future<void> setRestorePlaybackSessionOnStartup(bool value) async {
     if (_restorePlaybackSessionOnStartup == value) return;
     _restorePlaybackSessionOnStartup = value;
+    await _saveSettings();
+    notifyListeners();
+  }
+
+  Future<void> setAutoPlayAfterRestoreOnStartup(bool value) async {
+    if (_autoPlayAfterRestoreOnStartup == value) return;
+    _autoPlayAfterRestoreOnStartup = value;
     await _saveSettings();
     notifyListeners();
   }

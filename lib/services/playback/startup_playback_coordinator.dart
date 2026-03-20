@@ -14,10 +14,13 @@ class StartupPlaybackCoordinator {
     if (_hasHandledStartupRestore) return;
     _hasHandledStartupRestore = true;
 
-    await AppSettingsService().ensureInitialized();
-    if (!AppSettingsService().restorePlaybackSessionOnStartup) return;
+    final settings = AppSettingsService();
+    await settings.ensureInitialized();
+    if (!settings.restorePlaybackSessionOnStartup) return;
 
-    final restored = await PlaybackService().restoreSessionOnStartup();
+    final restored = await PlaybackService().restoreSessionOnStartup(
+      autoPlay: settings.autoPlayAfterRestoreOnStartup,
+    );
     print(
       restored
           ? '[StartupPlaybackCoordinator] 已恢复本地播放会话'

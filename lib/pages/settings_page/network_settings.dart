@@ -23,7 +23,6 @@ class NetworkSettings extends StatefulWidget {
 }
 
 class _NetworkSettingsState extends State<NetworkSettings> {
-  static const String _selfHostedPresetUrl = 'https://niba.cc.cd';
   final AudioSourceReadController _audioSourceReadController =
       AudioSourceReadController();
   bool _isTesting = false;
@@ -390,22 +389,6 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                 );
               },
             ),
-            ListTile(
-              title: const Text('自建源（预设）'),
-              subtitle: Text(
-                _selfHostedPresetUrl,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                UrlService().setCustomBaseUrl(_selfHostedPresetUrl);
-                UrlService().setSourceType(BackendSourceType.custom);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已切换到自建源预设')),
-                );
-              },
-            ),
             RadioListTile<BackendSourceType>(
               title: const Text('自定义源'),
               subtitle: Text(
@@ -532,14 +515,6 @@ void _showCustomUrlDialog(BuildContext context) {
       builder: (context) => CupertinoActionSheet(
         title: const Text('选择后端源'),
         actions: [
-          CupertinoActionSheetAction(
-            onPressed: () {
-              UrlService().setCustomBaseUrl(_selfHostedPresetUrl);
-              UrlService().setSourceType(BackendSourceType.custom);
-              Navigator.pop(context);
-            },
-            child: const Text('自建源（预设）'),
-          ),
           CupertinoActionSheetAction(
             onPressed: () {
               UrlService().useOfficialSource();
