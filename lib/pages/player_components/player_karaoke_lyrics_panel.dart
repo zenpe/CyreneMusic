@@ -12,7 +12,7 @@ class PlayerKaraokeLyricsPanel extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final bool showTranslation;
-  final PlayerLyricState lyricState;
+  final LyricLoadState lyricState;
 
   const PlayerKaraokeLyricsPanel({
     super.key,
@@ -184,12 +184,7 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         final textColor = _getAdaptiveLyricColor(themeColor, false).withOpacity(0.5);
-        var message = '歌词加载中';
-        if (widget.lyricState == PlayerLyricState.failed) {
-          message = '歌词加载失败';
-        } else if (widget.lyricState == PlayerLyricState.empty) {
-          message = '暂无歌词';
-        }
+        final message = widget.lyricState.displayText;
         return Center(
           child: Text(
             message,

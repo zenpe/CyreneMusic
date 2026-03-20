@@ -7,12 +7,14 @@ import '../../models/lyric_line.dart';
 class MobilePlayerCurrentLyric extends StatelessWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
+  final LyricLoadState lyricState;
   final VoidCallback onTap;
 
   const MobilePlayerCurrentLyric({
     super.key,
     required this.lyrics,
     required this.currentLyricIndex,
+    this.lyricState = LyricLoadState.empty,
     required this.onTap,
   });
 
@@ -47,7 +49,7 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
         
         return Center(
           child: Text(
-            '暂无歌词',
+            _lyricStatusText(),
             style: TextStyle(
               color: textColor,
               fontSize: lyricFontSize,
@@ -58,6 +60,10 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
         );
       },
     );
+  }
+
+  String _lyricStatusText() {
+    return lyricState.displayText;
   }
 
   /// 构建3行歌词显示（当前歌词在第2行）

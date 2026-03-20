@@ -272,7 +272,21 @@ class TrayService with TrayListener, WindowListener {
         print('⚠️ [TrayService] 同步听歌时长失败: $e');
       }
       
-      // 1. 然后强制备份所有数据（最重要！）
+      // 1. 先立即保存播放会话，避免后续 forceDispose 取消防抖后丢失最新状态
+      print('💿 [TrayService] 立即保存播放会话...');
+      try {
+        await PlayerService().persistSessionImmediately().timeout(
+          const Duration(milliseconds: 300),
+          onTimeout: () {
+            print('⚠️ [TrayService] 播放会话保存超时(300ms)');
+          },
+        );
+        print('✅ [TrayService] 播放会话已保存');
+      } catch (e) {
+        print('⚠️ [TrayService] 保存播放会话失败: $e');
+      }
+      
+      // 2. 然后强制备份所有数据（最重要！）
       print('💾 [TrayService] 强制备份应用数据...');
       try {
         await PersistentStorageService().forceBackup().timeout(
@@ -286,14 +300,14 @@ class TrayService with TrayListener, WindowListener {
         print('❌ [TrayService] 数据备份失败: $e');
       }
       
-      // 1. 立即清理系统媒体控件（会移除监听器，停止更新）
+      // 3. 立即清理系统媒体控件（会移除监听器，停止更新）
       print('🎛️ [TrayService] 清理系统媒体控件...');
       SystemMediaService().dispose();
       
       // 等待一小段时间确保监听器完全移除
       await Future.delayed(const Duration(milliseconds: 50));
       
-      // 2. 强制停止并释放播放器资源（不等待）
+      // 4. 强制停止并释放播放器资源（不等待）
       print('🎵 [TrayService] 停止音频播放...');
       await PlayerService().forceDispose().timeout(
         const Duration(milliseconds: 200),
@@ -302,7 +316,7 @@ class TrayService with TrayListener, WindowListener {
         },
       );
       
-      // 3. 销毁托盘图标
+      // 5. 销毁托盘图标
       print('🗑️ [TrayService] 销毁托盘图标...');
       await trayManager.destroy().timeout(
         const Duration(milliseconds: 100),
@@ -311,7 +325,7 @@ class TrayService with TrayListener, WindowListener {
         },
       );
       
-      // 4. 销毁窗口
+      // 6. 销毁窗口
       print('🪟 [TrayService] 销毁窗口...');
       await windowManager.destroy().timeout(
         const Duration(milliseconds: 100),
@@ -320,7 +334,7 @@ class TrayService with TrayListener, WindowListener {
         },
       );
       
-      // 5. 强制退出进程
+      // 7. 强制退出进程
       print('✅ [TrayService] 清理完成，强制退出进程！');
       exit(0);
     } catch (e) {

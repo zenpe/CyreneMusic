@@ -31,6 +31,7 @@ class MobilePlayerFluidCloudLayout extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final bool showTranslation;
+  final LyricLoadState lyricState;
   final VoidCallback onBackPressed;
   final VoidCallback? onPlaylistPressed;
 
@@ -39,6 +40,7 @@ class MobilePlayerFluidCloudLayout extends StatefulWidget {
     required this.lyrics,
     required this.currentLyricIndex,
     required this.showTranslation,
+    required this.lyricState,
     required this.onBackPressed,
     this.onPlaylistPressed,
   });
@@ -860,6 +862,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
       child: MobilePlayerFluidCloudLyricsPanel(
         lyrics: widget.lyrics,
         currentLyricIndex: widget.currentLyricIndex,
+        lyricState: widget.lyricState,
         showTranslation: widget.showTranslation,
         visibleLineCount: 3, 
       ),
@@ -981,6 +984,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
       child: MobilePlayerFluidCloudLyricsPanel(
         lyrics: widget.lyrics,
         currentLyricIndex: widget.currentLyricIndex,
+        lyricState: widget.lyricState,
         showTranslation: widget.showTranslation,
         // 当控制栏隐藏时，显示更多行数 (例如 9 行)，否则显示 5 行 (原有逻辑似乎是3行可见，但Panel默认7)
         // 这里的可见行数决定了字体大小和行高计算

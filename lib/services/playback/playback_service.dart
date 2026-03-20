@@ -36,6 +36,8 @@ import '../url_service.dart';
 import '../notification_service.dart';
 import '../persistent_storage_service.dart';
 import '../equalizer_service.dart';
+import '../lyric/lyric_service.dart';
+import '../lyric/lyric_snapshot.dart';
 
 import 'command_queue.dart';
 import 'audio_engine.dart';
@@ -47,8 +49,6 @@ import 'playable_source.dart';
 
 /// 播放状态枚举（复用 PlayerService 的定义）
 enum PBState { idle, loading, playing, paused, error }
-
-enum LyricLoadState { idle, loading, ready, empty, failed }
 
 class _PrefetchedPlayablePlanEntry {
   final _TrackSwitchPlaybackPlan plan;
@@ -209,12 +209,8 @@ class PlaybackService extends ChangeNotifier {
   String? _currentTempFilePath;
   CyreneFileInfo? _currentCachedStreamInfo;
   final Set<String> _cacheBypassKeys = <String>{};
-  final Set<String> _pendingLyricRefreshKeys = <String>{};
-  final Set<String> _settledCacheMetadataRefreshKeys = <String>{};
   final Map<String, _SongDetailRequestEntry> _pendingSongDetailRequests =
       <String, _SongDetailRequestEntry>{};
-  LyricLoadState _lyricLoadState = LyricLoadState.idle;
-  String? _lyricLoadTrackKey;
   double _volume = 0.7;
   double _playbackSpeed = 1.0;
   bool _isAudioSourceNotConfigured = false;
@@ -283,7 +279,8 @@ class PlaybackService extends ChangeNotifier {
   bool get isPaused => _state == PBState.paused;
   bool get isLoading => _state == PBState.loading;
   PBState get state => _state;
-  LyricLoadState get lyricLoadState => _lyricLoadState;
+  LyricLoadState get lyricLoadState => LyricService().currentState;
+  LyricSnapshot? get lyricSnapshot => LyricService().currentSnapshot;
   SongDetail? get currentSong => _activeSong;
   String get displayTitle {
     final songName = _activeSong?.name;
@@ -418,7 +415,7 @@ class PlaybackService extends ChangeNotifier {
     print('[PlaybackService] 初始化完成');
   }
 
-  Future<bool> restoreSessionOnStartup() async {
+  Future<bool> restoreSessionOnStartup({required bool autoPlay}) async {
     if (_hasRestoredSessionOnStartup) return currentTrack != null;
     _hasRestoredSessionOnStartup = true;
 
@@ -426,7 +423,7 @@ class PlaybackService extends ChangeNotifier {
       final snapshot = await PlaybackSessionStore().loadSnapshot();
       if (snapshot == null || !snapshot.isValid) return false;
 
-      await _restoreFromSnapshot(snapshot);
+      await _restoreFromSnapshot(snapshot, autoPlay: autoPlay);
       _scheduleSessionPersist();
       return true;
     } catch (e) {
@@ -462,13 +459,16 @@ class PlaybackService extends ChangeNotifier {
     );
   }
 
-  Future<void> _restoreFromSnapshot(PlaybackSessionSnapshot snapshot) async {
+  Future<void> _restoreFromSnapshot(
+    PlaybackSessionSnapshot snapshot, {
+    required bool autoPlay,
+  }) async {
     await PlaybackModeService().setMode(snapshot.playbackMode);
 
     _pendingRestorePosition =
         snapshot.position > Duration.zero ? snapshot.position : null;
 
-    if (snapshot.state == PlaybackSessionState.playing) {
+    if (autoPlay) {
       await playNow(snapshot.queue, snapshot.currentIndex, snapshot.source);
       _pendingRestorePosition =
           snapshot.position > Duration.zero ? snapshot.position : null;
@@ -487,6 +487,11 @@ class PlaybackService extends ChangeNotifier {
     _activeTrack = _trackAtQueuePointer();
     _activeSong = null;
     _clearPendingTrack();
+    _setLyricLoadState(
+      LyricLoadState.idle,
+      track: _activeTrack,
+      notify: false,
+    );
     _errorMessage = null;
     _isAudioSourceNotConfigured = false;
     _duration = Duration.zero;
@@ -738,6 +743,7 @@ class PlaybackService extends ChangeNotifier {
         bufferedPositionNotifier.value = Duration.zero;
         coverManager.setCoverImmediate(null, notify: false);
         coverManager.themeColorNotifier.value = null;
+        _setLyricLoadState(LyricLoadState.idle, notify: false);
       } else if (index < _currentIndex) {
         _currentIndex--;
       } else if (index == _currentIndex) {
@@ -797,6 +803,7 @@ class PlaybackService extends ChangeNotifier {
       bufferedPositionNotifier.value = Duration.zero;
       coverManager.setCoverImmediate(null, notify: false);
       coverManager.themeColorNotifier.value = null;
+      _setLyricLoadState(LyricLoadState.idle, notify: false);
       notifyListeners();
       await PlaybackSessionStore().clear();
     });
@@ -1432,15 +1439,23 @@ class PlaybackService extends ChangeNotifier {
 
     final track = tx.track;
     final songDetail = plan.resolvedSong.songDetail;
-    _setLyricLoadState(
-      _deriveLyricLoadStateForPlan(track, songDetail, plan, tx.qualityStr),
-      track: track,
-      notify: false,
+    final initialLyricState = _deriveLyricLoadStateForPlan(
+      track,
+      songDetail,
+      plan,
+      tx.qualityStr,
     );
     _commitActivePresentation(
       track,
       songDetail: songDetail,
       playbackToken: tx.token,
+    );
+    LyricService().bindCurrentTrack(
+      track: track,
+      playbackToken: tx.token,
+      song: songDetail,
+      state: initialLyricState,
+      notify: false,
     );
     _loadLyricsForFloatingDisplay();
 
@@ -1470,39 +1485,43 @@ class PlaybackService extends ChangeNotifier {
       return !_matchesTrackIdentity(_activeTrack, tx.requestedKey);
     }
 
-    if (plan.usesCachedStream && plan.resolvedSong.shouldRefreshCachedMetadata) {
-      _bgUpdateCachedMetadata(
-        track,
-        tx.selectedQuality,
-        tx.qualityStr,
-        tx.requestedKey,
-        isPresentationStale,
+    void requestLyricsForPresentation() {
+      unawaited(
+        LyricService().requestLyrics(
+          track: track,
+          playbackToken: tx.token,
+          quality: tx.qualityStr,
+          refreshKey: _lyricRefreshKey(track),
+          adapter: _buildLyricRequestAdapter(
+            track,
+            quality: tx.selectedQuality,
+            qualityStr: tx.qualityStr,
+          ),
+        ),
       );
+    }
+
+    if (plan.usesCachedStream && plan.resolvedSong.shouldRefreshCachedMetadata) {
+      if (!isPresentationStale()) {
+        requestLyricsForPresentation();
+      }
       return;
     }
 
     if (plan.shouldWriteBackgroundCache) {
       _cacheSongInBackground(track, songDetail, tx.qualityStr);
       if (_shouldScheduleDeferredSupplementalRefresh(songDetail)) {
-        _bgUpdateCachedMetadata(
-          track,
-          tx.selectedQuality,
-          tx.qualityStr,
-          tx.requestedKey,
-          isPresentationStale,
-        );
+        if (!isPresentationStale()) {
+          requestLyricsForPresentation();
+        }
       }
       return;
     }
 
     if (_shouldScheduleDeferredSupplementalRefresh(songDetail)) {
-      _bgUpdateCachedMetadata(
-        track,
-        tx.selectedQuality,
-        tx.qualityStr,
-        tx.requestedKey,
-        isPresentationStale,
-      );
+      if (!isPresentationStale()) {
+        requestLyricsForPresentation();
+      }
       return;
     }
 
@@ -1635,6 +1654,102 @@ class PlaybackService extends ChangeNotifier {
         song.qrcTrans.isNotEmpty;
   }
 
+  LyricRequestAdapter _buildLyricRequestAdapter(
+    Track track, {
+    required dynamic quality,
+    required String qualityStr,
+  }) {
+    return LyricRequestAdapter(
+      fetch: LyricRequestFetchAdapter(
+        useLyricOnlyFetch: _shouldUseLyricOnlySupplementalFetch(),
+        fetchLyricOnlyDetail: () {
+          return MusicService()
+              .fetchLyricOnlySongDetail(
+                songId: track.id,
+                source: track.source,
+                title: track.name,
+                artist: track.artists,
+              )
+              .timeout(
+                _lyricSongDetailTimeout,
+                onTimeout: () {
+                _logPlaybackDebug(
+                  '[PlaybackService] 纯歌词补全超时: '
+                  '${_lyricRefreshKey(track)} after '
+                  '${_lyricSongDetailTimeout.inSeconds}s',
+                  toDeveloperPanel: true,
+                );
+                  return null;
+                },
+              );
+        },
+        fetchFullDetail: () => _fetchSongDetailWithTimeout(
+          songId: track.id,
+          source: track.source,
+          quality: quality,
+          title: track.name,
+          artist: track.artists,
+          timeout: _lyricSongDetailTimeout,
+          purpose: 'lyric-service',
+          fetchLyrics: true,
+        ),
+        normalizeSongDetail: (detail) => _normalizeSongDetailForPlayback(
+          track,
+          detail,
+        ),
+      ),
+      presentation: LyricRequestPresentationAdapter(
+        isSamePresentation: _isSameSongPresentation,
+        currentSong: () => _activeSong,
+        applyResolvedSongDetail: (detail) => _applyResolvedSongDetail(detail),
+        refreshFloatingLyrics: _loadLyricsForFloatingDisplay,
+      ),
+      cache: LyricRequestCacheAdapter(
+        mergeSupplementalSongDetail: _mergeSupplementalSongDetail,
+        buildCacheRefreshSongDetail: _buildCacheRefreshSongDetail,
+        cacheSongInBackground: (detail) =>
+            _cacheSongInBackground(track, detail, qualityStr),
+      ),
+      hasAnyLyricPayload: _hasAnyLyricPayload,
+      log: _logPlaybackDebug,
+    );
+  }
+
+  LyricPrefetchAdapter _buildLyricPrefetchAdapter(
+    Track track, {
+    required String qualityStr,
+  }) {
+    return LyricPrefetchAdapter(
+      fetchLyricOnlyDetail: () {
+        return MusicService()
+            .fetchLyricOnlySongDetail(
+              songId: track.id,
+              source: track.source,
+              title: track.name,
+              artist: track.artists,
+            )
+            .timeout(
+              _lyricSongDetailTimeout,
+              onTimeout: () {
+                _logPlaybackDebug(
+                  '[PlaybackService] 纯歌词预取超时: '
+                  '${_lyricRefreshKey(track)} after '
+                  '${_lyricSongDetailTimeout.inSeconds}s',
+                  toDeveloperPanel: true,
+                );
+                return null;
+              },
+            );
+      },
+      normalizeSongDetail: (detail) => _normalizeSongDetailForPlayback(
+        track,
+        detail,
+      ),
+      hasAnyLyricPayload: _hasAnyLyricPayload,
+      log: _logPlaybackDebug,
+    );
+  }
+
   bool _shouldScheduleDeferredSupplementalRefresh(SongDetail song) {
     if (song.source == MusicSource.local) return false;
     final sourceType = AudioSourceService().sourceType;
@@ -1678,8 +1793,8 @@ class PlaybackService extends ChangeNotifier {
     return '${_buildTrackIdentity(track)}_$quality';
   }
 
-  String _lyricRefreshKey(Track track, String quality) {
-    return 'lyric_${_cachePlaybackKey(track, quality)}';
+  String _lyricRefreshKey(Track track) {
+    return 'lyric_${_buildTrackIdentity(track)}';
   }
 
   String _describePlayableSource(PlayableSource source) {
@@ -1702,20 +1817,23 @@ class PlaybackService extends ChangeNotifier {
     LyricLoadState nextState, {
     Track? track,
     bool notify = true,
+    String? error,
   }) {
-    final nextTrackKey = track == null ? null : _buildTrackIdentity(track);
-    if (_lyricLoadState == nextState && _lyricLoadTrackKey == nextTrackKey) {
+    final targetTrack = track ?? _activeTrack;
+    if (targetTrack == null) {
+      if (nextState == LyricLoadState.idle) {
+        LyricService().clearCurrent(notify: notify);
+      }
       return;
     }
-    _lyricLoadState = nextState;
-    _lyricLoadTrackKey = nextTrackKey;
-    if (notify) {
-      notifyListeners();
-    }
-  }
-
-  bool _isLyricStateBoundToTrack(Track track) {
-    return _lyricLoadTrackKey == _buildTrackIdentity(track);
+    LyricService().syncState(
+      track: targetTrack,
+      playbackToken: _activePlaybackToken,
+      song: _activeSong,
+      state: nextState,
+      error: error,
+      notify: notify,
+    );
   }
 
   LyricLoadState _deriveLyricLoadStateForPlan(
@@ -1727,17 +1845,25 @@ class PlaybackService extends ChangeNotifier {
     if (_hasAnyLyricPayload(songDetail)) {
       return LyricLoadState.ready;
     }
-    final lyricRefreshKey = _lyricRefreshKey(track, qualityStr);
-    final refreshAlreadySettled =
-        _settledCacheMetadataRefreshKeys.contains(lyricRefreshKey);
-    final shouldRefreshLyrics =
-        !refreshAlreadySettled &&
-        ((plan.usesCachedStream && plan.resolvedSong.shouldRefreshCachedMetadata) ||
+    return _shouldRequestLyricsForPlan(track, songDetail, plan, qualityStr)
+        ? LyricLoadState.idle
+        : LyricLoadState.empty;
+  }
+
+  bool _shouldRequestLyricsForPlan(
+    Track track,
+    SongDetail songDetail,
+    _TrackSwitchPlaybackPlan plan,
+    String qualityStr,
+  ) {
+    final lyricRefreshKey = _lyricRefreshKey(track);
+    final refreshAlreadySettled = LyricService().isRefreshSettled(
+      lyricRefreshKey,
+    );
+    return !refreshAlreadySettled &&
+        ((plan.usesCachedStream &&
+                plan.resolvedSong.shouldRefreshCachedMetadata) ||
             _shouldScheduleDeferredSupplementalRefresh(songDetail));
-    if (shouldRefreshLyrics) {
-      return LyricLoadState.loading;
-    }
-    return LyricLoadState.empty;
   }
 
   void _rememberCacheBypassKey(
@@ -1778,8 +1904,8 @@ class PlaybackService extends ChangeNotifier {
     String quality, {
     required String reason,
   }) {
-    final refreshKey = _lyricRefreshKey(track, quality);
-    if (_settledCacheMetadataRefreshKeys.contains(refreshKey)) {
+    final refreshKey = _lyricRefreshKey(track);
+    if (LyricService().isRefreshSettled(refreshKey)) {
       return;
     }
     _logPlaybackDebug(
@@ -1789,7 +1915,7 @@ class PlaybackService extends ChangeNotifier {
     unawaited(
       _cacheSongInBackground(track, detail, quality).then((cached) {
         if (cached) {
-          _settledCacheMetadataRefreshKeys.add(refreshKey);
+          LyricService().markRefreshSettled(refreshKey);
         }
       }).catchError((Object e) {
         _logPlaybackDebug(
@@ -2722,6 +2848,20 @@ class PlaybackService extends ChangeNotifier {
     final nextIdentity = _buildTrackIdentity(nextTrack);
     final nextKey = _buildPrefetchCacheKey(nextTrack, selectedQuality);
     final currentIdentity = _buildTrackIdentity(current);
+    if (nextTrack.source != MusicSource.local) {
+      unawaited(
+        LyricService().prefetchLyrics(
+          track: nextTrack,
+          quality: selectedQuality.value,
+          refreshKey: _lyricRefreshKey(nextTrack),
+          adapter: _buildLyricPrefetchAdapter(
+            nextTrack,
+            qualityStr: selectedQuality.value,
+          ),
+        ),
+      );
+    }
+
     if (nextIdentity == currentIdentity || nextKey == _lastPreloadedTargetKey) {
       return;
     }
@@ -3197,172 +3337,6 @@ class PlaybackService extends ChangeNotifier {
     }
   }
 
-  void _bgUpdateCachedMetadata(
-    Track track,
-    dynamic quality,
-    String qualityStr,
-    String requestedKey,
-    bool Function() isStale,
-  ) {
-    final lyricRefreshKey = _lyricRefreshKey(track, qualityStr);
-    if (_settledCacheMetadataRefreshKeys.contains(lyricRefreshKey)) {
-      _logPlaybackDebug('[PlaybackService] 跳过已收敛的缓存补全: $lyricRefreshKey');
-      return;
-    }
-    if (_pendingLyricRefreshKeys.contains(lyricRefreshKey)) {
-      _logPlaybackDebug('[PlaybackService] 跳过重复缓存补全: $lyricRefreshKey');
-      return;
-    }
-    _pendingLyricRefreshKeys.add(lyricRefreshKey);
-    _logPlaybackDebug(
-      '[PlaybackService] 歌词补全开始: $lyricRefreshKey',
-      toDeveloperPanel: true,
-    );
-    if (_matchesTrackIdentity(currentTrack, requestedKey)) {
-      _setLyricLoadState(LyricLoadState.loading, track: track);
-    }
-
-    var lyricStateFinalized = false;
-    void finalizeLyricState(LyricLoadState state, {bool notify = true}) {
-      lyricStateFinalized = true;
-      if (_isLyricStateBoundToTrack(track)) {
-        _setLyricLoadState(state, track: track, notify: notify);
-      }
-    }
-
-    final Future<SongDetail?> detailFuture;
-    if (_shouldUseLyricOnlySupplementalFetch()) {
-      _logPlaybackDebug(
-        '[PlaybackService] 使用纯歌词补全链路: $lyricRefreshKey',
-        toDeveloperPanel: true,
-      );
-      detailFuture = MusicService()
-          .fetchLyricOnlySongDetail(
-            songId: track.id,
-            source: track.source,
-            title: track.name,
-            artist: track.artists,
-          )
-          .timeout(
-            _lyricSongDetailTimeout,
-            onTimeout: () {
-              _logPlaybackDebug(
-                '[PlaybackService] 纯歌词补全超时: $lyricRefreshKey after '
-                '${_lyricSongDetailTimeout.inSeconds}s',
-                toDeveloperPanel: true,
-              );
-              return null;
-            },
-          );
-    } else {
-      detailFuture = _fetchSongDetailWithTimeout(
-        songId: track.id,
-        source: track.source,
-        quality: quality,
-        title: track.name,
-        artist: track.artists,
-        timeout: _lyricSongDetailTimeout,
-        purpose: 'cache-refresh',
-        fetchLyrics: true,
-      );
-    }
-
-    detailFuture.then((detail) async {
-      if (isStale()) return;
-      final ct = currentTrack;
-      if (!_matchesTrackIdentity(ct, requestedKey)) return;
-      final currentSong = _activeSong;
-      if (detail == null || currentSong == null) {
-        _logPlaybackDebug(
-          '[PlaybackService] 歌词补全未命中任何新增信息: $lyricRefreshKey',
-          toDeveloperPanel: true,
-        );
-        if (currentSong != null && _isLyricStateBoundToTrack(track)) {
-          finalizeLyricState(
-            _hasAnyLyricPayload(currentSong)
-                ? LyricLoadState.ready
-                : LyricLoadState.empty,
-          );
-        }
-        return;
-      }
-
-      final normalizedDetail = _normalizeSongDetailForPlayback(track, detail);
-      final mergedSong = _mergeSupplementalSongDetail(
-        currentSong,
-        normalizedDetail,
-      );
-      final cacheRefreshSong = _buildCacheRefreshSongDetail(
-        currentSong,
-        normalizedDetail,
-      );
-      if (_isSameSongPresentation(currentSong, mergedSong)) {
-        _logPlaybackDebug(
-          '[PlaybackService] 歌词补全未命中任何新增信息: $lyricRefreshKey',
-          toDeveloperPanel: true,
-        );
-        finalizeLyricState(
-          _hasAnyLyricPayload(currentSong)
-              ? LyricLoadState.ready
-              : LyricLoadState.empty,
-        );
-        final cached = await _cacheSongInBackground(
-          track,
-          cacheRefreshSong,
-          qualityStr,
-        );
-        if (cached) {
-          _settledCacheMetadataRefreshKeys.add(lyricRefreshKey);
-        }
-        return;
-      }
-
-      _logPlaybackDebug(
-        _hasAnyLyricPayload(normalizedDetail)
-            ? '[PlaybackService] 歌词补全成功: $lyricRefreshKey'
-            : '[PlaybackService] 歌词补全未命中任何新增信息: $lyricRefreshKey',
-        toDeveloperPanel: true,
-      );
-      finalizeLyricState(
-        _hasAnyLyricPayload(mergedSong)
-            ? LyricLoadState.ready
-            : LyricLoadState.empty,
-        notify: false,
-      );
-      _applyResolvedSongDetail(mergedSong);
-      final cached = await _cacheSongInBackground(
-        track,
-        cacheRefreshSong,
-        qualityStr,
-      );
-      if (cached) {
-        _settledCacheMetadataRefreshKeys.add(lyricRefreshKey);
-      }
-      _loadLyricsForFloatingDisplay();
-    }).catchError((e) {
-      _logPlaybackDebug(
-        '[PlaybackService] 歌词补全失败: $lyricRefreshKey, $e',
-        toDeveloperPanel: true,
-      );
-      finalizeLyricState(LyricLoadState.failed);
-    }).whenComplete(() {
-      _pendingLyricRefreshKeys.remove(lyricRefreshKey);
-      if (!lyricStateFinalized && _isLyricStateBoundToTrack(track)) {
-        final currentSong = _activeSong;
-        final fallbackState =
-            currentSong != null && _hasAnyLyricPayload(currentSong)
-            ? LyricLoadState.ready
-            : LyricLoadState.empty;
-        _logPlaybackDebug(
-          '[PlaybackService] 歌词补全完成后触发状态兜底: '
-          '$lyricRefreshKey -> $fallbackState',
-          toDeveloperPanel: true,
-        );
-        _setLyricLoadState(fallbackState, track: track);
-      }
-    });
-  }
-
   // ── 播放失败自动跳过 ──
 
   void _autoSkipOnError() {
@@ -3440,6 +3414,12 @@ class PlaybackService extends ChangeNotifier {
     await PlaybackSessionStore().saveSnapshot(snapshot);
   }
 
+  /// 立即持久化当前播放会话（跳过防抖），用于生命周期关键时刻。
+  Future<void> persistSessionImmediately() async {
+    _sessionPersistDebounce?.cancel();
+    await _persistSessionNow();
+  }
+
   Future<void> _applyPendingRestorePosition() async {
     final pending = _pendingRestorePosition;
     if (pending == null || pending <= Duration.zero) return;
@@ -3473,6 +3453,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _loadLyricsForFloatingDisplay() {
+    final snapshot = LyricService().currentSnapshot;
     final song = _activeSong;
     final track = currentTrack;
     final coverUrl = song != null && song.pic.isNotEmpty
@@ -3487,39 +3468,13 @@ class PlaybackService extends ChangeNotifier {
       );
     }
 
-    if (song == null || !_hasAnyLyrics(song)) {
+    if (snapshot == null || snapshot.lines.isEmpty) {
       _clearFloatingLyricsDisplay();
       return;
     }
 
     try {
-      switch (song.source.name) {
-        case 'netease':
-          _lyrics = LyricParser.parseNeteaseLyric(
-            song.lyric, translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-            yrcLyric: song.yrc.isNotEmpty ? song.yrc : null,
-            yrcTranslation: song.ytlrc.isNotEmpty ? song.ytlrc : null,
-          );
-          break;
-        case 'qq':
-          _lyrics = LyricParser.parseQQLyric(
-            song.lyric, translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-            qrcLyric: song.qrc.isNotEmpty ? song.qrc : null,
-            qrcTranslation: song.qrcTrans.isNotEmpty ? song.qrcTrans : null,
-          );
-          break;
-        case 'kugou':
-          _lyrics = LyricParser.parseKugouLyric(
-            song.lyric, translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-          );
-          break;
-        default:
-          _lyrics = LyricParser.parseNeteaseLyric(
-            song.lyric, translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-            yrcLyric: song.yrc.isNotEmpty ? song.yrc : null,
-            yrcTranslation: song.ytlrc.isNotEmpty ? song.ytlrc : null,
-          );
-      }
+      _lyrics = List<LyricLine>.from(snapshot.lines);
       _currentLyricIndex = -1;
       if (_lyrics.isEmpty) {
         _clearFloatingLyricsDisplay();
@@ -3609,10 +3564,8 @@ class PlaybackService extends ChangeNotifier {
     _errorMessage = null;
     _currentCachedStreamInfo = null;
     _cacheBypassKeys.clear();
-    _pendingLyricRefreshKeys.clear();
-    _settledCacheMetadataRefreshKeys.clear();
     _pendingSongDetailRequests.clear();
-    _setLyricLoadState(LyricLoadState.idle, notify: false);
+    LyricService().clearAll(notify: false);
     positionNotifier.value = Duration.zero;
     bufferedPositionNotifier.value = Duration.zero;
     coverManager.setCoverImmediate(null, notify: false);
@@ -3648,10 +3601,8 @@ class PlaybackService extends ChangeNotifier {
       _bufferedPosition = Duration.zero;
       _currentCachedStreamInfo = null;
       _cacheBypassKeys.clear();
-      _pendingLyricRefreshKeys.clear();
-      _settledCacheMetadataRefreshKeys.clear();
       _pendingSongDetailRequests.clear();
-      _setLyricLoadState(LyricLoadState.idle, notify: false);
+      LyricService().clearAll(notify: false);
       coverManager.setCoverImmediate(null, notify: false);
       _sessionPersistDebounce?.cancel();
       await _engine.dispose();

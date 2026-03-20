@@ -18,7 +18,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final bool showTranslation;
-  final PlayerLyricState lyricState;
+  final LyricLoadState lyricState;
   final bool isMaximized;
   final VoidCallback onBackPressed;
   final VoidCallback onPlaylistPressed;
@@ -397,7 +397,7 @@ class PlayerImmersiveLyricsPanel extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final bool showTranslation;
-  final PlayerLyricState lyricState;
+  final LyricLoadState lyricState;
   final double uiScale;
 
   const PlayerImmersiveLyricsPanel({
@@ -479,12 +479,7 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
   @override
   Widget build(BuildContext context) {
     if (widget.lyrics.isEmpty) {
-      var message = '歌词加载中';
-      if (widget.lyricState == PlayerLyricState.failed) {
-        message = '歌词加载失败';
-      } else if (widget.lyricState == PlayerLyricState.empty) {
-        message = '暂无歌词';
-      }
+      final message = widget.lyricState.displayText;
       return Text(
         message,
         style: TextStyle(color: Colors.white54, fontSize: 24 * widget.uiScale),

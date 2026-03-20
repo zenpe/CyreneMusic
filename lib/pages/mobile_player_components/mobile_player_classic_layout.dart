@@ -21,6 +21,7 @@ import '../../widgets/player_speed_selector.dart';
 class MobilePlayerClassicLayout extends StatelessWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
+  final LyricLoadState lyricState;
   final VoidCallback onBackPressed;
   final VoidCallback? onPlaylistPressed;
 
@@ -28,6 +29,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
     super.key,
     required this.lyrics,
     required this.currentLyricIndex,
+    required this.lyricState,
     required this.onBackPressed,
     this.onPlaylistPressed,
   });
@@ -101,6 +103,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                             child: MobilePlayerKaraokeLyric(
                               lyrics: lyrics,
                               currentLyricIndex: currentLyricIndex,
+                              lyricState: lyricState,
                               onTap: () => Navigator.push(
                                 context,
                                 MaterialPageRoute(

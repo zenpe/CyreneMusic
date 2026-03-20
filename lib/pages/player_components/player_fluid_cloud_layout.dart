@@ -32,7 +32,7 @@ class PlayerFluidCloudLayout extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final bool showTranslation;
-  final PlayerLyricState lyricState;
+  final LyricLoadState lyricState;
   final bool isMaximized;
   final VoidCallback onBackPressed;
   final VoidCallback onPlaylistPressed;

@@ -8,12 +8,14 @@ class PlayerLyricsPanel extends StatelessWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final bool showTranslation;
+  final LyricLoadState lyricState;
 
   const PlayerLyricsPanel({
     super.key,
     required this.lyrics,
     required this.currentLyricIndex,
     required this.showTranslation,
+    this.lyricState = LyricLoadState.empty,
   });
 
   @override
@@ -32,9 +34,10 @@ class PlayerLyricsPanel extends StatelessWidget {
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         final textColor = _getAdaptiveLyricColor(themeColor, false).withOpacity(0.5);
+        final message = lyricState.displayText;
         return Center(
           child: Text(
-            '暂无歌词',
+            message,
             style: TextStyle(
               color: textColor,
               fontSize: 16,

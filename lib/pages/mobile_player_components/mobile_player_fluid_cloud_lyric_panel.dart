@@ -39,6 +39,7 @@ class MobilePlayerFluidCloudLyricsPanel extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final bool showTranslation;
+  final LyricLoadState lyricState;
   final int visibleLineCount;
 
   const MobilePlayerFluidCloudLyricsPanel({
@@ -46,6 +47,7 @@ class MobilePlayerFluidCloudLyricsPanel extends StatefulWidget {
     required this.lyrics,
     required this.currentLyricIndex,
     required this.showTranslation,
+    required this.lyricState,
     this.visibleLineCount = 7,
   });
 
@@ -479,10 +481,11 @@ class _MobilePlayerFluidCloudLyricsPanelState extends State<MobilePlayerFluidClo
   }
 
   Widget _buildNoLyric() {
-    return const Center(
+    final message = widget.lyricState.displayText;
+    return Center(
       child: Text(
-        '暂无歌词',
-        style: TextStyle(color: Colors.white54, fontSize: 21.6), // 24 * 0.9
+        message,
+        style: const TextStyle(color: Colors.white54, fontSize: 21.6), // 24 * 0.9
       ),
     );
   }

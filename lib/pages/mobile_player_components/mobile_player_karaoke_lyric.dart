@@ -8,6 +8,7 @@ import '../../models/lyric_line.dart';
 class MobilePlayerKaraokeLyric extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
+  final LyricLoadState lyricState;
   final VoidCallback onTap;
   final bool showTranslation;
 
@@ -15,6 +16,7 @@ class MobilePlayerKaraokeLyric extends StatefulWidget {
     super.key,
     required this.lyrics,
     required this.currentLyricIndex,
+    required this.lyricState,
     required this.onTap,
     required this.showTranslation,
   });
@@ -210,7 +212,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
         
         return Center(
           child: Text(
-            '暂无歌词',
+            _lyricStatusText(),
             style: TextStyle(
               color: textColor,
               fontSize: lyricFontSize,
@@ -221,6 +223,10 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
         );
       },
     );
+  }
+
+  String _lyricStatusText() {
+    return widget.lyricState.displayText;
   }
 
   /// 构建卡拉OK样式的3行歌词显示

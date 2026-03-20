@@ -13,6 +13,7 @@ import '../../models/lyric_line.dart';
 class MobilePlayerFluidCloudLyric extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
+  final LyricLoadState lyricState;
   final bool showTranslation;
   final VoidCallback? onTap;
 
@@ -20,6 +21,7 @@ class MobilePlayerFluidCloudLyric extends StatefulWidget {
     super.key,
     required this.lyrics,
     required this.currentLyricIndex,
+    this.lyricState = LyricLoadState.idle,
     this.showTranslation = true,
     this.onTap,
   });
@@ -352,9 +354,10 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
 
   Widget _buildNoLyric() {
     final fontFamily = LyricFontService().currentFontFamily ?? 'Microsoft YaHei';
+    final message = widget.lyricState.displayText;
     return Center(
       child: Text(
-        '暂无歌词',
+        message,
         style: TextStyle(
           color: Colors.white.withOpacity(0.5),
           fontSize: 16,

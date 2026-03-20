@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+export 'lyric/lyric_snapshot.dart';
 import '../models/song_detail.dart';
 import '../models/track.dart';
 import 'equalizer_service.dart';
+import 'lyric/lyric_snapshot.dart';
+import 'lyric/lyric_service.dart';
 import 'playback/playback_service.dart';
 import 'playlist_queue_service.dart';
 
@@ -14,14 +18,6 @@ enum PlayerState {
   error,    // 错误
 }
 
-enum PlayerLyricState {
-  idle,
-  loading,
-  ready,
-  empty,
-  failed,
-}
-
 /// 音乐播放器服务 — 委托到 PlaybackService
 ///
 /// 保留原有单例和 API 签名，所有方法委托到 PlaybackService。
@@ -31,11 +27,23 @@ class PlayerService extends ChangeNotifier {
   factory PlayerService() => _instance;
 
   final _pb = PlaybackService();
+  bool _notifyScheduled = false;
 
   PlayerService._internal() {
     // 转发 PlaybackService 的变更通知
-    _pb.addListener(notifyListeners);
-    _pb.coverManager.addListener(notifyListeners);
+    _pb.addListener(_scheduleNotify);
+    LyricService().addListener(_scheduleNotify);
+    _pb.coverManager.addListener(_scheduleNotify);
+  }
+
+  /// 将同一微任务内的多次通知合并为一次
+  void _scheduleNotify() {
+    if (_notifyScheduled) return;
+    _notifyScheduled = true;
+    scheduleMicrotask(() {
+      _notifyScheduled = false;
+      notifyListeners();
+    });
   }
 
   // ══════════════════════════════════════════════════════
@@ -67,20 +75,8 @@ class PlayerService extends ChangeNotifier {
   String get pendingDisplayArtist => _pb.pendingDisplayArtist;
   String get pendingDisplayAlbum => _pb.pendingDisplayAlbum;
   String? get pendingDisplayCoverUrl => _pb.pendingDisplayCoverUrl;
-  PlayerLyricState get lyricState {
-    switch (_pb.lyricLoadState) {
-      case LyricLoadState.idle:
-        return PlayerLyricState.idle;
-      case LyricLoadState.loading:
-        return PlayerLyricState.loading;
-      case LyricLoadState.ready:
-        return PlayerLyricState.ready;
-      case LyricLoadState.empty:
-        return PlayerLyricState.empty;
-      case LyricLoadState.failed:
-        return PlayerLyricState.failed;
-    }
-  }
+  LyricLoadState get lyricState => _pb.lyricLoadState;
+  LyricSnapshot? get lyricSnapshot => _pb.lyricSnapshot;
   Duration get duration => _pb.duration;
   Duration get position => _pb.position;
   Duration get bufferedPosition => _pb.bufferedPosition;
@@ -182,6 +178,7 @@ class PlayerService extends ChangeNotifier {
   // 均衡器
   Future<void> updateEqualizer(List<double> gains) => _pb.updateEqualizer(gains);
   Future<void> setEqualizerEnabled(bool enabled) => _pb.setEqualizerEnabled(enabled);
+  Future<void> persistSessionImmediately() => _pb.persistSessionImmediately();
 
   // 资源释放
   Future<void> forceDispose() => _pb.forceDispose();

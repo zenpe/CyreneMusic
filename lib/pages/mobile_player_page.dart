@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/player_service.dart';
 import '../models/lyric_line.dart';
-import '../models/song_detail.dart';
 import '../utils/lyric_parser.dart';
 import 'mobile_player_components/mobile_player_background.dart';
 import 'mobile_player_components/mobile_player_control_center.dart';
@@ -29,6 +28,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
   // 歌词相关
   List<LyricLine> _lyrics = [];
   int _currentLyricIndex = -1;
+  LyricLoadState _lyricState = LyricLoadState.idle;
   String? _lastTrackId;
   String? _lastLyricsSignature;
   
@@ -152,58 +152,14 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     // 延迟加载歌词，让路由动画先完成 (300ms 动画 + 50ms 缓冲)
     Future.delayed(const Duration(milliseconds: 350), () {
       if (!mounted) return;
-      final currentTrack = PlayerService().currentTrack;
-      _lastTrackId = currentTrack != null
-          ? '${currentTrack.source.name}_${currentTrack.id}'
-          : null;
-      // 如果当前已有匹配的 currentSong，直接解析歌词
-      if (currentTrack != null) {
-        final song = PlayerService().currentSong;
-        final trackKey = '${currentTrack.source.name}_${currentTrack.id}';
-        final songKey = song != null ? '${song.source.name}_${song.id}' : null;
-        if (song != null && songKey == trackKey) {
-          _parseLyricsFromSong(song);
-        }
-      }
+      _syncLyricsFromSnapshot(force: true);
     });
   }
 
   /// 播放器状态变化回调（与桌面端保持一致的逻辑）
   void _onPlayerStateChanged() {
     if (!mounted) return;
-
-    final currentTrack = PlayerService().currentTrack;
-    final currentTrackId = currentTrack != null
-        ? '${currentTrack.source.name}_${currentTrack.id}'
-        : null;
-
-    if (currentTrackId != _lastTrackId) {
-      // 歌曲已切换，清空歌词等待新歌曲详情
-      print('🎵 [MobilePlayerPage] 检测到歌曲切换，重新加载歌词');
-      print('   上一首ID: $_lastTrackId');
-      print('   当前ID: $currentTrackId');
-
-      _lastTrackId = currentTrackId;
-      _lastLyricsSignature = null;
-      _lyrics = [];
-      _currentLyricIndex = -1;
-      setState(() {});
-    }
-
-    // 检查 currentSong 是否已匹配 currentTrack（事件驱动，无需轮询）
-    if (currentTrack != null) {
-      final song = PlayerService().currentSong;
-      final trackKey = '${currentTrack.source.name}_${currentTrack.id}';
-      final songKey = song != null ? '${song.source.name}_${song.id}' : null;
-      final songSignature = song == null
-          ? null
-          : '${songKey}_${song.lyric.length}_${song.tlyric.length}_${song.yrc.length}_${song.ytlrc.length}_${song.qrc.length}_${song.qrcTrans.length}';
-      if (song != null && songKey == trackKey && songSignature != _lastLyricsSignature) {
-        _parseLyricsFromSong(song);
-      }
-    }
-
-    if (mounted) setState(() {});
+    _syncLyricsFromSnapshot();
   }
 
   /// 进度变化回调（高频，仅由 positionNotifier 触发）
@@ -212,60 +168,42 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     _updateCurrentLyric();
   }
 
-  /// 从 SongDetail 解析歌词（事件驱动，不再轮询）
-  void _parseLyricsFromSong(SongDetail song) {
-    try {
-      _lastLyricsSignature =
-          '${song.source.name}_${song.id}_${song.lyric.length}_${song.tlyric.length}_${song.yrc.length}_${song.ytlrc.length}_${song.qrc.length}_${song.qrcTrans.length}';
-      print('📝 [MobilePlayerPage] 开始解析歌词: ${song.name}');
+  void _syncLyricsFromSnapshot({bool force = false}) {
+    final player = PlayerService();
+    final currentTrack = player.currentTrack;
+    final currentTrackId = currentTrack != null
+        ? '${currentTrack.source.name}_${currentTrack.id}'
+        : null;
+    final snapshot = player.lyricSnapshot;
+    final nextSignature = snapshot?.signature;
+    final nextState = snapshot?.state ?? LyricLoadState.idle;
 
-      switch (song.source.name) {
-        case 'netease':
-          _lyrics = LyricParser.parseNeteaseLyric(
-            song.lyric,
-            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-            yrcLyric: song.yrc.isNotEmpty ? song.yrc : null,
-            yrcTranslation: song.ytlrc.isNotEmpty ? song.ytlrc : null,
-          );
-          break;
-        case 'qq':
-          _lyrics = LyricParser.parseQQLyric(
-            song.lyric,
-            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-            qrcLyric: song.qrc.isNotEmpty ? song.qrc : null,
-            qrcTranslation: song.qrcTrans.isNotEmpty ? song.qrcTrans : null,
-          );
-          break;
-        case 'kugou':
-          _lyrics = LyricParser.parseKugouLyric(
-            song.lyric,
-            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-          );
-          break;
-        default:
-          _lyrics = LyricParser.parseNeteaseLyric(
-            song.lyric,
-            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-            yrcLyric: song.yrc.isNotEmpty ? song.yrc : null,
-            yrcTranslation: song.ytlrc.isNotEmpty ? song.ytlrc : null,
-          );
-          break;
-      }
+    if (!force &&
+        currentTrackId == _lastTrackId &&
+        nextSignature == _lastLyricsSignature &&
+        nextState == _lyricState) {
+      return;
+    }
 
-      print('🎵 [MobilePlayerPage] 加载歌词: ${_lyrics.length} 行 (${song.name})');
-      _currentLyricIndex = -1;
-      if (_lyrics.isNotEmpty && mounted) {
-        setState(() {
-          _updateCurrentLyric();
-        });
-      }
-    } catch (e) {
-      print('❌ [MobilePlayerPage] 解析歌词失败: $e');
+    if (currentTrackId != _lastTrackId) {
+      print('🎵 [MobilePlayerPage] 检测到歌曲切换，刷新歌词快照');
+      print('   上一首ID: $_lastTrackId');
+      print('   当前ID: $currentTrackId');
+    }
+
+    _lastTrackId = currentTrackId;
+    _lastLyricsSignature = nextSignature;
+    _lyricState = nextState;
+    _lyrics = snapshot == null ? [] : List<LyricLine>.from(snapshot.lines);
+    _currentLyricIndex = -1;
+    _updateCurrentLyric(notify: false);
+    if (mounted) {
+      setState(() {});
     }
   }
 
   /// 更新当前歌词
-  void _updateCurrentLyric() {
+  void _updateCurrentLyric({bool notify = true}) {
     if (_lyrics.isEmpty) return;
     
     final newIndex = LyricParser.findCurrentLineIndex(
@@ -274,43 +212,22 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     );
 
     if (newIndex != _currentLyricIndex && newIndex >= 0 && mounted) {
+      if (!notify) {
+        _currentLyricIndex = newIndex;
+        return;
+      }
       setState(() {
         _currentLyricIndex = newIndex;
       });
     }
   }
 
-  PlayerLyricState _resolveLyricState() {
-    final player = PlayerService();
-    if (player.currentTrack == null) {
-      return PlayerLyricState.idle;
-    }
-    if (_lyrics.isNotEmpty) {
-      return PlayerLyricState.ready;
-    }
-    if (player.lyricState == PlayerLyricState.ready) {
-      return PlayerLyricState.empty;
-    }
-    return player.lyricState;
-  }
-
   /// 强制刷新歌词（用于调试）
   void _forceRefreshLyrics() {
-    final currentTrack = PlayerService().currentTrack;
-    if (currentTrack != null) {
-      print('🔄 [MobilePlayerPage] 强制刷新歌词');
-      _lyrics = [];
-      _currentLyricIndex = -1;
-      _lastLyricsSignature = null;
-      final song = PlayerService().currentSong;
-      final trackKey = '${currentTrack.source.name}_${currentTrack.id}';
-      final songKey = song != null ? '${song.source.name}_${song.id}' : null;
-      if (song != null && songKey == trackKey) {
-        _parseLyricsFromSong(song);
-      } else {
-        setState(() {});
-      }
-    }
+    if (PlayerService().currentTrack == null) return;
+    print('🔄 [MobilePlayerPage] 强制刷新歌词快照');
+    _lastLyricsSignature = null;
+    _syncLyricsFromSnapshot(force: true);
   }
 
   /// 切换控制中心显示状态
@@ -332,6 +249,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
       lyrics: _lyrics,
       currentLyricIndex: _currentLyricIndex,
       showTranslation: true,
+      lyricState: _lyricState,
       onBackPressed: () => Navigator.pop(context),
       onPlaylistPressed: () => MobilePlayerDialogs.showPlaylistBottomSheet(context),
     );
@@ -375,7 +293,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
 
     // 构建主要内容
     final lyricStyleService = LyricStyleService();
-    final lyricState = _resolveLyricState();
+    final lyricState = _lyricState;
     // 流体云布局条件：全屏播放器样式设置为流体云（优先级最高）
     final useFluidCloudLayout = lyricStyleService.currentStyle == LyricStyle.fluidCloud;
     
@@ -435,6 +353,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
                   child: MobilePlayerClassicLayout(
                     lyrics: _lyrics,
                     currentLyricIndex: _currentLyricIndex,
+                    lyricState: lyricState,
                     onBackPressed: () => Navigator.pop(context),
                     onPlaylistPressed: () => MobilePlayerDialogs.showPlaylistBottomSheet(context),
                   ),

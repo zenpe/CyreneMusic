@@ -7,7 +7,6 @@ import '../services/layout_preference_service.dart';
 import '../services/lyric_style_service.dart';
 import '../utils/theme_manager.dart';
 import '../models/lyric_line.dart';
-import '../models/song_detail.dart';
 import '../utils/lyric_parser.dart';
 import 'mobile_player_page.dart';
 import 'player_components/player_window_controls.dart';
@@ -35,6 +34,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
   // 歌词相关
   List<LyricLine> _lyrics = [];
   int _currentLyricIndex = -1;
+  LyricLoadState _lyricState = LyricLoadState.idle;
   String? _lastTrackId;
   String? _lastLyricsSignature;
   
@@ -126,19 +126,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
   void _initializeData() {
     LyricStyleService().initialize();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final currentTrack = PlayerService().currentTrack;
-      _lastTrackId = currentTrack != null
-          ? '${currentTrack.source.name}_${currentTrack.id}'
-          : null;
-      // 如果当前已有匹配的 currentSong，直接解析歌词
-      if (currentTrack != null) {
-        final song = PlayerService().currentSong;
-        final trackKey = '${currentTrack.source.name}_${currentTrack.id}';
-        final songKey = song != null ? '${song.source.name}_${song.id}' : null;
-        if (song != null && songKey == trackKey) {
-          _parseLyricsFromSong(song);
-        }
-      }
+      _syncLyricsFromSnapshot(force: true);
     });
   }
 
@@ -195,34 +183,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
   /// 播放器状态变化回调
   void _onPlayerStateChanged() {
     if (!mounted) return;
-
-    final currentTrack = PlayerService().currentTrack;
-    final currentTrackId = currentTrack != null
-        ? '${currentTrack.source.name}_${currentTrack.id}'
-        : null;
-
-    if (currentTrackId != _lastTrackId) {
-      // 歌曲已切换，清空歌词等待新歌曲详情
-      print('🎵 [PlayerPage] 检测到歌曲切换，重新加载歌词');
-      _lastTrackId = currentTrackId;
-      _lastLyricsSignature = null;
-      _lyrics = [];
-      _currentLyricIndex = -1;
-      setState(() {});
-    }
-
-    // 检查 currentSong 是否已匹配 currentTrack（事件驱动，无需轮询）
-    if (currentTrack != null) {
-      final song = PlayerService().currentSong;
-      final trackKey = '${currentTrack.source.name}_${currentTrack.id}';
-      final songKey = song != null ? '${song.source.name}_${song.id}' : null;
-      final songSignature = song == null
-          ? null
-          : '${songKey}_${song.lyric.length}_${song.tlyric.length}_${song.yrc.length}_${song.ytlrc.length}_${song.qrc.length}_${song.qrcTrans.length}';
-      if (song != null && songKey == trackKey && songSignature != _lastLyricsSignature) {
-        _parseLyricsFromSong(song);
-      }
-    }
+    _syncLyricsFromSnapshot();
   }
 
   /// 切换播放列表显示状态
@@ -262,56 +223,40 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     );
   }
 
-  /// 从 SongDetail 解析歌词（事件驱动，不再轮询）
-  void _parseLyricsFromSong(SongDetail song) {
-    try {
-      _lastLyricsSignature =
-          '${song.source.name}_${song.id}_${song.lyric.length}_${song.tlyric.length}_${song.yrc.length}_${song.ytlrc.length}_${song.qrc.length}_${song.qrcTrans.length}';
-      print('📝 [PlayerPage] 开始解析歌词: ${song.name}');
+  void _syncLyricsFromSnapshot({bool force = false}) {
+    final player = PlayerService();
+    final currentTrack = player.currentTrack;
+    final currentTrackId = currentTrack != null
+        ? '${currentTrack.source.name}_${currentTrack.id}'
+        : null;
+    final snapshot = player.lyricSnapshot;
+    final nextSignature = snapshot?.signature;
+    final nextState = snapshot?.state ?? LyricLoadState.idle;
 
-      switch (song.source.name) {
-        case 'netease':
-          _lyrics = LyricParser.parseNeteaseLyric(
-            song.lyric,
-            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-            yrcLyric: song.yrc.isNotEmpty ? song.yrc : null,
-            yrcTranslation: song.ytlrc.isNotEmpty ? song.ytlrc : null,
-          );
-          break;
-        case 'qq':
-          _lyrics = LyricParser.parseQQLyric(
-            song.lyric,
-            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-            qrcLyric: song.qrc.isNotEmpty ? song.qrc : null,
-            qrcTranslation: song.qrcTrans.isNotEmpty ? song.qrcTrans : null,
-          );
-          break;
-        case 'kugou':
-          _lyrics = LyricParser.parseKugouLyric(
-            song.lyric,
-            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-          );
-          break;
-        default:
-          _lyrics = LyricParser.parseNeteaseLyric(
-            song.lyric,
-            translation: song.tlyric.isNotEmpty ? song.tlyric : null,
-            yrcLyric: song.yrc.isNotEmpty ? song.yrc : null,
-            yrcTranslation: song.ytlrc.isNotEmpty ? song.ytlrc : null,
-          );
-          break;
-      }
+    if (!force &&
+        currentTrackId == _lastTrackId &&
+        nextSignature == _lastLyricsSignature &&
+        nextState == _lyricState) {
+      return;
+    }
 
-      print('🎵 [PlayerPage] 加载歌词: ${_lyrics.length} 行 (${song.name})');
-      _currentLyricIndex = -1;
-      if (mounted) setState(() {});
-    } catch (e) {
-      print('❌ [PlayerPage] 解析歌词失败: $e');
+    if (currentTrackId != _lastTrackId) {
+      print('🎵 [PlayerPage] 检测到歌曲切换，刷新歌词快照');
+    }
+
+    _lastTrackId = currentTrackId;
+    _lastLyricsSignature = nextSignature;
+    _lyricState = nextState;
+    _lyrics = snapshot == null ? [] : List<LyricLine>.from(snapshot.lines);
+    _currentLyricIndex = -1;
+    _updateCurrentLyric(notify: false);
+    if (mounted) {
+      setState(() {});
     }
   }
 
   /// 更新当前歌词
-  void _updateCurrentLyric() {
+  void _updateCurrentLyric({bool notify = true}) {
     if (_lyrics.isEmpty) return;
     
     final newIndex = LyricParser.findCurrentLineIndex(
@@ -320,30 +265,20 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     );
 
     if (newIndex != _currentLyricIndex && newIndex >= 0 && mounted) {
+      if (!notify) {
+        _currentLyricIndex = newIndex;
+        return;
+      }
       setState(() {
         _currentLyricIndex = newIndex;
       });
     }
   }
 
-  PlayerLyricState _resolveLyricState() {
-    final player = PlayerService();
-    if (player.currentTrack == null) {
-      return PlayerLyricState.idle;
-    }
-    if (_lyrics.isNotEmpty) {
-      return PlayerLyricState.ready;
-    }
-    if (player.lyricState == PlayerLyricState.ready) {
-      return PlayerLyricState.empty;
-    }
-    return player.lyricState;
-  }
-
   /// 根据样式选择构建歌词面板
   Widget _buildLyricPanel() {
     final lyricStyle = LyricStyleService().currentStyle;
-    final lyricState = _resolveLyricState();
+    final lyricState = _lyricState;
     
     switch (lyricStyle) {
       case LyricStyle.defaultStyle:
@@ -385,7 +320,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     final player = PlayerService();
     final song = player.currentSong;
     final track = player.currentTrack;
-    final lyricState = _resolveLyricState();
+    final lyricState = _lyricState;
 
     if (song == null && track == null) {
       return Scaffold(
