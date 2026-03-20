@@ -61,15 +61,28 @@ abstract class AudioEngine {
     String url, {
     bool isLocal = false,
     Map<String, String>? headers,
+    bool autoPlay = true,
+    Duration? initialPosition,
   });
   Future<void> playAudioSource(
     ja.AudioSource source, {
     String? sourceUrl,
+    bool autoPlay = true,
+    Duration? initialPosition,
   });
-  Future<void> playSource(PlayableSource source) async {
+  Future<void> playSource(
+    PlayableSource source, {
+    bool autoPlay = true,
+    Duration? initialPosition,
+  }) async {
     final customSource = source.audioSource;
     if (customSource != null) {
-      await playAudioSource(customSource, sourceUrl: source.sourceUrl);
+      await playAudioSource(
+        customSource,
+        sourceUrl: source.sourceUrl,
+        autoPlay: autoPlay,
+        initialPosition: initialPosition,
+      );
       return;
     }
 
@@ -81,8 +94,11 @@ abstract class AudioEngine {
       pathOrUrl,
       isLocal: source.isLocal,
       headers: source.headers,
+      autoPlay: autoPlay,
+      initialPosition: initialPosition,
     );
   }
+
   Future<void> pause();
   Future<void> resume();
   Future<void> seek(Duration position);
@@ -126,6 +142,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   double _playbackSpeed = 1.0;
   bool _hasSource = false;
   int? _androidAudioSessionId;
+  bool _androidEqualizerDirty = true;
+  bool _needsDeferredVolumeRestore = false;
   bool _equalizerEnabled = true;
   List<double> _equalizerGains = List.filled(10, 0.0);
   List<int> _equalizerFrequencies = EqualizerService.kEqualizerFrequencies;
@@ -194,7 +212,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
     final savedVolume = PersistentStorageService().getDouble('player_volume');
     _currentVolume = (savedVolume ?? 0.7).clamp(0.0, 1.0);
-    await player.setVolume(_currentVolume);
+    await player.setVolume(0);
     await player.setSpeed(_playbackSpeed);
 
     _positionSub = player.positionStream.listen((pos) {
@@ -252,7 +270,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       _androidSessionSub = player.androidAudioSessionIdStream.listen((id) {
         _androidAudioSessionId = id;
         if (id != null && id > 0) {
-          unawaited(_attachAndApplyAndroidEqualizer(id));
+          _androidEqualizerDirty = true;
         }
       });
     }
@@ -312,7 +330,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         message: message,
         sourceUrl: sourceUrl,
         cause: error,
-        retriable: retriable || lower.contains('network') || lower.contains('io'),
+        retriable:
+            retriable || lower.contains('network') || lower.contains('io'),
       );
     }
 
@@ -335,37 +354,71 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     );
   }
 
-  void _fireAndForgetPlay() {
+  void _fireAndForgetPlay({bool restoreVolumeAfterStart = true}) {
     final player = _player;
     if (player == null) return;
-    unawaited(
-      player.play().catchError((Object e, StackTrace st) {
+    unawaited(() async {
+      try {
+        await player.play();
+        if (restoreVolumeAfterStart) {
+          await _restoreOutputAfterPlaybackStart();
+        }
+      } catch (e) {
         _emitError(_mapJustAudioError(e));
         if (!_stateController.isClosed) {
           _stateController.add(EngineState.idle);
         }
-      }),
+      }
+    }());
+  }
+
+  Future<void> _restoreOutputAfterPlaybackStart() async {
+    final player = _player;
+    if (player == null) return;
+
+    if (Platform.isAndroid && _androidEqualizerDirty) {
+      await _waitForAndroidAudioSessionReady();
+      await _applyAndroidEqualizerIfReady();
+    }
+
+    await player.setVolume(_currentVolume);
+    _needsDeferredVolumeRestore = false;
+  }
+
+  Future<void> _waitForAndroidAudioSessionReady({
+    Duration timeout = const Duration(milliseconds: 400),
+  }) async {
+    if (!Platform.isAndroid) return;
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      final sessionId = _androidAudioSessionId;
+      if (sessionId != null && sessionId > 0) {
+        return;
+      }
+      await Future.delayed(const Duration(milliseconds: 20));
+    }
+    print(
+      '[JustAudioEngine] Timed out waiting '
+      '${timeout.inMilliseconds}ms for Android audio session id',
     );
   }
 
-  Future<void> _attachAndApplyAndroidEqualizer(int sessionId) async {
-    final attached = await AndroidEqualizerService().attachToSession(sessionId);
-    if (!attached) return;
-    await _applyAndroidEqualizerIfReady();
-  }
-
-  Future<void> _applyAndroidEqualizerIfReady() async {
-    if (!Platform.isAndroid) return;
+  Future<bool> _applyAndroidEqualizerIfReady() async {
+    if (!Platform.isAndroid) return false;
     final sessionId = _androidAudioSessionId;
-    if (sessionId == null || sessionId <= 0) return;
+    if (sessionId == null || sessionId <= 0) return false;
 
     final attached = await AndroidEqualizerService().attachToSession(sessionId);
-    if (!attached) return;
-    await AndroidEqualizerService().apply(
+    if (!attached) return false;
+    final applied = await AndroidEqualizerService().apply(
       enabled: _equalizerEnabled,
       gains: _equalizerGains,
       frequencies: _equalizerFrequencies,
     );
+    if (applied) {
+      _androidEqualizerDirty = false;
+    }
+    return applied;
   }
 
   Future<void> _recreatePlayer() async {
@@ -404,6 +457,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     _duration = Duration.zero;
     _bufferedPosition = Duration.zero;
     _androidAudioSessionId = null;
+    _androidEqualizerDirty = true;
+    _needsDeferredVolumeRestore = false;
     if (Platform.isAndroid) {
       await AndroidEqualizerService().release();
     }
@@ -414,18 +469,34 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     String url, {
     bool isLocal = false,
     Map<String, String>? headers,
+    bool autoPlay = true,
+    Duration? initialPosition,
   }) async {
     final source = isLocal
         ? ja.AudioSource.file(url)
         : ja.AudioSource.uri(Uri.parse(url), headers: headers);
-    await playAudioSource(source, sourceUrl: url);
+    await playAudioSource(
+      source,
+      sourceUrl: url,
+      autoPlay: autoPlay,
+      initialPosition: initialPosition,
+    );
   }
 
   @override
-  Future<void> playSource(PlayableSource source) async {
+  Future<void> playSource(
+    PlayableSource source, {
+    bool autoPlay = true,
+    Duration? initialPosition,
+  }) async {
     final customSource = source.audioSource;
     if (customSource != null) {
-      await playAudioSource(customSource, sourceUrl: source.sourceUrl);
+      await playAudioSource(
+        customSource,
+        sourceUrl: source.sourceUrl,
+        autoPlay: autoPlay,
+        initialPosition: initialPosition,
+      );
       return;
     }
 
@@ -437,6 +508,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       pathOrUrl,
       isLocal: source.isLocal,
       headers: source.headers,
+      autoPlay: autoPlay,
+      initialPosition: initialPosition,
     );
   }
 
@@ -444,17 +517,21 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   Future<void> playAudioSource(
     ja.AudioSource source, {
     String? sourceUrl,
+    bool autoPlay = true,
+    Duration? initialPosition,
   }) async {
     await _ensurePlayer();
+    final player = _player!;
+    await player.setVolume(0);
 
-    if (_isPlaying) {
-      await _player!.setVolume(0);
-      await _player!.stop();
+    if (_isPlaying || _hasSource) {
+      await player.stop();
     }
+    _hasSource = false;
 
     try {
-      await _player!
-          .setAudioSource(source)
+      await player
+          .setAudioSource(source, initialPosition: initialPosition)
           .timeout(const Duration(seconds: 15));
       _hasSource = true;
     } on TimeoutException catch (e) {
@@ -473,9 +550,14 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       throw EngineReportedException(mapped);
     }
 
-    await _player!.setVolume(_currentVolume);
-    await _player!.setSpeed(_playbackSpeed);
-    _fireAndForgetPlay();
+    _position = initialPosition ?? Duration.zero;
+    _positionController.add(_position);
+    _androidEqualizerDirty = Platform.isAndroid;
+    _needsDeferredVolumeRestore = !autoPlay;
+    await player.setSpeed(_playbackSpeed);
+    if (autoPlay) {
+      _fireAndForgetPlay();
+    }
   }
 
   @override
@@ -496,7 +578,14 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       );
       return;
     }
-    _fireAndForgetPlay();
+    if (_isPlaying) return;
+    final requiresSilentResume =
+        _needsDeferredVolumeRestore ||
+        (Platform.isAndroid && _androidEqualizerDirty);
+    if (requiresSilentResume) {
+      await _player?.setVolume(0);
+    }
+    _fireAndForgetPlay(restoreVolumeAfterStart: requiresSilentResume);
   }
 
   @override
@@ -553,7 +642,10 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     _equalizerFrequencies = List<int>.from(frequencies);
 
     if (!Platform.isAndroid) return;
-    await _applyAndroidEqualizerIfReady();
+    _androidEqualizerDirty = true;
+    if (_isPlaying) {
+      await _applyAndroidEqualizerIfReady();
+    }
   }
 }
 
@@ -726,7 +818,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     });
 
     _durationSub = _player!.stream.duration.listen((dur) {
-      _duration = dur ?? Duration.zero;
+      _duration = dur;
       _durationController.add(_duration);
     });
 
@@ -758,14 +850,17 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     String url, {
     bool isLocal = false,
     Map<String, String>? headers,
+    bool autoPlay = true,
+    Duration? initialPosition,
   }) async {
     await _ensurePlayer();
-    if (_isPlaying) {
-      await _player!.setVolume(0);
-      await _player!.stop();
+    final player = _player!;
+    if (_isPlaying || _hasMedia) {
+      await player.setVolume(0);
+      await player.stop();
     }
     try {
-      await _player!.open(mk.Media(url, httpHeaders: headers));
+      await player.open(mk.Media(url, httpHeaders: headers), play: false);
       _hasMedia = true;
     } catch (e) {
       final mapped = EngineError(
@@ -779,16 +874,34 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
       throw EngineReportedException(mapped);
     }
 
-    await _player!.setVolume(_currentVolume);
-    await _player!.setRate(_playbackSpeed);
-    await _player!.play();
+    if (initialPosition != null && initialPosition > Duration.zero) {
+      await player.seek(initialPosition);
+      _position = initialPosition;
+    } else {
+      _position = Duration.zero;
+    }
+    _positionController.add(_position);
+    await player.setVolume(_currentVolume);
+    await player.setRate(_playbackSpeed);
+    if (autoPlay) {
+      await player.play();
+    }
   }
 
   @override
-  Future<void> playSource(PlayableSource source) async {
+  Future<void> playSource(
+    PlayableSource source, {
+    bool autoPlay = true,
+    Duration? initialPosition,
+  }) async {
     final customSource = source.audioSource;
     if (customSource != null) {
-      await playAudioSource(customSource, sourceUrl: source.sourceUrl);
+      await playAudioSource(
+        customSource,
+        sourceUrl: source.sourceUrl,
+        autoPlay: autoPlay,
+        initialPosition: initialPosition,
+      );
       return;
     }
 
@@ -800,6 +913,8 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
       pathOrUrl,
       isLocal: source.isLocal,
       headers: source.headers,
+      autoPlay: autoPlay,
+      initialPosition: initialPosition,
     );
   }
 
@@ -807,6 +922,8 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   Future<void> playAudioSource(
     ja.AudioSource source, {
     String? sourceUrl,
+    bool autoPlay = true,
+    Duration? initialPosition,
   }) async {
     throw UnsupportedError(
       'Custom audio sources are only supported on just_audio platforms.',
