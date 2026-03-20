@@ -818,7 +818,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     });
 
     _durationSub = _player!.stream.duration.listen((dur) {
-      _duration = dur;
+      _duration = dur ?? Duration.zero;
       _durationController.add(_duration);
     });
 

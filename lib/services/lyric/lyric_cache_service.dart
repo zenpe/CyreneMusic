@@ -175,6 +175,81 @@ class LyricCacheService extends ChangeNotifier {
   factory LyricCacheService() => _instance;
   LyricCacheService._internal();
 
+  static const Map<String, int> _completenessRank = <String, int>{
+    'timed-translated': 4,
+    'timed': 3,
+    'translated': 2,
+    'plain': 1,
+    'empty': 0,
+    'failed': 0,
+  };
+
+  @visibleForTesting
+  static bool shouldDeleteTrackCacheKey({
+    required String cacheKey,
+    required String trackKey,
+    required Map<String, dynamic>? indexValue,
+    String? requestedQuality,
+  }) {
+    if (requestedQuality == null) {
+      return true;
+    }
+    if (cacheKey == trackKey) {
+      return false;
+    }
+    final entryQuality = CacheService.normalizeQualityValue(
+      indexValue?['quality']?.toString(),
+    );
+    return entryQuality == requestedQuality;
+  }
+
+  @visibleForTesting
+  static int compareEntriesForMigration({
+    required LyricCacheEntry candidate,
+    required bool candidateHasFile,
+    required LyricCacheEntry incumbent,
+    required bool incumbentHasFile,
+  }) {
+    if (candidateHasFile != incumbentHasFile) {
+      return candidateHasFile ? 1 : -1;
+    }
+
+    final stateRank = _stateRank(candidate.state);
+    final otherStateRank = _stateRank(incumbent.state);
+    if (stateRank != otherStateRank) {
+      return stateRank.compareTo(otherStateRank);
+    }
+
+    if (candidate.hasContent != incumbent.hasContent) {
+      return candidate.hasContent ? 1 : -1;
+    }
+
+    final completenessRank = _completenessRank[candidate.completeness] ?? 0;
+    final otherCompletenessRank =
+        _completenessRank[incumbent.completeness] ?? 0;
+    if (completenessRank != otherCompletenessRank) {
+      return completenessRank.compareTo(otherCompletenessRank);
+    }
+
+    final fetchedAtCompare = candidate.fetchedAt.compareTo(incumbent.fetchedAt);
+    if (fetchedAtCompare != 0) {
+      return fetchedAtCompare;
+    }
+
+    return incumbent.failureCount.compareTo(candidate.failureCount);
+  }
+
+  static int _stateRank(LyricCacheState state) {
+    switch (state) {
+      case LyricCacheState.ready:
+        return 3;
+      case LyricCacheState.empty:
+        return 2;
+      case LyricCacheState.failed:
+        return 1;
+    }
+  }
+
   Directory? _cacheDir;
   bool _isInitialized = false;
   bool _indexDirty = false;
@@ -184,6 +259,10 @@ class LyricCacheService extends ChangeNotifier {
 
   bool get isInitialized => _isInitialized;
   String? get currentCacheDir => _cacheDir?.path;
+
+  static String _partPathFor(String targetPath) => '$targetPath.part';
+
+  static String _backupPathFor(String targetPath) => '$targetPath.bak';
 
   /// 如果 index 有未持久化的变更，立即写盘。
   Future<void> flushIndex() async {
@@ -224,6 +303,7 @@ class LyricCacheService extends ChangeNotifier {
         await _cacheDir!.create(recursive: true);
       }
 
+      await _recoverSidecars();
       await _loadIndex();
       await _migrateLegacyTrackScopedKeys();
       _isInitialized = true;
@@ -242,7 +322,9 @@ class LyricCacheService extends ChangeNotifier {
     await initialize();
     if (!_isInitialized || _cacheDir == null) return null;
 
-    final file = File(_entryPath(cacheKey));
+    final targetPath = _entryPath(cacheKey);
+    await _recoverTargetSidecars(targetPath);
+    final file = File(targetPath);
     if (!await file.exists()) {
       _removeIndexEntry(cacheKey);
       return null;
@@ -280,9 +362,9 @@ class LyricCacheService extends ChangeNotifier {
     await initialize();
     if (!_isInitialized || _cacheDir == null) return;
 
-    final file = File(_entryPath(cacheKey));
+    final targetPath = _entryPath(cacheKey);
     final content = jsonEncode(entry.toJson());
-    await file.writeAsString(content, flush: true);
+    await _writeStringAtomically(targetPath, content);
     _replaceIndexEntry(
       cacheKey,
       _buildIndexValue(entry, fileSize: content.length),
@@ -295,12 +377,7 @@ class LyricCacheService extends ChangeNotifier {
     await initialize();
     if (!_isInitialized || _cacheDir == null) return;
 
-    final file = File(_entryPath(cacheKey));
-    try {
-      if (await file.exists()) {
-        await file.delete();
-      }
-    } catch (_) {}
+    await _deleteTargetArtifacts(_entryPath(cacheKey));
     _removeIndexEntry(cacheKey);
     await _saveIndex();
     notifyListeners();
@@ -384,18 +461,24 @@ class LyricCacheService extends ChangeNotifier {
     if (!_isInitialized || _cacheDir == null) return;
 
     final targetTrackKey = '${track.source.name}_${track.id}';
+    final requestedQuality = quality == null
+        ? null
+        : CacheService.normalizeQualityValue(quality);
     final keysToRemove = (_trackCacheKeys[targetTrackKey] ?? const <String>{})
+        .where(
+          (cacheKey) => shouldDeleteTrackCacheKey(
+            cacheKey: cacheKey,
+            trackKey: targetTrackKey,
+            indexValue: _index[cacheKey],
+            requestedQuality: requestedQuality,
+          ),
+        )
         .toList(growable: false);
 
     if (keysToRemove.isEmpty) return;
 
     for (final cacheKey in keysToRemove) {
-      final file = File(_entryPath(cacheKey));
-      try {
-        if (await file.exists()) {
-          await file.delete();
-        }
-      } catch (_) {}
+      await _deleteTargetArtifacts(_entryPath(cacheKey));
       _removeIndexEntry(cacheKey);
     }
 
@@ -413,6 +496,110 @@ class LyricCacheService extends ChangeNotifier {
 
   String _indexPath() {
     return path.join(_cacheDir!.path, 'lyric_index.json');
+  }
+
+  Future<void> _deleteFileIfExists(File file) async {
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _deleteTargetArtifacts(String targetPath) async {
+    await _deleteFileIfExists(File(targetPath));
+    await _deleteFileIfExists(File(_partPathFor(targetPath)));
+    await _deleteFileIfExists(File(_backupPathFor(targetPath)));
+  }
+
+  Future<void> _recoverTargetSidecars(String targetPath) async {
+    final targetFile = File(targetPath);
+    final partFile = File(_partPathFor(targetPath));
+    final backupFile = File(_backupPathFor(targetPath));
+
+    if (await partFile.exists()) {
+      if (await targetFile.exists()) {
+        await _deleteFileIfExists(partFile);
+      } else {
+        try {
+          await partFile.rename(targetFile.path);
+        } catch (_) {
+          await _deleteFileIfExists(partFile);
+        }
+      }
+    }
+
+    if (await backupFile.exists()) {
+      if (await targetFile.exists()) {
+        await _deleteFileIfExists(backupFile);
+      } else {
+        try {
+          await backupFile.rename(targetFile.path);
+        } catch (_) {
+          await _deleteFileIfExists(backupFile);
+        }
+      }
+    }
+  }
+
+  Future<void> _recoverSidecars() async {
+    if (_cacheDir == null || !await _cacheDir!.exists()) return;
+
+    final targets = <String>{};
+    await for (final entity in _cacheDir!.list()) {
+      if (entity is! File) continue;
+      final filePath = entity.path;
+      if (filePath.endsWith('.part')) {
+        targets.add(filePath.substring(0, filePath.length - 5));
+      } else if (filePath.endsWith('.bak')) {
+        targets.add(filePath.substring(0, filePath.length - 4));
+      }
+    }
+
+    for (final targetPath in targets) {
+      await _recoverTargetSidecars(targetPath);
+    }
+  }
+
+  Future<void> _promotePreparedTempFile({
+    required File tempFile,
+    required File targetFile,
+  }) async {
+    final backupFile = File(_backupPathFor(targetFile.path));
+    await _deleteFileIfExists(backupFile);
+
+    try {
+      if (await targetFile.exists()) {
+        await targetFile.rename(backupFile.path);
+      }
+      await tempFile.rename(targetFile.path);
+      await _deleteFileIfExists(backupFile);
+    } catch (_) {
+      if (!await targetFile.exists() && await backupFile.exists()) {
+        try {
+          await backupFile.rename(targetFile.path);
+        } catch (_) {}
+      }
+      rethrow;
+    } finally {
+      await _deleteFileIfExists(tempFile);
+      if (await targetFile.exists()) {
+        await _deleteFileIfExists(backupFile);
+      }
+    }
+  }
+
+  Future<void> _writeStringAtomically(
+    String targetPath,
+    String content,
+  ) async {
+    final tempFile = File(_partPathFor(targetPath));
+    await _deleteFileIfExists(tempFile);
+    await tempFile.writeAsString(content, flush: true);
+    await _promotePreparedTempFile(
+      tempFile: tempFile,
+      targetFile: File(targetPath),
+    );
   }
 
   Map<String, dynamic> _buildIndexValue(LyricCacheEntry entry, {int fileSize = 0}) {
@@ -436,39 +623,53 @@ class LyricCacheService extends ChangeNotifier {
 
   Future<void> _loadIndex() async {
     if (_cacheDir == null) return;
-    final file = File(_indexPath());
-    if (!await file.exists()) {
-      _index.clear();
-      _trackCacheKeys.clear();
-      return;
-    }
-    try {
-      final raw = await file.readAsString();
-      final json = jsonDecode(raw) as Map<String, dynamic>;
-      _index
-        ..clear()
-        ..addAll(
-          json.map(
-            (key, value) => MapEntry(
-              key,
-              (value as Map).cast<String, dynamic>(),
+    final indexPath = _indexPath();
+    final candidates = <String>[
+      indexPath,
+      _backupPathFor(indexPath),
+      _partPathFor(indexPath),
+    ];
+
+    for (final candidatePath in candidates) {
+      final file = File(candidatePath);
+      if (!await file.exists()) {
+        continue;
+      }
+      try {
+        final raw = await file.readAsString();
+        final json = jsonDecode(raw) as Map<String, dynamic>;
+        _index
+          ..clear()
+          ..addAll(
+            json.map(
+              (key, value) => MapEntry(
+                key,
+                (value as Map).cast<String, dynamic>(),
+              ),
             ),
-          ),
+          );
+        _rebuildTrackCacheKeys();
+        if (candidatePath != indexPath) {
+          await _saveIndex();
+        }
+        return;
+      } catch (e) {
+        _log(
+          '❌ [LyricCacheService] 加载歌词索引候选失败: ${path.basename(candidatePath)}, $e',
+          toDeveloperPanel: true,
         );
-      _rebuildTrackCacheKeys();
-    } catch (e) {
-      _index.clear();
-      _trackCacheKeys.clear();
-      _log('❌ [LyricCacheService] 加载歌词索引失败: $e', toDeveloperPanel: true);
+      }
     }
+
+    _index.clear();
+    _trackCacheKeys.clear();
   }
 
   Future<void> _saveIndex() async {
     if (_cacheDir == null) return;
-    _indexDirty = false;
-    final file = File(_indexPath());
     try {
-      await file.writeAsString(jsonEncode(_index), flush: true);
+      await _writeStringAtomically(_indexPath(), jsonEncode(_index));
+      _indexDirty = false;
     } catch (e) {
       _log('❌ [LyricCacheService] 保存歌词索引失败: $e', toDeveloperPanel: true);
     }
@@ -479,53 +680,56 @@ class LyricCacheService extends ChangeNotifier {
 
     var migratedCount = 0;
     var removedCount = 0;
-    final entries = _index.entries.toList(growable: false);
-
-    for (final entry in entries) {
-      final cacheKey = entry.key;
-      final indexValue = entry.value;
-      final trackKey = indexValue['trackKey'] as String? ?? '';
-      if (trackKey.isEmpty || cacheKey == trackKey) {
+    final groupedLegacyKeys = <String, List<String>>{};
+    for (final entry in _index.entries) {
+      final trackKey = entry.value['trackKey'] as String? ?? '';
+      if (trackKey.isEmpty || entry.key == trackKey) {
         continue;
       }
-      if (!cacheKey.startsWith('${trackKey}_')) {
+      if (!entry.key.startsWith('${trackKey}_')) {
         continue;
       }
+      groupedLegacyKeys.putIfAbsent(trackKey, () => <String>[]).add(entry.key);
+    }
 
-      final legacyFile = File(_entryPath(cacheKey));
-      final sharedFile = File(_entryPath(trackKey));
-      final sharedExistsInIndex = _index.containsKey(trackKey);
-      final sharedExistsOnDisk = await sharedFile.exists();
-
-      if (sharedExistsInIndex || sharedExistsOnDisk) {
-        try {
-          if (await legacyFile.exists()) {
-            await legacyFile.delete();
-          }
-        } catch (_) {}
-        _index.remove(cacheKey);
-        removedCount++;
+    for (final group in groupedLegacyKeys.entries) {
+      final trackKey = group.key;
+      final candidateKeys = <String>[
+        if (_index.containsKey(trackKey)) trackKey,
+        ...group.value,
+      ];
+      final preferredKey = await _selectPreferredMigrationKey(candidateKeys);
+      if (preferredKey == null) {
         continue;
       }
 
-      try {
-        if (await legacyFile.exists()) {
-          await legacyFile.rename(sharedFile.path);
-        }
-      } catch (_) {
-        try {
-          if (await legacyFile.exists()) {
-            await legacyFile.copy(sharedFile.path);
-            await legacyFile.delete();
-          }
-        } catch (_) {
+      final preferredIndexValue = _index[preferredKey];
+      if (preferredIndexValue == null) {
+        continue;
+      }
+
+      if (preferredKey != trackKey) {
+        final promoted = await _promotePreferredEntry(
+          fromKey: preferredKey,
+          toKey: trackKey,
+        );
+        if (!promoted) {
           continue;
         }
+        migratedCount++;
       }
 
-      _index.remove(cacheKey);
-      _index[trackKey] = Map<String, dynamic>.from(indexValue);
-      migratedCount++;
+      _index[trackKey] = Map<String, dynamic>.from(preferredIndexValue);
+
+      for (final cacheKey in candidateKeys) {
+        if (cacheKey == trackKey) {
+          continue;
+        }
+        await _deleteTargetArtifacts(_entryPath(cacheKey));
+        if (_index.remove(cacheKey) != null) {
+          removedCount++;
+        }
+      }
     }
 
     if (migratedCount == 0 && removedCount == 0) {
@@ -538,6 +742,79 @@ class LyricCacheService extends ChangeNotifier {
       '🧹 [LyricCacheService] 旧歌词缓存键迁移完成: migrated=$migratedCount removed=$removedCount',
       toDeveloperPanel: true,
     );
+  }
+
+  Future<String?> _selectPreferredMigrationKey(List<String> candidateKeys) async {
+    String? bestKey;
+    LyricCacheEntry? bestEntry;
+    var bestHasFile = false;
+
+    for (final cacheKey in candidateKeys) {
+      final entry = LyricCacheEntry.tryFromJson(_index[cacheKey] ?? const <String, dynamic>{});
+      if (entry == null) {
+        continue;
+      }
+      final hasFile = await File(_entryPath(cacheKey)).exists();
+      if (bestKey == null ||
+          _compareMigrationCandidates(
+                entry,
+                hasFile: hasFile,
+                other: bestEntry!,
+                otherHasFile: bestHasFile,
+              ) >
+              0) {
+        bestKey = cacheKey;
+        bestEntry = entry;
+        bestHasFile = hasFile;
+      }
+    }
+
+    return bestKey;
+  }
+
+  int _compareMigrationCandidates(
+    LyricCacheEntry entry, {
+    required bool hasFile,
+    required LyricCacheEntry other,
+    required bool otherHasFile,
+  }) {
+    return compareEntriesForMigration(
+      candidate: entry,
+      candidateHasFile: hasFile,
+      incumbent: other,
+      incumbentHasFile: otherHasFile,
+    );
+  }
+
+  Future<bool> _promotePreferredEntry({
+    required String fromKey,
+    required String toKey,
+  }) async {
+    final fromPath = _entryPath(fromKey);
+    final toPath = _entryPath(toKey);
+    await _recoverTargetSidecars(fromPath);
+    await _recoverTargetSidecars(toPath);
+
+    final fromFile = File(fromPath);
+    final toFile = File(toPath);
+    if (!await fromFile.exists()) {
+      return false;
+    }
+
+    final tempFile = File(_partPathFor(toPath));
+    try {
+      await _deleteFileIfExists(tempFile);
+      await fromFile.copy(tempFile.path);
+      await _promotePreparedTempFile(
+        tempFile: tempFile,
+        targetFile: toFile,
+      );
+      await _deleteTargetArtifacts(fromPath);
+      return true;
+    } catch (_) {
+      await _deleteFileIfExists(tempFile);
+      return false;
+    }
   }
 
   Future<void> _cleanupExpiredEntries() async {
@@ -563,12 +840,7 @@ class LyricCacheService extends ChangeNotifier {
     }
 
     for (final cacheKey in <String>{...invalidKeys, ...expiredKeys}) {
-      final file = File(_entryPath(cacheKey));
-      try {
-        if (await file.exists()) {
-          await file.delete();
-        }
-      } catch (_) {}
+      await _deleteTargetArtifacts(_entryPath(cacheKey));
       _removeIndexEntry(cacheKey);
     }
 

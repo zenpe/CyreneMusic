@@ -38,6 +38,8 @@ class MediaCacheService {
 
   Future<void> deleteTrackCaches(Track track, {String? quality}) async {
     await CacheService().deleteCache(track, quality: quality);
-    await LyricService().evictTrackCache(track, quality: quality);
+    if (quality == null) {
+      await LyricService().evictTrackCache(track);
+    }
   }
 }

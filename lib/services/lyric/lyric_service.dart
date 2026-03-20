@@ -181,7 +181,7 @@ class LyricService extends ChangeNotifier {
   }
 
   Future<void> evictTrackCache(Track track, {String? quality}) async {
-    _repository.evictTrack(track);
+    _repository.evictTrack(track, quality: quality);
     await LyricCacheService().deleteTrackCache(track, quality: quality);
   }
 

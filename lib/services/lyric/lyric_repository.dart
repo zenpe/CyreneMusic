@@ -264,11 +264,13 @@ class LyricRepository {
     _memory.clear();
   }
 
-  void evictTrack(Track track) {
-    final prefix = '${_trackKey(track)}_';
-    final keysToRemove = _memory.keys
-        .where((key) => key == _trackKey(track) || key.startsWith(prefix))
-        .toList(growable: false);
+  void evictTrack(Track track, {String? quality}) {
+    final trackKey = _trackKey(track);
+    final keysToRemove = quality == null
+        ? _memory.keys
+            .where((key) => key == trackKey || key.startsWith('${trackKey}_'))
+            .toList(growable: false)
+        : <String>[_legacyCacheKey(track, CacheService.normalizeQualityValue(quality))];
     for (final key in keysToRemove) {
       _memory.remove(key);
     }

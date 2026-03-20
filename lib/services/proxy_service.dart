@@ -324,8 +324,13 @@ class ProxyService {
           cancelOnError: false,
         );
         controller.onCancel = () async {
-          await sub.cancel();
-          client.close();
+          try {
+            await sub.cancel();
+          } catch (e) {
+            DeveloperModeService().addLog('⚠️ [ProxyService] 取消上游订阅失败: $e');
+          } finally {
+            client.close();
+          }
         };
 
         return shelf.Response(

@@ -322,13 +322,17 @@ Future<void> main() async {
       });
       log(' 歌词缓存服务已初始化');
 
-      await timed('StartupPlaybackCoordinator.restorePlaybackOnStartup', () async {
-        await StartupPlaybackCoordinator().restorePlaybackOnStartup();
-      });
-      log(' 启动播放会话恢复流程已完成');
-
       await timed('runApp(MyApp)', () {
         runApp(const MyApp());
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(() async {
+          await timed('StartupPlaybackCoordinator.restorePlaybackOnStartup', () async {
+            await StartupPlaybackCoordinator().restorePlaybackOnStartup();
+          });
+          log(' 启动播放会话恢复流程已完成');
+        }());
       });
 
       // P0: 权限请求放到 runApp 之后
