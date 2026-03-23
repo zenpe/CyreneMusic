@@ -1,4 +1,5 @@
 import '../app_settings_service.dart';
+import '../system_media_service.dart';
 import 'playback_service.dart';
 
 class StartupPlaybackCoordinator {
@@ -18,8 +19,27 @@ class StartupPlaybackCoordinator {
     await settings.ensureInitialized();
     if (!settings.restorePlaybackSessionOnStartup) return;
 
+    final autoPlay = settings.autoPlayAfterRestoreOnStartup;
+
     final restored = await PlaybackService().restoreSessionOnStartup(
-      autoPlay: settings.autoPlayAfterRestoreOnStartup,
+      autoPlay: autoPlay,
+      beforeDeferredAutoPlay: autoPlay
+          ? () async {
+              try {
+                print(
+                  '[StartupPlaybackCoordinator] 启动自动恢复播放前预初始化 audio_service...',
+                );
+                await SystemMediaService().ensureMobileInitialized();
+                print(
+                  '[StartupPlaybackCoordinator] audio_service 预初始化完成，开始恢复播放',
+                );
+              } catch (e) {
+                print(
+                  '[StartupPlaybackCoordinator] audio_service 预初始化失败，继续恢复播放: $e',
+                );
+              }
+            }
+          : null,
     );
     print(
       restored

@@ -13,13 +13,14 @@ class SystemMediaService {
   SystemMediaService._internal();
 
   NativeSmtcService? _nativeSmtc;
-  CyreneAudioHandler? _audioHandler;  // Android 媒体处理器
+  CyreneAudioHandler? _audioHandler; // Android 媒体处理器
   bool _initialized = false;
   bool _isDisposed = false; // 是否已释放
   bool _mobileInitialized = false; // 移动端是否已初始化（延迟初始化）
+  Future<void>? _pendingMobileInitialization;
 
   // 缓存上次更新的信息，避免重复更新
-  int? _lastSongId;  // 使用 hashCode 作为唯一标识
+  int? _lastSongId; // 使用 hashCode 作为唯一标识
   PlayerState? _lastPlayerState;
 
   /// 初始化系统媒体控件
@@ -49,8 +50,26 @@ class SystemMediaService {
   Future<void> ensureMobileInitialized() async {
     if (_mobileInitialized || !Platform.isAndroid && !Platform.isIOS) return;
 
-    await _initializeMobile();
-    _mobileInitialized = true;
+    while (_pendingMobileInitialization != null) {
+      await _pendingMobileInitialization;
+      if (_mobileInitialized) return;
+    }
+
+    final initFuture = _initializeMobile()
+        .then((_) {
+          // 仅在 _audioHandler 创建成功时标记为已初始化，
+          // 否则后续调用仍可重试。
+          _mobileInitialized = _audioHandler != null;
+        })
+        .whenComplete(() {
+          _pendingMobileInitialization = null;
+        });
+    _pendingMobileInitialization = initFuture;
+    await initFuture;
+    if (_mobileInitialized) return;
+    throw StateError(
+      'audio_service initialization completed without creating AudioHandler',
+    );
   }
 
   /// 初始化 Windows 媒体控件 (SMTC)
@@ -66,7 +85,7 @@ class SystemMediaService {
 
       // 初始状态设置为停止
       await _nativeSmtc!.updatePlaybackStatus(SmtcPlaybackStatus.stopped);
-      
+
       print('✅ [SystemMediaService] Windows SMTC 初始化成功');
     } catch (e) {
       print('❌ [SystemMediaService] Windows SMTC 初始化失败: $e');
@@ -78,7 +97,7 @@ class SystemMediaService {
     try {
       final platformName = Platform.isAndroid ? 'Android' : 'iOS';
       print('📱 [SystemMediaService] 开始初始化 $platformName audio_service...');
-      
+
       // 初始化 audio_service 并创建 AudioHandler
       // 根据文档：androidStopForegroundOnPause = false 时，androidNotificationOngoing 必须也为 false
       // 这样可以避免 Android 12+ 的 ForegroundServiceStartNotAllowedException
@@ -87,20 +106,19 @@ class SystemMediaService {
         config: AudioServiceConfig(
           androidNotificationChannelId: 'com.cyrene.music.channel.audio',
           androidNotificationChannelName: 'Cyrene Music',
-          androidNotificationOngoing: false, // 恢复为 false 以符合 audio_service 的断言限制 (androidStopForegroundOnPause 为 false 时必须为 false)
+          androidNotificationOngoing:
+              false, // 恢复为 false 以符合 audio_service 的断言限制 (androidStopForegroundOnPause 为 false 时必须为 false)
           androidShowNotificationBadge: true,
-          androidStopForegroundOnPause: false, // 保持核心逻辑：暂停时不停止前台服务，确保应用在 Android 12+ 后台存活
+          androidStopForegroundOnPause:
+              false, // 保持核心逻辑：暂停时不停止前台服务，确保应用在 Android 12+ 后台存活
         ),
       );
-      
+
       if (_audioHandler != null) {
-        // 🔧 关键修复：强制启用媒体按钮（包括蓝牙控制）- 仅 Android
-        // 根据 audio_service 文档，这需要在初始化后调用
-        if (Platform.isAndroid) {
-          await AudioService.androidForceEnableMediaButtons();
-          print('✅ [SystemMediaService] 已强制启用媒体按钮（蓝牙控制）');
-        }
-        
+        // Android 的 androidForceEnableMediaButtons() 底层会主动播放一小段
+        // “静音” AudioTrack 来抢占媒体按键路由，部分设备上会产生可闻杂音。
+        // 这里不再调用该 workaround，优先保证启动恢复与首次播放的无噪音。
+
         print('✅ [SystemMediaService] $platformName audio_service 初始化成功');
         print('   AudioHandler 类型: ${_audioHandler.runtimeType}');
         if (Platform.isAndroid) {
@@ -122,7 +140,7 @@ class SystemMediaService {
   /// 处理原生SMTC按钮事件
   void _handleNativeButtonPress(SmtcButton button) {
     final player = PlayerService();
-    
+
     switch (button) {
       case SmtcButton.play:
         print('▶️ [SystemMediaService] 系统媒体控件: 播放');
@@ -153,7 +171,12 @@ class SystemMediaService {
   Future<void> updateWidget() async {
     if (Platform.isAndroid) {
       if (!_mobileInitialized) {
-        await ensureMobileInitialized();
+        try {
+          await ensureMobileInitialized();
+        } catch (e) {
+          print('❌ [SystemMediaService] 更新小部件前初始化 audio_service 失败: $e');
+          return;
+        }
       }
       if (_audioHandler != null) {
         _audioHandler!.refreshWidget();
@@ -173,21 +196,23 @@ class SystemMediaService {
     final song = player.currentSong;
     final track = player.currentTrack;
 
-    // 🔧 关键修复：在首次播放时才初始化移动端 audio_service
+    // 仅在真正进入播放态后再初始化 audio_service，避免在 loading 阶段
+    // 提前拉起媒体服务干扰启动恢复链路的音频建链时序。
     if ((Platform.isAndroid || Platform.isIOS) && !_mobileInitialized) {
-      // 只有在真正开始播放时才初始化（loading 或 playing 状态）
-      if (player.state == PlayerState.loading || player.state == PlayerState.playing) {
+      if (player.state == PlayerState.playing) {
         print('🎵 [SystemMediaService] 检测到首次播放，初始化 audio_service...');
-        ensureMobileInitialized().then((_) {
-          print('✅ [SystemMediaService] audio_service 初始化完成，继续更新状态');
-          // 初始化完成后，再次触发状态更新
-          _onPlayerStateChanged();
-        }).catchError((e) {
-          print('❌ [SystemMediaService] audio_service 初始化失败: $e');
-        });
+        ensureMobileInitialized()
+            .then((_) {
+              print('✅ [SystemMediaService] audio_service 初始化完成，继续更新状态');
+              // 初始化完成后，再次触发状态更新
+              _onPlayerStateChanged();
+            })
+            .catchError((e) {
+              print('❌ [SystemMediaService] audio_service 初始化失败: $e');
+            });
         return; // 等待初始化完成
       } else {
-        // 如果还没开始播放，不需要初始化
+        // 还未真正播放时不初始化，等待 playing 态再次回调。
         return;
       }
     }
@@ -202,7 +227,7 @@ class SystemMediaService {
       TrayService().updateMenu();
     }
   }
-  
+
   /// 获取当前歌曲的唯一 ID（使用 hashCode 统一处理 int 和 String）
   int? _getCurrentSongId(dynamic song, dynamic track) {
     if (song != null) {
@@ -220,50 +245,55 @@ class SystemMediaService {
     try {
       final currentSongId = _getCurrentSongId(song, track);
       final currentState = player.state;
-      
+
       // 检查 SMTC 是否需要重新启用（在歌曲切换或状态改变时）
-      final shouldEnableSmtc = _lastSongId == null && 
-                               currentSongId != null && 
-                               currentState != PlayerState.idle &&
-                               currentState != PlayerState.error;
-      
+      final shouldEnableSmtc =
+          _lastSongId == null &&
+          currentSongId != null &&
+          currentState != PlayerState.idle &&
+          currentState != PlayerState.error;
+
       if (shouldEnableSmtc) {
         print('▶️ [SystemMediaService] 重新启用 SMTC');
         _nativeSmtc!.enable();
       }
-      
+
       // 1. 检查是否是新歌曲，只在歌曲切换时更新元数据
-      final isSongChanged = currentSongId != _lastSongId && currentSongId != null;
+      final isSongChanged =
+          currentSongId != _lastSongId && currentSongId != null;
       if (isSongChanged) {
         print('🎵 [SystemMediaService] 歌曲切换，更新元数据...');
         _updateMetadata(song, track);
         _lastSongId = currentSongId;
       }
-      
+
       // 2. 检查播放状态是否改变，只在状态改变时更新
       final isStateChanged = currentState != _lastPlayerState;
       if (isStateChanged) {
         final status = _getPlaybackStatus(currentState);
-        print('🎮 [SystemMediaService] 状态改变: ${currentState.name} -> ${status.value}');
-        
+        print(
+          '🎮 [SystemMediaService] 状态改变: ${currentState.name} -> ${status.value}',
+        );
+
         _nativeSmtc!.updatePlaybackStatus(status);
         _lastPlayerState = currentState;
-        
+
         // 如果是停止或空闲状态，禁用 SMTC
-        if (status == SmtcPlaybackStatus.stopped && currentState == PlayerState.idle) {
+        if (status == SmtcPlaybackStatus.stopped &&
+            currentState == PlayerState.idle) {
           print('⏹️ [SystemMediaService] 停止播放，禁用 SMTC');
           _nativeSmtc!.disable();
           _lastSongId = null; // 清除缓存，下次播放时重新更新元数据
         }
       }
-      
+
       // 3. 只在播放中且有有效时长时更新 timeline（进度信息）
       // 注意：不要每次都更新，timeline 会自动推进
-      if (currentState == PlayerState.playing && 
+      if (currentState == PlayerState.playing &&
           player.duration.inMilliseconds > 0 &&
           (isSongChanged || isStateChanged)) {
         print('⏱️ [SystemMediaService] 更新播放进度');
-        
+
         _nativeSmtc!.updateTimeline(
           startTimeMs: 0,
           endTimeMs: player.duration.inMilliseconds,
@@ -276,37 +306,37 @@ class SystemMediaService {
       print('❌ [SystemMediaService] 更新 Windows 媒体信息失败: $e');
     }
   }
-  
+
   /// 更新元数据（标题、艺术家、封面等）
   void _updateMetadata(dynamic song, dynamic track) {
     if (song == null && track == null) {
       print('⚠️ [SystemMediaService] 没有歌曲信息，跳过元数据更新');
       return;
     }
-    
+
     final title = song?.name ?? track?.name ?? '未知歌曲';
     final artist = song?.arName ?? track?.artists ?? '未知艺术家';
     final album = song?.alName ?? track?.album ?? '未知专辑';
     var thumbnail = PlayerService().currentCoverUrl ?? '';
-    
+
     // 确保使用 HTTPS 协议（SMTC 要求）
     if (thumbnail.startsWith('http://')) {
       thumbnail = thumbnail.replaceFirst('http://', 'https://');
     }
-    
+
     print('🖼️ [SystemMediaService] 更新元数据:');
     print('   📝 标题: $title');
     print('   👤 艺术家: $artist');
     print('   💿 专辑: $album');
     print('   🖼️ 封面: ${thumbnail.isNotEmpty ? "已设置" : "无"}');
-    
+
     _nativeSmtc!.updateMetadata(
       title: title,
       artist: artist,
       album: album,
       thumbnail: thumbnail.isNotEmpty ? thumbnail : null,
     );
-    
+
     print('✅ [SystemMediaService] 元数据已更新到 SMTC');
   }
 
@@ -330,39 +360,38 @@ class SystemMediaService {
       print('⚠️ [SystemMediaService] 已经清理过，跳过');
       return;
     }
-    
+
     print('🎵 [SystemMediaService] 开始清理系统媒体控件...');
-    
+
     // 立即设置标志，阻止继续更新（必须在最前面）
     _isDisposed = true;
     _initialized = false;
-    
+
     try {
       // 移除播放器监听器（防止后续状态改变触发更新）
       print('🔌 [SystemMediaService] 移除播放器监听器...');
       PlayerService().removeListener(_onPlayerStateChanged);
-      
+
       // 清除缓存状态
       _lastSongId = null;
       _lastPlayerState = null;
-      
+
       // 释放 SMTC（不等待，让系统自动清理）
       if (_nativeSmtc != null) {
         print('🗑️ [SystemMediaService] 释放 SMTC 资源...');
         _nativeSmtc?.dispose();
         _nativeSmtc = null;
       }
-      
+
       // 释放 Android AudioHandler
       if (_audioHandler != null) {
         print('🗑️ [SystemMediaService] 释放 AudioHandler 资源...');
         _audioHandler = null;
       }
-      
+
       print('✅ [SystemMediaService] 系统媒体控件已清理');
     } catch (e) {
       print('⚠️ [SystemMediaService] 清理失败: $e');
     }
   }
 }
-

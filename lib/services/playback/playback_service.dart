@@ -424,7 +424,10 @@ class PlaybackService extends ChangeNotifier {
     print('[PlaybackService] 初始化完成');
   }
 
-  Future<bool> restoreSessionOnStartup({required bool autoPlay}) async {
+  Future<bool> restoreSessionOnStartup({
+    required bool autoPlay,
+    Future<void> Function()? beforeDeferredAutoPlay,
+  }) async {
     if (_hasRestoredSessionOnStartup) return currentTrack != null;
     _hasRestoredSessionOnStartup = true;
 
@@ -432,7 +435,11 @@ class PlaybackService extends ChangeNotifier {
       final snapshot = await PlaybackSessionStore().loadSnapshot();
       if (snapshot == null || !snapshot.isValid) return false;
 
-      await _restoreFromSnapshot(snapshot, autoPlay: autoPlay);
+      await _restoreFromSnapshot(
+        snapshot,
+        autoPlay: autoPlay,
+        beforeDeferredAutoPlay: beforeDeferredAutoPlay,
+      );
       _scheduleSessionPersist();
       return true;
     } catch (e) {
@@ -471,6 +478,7 @@ class PlaybackService extends ChangeNotifier {
   Future<void> _restoreFromSnapshot(
     PlaybackSessionSnapshot snapshot, {
     required bool autoPlay,
+    Future<void> Function()? beforeDeferredAutoPlay,
   }) async {
     final restorePosition = snapshot.position > Duration.zero
         ? snapshot.position
@@ -480,20 +488,27 @@ class PlaybackService extends ChangeNotifier {
     _pendingRestorePosition = restorePosition;
 
     if (autoPlay) {
+      // Android 启动恢复链路需要 staged autoplay：先挂 source，再在 resume 前完成
+      // media service 等附属初始化，避免首次出声附近的时序扰动。
+      final shouldStageStartupAutoPlay = Platform.isAndroid;
+      await playNow(
+        snapshot.queue,
+        snapshot.currentIndex,
+        snapshot.source,
+        autoPlay: !shouldStageStartupAutoPlay,
+        initialPosition: restorePosition,
+        preload: !shouldStageStartupAutoPlay,
+      );
       if (restorePosition != null) {
-        await playNow(
-          snapshot.queue,
-          snapshot.currentIndex,
-          snapshot.source,
-          autoPlay: false,
-          initialPosition: restorePosition,
-        );
         _position = restorePosition;
         positionNotifier.value = restorePosition;
-        _pendingRestorePosition = null;
+      }
+      _pendingRestorePosition = null;
+      if (shouldStageStartupAutoPlay) {
+        if (beforeDeferredAutoPlay != null) {
+          await beforeDeferredAutoPlay();
+        }
         await _engine.resume();
-      } else {
-        await playNow(snapshot.queue, snapshot.currentIndex, snapshot.source);
       }
       return;
     }
@@ -679,6 +694,7 @@ class PlaybackService extends ChangeNotifier {
     Map<String, ImageProvider>? coverProviders,
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) {
     return _commands.enqueue(() async {
       _resetPreloadState();
@@ -695,6 +711,7 @@ class PlaybackService extends ChangeNotifier {
         reason: 'play-now',
         autoPlay: autoPlay,
         initialPosition: initialPosition,
+        preload: preload,
       );
       _scheduleSessionPersist();
     });
@@ -1448,6 +1465,7 @@ class PlaybackService extends ChangeNotifier {
     bool Function() isStale, {
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     var committedPlan = plan;
     if (plan.usesCachedStream && plan.source is CachedCyrenePlayableSource) {
@@ -1456,6 +1474,7 @@ class PlaybackService extends ChangeNotifier {
         cachedSource.cacheInfo,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
+        preload: preload,
       );
       if (!playedFromStream) {
         if (isStale()) return null;
@@ -1472,6 +1491,7 @@ class PlaybackService extends ChangeNotifier {
           committedPlan.source,
           autoPlay: autoPlay,
           initialPosition: initialPosition,
+          preload: preload,
         );
       }
     } else {
@@ -1479,6 +1499,7 @@ class PlaybackService extends ChangeNotifier {
         plan.source,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
+        preload: preload,
       );
     }
     if (isStale()) {
@@ -2099,6 +2120,7 @@ class PlaybackService extends ChangeNotifier {
     String reason = 'queue-switch',
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     // 1. prepareTarget
     final tx = _prepareTrackSwitchTransaction(reason: reason);
@@ -2137,6 +2159,7 @@ class PlaybackService extends ChangeNotifier {
           isStale,
           autoPlay: autoPlay,
           initialPosition: initialPosition,
+          preload: preload,
         );
         if (committedPlan == null) return;
         logTx(
@@ -2183,6 +2206,7 @@ class PlaybackService extends ChangeNotifier {
         isStale,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
+        preload: preload,
       );
       if (committedPlan == null) return;
       logTx(
@@ -2836,6 +2860,7 @@ class PlaybackService extends ChangeNotifier {
     Map<String, String>? headers,
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     await _performSoftSwitch(
       () => _engine.play(
@@ -2844,6 +2869,7 @@ class PlaybackService extends ChangeNotifier {
         headers: headers,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
+        preload: preload,
       ),
       allowFadeIn: autoPlay,
     );
@@ -2853,12 +2879,14 @@ class PlaybackService extends ChangeNotifier {
     PlayableSource source, {
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     await _performSoftSwitch(
       () => _engine.playSource(
         source,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
+        preload: preload,
       ),
       allowFadeIn: autoPlay,
     );
@@ -2869,6 +2897,7 @@ class PlaybackService extends ChangeNotifier {
     String? sourceUrl,
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     await _performSoftSwitch(
       () => _engine.playAudioSource(
@@ -2876,6 +2905,7 @@ class PlaybackService extends ChangeNotifier {
         sourceUrl: sourceUrl,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
+        preload: preload,
       ),
       allowFadeIn: autoPlay,
     );
@@ -3024,6 +3054,7 @@ class PlaybackService extends ChangeNotifier {
     CyreneFileInfo cacheInfo, {
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     try {
       final track = _pendingTrack ?? currentTrack;
@@ -3064,6 +3095,7 @@ class PlaybackService extends ChangeNotifier {
         source,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
+        preload: preload,
       );
       print(
         '[PlaybackService] 缓存流式播放已提交 ${sw.elapsedMilliseconds}ms '

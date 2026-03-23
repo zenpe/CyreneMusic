@@ -145,19 +145,16 @@ class MainActivity : AudioServiceFragmentActivity() {
             val minLevel = bandLevelRange[0].toInt()
             val maxLevel = bandLevelRange[1].toInt()
 
-            // 每次应用前先清零，避免历史参数叠加。
+            eq.enabled = false
             for (band in 0 until eq.numberOfBands.toInt()) {
                 eq.setBandLevel(band.toShort(), 0)
             }
 
-            if (!enabled) {
-                eq.enabled = false
+            if (!enabled || gains.isEmpty()) {
                 return true
             }
 
-            eq.enabled = true
-
-            if (gains.isNotEmpty() && frequencies.isNotEmpty()) {
+            if (frequencies.isNotEmpty()) {
                 val count = minOf(gains.size, frequencies.size)
                 for (i in 0 until count) {
                     val targetBand = eq.getBand((frequencies[i] * 1000))
@@ -166,7 +163,7 @@ class MainActivity : AudioServiceFragmentActivity() {
                         .toShort()
                     eq.setBandLevel(targetBand, level)
                 }
-            } else if (gains.isNotEmpty()) {
+            } else {
                 val bandCount = minOf(gains.size, eq.numberOfBands.toInt())
                 for (i in 0 until bandCount) {
                     val level = (gains[i] * 100.0).roundToInt()
@@ -175,6 +172,7 @@ class MainActivity : AudioServiceFragmentActivity() {
                     eq.setBandLevel(i.toShort(), level)
                 }
             }
+            eq.enabled = true
             true
         } catch (e: Exception) {
             Log.e("MainActivity", "❌ Android EQ apply 失败: ${e.message}", e)

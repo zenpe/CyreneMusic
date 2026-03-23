@@ -63,17 +63,20 @@ abstract class AudioEngine {
     Map<String, String>? headers,
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   });
   Future<void> playAudioSource(
     ja.AudioSource source, {
     String? sourceUrl,
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   });
   Future<void> playSource(
     PlayableSource source, {
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     final customSource = source.audioSource;
     if (customSource != null) {
@@ -82,6 +85,7 @@ abstract class AudioEngine {
         sourceUrl: source.sourceUrl,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
+        preload: preload,
       );
       return;
     }
@@ -96,6 +100,7 @@ abstract class AudioEngine {
       headers: source.headers,
       autoPlay: autoPlay,
       initialPosition: initialPosition,
+      preload: preload,
     );
   }
 
@@ -147,6 +152,13 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   bool _equalizerEnabled = true;
   List<double> _equalizerGains = List.filled(10, 0.0);
   List<int> _equalizerFrequencies = EqualizerService.kEqualizerFrequencies;
+  static const int _eqVolumeFadeSteps = 4;
+  static const Duration _eqVolumeFadeStepDelay = Duration(milliseconds: 12);
+  // play() 前只做一次短等待，避免为等 session 过度拉长首播启动时延。
+  // 如果这次没等到，真正的兜底会在播放 kick-off 后、仍保持静音时重试。
+  static const Duration _prePlayEqWaitTimeout = Duration(milliseconds: 120);
+  static const Duration _postPlayRestoreDelay = Duration(milliseconds: 70);
+  int _playTicket = 0;
 
   final _positionController = StreamController<Duration>.broadcast();
   final _durationController = StreamController<Duration>.broadcast();
@@ -267,13 +279,29 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     );
 
     if (Platform.isAndroid) {
-      _androidSessionSub = player.androidAudioSessionIdStream.listen((id) {
-        _androidAudioSessionId = id;
-        if (id != null && id > 0) {
-          _androidEqualizerDirty = true;
-        }
-      });
+      _androidSessionSub = player.androidAudioSessionIdStream.listen(
+        _handleAndroidAudioSessionIdChanged,
+      );
     }
+  }
+
+  void _handleAndroidAudioSessionIdChanged(int? id) {
+    final previousId = _androidAudioSessionId;
+    _androidAudioSessionId = id;
+    if (id == null || id <= 0) return;
+
+    final isNewSession = previousId != id;
+    if (isNewSession) {
+      _androidEqualizerDirty = true;
+    }
+    if (!_androidEqualizerDirty) return;
+
+    if (_isPlaying) {
+      unawaited(_applyAndroidEqualizerWithOutputGuard(playTicket: _playTicket));
+      return;
+    }
+
+    unawaited(_applyAndroidEqualizerIfReady());
   }
 
   void _emitError(EngineError error) {
@@ -357,13 +385,32 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   void _fireAndForgetPlay({bool restoreVolumeAfterStart = true}) {
     final player = _player;
     if (player == null) return;
+    final playTicket = ++_playTicket;
     unawaited(() async {
       try {
-        await player.play();
         if (restoreVolumeAfterStart) {
-          await _restoreOutputAfterPlaybackStart();
+          if (player.volume > 0.001) {
+            await player.setVolume(0);
+          }
+          await _primeAndroidEqualizerBeforePlaybackStart();
         }
+        final playFuture = player.play();
+        if (restoreVolumeAfterStart) {
+          unawaited(
+            _completeDeferredOutputAfterPlaybackKickoff(player, playTicket),
+          );
+        } else if (Platform.isAndroid && _androidEqualizerDirty) {
+          unawaited(
+            _applyAndroidEqualizerWithOutputGuard(playTicket: playTicket),
+          );
+        }
+        await playFuture;
       } catch (e) {
+        // 使已排队的 deferred output 失效，避免 play() 失败后仍对白跑的
+        // ticket 执行 EQ/apply/fade。
+        if (_isCurrentPlayTicket(player, playTicket)) {
+          _playTicket++;
+        }
         _emitError(_mapJustAudioError(e));
         if (!_stateController.isClosed) {
           _stateController.add(EngineState.idle);
@@ -372,17 +419,28 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     }());
   }
 
-  Future<void> _restoreOutputAfterPlaybackStart() async {
-    final player = _player;
-    if (player == null) return;
+  Future<void> _primeAndroidEqualizerBeforePlaybackStart() async {
+    if (!Platform.isAndroid || !_androidEqualizerDirty) return;
+    await _waitForAndroidAudioSessionReady(timeout: _prePlayEqWaitTimeout);
+    await _applyAndroidEqualizerIfReady();
+  }
+
+  Future<void> _completeDeferredOutputAfterPlaybackKickoff(
+    ja.AudioPlayer player,
+    int playTicket,
+  ) async {
+    await Future.delayed(_postPlayRestoreDelay);
+    if (!_isCurrentPlayTicket(player, playTicket)) return;
 
     if (Platform.isAndroid && _androidEqualizerDirty) {
-      await _waitForAndroidAudioSessionReady();
+      await _waitForAndroidAudioSessionReady(timeout: _prePlayEqWaitTimeout);
+      if (!_isCurrentPlayTicket(player, playTicket)) return;
       await _applyAndroidEqualizerIfReady();
     }
 
-    await player.setVolume(_currentVolume);
+    if (!_isCurrentPlayTicket(player, playTicket)) return;
     _needsDeferredVolumeRestore = false;
+    await _fadePlayerVolume(player, _currentVolume, playTicket: playTicket);
   }
 
   Future<void> _waitForAndroidAudioSessionReady({
@@ -419,6 +477,61 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       _androidEqualizerDirty = false;
     }
     return applied;
+  }
+
+  bool _isCurrentPlayTicket(ja.AudioPlayer player, int playTicket) {
+    return identical(_player, player) && _playTicket == playTicket;
+  }
+
+  Future<void> _applyAndroidEqualizerWithOutputGuard({int? playTicket}) async {
+    final player = _player;
+    if (player == null || !Platform.isAndroid) return;
+    if (playTicket != null && !_isCurrentPlayTicket(player, playTicket)) return;
+    // 播放中补应用 EQ 可以接受更长的等待窗口，因为此时优先保证最终效果完整，
+    // 不需要像首播前那样严格压缩首响时延。
+    if (_androidAudioSessionId == null || _androidAudioSessionId! <= 0) {
+      await _waitForAndroidAudioSessionReady();
+    }
+    if (_androidAudioSessionId == null || _androidAudioSessionId! <= 0) return;
+    if (playTicket != null && !_isCurrentPlayTicket(player, playTicket)) return;
+
+    final shouldDuck = _isPlaying && _currentVolume > 0;
+    if (shouldDuck) {
+      await _fadePlayerVolume(player, 0, playTicket: playTicket);
+    }
+    try {
+      await _applyAndroidEqualizerIfReady();
+    } finally {
+      if ((playTicket == null || _isCurrentPlayTicket(player, playTicket)) &&
+          shouldDuck) {
+        await _fadePlayerVolume(player, _currentVolume, playTicket: playTicket);
+      }
+    }
+  }
+
+  Future<void> _fadePlayerVolume(
+    ja.AudioPlayer player,
+    double targetVolume, {
+    int? playTicket,
+  }) async {
+    final clampedTarget = targetVolume.clamp(0.0, 1.0);
+    final startVolume = player.volume.clamp(0.0, 1.0);
+    if ((startVolume - clampedTarget).abs() < 0.001) {
+      if (playTicket != null && !_isCurrentPlayTicket(player, playTicket))
+        return;
+      await player.setVolume(clampedTarget);
+      return;
+    }
+
+    for (int step = 1; step <= _eqVolumeFadeSteps; step++) {
+      if (playTicket != null && !_isCurrentPlayTicket(player, playTicket))
+        return;
+      if (_player != player) return;
+      final t = step / _eqVolumeFadeSteps;
+      final nextVolume = startVolume + ((clampedTarget - startVolume) * t);
+      await player.setVolume(nextVolume.clamp(0.0, 1.0));
+      await Future.delayed(_eqVolumeFadeStepDelay);
+    }
   }
 
   Future<void> _recreatePlayer() async {
@@ -471,6 +584,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     Map<String, String>? headers,
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     final source = isLocal
         ? ja.AudioSource.file(url)
@@ -480,6 +594,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       sourceUrl: url,
       autoPlay: autoPlay,
       initialPosition: initialPosition,
+      preload: preload,
     );
   }
 
@@ -488,6 +603,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     PlayableSource source, {
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     final customSource = source.audioSource;
     if (customSource != null) {
@@ -496,6 +612,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         sourceUrl: source.sourceUrl,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
+        preload: preload,
       );
       return;
     }
@@ -510,6 +627,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       headers: source.headers,
       autoPlay: autoPlay,
       initialPosition: initialPosition,
+      preload: preload,
     );
   }
 
@@ -519,6 +637,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     String? sourceUrl,
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     await _ensurePlayer();
     final player = _player!;
@@ -531,7 +650,11 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
     try {
       await player
-          .setAudioSource(source, initialPosition: initialPosition)
+          .setAudioSource(
+            source,
+            initialPosition: initialPosition,
+            preload: preload,
+          )
           .timeout(const Duration(seconds: 15));
       _hasSource = true;
     } on TimeoutException catch (e) {
@@ -579,13 +702,10 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       return;
     }
     if (_isPlaying) return;
-    final requiresSilentResume =
+    final needsVolumeRestore =
         _needsDeferredVolumeRestore ||
         (Platform.isAndroid && _androidEqualizerDirty);
-    if (requiresSilentResume) {
-      await _player?.setVolume(0);
-    }
-    _fireAndForgetPlay(restoreVolumeAfterStart: requiresSilentResume);
+    _fireAndForgetPlay(restoreVolumeAfterStart: needsVolumeRestore);
   }
 
   @override
@@ -644,7 +764,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     if (!Platform.isAndroid) return;
     _androidEqualizerDirty = true;
     if (_isPlaying) {
-      await _applyAndroidEqualizerIfReady();
+      await _applyAndroidEqualizerWithOutputGuard();
     }
   }
 }
@@ -852,6 +972,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     Map<String, String>? headers,
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     await _ensurePlayer();
     final player = _player!;
@@ -893,6 +1014,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     PlayableSource source, {
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     final customSource = source.audioSource;
     if (customSource != null) {
@@ -901,6 +1023,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
         sourceUrl: source.sourceUrl,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
+        preload: preload,
       );
       return;
     }
@@ -915,6 +1038,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
       headers: source.headers,
       autoPlay: autoPlay,
       initialPosition: initialPosition,
+      preload: preload,
     );
   }
 
@@ -924,6 +1048,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     String? sourceUrl,
     bool autoPlay = true,
     Duration? initialPosition,
+    bool preload = true,
   }) async {
     throw UnsupportedError(
       'Custom audio sources are only supported on just_audio platforms.',
