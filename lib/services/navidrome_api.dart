@@ -101,10 +101,7 @@ class NavidromeApi {
         .map((e) => NavidromeAlbum.fromJson(e as Map<String, dynamic>))
         .toList();
 
-    return NavidromeArtistInfo(
-      artist: artist,
-      albums: albums,
-    );
+    return NavidromeArtistInfo(artist: artist, albums: albums);
   }
 
   // ==================== 歌单 API ====================
@@ -188,10 +185,7 @@ class NavidromeApi {
     required String streamUrl,
     String? homePageUrl,
   }) async {
-    final params = <String, String>{
-      'name': name,
-      'streamUrl': streamUrl,
-    };
+    final params = <String, String>{'name': name, 'streamUrl': streamUrl};
     if (homePageUrl != null) params['homePageUrl'] = homePageUrl;
 
     await _get('createInternetRadioStation', params);
@@ -243,17 +237,17 @@ class NavidromeApi {
 
     final result = response['searchResult3'] as Map<String, dynamic>?;
 
-    final artists = _asList(result?['artist'])
-        .map((e) => NavidromeArtist.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final artists = _asList(
+      result?['artist'],
+    ).map((e) => NavidromeArtist.fromJson(e as Map<String, dynamic>)).toList();
 
-    final albums = _asList(result?['album'])
-        .map((e) => NavidromeAlbum.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final albums = _asList(
+      result?['album'],
+    ).map((e) => NavidromeAlbum.fromJson(e as Map<String, dynamic>)).toList();
 
-    final songs = _asList(result?['song'])
-        .map((e) => NavidromeSong.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final songs = _asList(
+      result?['song'],
+    ).map((e) => NavidromeSong.fromJson(e as Map<String, dynamic>)).toList();
 
     return NavidromeSearchResult(
       artists: artists,
@@ -264,20 +258,14 @@ class NavidromeApi {
 
   // ==================== 歌曲 API ====================
 
-  /// 获取歌词（按艺术家/标题）
-  Future<String?> getLyrics({
-    required String artist,
-    required String title,
-  }) async {
-    if (artist.isEmpty || title.isEmpty) return null;
+  /// 按 song ID 获取歌词（OpenSubsonic `songLyrics` 扩展）
+  Future<NavidromeLyricsResult?> getLyricsBySongId(String songId) async {
+    if (songId.isEmpty) return null;
     try {
-      final response = await _get('getLyrics', {
-        'artist': artist,
-        'title': title,
-      });
-      return _extractLyrics(response);
+      final response = await _get('getLyricsBySongId', {'id': songId});
+      return _extractStructuredLyrics(response);
     } on NavidromeApiException catch (e) {
-      debugPrint('[NavidromeApi] getLyrics failed: $e');
+      debugPrint('[NavidromeApi] getLyricsBySongId failed: $e');
       return null;
     }
   }
@@ -305,57 +293,60 @@ class NavidromeApi {
   // ==================== 收藏 API ====================
 
   /// 添加收藏
-  Future<void> star({
-    String? id,
-    String? albumId,
-    String? artistId,
-  }) async {
+  Future<void> star({String? id, String? albumId, String? artistId}) async {
     final params = <String, String>{};
     if (id != null) params['id'] = id;
     if (albumId != null) params['albumId'] = albumId;
     if (artistId != null) params['artistId'] = artistId;
 
     if (params.isEmpty) {
-      throw ArgumentError('At least one of id, albumId, or artistId is required');
+      throw ArgumentError(
+        'At least one of id, albumId, or artistId is required',
+      );
     }
 
     await _get('star', params);
   }
 
   /// 取消收藏
-  Future<void> unstar({
-    String? id,
-    String? albumId,
-    String? artistId,
-  }) async {
+  Future<void> unstar({String? id, String? albumId, String? artistId}) async {
     final params = <String, String>{};
     if (id != null) params['id'] = id;
     if (albumId != null) params['albumId'] = albumId;
     if (artistId != null) params['artistId'] = artistId;
 
     if (params.isEmpty) {
-      throw ArgumentError('At least one of id, albumId, or artistId is required');
+      throw ArgumentError(
+        'At least one of id, albumId, or artistId is required',
+      );
     }
 
     await _get('unstar', params);
   }
 
   /// 获取收藏列表
-  Future<({List<NavidromeArtist> artists, List<NavidromeAlbum> albums, List<NavidromeSong> songs})> getStarred() async {
+  Future<
+    ({
+      List<NavidromeArtist> artists,
+      List<NavidromeAlbum> albums,
+      List<NavidromeSong> songs,
+    })
+  >
+  getStarred() async {
     final response = await _get('getStarred2');
     final starred = response['starred2'] as Map<String, dynamic>?;
 
-    final artists = _asList(starred?['artist'])
-        .map((e) => NavidromeArtist.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final artists = _asList(
+      starred?['artist'],
+    ).map((e) => NavidromeArtist.fromJson(e as Map<String, dynamic>)).toList();
 
-    final albums = _asList(starred?['album'])
-        .map((e) => NavidromeAlbum.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final albums = _asList(
+      starred?['album'],
+    ).map((e) => NavidromeAlbum.fromJson(e as Map<String, dynamic>)).toList();
 
-    final songs = _asList(starred?['song'])
-        .map((e) => NavidromeSong.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final songs = _asList(
+      starred?['song'],
+    ).map((e) => NavidromeSong.fromJson(e as Map<String, dynamic>)).toList();
 
     return (artists: artists, albums: albums, songs: songs);
   }
@@ -445,8 +436,10 @@ class NavidromeApi {
 
   // ==================== 内部方法 ====================
 
-  Future<Map<String, dynamic>> _get(String method,
-      [Map<String, String>? extraParams]) async {
+  Future<Map<String, dynamic>> _get(
+    String method, [
+    Map<String, String>? extraParams,
+  ]) async {
     final params = _baseParams();
     if (extraParams != null) {
       params.addAll(extraParams);
@@ -494,7 +487,9 @@ class NavidromeApi {
   }
 
   Uri _buildUri(String method, Map<String, String> params) {
-    final base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    final base = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
     return Uri.parse('$base/rest/$method').replace(queryParameters: params);
   }
 
@@ -513,18 +508,182 @@ class NavidromeApi {
     return [value];
   }
 
-  String? _extractLyrics(Map<String, dynamic> response) {
-    final lyrics = response['lyrics'];
-    if (lyrics is Map<String, dynamic>) {
-      final value = lyrics['value'] ?? lyrics['lyrics'] ?? lyrics['text'];
-      if (value is String && value.isNotEmpty) {
-        return value;
+  NavidromeLyricsResult? _extractStructuredLyrics(
+    Map<String, dynamic> response,
+  ) {
+    final lyricsList = response['lyricsList'];
+    if (lyricsList is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final structuredLyrics = _asList(
+      lyricsList['structuredLyrics'],
+    ).whereType<Map<String, dynamic>>().toList();
+    if (structuredLyrics.isEmpty) {
+      return null;
+    }
+
+    final candidates = <_StructuredLyricsCandidate>[];
+    for (var i = 0; i < structuredLyrics.length; i++) {
+      final candidate = _structuredLyricsToCandidate(structuredLyrics[i], i);
+      if (candidate != null) {
+        candidates.add(candidate);
       }
-    } else if (lyrics is String && lyrics.isNotEmpty) {
-      return lyrics;
+    }
+    if (candidates.isEmpty) {
+      return null;
+    }
+
+    final primary = _pickPrimaryStructuredLyrics(candidates);
+    final translation = _pickTranslationStructuredLyrics(candidates, primary);
+    return NavidromeLyricsResult(
+      lyric: primary.text,
+      tlyric: translation?.text ?? '',
+    );
+  }
+
+  _StructuredLyricsCandidate? _structuredLyricsToCandidate(
+    Map<String, dynamic> structuredLyrics,
+    int index,
+  ) {
+    final lines = _asList(
+      structuredLyrics['line'],
+    ).whereType<Map<String, dynamic>>().toList();
+    if (lines.isEmpty) {
+      return null;
+    }
+
+    final synced = structuredLyrics['synced'] == true;
+    final offset = (structuredLyrics['offset'] as num?)?.toInt() ?? 0;
+    final buffer = StringBuffer();
+    final timeline = <int>[];
+
+    for (final line in lines) {
+      final value = line['value']?.toString() ?? '';
+      if (value.isEmpty) continue;
+
+      if (synced) {
+        final start = (line['start'] as num?)?.toInt() ?? 0;
+        final normalizedStart = start + offset;
+        final timestamp = _formatLrcTimestamp(normalizedStart);
+        buffer.writeln('[$timestamp]$value');
+        timeline.add(normalizedStart);
+      } else {
+        buffer.writeln(value);
+      }
+    }
+
+    final text = buffer.toString().trim();
+    if (text.isEmpty) {
+      return null;
+    }
+    return _StructuredLyricsCandidate(
+      index: index,
+      language: _normalizeLanguage(structuredLyrics['lang']?.toString()),
+      synced: synced,
+      timeline: List<int>.unmodifiable(timeline),
+      lineCount: synced ? timeline.length : text.split('\n').length,
+      text: text,
+    );
+  }
+
+  _StructuredLyricsCandidate _pickPrimaryStructuredLyrics(
+    List<_StructuredLyricsCandidate> lyrics,
+  ) {
+    for (final item in lyrics) {
+      if (item.synced) {
+        return item;
+      }
+    }
+    return lyrics.first;
+  }
+
+  _StructuredLyricsCandidate? _pickTranslationStructuredLyrics(
+    List<_StructuredLyricsCandidate> lyrics,
+    _StructuredLyricsCandidate primary,
+  ) {
+    for (final candidate in lyrics) {
+      if (candidate.index == primary.index) {
+        continue;
+      }
+      if (candidate.text == primary.text) {
+        continue;
+      }
+      if (candidate.language.isNotEmpty &&
+          primary.language.isNotEmpty &&
+          candidate.language == primary.language) {
+        continue;
+      }
+      if (candidate.synced != primary.synced) {
+        continue;
+      }
+      if (candidate.lineCount != primary.lineCount) {
+        continue;
+      }
+      if (primary.synced &&
+          !_hasCompatibleSyncedTimeline(primary.timeline, candidate.timeline)) {
+        continue;
+      }
+      return candidate;
     }
     return null;
   }
+
+  bool _hasCompatibleSyncedTimeline(List<int> a, List<int> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  String _normalizeLanguage(String? language) {
+    if (language == null || language.isEmpty) {
+      return '';
+    }
+    return language.toLowerCase().replaceAll('_', '-');
+  }
+
+  String _formatLrcTimestamp(int milliseconds) {
+    final clamped = milliseconds < 0 ? 0 : milliseconds;
+    final minutes = clamped ~/ 60000;
+    final seconds = (clamped % 60000) ~/ 1000;
+    final hundredths = (clamped % 1000) ~/ 10;
+    return '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}.'
+        '${hundredths.toString().padLeft(2, '0')}';
+  }
+}
+
+class NavidromeLyricsResult {
+  final String lyric;
+  final String tlyric;
+
+  const NavidromeLyricsResult({required this.lyric, this.tlyric = ''});
+
+  bool get isEmpty => lyric.isEmpty && tlyric.isEmpty;
+}
+
+class _StructuredLyricsCandidate {
+  final int index;
+  final String language;
+  final bool synced;
+  final List<int> timeline;
+  final int lineCount;
+  final String text;
+
+  const _StructuredLyricsCandidate({
+    required this.index,
+    required this.language,
+    required this.synced,
+    required this.timeline,
+    required this.lineCount,
+    required this.text,
+  });
 }
 
 /// Navidrome API 异常

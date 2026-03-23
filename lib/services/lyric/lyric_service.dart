@@ -8,19 +8,18 @@ import 'lyric_cache_service.dart';
 import 'lyric_repository.dart';
 import 'lyric_snapshot.dart';
 
-typedef LyricLogFn = void Function(
-  String message, {
-  bool toDeveloperPanel,
-});
+typedef LyricLogFn = void Function(String message, {bool toDeveloperPanel});
 
 class LyricRequestFetchAdapter {
   final bool useLyricOnlyFetch;
+  final bool allowFullDetailFallback;
   final Future<SongDetail?> Function() fetchLyricOnlyDetail;
   final Future<SongDetail?> Function() fetchFullDetail;
   final SongDetail Function(SongDetail detail) normalizeSongDetail;
 
   const LyricRequestFetchAdapter({
     required this.useLyricOnlyFetch,
+    this.allowFullDetailFallback = true,
     required this.fetchLyricOnlyDetail,
     required this.fetchFullDetail,
     required this.normalizeSongDetail,
@@ -94,9 +93,7 @@ class LyricService extends ChangeNotifier {
     r'\(\d+,\d+,\d+\)',
   );
   static final RegExp _plainLyricParensDoublePattern = RegExp(r'\(\d+,\d+\)');
-  static final RegExp _plainLyricAngleTriplePattern = RegExp(
-    r'<\d+,\d+,\d+>',
-  );
+  static final RegExp _plainLyricAngleTriplePattern = RegExp(r'<\d+,\d+,\d+>');
 
   LyricService._internal();
 
@@ -249,10 +246,7 @@ class LyricService extends ChangeNotifier {
     }
 
     _pendingRefreshKeys.add(refreshKey);
-    adapter.log(
-      '[LyricService] 歌词补全开始: $refreshKey',
-      toDeveloperPanel: true,
-    );
+    adapter.log('[LyricService] 歌词补全开始: $refreshKey', toDeveloperPanel: true);
 
     if (_isCurrent(trackKey, playbackToken)) {
       final currentSong = presentation.currentSong();
@@ -291,18 +285,37 @@ class LyricService extends ChangeNotifier {
         if (detail != null) {
           final normalizedLyricOnlyDetail = fetch.normalizeSongDetail(detail);
           if (!_hasDisplayableLyrics(normalizedLyricOnlyDetail)) {
+            if (fetch.allowFullDetailFallback) {
+              adapter.log(
+                '[LyricService] 纯歌词补全未命中可展示歌词，回退完整详情: '
+                '$refreshKey',
+                toDeveloperPanel: true,
+              );
+              detail = await fetch.fetchFullDetail();
+            } else {
+              adapter.log(
+                '[LyricService] 纯歌词补全未命中可展示歌词，不回退完整详情: '
+                '$refreshKey',
+                toDeveloperPanel: true,
+              );
+              detail = normalizedLyricOnlyDetail;
+            }
+          } else {
+            detail = normalizedLyricOnlyDetail;
+          }
+        } else {
+          if (fetch.allowFullDetailFallback) {
             adapter.log(
-              '[LyricService] 纯歌词补全未命中可展示歌词，回退完整详情: $refreshKey',
+              '[LyricService] 纯歌词补全未命中，回退完整详情: $refreshKey',
               toDeveloperPanel: true,
             );
             detail = await fetch.fetchFullDetail();
+          } else {
+            adapter.log(
+              '[LyricService] 纯歌词补全未命中，不回退完整详情: $refreshKey',
+              toDeveloperPanel: true,
+            );
           }
-        } else {
-          adapter.log(
-            '[LyricService] 纯歌词补全未命中，回退完整详情: $refreshKey',
-            toDeveloperPanel: true,
-          );
-          detail = await fetch.fetchFullDetail();
         }
       } else {
         detail = await fetch.fetchFullDetail();
@@ -328,10 +341,7 @@ class LyricService extends ChangeNotifier {
           song: currentSong,
           log: adapter.log,
         );
-        finalize(
-          currentState,
-          song: currentSong,
-        );
+        finalize(currentState, song: currentSong);
         return;
       }
 
@@ -351,10 +361,7 @@ class LyricService extends ChangeNotifier {
           '[LyricService] 歌词补全未命中任何新增信息: $refreshKey',
           toDeveloperPanel: true,
         );
-        finalize(
-          currentState,
-          song: currentSong,
-        );
+        finalize(currentState, song: currentSong);
         await _storeResolvedLyricState(
           track: track,
           quality: quality,
@@ -375,11 +382,7 @@ class LyricService extends ChangeNotifier {
             : '[LyricService] 歌词补全未命中任何新增信息: $refreshKey',
         toDeveloperPanel: true,
       );
-      finalize(
-        mergedState,
-        song: mergedSong,
-        notify: true,
-      );
+      finalize(mergedState, song: mergedSong, notify: true);
       presentation.applyResolvedSongDetail(mergedSong);
       await _storeResolvedLyricState(
         track: track,
@@ -404,10 +407,7 @@ class LyricService extends ChangeNotifier {
         error: e,
         log: adapter.log,
       );
-      finalize(
-        LyricLoadState.failed,
-        error: e.toString(),
-      );
+      finalize(LyricLoadState.failed, error: e.toString());
     } finally {
       _pendingRefreshKeys.remove(refreshKey);
       if (!finalized && _isCurrent(trackKey, playbackToken)) {
@@ -469,13 +469,19 @@ class LyricService extends ChangeNotifier {
     try {
       final detail = await adapter.fetchLyricOnlyDetail();
       if (detail == null) {
-        adapter.log('[LyricService] 歌词预取未命中: $refreshKey', toDeveloperPanel: true);
+        adapter.log(
+          '[LyricService] 歌词预取未命中: $refreshKey',
+          toDeveloperPanel: true,
+        );
         return;
       }
 
       final normalizedDetail = adapter.normalizeSongDetail(detail);
       if (_hasDisplayableLyrics(normalizedDetail)) {
-        adapter.log('[LyricService] 歌词预取成功: $refreshKey', toDeveloperPanel: true);
+        adapter.log(
+          '[LyricService] 歌词预取成功: $refreshKey',
+          toDeveloperPanel: true,
+        );
         await _repository.storeReady(
           track: track,
           quality: quality,
@@ -492,9 +498,15 @@ class LyricService extends ChangeNotifier {
         );
         return;
       }
-      adapter.log('[LyricService] 歌词预取未命中: $refreshKey', toDeveloperPanel: true);
+      adapter.log(
+        '[LyricService] 歌词预取未命中: $refreshKey',
+        toDeveloperPanel: true,
+      );
     } catch (e) {
-      adapter.log('[LyricService] 歌词预取失败: $refreshKey, $e', toDeveloperPanel: true);
+      adapter.log(
+        '[LyricService] 歌词预取失败: $refreshKey, $e',
+        toDeveloperPanel: true,
+      );
     } finally {
       _pendingRefreshKeys.remove(prefetchKey);
     }
@@ -550,7 +562,8 @@ class LyricService extends ChangeNotifier {
   String _trackKey(Track track) => '${track.source.name}_${track.id}';
 
   bool _isCurrent(String trackKey, int playbackToken) {
-    return _currentTrackKey == trackKey && _currentPlaybackToken == playbackToken;
+    return _currentTrackKey == trackKey &&
+        _currentPlaybackToken == playbackToken;
   }
 
   void _publish({
@@ -563,8 +576,9 @@ class LyricService extends ChangeNotifier {
   }) {
     final lines = song == null ? const <LyricLine>[] : _parseLines(song);
     final normalizedState = _normalizeState(state, song, lines);
-    final normalizedError =
-        normalizedState == LyricLoadState.failed ? error : null;
+    final normalizedError = normalizedState == LyricLoadState.failed
+        ? error
+        : null;
     final nextSnapshot = LyricSnapshot(
       trackKey: trackKey,
       playbackToken: playbackToken,
@@ -655,12 +669,12 @@ class LyricService extends ChangeNotifier {
     final translationLines = _extractPlainLines(translationPayload);
 
     return List<LyricLine>.generate(textLines.length, (index) {
-      final translation =
-          index < translationLines.length ? translationLines[index] : null;
+      final translation = index < translationLines.length
+          ? translationLines[index]
+          : null;
       return LyricLine(
         startTime: Duration(
-          milliseconds:
-              _plainTextFallbackLineInterval.inMilliseconds * index,
+          milliseconds: _plainTextFallbackLineInterval.inMilliseconds * index,
         ),
         text: textLines[index],
         translation: translation != null && translation.isNotEmpty
@@ -676,12 +690,14 @@ class LyricService extends ChangeNotifier {
     }
     return payload
         .split('\n')
-        .map((line) => line
-            .replaceAll(_plainLyricBracketTagPattern, '')
-            .replaceAll(_plainLyricParensTriplePattern, '')
-            .replaceAll(_plainLyricParensDoublePattern, '')
-            .replaceAll(_plainLyricAngleTriplePattern, '')
-            .trim())
+        .map(
+          (line) => line
+              .replaceAll(_plainLyricBracketTagPattern, '')
+              .replaceAll(_plainLyricParensTriplePattern, '')
+              .replaceAll(_plainLyricParensDoublePattern, '')
+              .replaceAll(_plainLyricAngleTriplePattern, '')
+              .trim(),
+        )
         .where((line) => line.isNotEmpty)
         .toList(growable: false);
   }

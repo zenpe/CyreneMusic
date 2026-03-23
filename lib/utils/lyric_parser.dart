@@ -5,7 +5,10 @@ class LyricParser {
   /// 解析网易云音乐 YRC 格式逐字歌词
   /// YRC格式示例: [22310,4300](22310,2880,0)都 (25190,310,0)是(25500,290,0)勇
   /// 注意：字级持续时间单位是百分之一秒（需要×10转换为毫秒）
-  static List<LyricLine> parseNeteaseYrcLyric(String yrcLyric, {String? translation}) {
+  static List<LyricLine> parseNeteaseYrcLyric(
+    String yrcLyric, {
+    String? translation,
+  }) {
     if (yrcLyric.isEmpty) return [];
 
     final lines = <LyricLine>[];
@@ -64,24 +67,28 @@ class LyricParser {
 
           if (wordText.isNotEmpty) {
             // YRC 格式中，word startTime 和 duration 都是毫秒
-            words.add(LyricWord(
-              startTime: Duration(milliseconds: wordStartMs),
-              duration: Duration(milliseconds: wordDurationMs),
-              text: wordText,
-            ));
+            words.add(
+              LyricWord(
+                startTime: Duration(milliseconds: wordStartMs),
+                duration: Duration(milliseconds: wordDurationMs),
+                text: wordText,
+              ),
+            );
             textBuffer.write(wordText);
           }
         }
 
         final fullText = textBuffer.toString().trim();
         if (fullText.isNotEmpty) {
-          lines.add(LyricLine(
-            startTime: lineStartTime,
-            text: fullText,
-            translation: translationMap[lineStartTime],
-            words: words.isNotEmpty ? words : null,
-            lineDuration: lineDuration,
-          ));
+          lines.add(
+            LyricLine(
+              startTime: lineStartTime,
+              text: fullText,
+              translation: translationMap[lineStartTime],
+              words: words.isNotEmpty ? words : null,
+              lineDuration: lineDuration,
+            ),
+          );
         }
       } catch (e) {
         // 解析失败，跳过该行
@@ -96,7 +103,7 @@ class LyricParser {
     // 调试日志：确认解析了多少行逐字歌词
     final wordsCount = lines.where((l) => l.hasWordByWord).length;
     print('[YRC解析] 总行数: ${lines.length}, 包含逐字数据: $wordsCount行');
-    
+
     return lines;
   }
 
@@ -104,14 +111,23 @@ class LyricParser {
   /// [translation] - 普通翻译歌词 (tlyric)
   /// [yrcLyric] - YRC 逐字歌词
   /// [yrcTranslation] - YRC 对应的翻译歌词 (ytlrc)，时间戳与 YRC 匹配
-  static List<LyricLine> parseNeteaseLyric(String lyric, {String? translation, String? yrcLyric, String? yrcTranslation}) {
+  static List<LyricLine> parseNeteaseLyric(
+    String lyric, {
+    String? translation,
+    String? yrcLyric,
+    String? yrcTranslation,
+  }) {
     // 如果有YRC逐字歌词，优先使用
     if (yrcLyric != null && yrcLyric.isNotEmpty) {
       // 优先使用 ytlrc（时间戳与 YRC 匹配），否则回退到 tlyric
-      final effectiveTranslation = (yrcTranslation != null && yrcTranslation.isNotEmpty) 
-          ? yrcTranslation 
+      final effectiveTranslation =
+          (yrcTranslation != null && yrcTranslation.isNotEmpty)
+          ? yrcTranslation
           : translation;
-      final yrcLines = parseNeteaseYrcLyric(yrcLyric, translation: effectiveTranslation);
+      final yrcLines = parseNeteaseYrcLyric(
+        yrcLyric,
+        translation: effectiveTranslation,
+      );
       if (yrcLines.isNotEmpty) {
         return yrcLines;
       }
@@ -122,14 +138,22 @@ class LyricParser {
 
     // 如果没有任何时间戳，则按纯文本歌词处理（Navidrome 可能返回无时间戳的歌词）
     final lyricLinesRaw = lyric.split('\n');
-    final hasTimestamp = lyricLinesRaw.any((line) => LyricLine.parseTime(line) != null);
+    final hasTimestamp = lyricLinesRaw.any(
+      (line) => LyricLine.parseTime(line) != null,
+    );
     if (!hasTimestamp) {
-      return _parsePlainTextLyric(lyricLinesRaw);
+      final translationLinesRaw = translation != null && translation.isNotEmpty
+          ? translation.split('\n')
+          : null;
+      return _parsePlainTextLyric(
+        lyricLinesRaw,
+        translationLinesRaw: translationLinesRaw,
+      );
     }
 
     final lines = <LyricLine>[];
     final lyricLines = lyric.split('\n');
-    
+
     // 解析翻译歌词（如果有）
     final Map<Duration, String> translationMap = {};
     if (translation != null && translation.isNotEmpty) {
@@ -161,25 +185,30 @@ class LyricParser {
             .replaceAll(RegExp(r'\[\d+:\d+\]'), '')
             .trim();
         if (text.isNotEmpty) {
-          lines.add(LyricLine(
-            startTime: time,
-            text: text,
-            translation: translationMap[time],
-          ));
+          lines.add(
+            LyricLine(
+              startTime: time,
+              text: text,
+              translation: translationMap[time],
+            ),
+          );
         }
       }
     }
 
     // 按时间排序
     lines.sort((a, b) => a.startTime.compareTo(b.startTime));
-    
+
     return lines;
   }
 
   /// 解析 QQ 音乐 QRC 格式逐字歌词
   /// QRC格式示例: [0,354]Tiny (0,27)Giant (27,27)小(55,27)巨(82,27)星
   /// 格式与网易云 YRC 相同: [lineStart,lineDuration]word (wordStart,wordDur,0)text
-  static List<LyricLine> parseQQQrcLyric(String qrcLyric, {String? translation}) {
+  static List<LyricLine> parseQQQrcLyric(
+    String qrcLyric, {
+    String? translation,
+  }) {
     if (qrcLyric.isEmpty) return [];
 
     final lines = <LyricLine>[];
@@ -210,8 +239,8 @@ class LyricParser {
 
       try {
         // 跳过元数据行（如 [ti:xxx], [ar:xxx] 等）
-        if (line.startsWith('[ti:') || 
-            line.startsWith('[ar:') || 
+        if (line.startsWith('[ti:') ||
+            line.startsWith('[ar:') ||
             line.startsWith('[al:') ||
             line.startsWith('[by:') ||
             line.startsWith('[offset:')) {
@@ -233,7 +262,7 @@ class LyricParser {
 
         // 获取时间戳之后的内容
         final contentAfterTimestamp = line.substring(lineTimeMatch.end);
-        
+
         // QRC 格式修正：字词在前，时间在后
         // 示例: Tiny (0,27)Giant (27,27)小(55,27)巨(82,27)星(109,27)
         // 匹配模式: 文字(开始,持续,0)
@@ -244,7 +273,7 @@ class LyricParser {
           final wordText = match.group(1)!;
           final timeValue1 = int.parse(match.group(2)!);
           final wordDurationMs = int.parse(match.group(3)!);
-          
+
           // 自动识别相对/绝对时间：
           // 如果 timeValue1 远小于行起始时间（例如在第一秒之后，timeValue1 却只有几十毫秒），
           // 或者 timeValue1 比 lineStartMs 小很多，通常它是相对偏移量。
@@ -257,31 +286,37 @@ class LyricParser {
             // 视为绝对时间戳
             wordStartTime = Duration(milliseconds: timeValue1);
           }
-          
+
           if (wordText.isNotEmpty) {
-            words.add(LyricWord(
-              startTime: wordStartTime,
-              duration: Duration(milliseconds: wordDurationMs),
-              text: wordText,
-            ));
+            words.add(
+              LyricWord(
+                startTime: wordStartTime,
+                duration: Duration(milliseconds: wordDurationMs),
+                text: wordText,
+              ),
+            );
             textBuffer.write(wordText);
           }
         }
 
         // 如果正则没匹配到任何逐字（可能是只有文本），保留整行文本
         if (words.isEmpty) {
-          textBuffer.write(contentAfterTimestamp.replaceAll(RegExp(r'\(\d+,\d+,\d+\)'), ''));
+          textBuffer.write(
+            contentAfterTimestamp.replaceAll(RegExp(r'\(\d+,\d+,\d+\)'), ''),
+          );
         }
 
         final fullText = textBuffer.toString().trim();
         if (fullText.isNotEmpty) {
-          lines.add(LyricLine(
-            startTime: lineStartTime,
-            text: fullText,
-            translation: translationMap[lineStartTime],
-            words: words.isNotEmpty ? words : null,
-            lineDuration: lineDuration,
-          ));
+          lines.add(
+            LyricLine(
+              startTime: lineStartTime,
+              text: fullText,
+              translation: translationMap[lineStartTime],
+              words: words.isNotEmpty ? words : null,
+              lineDuration: lineDuration,
+            ),
+          );
         }
       } catch (e) {
         // 解析失败，跳过该行
@@ -296,7 +331,7 @@ class LyricParser {
     // 调试日志
     final wordsCount = lines.where((l) => l.hasWordByWord).length;
     print('[QRC解析] 总行数: ${lines.length}, 包含逐字数据: $wordsCount行');
-    
+
     return lines;
   }
 
@@ -313,10 +348,14 @@ class LyricParser {
     // 如果有 QRC 逐字歌词，优先使用
     if (qrcLyric != null && qrcLyric.isNotEmpty) {
       // 优先使用 qrcTranslation（时间戳与 QRC 匹配），否则回退到 translation
-      final effectiveTranslation = (qrcTranslation != null && qrcTranslation.isNotEmpty) 
-          ? qrcTranslation 
+      final effectiveTranslation =
+          (qrcTranslation != null && qrcTranslation.isNotEmpty)
+          ? qrcTranslation
           : translation;
-      final qrcLines = parseQQQrcLyric(qrcLyric, translation: effectiveTranslation);
+      final qrcLines = parseQQQrcLyric(
+        qrcLyric,
+        translation: effectiveTranslation,
+      );
       if (qrcLines.isNotEmpty) {
         return qrcLines;
       }
@@ -326,16 +365,36 @@ class LyricParser {
     return parseNeteaseLyric(lyric, translation: translation);
   }
 
-  static List<LyricLine> _parsePlainTextLyric(List<String> rawLines) {
+  static List<LyricLine> _parsePlainTextLyric(
+    List<String> rawLines, {
+    List<String>? translationLinesRaw,
+  }) {
     final lines = <LyricLine>[];
+    final translationLines = translationLinesRaw
+        ?.map(
+          (line) => line
+              .replaceAll(RegExp(r'\[\d+:\d+\.\d+\]'), '')
+              .replaceAll(RegExp(r'\[\d+:\d+:\d+\]'), '')
+              .replaceAll(RegExp(r'\[\d+:\d+\]'), '')
+              .trim(),
+        )
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
     var index = 0;
     for (final raw in rawLines) {
       final text = raw.trim();
       if (text.isEmpty) continue;
-      lines.add(LyricLine(
-        startTime: Duration(seconds: index * 3),
-        text: text,
-      ));
+      final translation =
+          translationLines != null && index < translationLines.length
+          ? translationLines[index]
+          : null;
+      lines.add(
+        LyricLine(
+          startTime: Duration(seconds: index * 3),
+          text: text,
+          translation: translation,
+        ),
+      );
       index += 1;
     }
     return lines;
@@ -349,7 +408,10 @@ class LyricParser {
   }
 
   /// 根据当前播放时间查找当前歌词行索引
-  static int findCurrentLineIndex(List<LyricLine> lyrics, Duration currentTime) {
+  static int findCurrentLineIndex(
+    List<LyricLine> lyrics,
+    Duration currentTime,
+  ) {
     if (lyrics.isEmpty) return -1;
 
     for (int i = lyrics.length - 1; i >= 0; i--) {
@@ -376,4 +438,3 @@ class LyricParser {
     return lyrics.sublist(startIndex, endIndex);
   }
 }
-

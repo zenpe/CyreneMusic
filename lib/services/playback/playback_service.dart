@@ -1742,7 +1742,9 @@ class PlaybackService extends ChangeNotifier {
   }) {
     return LyricRequestAdapter(
       fetch: LyricRequestFetchAdapter(
-        useLyricOnlyFetch: _shouldUseLyricOnlySupplementalFetch(),
+        useLyricOnlyFetch: _shouldUseLyricOnlySupplementalFetch(track),
+        allowFullDetailFallback:
+            _shouldAllowFullDetailFallbackForLyricOnlyFetch(track),
         fetchLyricOnlyDetail: () {
           return MusicService()
               .fetchLyricOnlySongDetail(
@@ -1829,24 +1831,40 @@ class PlaybackService extends ChangeNotifier {
 
   bool _shouldScheduleDeferredSupplementalRefresh(SongDetail song) {
     if (song.source == MusicSource.local) return false;
-    final sourceType = AudioSourceService().sourceType;
-    if (sourceType != AudioSourceType.lxmusic &&
-        sourceType != AudioSourceType.tunehub) {
-      return false;
-    }
-    return song.lyric.isEmpty &&
+    final lyricPayloadMissing =
+        song.lyric.isEmpty &&
         song.tlyric.isEmpty &&
         song.yrc.isEmpty &&
         song.ytlrc.isEmpty &&
         song.qrc.isEmpty &&
         song.qrcTrans.isEmpty;
+    if (!lyricPayloadMissing) {
+      return false;
+    }
+    if (song.source == MusicSource.navidrome) {
+      // Navidrome 歌词补全走独立 API，不依赖当前全局音源类型。
+      return true;
+    }
+    final sourceType = AudioSourceService().sourceType;
+    if (sourceType != AudioSourceType.lxmusic &&
+        sourceType != AudioSourceType.tunehub) {
+      return false;
+    }
+    return true;
   }
 
-  bool _shouldUseLyricOnlySupplementalFetch() {
+  bool _shouldUseLyricOnlySupplementalFetch(Track track) {
+    if (track.source == MusicSource.navidrome) {
+      return true;
+    }
     final sourceType = AudioSourceService().sourceType;
     return sourceType == AudioSourceType.lxmusic ||
-        sourceType == AudioSourceType.tunehub ||
-        sourceType == AudioSourceType.navidrome;
+        sourceType == AudioSourceType.tunehub;
+  }
+
+  bool _shouldAllowFullDetailFallbackForLyricOnlyFetch(Track track) {
+    // Navidrome 歌词补全只走 getLyricsBySongId，不再回退完整详情二次请求。
+    return track.source != MusicSource.navidrome;
   }
 
   bool _needsCachedMetadataRefresh(CacheMetadata metadata) {

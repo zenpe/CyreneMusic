@@ -72,7 +72,12 @@ class MusicService extends ChangeNotifier {
         if (data['status'] == 200) {
           final toplistsData = data['toplists'] as List<dynamic>;
           _toplists = toplistsData
-              .map((item) => Toplist.fromJson(item as Map<String, dynamic>, source: source))
+              .map(
+                (item) => Toplist.fromJson(
+                  item as Map<String, dynamic>,
+                  source: source,
+                ),
+              )
               .toList();
 
           print('✅ [MusicService] 成功获取 ${_toplists.length} 个榜单');
@@ -103,7 +108,9 @@ class MusicService extends ChangeNotifier {
   }
 
   /// 刷新榜单（强制重新加载）
-  Future<void> refreshToplists({MusicSource source = MusicSource.netease}) async {
+  Future<void> refreshToplists({
+    MusicSource source = MusicSource.netease,
+  }) async {
     print('🔄 [MusicService] 手动刷新榜单');
     await fetchToplists(source: source, forceRefresh: true);
   }
@@ -150,7 +157,7 @@ class MusicService extends ChangeNotifier {
     }
 
     final trackList = uniqueTracks.values.toList();
-    
+
     // 如果歌曲数量不足，返回所有歌曲
     if (trackList.length <= count) {
       return trackList;
@@ -162,7 +169,7 @@ class MusicService extends ChangeNotifier {
   }
 
   /// 获取歌曲详情
-  /// 
+  ///
   /// 如果音源未配置，会抛出 [AudioSourceNotConfiguredException] 异常
   Future<SongDetail?> fetchSongDetail({
     required dynamic songId, // 支持 int 和 String
@@ -173,9 +180,13 @@ class MusicService extends ChangeNotifier {
     bool fetchLyrics = true,
   }) async {
     try {
-      print('🎵 [MusicService] 获取歌曲详情: $songId (${source.name}), 音质: ${quality.displayName}');
+      print(
+        '🎵 [MusicService] 获取歌曲详情: $songId (${source.name}), 音质: ${quality.displayName}',
+      );
       print('   Song ID 类型: ${songId.runtimeType}');
-      DeveloperModeService().addLog('🎵 [MusicService] 获取歌曲详情: $songId (${source.name})');
+      DeveloperModeService().addLog(
+        '🎵 [MusicService] 获取歌曲详情: $songId (${source.name})',
+      );
 
       // 本地音乐不需要音源配置
       if (source == MusicSource.local) {
@@ -187,27 +198,34 @@ class MusicService extends ChangeNotifier {
       if (source == MusicSource.navidrome) {
         final session = NavidromeSessionService();
         if (!session.isConfigured) {
-          throw AudioSourceNotConfiguredException('Navidrome 未配置，请在设置中配置 Navidrome');
+          throw AudioSourceNotConfiguredException(
+            'Navidrome 未配置，请在设置中配置 Navidrome',
+          );
         }
         final api = session.api!;
         final streamUrl = api.buildStreamUrl(songId.toString());
         String lyricText = '';
-        if (fetchLyrics &&
-            (artist?.isNotEmpty ?? false) &&
-            (title?.isNotEmpty ?? false)) {
+        String tlyricText = '';
+        if (fetchLyrics) {
           try {
-            print('📝 [MusicService] Navidrome 获取歌词: getLyrics(artist="$artist", title="$title")');
+            print(
+              '📝 [MusicService] Navidrome 获取歌词: getLyricsBySongId(songId="$songId")',
+            );
             final fetched = await api
-                .getLyrics(artist: artist!, title: title!)
+                .getLyricsBySongId(songId.toString())
                 .timeout(const Duration(seconds: 4));
-            if (fetched != null) {
-              lyricText = fetched;
-              print('✅ [MusicService] Navidrome 歌词获取成功: getLyrics');
+            if (fetched != null && !fetched.isEmpty) {
+              lyricText = fetched.lyric;
+              tlyricText = fetched.tlyric;
+              print('✅ [MusicService] Navidrome 歌词获取成功: getLyricsBySongId');
             } else {
-              print('⚠️ [MusicService] Navidrome 歌词为空: getLyrics');
+              print('⚠️ [MusicService] Navidrome 歌词为空: getLyricsBySongId');
             }
           } catch (e) {
-            print('⚠️ [MusicService] Navidrome 获取歌词失败（不影响播放）: getLyrics: $e');
+            print(
+              '⚠️ [MusicService] Navidrome 获取歌词失败（不影响播放）: '
+              'getLyricsBySongId: $e',
+            );
           }
         }
         return SongDetail(
@@ -220,7 +238,7 @@ class MusicService extends ChangeNotifier {
           size: '0',
           url: streamUrl,
           lyric: lyricText,
-          tlyric: '',
+          tlyric: tlyricText,
           source: source,
         );
       }
@@ -259,19 +277,28 @@ class MusicService extends ChangeNotifier {
       final baseUrl = audioSourceService.baseUrl;
       // 获取 OmniParse API Key
       final omniParseApiKey = audioSourceService.activeSource?.apiKey ?? '';
-      
+
       // 🔧 OmniParse 音质降级处理：hires 和 jyeffect 只支持网易云平台
       final qualityService = AudioQualityService();
-      final platformQualities = qualityService.getOmniParseQualitiesForPlatform(source);
-      final effectiveQuality = qualityService.getEffectiveQuality(quality, platformQualities);
+      final platformQualities = qualityService.getOmniParseQualitiesForPlatform(
+        source,
+      );
+      final effectiveQuality = qualityService.getEffectiveQuality(
+        quality,
+        platformQualities,
+      );
       if (effectiveQuality != quality) {
-        print('🔄 [MusicService] OmniParse 音质降级: ${quality.displayName} -> ${effectiveQuality.displayName} (平台: ${source.name})');
-        DeveloperModeService().addLog('🔄 [MusicService] 音质降级到 ${effectiveQuality.displayName}');
+        print(
+          '🔄 [MusicService] OmniParse 音质降级: ${quality.displayName} -> ${effectiveQuality.displayName} (平台: ${source.name})',
+        );
+        DeveloperModeService().addLog(
+          '🔄 [MusicService] 音质降级到 ${effectiveQuality.displayName}',
+        );
       }
-      
+
       String url;
       http.Response response;
-      
+
       switch (source) {
         case MusicSource.netease:
           // 网易云音乐
@@ -283,22 +310,26 @@ class MusicService extends ChangeNotifier {
           };
 
           DeveloperModeService().addLog('🌐 [Network] POST $url');
-          DeveloperModeService().addLog('📤 [Network] 请求体: ${requestBody.toString()}');
-
-          response = await http.post(
-            Uri.parse(url),
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              if (omniParseApiKey.isNotEmpty) 'X-API-Key': omniParseApiKey,
-            },
-            body: requestBody,
-          ).timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
-              throw Exception('请求超时');
-            },
+          DeveloperModeService().addLog(
+            '📤 [Network] 请求体: ${requestBody.toString()}',
           );
+
+          response = await http
+              .post(
+                Uri.parse(url),
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                  if (omniParseApiKey.isNotEmpty) 'X-API-Key': omniParseApiKey,
+                },
+                body: requestBody,
+              )
+              .timeout(
+                const Duration(seconds: 15),
+                onTimeout: () {
+                  DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
+                  throw Exception('请求超时');
+                },
+              );
           break;
 
         case MusicSource.apple:
@@ -308,18 +339,18 @@ class MusicService extends ChangeNotifier {
           url = '$baseUrl/apple/song?salableAdamId=$songId&storefront=cn';
           DeveloperModeService().addLog('🌐 [Network] GET $url');
 
-          response = await http.get(
-            Uri.parse(url),
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          ).timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
-              throw Exception('请求超时');
-            },
-          );
+          response = await http
+              .get(
+                Uri.parse(url),
+                headers: {'Content-Type': 'application/json'},
+              )
+              .timeout(
+                const Duration(seconds: 15),
+                onTimeout: () {
+                  DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
+                  throw Exception('请求超时');
+                },
+              );
           break;
 
         case MusicSource.qq:
@@ -327,19 +358,21 @@ class MusicService extends ChangeNotifier {
           url = '$baseUrl/qq/song?ids=$songId';
           DeveloperModeService().addLog('🌐 [Network] GET $url');
 
-          response = await http.get(
-            Uri.parse(url),
-            headers: {
-              'Content-Type': 'application/json',
-              if (omniParseApiKey.isNotEmpty) 'X-API-Key': omniParseApiKey,
-            },
-          ).timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
-              throw Exception('请求超时');
-            },
-          );
+          response = await http
+              .get(
+                Uri.parse(url),
+                headers: {
+                  'Content-Type': 'application/json',
+                  if (omniParseApiKey.isNotEmpty) 'X-API-Key': omniParseApiKey,
+                },
+              )
+              .timeout(
+                const Duration(seconds: 15),
+                onTimeout: () {
+                  DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
+                  throw Exception('请求超时');
+                },
+              );
           break;
 
         case MusicSource.kugou:
@@ -360,8 +393,9 @@ class MusicService extends ChangeNotifier {
             // 判断是hash还是emixsongid
             // hash通常是32位十六进制字符串，emixsongid通常是其他格式
             final idStr = songIdStr.toUpperCase();
-            final isHash = idStr.length == 32 && RegExp(r'^[0-9A-F]+$').hasMatch(idStr);
-            
+            final isHash =
+                idStr.length == 32 && RegExp(r'^[0-9A-F]+$').hasMatch(idStr);
+
             if (isHash) {
               // 32位十六进制字符串，是hash
               url = '$baseUrl/kugou/song?hash=$idStr';
@@ -373,20 +407,22 @@ class MusicService extends ChangeNotifier {
           DeveloperModeService().addLog('🌐 [Network] GET $url');
 
           final authToken = AuthService().token;
-          response = await http.get(
-            Uri.parse(url),
-            headers: {
-              'Content-Type': 'application/json',
-              if (authToken != null) 'Authorization': 'Bearer $authToken',
-              if (omniParseApiKey.isNotEmpty) 'X-API-Key': omniParseApiKey,
-            },
-          ).timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
-              throw Exception('请求超时');
-            },
-          );
+          response = await http
+              .get(
+                Uri.parse(url),
+                headers: {
+                  'Content-Type': 'application/json',
+                  if (authToken != null) 'Authorization': 'Bearer $authToken',
+                  if (omniParseApiKey.isNotEmpty) 'X-API-Key': omniParseApiKey,
+                },
+              )
+              .timeout(
+                const Duration(seconds: 15),
+                onTimeout: () {
+                  DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
+                  throw Exception('请求超时');
+                },
+              );
           break;
 
         case MusicSource.kuwo:
@@ -394,19 +430,21 @@ class MusicService extends ChangeNotifier {
           url = '$baseUrl/kuwo/song?mid=$songId';
           DeveloperModeService().addLog('🌐 [Network] GET $url');
 
-          response = await http.get(
-            Uri.parse(url),
-            headers: {
-              'Content-Type': 'application/json',
-              if (omniParseApiKey.isNotEmpty) 'X-API-Key': omniParseApiKey,
-            },
-          ).timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
-              throw Exception('请求超时');
-            },
-          );
+          response = await http
+              .get(
+                Uri.parse(url),
+                headers: {
+                  'Content-Type': 'application/json',
+                  if (omniParseApiKey.isNotEmpty) 'X-API-Key': omniParseApiKey,
+                },
+              )
+              .timeout(
+                const Duration(seconds: 15),
+                onTimeout: () {
+                  DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
+                  throw Exception('请求超时');
+                },
+              );
           break;
 
         case MusicSource.navidrome:
@@ -429,17 +467,17 @@ class MusicService extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final responseBody = utf8.decode(response.bodyBytes);
-        final truncatedBody = responseBody.length > 500 
-            ? '${responseBody.substring(0, 500)}...' 
+        final truncatedBody = responseBody.length > 500
+            ? '${responseBody.substring(0, 500)}...'
             : responseBody;
         DeveloperModeService().addLog('📄 [Network] 响应体: $truncatedBody');
-        
+
         final data = json.decode(responseBody) as Map<String, dynamic>;
 
         // 🔍 调试：打印后端返回的完整数据（根据音乐源不同处理）
         print('🔍 [MusicService] 后端返回的数据 (${source.name}):');
         print('   status: ${data['status']}');
-        
+
         if (source == MusicSource.qq) {
           // QQ音乐格式
           print('   song 字段存在: ${data.containsKey('song')}');
@@ -481,36 +519,40 @@ class MusicService extends ChangeNotifier {
 
         if (data['status'] == 200) {
           SongDetail songDetail;
-          
+
           if (source == MusicSource.qq) {
             // QQ音乐返回格式特殊处理
             final song = data['song'] as Map<String, dynamic>;
             final lyricData = data['lyric'] as Map<String, dynamic>?;
             final musicUrls = data['music_urls'] as Map<String, dynamic>?;
-            
+
             // 根据用户选择的音质选择播放URL
             String playUrl = '';
             String bitrate = '';
             if (musicUrls != null) {
               // 使用 AudioQualityService 选择最佳音质
-              playUrl = AudioQualityService().selectBestQQMusicUrl(musicUrls) ?? '';
-              
+              playUrl =
+                  AudioQualityService().selectBestQQMusicUrl(musicUrls) ?? '';
+
               // 获取对应的 bitrate 信息
               final qualityKey = AudioQualityService().getQQMusicQualityKey();
               if (musicUrls[qualityKey] != null) {
                 bitrate = musicUrls[qualityKey]['bitrate'] ?? qualityKey;
               } else {
                 // 降级时获取实际使用的音质
-                if (musicUrls['flac'] != null && playUrl == musicUrls['flac']['url']) {
+                if (musicUrls['flac'] != null &&
+                    playUrl == musicUrls['flac']['url']) {
                   bitrate = musicUrls['flac']['bitrate'] ?? 'FLAC';
-                } else if (musicUrls['320'] != null && playUrl == musicUrls['320']['url']) {
+                } else if (musicUrls['320'] != null &&
+                    playUrl == musicUrls['320']['url']) {
                   bitrate = musicUrls['320']['bitrate'] ?? '320kbps';
-                } else if (musicUrls['128'] != null && playUrl == musicUrls['128']['url']) {
+                } else if (musicUrls['128'] != null &&
+                    playUrl == musicUrls['128']['url']) {
                   bitrate = musicUrls['128']['bitrate'] ?? '128kbps';
                 }
               }
             }
-            
+
             // 安全获取歌词（后端返回的是 {lyric: string, tylyric: string, qrc: string, qrcTrans: string}）
             String lyricText = '';
             String tlyricText = '';
@@ -522,19 +564,25 @@ class MusicService extends ChangeNotifier {
               final tlyricValue = lyricData['tylyric'];
               final qrcValue = lyricData['qrc'];
               final qrcTransValue = lyricData['qrcTrans'];
-              
+
               lyricText = lyricValue is String ? lyricValue : '';
               tlyricText = tlyricValue is String ? tlyricValue : '';
               qrcText = qrcValue is String ? qrcValue : '';
               qrcTransText = qrcTransValue is String ? qrcTransValue : '';
-              
+
               print('🎵 [MusicService] OmniParse QQ音乐歌词获取:');
-              print('   原文歌词: ${lyricText.isNotEmpty ? "${lyricText.length}字符" : "无"}');
-              print('   翻译歌词: ${tlyricText.isNotEmpty ? "${tlyricText.length}字符" : "无"}');
-              print('   逐字歌词(QRC): ${qrcText.isNotEmpty ? "${qrcText.length}字符" : "无"}');
+              print(
+                '   原文歌词: ${lyricText.isNotEmpty ? "${lyricText.length}字符" : "无"}',
+              );
+              print(
+                '   翻译歌词: ${tlyricText.isNotEmpty ? "${tlyricText.length}字符" : "无"}',
+              );
+              print(
+                '   逐字歌词(QRC): ${qrcText.isNotEmpty ? "${qrcText.length}字符" : "无"}',
+              );
               print('   📋 lyricData 原始字段: ${lyricData?.keys.toList()}');
             }
-            
+
             songDetail = SongDetail(
               id: song['mid'] ?? song['id'] ?? songId,
               name: song['name'] ?? '',
@@ -557,7 +605,7 @@ class MusicService extends ChangeNotifier {
               print('❌ [MusicService] 酷狗音乐返回数据格式错误');
               return null;
             }
-            
+
             // 调试：打印酷狗音乐返回的 song 对象
             print('🔍 [MusicService] 酷狗音乐 song 对象:');
             print('   name: ${song['name']}');
@@ -565,11 +613,11 @@ class MusicService extends ChangeNotifier {
             print('   album: ${song['album']}');
             print('   pic: ${song['pic']}');
             print('   url: ${song['url'] != null ? '已获取' : '无'}');
-            
+
             // 处理 bitrate（可能是 int 或 String）
             final bitrateValue = song['bitrate'];
             final bitrate = bitrateValue != null ? '${bitrateValue}kbps' : '未知';
-            
+
             songDetail = SongDetail(
               id: songId, // 使用传入的 emixsongid
               name: song['name'] ?? '',
@@ -590,7 +638,7 @@ class MusicService extends ChangeNotifier {
               print('❌ [MusicService] 酷我音乐返回数据格式错误');
               return null;
             }
-            
+
             // 调试：打印酷我音乐返回的 song 对象
             print('🔍 [MusicService] 酷我音乐 song 对象:');
             print('   name: ${song['name']}');
@@ -599,15 +647,19 @@ class MusicService extends ChangeNotifier {
             print('   pic: ${song['pic']}');
             print('   url: ${song['url'] != null ? '已获取' : '无'}');
             print('   duration: ${song['duration']}');
-            
+
             // 获取歌词
-            final lyricText = song['lyric'] is String ? song['lyric'] as String : '';
-            
+            final lyricText = song['lyric'] is String
+                ? song['lyric'] as String
+                : '';
+
             print('🎵 [MusicService] 酷我歌词获取结果:');
             print('   lyricText类型: ${song['lyric'].runtimeType}');
             print('   lyricText长度: ${lyricText.length}');
             if (lyricText.isNotEmpty) {
-              print('   lyricText前50字符: ${lyricText.substring(0, min(50, lyricText.length))}');
+              print(
+                '   lyricText前50字符: ${lyricText.substring(0, min(50, lyricText.length))}',
+              );
               print('   lyricText包含换行符: ${lyricText.contains('\n')}');
             } else {
               print('   ❌ 歌词为空！');
@@ -631,11 +683,13 @@ class MusicService extends ChangeNotifier {
             // Apple Music - 需要特殊处理 URL
             // 后端返回的 url 是加密的 HLS 流，需要替换为解密流端点
             print('🔧 [MusicService] 开始解析 Apple Music 数据...');
-            
+
             final originalUrl = data['url'] as String? ?? '';
-            final isEncrypted = data['isEncrypted'] as bool? ?? 
-                (originalUrl.contains('.m3u8') || originalUrl.contains('aod-ssl.itunes.apple.com'));
-            
+            final isEncrypted =
+                data['isEncrypted'] as bool? ??
+                (originalUrl.contains('.m3u8') ||
+                    originalUrl.contains('aod-ssl.itunes.apple.com'));
+
             // 如果是加密流，使用后端的解密流端点
             String playUrl = originalUrl;
             if (isEncrypted && originalUrl.isNotEmpty) {
@@ -644,7 +698,7 @@ class MusicService extends ChangeNotifier {
               print('🔐 [MusicService] Apple Music 流已加密，使用解密端点: $playUrl');
               DeveloperModeService().addLog('🔐 [MusicService] 使用解密流端点');
             }
-            
+
             songDetail = SongDetail(
               id: data['id'] ?? songId,
               name: data['name'] ?? '',
@@ -658,7 +712,7 @@ class MusicService extends ChangeNotifier {
               tlyric: data['tlyric'] ?? '',
               source: source,
             );
-            
+
             print('🔧 [MusicService] 解析完成，检查 SongDetail 对象:');
             print('   songDetail.lyric 长度: ${songDetail.lyric.length}');
             print('   songDetail.tlyric 长度: ${songDetail.tlyric.length}');
@@ -671,29 +725,43 @@ class MusicService extends ChangeNotifier {
             print('   songDetail.lyric 长度: ${songDetail.lyric.length}');
             print('   songDetail.tlyric 长度: ${songDetail.tlyric.length}');
           }
-          
+
           print('✅ [MusicService] 成功获取歌曲详情: ${songDetail.name}');
-          print('   🆔 ID: ${songDetail.id} (类型: ${songDetail.id.runtimeType})');
+          print(
+            '   🆔 ID: ${songDetail.id} (类型: ${songDetail.id.runtimeType})',
+          );
           print('   🎵 艺术家: ${songDetail.arName}');
           print('   💿 专辑: ${songDetail.alName}');
-          print('   🖼️ 封面: ${songDetail.pic.isNotEmpty ? songDetail.pic : "无"}');
+          print(
+            '   🖼️ 封面: ${songDetail.pic.isNotEmpty ? songDetail.pic : "无"}',
+          );
           print('   🎼 音质: ${songDetail.level}');
           print('   📦 大小: ${songDetail.size}');
           print('   🔗 URL: ${songDetail.url.isNotEmpty ? "已获取" : "无"}');
-          print('   📝 歌词: ${songDetail.lyric.isNotEmpty ? "${songDetail.lyric.length} 字符" : "无"}');
-          print('   🌏 翻译: ${songDetail.tlyric.isNotEmpty ? "${songDetail.tlyric.length} 字符" : "无"}');
-          
-          DeveloperModeService().addLog('✅ [MusicService] 成功获取歌曲: ${songDetail.name}');
+          print(
+            '   📝 歌词: ${songDetail.lyric.isNotEmpty ? "${songDetail.lyric.length} 字符" : "无"}',
+          );
+          print(
+            '   🌏 翻译: ${songDetail.tlyric.isNotEmpty ? "${songDetail.tlyric.length} 字符" : "无"}',
+          );
+
+          DeveloperModeService().addLog(
+            '✅ [MusicService] 成功获取歌曲: ${songDetail.name}',
+          );
 
           return songDetail;
         } else {
           print('❌ [MusicService] 获取歌曲详情失败: 服务器返回状态 ${data['status']}');
-          DeveloperModeService().addLog('❌ [MusicService] 服务器状态 ${data['status']}');
+          DeveloperModeService().addLog(
+            '❌ [MusicService] 服务器状态 ${data['status']}',
+          );
           return null;
         }
       } else {
         print('❌ [MusicService] 获取歌曲详情失败: HTTP ${response.statusCode}');
-        DeveloperModeService().addLog('❌ [Network] HTTP ${response.statusCode}');
+        DeveloperModeService().addLog(
+          '❌ [Network] HTTP ${response.statusCode}',
+        );
         return null;
       }
     } on AudioSourceNotConfiguredException {
@@ -718,34 +786,32 @@ class MusicService extends ChangeNotifier {
       );
 
       if (source == MusicSource.local) {
-        DeveloperModeService().addLog(
-          '⚠️ [MusicService] 跳过歌词补全: 本地歌曲 $songId',
-        );
+        DeveloperModeService().addLog('⚠️ [MusicService] 跳过歌词补全: 本地歌曲 $songId');
         return null;
       }
 
       if (source == MusicSource.navidrome) {
         final session = NavidromeSessionService();
-        if (!session.isConfigured ||
-            !(artist?.isNotEmpty ?? false) ||
-            !(title?.isNotEmpty ?? false)) {
+        if (!session.isConfigured) {
           DeveloperModeService().addLog(
-            '⚠️ [MusicService] Navidrome 歌词补全条件不足: $songId',
+            '⚠️ [MusicService] Navidrome 未配置，无法补全歌词: $songId',
           );
           return null;
         }
         try {
           final fetched = await session.api!
-              .getLyrics(artist: artist!, title: title!)
+              .getLyricsBySongId(songId.toString())
               .timeout(const Duration(seconds: 4));
           if (fetched == null || fetched.isEmpty) {
             DeveloperModeService().addLog(
-              '⚠️ [MusicService] Navidrome 歌词补全无结果: $songId',
+              '⚠️ [MusicService] Navidrome 歌词补全无结果(getLyricsBySongId): '
+              '$songId',
             );
             return null;
           }
           DeveloperModeService().addLog(
-            '✅ [MusicService] Navidrome 歌词补全成功: $songId',
+            '✅ [MusicService] Navidrome 歌词补全成功(getLyricsBySongId): '
+            '$songId',
           );
           return SongDetail(
             id: songId,
@@ -756,14 +822,14 @@ class MusicService extends ChangeNotifier {
             level: '',
             size: '0',
             url: '',
-            lyric: fetched,
-            tlyric: '',
+            lyric: fetched.lyric,
+            tlyric: fetched.tlyric,
             source: source,
           );
         } catch (e) {
           print('⚠️ [MusicService] Navidrome 歌词补全失败: $e');
           DeveloperModeService().addLog(
-            '❌ [MusicService] Navidrome 歌词补全失败: $e',
+            '❌ [MusicService] Navidrome 歌词补全失败(getLyricsBySongId): $e',
           );
           return null;
         }
@@ -806,7 +872,7 @@ class MusicService extends ChangeNotifier {
   }
 
   /// 🎵 洛雪音源：获取歌曲详情
-  /// 
+  ///
   /// 洛雪音源 API 格式: GET ${baseUrl}/url/${source}/${songId}/${quality}
   /// 响应格式: { code: 0, url: "音频URL" }
   Future<SongDetail?> _fetchSongDetailFromLxMusic({
@@ -829,38 +895,40 @@ class MusicService extends ChangeNotifier {
     // 获取正确的 songId
     // 不同平台的 ID 字段不同：
     // - 网易云：id (int)
-    // - QQ音乐：songmid (String)  
+    // - QQ音乐：songmid (String)
     // - 酷狗：hash (String)
     // - 酷我：rid/mid (int)
     final String lxSongId = _extractLxSongId(songId, source);
     final sourceCode = audioSourceService.getLxSourceCode(source);
     final lxQuality = audioSourceService.getLxQuality(quality);
-    
+
     try {
       final runtime = LxMusicRuntimeService();
-      
+
       // 确保运行时已初始化
       if (!runtime.isInitialized) {
         print('⚠️ [MusicService] 洛雪运行时未初始化，尝试初始化...');
         await audioSourceService.initializeLxRuntime();
       }
-      
+
       // 再次检查
       if (!runtime.isInitialized) {
         throw Exception('无法初始化洛雪运行时服务');
       }
-      
+
       // 等待脚本就绪 (如果正在加载中)
       if (!runtime.isScriptReady) {
         print('⏳ [MusicService] 等待洛雪脚本就绪...');
         // 简单等待一下，实际应该由 initializeLxRuntime 保证
         await Future.delayed(const Duration(milliseconds: 500));
         if (!runtime.isScriptReady) {
-           throw Exception('洛雪音源脚本未就绪，请检查脚本是否有效');
+          throw Exception('洛雪音源脚本未就绪，请检查脚本是否有效');
         }
       }
 
-      print('🌐 [MusicService] 调用洛雪运行时获取 URL: $sourceCode / $lxSongId / $lxQuality');
+      print(
+        '🌐 [MusicService] 调用洛雪运行时获取 URL: $sourceCode / $lxSongId / $lxQuality',
+      );
       DeveloperModeService().addLog('🌐 [Runtime] Get Music URL');
 
       final audioUrl = await runtime.getMusicUrl(
@@ -876,7 +944,9 @@ class MusicService extends ChangeNotifier {
       }
 
       print('✅ [MusicService] 洛雪音源获取成功');
-      print('   🔗 URL: ${audioUrl.length > 50 ? "${audioUrl.substring(0, 50)}..." : audioUrl}');
+      print(
+        '   🔗 URL: ${audioUrl.length > 50 ? "${audioUrl.substring(0, 50)}..." : audioUrl}',
+      );
       DeveloperModeService().addLog('✅ [MusicService] 获取成功');
 
       // 🎵 尝试从后端歌词 API 获取歌词
@@ -913,7 +983,7 @@ class MusicService extends ChangeNotifier {
       return SongDetail(
         id: songId,
         name: '', // 需要从 Track 信息获取
-        pic: '',  // 需要从 Track 信息获取
+        pic: '', // 需要从 Track 信息获取
         arName: '', // 需要从 Track 信息获取
         alName: '', // 需要从 Track 信息获取
         level: lxQuality,
@@ -936,7 +1006,10 @@ class MusicService extends ChangeNotifier {
   }
 
   /// 从后端歌词 API 获取歌词（供洛雪音源使用）
-  Future<Map<String, String>?> _fetchLyricFromBackend(MusicSource source, dynamic songId) async {
+  Future<Map<String, String>?> _fetchLyricFromBackend(
+    MusicSource source,
+    dynamic songId,
+  ) async {
     String path;
     Map<String, dynamic> queryParameters;
 
@@ -1003,12 +1076,12 @@ class MusicService extends ChangeNotifier {
   /// 从 songId 中提取洛雪音源所需的 ID
   String _extractLxSongId(dynamic songId, MusicSource source) {
     final idStr = songId.toString();
-    
+
     // 酷狗音乐可能使用 "hash:album_audio_id" 格式，提取 hash
     if (source == MusicSource.kugou && idStr.contains(':')) {
       return idStr.split(':')[0].toUpperCase();
     }
-    
+
     return idStr;
   }
 
@@ -1041,7 +1114,7 @@ class MusicService extends ChangeNotifier {
   }
 
   /// 🎵 TuneHub 音源：获取歌曲详情
-  /// 
+  ///
   /// TuneHub v3 API 格式: POST ${baseUrl}/v1/parse
   /// 请求头: X-API-Key: {apiKey}
   /// 请求体: { platform, ids, quality }
@@ -1059,7 +1132,9 @@ class MusicService extends ChangeNotifier {
     // 检查来源是否被 TuneHub 音源支持
     if (!audioSourceService.isTuneHubSourceSupported(source)) {
       print('⚠️ [MusicService] TuneHub 音源不支持 ${source.name}');
-      DeveloperModeService().addLog('⚠️ [MusicService] TuneHub 音源不支持 ${source.name}');
+      DeveloperModeService().addLog(
+        '⚠️ [MusicService] TuneHub 音源不支持 ${source.name}',
+      );
       throw UnsupportedError('TuneHub 音源不支持 ${source.name}，请切换到其他音源');
     }
 
@@ -1067,31 +1142,33 @@ class MusicService extends ChangeNotifier {
       // 构建 TuneHub v3 API 请求
       final parseUrl = audioSourceService.tuneHubV3ParseUrl;
       final headers = audioSourceService.getTuneHubV3Headers();
-      final body = audioSourceService.buildTuneHubV3ParseBody(source, songId, quality);
+      final body = audioSourceService.buildTuneHubV3ParseBody(
+        source,
+        songId,
+        quality,
+      );
 
       print('🌐 [MusicService] TuneHub v3 音源请求: POST $parseUrl');
       print('   📦 Body: $body');
       DeveloperModeService().addLog('🌐 [Network] POST $parseUrl');
 
-      final response = await http.post(
-        Uri.parse(parseUrl),
-        headers: headers,
-        body: json.encode(body),
-      ).timeout(
-        const Duration(seconds: 15),
-        onTimeout: () {
-          DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
-          throw Exception('请求超时');
-        },
-      );
+      final response = await http
+          .post(Uri.parse(parseUrl), headers: headers, body: json.encode(body))
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
+              throw Exception('请求超时');
+            },
+          );
 
       print('🎵 [MusicService] TuneHub v3 音源响应状态码: ${response.statusCode}');
       DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final responseBody = utf8.decode(response.bodyBytes);
-        final truncatedBody = responseBody.length > 300 
-            ? '${responseBody.substring(0, 300)}...' 
+        final truncatedBody = responseBody.length > 300
+            ? '${responseBody.substring(0, 300)}...'
             : responseBody;
         DeveloperModeService().addLog('📄 [Network] 响应体: $truncatedBody');
 
@@ -1104,7 +1181,7 @@ class MusicService extends ChangeNotifier {
           // v3 格式：data.data 是数组
           final outerData = data['data'] as Map<String, dynamic>?;
           final dataList = outerData?['data'] as List<dynamic>?;
-          
+
           if (dataList == null || dataList.isEmpty) {
             print('❌ [MusicService] TuneHub v3 音源返回空数据');
             DeveloperModeService().addLog('❌ [MusicService] 返回空数据');
@@ -1113,7 +1190,7 @@ class MusicService extends ChangeNotifier {
 
           // 获取第一个结果
           final songData = dataList[0] as Map<String, dynamic>;
-          
+
           // 检查单曲是否成功
           final itemSuccess = songData['success'] as bool? ?? false;
           if (!itemSuccess) {
@@ -1125,16 +1202,16 @@ class MusicService extends ChangeNotifier {
 
           // 获取播放 URL（v3 直接返回完整 URL）
           String audioUrl = songData['url'] as String? ?? '';
-          
+
           // 获取歌曲信息（v3 格式在 info 对象中）
           final info = songData['info'] as Map<String, dynamic>? ?? {};
           final songName = info['name'] as String? ?? '';
           final artistName = info['artist'] as String? ?? '';
           final albumName = info['album'] as String? ?? '';
-          
+
           // 封面图片（v3 使用 cover 字段）
           final coverUrl = songData['cover'] as String? ?? '';
-          
+
           // 🎵 使用后端歌词 API 获取歌词（与洛雪音源保持一致）
           String lyricText = '';
           String tlyricText = '';
@@ -1152,7 +1229,9 @@ class MusicService extends ChangeNotifier {
                 ytlrcText = lyricData['ytlrc'] ?? '';
                 qrcText = lyricData['qrc'] ?? '';
                 qrcTransText = lyricData['qrcTrans'] ?? '';
-                print('📝 [MusicService] TuneHub v3 成功从后端获取歌词: ${lyricText.length} 字符');
+                print(
+                  '📝 [MusicService] TuneHub v3 成功从后端获取歌词: ${lyricText.length} 字符',
+                );
                 if (qrcText.isNotEmpty) {
                   print('   逐字歌词(QRC): ${qrcText.length} 字符');
                 }
@@ -1163,15 +1242,19 @@ class MusicService extends ChangeNotifier {
           } else {
             print('ℹ️ [MusicService] TuneHub v3 跳过同步歌词拉取，优先返回可播放链接');
           }
-          
+
           // 获取实际音质信息
-          final actualQuality = songData['actualQuality'] as String? ?? audioSourceService.getTuneHubQuality(quality);
+          final actualQuality =
+              songData['actualQuality'] as String? ??
+              audioSourceService.getTuneHubQuality(quality);
 
           print('✅ [MusicService] TuneHub v3 音源获取成功');
           print('   🎵 歌曲: $songName');
           print('   🎤 艺术家: $artistName');
           print('   💿 专辑: $albumName');
-          print('   🔗 URL: ${audioUrl.length > 50 ? "${audioUrl.substring(0, 50)}..." : audioUrl}');
+          print(
+            '   🔗 URL: ${audioUrl.length > 50 ? "${audioUrl.substring(0, 50)}..." : audioUrl}',
+          );
           DeveloperModeService().addLog('✅ [MusicService] TuneHub v3 获取成功');
 
           return SongDetail(
@@ -1199,8 +1282,12 @@ class MusicService extends ChangeNotifier {
           throw Exception(errorMsg);
         }
       } else {
-        print('❌ [MusicService] TuneHub v3 音源请求失败: HTTP ${response.statusCode}');
-        DeveloperModeService().addLog('❌ [Network] HTTP ${response.statusCode}');
+        print(
+          '❌ [MusicService] TuneHub v3 音源请求失败: HTTP ${response.statusCode}',
+        );
+        DeveloperModeService().addLog(
+          '❌ [Network] HTTP ${response.statusCode}',
+        );
         return null;
       }
     } catch (e) {
@@ -1252,13 +1339,13 @@ class MusicService extends ChangeNotifier {
 }
 
 /// 音源未配置异常
-/// 
+///
 /// 当用户尝试播放歌曲但尚未配置音源时抛出此异常
 class AudioSourceNotConfiguredException implements Exception {
   final String message;
-  
+
   AudioSourceNotConfiguredException([this.message = '音源未配置，请在设置中配置音源']);
-  
+
   @override
   String toString() => 'AudioSourceNotConfiguredException: $message';
 }
