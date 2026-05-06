@@ -420,8 +420,16 @@ class PlaylistService extends ChangeNotifier {
   }
 
   /// 批量添加歌曲到歌单（高性能版本，一次网络请求）
+  /// [mode]
+  ///   - 'append'（默认）：追加到歌单末尾，position 在当前最大值后递增
+  ///   - 'replace'：先清空目标歌单再写入，用于"同步刷新"等场景
+  /// 传入的 [tracks] 顺序即写入顺序，后端会按数组下标分配 position
   /// 返回 {successCount, skipCount, failCount}
-  Future<Map<String, int>> addTracksToPlaylist(int playlistId, List<Track> tracks) async {
+  Future<Map<String, int>> addTracksToPlaylist(
+    int playlistId,
+    List<Track> tracks, {
+    String mode = 'append',
+  }) async {
     if (!AuthService().isLoggedIn) {
       print('⚠️ [PlaylistService] 未登录，无法批量添加歌曲');
       return {'successCount': 0, 'skipCount': 0, 'failCount': tracks.length};
@@ -432,7 +440,7 @@ class PlaylistService extends ChangeNotifier {
     }
 
     try {
-      // 转换为 API 需要的格式
+      // 转换为 API 需要的格式（保持原始顺序）
       final tracksData = tracks.map((track) {
         final playlistTrack = PlaylistTrack.fromTrack(track);
         return playlistTrack.toJson();
@@ -440,7 +448,10 @@ class PlaylistService extends ChangeNotifier {
 
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/tracks/batch',
-        data: {'tracks': tracksData},
+        data: {
+          'tracks': tracksData,
+          'mode': mode,
+        },
         timeout: const Duration(seconds: 60),
       );
 
