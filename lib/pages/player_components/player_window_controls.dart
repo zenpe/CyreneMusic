@@ -183,10 +183,16 @@ class PlayerWindowControls extends StatelessWidget {
             child: Row(
               children: [
                 if (isTabletMode) ...[
-                  // 平板模式下：仅显示更多按钮
+                  // 平板模式下保留轻量返回入口，同时维持原有顶部视觉。
+                  IconButton(
+                    icon: const Icon(Icons.keyboard_arrow_down, size: 32),
+                    color: Colors.white,
+                    onPressed: onBackPressed,
+                    tooltip: '返回',
+                  ),
                   IconButton(
                     icon: const Icon(Icons.more_vert_rounded, size: 28),
-                    color: Colors.white,
+                    color: Colors.white70,
                     onPressed: onMorePressed,
                     tooltip: '更多设置',
                   ),
