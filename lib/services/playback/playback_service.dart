@@ -116,6 +116,18 @@ class TrackSwitchTransaction {
   });
 }
 
+class PlaybackFailure {
+  final Track track;
+  final String message;
+  final bool canRetry;
+
+  const PlaybackFailure({
+    required this.track,
+    required this.message,
+    this.canRetry = true,
+  });
+}
+
 class _ResolvedTrackSwitchSong {
   final SongDetail songDetail;
   final CyreneFileInfo? cacheInfo;
@@ -209,6 +221,8 @@ class PlaybackService extends ChangeNotifier {
   String? _currentTempFilePath;
   CyreneFileInfo? _currentCachedStreamInfo;
   final Set<String> _cacheBypassKeys = <String>{};
+  int? _recordedPlaybackToken;
+  int? _reportedFailureToken;
   final Map<String, _SongDetailRequestEntry> _pendingSongDetailRequests =
       <String, _SongDetailRequestEntry>{};
   double _volume = 0.7;
@@ -257,6 +271,7 @@ class PlaybackService extends ChangeNotifier {
 
   // 音源配置回调
   void Function()? onAudioSourceNotConfigured;
+  void Function(PlaybackFailure failure)? onPlaybackFailure;
 
   // ══════════════════════════════════════════════════════
   // 派生属性
@@ -562,6 +577,7 @@ class PlaybackService extends ChangeNotifier {
           AndroidFloatingLyricService().setPlayingState(true);
         _scheduleSessionPersist();
         _schedulePreloadNextTrack();
+        _recordPlaybackStarted();
         break;
       case EngineState.paused:
         _state = PBState.paused;
@@ -646,7 +662,34 @@ class PlaybackService extends ChangeNotifier {
     _errorMessage = _buildErrorMessage(error);
     _isAudioSourceNotConfigured = false;
     notifyListeners();
+    _reportPlaybackFailure(
+      track,
+      _errorMessage!,
+      canRetry: error.type != EngineErrorType.unsupportedFormat,
+    );
     _autoSkipOnError();
+  }
+
+  void _reportPlaybackFailure(
+    Track track,
+    String message, {
+    bool canRetry = true,
+  }) {
+    if (_reportedFailureToken == _playGeneration) return;
+    _reportedFailureToken = _playGeneration;
+    onPlaybackFailure?.call(
+      PlaybackFailure(track: track, message: message, canRetry: canRetry),
+    );
+  }
+
+  void _recordPlaybackStarted() {
+    final track = _activeTrack;
+    if (track == null || _recordedPlaybackToken == _activePlaybackToken) {
+      return;
+    }
+    _recordedPlaybackToken = _activePlaybackToken;
+    PlayHistoryService().addToHistory(track);
+    ListeningStatsService().recordPlayCount(track);
   }
 
   bool _canRetryOnError(EngineError error) {
@@ -1170,8 +1213,6 @@ class PlaybackService extends ChangeNotifier {
     if (Platform.isAndroid || Platform.isIOS) {
       WakelockPlus.enable();
     }
-    PlayHistoryService().addToHistory(track);
-    ListeningStatsService().recordPlayCount(track);
     return tx;
   }
 
@@ -1228,6 +1269,7 @@ class PlaybackService extends ChangeNotifier {
         _state = PBState.error;
         _errorMessage = '本地文件不存在';
         notifyListeners();
+        _reportPlaybackFailure(track, _errorMessage!);
         _autoSkipOnError();
         return null;
       }
@@ -1274,6 +1316,12 @@ class PlaybackService extends ChangeNotifier {
       _state = PBState.error;
       _errorMessage = '无法获取播放链接';
       notifyListeners();
+      _reportPlaybackFailure(
+        track,
+        track.source == MusicSource.netease
+            ? '音源解析失败：当前音源可能已失效，请重新导入或切换音源'
+            : _errorMessage!,
+      );
       _autoSkipOnError();
       return null;
     }
@@ -1532,6 +1580,9 @@ class PlaybackService extends ChangeNotifier {
       songDetail: songDetail,
       playbackToken: tx.token,
     );
+    if (_state == PBState.playing) {
+      _recordPlaybackStarted();
+    }
     LyricService().bindCurrentTrack(
       track: track,
       playbackToken: tx.token,
@@ -2246,6 +2297,7 @@ class PlaybackService extends ChangeNotifier {
       _errorMessage = e.message;
       _isAudioSourceNotConfigured = true;
       notifyListeners();
+      _reportPlaybackFailure(tx.track, e.message);
       logTx(
         'audio source not configured after ${totalSw.elapsedMilliseconds}ms: ${e.message}',
       );
@@ -2256,6 +2308,7 @@ class PlaybackService extends ChangeNotifier {
       _errorMessage = '播放失败: $e';
       _isAudioSourceNotConfigured = false;
       notifyListeners();
+      _reportPlaybackFailure(tx.track, _errorMessage!);
       logTx('failed after ${totalSw.elapsedMilliseconds}ms: $e');
       _autoSkipOnError();
     }

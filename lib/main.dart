@@ -39,6 +39,7 @@ import 'package:cyrene_music/services/mini_player_window_service.dart';
 import 'package:cyrene_music/services/local_library_service.dart';
 import 'package:cyrene_music/pages/mini_player_window_page.dart';
 import 'package:cyrene_music/utils/theme_manager.dart';
+import 'package:cyrene_music/utils/toast_utils.dart';
 import 'package:cyrene_music/services/startup_logger.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:media_kit/media_kit.dart';
@@ -399,6 +400,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    _setupPlaybackFailureCallback();
     // 延迟设置高刷新率和回调，确保 Navigator 和 Activity 已经初始化
     Future.delayed(const Duration(milliseconds: 500), () {
       _setupAudioSourceCallback();
@@ -468,9 +470,17 @@ class _MyAppState extends State<MyApp> {
     print('✅ [MyApp] 音源未配置回调已设置');
   }
 
+  void _setupPlaybackFailureCallback() {
+    PlayerService().onPlaybackFailure = (failure) {
+      final suffix = failure.canRetry ? '，可点击重试或切换音源' : '';
+      ToastUtils.error('${failure.message}：《${failure.track.name}》$suffix');
+    };
+  }
+
   @override
   void dispose() {
     PlayerService().onAudioSourceNotConfigured = null;
+    PlayerService().onPlaybackFailure = null;
     super.dispose();
   }
 

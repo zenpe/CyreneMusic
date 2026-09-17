@@ -109,6 +109,12 @@ class PlayerService extends ChangeNotifier {
     _pb.onAudioSourceNotConfigured = callback;
   }
 
+  void Function(PlaybackFailure failure)? get onPlaybackFailure =>
+      _pb.onPlaybackFailure;
+  set onPlaybackFailure(void Function(PlaybackFailure failure)? callback) {
+    _pb.onPlaybackFailure = callback;
+  }
+
   // ══════════════════════════════════════════════════════
   // 播放控制（全部委托）
   // ══════════════════════════════════════════════════════
