@@ -39,8 +39,8 @@ import 'package:cyrene_music/services/mini_player_window_service.dart';
 import 'package:cyrene_music/services/local_library_service.dart';
 import 'package:cyrene_music/pages/mini_player_window_page.dart';
 import 'package:cyrene_music/utils/theme_manager.dart';
-import 'package:cyrene_music/utils/toast_utils.dart';
 import 'package:cyrene_music/services/startup_logger.dart';
+import 'package:cyrene_music/widgets/playback_problem_dialog.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:cyrene_music/pages/settings_page/audio_source_settings.dart';
@@ -112,9 +112,7 @@ Future<void> main() async {
         });
       }
 
-      if (Platform.isWindows ||
-          Platform.isMacOS ||
-          Platform.isLinux) {
+      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
         await timed('MediaKit.ensureInitialized', () {
           try {
             MediaKit.ensureInitialized();
@@ -329,9 +327,12 @@ Future<void> main() async {
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(() async {
-          await timed('StartupPlaybackCoordinator.restorePlaybackOnStartup', () async {
-            await StartupPlaybackCoordinator().restorePlaybackOnStartup();
-          });
+          await timed(
+            'StartupPlaybackCoordinator.restorePlaybackOnStartup',
+            () async {
+              await StartupPlaybackCoordinator().restorePlaybackOnStartup();
+            },
+          );
           log(' 启动播放会话恢复流程已完成');
         }());
       });
@@ -361,7 +362,6 @@ Future<void> main() async {
           log(' 公告服务已初始化');
         });
       });
-
     },
     (error, stack) {
       StartupLogger().log('runZonedGuarded: $error\n$stack');
@@ -384,6 +384,9 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  int? _lastPresentedPlaybackProblemId;
+  bool _isPresentingPlaybackProblem = false;
+  PlaybackProblem? _queuedPlaybackProblem;
   final AudioSourceFacade _audioSourceFacade = AudioSourceFacade();
 
   Widget _buildDesktopMaterialHomeByRoute(AppGateRoute route) {
@@ -400,10 +403,11 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    PlayerService().problemNotifier.addListener(_onPlaybackProblemChanged);
     _setupPlaybackFailureCallback();
-    // 延迟设置高刷新率和回调，确保 Navigator 和 Activity 已经初始化
+    // 延迟设置高刷新率，确保 Activity 已经初始化。
+    // 播放失败统一由 problemNotifier 驱动，避免旧的音源弹窗与恢复弹窗叠加。
     Future.delayed(const Duration(milliseconds: 500), () {
-      _setupAudioSourceCallback();
       _setupHighRefreshRate();
     });
   }
@@ -448,37 +452,107 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  void _setupAudioSourceCallback() {
-    PlayerService().onAudioSourceNotConfigured = () {
-      print('🔔 [MyApp] 音源未配置回调被触发');
-      // 优先使用 GlobalContextHolder（包含正确的 Localizations）
-      final globalContext = GlobalContextHolder.context;
-      final navigatorContext = MyApp.navigatorKey.currentContext;
-      final contextToUse = globalContext ?? navigatorContext;
-
-      if (contextToUse != null) {
-        print(
-          '🔔 [MyApp] 使用 ${globalContext != null ? "GlobalContextHolder" : "navigatorKey"} context 显示弹窗',
-        );
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          showAudioSourceNotConfiguredDialog(contextToUse);
-        });
-      } else {
-        print('⚠️ [MyApp] 无法获取有效的 context');
-      }
-    };
-    print('✅ [MyApp] 音源未配置回调已设置');
+  void _setupPlaybackFailureCallback() {
+    PlayerService().onPlaybackFailure = _presentPlaybackProblem;
+    final currentProblem = PlayerService().currentProblem;
+    if (currentProblem != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _presentPlaybackProblem(currentProblem);
+      });
+    }
   }
 
-  void _setupPlaybackFailureCallback() {
-    PlayerService().onPlaybackFailure = (failure) {
-      final suffix = failure.canRetry ? '，可点击重试或切换音源' : '';
-      ToastUtils.error('${failure.message}：《${failure.track.name}》$suffix');
-    };
+  void _onPlaybackProblemChanged() {
+    final problem = PlayerService().problemNotifier.value;
+    if (problem != null) {
+      _presentPlaybackProblem(problem);
+    }
+  }
+
+  void _presentPlaybackProblem(PlaybackProblem problem) {
+    if (_lastPresentedPlaybackProblemId == problem.id) return;
+    _lastPresentedPlaybackProblemId = problem.id;
+    _queuedPlaybackProblem = problem;
+    unawaited(_drainPlaybackProblems());
+  }
+
+  Future<void> _drainPlaybackProblems() async {
+    if (_isPresentingPlaybackProblem) return;
+    final problem = _queuedPlaybackProblem;
+    if (problem == null) return;
+
+    // MaterialApp.builder 外层的 Overlay context 不一定挂在 Navigator 下。
+    // 优先使用 Navigator overlay，避免 showDialog 找不到 Navigator 或被短暂页面吞掉。
+    final contextToUse =
+        MyApp.navigatorKey.currentState?.overlay?.context ??
+        MyApp.navigatorKey.currentContext ??
+        GlobalContextHolder.context;
+    if (contextToUse == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_drainPlaybackProblems());
+      });
+      return;
+    }
+
+    _queuedPlaybackProblem = null;
+    _isPresentingPlaybackProblem = true;
+    final action = await showPlaybackProblemDialog(contextToUse, problem);
+    _isPresentingPlaybackProblem = false;
+    if (!mounted) return;
+
+    // 自动跳歌或其它事务可能已清理/替换当前问题。此时对话框里保存的
+    // problem 已失效，任何恢复操作都不能再作用于当前队列指针。
+    if (!PlayerService().isCurrentPlaybackProblem(problem)) {
+      if (_queuedPlaybackProblem != null) {
+        unawaited(_drainPlaybackProblems());
+      }
+      return;
+    }
+
+    final recoveryContext =
+        MyApp.navigatorKey.currentState?.overlay?.context ??
+        MyApp.navigatorKey.currentContext ??
+        GlobalContextHolder.context;
+    if (recoveryContext != null) {
+      await _handlePlaybackRecoveryAction(recoveryContext, problem, action);
+    }
+    if (_queuedPlaybackProblem != null) {
+      unawaited(_drainPlaybackProblems());
+    }
+  }
+
+  Future<void> _handlePlaybackRecoveryAction(
+    BuildContext context,
+    PlaybackProblem problem,
+    PlaybackRecoveryAction? action,
+  ) async {
+    switch (action) {
+      case PlaybackRecoveryAction.retry:
+        // 在命令队列内再次校验 transactionId，防止自动跳歌命令先执行
+        // 后，Retry 错作用到下一首。
+        await PlayerService().retryCurrent(expectedProblem: problem);
+        return;
+      case PlaybackRecoveryAction.switchSource:
+      case PlaybackRecoveryAction.openSourceSettings:
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const AudioSourceSettings()));
+        return;
+      case PlaybackRecoveryAction.reimportSource:
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const AudioSourceSettings(openImportDialog: true),
+          ),
+        );
+        return;
+      case null:
+        return;
+    }
   }
 
   @override
   void dispose() {
+    PlayerService().problemNotifier.removeListener(_onPlaybackProblemChanged);
     PlayerService().onAudioSourceNotConfigured = null;
     PlayerService().onPlaybackFailure = null;
     super.dispose();
@@ -507,6 +581,7 @@ class _MyAppState extends State<MyApp> {
               return fluent.FluentApp(
                 title: 'Cyrene Music',
                 debugShowCheckedModeBanner: false,
+                navigatorKey: MyApp.navigatorKey,
                 showPerformanceOverlay:
                     DeveloperModeService().showPerformanceOverlay,
                 theme: themeManager.buildFluentThemeData(Brightness.light),
@@ -765,10 +840,7 @@ class _WindowsRoundedContainerState extends State<_WindowsRoundedContainer>
 
     // 最大化时无边距和圆角
     if (_isMaximized) {
-      return Container(
-        color: colorScheme.surface,
-        child: widget.child,
-      );
+      return Container(color: colorScheme.surface, child: widget.child);
     }
 
     // 正常窗口：8px 边距区域可拖动移动窗口

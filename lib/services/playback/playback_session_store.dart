@@ -2,8 +2,9 @@ import 'dart:convert';
 
 import '../persistent_storage_service.dart';
 import 'playback_session_snapshot.dart';
+import 'playback_session_persistence.dart';
 
-class PlaybackSessionStore {
+class PlaybackSessionStore implements PlaybackSessionPersistence {
   PlaybackSessionStore._internal();
 
   static final PlaybackSessionStore _instance =
@@ -12,6 +13,7 @@ class PlaybackSessionStore {
 
   static const String _sessionKey = 'playback_session_snapshot_v1';
 
+  @override
   Future<void> saveSnapshot(PlaybackSessionSnapshot snapshot) async {
     await _ensureStorageReady();
     await PersistentStorageService().setString(
@@ -20,6 +22,7 @@ class PlaybackSessionStore {
     );
   }
 
+  @override
   Future<PlaybackSessionSnapshot?> loadSnapshot() async {
     await _ensureStorageReady();
     final raw = PersistentStorageService().getString(_sessionKey);
@@ -45,6 +48,7 @@ class PlaybackSessionStore {
     }
   }
 
+  @override
   Future<void> clear() async {
     await _ensureStorageReady();
     await PersistentStorageService().remove(_sessionKey);

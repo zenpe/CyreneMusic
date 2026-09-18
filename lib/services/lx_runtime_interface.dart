@@ -1,10 +1,34 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+
+enum LxRuntimeFailureKind { notReady, timeout, scriptRejected, requestFailed }
+
+class LxRuntimeFailure {
+  final LxRuntimeFailureKind kind;
+  final String message;
+
+  const LxRuntimeFailure({required this.kind, required this.message});
+}
+
+LxRuntimeFailure classifyLxRuntimeFailure(Object error) {
+  final message = error.toString();
+  final kind = error is TimeoutException
+      ? LxRuntimeFailureKind.timeout
+      : message.contains('完整性验证失败')
+      ? LxRuntimeFailureKind.scriptRejected
+      : message.contains('未就绪') || message.contains('无法初始化')
+      ? LxRuntimeFailureKind.notReady
+      : LxRuntimeFailureKind.requestFailed;
+  return LxRuntimeFailure(kind: kind, message: message);
+}
 
 abstract class LxRuntime {
   bool get isInitialized;
   bool get isScriptReady;
   bool get isAvailable;
   LxScriptInfo? get currentScript;
+  LxRuntimeFailure? get lastFailure;
 
   Future<void> initialize();
   Future<LxScriptInfo?> loadScript(String scriptContent);

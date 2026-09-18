@@ -8,7 +8,8 @@ import '../../services/lyric_font_service.dart';
 import '../../services/playback_mode_service.dart';
 import '../../models/lyric_line.dart';
 import '../../models/track.dart';
-import 'player_fluid_cloud_background.dart';
+import 'player_immersive_backdrop.dart';
+import 'player_immersive_playback_button.dart';
 import 'player_window_controls.dart';
 import 'player_dialogs.dart';
 
@@ -27,6 +28,8 @@ class PlayerImmersiveLayout extends StatelessWidget {
   final VoidCallback? onTranslationToggle;
   final VoidCallback? onMorePressed;
   final double uiScale;
+  final bool carMode;
+  final bool reducedEffects;
 
   const PlayerImmersiveLayout({
     super.key,
@@ -42,6 +45,8 @@ class PlayerImmersiveLayout extends StatelessWidget {
     this.onTranslationToggle,
     this.onMorePressed,
     this.uiScale = 1.0,
+    this.carMode = false,
+    this.reducedEffects = false,
   });
 
   @override
@@ -49,82 +54,81 @@ class PlayerImmersiveLayout extends StatelessWidget {
     final player = PlayerService();
     final track = player.currentTrack;
 
-    return Stack(
-      children: [
-        // 1. 背景
-        const Positioned.fill(child: PlayerFluidCloudBackground()),
-        
-        // 2. 模糊遮罩
-        Positioned.fill(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-            child: Container(
-              color: Colors.black.withOpacity(0.3),
+    return IconButtonTheme(
+      data: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          minimumSize: Size.square(carMode ? 56 : 48),
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: PlayerImmersiveBackdrop(reducedEffects: reducedEffects),
+          ),
+
+          // 3. 顶部控件
+          SafeArea(
+            child: uiScale < 1.0
+                ? _buildMobileTopBar()
+                : PlayerWindowControls(
+                    isMaximized: isMaximized,
+                    onBackPressed: onBackPressed,
+                    onSleepTimerPressed: onSleepTimerPressed,
+                    showTranslationButton: true,
+                    showTranslation: showTranslation,
+                    onTranslationToggle: onTranslationToggle,
+                    currentTrack: track,
+                    currentSong: player.currentSong,
+                    isLyricsActive: true,
+                  ),
+          ),
+
+          // 4. 内容区域
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: 60 * uiScale,
+              vertical: 40 * uiScale,
+            ),
+            child: Stack(
+              children: [
+                // 居中单行歌词
+                Center(
+                  child: PlayerImmersiveLyricsPanel(
+                    lyrics: lyrics,
+                    currentLyricIndex: currentLyricIndex,
+                    showTranslation: showTranslation,
+                    lyricState: lyricState,
+                    uiScale: uiScale,
+                    reducedEffects: reducedEffects,
+                  ),
+                ),
+
+                // 左下角：歌曲信息 (放大)
+                Positioned(
+                  left: 0,
+                  bottom: 0,
+                  child: _buildSongInfo(context, track),
+                ),
+
+                // 右下角：控制按钮
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: _buildControls(context, player),
+                ),
+              ],
             ),
           ),
-        ),
-
-        // 3. 顶部控件
-        SafeArea(
-          child: uiScale < 1.0 
-            ? _buildMobileTopBar()
-            : PlayerWindowControls(
-                isMaximized: isMaximized,
-                onBackPressed: onBackPressed,
-                onSleepTimerPressed: onSleepTimerPressed,
-                showTranslationButton: true,
-                showTranslation: showTranslation,
-                onTranslationToggle: onTranslationToggle,
-                currentTrack: track,
-                currentSong: player.currentSong,
-                isLyricsActive: true,
-              ),
-        ),
-
-        // 4. 内容区域
-        Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: 60 * uiScale, 
-            vertical: 40 * uiScale
-          ),
-          child: Stack(
-            children: [
-              // 居中单行歌词
-              Center(
-                child: PlayerImmersiveLyricsPanel(
-                  lyrics: lyrics,
-                  currentLyricIndex: currentLyricIndex,
-                  showTranslation: showTranslation,
-                  lyricState: lyricState,
-                  uiScale: uiScale,
-                ),
-              ),
-
-              // 左下角：歌曲信息 (放大)
-              Positioned(
-                left: 0,
-                bottom: 0,
-                child: _buildSongInfo(context, track),
-              ),
-
-              // 右下角：控制按钮
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: _buildControls(context, player),
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildMobileTopBar() {
     return Padding(
       padding: EdgeInsets.symmetric(
-        horizontal: 16 * uiScale, 
-        vertical: 8 * uiScale
+        horizontal: 16 * uiScale,
+        vertical: 8 * uiScale,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -172,7 +176,9 @@ class PlayerImmersiveLayout extends StatelessWidget {
           ),
           clipBehavior: Clip.antiAlias,
           child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 600),
+            duration: reducedEffects
+                ? Duration.zero
+                : const Duration(milliseconds: 600),
             switchInCurve: Curves.easeOut,
             switchOutCurve: Curves.easeIn,
             transitionBuilder: (Widget child, Animation<double> animation) {
@@ -181,14 +187,20 @@ class PlayerImmersiveLayout extends StatelessWidget {
             child: imageUrl.isNotEmpty
                 ? Image(
                     key: ValueKey(imageUrl),
-                    image: coverProvider ?? NetworkImage(imageUrl) as ImageProvider,
+                    image:
+                        coverProvider ??
+                        NetworkImage(imageUrl) as ImageProvider,
                     fit: BoxFit.cover,
                     width: 200 * uiScale,
                     height: 200 * uiScale,
                   )
                 : Container(
                     color: Colors.grey[900],
-                    child: Icon(Icons.music_note, color: Colors.white54, size: 80 * uiScale),
+                    child: Icon(
+                      Icons.music_note,
+                      color: Colors.white54,
+                      size: 80 * uiScale,
+                    ),
                   ),
           ),
         ),
@@ -241,7 +253,10 @@ class PlayerImmersiveLayout extends StatelessWidget {
             SizedBox(width: 8 * uiScale),
             // 喜欢按钮
             if (player.currentTrack != null)
-              _ImmersiveFavoriteButton(track: player.currentTrack!, uiScale: uiScale),
+              _ImmersiveFavoriteButton(
+                track: player.currentTrack!,
+                uiScale: uiScale,
+              ),
             SizedBox(width: 16 * uiScale),
             // 上一首
             IconButton(
@@ -251,26 +266,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
               onPressed: player.hasPrevious ? player.playPrevious : null,
             ),
             SizedBox(width: 16 * uiScale),
-            // 播放/暂停
-            AnimatedBuilder(
-              animation: player,
-              builder: (context, _) {
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    icon: Icon(
-                      player.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
-                      color: Colors.white,
-                    ),
-                    iconSize: 48 * uiScale,
-                    onPressed: player.togglePlayPause,
-                  ),
-                );
-              },
-            ),
+            PlayerImmersivePlaybackButton(uiScale: uiScale),
             SizedBox(width: 16 * uiScale),
             // 下一首
             IconButton(
@@ -354,16 +350,16 @@ class PlayerImmersiveLayout extends StatelessWidget {
         return InkWell(
           onTap: () {
             // 在流体云和沉浸样式之间切换
-            final nextStyle = currentStyle == LyricStyle.immersive 
-                ? LyricStyle.fluidCloud 
+            final nextStyle = currentStyle == LyricStyle.immersive
+                ? LyricStyle.fluidCloud
                 : LyricStyle.immersive;
             LyricStyleService().setStyle(nextStyle);
           },
           borderRadius: BorderRadius.circular(20 * uiScale),
           child: Container(
             padding: EdgeInsets.symmetric(
-              horizontal: 16 * uiScale, 
-              vertical: 8 * uiScale
+              horizontal: 16 * uiScale,
+              vertical: 8 * uiScale,
             ),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.1),
@@ -373,7 +369,11 @@ class PlayerImmersiveLayout extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.style_rounded, color: Colors.white, size: 16 * uiScale),
+                Icon(
+                  Icons.style_rounded,
+                  color: Colors.white,
+                  size: 16 * uiScale,
+                ),
                 SizedBox(width: 8 * uiScale),
                 Text(
                   currentStyle == LyricStyle.immersive ? '沉浸样式' : '流体云样式',
@@ -399,6 +399,7 @@ class PlayerImmersiveLyricsPanel extends StatefulWidget {
   final bool showTranslation;
   final LyricLoadState lyricState;
   final double uiScale;
+  final bool reducedEffects;
 
   const PlayerImmersiveLyricsPanel({
     super.key,
@@ -407,19 +408,22 @@ class PlayerImmersiveLyricsPanel extends StatefulWidget {
     required this.showTranslation,
     required this.lyricState,
     this.uiScale = 1.0,
+    this.reducedEffects = false,
   });
 
   @override
-  State<PlayerImmersiveLyricsPanel> createState() => _PlayerImmersiveLyricsPanelState();
+  State<PlayerImmersiveLyricsPanel> createState() =>
+      _PlayerImmersiveLyricsPanelState();
 }
 
-class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel> with SingleTickerProviderStateMixin {
+class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  
+
   // 数据快照
   LyricLine? _incomingLine;
   LyricLine? _outgoingLine;
-  
+
   // 动画曲线
   static const Curve _curve = Cubic(0.44, 0.05, 0.55, 0.95);
 
@@ -430,7 +434,7 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    
+
     // 初始化当前行
     _updateIncomingLine(false);
     _controller.value = 1.0; // 初始状态直接显示
@@ -439,13 +443,18 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
   @override
   void didUpdateWidget(PlayerImmersiveLyricsPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
+
     //只在歌词索引变化时触发切换动画
     if (widget.currentLyricIndex != oldWidget.currentLyricIndex) {
       _outgoingLine = _incomingLine;
       _updateIncomingLine(true);
-      _controller.forward(from: 0.0);
-    } 
+      if (widget.reducedEffects) {
+        _outgoingLine = null;
+        _controller.value = 1.0;
+      } else {
+        _controller.forward(from: 0.0);
+      }
+    }
     // 如果仅仅是 showTranslation 变化或 lyrics 内容刷新但索引没变（如修正时间），
     // 更新 incomingLine 但不触发动画，或者根据需求...
     // 这里简单起见，且为了响应翻译切换，我们实时从 build 中读取配置，
@@ -455,14 +464,14 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
     // 实际上 LyricLine 对象本身包含了 text 和 translation。
     // showTranslation 是外部传入的开关。
     else if (widget.showTranslation != oldWidget.showTranslation) {
-        // 配置变化，强制刷新当前行引用（虽然不用动画）
-        _updateIncomingLine(false);
+      // 配置变化，强制刷新当前行引用（虽然不用动画）
+      _updateIncomingLine(false);
     }
   }
-  
+
   void _updateIncomingLine(bool animate) {
-    if (widget.lyrics.isNotEmpty && 
-        widget.currentLyricIndex >= 0 && 
+    if (widget.lyrics.isNotEmpty &&
+        widget.currentLyricIndex >= 0 &&
         widget.currentLyricIndex < widget.lyrics.length) {
       _incomingLine = widget.lyrics[widget.currentLyricIndex];
     } else {
@@ -487,7 +496,8 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
     }
 
     // 字体服务
-    final fontFamily = LyricFontService().currentFontFamily ?? 'Microsoft YaHei';
+    final fontFamily =
+        LyricFontService().currentFontFamily ?? 'Microsoft YaHei';
 
     return AnimatedBuilder(
       animation: _controller,
@@ -501,7 +511,7 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
             // 弹出动画：向上飞出 + 放大 + 渐隐 (Splash Out)
             if (_outgoingLine != null && _controller.value < 1.0)
               _buildOutgoingLine(_outgoingLine!, fontFamily, t),
-              
+
             // Incoming Line (Enter animation)
             // 屏幕两侧将中间聚集
             if (_incomingLine != null)
@@ -545,7 +555,9 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
                   style: _buildTextStyle(fontFamily, 64 * widget.uiScale),
                 ),
               ),
-              if (widget.showTranslation && line.translation != null && line.translation!.isNotEmpty)
+              if (widget.showTranslation &&
+                  line.translation != null &&
+                  line.translation!.isNotEmpty)
                 Padding(
                   padding: EdgeInsets.only(top: 24 * widget.uiScale),
                   child: FittedBox(
@@ -555,7 +567,11 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: _buildTextStyle(fontFamily, 32 * widget.uiScale, isTranslation: true),
+                      style: _buildTextStyle(
+                        fontFamily,
+                        32 * widget.uiScale,
+                        isTranslation: true,
+                      ),
                     ),
                   ),
                 ),
@@ -599,7 +615,9 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
                   style: _buildTextStyle(fontFamily, 64 * widget.uiScale),
                 ),
               ),
-              if (widget.showTranslation && line.translation != null && line.translation!.isNotEmpty)
+              if (widget.showTranslation &&
+                  line.translation != null &&
+                  line.translation!.isNotEmpty)
                 Padding(
                   padding: EdgeInsets.only(top: 24 * widget.uiScale),
                   child: FittedBox(
@@ -609,7 +627,11 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: _buildTextStyle(fontFamily, 32 * widget.uiScale, isTranslation: true),
+                      style: _buildTextStyle(
+                        fontFamily,
+                        32 * widget.uiScale,
+                        isTranslation: true,
+                      ),
                     ),
                   ),
                 ),
@@ -620,7 +642,11 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
     );
   }
 
-  TextStyle _buildTextStyle(String fontFamily, double size, {bool isTranslation = false}) {
+  TextStyle _buildTextStyle(
+    String fontFamily,
+    double size, {
+    bool isTranslation = false,
+  }) {
     return TextStyle(
       fontSize: size,
       fontWeight: isTranslation ? FontWeight.w600 : FontWeight.w900,
@@ -644,7 +670,8 @@ class _ImmersiveFavoriteButton extends StatefulWidget {
   const _ImmersiveFavoriteButton({required this.track, this.uiScale = 1.0});
 
   @override
-  State<_ImmersiveFavoriteButton> createState() => _ImmersiveFavoriteButtonState();
+  State<_ImmersiveFavoriteButton> createState() =>
+      _ImmersiveFavoriteButtonState();
 }
 
 class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
@@ -663,7 +690,7 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
   void didUpdateWidget(_ImmersiveFavoriteButton oldWidget) {
     super.didUpdateWidget(oldWidget);
     // 当歌曲变化时重新检查
-    if (oldWidget.track.id != widget.track.id || 
+    if (oldWidget.track.id != widget.track.id ||
         oldWidget.track.source != widget.track.source) {
       _checkIfInPlaylist();
     }
@@ -671,12 +698,12 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
 
   Future<void> _checkIfInPlaylist() async {
     setState(() => _isLoading = true);
-    
+
     final playlistService = PlaylistService();
-    
+
     // 调用后端 API 检查歌曲是否在任何歌单中
     final result = await playlistService.isTrackInAnyPlaylist(widget.track);
-    
+
     if (mounted) {
       setState(() {
         _isInPlaylist = result.inPlaylist;
@@ -689,9 +716,9 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
 
   Future<void> _removeFromPlaylists() async {
     if (_playlistIds.isEmpty) return;
-    
+
     final playlistService = PlaylistService();
-    
+
     for (final playlistId in _playlistIds) {
       await playlistService.removeTrackFromPlaylist(
         playlistId,
@@ -699,14 +726,15 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
         widget.track.source.name,
       );
     }
-    
+
     // 刷新状态
     _checkIfInPlaylist();
   }
 
   void _showManageMenu(BuildContext context, Offset position) {
-    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+
     showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
@@ -721,7 +749,10 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
           enabled: false,
           child: Text(
             '已收藏到: ${_playlistNames.join(", ")}',
-            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.6),
+              fontSize: 12,
+            ),
           ),
         ),
         const PopupMenuDivider(),
@@ -729,7 +760,11 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
           value: 'remove',
           child: Row(
             children: [
-              Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 18),
+              Icon(
+                Icons.remove_circle_outline,
+                color: Colors.redAccent,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               const Text('从所有歌单移除', style: TextStyle(color: Colors.white)),
             ],
@@ -775,8 +810,8 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
       );
     }
 
-    final tooltip = _isInPlaylist 
-        ? '已收藏到: ${_playlistNames.join(", ")}' 
+    final tooltip = _isInPlaylist
+        ? '已收藏到: ${_playlistNames.join(", ")}'
         : '添加到歌单';
 
     return GestureDetector(
@@ -785,8 +820,11 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
           _showManageMenu(context, details.globalPosition);
         } else {
           PlayerDialogs.showAddToPlaylist(context, widget.track).then((_) {
-             // 简单处理：延迟一点刷新，确保添加完成
-             Future.delayed(const Duration(milliseconds: 500), _checkIfInPlaylist);
+            // 简单处理：延迟一点刷新，确保添加完成
+            Future.delayed(
+              const Duration(milliseconds: 500),
+              _checkIfInPlaylist,
+            );
           });
         }
       },
@@ -799,7 +837,9 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
           color: Colors.transparent, // 增加热区
           child: Icon(
             _isInPlaylist ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
-            color: _isInPlaylist ? Colors.redAccent : Colors.white.withOpacity(0.9),
+            color: _isInPlaylist
+                ? Colors.redAccent
+                : Colors.white.withOpacity(0.9),
             size: 32 * widget.uiScale,
           ),
         ),

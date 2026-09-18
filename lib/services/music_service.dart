@@ -11,6 +11,7 @@ import 'developer_mode_service.dart';
 import 'audio_quality_service.dart';
 import 'auth_service.dart';
 import 'lx_music_runtime_service.dart';
+import 'lx_runtime_interface.dart';
 import 'navidrome_session_service.dart';
 
 /// 音乐服务 - 处理与音乐相关的API请求
@@ -30,6 +31,8 @@ class MusicService extends ChangeNotifier {
   /// 错误信息
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
+  LxRuntimeFailure? _lastLxFailure;
+  LxRuntimeFailure? get lastLxFailure => _lastLxFailure;
 
   /// 数据是否已缓存（是否已成功加载过）
   bool _isCached = false;
@@ -178,6 +181,7 @@ class MusicService extends ChangeNotifier {
     String? title,
     String? artist,
     bool fetchLyrics = true,
+    void Function(LxRuntimeFailure? failure)? onLxFailure,
   }) async {
     try {
       print(
@@ -259,6 +263,7 @@ class MusicService extends ChangeNotifier {
           source: source,
           audioSourceService: audioSourceService,
           fetchLyrics: fetchLyrics,
+          onFailure: onLxFailure,
         );
       }
 
@@ -881,7 +886,10 @@ class MusicService extends ChangeNotifier {
     required MusicSource source,
     required AudioSourceService audioSourceService,
     required bool fetchLyrics,
+    void Function(LxRuntimeFailure? failure)? onFailure,
   }) async {
+    _lastLxFailure = null;
+    onFailure?.call(null);
     print('🎵 [MusicService] 使用洛雪音源获取歌曲: $songId');
     DeveloperModeService().addLog('🎵 [MusicService] 使用洛雪音源');
 
@@ -938,12 +946,17 @@ class MusicService extends ChangeNotifier {
       );
 
       if (audioUrl == null || audioUrl.isEmpty) {
+        _lastLxFailure = runtime.lastFailure;
+        onFailure?.call(_lastLxFailure);
+        _errorMessage = _lastLxFailure?.message ?? '洛雪音源返回空 URL';
         print('❌ [MusicService] 洛雪音源返回空 URL');
         DeveloperModeService().addLog('❌ [MusicService] 返回空 URL');
         return null;
       }
 
       print('✅ [MusicService] 洛雪音源获取成功');
+      _lastLxFailure = null;
+      onFailure?.call(null);
       print(
         '   🔗 URL: ${audioUrl.length > 50 ? "${audioUrl.substring(0, 50)}..." : audioUrl}',
       );
@@ -999,6 +1012,9 @@ class MusicService extends ChangeNotifier {
       );
     } catch (e) {
       if (e is UnsupportedError) rethrow;
+      _lastLxFailure =
+          LxMusicRuntimeService().lastFailure ?? classifyLxRuntimeFailure(e);
+      onFailure?.call(_lastLxFailure);
       print('❌ [MusicService] 洛雪音源异常: $e');
       DeveloperModeService().addLog('❌ [MusicService] 异常: $e');
       return null;

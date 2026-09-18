@@ -12,6 +12,7 @@ class LxMusicRuntimeService {
   bool get isInitialized => _runtime.isInitialized;
   bool get isScriptReady => _runtime.isScriptReady;
   LxScriptInfo? get currentScript => _runtime.currentScript;
+  LxRuntimeFailure? get lastFailure => _runtime.lastFailure;
 
   Future<void> initialize() => _runtime.initialize();
 

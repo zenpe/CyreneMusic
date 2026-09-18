@@ -15,7 +15,6 @@ import '../../models/song_detail.dart';
 import '../../models/lyric_line.dart';
 import '../../utils/lyric_parser.dart';
 import '../../utils/toast_utils.dart';
-import '../../utils/metadata_reader.dart';
 import '../../utils/image_utils.dart';
 import '../../utils/audio_request_headers.dart';
 import '../music_service.dart';
@@ -24,28 +23,34 @@ import '../cache_service.dart';
 import '../proxy_service.dart';
 import '../play_history_service.dart';
 import '../playback_mode_service.dart';
-import '../playlist_queue_service.dart';
 import '../audio_quality_service.dart';
 import '../developer_mode_service.dart';
-import '../listening_stats_service.dart';
 import '../desktop_lyric_service.dart';
 import '../android_floating_lyric_service.dart';
 import '../player_background_service.dart';
-import '../local_library_service.dart';
 import '../url_service.dart';
 import '../notification_service.dart';
 import '../persistent_storage_service.dart';
 import '../equalizer_service.dart';
 import '../lyric/lyric_service.dart';
 import '../lyric/lyric_snapshot.dart';
+import '../lx_runtime_interface.dart';
+import '../structured_log_service.dart';
 
 import 'command_queue.dart';
 import 'audio_engine.dart';
 import 'cover_manager.dart';
 import 'cyrene_stream_source.dart';
 import 'playback_session_snapshot.dart';
-import 'playback_session_store.dart';
+import 'playback_session_manager.dart';
+import 'playback_problem.dart';
+import 'playback_failure_policy.dart';
+import 'playback_transaction.dart';
+import 'playback_history_recorder.dart';
+import 'queue_controller.dart';
 import 'playable_source.dart';
+import 'source_health_tracker.dart';
+import 'track_resolver.dart';
 
 /// 播放状态枚举（复用 PlayerService 的定义）
 enum PBState { idle, loading, playing, paused, error }
@@ -62,40 +67,6 @@ class _PrefetchedPlayablePlanEntry {
   bool get isExpired => DateTime.now().isAfter(expiresAt);
 }
 
-enum _SongDetailRequestState { running, completed, failed, expired }
-
-class _SongDetailRequestEntry {
-  final String key;
-  final DateTime startedAt;
-  final DateTime hardDeadline;
-  final Future<SongDetail?> future;
-  _SongDetailRequestState state;
-
-  _SongDetailRequestEntry({
-    required this.key,
-    required this.startedAt,
-    required this.hardDeadline,
-    required this.future,
-    this.state = _SongDetailRequestState.running,
-  });
-
-  bool get isReusable =>
-      state == _SongDetailRequestState.running &&
-      DateTime.now().isBefore(hardDeadline);
-
-  void markCompleted() {
-    state = _SongDetailRequestState.completed;
-  }
-
-  void markFailed() {
-    state = _SongDetailRequestState.failed;
-  }
-
-  void markExpired() {
-    state = _SongDetailRequestState.expired;
-  }
-}
-
 class TrackSwitchTransaction {
   final int token;
   final int pendingToken;
@@ -104,6 +75,8 @@ class TrackSwitchTransaction {
   final String requestedKey;
   final AudioQuality selectedQuality;
   final String qualityStr;
+  final PlaybackRequestIntent intent;
+  final bool forceRemoteResolution;
 
   const TrackSwitchTransaction({
     required this.token,
@@ -113,18 +86,8 @@ class TrackSwitchTransaction {
     required this.requestedKey,
     required this.selectedQuality,
     required this.qualityStr,
-  });
-}
-
-class PlaybackFailure {
-  final Track track;
-  final String message;
-  final bool canRetry;
-
-  const PlaybackFailure({
-    required this.track,
-    required this.message,
-    this.canRetry = true,
+    required this.intent,
+    this.forceRemoteResolution = false,
   });
 }
 
@@ -168,9 +131,10 @@ class _TrackSwitchPlaybackPlan {
   });
 }
 
-/// 核心播放服务
+/// 播放协调器及兼容服务
 ///
-/// 统一管理队列状态（原 PlaylistQueueService）和播放控制（原 PlayerService）。
+/// 保留原有公共 API，具体领域状态委托给 QueueController、TrackResolver、
+/// PlaybackHistoryRecorder 和 PlaybackSessionManager。
 /// 主播放器展示态与队列指针解耦：
 /// `currentTrack/currentSong/display*` 只读取 active*，
 /// `_currentIndex` 只表示队列当前指针，pending* 表示待切换目标。
@@ -181,16 +145,11 @@ class PlaybackService extends ChangeNotifier {
   // ══════════════════════════════════════════════════════
   // 队列状态（原 PlaylistQueueService）
   // ══════════════════════════════════════════════════════
-  final List<Track> _queue = [];
-  int _currentIndex = -1;
-  QueueSource _source = QueueSource.none;
-  Map<String, ImageProvider> _coverProviders = {};
+  final QueueController _queueController = QueueController();
+  List<Track> get _queue => _queueController.tracks;
+  int get _currentIndex => _queueController.currentIndex;
+  QueueSource get _source => _queueController.source;
 
-  // ══════════════════════════════════════════════════════
-  // 随机播放（原 PlaylistQueueService shuffle）
-  // ══════════════════════════════════════════════════════
-  List<int> _shuffledIndices = [];
-  int _shufflePosition = -1;
   final Random _random = Random();
 
   // ══════════════════════════════════════════════════════
@@ -209,11 +168,11 @@ class PlaybackService extends ChangeNotifier {
   SongDetail? _activeSong;
   int _activePlaybackToken = 0;
   Track? _pendingTrack;
+  PlaybackRequestIntent? _pendingIntent;
+  PlaybackRequestIntent _activeIntent = PlaybackRequestIntent.manual;
   int _pendingSwitchToken = 0;
   String? _pendingReason;
-  int _playGeneration = 0;
   int _consecutiveErrors = 0;
-  static const int _maxConsecutiveErrors = 3;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   Duration _bufferedPosition = Duration.zero;
@@ -221,10 +180,13 @@ class PlaybackService extends ChangeNotifier {
   String? _currentTempFilePath;
   CyreneFileInfo? _currentCachedStreamInfo;
   final Set<String> _cacheBypassKeys = <String>{};
-  int? _recordedPlaybackToken;
-  int? _reportedFailureToken;
-  final Map<String, _SongDetailRequestEntry> _pendingSongDetailRequests =
-      <String, _SongDetailRequestEntry>{};
+  final PlaybackProblemStore _problemStore = PlaybackProblemStore();
+  final PlaybackFailurePolicy _failurePolicy = const PlaybackFailurePolicy();
+  final PlaybackTransactionGuard _transactionGuard = PlaybackTransactionGuard();
+  final PlaybackHistoryRecorder _historyRecorder = PlaybackHistoryRecorder();
+  late final PlaybackSessionManager _sessionManager;
+  final SourceHealthTracker _sourceHealthTracker = SourceHealthTracker();
+  final TrackResolver _trackResolver = TrackResolver();
   double _volume = 0.7;
   double _playbackSpeed = 1.0;
   bool _isAudioSourceNotConfigured = false;
@@ -234,6 +196,7 @@ class PlaybackService extends ChangeNotifier {
   int _preloadOp = 0;
   final Map<String, _PrefetchedPlayablePlanEntry> _prefetchedPlayablePlans = {};
   Timer? _preloadTriggerTimer;
+  Timer? _autoSkipTimer;
   bool _preloadDependencyListenersBound = false;
 
   static const int _switchFadeSteps = 8;
@@ -244,7 +207,6 @@ class PlaybackService extends ChangeNotifier {
   static const Duration _playSongDetailTimeout = Duration(seconds: 12);
   static const Duration _preloadSongDetailTimeout = Duration(seconds: 8);
   static const Duration _lyricSongDetailTimeout = Duration(seconds: 6);
-  static const Duration _songDetailRequestHardTimeout = Duration(seconds: 18);
   static const int _maxPrefetchedPlayableDetails = 4;
   static const int _maxCacheBypassKeys = 64;
 
@@ -253,14 +215,11 @@ class PlaybackService extends ChangeNotifier {
   final ValueNotifier<Duration> bufferedPositionNotifier = ValueNotifier(
     Duration.zero,
   );
-
-  // 听歌统计
-  Timer? _statsTimer;
-  DateTime? _playStartTime;
+  final ValueNotifier<PlaybackProblem?> problemNotifier = ValueNotifier(null);
+  final ValueNotifier<SourceHealthSnapshot?> sourceHealthNotifier =
+      ValueNotifier(null);
 
   // 播放状态保存
-  Timer? _stateSaveTimer;
-  Timer? _sessionPersistDebounce;
   Duration? _pendingRestorePosition;
   bool _hasRestoredSessionOnStartup = false;
 
@@ -271,7 +230,7 @@ class PlaybackService extends ChangeNotifier {
 
   // 音源配置回调
   void Function()? onAudioSourceNotConfigured;
-  void Function(PlaybackFailure failure)? onPlaybackFailure;
+  void Function(PlaybackProblem problem)? onPlaybackFailure;
 
   // ══════════════════════════════════════════════════════
   // 派生属性
@@ -286,10 +245,10 @@ class PlaybackService extends ChangeNotifier {
 
   Track? get currentTrack => _activeTrack;
 
-  List<Track> get queue => List.unmodifiable(_queue);
-  int get currentIndex => _currentIndex;
-  QueueSource get source => _source;
-  bool get hasQueue => _queue.isNotEmpty;
+  List<Track> get queue => _queueController.tracks;
+  int get currentIndex => _queueController.currentIndex;
+  QueueSource get source => _queueController.source;
+  bool get hasQueue => _queueController.isNotEmpty;
   bool get isPlaying => _state == PBState.playing;
   bool get isPaused => _state == PBState.paused;
   bool get isLoading => _state == PBState.loading;
@@ -359,17 +318,27 @@ class PlaybackService extends ChangeNotifier {
   Duration get position => _position;
   Duration get bufferedPosition => _bufferedPosition;
   String? get errorMessage => _errorMessage;
+  PlaybackProblem? get currentProblem => problemNotifier.value;
+  bool isCurrentPlaybackProblem(PlaybackProblem problem) {
+    final current = _problemStore.current;
+    return current?.id == problem.id &&
+        current?.transactionId == problem.transactionId &&
+        _playGeneration == problem.transactionId;
+  }
+
+  SourceHealthSnapshot? get sourceHealth => sourceHealthNotifier.value;
+  int get _playGeneration => _transactionGuard.currentToken;
   double get volume => _volume;
   double get playbackSpeed => _playbackSpeed;
   bool get isAudioSourceNotConfigured => _isAudioSourceNotConfigured;
 
   bool get hasNext {
-    if (_queue.isNotEmpty) return _currentIndex < _queue.length - 1;
+    if (_queueController.isNotEmpty) return _queueController.hasNext;
     return PlayHistoryService().history.length >= 2;
   }
 
   bool get hasPrevious {
-    if (_queue.isNotEmpty) return _currentIndex > 0;
+    if (_queueController.isNotEmpty) return _queueController.hasPrevious;
     return PlayHistoryService().history.length >= 3;
   }
 
@@ -387,6 +356,9 @@ class PlaybackService extends ChangeNotifier {
   // 初始化
   // ══════════════════════════════════════════════════════
   PlaybackService._internal() {
+    _sessionManager = PlaybackSessionManager(
+      snapshotBuilder: _buildSessionSnapshot,
+    );
     _engine = createEngine();
 
     // 监听引擎状态
@@ -398,6 +370,8 @@ class PlaybackService extends ChangeNotifier {
     );
     _engineSubs.add(_engine.completionStream.listen(_onCompletion));
     _engineSubs.add(_engine.errorStream.listen(_onEngineError));
+    AudioSourceService().addListener(_syncActiveSourceHealth);
+    _syncActiveSourceHealth();
   }
 
   Future<void> initialize() async {
@@ -447,7 +421,7 @@ class PlaybackService extends ChangeNotifier {
     _hasRestoredSessionOnStartup = true;
 
     try {
-      final snapshot = await PlaybackSessionStore().loadSnapshot();
+      final snapshot = await _sessionManager.load();
       if (snapshot == null || !snapshot.isValid) return false;
 
       await _restoreFromSnapshot(
@@ -510,6 +484,7 @@ class PlaybackService extends ChangeNotifier {
         snapshot.queue,
         snapshot.currentIndex,
         snapshot.source,
+        intent: PlaybackRequestIntent.restore,
         autoPlay: !shouldStageStartupAutoPlay,
         initialPosition: restorePosition,
         preload: !shouldStageStartupAutoPlay,
@@ -529,12 +504,11 @@ class PlaybackService extends ChangeNotifier {
     }
 
     _resetPreloadState();
-    _queue
-      ..clear()
-      ..addAll(snapshot.queue);
-    _currentIndex = snapshot.currentIndex.clamp(0, snapshot.queue.length - 1);
-    _source = snapshot.source;
-    _coverProviders.clear();
+    _queueController.replace(
+      snapshot.queue,
+      snapshot.currentIndex,
+      snapshot.source,
+    );
     _state = PBState.idle;
     _activeTrack = _trackAtQueuePointer();
     _activeSong = null;
@@ -566,10 +540,12 @@ class PlaybackService extends ChangeNotifier {
   void _onEngineStateChanged(EngineState s) {
     switch (s) {
       case EngineState.playing:
+        _cancelAutoSkipTimer();
         _state = PBState.playing;
         _consecutiveErrors = 0;
         _retriedTrackKey = null;
         _errorMessage = null;
+        _clearPlaybackProblem();
         _startListeningTimeTracking();
         _startStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(true);
@@ -623,6 +599,7 @@ class PlaybackService extends ChangeNotifier {
   void _onEngineError(EngineError error) {
     final track = _pendingTrack ?? currentTrack;
     if (track == null || _state == PBState.error) return;
+    final failureIntent = _pendingIntent ?? _activeIntent;
 
     final trackKey = _buildTrackIdentity(track);
     final cacheQuality = _currentCachedStreamInfo?.metadata.quality;
@@ -652,7 +629,10 @@ class PlaybackService extends ChangeNotifier {
             );
             _currentCachedStreamInfo = null;
           }
-          await _playCurrentTrack(reason: 'engine-retry');
+          await _playCurrentTrack(
+            reason: 'engine-retry',
+            intent: failureIntent,
+          );
         }),
       );
       return;
@@ -665,31 +645,178 @@ class PlaybackService extends ChangeNotifier {
     _reportPlaybackFailure(
       track,
       _errorMessage!,
-      canRetry: error.type != EngineErrorType.unsupportedFormat,
+      kind: _problemKindForEngineError(error),
+      recoveryActions: error.type == EngineErrorType.unsupportedFormat
+          ? const {}
+          : const {PlaybackRecoveryAction.retry},
     );
-    _autoSkipOnError();
+    _autoSkipOnError(failureIntent);
   }
 
   void _reportPlaybackFailure(
     Track track,
     String message, {
-    bool canRetry = true,
+    PlaybackProblemKind kind = PlaybackProblemKind.unknown,
+    Set<PlaybackRecoveryAction> recoveryActions = const {
+      PlaybackRecoveryAction.retry,
+    },
+    bool emitEffect = true,
   }) {
-    if (_reportedFailureToken == _playGeneration) return;
-    _reportedFailureToken = _playGeneration;
-    onPlaybackFailure?.call(
-      PlaybackFailure(track: track, message: message, canRetry: canRetry),
+    final problem = _problemStore.report(
+      transactionId: _playGeneration,
+      track: track,
+      kind: kind,
+      message: message,
+      recoveryActions: recoveryActions,
     );
+    if (problem == null) return;
+    problemNotifier.value = problem;
+    if (emitEffect) {
+      onPlaybackFailure?.call(problem);
+    }
+  }
+
+  void _clearPlaybackProblem() {
+    if (_problemStore.clear()) {
+      problemNotifier.value = null;
+    }
+  }
+
+  PlaybackProblemKind _problemKindForEngineError(EngineError error) {
+    switch (error.type) {
+      case EngineErrorType.unsupportedFormat:
+        return PlaybackProblemKind.unsupportedFormat;
+      case EngineErrorType.accessDenied:
+        return PlaybackProblemKind.accessDenied;
+      case EngineErrorType.networkTimeout:
+        return PlaybackProblemKind.networkTimeout;
+      case EngineErrorType.sourceLoad:
+      case EngineErrorType.playback:
+        return PlaybackProblemKind.engineFailure;
+      case EngineErrorType.unknown:
+        return PlaybackProblemKind.unknown;
+    }
+  }
+
+  PlaybackProblemKind _problemKindForResolutionFailure(
+    LxRuntimeFailure? failure,
+  ) {
+    switch (failure?.kind) {
+      case LxRuntimeFailureKind.scriptRejected:
+      case LxRuntimeFailureKind.notReady:
+        return PlaybackProblemKind.sourceInvalid;
+      case LxRuntimeFailureKind.timeout:
+        return PlaybackProblemKind.networkTimeout;
+      case LxRuntimeFailureKind.requestFailed:
+      case null:
+        return PlaybackProblemKind.resourceUnavailable;
+    }
+  }
+
+  Set<PlaybackRecoveryAction> _recoveryActionsForResolutionFailure(
+    LxRuntimeFailure? failure,
+  ) {
+    switch (failure?.kind) {
+      case LxRuntimeFailureKind.scriptRejected:
+      case LxRuntimeFailureKind.notReady:
+        return const {
+          PlaybackRecoveryAction.retry,
+          PlaybackRecoveryAction.switchSource,
+        };
+      case LxRuntimeFailureKind.timeout:
+      case LxRuntimeFailureKind.requestFailed:
+      case null:
+        return const {
+          PlaybackRecoveryAction.retry,
+          PlaybackRecoveryAction.switchSource,
+        };
+    }
+  }
+
+  String _resolutionFailureMessage(LxRuntimeFailure? failure) {
+    switch (failure?.kind) {
+      case LxRuntimeFailureKind.scriptRejected:
+        return '当前音源脚本已被服务端拒绝（完整性验证失败），请重新导入或切换音源';
+      case LxRuntimeFailureKind.notReady:
+        return '当前音源尚未就绪，请稍后重试或重新导入音源';
+      case LxRuntimeFailureKind.timeout:
+        return '获取播放链接超时，请检查网络后重试';
+      case LxRuntimeFailureKind.requestFailed:
+        return '音源请求失败，未返回可播放链接，请切换音源后重试';
+      case null:
+        return '音源未返回可播放链接，请切换音源后重试';
+    }
+  }
+
+  String? _activeLxSourceFingerprint() {
+    final sourceService = AudioSourceService();
+    final source = sourceService.activeSource;
+    if (source == null || source.type != AudioSourceType.lxmusic) return null;
+    // 健康状态必须绑定所有会影响远端请求的配置。音源可能在原 ID
+    // 下编辑 endpoint/API key；只绑定脚本会复用旧的熔断状态，阻断新配置。
+    final requestConfig = <Object?>[
+      source.id,
+      source.type.name,
+      source.version,
+      source.url,
+      source.apiKey,
+      source.scriptContent,
+      source.scriptSource,
+      source.urlPathTemplate,
+      source.supportedPlatforms.join(','),
+    ].join('\u0000');
+    return '${source.id}:${requestConfig.hashCode}';
+  }
+
+  void _syncActiveSourceHealth() {
+    final fingerprint = _activeLxSourceFingerprint();
+    sourceHealthNotifier.value = fingerprint == null
+        ? null
+        : _sourceHealthTracker.snapshot(fingerprint);
+  }
+
+  SourceHealthFailureKind _sourceHealthFailureKind(LxRuntimeFailure? failure) {
+    switch (failure?.kind) {
+      case LxRuntimeFailureKind.scriptRejected:
+        return SourceHealthFailureKind.systemicRejection;
+      case LxRuntimeFailureKind.timeout:
+        return SourceHealthFailureKind.transientTimeout;
+      case LxRuntimeFailureKind.notReady:
+        return SourceHealthFailureKind.runtimeNotReady;
+      case LxRuntimeFailureKind.requestFailed:
+      case null:
+        return SourceHealthFailureKind.trackSpecific;
+    }
+  }
+
+  SourceHealthSnapshot _recordSourceResolutionFailure(
+    String fingerprint,
+    LxRuntimeFailure? failure,
+  ) {
+    final snapshot = _sourceHealthTracker.recordFailure(
+      fingerprint,
+      _sourceHealthFailureKind(failure),
+    );
+    if (_activeLxSourceFingerprint() == fingerprint) {
+      sourceHealthNotifier.value = snapshot;
+    }
+    return snapshot;
+  }
+
+  void _recordSourceResolutionSuccess(String fingerprint) {
+    final snapshot = _sourceHealthTracker.recordSuccess(fingerprint);
+    if (_activeLxSourceFingerprint() == fingerprint) {
+      sourceHealthNotifier.value = snapshot;
+    }
   }
 
   void _recordPlaybackStarted() {
     final track = _activeTrack;
-    if (track == null || _recordedPlaybackToken == _activePlaybackToken) {
-      return;
-    }
-    _recordedPlaybackToken = _activePlaybackToken;
-    PlayHistoryService().addToHistory(track);
-    ListeningStatsService().recordPlayCount(track);
+    if (track == null) return;
+    _historyRecorder.recordStarted(
+      transactionId: _activePlaybackToken,
+      track: track,
+    );
   }
 
   bool _canRetryOnError(EngineError error) {
@@ -738,20 +865,21 @@ class PlaybackService extends ChangeNotifier {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    PlaybackRequestIntent intent = PlaybackRequestIntent.manual,
   }) {
     return _commands.enqueue(() async {
       _resetPreloadState();
       _pendingRestorePosition = null;
-      _queue
-        ..clear()
-        ..addAll(tracks);
-      _currentIndex = index.clamp(0, tracks.length - 1);
-      _source = source;
-      _coverProviders = coverProviders ?? {};
-      _resetShuffle();
+      _queueController.replace(
+        tracks,
+        index,
+        source,
+        coverProviders: coverProviders,
+      );
       _preloadedTrack = null;
       await _playCurrentTrack(
         reason: 'play-now',
+        intent: intent,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
         preload: preload,
@@ -765,10 +893,7 @@ class PlaybackService extends ChangeNotifier {
     return _commands.enqueue(() async {
       _resetPreloadState();
       _pendingRestorePosition = null;
-      _removeDuplicate(track);
-      final insertAt = (_currentIndex + 1).clamp(0, _queue.length);
-      _queue.insert(insertAt, track);
-      _resetShuffle();
+      _queueController.insertNext(track);
       notifyListeners();
       _scheduleSessionPersist();
     });
@@ -779,8 +904,7 @@ class PlaybackService extends ChangeNotifier {
     return _commands.enqueue(() async {
       _resetPreloadState();
       _pendingRestorePosition = null;
-      _queue.add(track);
-      _resetShuffle();
+      _queueController.append(track);
       notifyListeners();
       _scheduleSessionPersist();
     });
@@ -791,8 +915,7 @@ class PlaybackService extends ChangeNotifier {
     return _commands.enqueue(() async {
       _resetPreloadState();
       _pendingRestorePosition = null;
-      _queue.addAll(tracks);
-      _resetShuffle();
+      _queueController.appendAll(tracks);
       notifyListeners();
       _scheduleSessionPersist();
     });
@@ -801,10 +924,9 @@ class PlaybackService extends ChangeNotifier {
   /// 跳转到队列中某首
   Future<void> jumpTo(int index) {
     return _commands.enqueue(() async {
-      if (index < 0 || index >= _queue.length) return;
+      if (!_queueController.jumpTo(index)) return;
       _resetPreloadState();
       _pendingRestorePosition = null;
-      _currentIndex = index;
       await _playCurrentTrack(reason: 'jump-to');
       _scheduleSessionPersist();
     });
@@ -813,13 +935,11 @@ class PlaybackService extends ChangeNotifier {
   /// 移除队列中某首
   Future<void> removeAt(int index) {
     return _commands.enqueue(() async {
-      if (index < 0 || index >= _queue.length) return;
       _resetPreloadState();
       _pendingRestorePosition = null;
-      _queue.removeAt(index);
-      if (_queue.isEmpty) {
-        _currentIndex = -1;
-        _source = QueueSource.none;
+      final removal = _queueController.removeAt(index);
+      if (!removal.removed) return;
+      if (removal.becameEmpty) {
         await _engine.stop();
         _state = PBState.idle;
         _activeTrack = null;
@@ -833,13 +953,9 @@ class PlaybackService extends ChangeNotifier {
         coverManager.setCoverImmediate(null, notify: false);
         coverManager.themeColorNotifier.value = null;
         _setLyricLoadState(LyricLoadState.idle, notify: false);
-      } else if (index < _currentIndex) {
-        _currentIndex--;
-      } else if (index == _currentIndex) {
-        _currentIndex = _currentIndex.clamp(0, _queue.length - 1);
+      } else if (removal.removedCurrent) {
         await _playCurrentTrack(reason: 'remove-current');
       }
-      _resetShuffle();
       notifyListeners();
       _scheduleSessionPersist();
     });
@@ -848,23 +964,9 @@ class PlaybackService extends ChangeNotifier {
   /// 拖拽排序
   Future<void> reorder(int oldIndex, int newIndex) {
     return _commands.enqueue(() async {
-      if (oldIndex < 0 || oldIndex >= _queue.length) return;
-      if (newIndex < 0 || newIndex > _queue.length) return;
       _resetPreloadState();
       _pendingRestorePosition = null;
-
-      final track = _queue.removeAt(oldIndex);
-      _queue.insert(newIndex, track);
-
-      // 维护 currentIndex 指向不变
-      if (oldIndex == _currentIndex) {
-        _currentIndex = newIndex;
-      } else if (oldIndex < _currentIndex && newIndex >= _currentIndex) {
-        _currentIndex--;
-      } else if (oldIndex > _currentIndex && newIndex <= _currentIndex) {
-        _currentIndex++;
-      }
-      _resetShuffle();
+      if (!_queueController.reorder(oldIndex, newIndex)) return;
       notifyListeners();
       _scheduleSessionPersist();
     });
@@ -874,12 +976,9 @@ class PlaybackService extends ChangeNotifier {
   Future<void> clearQueue() {
     return _commands.enqueue(() async {
       _resetPreloadState();
+      _cancelAutoSkipTimer();
       _pendingRestorePosition = null;
-      _queue.clear();
-      _currentIndex = -1;
-      _source = QueueSource.none;
-      _coverProviders.clear();
-      _resetShuffle();
+      _queueController.clear();
       await _engine.stop();
       _state = PBState.idle;
       _activeTrack = null;
@@ -893,8 +992,9 @@ class PlaybackService extends ChangeNotifier {
       coverManager.setCoverImmediate(null, notify: false);
       coverManager.themeColorNotifier.value = null;
       _setLyricLoadState(LyricLoadState.idle, notify: false);
+      _clearPlaybackProblem();
       notifyListeners();
-      await PlaybackSessionStore().clear();
+      await _sessionManager.clear();
     });
   }
 
@@ -968,6 +1068,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _cancelAutoSkipTimer();
     await _engine.stop();
     await _cleanupCurrentTempFile();
     _pauseListeningTimeTracking();
@@ -995,15 +1096,39 @@ class PlaybackService extends ChangeNotifier {
     isPlaying ? await pause() : await resume();
   }
 
-  Future<void> retryCurrentTrack() async {
+  Future<void> retryCurrentTrack({
+    PlaybackProblem? expectedProblem,
+    bool forceRemoteResolution = false,
+  }) async {
     return _commands.enqueue(() async {
+      if (expectedProblem != null &&
+          !isCurrentPlaybackProblem(expectedProblem)) {
+        return;
+      }
       if (_trackAtQueuePointer() == null && _activeTrack == null) return;
       _state = PBState.loading;
       _errorMessage = null;
       _isAudioSourceNotConfigured = false;
       notifyListeners();
-      await _playCurrentTrack(reason: 'manual-retry');
+      await _playCurrentTrack(
+        reason: 'manual-retry',
+        intent: PlaybackRequestIntent.retry,
+        forceRemoteResolution: forceRemoteResolution,
+      );
     });
+  }
+
+  Future<bool> revalidateActiveSource() async {
+    final fingerprint = _activeLxSourceFingerprint();
+    if (fingerprint == null ||
+        (_trackAtQueuePointer() == null && _activeTrack == null)) {
+      return false;
+    }
+    sourceHealthNotifier.value = _sourceHealthTracker.prepareManualProbe(
+      fingerprint,
+    );
+    await retryCurrentTrack(forceRemoteResolution: true);
+    return true;
   }
 
   Future<void> setVolume(double vol) async {
@@ -1063,7 +1188,7 @@ class PlaybackService extends ChangeNotifier {
       _preloadedTrack = null;
       _clearPendingTrack();
       _errorMessage = null;
-      final gen = ++_playGeneration;
+      final gen = _transactionGuard.begin();
       _duration = Duration.zero;
       _position = Duration.zero;
       positionNotifier.value = Duration.zero;
@@ -1071,13 +1196,13 @@ class PlaybackService extends ChangeNotifier {
       coverManager.themeColorNotifier.value = null;
 
       // 设置电台的 track 到队列
-      _queue
-        ..clear()
-        ..add(radioTrack);
-      _currentIndex = 0;
-      _source = QueueSource.radio;
+      _queueController.replace([radioTrack], 0, QueueSource.radio);
 
-      _stagePendingTrack(radioTrack, reason: 'radio');
+      _stagePendingTrack(
+        radioTrack,
+        reason: 'radio',
+        intent: PlaybackRequestIntent.manual,
+      );
       notifyListeners();
       await _playWithSoftSwitch(streamUrl);
       _commitActivePresentation(radioTrack, playbackToken: gen, notify: false);
@@ -1094,17 +1219,15 @@ class PlaybackService extends ChangeNotifier {
   String _coverKey(Track t) => _buildTrackIdentity(t);
 
   ImageProvider? getCoverProvider(Track track) {
-    return _coverProviders[_coverKey(track)] ??
-        (track.picUrl.isNotEmpty ? _coverProviders[track.picUrl] : null);
+    return _queueController.coverProviderFor(track, _coverKey(track));
   }
 
   void updateCoverProvider(Track track, ImageProvider provider) {
-    _coverProviders[_coverKey(track)] = provider;
-    if (track.picUrl.isNotEmpty) _coverProviders[track.picUrl] = provider;
+    _queueController.updateCoverProvider(track, _coverKey(track), provider);
   }
 
   void updateCoverProviders(Map<String, ImageProvider> providers) {
-    _coverProviders.addAll(providers);
+    _queueController.updateCoverProviders(providers);
   }
 
   void _primeDisplayStateForTrack(Track track) {
@@ -1125,30 +1248,37 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Track? _trackAtQueuePointer() {
-    if (_currentIndex < 0 || _currentIndex >= _queue.length) return null;
-    return _queue[_currentIndex];
+    return _queueController.currentTrack;
   }
 
-  void _stagePendingTrack(Track track, {required String reason}) {
+  void _stagePendingTrack(
+    Track track, {
+    required String reason,
+    required PlaybackRequestIntent intent,
+  }) {
     _pendingTrack = track;
     _pendingReason = reason;
+    _pendingIntent = intent;
     _pendingSwitchToken++;
   }
 
   void _clearPendingTrack() {
     _pendingTrack = null;
     _pendingReason = null;
+    _pendingIntent = null;
   }
 
   void _commitActivePresentation(
     Track track, {
     SongDetail? songDetail,
     required int playbackToken,
+    PlaybackRequestIntent intent = PlaybackRequestIntent.manual,
     bool notify = true,
   }) {
     _activeTrack = track;
     _activeSong = songDetail;
     _activePlaybackToken = playbackToken;
+    _activeIntent = intent;
     _clearPendingTrack();
     _preloadedTrack = null;
     _primeDisplayStateForTrack(track);
@@ -1166,14 +1296,17 @@ class PlaybackService extends ChangeNotifier {
 
   TrackSwitchTransaction? _prepareTrackSwitchTransaction({
     required String reason,
+    required PlaybackRequestIntent intent,
+    bool forceRemoteResolution = false,
   }) {
     final track = _trackAtQueuePointer() ?? _activeTrack;
     if (track == null) return null;
 
     _resetPreloadState(clearPrefetchedDetails: false);
     _preloadedTrack = null;
-    _stagePendingTrack(track, reason: reason);
-    final token = ++_playGeneration;
+    _cancelAutoSkipTimer();
+    _stagePendingTrack(track, reason: reason, intent: intent);
+    final token = _transactionGuard.begin();
     final selectedQuality = AudioQualityService().currentQuality;
     final tx = TrackSwitchTransaction(
       token: token,
@@ -1183,10 +1316,13 @@ class PlaybackService extends ChangeNotifier {
       requestedKey: _buildTrackIdentity(track),
       selectedQuality: selectedQuality,
       qualityStr: selectedQuality.value,
+      intent: intent,
+      forceRemoteResolution: forceRemoteResolution,
     );
 
     _state = PBState.loading;
     _errorMessage = null;
+    _clearPlaybackProblem();
     _isAudioSourceNotConfigured = false;
     notifyListeners();
 
@@ -1196,6 +1332,13 @@ class PlaybackService extends ChangeNotifier {
       _errorMessage = '音源未配置，请在设置中配置音源';
       _isAudioSourceNotConfigured = true;
       notifyListeners();
+      _reportPlaybackFailure(
+        track,
+        _errorMessage!,
+        kind: PlaybackProblemKind.sourceNotConfigured,
+        recoveryActions: const {PlaybackRecoveryAction.openSourceSettings},
+        emitEffect: false,
+      );
       onAudioSourceNotConfigured?.call();
       return null;
     }
@@ -1205,6 +1348,12 @@ class PlaybackService extends ChangeNotifier {
       _state = PBState.error;
       _errorMessage = '由于Apple接口限制，通过该接口导入的音乐需要换源才能播放！';
       notifyListeners();
+      _reportPlaybackFailure(
+        track,
+        _errorMessage!,
+        kind: PlaybackProblemKind.resourceUnavailable,
+        recoveryActions: const {PlaybackRecoveryAction.switchSource},
+      );
       _notifyAppleMusicRestriction(track);
       return null;
     }
@@ -1218,7 +1367,7 @@ class PlaybackService extends ChangeNotifier {
 
   bool _isTrackSwitchTransactionStale(TrackSwitchTransaction tx) {
     final pending = _pendingTrack;
-    if (tx.token != _playGeneration) return true;
+    if (!_transactionGuard.isCurrent(tx.token)) return true;
     if (tx.pendingToken != _pendingSwitchToken) return true;
     return !_matchesTrackIdentity(pending, tx.requestedKey);
   }
@@ -1230,28 +1379,23 @@ class PlaybackService extends ChangeNotifier {
     final track = tx.track;
     _currentCachedStreamInfo = null;
     final cachePlaybackKey = _cachePlaybackKey(track, tx.qualityStr);
-
-    final cacheInfo = _cacheBypassKeys.contains(cachePlaybackKey)
-        ? null
-        : await CacheService().getCyreneFileInfo(track, quality: tx.qualityStr);
+    final lookup = await _trackResolver.lookupLocalOrCache(
+      track: track,
+      quality: tx.qualityStr,
+      skipCache:
+          tx.forceRemoteResolution ||
+          _cacheBypassKeys.contains(cachePlaybackKey),
+    );
     if (isStale()) return null;
 
-    final isCached = cacheInfo != null;
-    final shouldRefreshCachedMetadata =
-        cacheInfo != null && _needsCachedMetadataRefresh(cacheInfo.metadata);
-
-    if (cacheInfo != null && cacheInfo.metadata.quality == tx.qualityStr) {
+    final cacheInfo = lookup.cacheInfo;
+    final cachedOrLocalDetail = lookup.resolvedDetail;
+    if (cachedOrLocalDetail != null) {
       return _ResolvedTrackSwitchSong(
-        songDetail: _buildCachedSongDetail(
-          track,
-          cacheInfo.metadata,
-          playbackUrl: cacheInfo.metadata.originalUrl.isNotEmpty
-              ? cacheInfo.metadata.originalUrl
-              : cacheInfo.filePath,
-        ),
+        songDetail: cachedOrLocalDetail,
         cacheInfo: cacheInfo,
-        isCached: true,
-        shouldRefreshCachedMetadata: shouldRefreshCachedMetadata,
+        isCached: lookup.isCached,
+        shouldRefreshCachedMetadata: lookup.shouldRefreshCachedMetadata,
         shouldRefreshExistingCacheMetadata: false,
       );
     }
@@ -1262,78 +1406,106 @@ class PlaybackService extends ChangeNotifier {
       );
     }
 
-    if (track.source == MusicSource.local) {
-      final filePath = track.id is String ? track.id as String : '';
-      if (filePath.isEmpty || !(await File(filePath).exists())) {
-        if (isStale()) return null;
-        _state = PBState.error;
-        _errorMessage = '本地文件不存在';
-        notifyListeners();
-        _reportPlaybackFailure(track, _errorMessage!);
-        _autoSkipOnError();
-        return null;
-      }
-      var lyricText = LocalLibraryService().getLyricByTrackId(filePath);
-      if (lyricText.isEmpty) {
-        final embedded = await MetadataReader.extractLyrics(filePath);
-        if (embedded != null && embedded.isNotEmpty) lyricText = embedded;
-      }
-      if (isStale()) return null;
-      return _ResolvedTrackSwitchSong(
-        songDetail: SongDetail(
-          id: filePath,
-          name: track.name,
-          pic: track.picUrl,
-          arName: track.artists,
-          alName: track.album,
-          level: 'local',
-          size: '',
-          url: filePath,
-          lyric: lyricText,
-          tlyric: '',
-          source: MusicSource.local,
-        ),
-        cacheInfo: null,
-        isCached: false,
-        shouldRefreshCachedMetadata: false,
-        shouldRefreshExistingCacheMetadata: false,
+    if (lookup.localFileMissing) {
+      _state = PBState.error;
+      _errorMessage = '本地文件不存在';
+      notifyListeners();
+      _reportPlaybackFailure(
+        track,
+        _errorMessage!,
+        kind: PlaybackProblemKind.localFileMissing,
+        recoveryActions: const {},
       );
+      _autoSkipOnError(tx.intent);
+      return null;
     }
 
-    final songDetail = await _fetchSongDetailWithTimeout(
+    final lxSourceFingerprint = _activeLxSourceFingerprint();
+    final sourceRequestAllowed =
+        lxSourceFingerprint == null ||
+        _sourceHealthTracker.allowRequest(lxSourceFingerprint);
+    if (lxSourceFingerprint != null) {
+      sourceHealthNotifier.value = _sourceHealthTracker.snapshot(
+        lxSourceFingerprint,
+      );
+    }
+    if (!sourceRequestAllowed) {
+      _state = PBState.error;
+      _errorMessage = '当前音源连续解析失败，已暂停请求，请重新导入或切换音源';
+      notifyListeners();
+      _reportPlaybackFailure(
+        track,
+        _errorMessage!,
+        kind: PlaybackProblemKind.sourceInvalid,
+        recoveryActions: const {
+          PlaybackRecoveryAction.switchSource,
+          PlaybackRecoveryAction.reimportSource,
+        },
+      );
+      return null;
+    }
+
+    final resolution = await _trackResolver.resolve(
       songId: track.id,
       quality: tx.selectedQuality,
       source: track.source,
       title: track.name,
       artist: track.artists,
       timeout: _playSongDetailTimeout,
-      purpose: 'playback',
       fetchLyrics: false,
     );
-    if (isStale()) return null;
-
+    final songDetail = resolution.detail;
+    if (isStale()) {
+      if (lxSourceFingerprint != null) {
+        _sourceHealthTracker.cancelRequest(lxSourceFingerprint);
+        _syncActiveSourceHealth();
+      }
+      return null;
+    }
+    final isSameLxSource =
+        lxSourceFingerprint != null &&
+        _activeLxSourceFingerprint() == lxSourceFingerprint;
+    if (lxSourceFingerprint != null && !isSameLxSource) {
+      _sourceHealthTracker.cancelRequest(lxSourceFingerprint);
+    }
     if (songDetail == null || songDetail.url.isEmpty) {
+      final lxFailure = isSameLxSource ? resolution.lxFailure : null;
+      final sourceHealth = !isSameLxSource
+          ? null
+          : _recordSourceResolutionFailure(lxSourceFingerprint, lxFailure);
+      final circuitOpen = sourceHealth?.isCircuitOpen ?? false;
       _state = PBState.error;
-      _errorMessage = '无法获取播放链接';
+      _errorMessage = _resolutionFailureMessage(lxFailure);
       notifyListeners();
       _reportPlaybackFailure(
         track,
-        track.source == MusicSource.netease
-            ? '音源解析失败：当前音源可能已失效，请重新导入或切换音源'
-            : _errorMessage!,
+        circuitOpen ? '当前音源连续解析失败，请重新导入或切换音源' : _errorMessage!,
+        kind: circuitOpen
+            ? PlaybackProblemKind.sourceInvalid
+            : _problemKindForResolutionFailure(lxFailure),
+        recoveryActions: circuitOpen
+            ? const {
+                PlaybackRecoveryAction.switchSource,
+                PlaybackRecoveryAction.reimportSource,
+              }
+            : _recoveryActionsForResolutionFailure(lxFailure),
       );
-      _autoSkipOnError();
+      if (!circuitOpen) _autoSkipOnError(tx.intent);
       return null;
+    }
+
+    if (isSameLxSource) {
+      _recordSourceResolutionSuccess(lxSourceFingerprint);
     }
 
     final normalizedSong = _normalizeSongDetailForPlayback(track, songDetail);
     return _ResolvedTrackSwitchSong(
       songDetail: normalizedSong,
       cacheInfo: cacheInfo,
-      isCached: isCached,
+      isCached: lookup.isCached,
       shouldRefreshCachedMetadata: false,
       shouldRefreshExistingCacheMetadata:
-          cacheInfo != null && _needsCachedMetadataRefresh(cacheInfo.metadata),
+          cacheInfo != null && needsCachedMetadataRefresh(cacheInfo.metadata),
     );
   }
 
@@ -1579,6 +1751,7 @@ class PlaybackService extends ChangeNotifier {
       track,
       songDetail: songDetail,
       playbackToken: tx.token,
+      intent: tx.intent,
     );
     if (_state == PBState.playing) {
       _recordPlaybackStarted();
@@ -1666,30 +1839,6 @@ class PlaybackService extends ChangeNotifier {
         reason: refreshReason,
       );
     }
-  }
-
-  SongDetail _buildCachedSongDetail(
-    Track track,
-    CacheMetadata metadata, {
-    required String playbackUrl,
-  }) {
-    return SongDetail(
-      id: track.id,
-      name: metadata.songName.isNotEmpty ? metadata.songName : track.name,
-      url: playbackUrl,
-      pic: metadata.picUrl,
-      arName: metadata.artists,
-      alName: metadata.album,
-      level: metadata.quality,
-      size: metadata.fileSize.toString(),
-      lyric: metadata.lyric,
-      tlyric: metadata.tlyric,
-      yrc: metadata.yrc,
-      ytlrc: metadata.ytlrc,
-      qrc: metadata.qrc,
-      qrcTrans: metadata.qrcTrans,
-      source: track.source,
-    );
   }
 
   SongDetail _mergeSupplementalSongDetail(
@@ -1918,17 +2067,6 @@ class PlaybackService extends ChangeNotifier {
     return track.source != MusicSource.navidrome;
   }
 
-  bool _needsCachedMetadataRefresh(CacheMetadata metadata) {
-    return metadata.songName.isEmpty ||
-        metadata.artists.isEmpty ||
-        metadata.album.isEmpty ||
-        metadata.picUrl.isEmpty ||
-        metadata.originalUrl.isEmpty ||
-        (metadata.lyric.isEmpty &&
-            metadata.yrc.isEmpty &&
-            metadata.qrc.isEmpty);
-  }
-
   String _trackLogKey(Track track, [String? quality]) {
     final base = _buildTrackIdentity(track);
     if (quality == null || quality.isEmpty) return base;
@@ -1950,7 +2088,11 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _logPlaybackDebug(String message, {bool toDeveloperPanel = false}) {
-    print(message);
+    StructuredLogService.event(
+      'playback.debug',
+      level: LogLevel.debug,
+      fields: {'message': message},
+    );
     if (toDeveloperPanel) {
       DeveloperModeService().addLog(message);
     }
@@ -2065,16 +2207,6 @@ class PlaybackService extends ChangeNotifier {
     );
   }
 
-  String _songDetailRequestKey({
-    required dynamic songId,
-    required MusicSource source,
-    required dynamic quality,
-    required bool fetchLyrics,
-  }) {
-    final lyricKey = fetchLyrics ? 'with-lyrics' : 'playback-only';
-    return '${_buildTrackIdentityFromParts(source, songId)}_${quality.toString()}_$lyricKey';
-  }
-
   Future<void> _deleteTempFilePath(String? filePath) async {
     if (filePath == null || filePath.isEmpty) return;
     try {
@@ -2122,57 +2254,30 @@ class PlaybackService extends ChangeNotifier {
     }
   }
 
-  int _indexOfTrack(Track track) {
-    return _queue.indexWhere(
-      (t) => t.id.toString() == track.id.toString() && t.source == track.source,
-    );
-  }
-
-  void _removeDuplicate(Track track) {
-    final existing = _indexOfTrack(track);
-    if (existing != -1) {
-      _queue.removeAt(existing);
-      if (existing <= _currentIndex) {
-        _currentIndex = (_currentIndex - 1).clamp(-1, _queue.length);
-      }
-    }
-  }
-
   void _resetShuffle() {
-    _shuffledIndices.clear();
-    _shufflePosition = -1;
+    _queueController.resetShuffle();
   }
 
   /// 预测下一首（不改变索引）
   Track? peekNext(dynamic mode) {
-    if (_queue.isEmpty) return null;
     final modeStr = mode.toString();
-    if (modeStr.contains('repeatOne')) {
-      return _currentIndex >= 0 ? _queue[_currentIndex] : null;
-    }
-    if (modeStr.contains('shuffle')) {
-      if (_shuffledIndices.isEmpty) return null;
-      final nextPos = _shufflePosition + 1;
-      if (nextPos < _shuffledIndices.length)
-        return _queue[_shuffledIndices[nextPos]];
-      return _queue[_shuffledIndices[0]];
-    }
-    final nextIdx = _currentIndex + 1;
-    if (nextIdx < _queue.length) return _queue[nextIdx];
-    return _queue[0];
+    final resolvedMode = modeStr.contains('repeatOne')
+        ? PlaybackMode.repeatOne
+        : modeStr.contains('shuffle')
+        ? PlaybackMode.shuffle
+        : PlaybackMode.loopAll;
+    return _queueController.peekNext(resolvedMode);
   }
 
   /// 预测上一首（不改变索引）
   Track? peekPrevious(dynamic mode) {
-    if (_queue.isEmpty) return null;
     final modeStr = mode.toString();
-    if (modeStr.contains('shuffle')) {
-      if (_shuffledIndices.isEmpty || _shufflePosition <= 0) return null;
-      return _queue[_shuffledIndices[_shufflePosition - 1]];
-    }
-    final prevIdx = _currentIndex - 1;
-    if (prevIdx >= 0) return _queue[prevIdx];
-    return _queue[_queue.length - 1];
+    final resolvedMode = modeStr.contains('repeatOne')
+        ? PlaybackMode.repeatOne
+        : modeStr.contains('shuffle')
+        ? PlaybackMode.shuffle
+        : PlaybackMode.loopAll;
+    return _queueController.peekPrevious(resolvedMode);
   }
 
   /// 队列信息字符串
@@ -2187,40 +2292,52 @@ class PlaybackService extends ChangeNotifier {
 
   Future<void> _playCurrentTrack({
     String reason = 'queue-switch',
+    PlaybackRequestIntent intent = PlaybackRequestIntent.manual,
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    bool forceRemoteResolution = false,
   }) async {
     // 1. prepareTarget
-    final tx = _prepareTrackSwitchTransaction(reason: reason);
+    final tx = _prepareTrackSwitchTransaction(
+      reason: reason,
+      intent: intent,
+      forceRemoteResolution: forceRemoteResolution,
+    );
     if (tx == null) return;
-    final totalSw = Stopwatch()..start();
-
-    void logTx(String message) {
-      _logPlaybackDebug(
-        '[PlaybackService] [TrackSwitch tx=${tx.token} pending=${tx.pendingToken} '
-        'track=${tx.requestedKey} quality=${tx.qualityStr} reason=${tx.reason}] '
-        '$message',
-        toDeveloperPanel: true,
-      );
-    }
-
-    logTx('start');
+    final trace = OperationTrace(
+      'playback.switch',
+      context: {
+        'transaction_id': tx.token,
+        'pending_id': tx.pendingToken,
+        'track_id': tx.requestedKey,
+        'source': tx.track.source.name,
+        'quality': tx.qualityStr,
+        'reason': tx.reason,
+        'intent': tx.intent.name,
+      },
+    );
 
     bool isStale() {
       return _isTrackSwitchTransactionStale(tx);
     }
 
     try {
-      final prefetchedPlan = _takePrefetchedPlayablePlan(
-        tx.track,
-        tx.selectedQuality,
-      );
+      if (tx.forceRemoteResolution) {
+        // 手动探测必须走远端解析，丢弃同曲目的预取计划，避免后续重试
+        // 再次复用旧的缓存/预取结果。
+        _discardPrefetchedPlayablePlan(tx.track, tx.selectedQuality);
+      }
+      final prefetchedPlan = tx.forceRemoteResolution
+          ? null
+          : _takePrefetchedPlayablePlan(tx.track, tx.selectedQuality);
       if (prefetchedPlan != null) {
-        logTx(
-          'prefetch hit usesCached=${prefetchedPlan.usesCachedStream} '
-          'source=${_describePlayableSource(prefetchedPlan.source)} '
-          'elapsed=${totalSw.elapsedMilliseconds}ms',
+        trace.mark(
+          'prefetch_hit',
+          fields: {
+            'cache': prefetchedPlan.usesCachedStream ? 'hit' : 'miss',
+            'playable_source': _describePlayableSource(prefetchedPlan.source),
+          },
         );
         final committedPlan = await _commitPlaybackStage(
           tx,
@@ -2231,44 +2348,48 @@ class PlaybackService extends ChangeNotifier {
           preload: preload,
         );
         if (committedPlan == null) return;
-        logTx(
-          'commitPlayback(prefetch) done source=${_describePlayableSource(committedPlan.source)} '
-          'elapsed=${totalSw.elapsedMilliseconds}ms',
+        trace.mark(
+          'engine_ready',
+          fields: {
+            'prefetched': true,
+            'playable_source': _describePlayableSource(committedPlan.source),
+          },
         );
         _commitPresentationStage(tx, committedPlan, isStale);
-        logTx('commitPresentation done total=${totalSw.elapsedMilliseconds}ms');
+        trace.mark('presentation_committed');
         return;
       }
 
       // 2. resolveSongDetail
-      final songDetailSw = Stopwatch()..start();
       final resolvedSong = await _resolveSongDetailStage(tx, isStale);
       if (resolvedSong == null || isStale()) return;
-      logTx(
-        'resolveSongDetail done ${songDetailSw.elapsedMilliseconds}ms '
-        'isCached=${resolvedSong.isCached} '
-        'refreshCachedMeta=${resolvedSong.shouldRefreshCachedMetadata} '
-        'refreshExistingMeta=${resolvedSong.shouldRefreshExistingCacheMetadata} '
-        'url=${resolvedSong.songDetail.url}',
+      trace.mark(
+        'track_resolved',
+        fields: {
+          'cache': resolvedSong.isCached ? 'hit' : 'miss',
+          'refresh_cached_metadata': resolvedSong.shouldRefreshCachedMetadata,
+          'refresh_existing_metadata':
+              resolvedSong.shouldRefreshExistingCacheMetadata,
+        },
       );
 
       // 3. resolvePlayableSource
-      final sourceSw = Stopwatch()..start();
       final playbackPlan = await _resolvePlayableSourceStage(
         tx,
         resolvedSong,
         isStale,
       );
       if (playbackPlan == null || isStale()) return;
-      logTx(
-        'resolvePlayableSource done ${sourceSw.elapsedMilliseconds}ms '
-        'usesCached=${playbackPlan.usesCachedStream} '
-        'source=${_describePlayableSource(playbackPlan.source)} '
-        'shouldWriteBackgroundCache=${playbackPlan.shouldWriteBackgroundCache}',
+      trace.mark(
+        'source_ready',
+        fields: {
+          'cache': playbackPlan.usesCachedStream ? 'hit' : 'miss',
+          'playable_source': _describePlayableSource(playbackPlan.source),
+          'background_cache': playbackPlan.shouldWriteBackgroundCache,
+        },
       );
 
       // 4. commitPlayback
-      final commitSw = Stopwatch()..start();
       final committedPlan = await _commitPlaybackStage(
         tx,
         playbackPlan,
@@ -2278,18 +2399,20 @@ class PlaybackService extends ChangeNotifier {
         preload: preload,
       );
       if (committedPlan == null) return;
-      logTx(
-        'commitPlayback done ${commitSw.elapsedMilliseconds}ms '
-        'source=${_describePlayableSource(committedPlan.source)}',
+      trace.mark(
+        'engine_ready',
+        fields: {
+          'playable_source': _describePlayableSource(committedPlan.source),
+        },
       );
 
       // 5. commitPresentation
       _commitPresentationStage(tx, committedPlan, isStale);
-      logTx('commitPresentation done total=${totalSw.elapsedMilliseconds}ms');
+      trace.mark('presentation_committed');
     } on EngineReportedException {
       // 错误已通过 errorStream 进入 _onEngineError，避免重复进入 catch 路径造成连跳。
       if (isStale()) return;
-      logTx('engine reported error after ${totalSw.elapsedMilliseconds}ms');
+      trace.mark('engine_failed', level: LogLevel.error);
       return;
     } on AudioSourceNotConfiguredException catch (e) {
       if (isStale()) return;
@@ -2297,10 +2420,14 @@ class PlaybackService extends ChangeNotifier {
       _errorMessage = e.message;
       _isAudioSourceNotConfigured = true;
       notifyListeners();
-      _reportPlaybackFailure(tx.track, e.message);
-      logTx(
-        'audio source not configured after ${totalSw.elapsedMilliseconds}ms: ${e.message}',
+      _reportPlaybackFailure(
+        tx.track,
+        e.message,
+        kind: PlaybackProblemKind.sourceNotConfigured,
+        recoveryActions: const {PlaybackRecoveryAction.openSourceSettings},
+        emitEffect: false,
       );
+      trace.mark('source_not_configured', level: LogLevel.warning, error: e);
       onAudioSourceNotConfigured?.call();
     } catch (e) {
       if (isStale()) return;
@@ -2309,8 +2436,8 @@ class PlaybackService extends ChangeNotifier {
       _isAudioSourceNotConfigured = false;
       notifyListeners();
       _reportPlaybackFailure(tx.track, _errorMessage!);
-      logTx('failed after ${totalSw.elapsedMilliseconds}ms: $e');
-      _autoSkipOnError();
+      trace.mark('failed', level: LogLevel.error, error: e);
+      _autoSkipOnError(tx.intent);
     }
   }
 
@@ -2327,32 +2454,42 @@ class PlaybackService extends ChangeNotifier {
             await _waitForTrackSwitchSettle();
             final replayed = await _replayCurrentSourceForRepeatOne();
             if (!replayed) {
-              await _playCurrentTrack(reason: 'repeat-one-reload');
+              await _playCurrentTrack(
+                reason: 'repeat-one-reload',
+                intent: PlaybackRequestIntent.automatic,
+              );
             }
           });
         }
         break;
       case PlaybackMode.loopAll:
-        await _playSequentialNext();
+        await _playSequentialNext(intent: PlaybackRequestIntent.automatic);
         break;
       case PlaybackMode.shuffle:
-        await _playRandomNext();
+        await _playRandomNext(intent: PlaybackRequestIntent.automatic);
         break;
       case PlaybackMode.sequential:
-        await _playSequentialNextOrStop();
+        await _playSequentialNextOrStop(
+          intent: PlaybackRequestIntent.automatic,
+        );
         break;
     }
   }
 
   /// 顺序播放模式：播完最后一首停止
-  Future<void> _playSequentialNextOrStop() async {
+  Future<void> _playSequentialNextOrStop({
+    PlaybackRequestIntent intent = PlaybackRequestIntent.manual,
+  }) async {
     return _commands.enqueue(() async {
       if (_queue.isNotEmpty) {
         final nextIdx = _currentIndex + 1;
         if (nextIdx < _queue.length) {
-          _currentIndex = nextIdx;
+          _queueController.jumpTo(nextIdx);
           await _waitForTrackSwitchSettle();
-          await _playCurrentTrack(reason: 'auto-next-stop-mode');
+          await _playCurrentTrack(
+            reason: 'auto-next-stop-mode',
+            intent: intent,
+          );
           return;
         }
         // 到末尾了，停止播放
@@ -2366,43 +2503,36 @@ class PlaybackService extends ChangeNotifier {
       // 无队列，用播放历史
       final nextTrack = PlayHistoryService().getNextTrack();
       if (nextTrack != null) {
-        _queue
-          ..clear()
-          ..add(nextTrack);
-        _currentIndex = 0;
-        _source = QueueSource.history;
+        _queueController.replace([nextTrack], 0, QueueSource.history);
         await _waitForTrackSwitchSettle();
-        await _playCurrentTrack(reason: 'history-next-stop-mode');
+        await _playCurrentTrack(
+          reason: 'history-next-stop-mode',
+          intent: intent,
+        );
       }
     });
   }
 
-  Future<void> _playSequentialNext() async {
+  Future<void> _playSequentialNext({
+    PlaybackRequestIntent intent = PlaybackRequestIntent.manual,
+  }) async {
     return _commands.enqueue(() async {
       if (_queue.isNotEmpty) {
-        final nextIdx = _currentIndex + 1;
-        if (nextIdx < _queue.length) {
-          _currentIndex = nextIdx;
-          await _waitForTrackSwitchSettle();
-          await _playCurrentTrack(reason: 'manual-next');
-          return;
-        }
-        // 列表循环
-        _currentIndex = 0;
+        final wrapped = _currentIndex + 1 >= _queue.length;
+        _queueController.advanceNext(shuffle: false);
         await _waitForTrackSwitchSettle();
-        await _playCurrentTrack(reason: 'manual-next-loop');
+        await _playCurrentTrack(
+          reason: wrapped ? 'manual-next-loop' : 'manual-next',
+          intent: intent,
+        );
         return;
       }
       // 无队列，用播放历史
       final nextTrack = PlayHistoryService().getNextTrack();
       if (nextTrack != null) {
-        _queue
-          ..clear()
-          ..add(nextTrack);
-        _currentIndex = 0;
-        _source = QueueSource.history;
+        _queueController.replace([nextTrack], 0, QueueSource.history);
         await _waitForTrackSwitchSettle();
-        await _playCurrentTrack(reason: 'history-next');
+        await _playCurrentTrack(reason: 'history-next', intent: intent);
       }
     });
   }
@@ -2410,25 +2540,17 @@ class PlaybackService extends ChangeNotifier {
   Future<void> _playSequentialPrevious() async {
     return _commands.enqueue(() async {
       if (_queue.isNotEmpty) {
-        final prevIdx = _currentIndex - 1;
-        if (prevIdx >= 0) {
-          _currentIndex = prevIdx;
-          await _playCurrentTrack(reason: 'manual-previous');
-          return;
-        }
-        // 列表循环
-        _currentIndex = _queue.length - 1;
-        await _playCurrentTrack(reason: 'manual-previous-loop');
+        final wrapped = _currentIndex - 1 < 0;
+        _queueController.advancePrevious(shuffle: false);
+        await _playCurrentTrack(
+          reason: wrapped ? 'manual-previous-loop' : 'manual-previous',
+        );
         return;
       }
       final history = PlayHistoryService().history;
       if (history.length >= 3) {
         final prevTrack = history[2].toTrack();
-        _queue
-          ..clear()
-          ..add(prevTrack);
-        _currentIndex = 0;
-        _source = QueueSource.history;
+        _queueController.replace([prevTrack], 0, QueueSource.history);
         await _playCurrentTrack(reason: 'history-previous');
       }
     });
@@ -2436,59 +2558,37 @@ class PlaybackService extends ChangeNotifier {
 
   // ── 随机播放 ──
 
-  void _generateShuffledIndices() {
-    _shuffledIndices = List.generate(_queue.length, (i) => i);
-    for (int i = _shuffledIndices.length - 1; i > 0; i--) {
-      final j = _random.nextInt(i + 1);
-      final temp = _shuffledIndices[i];
-      _shuffledIndices[i] = _shuffledIndices[j];
-      _shuffledIndices[j] = temp;
-    }
-    if (_currentIndex >= 0 &&
-        _shuffledIndices.isNotEmpty &&
-        _shuffledIndices[0] == _currentIndex) {
-      final swapIdx = _random.nextInt(_shuffledIndices.length - 1) + 1;
-      final temp = _shuffledIndices[0];
-      _shuffledIndices[0] = _shuffledIndices[swapIdx];
-      _shuffledIndices[swapIdx] = temp;
-    }
-    _shufflePosition = -1;
-  }
-
-  Future<void> _playRandomNext() async {
+  Future<void> _playRandomNext({
+    PlaybackRequestIntent intent = PlaybackRequestIntent.manual,
+  }) async {
     return _commands.enqueue(() async {
       if (_queue.isEmpty) {
         // 从历史随机
         final history = PlayHistoryService().history;
         if (history.length >= 2) {
           final idx = _random.nextInt(history.length - 1) + 1;
-          _queue
-            ..clear()
-            ..add(history[idx].toTrack());
-          _currentIndex = 0;
-          _source = QueueSource.history;
+          _queueController.replace(
+            [history[idx].toTrack()],
+            0,
+            QueueSource.history,
+          );
           await _waitForTrackSwitchSettle();
-          await _playCurrentTrack(reason: 'history-random-next');
+          await _playCurrentTrack(
+            reason: 'history-random-next',
+            intent: intent,
+          );
         }
         return;
       }
-      if (_shuffledIndices.isEmpty ||
-          _shufflePosition >= _shuffledIndices.length - 1) {
-        _generateShuffledIndices();
-      }
-      _shufflePosition++;
-      _currentIndex = _shuffledIndices[_shufflePosition];
+      _queueController.advanceRandom();
       await _waitForTrackSwitchSettle();
-      await _playCurrentTrack(reason: 'shuffle-next');
+      await _playCurrentTrack(reason: 'shuffle-next', intent: intent);
     });
   }
 
   Future<void> _playRandomPrevious() async {
     return _commands.enqueue(() async {
-      if (_queue.isEmpty || _shuffledIndices.isEmpty || _shufflePosition <= 0)
-        return;
-      _shufflePosition--;
-      _currentIndex = _shuffledIndices[_shufflePosition];
+      if (_queueController.advanceRandomPrevious() == null) return;
       await _playCurrentTrack(reason: 'shuffle-previous');
     });
   }
@@ -2506,89 +2606,48 @@ class PlaybackService extends ChangeNotifier {
   }) {
     _resetPreloadState();
     _pendingRestorePosition = null;
-    _queue
-      ..clear()
-      ..addAll(tracks);
-    _currentIndex = index;
-    _source = source;
-    _coverProviders
-      ..clear()
-      ..addAll(coverProviders ?? {});
-    _resetShuffle();
+    _queueController.replace(
+      tracks,
+      index,
+      source,
+      coverProviders: coverProviders,
+    );
     notifyListeners();
     _scheduleSessionPersist();
   }
 
   /// getNext 兼容：更新索引到下一首并返回
   Track? peekAndAdvanceNext() {
-    if (_queue.isEmpty) return null;
     final mode = PlaybackModeService().currentMode;
-    if (mode == PlaybackMode.shuffle) {
-      if (_shuffledIndices.isEmpty ||
-          _shufflePosition >= _shuffledIndices.length - 1) {
-        _generateShuffledIndices();
-      }
-      _shufflePosition++;
-      _currentIndex = _shuffledIndices[_shufflePosition];
-      notifyListeners();
-      return _queue[_currentIndex];
-    }
-    final nextIdx = _currentIndex + 1;
-    if (nextIdx < _queue.length) {
-      _currentIndex = nextIdx;
-      notifyListeners();
-      return _queue[_currentIndex];
-    }
-    // 列表循环
-    _currentIndex = 0;
-    notifyListeners();
-    return _queue[0];
+    final track = _queueController.advanceNext(
+      shuffle: mode == PlaybackMode.shuffle,
+    );
+    if (track != null) notifyListeners();
+    return track;
   }
 
   /// getPrevious 兼容：更新索引到上一首并返回
   Track? peekAndAdvancePrevious() {
-    if (_queue.isEmpty) return null;
     final mode = PlaybackModeService().currentMode;
-    if (mode == PlaybackMode.shuffle) {
-      if (_shuffledIndices.isEmpty || _shufflePosition <= 0) return null;
-      _shufflePosition--;
-      _currentIndex = _shuffledIndices[_shufflePosition];
-      notifyListeners();
-      return _queue[_currentIndex];
-    }
-    final prevIdx = _currentIndex - 1;
-    if (prevIdx >= 0) {
-      _currentIndex = prevIdx;
-      notifyListeners();
-      return _queue[_currentIndex];
-    }
-    // 列表循环
-    _currentIndex = _queue.length - 1;
-    notifyListeners();
-    return _queue[_currentIndex];
+    final track = _queueController.advancePrevious(
+      shuffle: mode == PlaybackMode.shuffle,
+    );
+    if (track != null) notifyListeners();
+    return track;
   }
 
   /// getRandomTrack 兼容
   Track? getRandomTrack() {
-    if (_queue.isEmpty) return null;
-    if (_shuffledIndices.isEmpty ||
-        _shufflePosition >= _shuffledIndices.length - 1) {
-      _generateShuffledIndices();
-    }
-    _shufflePosition++;
-    _currentIndex = _shuffledIndices[_shufflePosition];
-    notifyListeners();
-    return _queue[_currentIndex];
+    final track = _queueController.advanceRandom();
+    if (track != null) notifyListeners();
+    return track;
   }
 
   /// getRandomPrevious 兼容
   Track? getRandomPrevious() {
-    if (_queue.isEmpty || _shuffledIndices.isEmpty || _shufflePosition <= 0)
-      return null;
-    _shufflePosition--;
-    _currentIndex = _shuffledIndices[_shufflePosition];
-    notifyListeners();
-    return _queue[_currentIndex];
+    final track = _queueController.advanceRandomPrevious();
+    if (track != null) notifyListeners();
+    return track;
   }
 
   // ══════════════════════════════════════════════════════
@@ -2702,6 +2761,10 @@ class PlaybackService extends ChangeNotifier {
     return entry.plan;
   }
 
+  void _discardPrefetchedPlayablePlan(Track track, AudioQuality quality) {
+    _prefetchedPlayablePlans.remove(_buildPrefetchCacheKey(track, quality));
+  }
+
   void _savePrefetchedPlayablePlan(
     Track track,
     AudioQuality quality,
@@ -2774,7 +2837,7 @@ class PlaybackService extends ChangeNotifier {
 
   Future<SongDetail?> _fetchSongDetailWithTimeout({
     required dynamic songId,
-    required dynamic quality,
+    required AudioQuality quality,
     required MusicSource source,
     required String title,
     required String artist,
@@ -2782,134 +2845,19 @@ class PlaybackService extends ChangeNotifier {
     required String purpose,
     bool fetchLyrics = true,
   }) async {
-    final requestKey = _songDetailRequestKey(
-      songId: songId,
-      source: source,
-      quality: quality,
-      fetchLyrics: fetchLyrics,
-    );
-    final request = _acquireSongDetailRequest(
-      requestKey: requestKey,
+    final result = await _trackResolver.resolve(
       songId: songId,
       quality: quality,
       source: source,
       title: title,
       artist: artist,
-      purpose: purpose,
+      timeout: timeout,
       fetchLyrics: fetchLyrics,
     );
-
-    try {
-      return await request.timeout(
-        timeout,
-        onTimeout: () {
-          print(
-            '[PlaybackService] 获取歌曲详情超时($purpose): '
-            '$requestKey after ${timeout.inSeconds}s',
-          );
-          return null;
-        },
-      );
-    } on AudioSourceNotConfiguredException {
-      rethrow;
-    } catch (e) {
-      print(
-        '[PlaybackService] 获取歌曲详情失败($purpose): '
-        '$requestKey, $e',
-      );
-      return null;
+    if (result.timedOut) {
+      print('[PlaybackService] 获取歌曲详情超时($purpose)');
     }
-  }
-
-  Future<SongDetail?> _acquireSongDetailRequest({
-    required String requestKey,
-    required dynamic songId,
-    required dynamic quality,
-    required MusicSource source,
-    required String title,
-    required String artist,
-    required String purpose,
-    required bool fetchLyrics,
-  }) {
-    final existing = _pendingSongDetailRequests[requestKey];
-    if (existing != null) {
-      if (existing.isReusable) {
-        print('[PlaybackService] 复用进行中的歌曲详情请求($purpose): $requestKey');
-        return existing.future;
-      }
-      if (existing.state == _SongDetailRequestState.running) {
-        existing.markExpired();
-      }
-      print(
-        '[PlaybackService] 丢弃不可复用的歌曲详情请求($purpose): '
-        '$requestKey, state=${existing.state}',
-      );
-      if (identical(_pendingSongDetailRequests[requestKey], existing)) {
-        _pendingSongDetailRequests.remove(requestKey);
-      }
-    }
-
-    final startedAt = DateTime.now();
-    final hardDeadline = startedAt.add(_songDetailRequestHardTimeout);
-    final completer = Completer<SongDetail?>();
-    late final _SongDetailRequestEntry entry;
-    entry = _SongDetailRequestEntry(
-      key: requestKey,
-      startedAt: startedAt,
-      hardDeadline: hardDeadline,
-      future: completer.future,
-    );
-    _pendingSongDetailRequests[requestKey] = entry;
-
-    unawaited(() async {
-      var timedOut = false;
-      try {
-        final detail = await MusicService()
-            .fetchSongDetail(
-              songId: songId,
-              quality: quality,
-              source: source,
-              title: title,
-              artist: artist,
-              fetchLyrics: fetchLyrics,
-            )
-            .timeout(
-              _songDetailRequestHardTimeout,
-              onTimeout: () {
-                timedOut = true;
-                print(
-                  '[PlaybackService] 歌曲详情共享请求硬超时: '
-                  '$requestKey after ${_songDetailRequestHardTimeout.inSeconds}s',
-                );
-                return null;
-              },
-            );
-        if (timedOut) {
-          entry.markExpired();
-        } else {
-          entry.markCompleted();
-        }
-        if (!completer.isCompleted) {
-          completer.complete(detail);
-        }
-      } on AudioSourceNotConfiguredException catch (e, st) {
-        entry.markFailed();
-        if (!completer.isCompleted) {
-          completer.completeError(e, st);
-        }
-      } catch (e, st) {
-        entry.markFailed();
-        if (!completer.isCompleted) {
-          completer.completeError(e, st);
-        }
-      } finally {
-        if (identical(_pendingSongDetailRequests[requestKey], entry)) {
-          _pendingSongDetailRequests.remove(requestKey);
-        }
-      }
-    }());
-
-    return entry.future;
+    return result.detail;
   }
 
   Future<void> _waitForTrackSwitchSettle() async {
@@ -3204,7 +3152,7 @@ class PlaybackService extends ChangeNotifier {
         : await CacheService().getCyreneFileInfo(track, quality: qualityStr);
 
     if (cacheInfo != null && cacheInfo.metadata.quality == qualityStr) {
-      final cachedSong = _buildCachedSongDetail(
+      final cachedSong = buildCachedSongDetail(
         track,
         cacheInfo.metadata,
         playbackUrl: cacheInfo.metadata.originalUrl.isNotEmpty
@@ -3242,7 +3190,7 @@ class PlaybackService extends ChangeNotifier {
           songDetail: cachedSong,
           cacheInfo: cacheInfo,
           isCached: true,
-          shouldRefreshCachedMetadata: _needsCachedMetadataRefresh(
+          shouldRefreshCachedMetadata: needsCachedMetadataRefresh(
             cacheInfo.metadata,
           ),
           shouldRefreshExistingCacheMetadata: false,
@@ -3281,7 +3229,7 @@ class PlaybackService extends ChangeNotifier {
       isCached: cacheInfo != null,
       shouldRefreshCachedMetadata: false,
       shouldRefreshExistingCacheMetadata:
-          cacheInfo != null && _needsCachedMetadataRefresh(cacheInfo.metadata),
+          cacheInfo != null && needsCachedMetadataRefresh(cacheInfo.metadata),
     );
 
     if (track.source == MusicSource.apple) {
@@ -3571,87 +3519,65 @@ class PlaybackService extends ChangeNotifier {
 
   // ── 播放失败自动跳过 ──
 
-  void _autoSkipOnError() {
+  void _cancelAutoSkipTimer() {
+    _autoSkipTimer?.cancel();
+    _autoSkipTimer = null;
+  }
+
+  void _autoSkipOnError(PlaybackRequestIntent intent) {
     _consecutiveErrors++;
-    if (_consecutiveErrors >= _maxConsecutiveErrors) {
+    final decision = _failurePolicy.evaluate(
+      intent: intent,
+      consecutiveFailures: _consecutiveErrors,
+      queueLength: _queue.length,
+    );
+    if (decision.reachedFailureLimit) {
       print('[PlaybackService] 连续 $_consecutiveErrors 首播放失败，停止自动跳过');
       return;
     }
-    if (_queue.isEmpty || _queue.length <= 1) return;
+    if (!decision.shouldAutoSkip) return;
     print(
-      '[PlaybackService] 播放失败，2 秒后自动跳到下一首 ($_consecutiveErrors/$_maxConsecutiveErrors)',
+      '[PlaybackService] 自动播放失败，${decision.delay.inSeconds} 秒后跳到下一首 '
+      '($_consecutiveErrors/${_failurePolicy.maxConsecutiveFailures})',
     );
-    Future.delayed(const Duration(seconds: 2), () {
-      if (_state != PBState.error) return; // 用户已手动操作
-      _playNextAuto();
+    final failedGeneration = _playGeneration;
+    _autoSkipTimer?.cancel();
+    _autoSkipTimer = Timer(decision.delay, () {
+      _autoSkipTimer = null;
+      if (_state != PBState.error || _playGeneration != failedGeneration) {
+        return;
+      }
+      unawaited(_playNextAuto());
     });
   }
 
   // ── 听歌统计 ──
 
   void _startListeningTimeTracking() {
-    if (_statsTimer != null && _statsTimer!.isActive) return;
-    _playStartTime = DateTime.now();
-    _statsTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (_playStartTime != null) {
-        final elapsed = DateTime.now().difference(_playStartTime!).inSeconds;
-        if (elapsed > 0) {
-          ListeningStatsService().accumulateListeningTime(elapsed);
-          _playStartTime = DateTime.now();
-        }
-      }
-    });
+    _historyRecorder.startListening();
   }
 
   void _pauseListeningTimeTracking() {
-    if (_statsTimer != null) {
-      if (_playStartTime != null) {
-        final elapsed = DateTime.now().difference(_playStartTime!).inSeconds;
-        if (elapsed > 0) {
-          ListeningStatsService().accumulateListeningTime(elapsed);
-        }
-      }
-      _statsTimer?.cancel();
-      _statsTimer = null;
-      _playStartTime = null;
-    }
+    _historyRecorder.pauseListening();
   }
 
   // ── 本地播放会话保存 ──
 
   void _startStateSaveTimer() {
-    if (_stateSaveTimer != null && _stateSaveTimer!.isActive) return;
-    _stateSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      _scheduleSessionPersist();
-    });
+    _sessionManager.startPeriodicSave();
   }
 
   void _stopStateSaveTimer() {
-    _stateSaveTimer?.cancel();
-    _stateSaveTimer = null;
+    _sessionManager.stopPeriodicSave();
   }
 
   void _scheduleSessionPersist() {
-    _sessionPersistDebounce?.cancel();
-    _sessionPersistDebounce = Timer(
-      const Duration(milliseconds: 600),
-      () => unawaited(_persistSessionNow()),
-    );
-  }
-
-  Future<void> _persistSessionNow() async {
-    final snapshot = _buildSessionSnapshot();
-    if (snapshot == null) {
-      await PlaybackSessionStore().clear();
-      return;
-    }
-    await PlaybackSessionStore().saveSnapshot(snapshot);
+    _sessionManager.schedulePersist();
   }
 
   /// 立即持久化当前播放会话（跳过防抖），用于生命周期关键时刻。
   Future<void> persistSessionImmediately() async {
-    _sessionPersistDebounce?.cancel();
-    await _persistSessionNow();
+    await _sessionManager.persistImmediately();
   }
 
   Duration? _takePendingRestorePosition() {
@@ -3797,9 +3723,7 @@ class PlaybackService extends ChangeNotifier {
     _state = PBState.idle;
     _activeTrack = null;
     _activeSong = null;
-    _queue.clear();
-    _currentIndex = -1;
-    _source = QueueSource.none;
+    _queueController.clear();
     _preloadedTrack = null;
     _clearPendingTrack();
     _position = Duration.zero;
@@ -3808,20 +3732,20 @@ class PlaybackService extends ChangeNotifier {
     _errorMessage = null;
     _currentCachedStreamInfo = null;
     _cacheBypassKeys.clear();
-    _pendingSongDetailRequests.clear();
+    _trackResolver.clear();
     LyricService().clearAll(notify: false);
     positionNotifier.value = Duration.zero;
     bufferedPositionNotifier.value = Duration.zero;
     coverManager.setCoverImmediate(null, notify: false);
     coverManager.themeColorNotifier.value = null;
-    _coverProviders.clear();
+    _queueController.clearCoverProviders();
     _resetShuffle();
     await _cleanupCurrentTempFile();
     _stopStateSaveTimer();
     _pendingRestorePosition = null;
     _pauseListeningTimeTracking();
     notifyListeners();
-    await PlaybackSessionStore().clear();
+    await _sessionManager.clear();
     if (Platform.isAndroid) {
       AndroidFloatingLyricService().setPlayingState(false);
       AndroidFloatingLyricService().updatePosition(Duration.zero);
@@ -3845,10 +3769,11 @@ class PlaybackService extends ChangeNotifier {
       _bufferedPosition = Duration.zero;
       _currentCachedStreamInfo = null;
       _cacheBypassKeys.clear();
-      _pendingSongDetailRequests.clear();
+      _trackResolver.clear();
       LyricService().clearAll(notify: false);
       coverManager.setCoverImmediate(null, notify: false);
-      _sessionPersistDebounce?.cancel();
+      _sessionManager.dispose();
+      _historyRecorder.dispose();
       await _engine.dispose();
     } catch (e) {
       print('[PlaybackService] 释放资源失败: $e');
@@ -3859,6 +3784,7 @@ class PlaybackService extends ChangeNotifier {
   void dispose() {
     _resetPreloadState();
     _unbindPreloadDependencyListeners();
+    AudioSourceService().removeListener(_syncActiveSourceHealth);
     for (final sub in _engineSubs) {
       sub.cancel();
     }
@@ -3866,13 +3792,16 @@ class PlaybackService extends ChangeNotifier {
     PlaybackModeService().removeListener(_precacheNextCover);
     _pauseListeningTimeTracking();
     _stopStateSaveTimer();
-    _sessionPersistDebounce?.cancel();
+    _sessionManager.dispose();
+    _historyRecorder.dispose();
     _cleanupCurrentTempFile();
     _engine.dispose();
     ProxyService().stop();
     coverManager.dispose();
     positionNotifier.dispose();
     bufferedPositionNotifier.dispose();
+    problemNotifier.dispose();
+    sourceHealthNotifier.dispose();
     super.dispose();
   }
 }

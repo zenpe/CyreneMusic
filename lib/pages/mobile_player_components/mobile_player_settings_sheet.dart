@@ -6,11 +6,8 @@ import 'settings_sections/settings_sections.dart';
 /// 从底部弹出，包含播放顺序、播放器样式、背景、睡眠定时器等设置
 class MobilePlayerSettingsSheet extends StatefulWidget {
   final Track? currentTrack;
-  
-  const MobilePlayerSettingsSheet({
-    super.key,
-    this.currentTrack,
-  });
+
+  const MobilePlayerSettingsSheet({super.key, this.currentTrack});
 
   /// 显示设置底部弹出板
   static void show(BuildContext context, {Track? currentTrack}) {
@@ -18,12 +15,14 @@ class MobilePlayerSettingsSheet extends StatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => MobilePlayerSettingsSheet(currentTrack: currentTrack),
+      builder: (context) =>
+          MobilePlayerSettingsSheet(currentTrack: currentTrack),
     );
   }
 
   @override
-  State<MobilePlayerSettingsSheet> createState() => _MobilePlayerSettingsSheetState();
+  State<MobilePlayerSettingsSheet> createState() =>
+      _MobilePlayerSettingsSheetState();
 }
 
 class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
@@ -44,7 +43,7 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
       parent: _animController,
       curve: Curves.elasticOut,
     );
-    
+
     // 监听动画完成
     _animController.addStatusListener(_onAnimationStatus);
     _animController.forward();
@@ -68,7 +67,7 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    
+
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
       minChildSize: 0.3,
@@ -84,7 +83,9 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
               end: Alignment.bottomCenter,
               colors: [
                 colorScheme.surfaceContainerHigh,
-                colorScheme.surfaceContainerHighest.withOpacity(isDark ? 0.95 : 0.98),
+                colorScheme.surfaceContainerHighest.withOpacity(
+                  isDark ? 0.95 : 0.98,
+                ),
               ],
             ),
             // 超大圆角
@@ -98,86 +99,86 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
               ),
             ],
           ),
-            child: Column(
-              children: [
-                // Expressive 拖动指示器
-                _buildDragHandle(colorScheme),
-                
-                // Expressive 标题栏
-                _buildTitleBar(colorScheme, isDark),
-                
-                // 分隔线
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Container(
-                    height: 1,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          colorScheme.outlineVariant.withOpacity(0),
-                          colorScheme.outlineVariant.withOpacity(0.5),
-                          colorScheme.outlineVariant.withOpacity(0),
-                        ],
-                      ),
+          child: Column(
+            children: [
+              // Expressive 拖动指示器
+              _buildDragHandle(colorScheme),
+
+              // Expressive 标题栏
+              _buildTitleBar(colorScheme, isDark),
+
+              // 分隔线
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Container(
+                  height: 1,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        colorScheme.outlineVariant.withOpacity(0),
+                        colorScheme.outlineVariant.withOpacity(0.5),
+                        colorScheme.outlineVariant.withOpacity(0),
+                      ],
                     ),
                   ),
                 ),
-                
-                // 设置列表
-                Expanded(
-                  child: ListView(
-                    controller: scrollController,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    physics: const BouncingScrollPhysics(),
-                    // 性能优化：缓存更多的内容避免频繁重建
-                    cacheExtent: 500,
-                    // 子组件使用 RepaintBoundary 隔离重绘
-                    children: [
-                      // 播放顺序
-                      RepaintBoundary(child: PlaybackModeSection()),
-                      
-                      SizedBox(height: 24),
-                      
-                      // 播放器样式
-                      RepaintBoundary(child: PlayerStyleSection()),
-                      
-                      SizedBox(height: 24),
+              ),
 
-                      // 均衡器
-                      RepaintBoundary(child: EqualizerSection()),
-                      SizedBox(height: 24),
+              // 设置列表
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  physics: const BouncingScrollPhysics(),
+                  // 性能优化：缓存更多的内容避免频繁重建
+                  cacheExtent: 500,
+                  // 子组件使用 RepaintBoundary 隔离重绘
+                  children: [
+                    // 播放顺序
+                    RepaintBoundary(child: PlaybackModeSection()),
 
-                      // 歌词细节设置
-                      RepaintBoundary(child: LyricDetailSection()),
+                    SizedBox(height: 24),
 
-                      SizedBox(height: 24),
-                      
-                      // 播放器背景
-                      RepaintBoundary(child: BackgroundSection()),
-                      
-                      SizedBox(height: 24),
+                    // 播放器样式
+                    RepaintBoundary(child: PlayerStyleSection()),
 
-                      // 自动折叠控制栏
-                      RepaintBoundary(child: InteractionSection()),
+                    SizedBox(height: 24),
 
-                      SizedBox(height: 24),
-                      
-                      // 睡眠定时器
-                      RepaintBoundary(child: SleepTimerSection()),
-                      
-                      SizedBox(height: 48),
-                    ],
-                  ),
+                    // 均衡器
+                    RepaintBoundary(child: EqualizerSection()),
+                    SizedBox(height: 24),
+
+                    // 歌词细节设置
+                    RepaintBoundary(child: LyricDetailSection()),
+
+                    SizedBox(height: 24),
+
+                    // 播放器背景
+                    RepaintBoundary(child: BackgroundSection()),
+
+                    SizedBox(height: 24),
+
+                    // 自动折叠控制栏
+                    RepaintBoundary(child: InteractionSection()),
+
+                    SizedBox(height: 24),
+
+                    // 睡眠定时器
+                    RepaintBoundary(child: SleepTimerSection()),
+
+                    SizedBox(height: 48),
+                  ],
                 ),
-              ],
-            ),
-          );
-        
+              ),
+            ],
+          ),
+        );
+
         // 性能优化：动画完成后不使用 ScaleTransition
         if (_animationCompleted) {
           return content;
         }
-        
+
         return ScaleTransition(
           scale: Tween<double>(begin: 0.95, end: 1.0).animate(_scaleAnimation),
           child: content,

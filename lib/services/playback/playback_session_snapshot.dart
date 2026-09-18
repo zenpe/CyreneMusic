@@ -1,6 +1,6 @@
 import '../../models/track.dart';
 import '../playback_mode_service.dart';
-import '../playlist_queue_service.dart';
+import 'queue_controller.dart';
 
 enum PlaybackSessionState { idle, playing, paused }
 
@@ -62,7 +62,8 @@ class PlaybackSessionSnapshot {
 
     return PlaybackSessionSnapshot(
       version: (json['version'] as num?)?.toInt() ?? 1,
-      savedAt: DateTime.tryParse(json['savedAt'] as String? ?? '') ??
+      savedAt:
+          DateTime.tryParse(json['savedAt'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
       queue: queue,
       currentIndex: (json['currentIndex'] as num?)?.toInt() ?? -1,

@@ -7,6 +7,7 @@ import 'package:media_kit/media_kit.dart' as mk;
 import '../android_equalizer_service.dart';
 import '../equalizer_service.dart';
 import '../persistent_storage_service.dart';
+import '../structured_log_service.dart';
 import 'playable_source.dart';
 
 /// 统一播放状态
@@ -308,7 +309,17 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     if (!_errorController.isClosed) {
       _errorController.add(error);
     }
-    print('[JustAudioEngine] $error');
+    StructuredLogService.event(
+      'audio_engine.error',
+      level: LogLevel.error,
+      fields: {
+        'engine': 'just_audio',
+        'failure_kind': error.type.name,
+        'retriable': error.retriable,
+        'source_url': error.sourceUrl,
+      },
+      error: error.cause ?? error.message,
+    );
   }
 
   EngineError _mapJustAudioError(
@@ -455,9 +466,10 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       }
       await Future.delayed(const Duration(milliseconds: 20));
     }
-    print(
-      '[JustAudioEngine] Timed out waiting '
-      '${timeout.inMilliseconds}ms for Android audio session id',
+    StructuredLogService.event(
+      'audio_engine.session_timeout',
+      level: LogLevel.warning,
+      fields: {'engine': 'just_audio', 'timeout_ms': timeout.inMilliseconds},
     );
   }
 
@@ -843,7 +855,12 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
       try {
         mk.MediaKit.ensureInitialized();
       } catch (e) {
-        print('[MediaKitEngine] MediaKit.ensureInitialized 失败: $e');
+        StructuredLogService.event(
+          'audio_engine.initialize_failed',
+          level: LogLevel.error,
+          fields: const {'engine': 'media_kit'},
+          error: e,
+        );
         rethrow;
       }
     });
@@ -854,7 +871,17 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     if (!_errorController.isClosed) {
       _errorController.add(error);
     }
-    print('[MediaKitEngine] $error');
+    StructuredLogService.event(
+      'audio_engine.error',
+      level: LogLevel.error,
+      fields: {
+        'engine': 'media_kit',
+        'failure_kind': error.type.name,
+        'retriable': error.retriable,
+        'source_url': error.sourceUrl,
+      },
+      error: error.cause ?? error.message,
+    );
   }
 
   EngineError _mapMediaKitError(String message, {String? sourceUrl}) {

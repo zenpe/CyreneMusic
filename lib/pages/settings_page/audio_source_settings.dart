@@ -5,15 +5,17 @@ import '../../utils/theme_manager.dart';
 import 'audio_source_settings_page.dart';
 
 /// 音源设置页面 (Wrapper)
-/// 
+///
 /// 这是一个包装类，用于在非设置页面的其他地方（如首页、发现页）独立打开音源设置。
 /// 它复用了 [AudioSourceSettingsContent] update 的 UI 逻辑。
 class AudioSourceSettings extends StatelessWidget {
   final bool openNavidromeSettings;
+  final bool openImportDialog;
 
   const AudioSourceSettings({
     super.key,
     this.openNavidromeSettings = false,
+    this.openImportDialog = false,
   });
 
   @override
@@ -34,6 +36,7 @@ class AudioSourceSettings extends StatelessWidget {
         content: AudioSourceSettingsContent(
           embed: false,
           openNavidromeSettings: openNavidromeSettings,
+          openImportDialog: openImportDialog,
         ),
       );
     }
@@ -43,6 +46,7 @@ class AudioSourceSettings extends StatelessWidget {
       onBack: () => Navigator.of(context).pop(),
       embed: false,
       openNavidromeSettings: openNavidromeSettings,
+      openImportDialog: openImportDialog,
     );
   }
 }

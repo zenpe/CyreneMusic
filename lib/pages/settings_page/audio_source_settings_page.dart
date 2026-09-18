@@ -5,6 +5,7 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../../features/audio_source/audio_source_feature.dart';
 import '../../widgets/material/material_settings_widgets.dart';
 import '../../services/audio_source_service.dart';
+import '../../services/player_service.dart';
 
 import '../../services/navidrome_session_service.dart';
 import '../../models/audio_source_config.dart';
@@ -17,12 +18,14 @@ class AudioSourceSettingsContent extends StatefulWidget {
   final VoidCallback? onBack;
   final bool embed;
   final bool openNavidromeSettings;
+  final bool openImportDialog;
 
   const AudioSourceSettingsContent({
     super.key,
     this.onBack,
     this.embed = false,
     this.openNavidromeSettings = false,
+    this.openImportDialog = false,
   });
 
   @override
@@ -70,6 +73,11 @@ class _AudioSourceSettingsContentState
   bool _showNavidromeConfig = false;
   bool _isSourceActionBusy = false;
 
+  SourceHealthSnapshot? get _visibleSourceHealth {
+    final health = PlayerService().sourceHealth;
+    return health?.status == SourceHealthStatus.healthy ? null : health;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -80,20 +88,143 @@ class _AudioSourceSettingsContentState
         await _setActiveSource(AudioSourceService.navidromeSourceId);
       });
     }
+    if (widget.openImportDialog) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showAddSourceDialog();
+      });
+    }
     _audioSourceReadController.addListener(_onSourceChanged);
     NavidromeSessionService().addListener(_onSourceChanged);
+    PlayerService().sourceHealthNotifier.addListener(_onSourceChanged);
   }
 
   @override
   void dispose() {
     _audioSourceReadController.removeListener(_onSourceChanged);
     NavidromeSessionService().removeListener(_onSourceChanged);
+    PlayerService().sourceHealthNotifier.removeListener(_onSourceChanged);
     super.dispose();
   }
 
   void _onSourceChanged() {
     if (!mounted) return;
     setState(() {});
+  }
+
+  Future<void> _revalidateActiveSource() async {
+    var started = false;
+    await _runWithSourceActionLock(
+      action: () async {
+        started = await PlayerService().revalidateActiveSource();
+      },
+    );
+    if (!started) {
+      _showActionError('请先播放一首在线歌曲，再验证当前音源');
+    }
+  }
+
+  String _sourceHealthMessage(SourceHealthSnapshot health) {
+    return health.status == SourceHealthStatus.unavailable
+        ? '连续解析失败，已暂停请求。可重新验证、切换或重新导入音源。'
+        : '最近解析不稳定，播放成功后会自动恢复正常状态。';
+  }
+
+  Widget _buildFluentHealthBanner(SourceHealthSnapshot health) {
+    final unavailable = health.status == SourceHealthStatus.unavailable;
+    return fluent.InfoBar(
+      title: Text(unavailable ? '当前音源不可用' : '当前音源不稳定'),
+      content: Text(_sourceHealthMessage(health)),
+      severity: unavailable
+          ? fluent.InfoBarSeverity.error
+          : fluent.InfoBarSeverity.warning,
+      action: fluent.Button(
+        onPressed: _isSourceActionBusy ? null : _revalidateActiveSource,
+        child: const Text('重新验证'),
+      ),
+    );
+  }
+
+  Widget _buildCupertinoHealthBanner(
+    BuildContext context,
+    SourceHealthSnapshot health,
+  ) {
+    final unavailable = health.status == SourceHealthStatus.unavailable;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color:
+            (unavailable
+                    ? CupertinoColors.systemRed
+                    : CupertinoColors.systemOrange)
+                .resolveFrom(context)
+                .withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            unavailable
+                ? CupertinoIcons.exclamationmark_circle_fill
+                : CupertinoIcons.exclamationmark_triangle_fill,
+            color:
+                (unavailable
+                        ? CupertinoColors.systemRed
+                        : CupertinoColors.systemOrange)
+                    .resolveFrom(context),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _sourceHealthMessage(health),
+              style: TextStyle(
+                color: CupertinoColors.label.resolveFrom(context),
+                decoration: TextDecoration.none,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          CupertinoButton(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            onPressed: _isSourceActionBusy ? null : _revalidateActiveSource,
+            child: const Text('验证'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMaterialHealthBanner(
+    BuildContext context,
+    SourceHealthSnapshot health,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    final unavailable = health.status == SourceHealthStatus.unavailable;
+    final accent = unavailable ? colors.error : colors.tertiary;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.1),
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            unavailable ? Icons.error_outline : Icons.warning_amber,
+            color: accent,
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(_sourceHealthMessage(health))),
+          TextButton.icon(
+            onPressed: _isSourceActionBusy ? null : _revalidateActiveSource,
+            icon: const Icon(Icons.refresh),
+            label: const Text('验证'),
+          ),
+        ],
+      ),
+    );
   }
 
   // ==================== Actions ====================
@@ -134,10 +265,7 @@ class _AudioSourceSettingsContentState
     }
   }
 
-  void _showActionError(
-    String message, {
-    Future<void> Function()? onRetry,
-  }) {
+  void _showActionError(String message, {Future<void> Function()? onRetry}) {
     if (!mounted) return;
     final themeManager = ThemeManager();
     if (themeManager.isFluentFramework && Platform.isWindows) {
@@ -261,8 +389,9 @@ class _AudioSourceSettingsContentState
   }) async {
     await _runSourceActionWithFeedback(
       errorMessage: '切换到 Navidrome 失败，请稍后重试',
-      onRetry: () =>
-          _activateNavidrome(openSettingsIfUnconfigured: openSettingsIfUnconfigured),
+      onRetry: () => _activateNavidrome(
+        openSettingsIfUnconfigured: openSettingsIfUnconfigured,
+      ),
       action: () => _runWithSourceActionLock(
         action: () async {
           final result = await _audioSourceController.setActiveSource(
@@ -408,7 +537,9 @@ class _AudioSourceSettingsContentState
                   ),
                   fluent.FilledButton(
                     style: fluent.ButtonStyle(
-                      backgroundColor: WidgetStatePropertyAll(fluent.Colors.red),
+                      backgroundColor: WidgetStatePropertyAll(
+                        fluent.Colors.red,
+                      ),
                     ),
                     onPressed: () => Navigator.pop(context, true),
                     child: const Text('删除'),
@@ -546,6 +677,7 @@ class _AudioSourceSettingsContentState
     final sources = _audioSourceReadController.sources;
     final navidromeConfig = _buildNavidromeConfig();
     final displaySources = [navidromeConfig, ...sources];
+    final sourceHealth = _visibleSourceHealth;
 
     if (_showNavidromeConfig) {
       final content = _buildNavidromeConfigBody(
@@ -560,6 +692,8 @@ class _AudioSourceSettingsContentState
     }
 
     final children = <Widget>[
+      if (sourceHealth != null) _buildFluentHealthBanner(sourceHealth),
+      if (sourceHealth != null) const SizedBox(height: 16),
       // 说明卡片
       fluent.Card(
         child: Padding(
@@ -756,7 +890,8 @@ class _AudioSourceSettingsContentState
                       : () => _deleteSource(config.id),
                   style: fluent.ButtonStyle(
                     foregroundColor: WidgetStateProperty.resolveWith((states) {
-                      if (states.contains(WidgetState.hovered)) return fluent.Colors.red;
+                      if (states.contains(WidgetState.hovered))
+                        return fluent.Colors.red;
                       return fluent.Colors.red.withOpacity(0.8);
                     }),
                   ),
@@ -920,6 +1055,7 @@ class _AudioSourceSettingsContentState
     final sources = _audioSourceReadController.sources;
     final navidromeConfig = _buildNavidromeConfig();
     final displaySources = [navidromeConfig, ...sources];
+    final sourceHealth = _visibleSourceHealth;
     final brightness = CupertinoTheme.brightnessOf(context);
     final isDark = brightness == Brightness.dark;
 
@@ -1241,8 +1377,7 @@ class _AudioSourceSettingsContentState
         return buildNavidromeCard(config, index);
       }
 
-      final isActive =
-          config.id == _audioSourceReadController.activeSource?.id;
+      final isActive = config.id == _audioSourceReadController.activeSource?.id;
 
       return Padding(
         padding: EdgeInsets.only(
@@ -1578,6 +1713,8 @@ class _AudioSourceSettingsContentState
         : ListView(
             children: [
               const SizedBox(height: 16),
+              if (sourceHealth != null)
+                _buildCupertinoHealthBanner(context, sourceHealth),
 
               // 说明卡片
               Container(
@@ -1706,12 +1843,15 @@ class _AudioSourceSettingsContentState
     final isNavidromeActive = _audioSourceReadController.isNavidromeActive;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final sourceHealth = _visibleSourceHealth;
 
     final content = _showNavidromeConfig
         ? _buildNavidromeConfigBody(context)
         : ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
+              if (sourceHealth != null)
+                _buildMaterialHealthBanner(context, sourceHealth),
               // 说明卡片
               Padding(
                 padding: const EdgeInsets.symmetric(
@@ -1774,7 +1914,8 @@ class _AudioSourceSettingsContentState
                   else
                     ...sources.map((config) {
                       final isActive =
-                          config.id == _audioSourceReadController.activeSource?.id;
+                          config.id ==
+                          _audioSourceReadController.activeSource?.id;
                       return _buildMaterialSourceTile(config, theme, isActive);
                     }),
                   MD3SettingsTile(
@@ -1950,5 +2091,3 @@ class _AudioSourceSettingsContentState
     );
   }
 }
-
-

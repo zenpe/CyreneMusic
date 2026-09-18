@@ -1,21 +1,25 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 export 'lyric/lyric_snapshot.dart';
+export 'playback/playback_problem.dart';
+export 'playback/source_health_tracker.dart';
 import '../models/song_detail.dart';
 import '../models/track.dart';
 import 'equalizer_service.dart';
 import 'lyric/lyric_snapshot.dart';
 import 'lyric/lyric_service.dart';
 import 'playback/playback_service.dart';
+import 'playback/playback_problem.dart';
+import 'playback/source_health_tracker.dart';
 import 'playlist_queue_service.dart';
 
 /// 播放状态枚举
 enum PlayerState {
-  idle,     // 空闲
-  loading,  // 加载中
-  playing,  // 播放中
-  paused,   // 暂停
-  error,    // 错误
+  idle, // 空闲
+  loading, // 加载中
+  playing, // 播放中
+  paused, // 暂停
+  error, // 错误
 }
 
 /// 音乐播放器服务 — 委托到 PlaybackService
@@ -52,11 +56,16 @@ class PlayerService extends ChangeNotifier {
 
   PlayerState get state {
     switch (_pb.state) {
-      case PBState.idle: return PlayerState.idle;
-      case PBState.loading: return PlayerState.loading;
-      case PBState.playing: return PlayerState.playing;
-      case PBState.paused: return PlayerState.paused;
-      case PBState.error: return PlayerState.error;
+      case PBState.idle:
+        return PlayerState.idle;
+      case PBState.loading:
+        return PlayerState.loading;
+      case PBState.playing:
+        return PlayerState.playing;
+      case PBState.paused:
+        return PlayerState.paused;
+      case PBState.error:
+        return PlayerState.error;
     }
   }
 
@@ -92,26 +101,36 @@ class PlayerService extends ChangeNotifier {
 
   ImageProvider? get currentCoverImageProvider => _pb.coverManager.currentCover;
   String? get currentCoverUrl => _pb.displayCoverUrl;
-  ValueNotifier<Color?> get themeColorNotifier => _pb.coverManager.themeColorNotifier;
+  ValueNotifier<Color?> get themeColorNotifier =>
+      _pb.coverManager.themeColorNotifier;
   ValueNotifier<Duration> get positionNotifier => _pb.positionNotifier;
   ValueNotifier<Duration> get bufferedPositionNotifier =>
       _pb.bufferedPositionNotifier;
+  ValueNotifier<PlaybackProblem?> get problemNotifier => _pb.problemNotifier;
+  PlaybackProblem? get currentProblem => _pb.currentProblem;
+  bool isCurrentPlaybackProblem(PlaybackProblem problem) =>
+      _pb.isCurrentPlaybackProblem(problem);
+  ValueNotifier<SourceHealthSnapshot?> get sourceHealthNotifier =>
+      _pb.sourceHealthNotifier;
+  SourceHealthSnapshot? get sourceHealth => _pb.sourceHealth;
 
   // 均衡器
-  static List<int> get kEqualizerFrequencies => EqualizerService.kEqualizerFrequencies;
+  static List<int> get kEqualizerFrequencies =>
+      EqualizerService.kEqualizerFrequencies;
   List<double> get equalizerGains => _pb.equalizerGains;
   bool get equalizerEnabled => _pb.equalizerEnabled;
   bool get isEqualizerAvailable => _pb.isEqualizerAvailable;
 
   // 音源配置回调
-  void Function()? get onAudioSourceNotConfigured => _pb.onAudioSourceNotConfigured;
+  void Function()? get onAudioSourceNotConfigured =>
+      _pb.onAudioSourceNotConfigured;
   set onAudioSourceNotConfigured(void Function()? callback) {
     _pb.onAudioSourceNotConfigured = callback;
   }
 
-  void Function(PlaybackFailure failure)? get onPlaybackFailure =>
+  void Function(PlaybackProblem problem)? get onPlaybackFailure =>
       _pb.onPlaybackFailure;
-  set onPlaybackFailure(void Function(PlaybackFailure failure)? callback) {
+  set onPlaybackFailure(void Function(PlaybackProblem problem)? callback) {
     _pb.onPlaybackFailure = callback;
   }
 
@@ -129,14 +148,19 @@ class PlayerService extends ChangeNotifier {
   }) async {
     // 如果有封面，先设置
     if (coverProvider != null) {
-      _pb.coverManager.setCoverImmediate(coverProvider, url: track.picUrl, notify: false);
+      _pb.coverManager.setCoverImmediate(
+        coverProvider,
+        url: track.picUrl,
+        notify: false,
+      );
       _pb.updateCoverProvider(track, coverProvider);
     }
     // 单曲播放：如果有队列，直接跳转或重建
     if (_pb.hasQueue) {
       // 检查 track 是否已在队列中
       final idx = _pb.queue.indexWhere(
-        (t) => t.id.toString() == track.id.toString() && t.source == track.source,
+        (t) =>
+            t.id.toString() == track.id.toString() && t.source == track.source,
       );
       if (idx != -1) {
         await _pb.jumpTo(idx);
@@ -151,7 +175,11 @@ class PlayerService extends ChangeNotifier {
   Future<void> seek(Duration position) => _pb.seek(position);
   Future<void> playNext() => _pb.next();
   Future<void> playPrevious() => _pb.previous();
-  Future<void> retryCurrent() => _pb.retryCurrentTrack();
+  Future<void> retryCurrent({PlaybackProblem? expectedProblem}) =>
+      _pb.retryCurrentTrack(expectedProblem: expectedProblem);
+  Future<void> retryCurrentForRemoteSource() =>
+      _pb.retryCurrentTrack(forceRemoteResolution: true);
+  Future<bool> revalidateActiveSource() => _pb.revalidateActiveSource();
   Future<void> stop() => _pb.stop();
   Future<void> togglePlayPause() => _pb.togglePlayPause();
   Future<void> setVolume(double volume) => _pb.setVolume(volume);
@@ -182,8 +210,10 @@ class PlayerService extends ChangeNotifier {
       _pb.updateFloatingLyricManually();
 
   // 均衡器
-  Future<void> updateEqualizer(List<double> gains) => _pb.updateEqualizer(gains);
-  Future<void> setEqualizerEnabled(bool enabled) => _pb.setEqualizerEnabled(enabled);
+  Future<void> updateEqualizer(List<double> gains) =>
+      _pb.updateEqualizer(gains);
+  Future<void> setEqualizerEnabled(bool enabled) =>
+      _pb.setEqualizerEnabled(enabled);
   Future<void> persistSessionImmediately() => _pb.persistSessionImmediately();
 
   // 资源释放

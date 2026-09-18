@@ -2,25 +2,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show ImageProvider;
 import '../models/track.dart';
 import 'playback/playback_service.dart';
-
-/// 播放队列来源
-enum QueueSource {
-  none,        // 无队列
-  favorites,   // 收藏列表
-  playlist,    // 歌单
-  album,       // 专辑
-  history,     // 播放历史
-  search,      // 搜索结果
-  radio,       // 电台
-  toplist,     // 排行榜
-}
+export 'playback/queue_controller.dart' show QueueSource;
+import 'playback/queue_controller.dart' show QueueSource;
 
 /// 播放队列服务 — 委托到 PlaybackService
 ///
 /// 保留原有单例和 API 签名，所有方法委托到 PlaybackService。
 /// 现有 24 个文件的调用无需改动。
 class PlaylistQueueService extends ChangeNotifier {
-  static final PlaylistQueueService _instance = PlaylistQueueService._internal();
+  static final PlaylistQueueService _instance =
+      PlaylistQueueService._internal();
   factory PlaylistQueueService() => _instance;
 
   final _pb = PlaybackService();
@@ -52,7 +43,12 @@ class PlaylistQueueService extends ChangeNotifier {
     QueueSource source, {
     Map<String, ImageProvider>? coverProviders,
   }) {
-    _pb.setQueueSilent(tracks, startIndex, source, coverProviders: coverProviders);
+    _pb.setQueueSilent(
+      tracks,
+      startIndex,
+      source,
+      coverProviders: coverProviders,
+    );
   }
 
   /// 追加歌曲到当前队列

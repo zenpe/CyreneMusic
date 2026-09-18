@@ -16,15 +16,15 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('cyrene_music_test_');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(pathProviderChannel, (call) async {
-      switch (call.method) {
-        case 'getApplicationSupportDirectory':
-        case 'getApplicationDocumentsDirectory':
-        case 'getTemporaryDirectory':
-          return tempDir.path;
-        default:
-          return tempDir.path;
-      }
-    });
+          switch (call.method) {
+            case 'getApplicationSupportDirectory':
+            case 'getApplicationDocumentsDirectory':
+            case 'getTemporaryDirectory':
+              return tempDir.path;
+            default:
+              return tempDir.path;
+          }
+        });
 
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await storage.initialize();

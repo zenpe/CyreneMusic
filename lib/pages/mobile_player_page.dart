@@ -13,7 +13,9 @@ import 'mobile_player_components/mobile_player_settings_sheet.dart';
 import 'player_components/player_immersive_layout.dart';
 import 'player_components/player_fluid_cloud_layout.dart';
 import '../../services/lyric_style_service.dart';
-import '../utils/theme_manager.dart';
+import '../services/back_navigation_coordinator.dart';
+import '../services/experience_profile_service.dart';
+import '../services/structured_log_service.dart';
 
 /// 移动端播放器页面（重构版本）
 /// 适用于 Android/iOS，现在使用组件化架构
@@ -24,14 +26,16 @@ class MobilePlayerPage extends StatefulWidget {
   State<MobilePlayerPage> createState() => _MobilePlayerPageState();
 }
 
-class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProviderStateMixin {
+class _MobilePlayerPageState extends State<MobilePlayerPage>
+    with TickerProviderStateMixin {
+  static const _backCoordinator = BackNavigationCoordinator();
   // 歌词相关
   List<LyricLine> _lyrics = [];
   int _currentLyricIndex = -1;
   LyricLoadState _lyricState = LyricLoadState.idle;
   String? _lastTrackId;
   String? _lastLyricsSignature;
-  
+
   // 控制中心
   bool _showControlCenter = false;
   bool _showTranslation = true;
@@ -51,9 +55,9 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
   /// 根据当前歌词样式检查并强制设置屏幕方向
   void _checkAndForceOrientation() {
     if (!Platform.isAndroid && !Platform.isIOS) return;
-    
+
     if (LyricStyleService().currentStyle == LyricStyle.immersive) {
-      print('📱 [MobilePlayerPage] 进入沉浸模式，强制横屏并隐藏状态栏');
+      StructuredLogService.event('player_ui.immersive_enter');
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
@@ -76,7 +80,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
   /// 恢复到默认竖屏（用于关闭播放器时）
   void _resetOrientation() {
     if (!Platform.isAndroid && !Platform.isIOS) return;
-    print('📱 [MobilePlayerPage] 离开播放页，恢复默认方向');
+    StructuredLogService.event('player_ui.exit');
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -90,13 +94,24 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
   /// 是否应该显示译文按钮（与全屏歌词页一致逻辑）
   bool _shouldShowTranslationButton() {
     if (_lyrics.isEmpty) return false;
-    final hasTranslation = _lyrics.any((l) => l.translation != null && l.translation!.isNotEmpty);
+    final hasTranslation = _lyrics.any(
+      (l) => l.translation != null && l.translation!.isNotEmpty,
+    );
     if (!hasTranslation) return false;
-    final sample = _lyrics.where((l) => l.text.trim().isNotEmpty).take(5).map((l) => l.text).join('');
+    final sample = _lyrics
+        .where((l) => l.text.trim().isNotEmpty)
+        .take(5)
+        .map((l) => l.text)
+        .join('');
     if (sample.isEmpty) return false;
-    final chineseCount = sample.runes.where((r) =>
-      (r >= 0x4E00 && r <= 0x9FFF) || (r >= 0x3400 && r <= 0x4DBF) || (r >= 0x20000 && r <= 0x2A6DF)
-    ).length;
+    final chineseCount = sample.runes
+        .where(
+          (r) =>
+              (r >= 0x4E00 && r <= 0x9FFF) ||
+              (r >= 0x3400 && r <= 0x4DBF) ||
+              (r >= 0x20000 && r <= 0x2A6DF),
+        )
+        .length;
     final ratio = chineseCount / sample.length;
     return ratio < 0.3; // 中文占比小于30%判定为外文
   }
@@ -126,6 +141,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     PlayerService().addListener(_onPlayerStateChanged);
     PlayerService().positionNotifier.addListener(_onPositionChanged);
     LyricStyleService().addListener(_onLyricStyleChanged);
+    ExperienceProfileService().addListener(_onExperienceProfileChanged);
   }
 
   /// 移除监听器
@@ -133,6 +149,11 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     PlayerService().removeListener(_onPlayerStateChanged);
     PlayerService().positionNotifier.removeListener(_onPositionChanged);
     LyricStyleService().removeListener(_onLyricStyleChanged);
+    ExperienceProfileService().removeListener(_onExperienceProfileChanged);
+  }
+
+  void _onExperienceProfileChanged() {
+    if (mounted) setState(() {});
   }
 
   void _onLyricStyleChanged() {
@@ -168,6 +189,14 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     _updateCurrentLyric();
   }
 
+  void _handleBackPressed() {
+    _backCoordinator.handleBack(
+      transientPanelVisible: _showControlCenter,
+      closeTransientPanel: _toggleControlCenter,
+      popRoute: () => Navigator.of(context).pop(),
+    );
+  }
+
   void _syncLyricsFromSnapshot({bool force = false}) {
     final player = PlayerService();
     final currentTrack = player.currentTrack;
@@ -186,9 +215,10 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     }
 
     if (currentTrackId != _lastTrackId) {
-      print('🎵 [MobilePlayerPage] 检测到歌曲切换，刷新歌词快照');
-      print('   上一首ID: $_lastTrackId');
-      print('   当前ID: $currentTrackId');
+      StructuredLogService.event(
+        'player_ui.lyric_track_changed',
+        fields: {'previous_track_id': _lastTrackId, 'track_id': currentTrackId},
+      );
     }
 
     _lastTrackId = currentTrackId;
@@ -205,7 +235,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
   /// 更新当前歌词
   void _updateCurrentLyric({bool notify = true}) {
     if (_lyrics.isEmpty) return;
-    
+
     final newIndex = LyricParser.findCurrentLineIndex(
       _lyrics,
       PlayerService().position,
@@ -225,7 +255,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
   /// 强制刷新歌词（用于调试）
   void _forceRefreshLyrics() {
     if (PlayerService().currentTrack == null) return;
-    print('🔄 [MobilePlayerPage] 强制刷新歌词快照');
+    StructuredLogService.event('player_ui.lyric_refresh');
     _lastLyricsSignature = null;
     _syncLyricsFromSnapshot(force: true);
   }
@@ -244,14 +274,18 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
 
   /// 构建流体云全屏布局（动态背景模式）
   /// 使用新的 MobilePlayerFluidCloudLayout，不再需要二级歌词页面
-  Widget _buildAppleMusicStyleLayout(BuildContext context, BoxConstraints constraints) {
+  Widget _buildAppleMusicStyleLayout(
+    BuildContext context,
+    BoxConstraints constraints,
+  ) {
     return MobilePlayerFluidCloudLayout(
       lyrics: _lyrics,
       currentLyricIndex: _currentLyricIndex,
       showTranslation: true,
       lyricState: _lyricState,
-      onBackPressed: () => Navigator.pop(context),
-      onPlaylistPressed: () => MobilePlayerDialogs.showPlaylistBottomSheet(context),
+      onBackPressed: _handleBackPressed,
+      onPlaylistPressed: () =>
+          MobilePlayerDialogs.showPlaylistBottomSheet(context),
     );
   }
 
@@ -295,12 +329,18 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     final lyricStyleService = LyricStyleService();
     final lyricState = _lyricState;
     // 流体云布局条件：全屏播放器样式设置为流体云（优先级最高）
-    final useFluidCloudLayout = lyricStyleService.currentStyle == LyricStyle.fluidCloud;
-    
+    final useFluidCloudLayout =
+        lyricStyleService.currentStyle == LyricStyle.fluidCloud;
+
     // 动态处理状态栏：如果是沉浸模式，或者在流体云样式下的横屏，则隐藏状态栏
     final isImmersive = lyricStyleService.currentStyle == LyricStyle.immersive;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-    
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    final experiencePolicy = ExperienceProfileService().policy(
+      width: MediaQuery.of(context).size.width,
+      height: MediaQuery.of(context).size.height,
+    );
+
     if (isImmersive || (useFluidCloudLayout && isLandscape)) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     } else {
@@ -310,75 +350,90 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     final scaffoldWidget = AnnotatedRegion<SystemUiOverlayStyle>(
       value: playerOverlayStyle,
       child: Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Stack(
-            children: [
-              // 沉浸模式布局：复用桌面端组件
-              if (lyricStyleService.currentStyle == LyricStyle.immersive)
-                PlayerImmersiveLayout(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: [
+            // 沉浸模式布局：复用桌面端组件
+            if (lyricStyleService.currentStyle == LyricStyle.immersive)
+              PlayerImmersiveLayout(
+                lyrics: _lyrics,
+                currentLyricIndex: _currentLyricIndex,
+                showTranslation: _showTranslation,
+                lyricState: lyricState,
+                isMaximized: true,
+                uiScale: experiencePolicy.mobileImmersiveScale,
+                carMode: experiencePolicy.profile == ExperienceProfile.car,
+                reducedEffects: experiencePolicy.reducedEffects,
+                onBackPressed: _handleBackPressed,
+                onMorePressed: () => MobilePlayerSettingsSheet.show(context),
+                onPlaylistPressed: () =>
+                    MobilePlayerDialogs.showPlaylistBottomSheet(context),
+                onVolumeControlPressed: _toggleControlCenter,
+              )
+            // 流体云布局模式：完全接管背景和 Safe Area
+            else if (useFluidCloudLayout)
+              experiencePolicy.usesWidePlayer
+                  ? PlayerFluidCloudLayout(
+                      lyrics: _lyrics,
+                      currentLyricIndex: _currentLyricIndex,
+                      showTranslation: _showTranslation,
+                      lyricState: lyricState,
+                      isMaximized: true,
+                      onBackPressed: _handleBackPressed,
+                      onPlaylistPressed: () =>
+                          MobilePlayerDialogs.showPlaylistBottomSheet(context),
+                      onVolumeControlPressed: () {
+                        // 移动端通过系统按键控制音量，内部 Slider 会直接调用 PlayerService().setVolume
+                      },
+                      onSleepTimerPressed: () =>
+                          MobilePlayerDialogs.showSleepTimer(context),
+                      onTranslationToggle: () =>
+                          setState(() => _showTranslation = !_showTranslation),
+                      leftPanelScale: 0.75, // 缩小左侧区域
+                    )
+                  : _buildAppleMusicStyleLayout(context, const BoxConstraints())
+            else ...[
+              // 标准布局模式：原有背景 + Safe Area
+              const MobilePlayerBackground(),
+              SafeArea(
+                child: MobilePlayerClassicLayout(
                   lyrics: _lyrics,
                   currentLyricIndex: _currentLyricIndex,
-                  showTranslation: _showTranslation,
                   lyricState: lyricState,
-                  isMaximized: true,
-                  uiScale: 0.5, // 适配移动端，缩小 50%
-                  onBackPressed: () => Navigator.pop(context),
-                  onMorePressed: () => MobilePlayerSettingsSheet.show(context),
-                  onPlaylistPressed: () => MobilePlayerDialogs.showPlaylistBottomSheet(context),
-                  onVolumeControlPressed: _toggleControlCenter,
-                )
-              // 流体云布局模式：完全接管背景和 Safe Area
-              else if (useFluidCloudLayout)
-                ThemeManager().isTablet
-                     ? PlayerFluidCloudLayout(
-                         lyrics: _lyrics,
-                         currentLyricIndex: _currentLyricIndex,
-                         showTranslation: _showTranslation,
-                         lyricState: lyricState,
-                         isMaximized: true,
-                        onBackPressed: () => Navigator.pop(context),
-                        onPlaylistPressed: () => MobilePlayerDialogs.showPlaylistBottomSheet(context),
-                        onVolumeControlPressed: () {
-                          // 移动端通过系统按键控制音量，内部 Slider 会直接调用 PlayerService().setVolume
-                        },
-                        onSleepTimerPressed: () => MobilePlayerDialogs.showSleepTimer(context),
-                        onTranslationToggle: () => setState(() => _showTranslation = !_showTranslation),
-                        leftPanelScale: 0.75, // 缩小左侧区域
-                      )
-                    : _buildAppleMusicStyleLayout(context, const BoxConstraints())
-              else ...[
-                // 标准布局模式：原有背景 + Safe Area
-                const MobilePlayerBackground(),
-                SafeArea(
-                  child: MobilePlayerClassicLayout(
-                    lyrics: _lyrics,
-                    currentLyricIndex: _currentLyricIndex,
-                    lyricState: lyricState,
-                    onBackPressed: () => Navigator.pop(context),
-                    onPlaylistPressed: () => MobilePlayerDialogs.showPlaylistBottomSheet(context),
-                  ),
+                  onBackPressed: _handleBackPressed,
+                  onPlaylistPressed: () =>
+                      MobilePlayerDialogs.showPlaylistBottomSheet(context),
                 ),
-              ],
+              ),
+            ],
 
-          // 控制中心面板
-          MobilePlayerControlCenter(
-            isVisible: _showControlCenter,
-            fadeAnimation: _controlCenterFadeAnimation,
-            onClose: _toggleControlCenter,
-          ),
-        ],
-      ),
+            // 控制中心面板
+            MobilePlayerControlCenter(
+              isVisible: _showControlCenter,
+              fadeAnimation: _controlCenterFadeAnimation,
+              onClose: _toggleControlCenter,
+            ),
+          ],
+        ),
       ),
     );
-    
+
     // Windows 平台：添加圆角边框
+    final backAwareWidget = PopScope(
+      canPop: !_showControlCenter,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _handleBackPressed();
+      },
+      child: scaffoldWidget,
+    );
+
     if (Platform.isWindows) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: scaffoldWidget,
+        child: backAwareWidget,
       );
     }
-    
-    return scaffoldWidget;
+
+    return backAwareWidget;
   }
 }

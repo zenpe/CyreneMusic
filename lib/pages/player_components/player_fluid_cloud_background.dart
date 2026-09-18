@@ -23,27 +23,31 @@ class _DynamicColorCache {
 }
 
 /// 流体云播放器专用背景组件
-/// 
+///
 /// 自适应模式下的行为：
 /// - 开启封面渐变：显示专辑封面到主题色的渐变效果
 /// - 关闭封面渐变：显示专辑封面 100% 填充（保持长宽比）
 /// - 动态背景：基于封面提取3个颜色的动态渐变动画
 /// - 用户仍可自定义纯色、视频或图片背景
 class PlayerFluidCloudBackground extends StatefulWidget {
-  const PlayerFluidCloudBackground({super.key});
+  final bool reducedEffects;
+
+  const PlayerFluidCloudBackground({super.key, this.reducedEffects = false});
 
   @override
-  State<PlayerFluidCloudBackground> createState() => _PlayerFluidCloudBackgroundState();
+  State<PlayerFluidCloudBackground> createState() =>
+      _PlayerFluidCloudBackgroundState();
 }
 
-class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground> {
+class _PlayerFluidCloudBackgroundState
+    extends State<PlayerFluidCloudBackground> {
   // 动态背景颜色
   String? _currentImageUrl;
   bool _isFirstBuild = true;
-  
+
   // 防抖计时器
   int _pendingExtractionId = 0;
-  
+
   // 记录最后一次调度的图片URL，防止PlayerService频繁通知（如进度更新）导致防抖计时器不断重置
   String? _lastScheduledImageUrl;
 
@@ -52,7 +56,7 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
     super.initState();
     // 只监听背景设置变化，不监听 PlayerService（避免频繁触发）
     PlayerBackgroundService().addListener(_onBackgroundChanged);
-    
+
     // 监听 PlayerService 以获取歌曲变化
     // 注意：PlayerService 会发送进度更新等频繁通知，所以在处理时必须进行过滤
     PlayerService().addListener(_onPlayerServiceChanged);
@@ -66,7 +70,9 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
   }
 
   void _onPlayerServiceChanged() {
-    if (mounted && PlayerBackgroundService().backgroundType == PlayerBackgroundType.dynamic) {
+    if (mounted &&
+        PlayerBackgroundService().backgroundType ==
+            PlayerBackgroundType.dynamic) {
       // 尝试调度颜色提取
       // _scheduleColorExtraction 内部会处理去重，避免频繁的进度更新导致重复计算
       // _scheduleColorExtraction();
@@ -76,8 +82,9 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
   void _onBackgroundChanged() {
     if (mounted) {
       setState(() {});
-      if (PlayerBackgroundService().backgroundType == PlayerBackgroundType.dynamic) {
-      // _scheduleColorExtraction();
+      if (PlayerBackgroundService().backgroundType ==
+          PlayerBackgroundType.dynamic) {
+        // _scheduleColorExtraction();
       }
     }
   }
@@ -107,8 +114,7 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
     if (cachedColors != null) {
       _currentImageUrl = imageUrl;
       if (mounted) {
-        setState(() {
-        });
+        setState(() {});
       }
       return;
     }
@@ -131,11 +137,10 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
     final cachedColors = _DynamicColorCache().getColors(imageUrl);
     if (cachedColors != null) {
       _currentImageUrl = imageUrl;
-      if (mounted) {
-      }
+      if (mounted) {}
       return;
     }
-    
+
     _currentImageUrl = imageUrl;
 
     try {
@@ -147,8 +152,7 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
       );
 
       if (result != null && mounted && _currentImageUrl == imageUrl) {
-        setState(() {
-        });
+        setState(() {});
       }
     } catch (e) {
       // 静默失败，保持当前颜色
@@ -162,7 +166,7 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
     if (_isFirstBuild) {
       _isFirstBuild = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-      // _scheduleColorExtraction();
+        // _scheduleColorExtraction();
       });
     }
     return _buildBackground();
@@ -172,27 +176,29 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
   Widget _buildBackground() {
     final backgroundService = PlayerBackgroundService();
     final greyColor = Colors.grey[900] ?? const Color(0xFF212121);
-    
+
     switch (backgroundService.backgroundType) {
       case PlayerBackgroundType.adaptive:
         // 自适应模式：专辑封面在左侧，向右渐变到主题色
         return _buildAdaptiveBackground(greyColor);
-        
+
       case PlayerBackgroundType.solidColor:
         // 纯色背景
         return _buildSolidColorBackground(backgroundService, greyColor);
-        
+
       case PlayerBackgroundType.image:
         // 图片背景
         return _buildImageBackground(backgroundService, greyColor);
-        
+
       case PlayerBackgroundType.video:
         // 视频背景
         return _buildVideoBackground(backgroundService, greyColor);
-        
+
       case PlayerBackgroundType.dynamic:
         // 动态背景
-        return _buildDynamicBackground(greyColor);
+        return widget.reducedEffects
+            ? _buildAdaptiveBackground(greyColor)
+            : _buildDynamicBackground(greyColor);
     }
   }
 
@@ -206,23 +212,23 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
         final player = PlayerService();
         // 优先使用缓存的 Provider
         ImageProvider? imageProvider = player.currentCoverImageProvider;
-        
+
         // 如果没有 Provider，尝试从 URL 构建
         if (imageProvider == null) {
-            final song = player.currentSong;
-            final track = player.currentTrack;
-            final imageUrl = player.currentCoverUrl;
-            
-             if (imageUrl != null && imageUrl.isNotEmpty) {
-                if (imageUrl.startsWith('http')) {
-                 imageProvider = CachedNetworkImageProvider(
-                   imageUrl,
-                   headers: getImageHeaders(imageUrl),
-                 );
-                } else {
-                  imageProvider = FileImage(File(imageUrl));
-                }
+          final song = player.currentSong;
+          final track = player.currentTrack;
+          final imageUrl = player.currentCoverUrl;
+
+          if (imageUrl != null && imageUrl.isNotEmpty) {
+            if (imageUrl.startsWith('http')) {
+              imageProvider = CachedNetworkImageProvider(
+                imageUrl,
+                headers: getImageHeaders(imageUrl),
+              );
+            } else {
+              imageProvider = FileImage(File(imageUrl));
             }
+          }
         }
 
         return RepaintBoundary(
@@ -230,7 +236,7 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
             imageProvider: imageProvider,
             useDesktopProcessing: true,
             // 使用与移动端一致的半透明遮罩
-            child: Container(color: Colors.black.withOpacity(0.15)), 
+            child: Container(color: Colors.black.withOpacity(0.15)),
           ),
         );
       },
@@ -247,12 +253,12 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
         final song = PlayerService().currentSong;
         final track = PlayerService().currentTrack;
         final imageUrl = PlayerService().currentCoverUrl ?? '';
-        
+
         return ValueListenableBuilder<Color?>(
           valueListenable: PlayerService().themeColorNotifier,
           builder: (context, themeColor, child) {
             final color = themeColor ?? Colors.grey[700]!;
-            
+
             return RepaintBoundary(
               child: Stack(
                 children: [
@@ -263,7 +269,7 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
                       color: color,
                     ),
                   ),
-                  
+
                   // 专辑封面层 - 等比例放大至占满高度，位于左侧
                   if (imageUrl.isNotEmpty)
                     Positioned(
@@ -285,12 +291,17 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
                                     begin: Alignment.centerLeft,
                                     end: Alignment.centerRight,
                                     colors: [
-                                      Colors.transparent,  // 左侧和中间保持透明，显示封面
+                                      Colors.transparent, // 左侧和中间保持透明，显示封面
                                       Colors.transparent,
-                                      color.withOpacity(0.3),  // 右侧开始融合主题色
-                                      color.withOpacity(0.9),  // 最右侧更多主题色
+                                      color.withOpacity(0.3), // 右侧开始融合主题色
+                                      color.withOpacity(0.9), // 最右侧更多主题色
                                     ],
-                                    stops: const [0.0, 0.5, 0.8, 1.0], // 调整渐变点，显示更多封面
+                                    stops: const [
+                                      0.0,
+                                      0.5,
+                                      0.8,
+                                      1.0,
+                                    ], // 调整渐变点，显示更多封面
                                   ),
                                 ),
                               ),
@@ -299,7 +310,7 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
                         ),
                       ),
                     ),
-                  
+
                   // 渐变遮罩层 - 从封面到主题色的丝滑渐变
                   Positioned.fill(
                     child: AnimatedContainer(
@@ -309,12 +320,12 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
                           begin: Alignment.centerLeft,
                           end: Alignment.centerRight,
                           colors: [
-                            Colors.transparent,        // 左侧完全透明
-                            color.withOpacity(0.2),    // 开始融合
-                            color.withOpacity(0.8),   // 主题色更明显
-                            color,                      // 右侧完全不透明的主题色
+                            Colors.transparent, // 左侧完全透明
+                            color.withOpacity(0.2), // 开始融合
+                            color.withOpacity(0.8), // 主题色更明显
+                            color, // 右侧完全不透明的主题色
                           ],
-                          stops: const [0.0, 0.4, 0.7, 0.9],  // 调整渐变，让左侧更清晰
+                          stops: const [0.0, 0.4, 0.7, 0.9], // 调整渐变，让左侧更清晰
                         ),
                       ),
                     ),
@@ -327,8 +338,6 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
       },
     );
   }
-
-
 
   /// 构建默认背景（无封面时使用）
   Widget _buildDefaultBackground(Color greyColor) {
@@ -350,10 +359,15 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
     );
   }
 
-  Widget _buildCoverImage(String imageUrl, Color greyColor, {bool fullCover = false}) {
+  Widget _buildCoverImage(
+    String imageUrl,
+    Color greyColor, {
+    bool fullCover = false,
+  }) {
     // 性能优化：优先使用 PlayerService 已经稳定的 Provider
     final player = PlayerService();
-    if (player.currentCoverUrl == imageUrl && player.currentCoverImageProvider != null) {
+    if (player.currentCoverUrl == imageUrl &&
+        player.currentCoverImageProvider != null) {
       return Image(
         image: player.currentCoverImageProvider!,
         fit: BoxFit.cover,
@@ -364,8 +378,9 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
     }
 
     // 判断是网络 URL 还是本地文件路径
-    final isNetwork = imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
-    
+    final isNetwork =
+        imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
+
     if (isNetwork) {
       return CachedNetworkImage(
         imageUrl: imageUrl,
@@ -376,11 +391,11 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
         memCacheWidth: fullCover ? 1920 : 1024,
         memCacheHeight: fullCover ? 1080 : 1024,
         filterQuality: FilterQuality.medium,
-        placeholder: (context, url) => fullCover 
-            ? _buildDefaultBackground(greyColor) 
+        placeholder: (context, url) => fullCover
+            ? _buildDefaultBackground(greyColor)
             : Container(color: greyColor),
-        errorWidget: (context, url, error) => fullCover 
-            ? _buildDefaultBackground(greyColor) 
+        errorWidget: (context, url, error) => fullCover
+            ? _buildDefaultBackground(greyColor)
             : Container(color: greyColor),
       );
     } else {
@@ -393,17 +408,20 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
         cacheWidth: fullCover ? 1920 : 1024,
         cacheHeight: fullCover ? 1080 : 1024,
         filterQuality: FilterQuality.medium,
-        errorBuilder: (context, error, stackTrace) => fullCover 
-            ? _buildDefaultBackground(greyColor) 
+        errorBuilder: (context, error, stackTrace) => fullCover
+            ? _buildDefaultBackground(greyColor)
             : Container(color: greyColor),
       );
     }
   }
 
   /// 构建纯色背景
-  Widget _buildSolidColorBackground(PlayerBackgroundService backgroundService, Color greyColor) {
+  Widget _buildSolidColorBackground(
+    PlayerBackgroundService backgroundService,
+    Color greyColor,
+  ) {
     final topColor = backgroundService.solidColor;
-    
+
     return RepaintBoundary(
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 500),
@@ -427,7 +445,10 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
   }
 
   /// 构建图片背景
-  Widget _buildImageBackground(PlayerBackgroundService backgroundService, Color greyColor) {
+  Widget _buildImageBackground(
+    PlayerBackgroundService backgroundService,
+    Color greyColor,
+  ) {
     if (backgroundService.mediaPath != null) {
       final mediaFile = File(backgroundService.mediaPath!);
       if (mediaFile.existsSync()) {
@@ -448,7 +469,8 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
                 ),
               ),
               // 模糊层（性能优化：限制模糊程度避免GPU过载）
-              if (backgroundService.blurAmount > 0 && backgroundService.blurAmount <= 40)
+              if (backgroundService.blurAmount > 0 &&
+                  backgroundService.blurAmount <= 40)
                 Positioned.fill(
                   child: BackdropFilter(
                     filter: ImageFilter.blur(
@@ -463,22 +485,23 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
               else if (backgroundService.blurAmount == 0)
                 // 无模糊时也添加浅色遮罩以确保文字可读
                 Positioned.fill(
-                  child: Container(
-                    color: Colors.black.withOpacity(0.2),
-                  ),
+                  child: Container(color: Colors.black.withOpacity(0.2)),
                 ),
             ],
           ),
         );
       }
     }
-    
+
     // 如果没有设置图片，使用默认背景
     return _buildDefaultBackground(greyColor);
   }
-  
+
   /// 构建视频背景
-  Widget _buildVideoBackground(PlayerBackgroundService backgroundService, Color greyColor) {
+  Widget _buildVideoBackground(
+    PlayerBackgroundService backgroundService,
+    Color greyColor,
+  ) {
     if (backgroundService.mediaPath != null) {
       final mediaFile = File(backgroundService.mediaPath!);
       if (mediaFile.existsSync()) {
@@ -495,15 +518,13 @@ class _PlayerFluidCloudBackgroundState extends State<PlayerFluidCloudBackground>
             // 半透明遮罩确保文字可读
             if (backgroundService.blurAmount == 0)
               Positioned.fill(
-                child: Container(
-                  color: Colors.black.withOpacity(0.2),
-                ),
+                child: Container(color: Colors.black.withOpacity(0.2)),
               ),
           ],
         );
       }
     }
-    
+
     // 如果没有设置视频，使用默认背景
     return _buildDefaultBackground(greyColor);
   }

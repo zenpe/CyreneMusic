@@ -12,6 +12,7 @@ class LxQuickJsRuntime implements LxRuntime {
   bool _isScriptReady = false;
   bool _isDisabled = false;
   LxScriptInfo? _currentScript;
+  LxRuntimeFailure? _lastFailure;
 
   final Map<String, Completer<String>> _pendingRequests = {};
   int _requestCounter = 0;
@@ -42,6 +43,9 @@ class LxQuickJsRuntime implements LxRuntime {
 
   @override
   LxScriptInfo? get currentScript => _currentScript;
+
+  @override
+  LxRuntimeFailure? get lastFailure => _lastFailure;
 
   @override
   Future<void> initialize() async {
@@ -162,7 +166,12 @@ class LxQuickJsRuntime implements LxRuntime {
     required String quality,
     Map<String, dynamic>? musicInfo,
   }) async {
+    _lastFailure = null;
     if (!_isInitialized || !_isScriptReady) {
+      _lastFailure = const LxRuntimeFailure(
+        kind: LxRuntimeFailureKind.notReady,
+        message: '洛雪音源脚本未就绪',
+      );
       _error('❌ [LxQuickJsRuntime] 服务未就绪');
       return null;
     }
@@ -205,6 +214,7 @@ class LxQuickJsRuntime implements LxRuntime {
       _pendingRequests.remove(requestKey);
       return result;
     } catch (e) {
+      _lastFailure = classifyLxRuntimeFailure(e);
       _error('❌ [LxQuickJsRuntime] 获取 URL 失败: $e');
       _pendingRequests.remove(requestKey);
       return null;

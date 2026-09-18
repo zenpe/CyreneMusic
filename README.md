@@ -39,6 +39,26 @@ flutter run -d macos
 flutter run -d android
 ```
 
+项目固定使用 Flutter 3.41.3。Windows 开发环境推荐使用 Puro；项目脚本会将仍位于系统盘的
+Puro、Pub、Gradle 和 Android 缓存重定向到项目所在盘的 `DevTools` 目录。也可通过
+`CYRENE_DEV_ROOT` 指定其他非系统盘目录。
+
+```powershell
+# 完整质量检查：锁定依赖、静态分析、格式检查、单元测试
+.\scripts\quality_check.ps1
+
+# 构建可分发的 Android 测试包
+.\scripts\build_test.ps1 -Target android
+
+# 同时构建 Android 与 Windows 测试包
+.\scripts\build_test.ps1 -Target all
+
+# 启动 API 36 横屏 Pad（1920x1080）并运行应用，模拟车机中控屏
+.\scripts\run_android_car.ps1
+```
+
+测试产物及 SHA-256 清单写入 `artifacts/test`，该目录不会提交到 Git。
+
 ### 手动构建
 
 ```bash

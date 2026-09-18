@@ -1,0 +1,83 @@
+name: Test Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Test package to build
+        required: true
+        type: choice
+        options: [all, android, windows]
+        default: all
+
+concurrency:
+  group: test-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+
+  android:
+    needs: quality
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'android' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.3'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter build apk --debug
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts/android
+          cp build/app/outputs/flutter-apk/app-debug.apk artifacts/android/cyrene-music-test-android-debug.apk
+          sha256sum artifacts/android/*.apk > artifacts/android/SHA256SUMS.txt
+          printf 'commit=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_NUMBER" > artifacts/android/build-info.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyrene-music-test-android-${{ github.run_number }}
+          path: artifacts/android
+          retention-days: 14
+          if-no-files-found: error
+
+  windows:
+    needs: quality
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'windows' }}
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.3'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter build windows --release
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts/windows -Force | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath artifacts/windows/cyrene-music-test-windows-x64.zip
+          $hash = (Get-FileHash artifacts/windows/cyrene-music-test-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  cyrene-music-test-windows-x64.zip" | Set-Content artifacts/windows/SHA256SUMS.txt
+          "commit=$env:GITHUB_SHA`nrun=$env:GITHUB_RUN_NUMBER" | Set-Content artifacts/windows/build-info.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyrene-music-test-windows-${{ github.run_number }}
+          path: artifacts/windows
+          retention-days: 14
+          if-no-files-found: error

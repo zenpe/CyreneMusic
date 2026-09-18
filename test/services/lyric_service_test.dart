@@ -11,12 +11,14 @@ void main() {
   final service = LyricService();
   var trackSeed = 0;
 
-  setUp(() {
-    service.clearAll(notify: false);
+  setUp(() async {
+    await service.clearCachedLyrics();
+    service.clearCurrent(notify: false);
   });
 
-  tearDown(() {
-    service.clearAll(notify: false);
+  tearDown(() async {
+    await service.clearCachedLyrics();
+    service.clearCurrent(notify: false);
   });
 
   Track buildTrack({MusicSource source = MusicSource.netease}) {
@@ -114,57 +116,60 @@ void main() {
       );
     });
 
-    test('prefetch payload-less detail does not block foreground lyric fetch', () async {
-      final track = buildTrack();
-      var currentSong = buildSongDetail(track);
-      final resolvedSong = buildSongDetail(
-        track,
-        lyric: '[00:00.00]Recovered lyric',
-      );
-      var fullFetchCount = 0;
+    test(
+      'prefetch payload-less detail does not block foreground lyric fetch',
+      () async {
+        final track = buildTrack();
+        var currentSong = buildSongDetail(track);
+        final resolvedSong = buildSongDetail(
+          track,
+          lyric: '[00:00.00]Recovered lyric',
+        );
+        var fullFetchCount = 0;
 
-      await service.prefetchLyrics(
-        track: track,
-        quality: 'standard',
-        refreshKey: 'prefetch_empty_detail_${track.id}',
-        adapter: LyricPrefetchAdapter(
-          fetchLyricOnlyDetail: () async => buildSongDetail(track),
-          normalizeSongDetail: (detail) => detail,
-          hasAnyLyricPayload: _hasAnyLyricPayload,
-          log: _noopLog,
-        ),
-      );
+        await service.prefetchLyrics(
+          track: track,
+          quality: 'standard',
+          refreshKey: 'prefetch_empty_detail_${track.id}',
+          adapter: LyricPrefetchAdapter(
+            fetchLyricOnlyDetail: () async => buildSongDetail(track),
+            normalizeSongDetail: (detail) => detail,
+            hasAnyLyricPayload: _hasAnyLyricPayload,
+            log: _noopLog,
+          ),
+        );
 
-      service.bindCurrentTrack(
-        track: track,
-        playbackToken: 2,
-        song: currentSong,
-        state: LyricLoadState.idle,
-        notify: false,
-      );
+        service.bindCurrentTrack(
+          track: track,
+          playbackToken: 2,
+          song: currentSong,
+          state: LyricLoadState.idle,
+          notify: false,
+        );
 
-      await service.requestLyrics(
-        track: track,
-        playbackToken: 2,
-        quality: 'standard',
-        refreshKey: 'request_after_prefetch_empty_detail_${track.id}',
-        adapter: _buildRequestAdapter(
-          currentSong: () => currentSong,
-          applyResolvedSongDetail: (detail) {
-            currentSong = detail;
-          },
-          fetchFullDetail: () async {
-            fullFetchCount += 1;
-            return resolvedSong;
-          },
-        ),
-      );
+        await service.requestLyrics(
+          track: track,
+          playbackToken: 2,
+          quality: 'standard',
+          refreshKey: 'request_after_prefetch_empty_detail_${track.id}',
+          adapter: _buildRequestAdapter(
+            currentSong: () => currentSong,
+            applyResolvedSongDetail: (detail) {
+              currentSong = detail;
+            },
+            fetchFullDetail: () async {
+              fullFetchCount += 1;
+              return resolvedSong;
+            },
+          ),
+        );
 
-      expect(fullFetchCount, 1);
-      expect(service.currentState, LyricLoadState.ready);
-      expect(service.currentSnapshot?.lines.length, 1);
-      expect(service.currentSnapshot?.lines.first.text, 'Recovered lyric');
-    });
+        expect(fullFetchCount, 1);
+        expect(service.currentState, LyricLoadState.ready);
+        expect(service.currentSnapshot?.lines.length, 1);
+        expect(service.currentSnapshot?.lines.first.text, 'Recovered lyric');
+      },
+    );
 
     test('prefetch failure does not block foreground lyric fetch', () async {
       final track = buildTrack();
@@ -235,9 +240,19 @@ void main() {
       );
 
       final lines = service.currentSnapshot!.lines;
-      expect(lines.map((line) => line.startTime.inSeconds).toList(), <int>[0, 3, 6]);
-      expect(LyricParser.findCurrentLineIndex(lines, const Duration(seconds: 4)), 1);
-      expect(LyricParser.findCurrentLineIndex(lines, const Duration(seconds: 7)), 2);
+      expect(lines.map((line) => line.startTime.inSeconds).toList(), <int>[
+        0,
+        3,
+        6,
+      ]);
+      expect(
+        LyricParser.findCurrentLineIndex(lines, const Duration(seconds: 4)),
+        1,
+      );
+      expect(
+        LyricParser.findCurrentLineIndex(lines, const Duration(seconds: 7)),
+        2,
+      );
     });
 
     test('unparseable payload normalizes ready state to empty', () {
