@@ -21,7 +21,6 @@ import '../widgets/search_widget.dart';
 import '../utils/page_visibility_notifier.dart';
 import '../utils/theme_manager.dart';
 import '../pages/auth/auth_page.dart';
-import '../pages/auth/qr_login_scan_page.dart';
 import '../services/play_history_service.dart';
 import 'dart:math';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
@@ -1388,14 +1387,6 @@ class _HomePageState extends State<HomePage>
           children: [
             CupertinoButton(
               padding: EdgeInsets.zero,
-              onPressed: () => openQrLoginScanPage(context),
-              child: Icon(
-                CupertinoIcons.qrcode_viewfinder,
-                color: ThemeManager.iosBlue,
-              ),
-            ),
-            CupertinoButton(
-              padding: EdgeInsets.zero,
               onPressed: () => _handleSearchPressed(context),
               child: Icon(
                 CupertinoIcons.search,
@@ -1833,11 +1824,6 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.qr_code_scanner),
-          tooltip: '扫码登录',
-          onPressed: () => openQrLoginScanPage(context),
-        ),
         IconButton(
           icon: const Icon(Icons.search),
           tooltip: '搜索',

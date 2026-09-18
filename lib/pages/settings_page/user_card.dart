@@ -8,7 +8,6 @@ import '../../services/location_service.dart';
 import '../../services/avatar_fetch_service.dart';
 import '../../utils/theme_manager.dart';
 import '../auth/auth_page.dart';
-import '../auth/qr_login_scan_page.dart';
 
 /// 全局函数：在 Fluent UI 中显示登录对话框
 /// 可在任意地方调用此函数来显示登录对话框
@@ -578,17 +577,6 @@ class _UserCardState extends State<UserCard> {
                     ),
                   ],
                 ),
-                if (Platform.isAndroid || Platform.isIOS) ...[
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => openQrLoginScanPage(context),
-                      icon: const Icon(Icons.qr_code_scanner_rounded),
-                      label: const Text('扫码登录桌面端'),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -793,14 +781,6 @@ class _UserCardState extends State<UserCard> {
       context: context,
       builder: (context) => CupertinoActionSheet(
         actions: [
-          if (Platform.isAndroid || Platform.isIOS)
-            CupertinoActionSheetAction(
-              onPressed: () async {
-                Navigator.pop(context);
-                await openQrLoginScanPage(context);
-              },
-              child: const Text('扫码登录桌面端'),
-            ),
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(context);

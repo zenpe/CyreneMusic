@@ -321,6 +321,14 @@ Future<void> main() async {
       });
       log(' 歌词缓存服务已初始化');
 
+      // 必须在 runApp 之前读完主题设置：首帧就要确定根节点是 FluentApp 还是
+      // MaterialApp。否则会先按平台默认值建出 FluentApp 并推入 FluentPageRoute，
+      // 异步加载完成后再换成 MaterialApp，共用 navigatorKey 的 Navigator 被重挂时
+      // 会把那个 FluentPageRoute 带进没有 FluentTheme 的树，导致整页空白。
+      await timed('ThemeManager.ensureSettingsLoaded', () async {
+        await ThemeManager().ensureSettingsLoaded();
+      });
+
       await timed('runApp(MyApp)', () {
         runApp(const MyApp());
       });

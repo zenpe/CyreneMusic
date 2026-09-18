@@ -56,8 +56,6 @@
 		<key>NSAllowsArbitraryLoadsInWebContent</key>
 		<true/>
 	</dict>
-	<key>NSCameraUsageDescription</key>
-	<string>用于扫描二维码登录桌面端</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

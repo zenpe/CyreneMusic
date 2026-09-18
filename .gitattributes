@@ -1,0 +1,86 @@
+# 换行符与文本/二进制属性约定
+#
+# 背景：仓库对象里一律存 LF，但工作区显示成什么换行符，此前完全取决于
+# 每台机器的 `core.autocrlf`。本机该值为 true，且来源是 Git for Windows 的
+# 系统级配置（C:/Program Files/Git/etc/gitconfig），并非仓库自身的决定。
+# 后果：换一台 autocrlf=false 的机器就会把 CRLF 提交进仓库，同一文件开始
+# 反复出现「git status 说改了、git diff 却没有内容」的换行符噪声。
+#
+# 这里把约定固定到仓库里，不再依赖任何本机配置：
+#   - 仓库内统一存 LF（下面所有 text 规则都会在 add 时归一化）
+#   - 工作区也一律写 LF（不随平台变化）；确实需要 CRLF 的文件在下面单独声明
+#   - 少数必须固定换行符的文件单独声明（见下）
+
+# 默认：git 自行识别文本/二进制，文本在仓库与工作区都使用 LF
+* text=auto eol=lf
+
+# ── 必须保持 LF ──────────────────────────────────────────────
+# Shell 脚本若被转成 CRLF，shebang 解析会失败，在 Linux/macOS/WSL 下无法执行。
+*.sh         text eol=lf
+*.bash       text eol=lf
+gradlew      text eol=lf
+gradlew.bat  text eol=crlf
+
+# 仓库自描述文件统一 LF，避免它们自己成为 CRLF 噪声来源
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+
+# Flutter 的插件注册文件由 `flutter pub get` 生成，工具固定写 LF。
+# 若工作区期望 CRLF，每次 pub get 后这些文件都会无谓地变脏。
+macos/Flutter/GeneratedPluginRegistrant.swift   text eol=lf
+windows/flutter/generated_plugin_registrant.cc  text eol=lf
+windows/flutter/generated_plugins.cmake         text eol=lf
+linux/flutter/generated_plugin_registrant.cc    text eol=lf
+linux/flutter/generated_plugins.cmake           text eol=lf
+ios/Runner/GeneratedPluginRegistrant.*          text eol=lf
+
+# ── 必须保持 CRLF ────────────────────────────────────────────
+# cmd.exe 对纯 LF 的批处理支持不完整（goto/label 等构造可能出错）。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# ── 二进制：禁止任何换行符转换与行级 diff ────────────────────
+# `binary` 等价于 -diff -merge -text。虽然 text=auto 已能按内容识别出
+# 大多数二进制，但显式声明可以避免边缘情况下的误判。
+#
+# 图片 / 图标
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.bmp   binary
+*.ico   binary
+# 字体
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+# 动态库与可执行文件
+*.so    binary
+*.dll   binary
+*.dylib binary
+*.exe   binary
+*.a     binary
+*.lib   binary
+# 压缩包与安装包
+*.zip   binary
+*.7z    binary
+*.jar   binary
+*.apk   binary
+*.aab   binary
+*.ipa   binary
+# 签名与密钥（本身已被 .gitignore 排除，此处防止误提交时被改写）
+*.jks      binary
+*.keystore binary
+# 模型与媒体
+*.tflite binary
+*.mp3    binary
+*.wav    binary
+*.flac   binary
+*.mp4    binary
+*.pdf    binary
+*.psd    binary
+# 数据文件
+*.sqlite binary
+*.db     binary

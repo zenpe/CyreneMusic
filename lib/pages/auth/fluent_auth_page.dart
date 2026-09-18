@@ -4,7 +4,6 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../../services/auth_overlay_service.dart';
 import '../../services/auth_credentials_service.dart';
 import '../../features/auth/auth_feature.dart';
-import 'qr_login_dialog.dart';
 
 final AuthFacade _authFacade = AuthFacade();
 
@@ -360,28 +359,6 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
                   ),
           ),
 
-          // 手机扫码登录
-          const SizedBox(height: 12),
-          fluent.Button(
-            onPressed: _isLoading ? null : () async {
-              final ok = await showQrLoginDialog(context);
-              if (ok == true && mounted) {
-                _showInfoBar('登录成功', fluent.InfoBarSeverity.success);
-                _closeAuthEntry();
-              }
-            },
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Padding(
-                  padding: EdgeInsets.only(right: 8),
-                  child: Icon(fluent.FluentIcons.q_r_code, size: 16),
-                ),
-                Text('手机扫码登录'),
-              ],
-            ),
-          ),
-          
           const SizedBox(height: 16),
           Center(
             child: Text(

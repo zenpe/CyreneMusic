@@ -7,7 +7,6 @@ import '../../services/auth_overlay_service.dart';
 import '../../services/auth_credentials_service.dart';
 import '../../features/auth/auth_feature.dart';
 import '../../utils/theme_manager.dart';
-import 'qr_login_dialog.dart';
 
 final AuthFacade _authFacade = AuthFacade();
 
@@ -582,33 +581,6 @@ class _LoginViewState extends State<_LoginView> {
             colorScheme: colorScheme,
           ),
 
-          if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) ...[
-            const SizedBox(height: 12),
-
-            OutlinedButton.icon(
-              onPressed: _isLoading
-                  ? null
-                  : () async {
-                      final ok = await showQrLoginDialog(context);
-                      if (!mounted) return;
-                      if (ok == true) {
-                        if (!widget.embedded) {
-                          if (AuthOverlayService().isVisible) {
-                            AuthOverlayService().hide(true);
-                          } else {
-                            final nav = Navigator.of(context);
-                            if (nav.canPop()) {
-                              nav.pop(true);
-                            }
-                          }
-                        }
-                      }
-                    },
-              icon: const Icon(Icons.qr_code_rounded),
-              label: const Text('手机扫码登录'),
-            ),
-          ],
-          
           const SizedBox(height: 16),
           
           // 提示文字

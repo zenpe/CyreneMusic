@@ -118,8 +118,6 @@ dependencies:
   media_kit_libs_windows_video: ^1.0.11
   media_kit_libs_macos_video: ^1.1.4
   media_kit_libs_linux: ^1.2.1
-  mobile_scanner: ^7.1.4
-  
   # Audio metadata reader for local music files
   audio_metadata_reader: ^1.4.2
 
