@@ -1271,6 +1271,7 @@ class PlaybackService extends ChangeNotifier {
 
   /// 播放网络电台流
   Future<void> playRadioStream(String streamUrl, Track radioTrack) async {
+    final requestEpoch = _requestRouter.begin();
     return _commands.enqueue(() async {
       await _cleanupCurrentTempFile();
       _state = PBState.loading;
@@ -1284,6 +1285,15 @@ class PlaybackService extends ChangeNotifier {
       coverManager.setCoverImmediate(null, notify: false);
       coverManager.themeColorNotifier.value = null;
 
+      // 电台播放也必须建立完整 session，否则软切换的纪元闸门会将
+      // 该路径误判为过期请求，导致引擎不启动但 UI 仍显示 playing。
+      _currentSession = PlaybackSession(
+        epoch: gen,
+        requestEpoch: requestEpoch,
+        trackKey: _buildTrackIdentity(radioTrack),
+        phase: PlaybackPhase.resolving,
+      );
+
       // 设置电台的 track 到队列
       _queueController.replace([radioTrack], 0, QueueSource.radio);
 
@@ -1294,6 +1304,7 @@ class PlaybackService extends ChangeNotifier {
       );
       notifyListeners();
       await _playWithSoftSwitch(streamUrl);
+      if (!_canStartPlayback(gen)) return;
       _commitActivePresentation(radioTrack, playbackToken: gen, notify: false);
       _state = PBState.playing;
       _startListeningTimeTracking();
