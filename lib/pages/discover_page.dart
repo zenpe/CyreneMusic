@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import '../features/auth/auth_feature.dart';
 import '../services/netease_discover_service.dart';
 import '../models/netease_discover.dart';
+import '../utils/image_utils.dart';
 import '../utils/theme_manager.dart';
 import 'discover_playlist_detail_page.dart';
 import 'discover_page/discover_breadcrumbs.dart';
@@ -34,7 +35,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
   void initState() {
     super.initState();
     _lastAudioConfigured = _audioSourceFacade.isAudioConfigured;
-    if (NeteaseDiscoverService().playlists.isEmpty && !NeteaseDiscoverService().isLoading) {
+    if (NeteaseDiscoverService().playlists.isEmpty &&
+        !NeteaseDiscoverService().isLoading) {
       NeteaseDiscoverService().fetchDiscoverPlaylists();
     }
     if (NeteaseDiscoverService().tags.isEmpty) {
@@ -67,9 +69,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   /// 导航到音源设置页面
   void _navigateToAudioSourceSettings(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const AudioSourceSettings(),
-      ),
+      MaterialPageRoute(builder: (context) => const AudioSourceSettings()),
     );
   }
 
@@ -81,7 +81,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
       return _buildFluentPage(context, service);
     }
 
-    if ((Platform.isIOS || Platform.isAndroid) && _themeManager.isCupertinoFramework) {
+    if ((Platform.isIOS || Platform.isAndroid) &&
+        _themeManager.isCupertinoFramework) {
       return _buildCupertinoPage(context, service);
     }
 
@@ -133,7 +134,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
               child: AudioSourcePrompt(
                 title: '配置音源后发现更多',
                 subtitle: '配置音源服务后即可浏览热门歌单、发现新音乐',
-                onConfigurePressed: () => _navigateToAudioSourceSettings(context),
+                onConfigurePressed: () =>
+                    _navigateToAudioSourceSettings(context),
               ),
             ),
           ],
@@ -172,18 +174,18 @@ class _DiscoverPageState extends State<DiscoverPage> {
             largeTitle: Text('发现'),
             border: null,
             // 使用默认或半透明背景以避免内容重叠
-            backgroundColor: null, 
+            backgroundColor: null,
           ),
           CupertinoSliverRefreshControl(
             onRefresh: () async {
               final currentCat = NeteaseDiscoverService().currentCat;
-              await NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+              await NeteaseDiscoverService().fetchDiscoverPlaylists(
+                cat: currentCat,
+              );
             },
           ),
           ..._buildCupertinoSlivers(service),
-          const SliverToBoxAdapter(
-            child: SizedBox(height: 80),
-          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 80)),
         ],
       ),
     );
@@ -209,8 +211,11 @@ class _DiscoverPageState extends State<DiscoverPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(CupertinoIcons.exclamationmark_circle,
-                      size: 48, color: CupertinoColors.systemRed),
+                  const Icon(
+                    CupertinoIcons.exclamationmark_circle,
+                    size: 48,
+                    color: CupertinoColors.systemRed,
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     service.errorMessage!,
@@ -269,11 +274,16 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     ),
                   ),
                   CupertinoButton(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     minSize: 0,
                     onPressed: () {
                       final currentCat = NeteaseDiscoverService().currentCat;
-                      NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+                      NeteaseDiscoverService().fetchDiscoverPlaylists(
+                        cat: currentCat,
+                      );
                     },
                     child: const Text('重试'),
                   ),
@@ -287,9 +297,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     if (items.isEmpty) {
       return [
         ...slivers,
-        const SliverFillRemaining(
-          child: Center(child: Text('暂无数据')),
-        ),
+        const SliverFillRemaining(child: Center(child: Text('暂无数据'))),
       ];
     }
 
@@ -327,20 +335,17 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 crossAxisSpacing: 16,
                 childAspectRatio: 0.75,
               ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  return CupertinoDiscoverPlaylistCard(
-                    summary: items[index],
-                    onTap: () {
-                      setState(() {
-                        _selectedPlaylistId = items[index].id;
-                        _selectedPlaylistName = items[index].name;
-                      });
-                    },
-                  );
-                },
-                childCount: items.length,
-              ),
+              delegate: SliverChildBuilderDelegate((context, index) {
+                return CupertinoDiscoverPlaylistCard(
+                  summary: items[index],
+                  onTap: () {
+                    setState(() {
+                      _selectedPlaylistId = items[index].id;
+                      _selectedPlaylistName = items[index].name;
+                    });
+                  },
+                );
+              }, childCount: items.length),
             );
           },
         ),
@@ -356,21 +361,24 @@ class _DiscoverPageState extends State<DiscoverPage> {
         message: const Text('请选择您感兴趣的歌单分类'),
         actions: [
           CupertinoActionSheetAction(
-            isDefaultAction: service.currentCat.isEmpty || service.currentCat == '全部歌单',
+            isDefaultAction:
+                service.currentCat.isEmpty || service.currentCat == '全部歌单',
             onPressed: () {
               Navigator.pop(context);
               NeteaseDiscoverService().fetchDiscoverPlaylists(cat: '全部歌单');
             },
             child: const Text('全部歌单'),
           ),
-          ...service.tags.map((t) => CupertinoActionSheetAction(
-            isDefaultAction: service.currentCat == t.name,
-            onPressed: () {
-              Navigator.pop(context);
-              NeteaseDiscoverService().fetchDiscoverPlaylists(cat: t.name);
-            },
-            child: Text(t.name),
-          )),
+          ...service.tags.map(
+            (t) => CupertinoActionSheetAction(
+              isDefaultAction: service.currentCat == t.name,
+              onPressed: () {
+                Navigator.pop(context);
+                NeteaseDiscoverService().fetchDiscoverPlaylists(cat: t.name);
+              },
+              child: Text(t.name),
+            ),
+          ),
         ],
         cancelButton: CupertinoActionSheetAction(
           isDestructiveAction: true,
@@ -386,10 +394,10 @@ class _DiscoverPageState extends State<DiscoverPage> {
     NeteaseDiscoverService service,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isExpressive = !ThemeManager().isFluentFramework && 
-                        !ThemeManager().isCupertinoFramework && 
-                        (Platform.isAndroid || Platform.isIOS);
-
+    final isExpressive =
+        !ThemeManager().isFluentFramework &&
+        !ThemeManager().isCupertinoFramework &&
+        (Platform.isAndroid || Platform.isIOS);
 
     // 未登录状态下显示登录提示
     if (!_authFacade.isLoggedIn) {
@@ -444,13 +452,14 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
-                ),
+              ),
             ),
             SliverFillRemaining(
               child: AudioSourcePrompt(
                 title: '配置音源后发现更多',
                 subtitle: '配置音源服务后即可浏览热门歌单、发现新音乐',
-                onConfigurePressed: () => _navigateToAudioSourceSettings(context),
+                onConfigurePressed: () =>
+                    _navigateToAudioSourceSettings(context),
               ),
             ),
           ],
@@ -461,10 +470,16 @@ class _DiscoverPageState extends State<DiscoverPage> {
     // Material 桌面分支：选中歌单时展示详情内容
     if (_selectedPlaylistId != null) {
       return Scaffold(
-        backgroundColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
+        backgroundColor: isExpressive
+            ? colorScheme.surfaceContainerLow
+            : colorScheme.surface,
         appBar: AppBar(
-          backgroundColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
-          surfaceTintColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
+          backgroundColor: isExpressive
+              ? colorScheme.surfaceContainerLow
+              : colorScheme.surface,
+          surfaceTintColor: isExpressive
+              ? colorScheme.surfaceContainerLow
+              : colorScheme.surface,
           title: Text(_selectedPlaylistName ?? '歌单详情'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
@@ -476,28 +491,36 @@ class _DiscoverPageState extends State<DiscoverPage> {
             },
           ),
         ),
-        body: DiscoverPlaylistDetailContent(
-          playlistId: _selectedPlaylistId!,
-        ),
+        body: DiscoverPlaylistDetailContent(playlistId: _selectedPlaylistId!),
       );
     }
 
     return Scaffold(
-      backgroundColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
+      backgroundColor: isExpressive
+          ? colorScheme.surfaceContainerLow
+          : colorScheme.surface,
       body: RefreshIndicator(
         onRefresh: () async {
           final currentCat = NeteaseDiscoverService().currentCat;
-          await NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+          await NeteaseDiscoverService().fetchDiscoverPlaylists(
+            cat: currentCat,
+          );
         },
         child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
           slivers: [
             SliverAppBar(
               pinned: true,
               expandedHeight: isExpressive ? 140 : null,
               collapsedHeight: isExpressive ? 72 : null,
-              backgroundColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
-              surfaceTintColor: isExpressive ? colorScheme.surfaceContainerLow : colorScheme.surface,
+              backgroundColor: isExpressive
+                  ? colorScheme.surfaceContainerLow
+                  : colorScheme.surface,
+              surfaceTintColor: isExpressive
+                  ? colorScheme.surfaceContainerLow
+                  : colorScheme.surface,
               flexibleSpace: FlexibleSpaceBar(
                 titlePadding: EdgeInsets.only(
                   left: isExpressive ? 24 : 16,
@@ -513,13 +536,11 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 child: _buildMaterialContent(service, isExpressive),
               ),
             ),
-
           ],
         ),
       ),
     );
   }
-
 
   Widget _buildMaterialTitle(ColorScheme colorScheme, bool isExpressive) {
     return Text(
@@ -533,7 +554,10 @@ class _DiscoverPageState extends State<DiscoverPage> {
     );
   }
 
-  Widget _buildMaterialContent(NeteaseDiscoverService service, bool isExpressive) {
+  Widget _buildMaterialContent(
+    NeteaseDiscoverService service,
+    bool isExpressive,
+  ) {
     final items = service.playlists;
     final hasItems = items.isNotEmpty;
 
@@ -553,15 +577,14 @@ class _DiscoverPageState extends State<DiscoverPage> {
             children: [
               const Icon(Icons.error_outline, size: 48, color: Colors.red),
               const SizedBox(height: 16),
-              Text(
-                service.errorMessage!,
-                textAlign: TextAlign.center,
-              ),
+              Text(service.errorMessage!, textAlign: TextAlign.center),
               const SizedBox(height: 16),
               ElevatedButton.icon(
                 onPressed: () {
                   final currentCat = NeteaseDiscoverService().currentCat;
-                  NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+                  NeteaseDiscoverService().fetchDiscoverPlaylists(
+                    cat: currentCat,
+                  );
                 },
                 icon: const Icon(Icons.refresh),
                 label: const Text('重试'),
@@ -601,25 +624,35 @@ class _DiscoverPageState extends State<DiscoverPage> {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.errorContainer.withOpacity(0.65),
+              color: Theme.of(
+                context,
+              ).colorScheme.errorContainer.withOpacity(0.65),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               children: [
-                Icon(Icons.error_outline, color: Theme.of(context).colorScheme.onErrorContainer, size: 18),
+                Icon(
+                  Icons.error_outline,
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     service.errorMessage!,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                    ),
                   ),
                 ),
                 TextButton(
                   onPressed: () {
                     final currentCat = NeteaseDiscoverService().currentCat;
-                    NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+                    NeteaseDiscoverService().fetchDiscoverPlaylists(
+                      cat: currentCat,
+                    );
                   },
                   child: const Text('重试'),
                 ),
@@ -630,10 +663,14 @@ class _DiscoverPageState extends State<DiscoverPage> {
           builder: (context, constraints) {
             final width = constraints.maxWidth;
             int crossAxisCount = 2;
-            if (width >= 1200) crossAxisCount = 6;
-            else if (width >= 1000) crossAxisCount = 5;
-            else if (width >= 800) crossAxisCount = 4;
-            else if (width >= 600) crossAxisCount = 3;
+            if (width >= 1200)
+              crossAxisCount = 6;
+            else if (width >= 1000)
+              crossAxisCount = 5;
+            else if (width >= 800)
+              crossAxisCount = 4;
+            else if (width >= 600)
+              crossAxisCount = 3;
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -670,10 +707,13 @@ class _DiscoverPageState extends State<DiscoverPage> {
     );
   }
 
-  Widget _buildMaterialTagSelector(NeteaseDiscoverService service, bool isExpressive) {
+  Widget _buildMaterialTagSelector(
+    NeteaseDiscoverService service,
+    bool isExpressive,
+  ) {
     final current = service.currentCat;
     final label = current.isEmpty ? '全部歌单' : current;
-    
+
     if (isExpressive) {
       return InkWell(
         onTap: () => _showMaterialTagDialog(service),
@@ -684,7 +724,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
             color: Theme.of(context).colorScheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5),
+              color: Theme.of(
+                context,
+              ).colorScheme.outlineVariant.withOpacity(0.5),
             ),
           ),
           child: Row(
@@ -715,14 +757,13 @@ class _DiscoverPageState extends State<DiscoverPage> {
         ),
       );
     }
-    
+
     return ChoiceChip(
       label: Text(label),
       selected: true,
       onSelected: (_) => _showMaterialTagDialog(service),
     );
   }
-
 
   void _showMaterialTagDialog(NeteaseDiscoverService service) {
     final tags = service.tags;
@@ -742,17 +783,23 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   selected: service.currentCat == allLabel,
                   onSelected: (_) {
                     Navigator.of(context).pop();
-                    NeteaseDiscoverService().fetchDiscoverPlaylists(cat: allLabel);
+                    NeteaseDiscoverService().fetchDiscoverPlaylists(
+                      cat: allLabel,
+                    );
                   },
                 ),
-                ...tags.map((t) => ChoiceChip(
-                      label: Text(t.name),
-                      selected: service.currentCat == t.name,
-                      onSelected: (_) {
-                        Navigator.of(context).pop();
-                        NeteaseDiscoverService().fetchDiscoverPlaylists(cat: t.name);
-                      },
-                    )),
+                ...tags.map(
+                  (t) => ChoiceChip(
+                    label: Text(t.name),
+                    selected: service.currentCat == t.name,
+                    onSelected: (_) {
+                      Navigator.of(context).pop();
+                      NeteaseDiscoverService().fetchDiscoverPlaylists(
+                        cat: t.name,
+                      );
+                    },
+                  ),
+                ),
               ],
             ),
           ),
@@ -760,7 +807,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('关闭'),
-            )
+            ),
           ],
         );
       },
@@ -825,20 +872,20 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   ),
                 ],
                 padding: EdgeInsets.zero,
-                ),
+              ),
             ),
             Expanded(
               child: AudioSourcePrompt(
                 title: '配置音源后发现更多',
                 subtitle: '配置音源服务后即可浏览热门歌单、发现新音乐',
-                onConfigurePressed: () => _navigateToAudioSourceSettings(context),
+                onConfigurePressed: () =>
+                    _navigateToAudioSourceSettings(context),
               ),
             ),
           ],
         ),
       );
     }
-
 
     return fluent.ScaffoldPage(
       padding: EdgeInsets.zero,
@@ -862,7 +909,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     icon: const Icon(fluent.FluentIcons.refresh, size: 16),
                     onPressed: () {
                       final currentCat = NeteaseDiscoverService().currentCat;
-                      NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+                      NeteaseDiscoverService().fetchDiscoverPlaylists(
+                        cat: currentCat,
+                      );
                     },
                   ),
                 ),
@@ -920,9 +969,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     final hasItems = items.isNotEmpty;
 
     if (service.isLoading && !hasItems) {
-      return const DiscoverPageSkeleton(
-        key: ValueKey('discover_loading'),
-      );
+      return const DiscoverPageSkeleton(key: ValueKey('discover_loading'));
     }
 
     if (service.errorMessage != null && !hasItems && !service.isLoading) {
@@ -941,7 +988,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
             fluent.Button(
               onPressed: () {
                 final currentCat = NeteaseDiscoverService().currentCat;
-                NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+                NeteaseDiscoverService().fetchDiscoverPlaylists(
+                  cat: currentCat,
+                );
               },
               child: const Text('重试'),
             ),
@@ -995,7 +1044,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   action: fluent.Button(
                     onPressed: () {
                       final currentCat = NeteaseDiscoverService().currentCat;
-                      NeteaseDiscoverService().fetchDiscoverPlaylists(cat: currentCat);
+                      NeteaseDiscoverService().fetchDiscoverPlaylists(
+                        cat: currentCat,
+                      );
                     },
                     child: const Text('重试'),
                   ),
@@ -1062,8 +1113,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   ) {
     final isDetail = _selectedPlaylistId != null;
     final currentTag = service.currentCat.trim();
-    final hasCustomTag =
-        currentTag.isNotEmpty && currentTag != '全部歌单';
+    final hasCustomTag = currentTag.isNotEmpty && currentTag != '全部歌单';
 
     final items = <DiscoverBreadcrumbItem>[
       DiscoverBreadcrumbItem(
@@ -1087,10 +1137,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     if (isDetail) {
       if (hasCustomTag) {
         items.add(
-          DiscoverBreadcrumbItem(
-            label: currentTag,
-            onTap: _resetSelection,
-          ),
+          DiscoverBreadcrumbItem(label: currentTag, onTap: _resetSelection),
         );
       }
 
@@ -1157,12 +1204,16 @@ class _MaterialPlaylistCard extends StatelessWidget {
   final NeteasePlaylistSummary summary;
   final bool isExpressive;
   final void Function(int id, String name)? onOpen;
-  const _MaterialPlaylistCard({required this.summary, this.isExpressive = false, this.onOpen});
+  const _MaterialPlaylistCard({
+    required this.summary,
+    this.isExpressive = false,
+    this.onOpen,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     if (isExpressive) {
       return Container(
         decoration: BoxDecoration(
@@ -1170,7 +1221,9 @@ class _MaterialPlaylistCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.05),
+              color: Colors.black.withOpacity(
+                Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.05,
+              ),
               blurRadius: 15,
               offset: const Offset(0, 4),
             ),
@@ -1184,7 +1237,8 @@ class _MaterialPlaylistCard extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => DiscoverPlaylistDetailPage(playlistId: summary.id),
+                  builder: (context) =>
+                      DiscoverPlaylistDetailPage(playlistId: summary.id),
                 ),
               );
             },
@@ -1201,26 +1255,34 @@ class _MaterialPlaylistCard extends StatelessWidget {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(16),
                         child: CachedNetworkImage(
-
-                        imageUrl: summary.coverImgUrl,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 280,
-                        memCacheHeight: 280,
-                        placeholder: (context, url) => Container(
-                          color: colorScheme.surfaceContainerHighest,
-                        ),
-                        errorWidget: (context, url, error) => Container(
-                          color: colorScheme.surfaceContainerHighest,
-                          child: Icon(Icons.music_note_rounded, color: colorScheme.primary),
+                          imageUrl: summary.coverImgUrl,
+                          httpHeaders: getImageHeaders(summary.coverImgUrl),
+                          fit: BoxFit.cover,
+                          memCacheWidth: 280,
+                          memCacheHeight: 280,
+                          placeholder: (context, url) => Container(
+                            color: colorScheme.surfaceContainerHighest,
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: colorScheme.surfaceContainerHighest,
+                            child: Icon(
+                              Icons.music_note_rounded,
+                              color: colorScheme.primary,
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              Expanded(
+                Expanded(
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, isExpressive ? 8 : 12),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      0,
+                      16,
+                      isExpressive ? 8 : 12,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -1242,7 +1304,9 @@ class _MaterialPlaylistCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                            color: colorScheme.onSurfaceVariant.withOpacity(
+                              0.7,
+                            ),
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
@@ -1280,9 +1344,8 @@ class _MaterialPlaylistCard extends StatelessWidget {
         ),
       );
     }
-    
-    return Card(
 
+    return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () async {
@@ -1295,15 +1358,18 @@ class _MaterialPlaylistCard extends StatelessWidget {
               aspectRatio: 1,
               child: CachedNetworkImage(
                 imageUrl: summary.coverImgUrl,
+                httpHeaders: getImageHeaders(summary.coverImgUrl),
                 fit: BoxFit.cover,
                 memCacheWidth: 280,
                 memCacheHeight: 280,
-                placeholder: (context, url) => Container(
-                  color: colorScheme.surfaceContainerHighest,
-                ),
+                placeholder: (context, url) =>
+                    Container(color: colorScheme.surfaceContainerHighest),
                 errorWidget: (context, url, error) => Container(
                   color: colorScheme.surfaceContainerHighest,
-                  child: Icon(Icons.image_not_supported, color: colorScheme.onSurfaceVariant),
+                  child: Icon(
+                    Icons.image_not_supported,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
@@ -1319,7 +1385,9 @@ class _MaterialPlaylistCard extends StatelessWidget {
                       maxLines: 1,
                       softWrap: false,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -1327,7 +1395,9 @@ class _MaterialPlaylistCard extends StatelessWidget {
                       maxLines: 1,
                       softWrap: false,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -1335,7 +1405,9 @@ class _MaterialPlaylistCard extends StatelessWidget {
                       maxLines: 1,
                       softWrap: false,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -1370,10 +1442,12 @@ class _FluentPlaylistCard extends StatelessWidget {
             AspectRatio(
               aspectRatio: 1,
               child: ClipRRect(
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(12)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(12),
+                ),
                 child: CachedNetworkImage(
                   imageUrl: summary.coverImgUrl,
+                  httpHeaders: getImageHeaders(summary.coverImgUrl),
                   fit: BoxFit.cover,
                   memCacheWidth: 280,
                   memCacheHeight: 280,
@@ -1437,4 +1511,3 @@ class _FluentPlaylistCard extends StatelessWidget {
     );
   }
 }
-

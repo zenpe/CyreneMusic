@@ -29,6 +29,7 @@ import '../services/persistent_storage_service.dart';
 import '../services/experience_profile_service.dart';
 import '../pages/mobile_setup_page.dart';
 import '../widgets/global_watermark.dart';
+import '../widgets/fixed_navigation_dock.dart';
 
 /// 主布局 - 包含侧边导航栏和内容区域
 class MainLayout extends StatefulWidget {
@@ -45,7 +46,6 @@ class _MainLayoutState extends State<MainLayout>
   // NavigationDrawer 固定宽度与 NavigationRail 展开状态一致（Material 3 默认 256）
   static const double _drawerWidth = 256.0;
   static const double _collapsedWidth = 80.0; // 折叠状态宽度，仅显示图标
-  static const double _tabletDockWidth = 96.0;
   static const double _landscapeRailWidth = 84.0; // 横屏侧栏宽度（移动端）
   bool _isDrawerCollapsed = true; // 抽屉是否处于折叠状态（默认收起）
 
@@ -416,7 +416,7 @@ class _MainLayoutState extends State<MainLayout>
 
           return GlobalWatermark(
             child: isDesktop
-                ? _buildDesktopLayout(context)
+                ? _buildDesktopLayout(context, useFixedDock: true)
                 : _buildMobileLayout(context),
           );
         },
@@ -433,6 +433,9 @@ class _MainLayoutState extends State<MainLayout>
     bool useFixedDock = false,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final fixedDockWidth = useFixedDock
+        ? FixedNavigationDock.widthFor(context)
+        : null;
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -466,11 +469,11 @@ class _MainLayoutState extends State<MainLayout>
                           children: [
                             // 占位侧栏宽度
                             SizedBox(
-                              width: useFixedDock
-                                  ? _tabletDockWidth
-                                  : (_isDrawerCollapsed
-                                        ? _collapsedWidth
-                                        : _drawerWidth),
+                              width:
+                                  fixedDockWidth ??
+                                  (_isDrawerCollapsed
+                                      ? _collapsedWidth
+                                      : _drawerWidth),
                             ),
                             // 右侧内容覆盖
                             Expanded(
@@ -1189,132 +1192,65 @@ class _MainLayoutState extends State<MainLayout>
     final isLocalMode = PersistentStorageService().enableLocalMode;
     final items = isLocalMode
         ? const [
-            _CollapsedItem(
+            FixedNavigationDockItem(
               icon: Icons.folder_open_outlined,
               selectedIcon: Icons.folder_rounded,
               label: '本地',
             ),
-            _CollapsedItem(
+            FixedNavigationDockItem(
               icon: Icons.settings_outlined,
               selectedIcon: Icons.settings_rounded,
               label: '本地设置',
             ),
           ]
-        : <_CollapsedItem>[
-            const _CollapsedItem(
+        : <FixedNavigationDockItem>[
+            const FixedNavigationDockItem(
               icon: Icons.home_outlined,
               selectedIcon: Icons.home_rounded,
               label: '首页',
             ),
-            const _CollapsedItem(
+            const FixedNavigationDockItem(
               icon: Icons.explore_outlined,
               selectedIcon: Icons.explore_rounded,
               label: '发现',
             ),
-            const _CollapsedItem(
+            const FixedNavigationDockItem(
               icon: Icons.history_outlined,
               selectedIcon: Icons.history_rounded,
               label: '历史',
             ),
-            const _CollapsedItem(
+            const FixedNavigationDockItem(
               icon: Icons.folder_open_outlined,
               selectedIcon: Icons.folder_rounded,
               label: '本地',
             ),
-            const _CollapsedItem(
+            const FixedNavigationDockItem(
               icon: Icons.person_outline_rounded,
               selectedIcon: Icons.person_rounded,
               label: '我的',
             ),
-            const _CollapsedItem(
+            const FixedNavigationDockItem(
               icon: Icons.settings_outlined,
               selectedIcon: Icons.settings_rounded,
               label: '设置',
             ),
             if (DeveloperModeService().isDeveloperMode)
-              const _CollapsedItem(
+              const FixedNavigationDockItem(
                 icon: Icons.code_rounded,
                 selectedIcon: Icons.code_rounded,
                 label: '开发',
               ),
           ];
 
-    Widget itemAt(int index) => _buildTabletDockItem(
-      item: items[index],
-      index: index,
-      colorScheme: colorScheme,
-    );
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        border: Border(right: BorderSide(color: colorScheme.outlineVariant)),
-      ),
-      child: SafeArea(
-        right: false,
-        child: SizedBox(
-          width: _tabletDockWidth,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            child: Column(
-              children: [
-                for (var index = 0; index < items.length; index++)
-                  itemAt(index),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTabletDockItem({
-    required _CollapsedItem item,
-    required int index,
-    required ColorScheme colorScheme,
-  }) {
-    final isSelected = _selectedIndex == index;
-    final foreground = isSelected
-        ? colorScheme.onSecondaryContainer
-        : colorScheme.onSurfaceVariant;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Material(
-        color: isSelected ? colorScheme.secondaryContainer : Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => _selectDesktopDestination(index),
-          child: SizedBox(
-            width: 72,
-            height: 62,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  isSelected ? item.selectedIcon : item.icon,
-                  color: foreground,
-                  size: 24,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  item.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.fade,
-                  softWrap: false,
-                  style: TextStyle(
-                    color: foreground,
-                    fontSize: 11,
-                    height: 1.1,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    return FixedNavigationDock(
+      items: items,
+      selectedIndex: _selectedIndex,
+      onSelected: _selectDesktopDestination,
+      backgroundColor: colorScheme.surfaceContainerLow,
+      selectedBackgroundColor: colorScheme.secondaryContainer,
+      foregroundColor: colorScheme.onSurfaceVariant,
+      selectedForegroundColor: colorScheme.onSecondaryContainer,
+      dividerColor: colorScheme.outlineVariant,
     );
   }
 

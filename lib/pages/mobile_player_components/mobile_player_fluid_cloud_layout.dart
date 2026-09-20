@@ -46,10 +46,13 @@ class MobilePlayerFluidCloudLayout extends StatefulWidget {
   });
 
   @override
-  State<MobilePlayerFluidCloudLayout> createState() => _MobilePlayerFluidCloudLayoutState();
+  State<MobilePlayerFluidCloudLayout> createState() =>
+      _MobilePlayerFluidCloudLayoutState();
 }
 
-class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLayout> with TickerProviderStateMixin {
+class _MobilePlayerFluidCloudLayoutState
+    extends State<MobilePlayerFluidCloudLayout>
+    with TickerProviderStateMixin {
   // 自动折叠逻辑
   bool _isControlsVisible = true;
   Timer? _collapseTimer;
@@ -64,7 +67,6 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
   late AnimationController _snapController;
   late Animation<double> _snapAnimation;
 
-  
   @override
   void initState() {
     super.initState();
@@ -73,7 +75,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     PlayerService().addListener(_onPlayerStateChanged);
     // 监听设置变化
     AutoCollapseService().addListener(_onSettingsChanged);
-    
+
     // 初始化时如果正在播放且开启了折叠，启动计时器
     if (_wasPlaying && AutoCollapseService().isAutoCollapseEnabled) {
       _resetCollapseTimer();
@@ -118,7 +120,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     final isPlaying = PlayerService().isPlaying;
     if (isPlaying != _wasPlaying) {
       _wasPlaying = isPlaying;
-      
+
       // Trigger rebuild for cover animation
       if (mounted) setState(() {});
 
@@ -142,8 +144,10 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     if (!_isControlsVisible) {
       setState(() => _isControlsVisible = true);
     }
-    
-    if (autoHide && AutoCollapseService().isAutoCollapseEnabled && PlayerService().isPlaying) {
+
+    if (autoHide &&
+        AutoCollapseService().isAutoCollapseEnabled &&
+        PlayerService().isPlaying) {
       _resetCollapseTimer();
     } else {
       _collapseTimer?.cancel();
@@ -152,7 +156,8 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
 
   void _resetCollapseTimer() {
     _collapseTimer?.cancel();
-    if (AutoCollapseService().isAutoCollapseEnabled && PlayerService().isPlaying) {
+    if (AutoCollapseService().isAutoCollapseEnabled &&
+        PlayerService().isPlaying) {
       _collapseTimer = Timer(const Duration(seconds: 5), () {
         if (mounted) {
           setState(() => _isControlsVisible = false);
@@ -187,13 +192,9 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
       widget.onBackPressed();
     } else {
       // 回弹
-      _snapAnimation = Tween<double>(
-        begin: _dragOffset,
-        end: 0,
-      ).animate(CurvedAnimation(
-        parent: _snapController,
-        curve: Curves.easeOutCubic,
-      ));
+      _snapAnimation = Tween<double>(begin: _dragOffset, end: 0).animate(
+        CurvedAnimation(parent: _snapController, curve: Curves.easeOutCubic),
+      );
       _snapController.forward(from: 0);
     }
   }
@@ -220,23 +221,28 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     final screenHeight = MediaQuery.of(context).size.height;
     final safePadding = MediaQuery.of(context).padding;
     final topBarHeight = 50.0;
-    
+
     // --- 封面模式参数计算 ---
     // 预留底部高度 (标题+歌词+进度条+控制栏+底部导航+间距)
     const reservedBottomHeight = 350.0;
-    
+
     // 封面起始 Y 坐标 (绝对坐标)
     // 保证在 TopBar 下方，且距离顶部有一定比例
     // Modified: Reduced buffer and ideal top ratio to move cover up
     final minCoverTop = safePadding.top + topBarHeight + 10;
     final idealCoverTop = screenHeight * 0.10;
-    final bigCoverTop = idealCoverTop < minCoverTop ? minCoverTop : idealCoverTop;
-    
+    final bigCoverTop = idealCoverTop < minCoverTop
+        ? minCoverTop
+        : idealCoverTop;
+
     // 计算可用高度
     final availableHeight = screenHeight - bigCoverTop - reservedBottomHeight;
     // 封面尺寸：宽度限制(屏幕-64)，高度限制(可用高度)
-    final bigCoverSize = (screenWidth - 64).clamp(100.0, availableHeight < 100 ? 100.0 : availableHeight);
-    
+    final bigCoverSize = (screenWidth - 64).clamp(
+      100.0,
+      availableHeight < 100 ? 100.0 : availableHeight,
+    );
+
     // 水平居中
 
     // --- 歌词模式参数 ---
@@ -247,14 +253,14 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     // Animation Logic: Shrink by 10% when paused in Cover Mode
     final bool isPlaying = player.isPlaying;
     final effectiveBigSize = isPlaying ? bigCoverSize : bigCoverSize * 0.9;
-    
+
     final targetSize = _showCoverMode ? effectiveBigSize : smallCoverSize;
     // When shrinking, keep centered relative to the original bigCover box
-    final targetTop = _showCoverMode 
-        ? bigCoverTop + (bigCoverSize - effectiveBigSize) / 2 
+    final targetTop = _showCoverMode
+        ? bigCoverTop + (bigCoverSize - effectiveBigSize) / 2
         : smallCoverTop;
-    final targetLeft = _showCoverMode 
-        ? (screenWidth - effectiveBigSize) / 2 
+    final targetLeft = _showCoverMode
+        ? (screenWidth - effectiveBigSize) / 2
         : smallCoverLeft;
 
     return GestureDetector(
@@ -290,21 +296,36 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                           children: [
                             // 顶部歌曲信息 (仅在歌词模式渲染内容)
                             if (!_showCoverMode)
-                              _buildSongInfoSection(context, song, track, imageUrl, isGhost: true),
-                                
+                              _buildSongInfoSection(
+                                context,
+                                song,
+                                track,
+                                imageUrl,
+                                isGhost: true,
+                              ),
+
                             // 中间区域：歌词或歌曲信息面板
                             Expanded(
                               child: AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 400),
-                                transitionBuilder: (Widget child, Animation<double> animation) {
-                                  return FadeTransition(opacity: animation, child: child);
-                                },
+                                transitionBuilder:
+                                    (
+                                      Widget child,
+                                      Animation<double> animation,
+                                    ) {
+                                      return FadeTransition(
+                                        opacity: animation,
+                                        child: child,
+                                      );
+                                    },
                                 child: _showSongWikiPanel
-                                    ? const MobilePlayerFluidCloudSongWikiPanel(key: ValueKey('wiki'))
+                                    ? const MobilePlayerFluidCloudSongWikiPanel(
+                                        key: ValueKey('wiki'),
+                                      )
                                     : _buildLyricsSection(),
                               ),
                             ),
-                      
+
                             // 底部控制 (上一首、播放、下一首等)
                             AnimatedSize(
                               duration: const Duration(milliseconds: 300),
@@ -315,16 +336,15 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                                 opacity: _isControlsVisible ? 1.0 : 0.0,
                                 child: _isControlsVisible
                                     ? Padding(
-                                        padding: const EdgeInsets.only(top: 0), 
+                                        padding: const EdgeInsets.only(top: 0),
                                         child: _buildControlsSection(player),
                                       )
                                     : const SizedBox.shrink(),
                               ),
                             ),
-                            
-                            if (!_isControlsVisible)
-                               const SizedBox(height: 16),
-                            
+
+                            if (!_isControlsVisible) const SizedBox(height: 16),
+
                             // 留给底部导航的空间
                             const SizedBox(height: 64),
                           ],
@@ -344,13 +364,16 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                     child: IgnorePointer(
                       ignoring: !_showCoverMode,
                       child: _buildCoverModeLayout(
-                        context, 
-                        player, 
-                        song, 
-                        track, 
-                        imageUrl, 
+                        context,
+                        player,
+                        song,
+                        track,
+                        imageUrl,
                         coverSize: bigCoverSize,
-                        topSpacing: bigCoverTop - safePadding.top - topBarHeight, // 传递准确的间距
+                        topSpacing:
+                            bigCoverTop -
+                            safePadding.top -
+                            topBarHeight, // 传递准确的间距
                         isGhost: true,
                       ),
                     ),
@@ -375,10 +398,14 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                       duration: const Duration(milliseconds: 500),
                       curve: Curves.fastLinearToSlowEaseIn,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(_showCoverMode ? 16 : 8),
+                        borderRadius: BorderRadius.circular(
+                          _showCoverMode ? 16 : 8,
+                        ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(_showCoverMode ? 0.4 : 0.3),
+                            color: Colors.black.withOpacity(
+                              _showCoverMode ? 0.4 : 0.3,
+                            ),
                             blurRadius: _showCoverMode ? 40 : 10,
                             offset: Offset(0, _showCoverMode ? 20 : 4),
                           ),
@@ -390,7 +417,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                           : Container(
                               color: Colors.grey[900],
                               child: Icon(
-                                Icons.music_note, 
+                                Icons.music_note,
                                 color: Colors.white54,
                                 size: _showCoverMode ? 120 : 30,
                               ),
@@ -399,32 +426,32 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                   ),
                 ),
 
-            // 4. 顶层拖动条 (小白条)
-            Positioned(
-              top: safePadding.top + 10,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  width: 36,
-                  height: 4.5,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.35),
-                    borderRadius: BorderRadius.circular(2.25),
+              // 4. 顶层拖动条 (小白条)
+              Positioned(
+                top: safePadding.top + 10,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    width: 36,
+                    height: 4.5,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.35),
+                      borderRadius: BorderRadius.circular(2.25),
+                    ),
                   ),
                 ),
               ),
-            ),
 
-            // 5. 固定底部导航 (始终在屏幕底部固定位置，仅在竖屏显示)
-            if (!isLandscape)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: safePadding.bottom + 8,
-                child: _buildBottomNavigation(context, track),
-              ),
-          ],
+              // 5. 固定底部导航 (始终在屏幕底部固定位置，仅在竖屏显示)
+              if (!isLandscape)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: safePadding.bottom + 8,
+                  child: _buildBottomNavigation(context, track),
+                ),
+            ],
           ),
         ),
       ),
@@ -442,110 +469,111 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     required double topSpacing,
     bool isGhost = false,
   }) {
-    
     return Column(
       key: const ValueKey('CoverModeLayout'),
       children: [
-          // 顶部栏
-          SizedBox(
-            height: 50, // 与 topBarHeight 一致
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end, 
-                children: [
-                   IconButton(
-                    icon: Icon(
-                      Icons.more_horiz,
-                      color: Colors.white.withOpacity(0.8),
-                    ),
-                    onPressed: () {
-                      MobilePlayerSettingsSheet.show(context, currentTrack: track);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          // 精确控制封面位置，使其与 AnimatedPositioned 重合
-          SizedBox(height: topSpacing > 0 ? topSpacing : 0),
-          
-          // 大封面占位
-          GestureDetector(
-            onTap: () {
-               if (!isGhost) setState(() => _showCoverMode = false);
-            },
-            child: Container(
-              width: coverSize,
-              height: coverSize,
-              color: Colors.transparent, 
-            ),
-          ),
-          
-          // 剩余空间分配给控件
-          Expanded(
-            child: Column(
+        // 顶部栏
+        SizedBox(
+          height: 50, // 与 topBarHeight 一致
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                const Spacer(),
-                
-                // 歌曲信息 (标题和歌手) - 左对齐
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              song?.name ?? track?.name ?? '未知歌曲',
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              song?.arName ?? track?.artists ?? '未知艺术家',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.white.withOpacity(0.7),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (track != null) _FavoriteButton(track: track),
-                    ],
+                IconButton(
+                  icon: Icon(
+                    Icons.more_horiz,
+                    color: Colors.white.withOpacity(0.8),
                   ),
+                  onPressed: () {
+                    MobilePlayerSettingsSheet.show(
+                      context,
+                      currentTrack: track,
+                    );
+                  },
                 ),
-                
-                const SizedBox(height: 32),
-
-                // 控制区
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _buildControlsSection(player, isCoverMode: true), 
-                ),
-                
-                const SizedBox(height: 30),
-
-                // 留给底部导航的空间 (底部导航现在在 Stack 中固定位置)
-                const SizedBox(height: 64),
               ],
             ),
           ),
-        ],
-      );
+        ),
+
+        // 精确控制封面位置，使其与 AnimatedPositioned 重合
+        SizedBox(height: topSpacing > 0 ? topSpacing : 0),
+
+        // 大封面占位
+        GestureDetector(
+          onTap: () {
+            if (!isGhost) setState(() => _showCoverMode = false);
+          },
+          child: Container(
+            width: coverSize,
+            height: coverSize,
+            color: Colors.transparent,
+          ),
+        ),
+
+        // 剩余空间分配给控件
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              const Spacer(),
+
+              // 歌曲信息 (标题和歌手) - 左对齐
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            song?.name ?? track?.name ?? '未知歌曲',
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            song?.arName ?? track?.artists ?? '未知艺术家',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.white.withOpacity(0.7),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (track != null) _FavoriteButton(track: track),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 32),
+
+              // 控制区
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _buildControlsSection(player, isCoverMode: true),
+              ),
+
+              const SizedBox(height: 30),
+
+              // 留给底部导航的空间 (底部导航现在在 Stack 中固定位置)
+              const SizedBox(height: 64),
+            ],
+          ),
+        ),
+      ],
+    );
   }
-  
 
   /// 横屏模式布局 - 参考图片设计
   /// 左侧：专辑封面 + 进度条 (统一水平线)
@@ -559,10 +587,10 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
   ) {
     final name = song?.name ?? track?.name ?? '未知歌曲';
     final artist = song?.arName ?? track?.artists ?? '未知艺术家';
-    
+
     final screenHeight = MediaQuery.of(context).size.height;
     final safeAreaBottom = MediaQuery.of(context).padding.bottom; // 底部安全区
-    
+
     // 封面大小
     final coverSize = (screenHeight - safeAreaBottom - 60) * 0.65;
     final progressBarWidth = coverSize + 48; // 进度条比封面略宽
@@ -570,7 +598,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     // 底部对齐的高度 (控制栏高度)
     const bottomControlsHeight = 60.0;
     // 底部留白
-    const bottomPadding = 24.0; 
+    const bottomPadding = 24.0;
 
     return Stack(
       children: [
@@ -579,10 +607,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
           top: 8,
           right: 16,
           child: IconButton(
-            icon: Icon(
-              Icons.more_horiz,
-              color: Colors.white.withOpacity(0.8),
-            ),
+            icon: Icon(Icons.more_horiz, color: Colors.white.withOpacity(0.8)),
             iconSize: 24,
             onPressed: () {
               MobilePlayerSettingsSheet.show(context, currentTrack: track);
@@ -598,13 +623,13 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
             children: [
               // 1. 左侧面板: 封面 + 进度条
               Expanded(
-                flex: 4, 
+                flex: 4,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.end, // 底部对齐
                   children: [
                     const Spacer(),
                     // 封面
-                     Container(
+                    Container(
                       width: coverSize,
                       height: coverSize,
                       decoration: BoxDecoration(
@@ -629,14 +654,16 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                               ),
                             ),
                     ),
-                    
-                    const Spacer(), // 封面和进度条之间的弹簧
 
+                    const Spacer(), // 封面和进度条之间的弹簧
                     // 底部进度条 (高度与右侧控制栏对齐容器)
                     SizedBox(
                       height: bottomControlsHeight,
                       child: Center(
-                        child: _buildLandscapeProgressBar(player, progressBarWidth),
+                        child: _buildLandscapeProgressBar(
+                          player,
+                          progressBarWidth,
+                        ),
                       ),
                     ),
                   ],
@@ -654,18 +681,20 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                       // 顶部信息
                       _buildLandscapeTitleSection(name, artist),
                       const SizedBox(height: 16),
-                      
+
                       // 歌词
-                      Expanded(
-                        child: _buildLandscapeLyricsSection(),
-                      ),
-                      
+                      Expanded(child: _buildLandscapeLyricsSection()),
+
                       const SizedBox(height: 12),
 
                       // 底部控制必须有固定高度，以便与左侧对齐
                       SizedBox(
                         height: bottomControlsHeight,
-                        child: _buildLandscapeBottomControls(context, player, track),
+                        child: _buildLandscapeBottomControls(
+                          context,
+                          player,
+                          track,
+                        ),
                       ),
                     ],
                   ),
@@ -714,17 +743,23 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
       ],
     );
   }
-  
+
   /// 横屏进度条 (用于左侧)
   Widget _buildLandscapeProgressBar(PlayerService player, double width) {
     return AnimatedBuilder(
       animation: Listenable.merge([player.positionNotifier, player]),
       builder: (context, _) {
-        final position = player.positionNotifier.value.inMilliseconds.toDouble();
+        final position = player.positionNotifier.value.inMilliseconds
+            .toDouble();
         final duration = player.duration.inMilliseconds.toDouble();
-        final progress = (duration > 0) ? (position / duration).clamp(0.0, 1.0) : 0.0;
+        final progress = (duration > 0)
+            ? (position / duration).clamp(0.0, 1.0)
+            : 0.0;
         final bufferedProgress = duration > 0
-            ? (player.bufferedPosition.inMilliseconds / duration).clamp(0.0, 1.0)
+            ? (player.bufferedPosition.inMilliseconds / duration).clamp(
+                0.0,
+                1.0,
+              )
             : 0.0;
 
         return SizedBox(
@@ -768,76 +803,88 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
   }
 
   /// 横屏底部控制区 (仅控制按钮 + 时间)
-  Widget _buildLandscapeBottomControls(BuildContext context, PlayerService player, Track? track) {
+  Widget _buildLandscapeBottomControls(
+    BuildContext context,
+    PlayerService player,
+    Track? track,
+  ) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center, // 垂直居中
       children: [
-         // 时间 - 字体加大
-         AnimatedBuilder(
-           animation: player.positionNotifier,
-           builder: (context, _) => Text(
-             '${_formatDurationCompact(player.positionNotifier.value)}/${_formatDurationCompact(player.duration)}',
-             style: TextStyle(
-               color: Colors.white.withValues(alpha: 0.6),
-               fontSize: 16, // 加大字体
-               fontWeight: FontWeight.bold,
-               fontFamily: 'Consolas',
-               letterSpacing: 0.5,
-             ),
-           ),
-         ),
+        // 时间 - 字体加大
+        AnimatedBuilder(
+          animation: player.positionNotifier,
+          builder: (context, _) => Text(
+            '${_formatDurationCompact(player.positionNotifier.value)}/${_formatDurationCompact(player.duration)}',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.6),
+              fontSize: 16, // 加大字体
+              fontWeight: FontWeight.bold,
+              fontFamily: 'Consolas',
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
 
-          const SizedBox(width: 12),
-          _buildQualityButton(context),
-          const SizedBox(width: 8),
-          _buildSpeedButton(context),
+        const SizedBox(width: 12),
+        _buildQualityButton(context),
+        const SizedBox(width: 8),
+        _buildSpeedButton(context),
 
-          // 控制按钮行 - 居中且使用 iOS 粗图标
-         Expanded(
-           child: Center(
-             child: AnimatedBuilder(
-               animation: player, // 只有播放/暂停等状态改变才需要重建按钮区域
-               builder: (context, _) {
-                 return Row(
-                   mainAxisSize: MainAxisSize.min,
-                   children: [
-                     // 上一首
-                     IconButton(
-                       icon: const Icon(CupertinoIcons.backward_fill), // iOS 风格粗图标
-                       color: Colors.white,
-                       iconSize: 36, // 图标加大
-                       onPressed: player.hasPrevious ? player.playPrevious : null,
-                     ),
-                     const SizedBox(width: 16),
-                     
-                     // 播放/暂停
-                     IconButton(
-                       icon: Icon(
-                         player.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
-                         color: Colors.white,
-                       ),
-                       iconSize: 56, // 加大图标尺寸，保持醒目
-                       padding: EdgeInsets.zero,
-                       onPressed: player.togglePlayPause,
-                     ),
-                     const SizedBox(width: 16),
-                     
-                     // 下一首
-                     IconButton(
-                       icon: const Icon(CupertinoIcons.forward_fill), // iOS 风格粗图标
-                       color: Colors.white,
-                       iconSize: 36, // 图标加大
-                       onPressed: player.hasNext ? player.playNext : null,
-                     ),
-                   ],
-                 );
-               },
-             ),
-           ),
-         ),
-         
-         // 喜欢按钮
-         if (track != null) _FavoriteButton(track: track),
+        // 控制按钮行 - 居中且使用 iOS 粗图标
+        Expanded(
+          child: Center(
+            child: AnimatedBuilder(
+              animation: player, // 只有播放/暂停等状态改变才需要重建按钮区域
+              builder: (context, _) {
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 上一首
+                    IconButton(
+                      icon: const Icon(
+                        CupertinoIcons.backward_fill,
+                      ), // iOS 风格粗图标
+                      color: Colors.white,
+                      iconSize: 36, // 图标加大
+                      onPressed: player.hasPrevious
+                          ? player.playPrevious
+                          : null,
+                    ),
+                    const SizedBox(width: 16),
+
+                    // 播放/暂停
+                    IconButton(
+                      icon: Icon(
+                        player.isPlaying
+                            ? CupertinoIcons.pause_fill
+                            : CupertinoIcons.play_fill,
+                        color: Colors.white,
+                      ),
+                      iconSize: 56, // 加大图标尺寸，保持醒目
+                      padding: EdgeInsets.zero,
+                      onPressed: player.togglePlayPause,
+                    ),
+                    const SizedBox(width: 16),
+
+                    // 下一首
+                    IconButton(
+                      icon: const Icon(
+                        CupertinoIcons.forward_fill,
+                      ), // iOS 风格粗图标
+                      color: Colors.white,
+                      iconSize: 36, // 图标加大
+                      onPressed: player.hasNext ? player.playNext : null,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+
+        // 喜欢按钮
+        if (track != null) _FavoriteButton(track: track),
       ],
     );
   }
@@ -864,7 +911,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
         currentLyricIndex: widget.currentLyricIndex,
         lyricState: widget.lyricState,
         showTranslation: widget.showTranslation,
-        visibleLineCount: 3, 
+        visibleLineCount: 3,
       ),
     );
   }
@@ -877,7 +924,13 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
   }
 
   /// 构建歌曲信息区域（参考 HTML section#song-info）
-  Widget _buildSongInfoSection(BuildContext context, dynamic song, dynamic track, String imageUrl, {bool isGhost = false}) {
+  Widget _buildSongInfoSection(
+    BuildContext context,
+    dynamic song,
+    dynamic track,
+    String imageUrl, {
+    bool isGhost = false,
+  }) {
     final name = song?.name ?? track?.name ?? '未知歌曲';
     final artists = song?.arName ?? track?.artists ?? '未知艺术家';
 
@@ -888,7 +941,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
           // 专辑封面占位 (实际封面由顶层 Stack 处理)
           GestureDetector(
             onTap: () {
-               if (!isGhost) setState(() => _showCoverMode = true);
+              if (!isGhost) setState(() => _showCoverMode = true);
             },
             child: Container(
               width: 56,
@@ -935,8 +988,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
             mainAxisSize: MainAxisSize.min,
             children: [
               // 收藏按钮
-              if (track != null)
-                _FavoriteButton(track: track),
+              if (track != null) _FavoriteButton(track: track),
               // 更多选项 - 弹出设置侧边栏
               IconButton(
                 icon: Icon(
@@ -971,12 +1023,12 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
             Colors.transparent,
           ],
           stops: const [
-            0.0,    // 顶部完全透明
-            0.15,   // 开始可见
-            0.5,    // 中心
-            0.85,   // 依然可见
-            0.95,   // 开始渐变
-            1.0,    // 底部完全透明
+            0.0, // 顶部完全透明
+            0.15, // 开始可见
+            0.5, // 中心
+            0.85, // 依然可见
+            0.95, // 开始渐变
+            1.0, // 底部完全透明
           ],
         ).createShader(bounds);
       },
@@ -988,13 +1040,16 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
         showTranslation: widget.showTranslation,
         // 当控制栏隐藏时，显示更多行数 (例如 9 行)，否则显示 5 行 (原有逻辑似乎是3行可见，但Panel默认7)
         // 这里的可见行数决定了字体大小和行高计算
-        visibleLineCount: _isControlsVisible ? 5 : 8, 
+        visibleLineCount: _isControlsVisible ? 5 : 8,
       ),
     );
   }
 
   /// 构建控制区域（进度条 + 播放按钮）
-  Widget _buildControlsSection(PlayerService player, {bool isCoverMode = false}) {
+  Widget _buildControlsSection(
+    PlayerService player, {
+    bool isCoverMode = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -1006,13 +1061,17 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
               AnimatedBuilder(
                 animation: Listenable.merge([player.positionNotifier, player]),
                 builder: (context, _) {
-                  final position = player.positionNotifier.value.inMilliseconds.toDouble();
+                  final position = player.positionNotifier.value.inMilliseconds
+                      .toDouble();
                   final duration = player.duration.inMilliseconds.toDouble();
-                  final value = (duration > 0) ? (position / duration).clamp(0.0, 1.0) : 0.0;
-                  final bufferedValue = duration > 0
-                      ? (player.bufferedPosition.inMilliseconds / duration).clamp(0.0, 1.0)
+                  final value = (duration > 0)
+                      ? (position / duration).clamp(0.0, 1.0)
                       : 0.0;
-                   
+                  final bufferedValue = duration > 0
+                      ? (player.bufferedPosition.inMilliseconds / duration)
+                            .clamp(0.0, 1.0)
+                      : 0.0;
+
                   return SizedBox(
                     height: 24, // 增加点击热区
                     child: Stack(
@@ -1041,7 +1100,9 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                         _AppleMusicSlider(
                           value: value,
                           onChanged: (v) {
-                            final pos = Duration(milliseconds: (v * duration).round());
+                            final pos = Duration(
+                              milliseconds: (v * duration).round(),
+                            );
                             player.seek(pos);
                           },
                         ),
@@ -1050,7 +1111,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                   );
                 },
               ),
-              
+
               const SizedBox(height: 8),
 
               // 时间显示
@@ -1065,13 +1126,13 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                         _formatDuration(player.positionNotifier.value),
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.6),
-                          fontSize: 13, 
+                          fontSize: 13,
                           fontWeight: FontWeight.bold,
                           fontFamily: 'Consolas',
                         ),
                       ),
                     ),
-                    
+
                     // --- 核心：音质切换按钮 ---
                     Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1088,7 +1149,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                         _formatDuration(player.duration),
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.6),
-                          fontSize: 13, 
+                          fontSize: 13,
                           fontWeight: FontWeight.bold,
                           fontFamily: 'Consolas',
                         ),
@@ -1098,7 +1159,9 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                 ),
               ),
               PlayerErrorBanner(
-                message: player.errorMessage,
+                message: player.isAudioSourceNotConfigured
+                    ? null
+                    : player.errorMessage,
                 margin: const EdgeInsets.only(top: 6),
                 onRetry: () {
                   player.retryCurrent();
@@ -1123,31 +1186,33 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
               IconButton(
                 icon: const Icon(CupertinoIcons.backward_fill),
                 color: Colors.white.withOpacity(0.9),
-                iconSize: 42, 
+                iconSize: 42,
                 onPressed: player.hasPrevious ? player.playPrevious : null,
               ),
-              
+
               // 播放/暂停（大图标，无圆形背景）
               AnimatedBuilder(
                 animation: player,
                 builder: (context, _) {
                   return IconButton(
                     icon: Icon(
-                      player.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+                      player.isPlaying
+                          ? CupertinoIcons.pause_fill
+                          : CupertinoIcons.play_fill,
                       color: Colors.white,
                     ),
-                    iconSize: 72, 
+                    iconSize: 72,
                     padding: EdgeInsets.zero,
                     onPressed: player.togglePlayPause,
                   );
                 },
               ),
-              
+
               // 下一首
               IconButton(
                 icon: const Icon(CupertinoIcons.forward_fill),
                 color: Colors.white.withOpacity(0.9),
-                iconSize: 42, 
+                iconSize: 42,
                 onPressed: player.hasNext ? player.playNext : null,
               ),
             ],
@@ -1170,7 +1235,9 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
           IconButton(
             icon: Icon(
               CupertinoIcons.quote_bubble,
-              color: !_showCoverMode ? Colors.white : Colors.white.withOpacity(0.4),
+              color: !_showCoverMode
+                  ? Colors.white
+                  : Colors.white.withOpacity(0.4),
             ),
             iconSize: 24,
             padding: EdgeInsets.zero,
@@ -1179,22 +1246,30 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
               setState(() => _showCoverMode = !_showCoverMode);
             },
           ),
-          
+
           // 2. 下载按钮
           _buildNavButton(
-            icon: track != null 
-                ? _DownloadButton(track: track) 
-                : Icon(Icons.download_rounded, color: Colors.white.withOpacity(0.3), size: 24),
+            icon: track != null
+                ? _DownloadButton(track: track)
+                : Icon(
+                    Icons.download_rounded,
+                    color: Colors.white.withOpacity(0.3),
+                    size: 24,
+                  ),
             visible: !_showCoverMode && track != null,
             placeholder: true,
           ),
-          
+
           // 3. 歌曲信息按钮 (仅网易云歌曲显示)
           _buildNavButton(
             icon: IconButton(
               icon: Icon(
-                _showSongWikiPanel ? CupertinoIcons.text_quote : CupertinoIcons.info_circle,
-                color: _showSongWikiPanel ? Colors.white : Colors.white.withOpacity(0.7),
+                _showSongWikiPanel
+                    ? CupertinoIcons.text_quote
+                    : CupertinoIcons.info_circle,
+                color: _showSongWikiPanel
+                    ? Colors.white
+                    : Colors.white.withOpacity(0.7),
               ),
               iconSize: 22,
               padding: EdgeInsets.zero,
@@ -1203,10 +1278,13 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                 setState(() => _showSongWikiPanel = !_showSongWikiPanel);
               },
             ),
-            visible: !_showCoverMode && track != null && track.source == MusicSource.netease,
+            visible:
+                !_showCoverMode &&
+                track != null &&
+                track.source == MusicSource.netease,
             placeholder: true,
           ),
-          
+
           // 4. 播放列表按钮
           IconButton(
             icon: const Icon(Icons.queue_music_rounded),
@@ -1234,8 +1312,6 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     return placeholder ? const SizedBox(width: 24) : const SizedBox.shrink();
   }
 
-
-
   String _formatDuration(Duration duration) {
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds % 60;
@@ -1249,7 +1325,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
       builder: (context, _) {
         final qualityService = AudioQualityService();
         final label = qualityService.getShortLabel();
-        
+
         return GestureDetector(
           onTap: () => _showQualitySelectionSheet(context),
           child: Container(
@@ -1334,7 +1410,9 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                     qualityService.getQualityName(quality),
                     style: TextStyle(
                       color: isSelected ? Colors.blueAccent : Colors.white,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                     ),
                   ),
                   subtitle: Text(
@@ -1344,13 +1422,15 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                       fontSize: 12,
                     ),
                   ),
-                  trailing: isSelected 
-                      ? const Icon(Icons.check, color: Colors.blueAccent) 
+                  trailing: isSelected
+                      ? const Icon(Icons.check, color: Colors.blueAccent)
                       : null,
                   onTap: () {
                     qualityService.setQuality(quality);
                     Navigator.pop(context);
-                    ToastUtils.success('音质已设置为 ${qualityService.getQualityName(quality)}，将在下次切换歌曲时生效');
+                    ToastUtils.success(
+                      '音质已设置为 ${qualityService.getQualityName(quality)}，将在下次切换歌曲时生效',
+                    );
                   },
                 );
               }),
@@ -1365,8 +1445,9 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
   /// 构建封面图片（支持网络 URL 和本地文件路径）
   Widget _buildCoverImage(String imageUrl) {
     // 判断是网络 URL 还是本地文件路径
-    final isNetwork = imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
-    
+    final isNetwork =
+        imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
+
     if (isNetwork) {
       return CachedNetworkImage(
         imageUrl: imageUrl,
@@ -1443,9 +1524,9 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
 
   Future<void> _removeFromPlaylists() async {
     if (_playlistIds.isEmpty) return;
-    
+
     final playlistService = PlaylistService();
-    
+
     for (final playlistId in _playlistIds) {
       await playlistService.removeTrackFromPlaylist(
         playlistId,
@@ -1453,7 +1534,7 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
         widget.track.source.name,
       );
     }
-    
+
     // 刷新状态
     _checkIfInPlaylist();
   }
@@ -1482,13 +1563,22 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Text(
                 '已收藏到: ${_playlistNames.join(", ")}',
-                style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14),
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 14,
+                ),
                 textAlign: TextAlign.center,
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.remove_circle_outline, color: Colors.redAccent),
-              title: const Text('从所有歌单移除', style: TextStyle(color: Colors.white)),
+              leading: const Icon(
+                Icons.remove_circle_outline,
+                color: Colors.redAccent,
+              ),
+              title: const Text(
+                '从所有歌单移除',
+                style: TextStyle(color: Colors.white),
+              ),
               onTap: () async {
                 Navigator.pop(context);
                 await _removeFromPlaylists();
@@ -1496,7 +1586,10 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
             ),
             ListTile(
               leading: const Icon(Icons.playlist_add, color: Colors.white70),
-              title: const Text('添加到其他歌单', style: TextStyle(color: Colors.white)),
+              title: const Text(
+                '添加到其他歌单',
+                style: TextStyle(color: Colors.white),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 MobilePlayerDialogs.showAddToPlaylist(context, widget.track);
@@ -1586,12 +1679,12 @@ class _DownloadButtonState extends State<_DownloadButton> {
 
   void _onDownloadChanged() {
     if (!mounted) return;
-    
+
     final downloadService = DownloadService();
     final trackId = '${widget.track.source.name}_${widget.track.id}';
     final tasks = downloadService.downloadTasks;
     final task = tasks[trackId];
-    
+
     if (task != null) {
       setState(() {
         _isDownloading = !task.isCompleted && !task.isFailed;
@@ -1606,9 +1699,9 @@ class _DownloadButtonState extends State<_DownloadButton> {
 
   Future<void> _checkDownloadStatus() async {
     setState(() => _isLoading = true);
-    
+
     final isDownloaded = await DownloadService().isDownloaded(widget.track);
-    
+
     if (mounted) {
       setState(() {
         _isDownloaded = isDownloaded;
@@ -1619,12 +1712,12 @@ class _DownloadButtonState extends State<_DownloadButton> {
 
   Future<void> _startDownload() async {
     if (_isDownloading || _isDownloaded) return;
-    
+
     setState(() {
       _isDownloading = true;
       _progress = 0.0;
     });
-    
+
     try {
       // 获取歌曲详情
       final songDetail = PlayerService().currentSong;
@@ -1636,17 +1729,17 @@ class _DownloadButtonState extends State<_DownloadButton> {
           title: widget.track.name,
           artist: widget.track.artists,
         );
-        
+
         if (detail == null) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('获取歌曲信息失败')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('获取歌曲信息失败')));
             setState(() => _isDownloading = false);
           }
           return;
         }
-        
+
         final success = await DownloadService().downloadSong(
           widget.track,
           detail,
@@ -1656,7 +1749,7 @@ class _DownloadButtonState extends State<_DownloadButton> {
             }
           },
         );
-        
+
         if (mounted) {
           if (success) {
             setState(() {
@@ -1668,9 +1761,9 @@ class _DownloadButtonState extends State<_DownloadButton> {
             );
           } else {
             setState(() => _isDownloading = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('下载失败')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('下载失败')));
           }
         }
       } else {
@@ -1683,7 +1776,7 @@ class _DownloadButtonState extends State<_DownloadButton> {
             }
           },
         );
-        
+
         if (mounted) {
           if (success) {
             setState(() {
@@ -1695,18 +1788,18 @@ class _DownloadButtonState extends State<_DownloadButton> {
             );
           } else {
             setState(() => _isDownloading = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('下载失败或文件已存在')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('下载失败或文件已存在')));
           }
         }
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isDownloading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('下载失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('下载失败: $e')));
       }
     }
   }
@@ -1742,10 +1835,7 @@ class _DownloadButtonState extends State<_DownloadButton> {
             ),
             Text(
               '${(_progress * 100).toInt()}%',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 10),
             ),
           ],
         ),
@@ -1788,7 +1878,8 @@ class _AppleMusicSlider extends StatefulWidget {
   State<_AppleMusicSlider> createState() => _AppleMusicSliderState();
 }
 
-class _AppleMusicSliderState extends State<_AppleMusicSlider> with SingleTickerProviderStateMixin {
+class _AppleMusicSliderState extends State<_AppleMusicSlider>
+    with SingleTickerProviderStateMixin {
   double? _dragValue; // 用于处理移动端拖动时的平滑感
   late AnimationController _controller;
   late Animation<double> _animation;
@@ -1805,7 +1896,7 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider> with SingleTickerP
       curve: Curves.easeOutCubic,
     );
   }
-  
+
   @override
   void dispose() {
     _controller.dispose();
@@ -1819,18 +1910,20 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider> with SingleTickerP
       builder: (context, child) {
         // 交互时 active track 变亮
         final currentActiveColor = widget.activeColor.withOpacity(
-          lerpDouble(0.45, 0.8, _animation.value) ?? 0.45
+          lerpDouble(0.45, 0.8, _animation.value) ?? 0.45,
         );
-            
-        final currentInactiveColor = Color.lerp(
-          widget.inactiveColor,
-          Colors.white.withOpacity(0.3),
-          _animation.value
-        ) ?? widget.inactiveColor;
+
+        final currentInactiveColor =
+            Color.lerp(
+              widget.inactiveColor,
+              Colors.white.withOpacity(0.3),
+              _animation.value,
+            ) ??
+            widget.inactiveColor;
 
         return SliderTheme(
           data: SliderThemeData(
-            trackHeight: 6, 
+            trackHeight: 6,
             trackShape: const RoundedRectSliderTrackShape(),
             thumbShape: _AppleMusicThumbShape(
               scale: _animation.value, // 完全跟随动画，未交互时为 0 (隐藏)
@@ -1864,7 +1957,7 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider> with SingleTickerP
             max: widget.max,
           ),
         );
-      }
+      },
     );
   }
 }
@@ -1904,18 +1997,18 @@ class _AppleMusicThumbShape extends SliderComponentShape {
     if (scale <= 0.01) return; // 隐藏不绘制
 
     final Canvas canvas = context.canvas;
-    
+
     // 绘制阴影
     final path = Path()
       ..addOval(Rect.fromCircle(center: center, radius: maxRadius * scale));
-    
+
     canvas.drawShadow(path, Colors.black.withOpacity(0.3 * opacity), 3.0, true);
 
     // 绘制白色圆点
     final Paint paint = Paint()
       ..color = Colors.white.withOpacity(opacity)
       ..style = PaintingStyle.fill;
-    
+
     canvas.drawCircle(center, maxRadius * scale, paint);
   }
 }

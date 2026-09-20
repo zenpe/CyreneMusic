@@ -5,6 +5,7 @@ import 'package:just_audio/just_audio.dart' as ja;
 import 'package:media_kit/media_kit.dart' as mk;
 
 import '../android_equalizer_service.dart';
+import 'engine_epoch_gate.dart';
 import '../equalizer_service.dart';
 import '../persistent_storage_service.dart';
 import '../structured_log_service.dart';
@@ -31,17 +32,23 @@ class EngineError {
   final Object? cause;
   final bool retriable;
 
+  /// 产生该错误的播放代次（与协调器的 transaction token 同一域）。
+  /// 协调器据此丢弃属于旧纪元的迟到错误，避免旧歌错误污染新歌。
+  final int epoch;
+
   const EngineError({
     required this.type,
     required this.message,
     this.sourceUrl,
     this.cause,
     this.retriable = false,
+    this.epoch = 0,
   });
 
   @override
   String toString() {
-    return 'EngineError(type: $type, retriable: $retriable, sourceUrl: $sourceUrl, message: $message)';
+    return 'EngineError(epoch: $epoch, type: $type, retriable: $retriable, '
+        'sourceUrl: $sourceUrl, message: $message)';
   }
 }
 
@@ -58,8 +65,16 @@ class EngineReportedException implements Exception {
 
 /// 统一音频引擎接口
 abstract class AudioEngine {
+  /// 装载并（可选）播放新的音源。
+  ///
+  /// [generation] 是协调器分配的播放代次（transaction token）：
+  /// - 装载期间（停止旧源到新源就绪之间）产生的流事件按旧代次上报；
+  /// - 装载成功后，流事件按 [generation] 上报；
+  /// - 装载本身失败（同步异常）按 [generation] 上报。
+  /// 协调器据此实现"旧歌迟到事件不污染新歌"的不变量。
   Future<void> play(
     String url, {
+    required int generation,
     bool isLocal = false,
     Map<String, String>? headers,
     bool autoPlay = true,
@@ -68,6 +83,7 @@ abstract class AudioEngine {
   });
   Future<void> playAudioSource(
     ja.AudioSource source, {
+    required int generation,
     String? sourceUrl,
     bool autoPlay = true,
     Duration? initialPosition,
@@ -75,6 +91,7 @@ abstract class AudioEngine {
   });
   Future<void> playSource(
     PlayableSource source, {
+    required int generation,
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
@@ -83,6 +100,7 @@ abstract class AudioEngine {
     if (customSource != null) {
       await playAudioSource(
         customSource,
+        generation: generation,
         sourceUrl: source.sourceUrl,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
@@ -97,6 +115,7 @@ abstract class AudioEngine {
     }
     await play(
       pathOrUrl,
+      generation: generation,
       isLocal: source.isLocal,
       headers: source.headers,
       autoPlay: autoPlay,
@@ -150,6 +169,12 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   int? _androidAudioSessionId;
   bool _androidEqualizerDirty = true;
   bool _needsDeferredVolumeRestore = false;
+
+  /// 纪元闸门：arm 窗口内流事件归旧纪元，提交后归新纪元（源头捕获）。
+  final EngineEpochGate _epochGate = EngineEpochGate();
+
+  /// 当前错误/事件分发使用的纪元（commit 前为旧纪元，commit 后为新纪元）。
+  int _dispatchEpoch = 0;
   bool _equalizerEnabled = true;
   List<double> _equalizerGains = List.filled(10, 0.0);
   List<int> _equalizerFrequencies = EqualizerService.kEqualizerFrequencies;
@@ -230,37 +255,49 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
     _positionSub = player.positionStream.listen((pos) {
       _position = pos;
-      _positionController.add(pos);
+      if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+        _positionController.add(pos);
+      }
     });
 
     _durationSub = player.durationStream.listen((dur) {
       _duration = dur ?? Duration.zero;
-      _durationController.add(_duration);
+      if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+        _durationController.add(_duration);
+      }
     });
 
     _bufferedPositionSub = player.bufferedPositionStream.listen((buffered) {
       _bufferedPosition = buffered;
-      _bufferedPositionController.add(buffered);
+      if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+        _bufferedPositionController.add(buffered);
+      }
     });
 
     _playerStateSub = player.playerStateStream.listen((state) {
+      // 纪元闸门：切换窗口内的状态/完成事件归属旧纪元，不向外分发，
+      // 但引擎内部 bookkeeping（_isPlaying/_position）照常更新。
+      final stale = _epochGate.streamEventEpoch != _dispatchEpoch;
       final processing = state.processingState;
       if (processing == ja.ProcessingState.completed) {
         _isPlaying = false;
         _position = Duration.zero;
-        _stateController.add(EngineState.idle);
-        _completionController.add(true);
+        if (!stale) {
+          _stateController.add(EngineState.idle);
+          _completionController.add(true);
+        }
         return;
       }
 
       if (state.playing) {
         _isPlaying = true;
-        _stateController.add(EngineState.playing);
+        if (!stale) _stateController.add(EngineState.playing);
         return;
       }
 
       if (_isPlaying) {
         _isPlaying = false;
+        if (stale) return;
         if (processing == ja.ProcessingState.idle) {
           _stateController.add(EngineState.idle);
         } else {
@@ -272,7 +309,23 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     _eventSub = player.playbackEventStream.listen(
       (_) {},
       onError: (Object e, StackTrace st) {
-        _emitError(_mapJustAudioError(e));
+        final mapped = _mapJustAudioError(e);
+        // 纪元闸门：arm/stop 窗口内的流事件归属旧纪元，直接抑制，
+        // 避免旧歌的迟到错误触发新歌的错误处理/自动跳歌。
+        if (_epochGate.streamEventEpoch != _dispatchEpoch) {
+          StructuredLogService.event(
+            'audio_engine.stale_event_suppressed',
+            level: LogLevel.debug,
+            fields: {
+              'engine': 'just_audio',
+              'event_epoch': _epochGate.streamEventEpoch,
+              'dispatch_epoch': _dispatchEpoch,
+              'failure_kind': mapped.type.name,
+            },
+          );
+          return;
+        }
+        _emitError(mapped);
         if (!_stateController.isClosed) {
           _stateController.add(EngineState.idle);
         }
@@ -305,9 +358,21 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     unawaited(_applyAndroidEqualizerIfReady());
   }
 
-  void _emitError(EngineError error) {
+  void _emitError(EngineError error, {int? epoch}) {
+    final effectiveEpoch = epoch ?? _dispatchEpoch;
     if (!_errorController.isClosed) {
-      _errorController.add(error);
+      _errorController.add(
+        error.epoch == effectiveEpoch
+            ? error
+            : EngineError(
+                type: error.type,
+                message: error.message,
+                sourceUrl: error.sourceUrl,
+                cause: error.cause,
+                retriable: error.retriable,
+                epoch: effectiveEpoch,
+              ),
+      );
     }
     StructuredLogService.event(
       'audio_engine.error',
@@ -317,6 +382,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         'failure_kind': error.type.name,
         'retriable': error.retriable,
         'source_url': error.sourceUrl,
+        'epoch': effectiveEpoch,
       },
       error: error.cause ?? error.message,
     );
@@ -422,9 +488,11 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         if (_isCurrentPlayTicket(player, playTicket)) {
           _playTicket++;
         }
-        _emitError(_mapJustAudioError(e));
-        if (!_stateController.isClosed) {
-          _stateController.add(EngineState.idle);
+        if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+          _emitError(_mapJustAudioError(e));
+          if (!_stateController.isClosed) {
+            _stateController.add(EngineState.idle);
+          }
         }
       }
     }());
@@ -592,6 +660,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   @override
   Future<void> play(
     String url, {
+    required int generation,
     bool isLocal = false,
     Map<String, String>? headers,
     bool autoPlay = true,
@@ -603,6 +672,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         : ja.AudioSource.uri(Uri.parse(url), headers: headers);
     await playAudioSource(
       source,
+      generation: generation,
       sourceUrl: url,
       autoPlay: autoPlay,
       initialPosition: initialPosition,
@@ -613,6 +683,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   @override
   Future<void> playSource(
     PlayableSource source, {
+    required int generation,
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
@@ -621,6 +692,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     if (customSource != null) {
       await playAudioSource(
         customSource,
+        generation: generation,
         sourceUrl: source.sourceUrl,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
@@ -635,6 +707,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     }
     await play(
       pathOrUrl,
+      generation: generation,
       isLocal: source.isLocal,
       headers: source.headers,
       autoPlay: autoPlay,
@@ -646,16 +719,24 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   @override
   Future<void> playAudioSource(
     ja.AudioSource source, {
+    required int generation,
     String? sourceUrl,
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
   }) async {
+    // 必须在第一个 await 之前打开 arm 窗口，避免 ensurePlayer/setVolume
+    // 期间旧源的迟到事件被错误地送入新会话。
+    _epochGate.beginArm(generation);
+    _dispatchEpoch = generation;
     await _ensurePlayer();
     final player = _player!;
     await player.setVolume(0);
 
+    // 打开切换窗口：从此刻起，原生流的错误/状态/完成/进度事件全部
+    // 归属旧纪元并被抑制；同步异常按新代次上报。
     if (_isPlaying || _hasSource) {
+      _epochGate.beginStop();
       await player.stop();
     }
     _hasSource = false;
@@ -675,15 +756,20 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         sourceUrl: sourceUrl,
         retriable: true,
       );
-      _emitError(mapped);
+      _epochGate.abandonArm(generation);
+      _emitError(mapped, epoch: generation);
       await _recreatePlayer();
       throw EngineReportedException(mapped);
     } catch (e) {
       final mapped = _mapJustAudioError(e, sourceUrl: sourceUrl);
-      _emitError(mapped);
+      _epochGate.abandonArm(generation);
+      _emitError(mapped, epoch: generation);
       await _recreatePlayer();
       throw EngineReportedException(mapped);
     }
+
+    // 装载成功：纪元翻转，窗口关闭。此后流事件按新纪元分发。
+    _epochGate.commitArm(generation);
 
     _position = initialPosition ?? Duration.zero;
     _positionController.add(_position);
@@ -705,10 +791,11 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     await _ensurePlayer();
     if (!_hasSource) {
       _emitError(
-        const EngineError(
+        EngineError(
           type: EngineErrorType.sourceLoad,
           message: 'resume() called without an active source',
           retriable: false,
+          epoch: _dispatchEpoch,
         ),
       );
       return;
@@ -728,6 +815,9 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
   @override
   Future<void> stop() async {
+    // stop 属于源头操作：其后的流事件（idle/completed）归属被停止的纪元，
+    // 在下一次 arm 前不会污染新歌。
+    _epochGate.beginStop();
     await _player?.stop();
     _hasSource = false;
     _isPlaying = false;
@@ -795,6 +885,10 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   double _currentVolume = 70; // MediaKit 音量 0-100
   double _playbackSpeed = 1.0;
   bool _hasMedia = false;
+
+  /// 纪元闸门：与 JustAudioEngine 相同的源头捕获模式。
+  final EngineEpochGate _epochGate = EngineEpochGate();
+  int _dispatchEpoch = 0;
 
   final _positionController = StreamController<Duration>.broadcast();
   final _durationController = StreamController<Duration>.broadcast();
@@ -867,9 +961,21 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     return _mediaKitInitFuture!;
   }
 
-  void _emitError(EngineError error) {
+  void _emitError(EngineError error, {int? epoch}) {
+    final effectiveEpoch = epoch ?? _dispatchEpoch;
     if (!_errorController.isClosed) {
-      _errorController.add(error);
+      _errorController.add(
+        error.epoch == effectiveEpoch
+            ? error
+            : EngineError(
+                type: error.type,
+                message: error.message,
+                sourceUrl: error.sourceUrl,
+                cause: error.cause,
+                retriable: error.retriable,
+                epoch: effectiveEpoch,
+              ),
+      );
     }
     StructuredLogService.event(
       'audio_engine.error',
@@ -879,6 +985,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
         'failure_kind': error.type.name,
         'retriable': error.retriable,
         'source_url': error.sourceUrl,
+        'epoch': effectiveEpoch,
       },
       error: error.cause ?? error.message,
     );
@@ -952,26 +1059,36 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     _playingSub = _player!.stream.playing.listen((playing) {
       if (playing) {
         _isPlaying = true;
-        _stateController.add(EngineState.playing);
+        if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+          _stateController.add(EngineState.playing);
+        }
       } else if (_isPlaying) {
         _isPlaying = false;
-        _stateController.add(EngineState.paused);
+        if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+          _stateController.add(EngineState.paused);
+        }
       }
     });
 
     _positionSub = _player!.stream.position.listen((pos) {
       _position = pos;
-      _positionController.add(pos);
+      if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+        _positionController.add(pos);
+      }
     });
 
     _durationSub = _player!.stream.duration.listen((dur) {
-      _duration = dur ?? Duration.zero;
-      _durationController.add(_duration);
+      _duration = dur;
+      if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+        _durationController.add(_duration);
+      }
     });
 
     _bufferSub = _player!.stream.buffer.listen((buffer) {
       _bufferedPosition = buffer;
-      _bufferedPositionController.add(buffer);
+      if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+        _bufferedPositionController.add(buffer);
+      }
     });
 
     _rateSub = _player!.stream.rate.listen((rate) {
@@ -982,28 +1099,53 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
       if (completed) {
         _isPlaying = false;
         _position = Duration.zero;
-        _stateController.add(EngineState.idle);
-        _completionController.add(true);
+        if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+          _stateController.add(EngineState.idle);
+          _completionController.add(true);
+        }
       }
     });
 
     _errorSub = _player!.stream.error.listen((message) {
-      _emitError(_mapMediaKitError(message));
+      final mapped = _mapMediaKitError(message);
+      // 纪元闸门：切换窗口内的错误归属旧纪元，直接抑制。
+      // media_kit 在 stop/open 切换时可能抛出属于旧媒体的未知错误，
+      // 且其错误流不区分来源，必须靠闸门防止旧歌错误触发新歌重试/跳歌。
+      if (_epochGate.streamEventEpoch != _dispatchEpoch) {
+        StructuredLogService.event(
+          'audio_engine.stale_event_suppressed',
+          level: LogLevel.debug,
+          fields: {
+            'engine': 'media_kit',
+            'event_epoch': _epochGate.streamEventEpoch,
+            'dispatch_epoch': _dispatchEpoch,
+            'failure_kind': mapped.type.name,
+          },
+        );
+        return;
+      }
+      _emitError(mapped);
     });
   }
 
   @override
   Future<void> play(
     String url, {
+    required int generation,
     bool isLocal = false,
     Map<String, String>? headers,
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
   }) async {
+    // 源头捕获必须早于初始化/打开媒体的异步边界。
+    _epochGate.beginArm(generation);
+    _dispatchEpoch = generation;
     await _ensurePlayer();
     final player = _player!;
+
     if (_isPlaying || _hasMedia) {
+      _epochGate.beginStop();
       await player.setVolume(0);
       await player.stop();
     }
@@ -1017,10 +1159,15 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
         sourceUrl: url,
         cause: e,
         retriable: true,
+        epoch: generation,
       );
-      _emitError(mapped);
+      _epochGate.abandonArm(generation);
+      _emitError(mapped, epoch: generation);
       throw EngineReportedException(mapped);
     }
+
+    // 装载成功：纪元翻转，窗口关闭。此后流事件按新纪元分发。
+    _epochGate.commitArm(generation);
 
     if (initialPosition != null && initialPosition > Duration.zero) {
       await player.seek(initialPosition);
@@ -1039,6 +1186,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   @override
   Future<void> playSource(
     PlayableSource source, {
+    required int generation,
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
@@ -1047,6 +1195,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     if (customSource != null) {
       await playAudioSource(
         customSource,
+        generation: generation,
         sourceUrl: source.sourceUrl,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
@@ -1061,6 +1210,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     }
     await play(
       pathOrUrl,
+      generation: generation,
       isLocal: source.isLocal,
       headers: source.headers,
       autoPlay: autoPlay,
@@ -1072,6 +1222,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   @override
   Future<void> playAudioSource(
     ja.AudioSource source, {
+    required int generation,
     String? sourceUrl,
     bool autoPlay = true,
     Duration? initialPosition,
@@ -1091,10 +1242,11 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   Future<void> resume() async {
     if (!_hasMedia) {
       _emitError(
-        const EngineError(
+        EngineError(
           type: EngineErrorType.sourceLoad,
           message: 'resume() called without an active media',
           retriable: false,
+          epoch: _dispatchEpoch,
         ),
       );
       return;
@@ -1110,6 +1262,8 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
 
   @override
   Future<void> stop() async {
+    // stop 属于源头操作：其后到下一次 arm 前的流事件归属被停止的纪元。
+    _epochGate.beginStop();
     await _player?.stop();
     _hasMedia = false;
   }

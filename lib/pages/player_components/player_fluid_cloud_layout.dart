@@ -65,7 +65,6 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   // 缓存当前歌曲的封面 URL，用于检测歌曲变化
   String? _currentImageUrl;
 
-
   // 歌词折叠状态
   bool _isLyricsCollapsed = false;
 
@@ -151,11 +150,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
 
       final provider = player.currentCoverImageProvider;
       if (provider != null) {
-        precacheImage(
-          provider,
-          context,
-          size: const Size(512, 512),
-        );
+        precacheImage(provider, context, size: const Size(512, 512));
       }
     }
   }
@@ -600,8 +595,8 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                 : 0.0;
                             final bufferedValue = duration > 0
                                 ? (player.bufferedPosition.inMilliseconds /
-                                        duration)
-                                    .clamp(0.0, 1.0)
+                                          duration)
+                                      .clamp(0.0, 1.0)
                                 : 0.0;
 
                             return Column(
@@ -615,8 +610,9 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                         height: 3,
                                         decoration: BoxDecoration(
                                           color: Colors.white.withOpacity(0.14),
-                                          borderRadius:
-                                              BorderRadius.circular(999),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
                                         ),
                                       ),
                                       Align(
@@ -676,7 +672,9 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                   ],
                                 ),
                                 PlayerErrorBanner(
-                                  message: player.errorMessage,
+                                  message: player.isAudioSourceNotConfigured
+                                      ? null
+                                      : player.errorMessage,
                                   margin: const EdgeInsets.only(top: 8),
                                   onRetry: () {
                                     player.retryCurrent();
@@ -812,7 +810,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                       : 0.0;
                   final bufferedValue = duration > 0
                       ? (player.bufferedPosition.inMilliseconds / duration)
-                          .clamp(0.0, 1.0)
+                            .clamp(0.0, 1.0)
                       : 0.0;
 
                   return Column(
@@ -882,7 +880,9 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                         ),
                       ),
                       PlayerErrorBanner(
-                        message: player.errorMessage,
+                        message: player.isAudioSourceNotConfigured
+                            ? null
+                            : player.errorMessage,
                         margin: const EdgeInsets.only(top: 8),
                         onRetry: () {
                           player.retryCurrent();

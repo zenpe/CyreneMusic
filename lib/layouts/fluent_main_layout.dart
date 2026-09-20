@@ -4,7 +4,6 @@ import 'dart:typed_data';
 
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 
@@ -29,6 +28,7 @@ import '../utils/theme_manager.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/search_widget.dart';
 import '../widgets/video_background_player.dart';
+import '../widgets/fixed_navigation_dock.dart';
 import '../pages/home_page/home_overlay_controller.dart';
 import '../pages/desktop_setup_page.dart';
 import '../services/persistent_storage_service.dart';
@@ -42,99 +42,81 @@ class FluentMainLayout extends StatefulWidget {
   State<FluentMainLayout> createState() => _FluentMainLayoutState();
 }
 
-class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener {
+class _FluentMainLayoutState extends State<FluentMainLayout>
+    with WindowListener {
   final AuthFacade _authFacade = AuthFacade();
   // 导航状态管理
   final NavigationProvider _navigationProvider = NavigationProvider();
   final HomeOverlayController _homeOverlayController = HomeOverlayController();
-  
+
   // 窗口状态
   TextEditingController? _searchController;
   bool _isWindowMaximized = false;
-  
-  // Pane 显示模式（compact = 折叠，open = 展开）
-  fluent_ui.PaneDisplayMode _displayMode = fluent_ui.PaneDisplayMode.compact;
-  
+
   // 搜索覆盖层状态
   bool _isSearchVisible = false;
   String? _searchInitialKeyword;
 
-  Widget _svgIcon(String assetPath) {
-    return SvgPicture.asset(
-      assetPath,
-      width: 16,
-      height: 16,
-      fit: BoxFit.contain,
-    );
-  }
-
-  /// 主导航项列表
-  List<fluent_ui.NavigationPaneItem> get _paneItems {
+  List<FixedNavigationDockItem> get _fixedNavigationItems {
     final isLocalMode = PersistentStorageService().enableLocalMode;
 
     if (isLocalMode) {
-      return [
-        fluent_ui.PaneItem(
-          icon: _svgIcon('assets/ui/FluentColorDocumentFolder16.svg'),
-          title: const Text('本地'),
-          body: _buildAnimatedContent(),
+      return const [
+        FixedNavigationDockItem(
+          icon: Icons.folder_open_outlined,
+          selectedIcon: Icons.folder_rounded,
+          label: '本地',
+        ),
+        FixedNavigationDockItem(
+          icon: Icons.settings_outlined,
+          selectedIcon: Icons.settings_rounded,
+          label: '本地设置',
         ),
       ];
     }
 
-    final items = <fluent_ui.NavigationPaneItem>[
-      fluent_ui.PaneItem(
-        icon: _svgIcon('assets/ui/FluentColorHome16.svg'),
-        title: const Text('首页'),
-        body: _buildAnimatedContent(),
+    final items = <FixedNavigationDockItem>[
+      const FixedNavigationDockItem(
+        icon: Icons.home_outlined,
+        selectedIcon: Icons.home_rounded,
+        label: '首页',
       ),
-      fluent_ui.PaneItem(
-        icon: _svgIcon('assets/ui/FluentColorSearchSparkle16.svg'),
-        title: const Text('发现'),
-        body: _buildAnimatedContent(),
+      const FixedNavigationDockItem(
+        icon: Icons.explore_outlined,
+        selectedIcon: Icons.explore_rounded,
+        label: '发现',
       ),
-      fluent_ui.PaneItem(
-        icon: _svgIcon('assets/ui/FluentColorHistory16.svg'),
-        title: const Text('历史'),
-        body: _buildAnimatedContent(),
+      const FixedNavigationDockItem(
+        icon: Icons.history_outlined,
+        selectedIcon: Icons.history_rounded,
+        label: '历史',
       ),
-      fluent_ui.PaneItem(
-        icon: _svgIcon('assets/ui/FluentColorDocumentFolder16.svg'),
-        title: const Text('本地'),
-        body: _buildAnimatedContent(),
+      const FixedNavigationDockItem(
+        icon: Icons.folder_open_outlined,
+        selectedIcon: Icons.folder_rounded,
+        label: '本地',
       ),
-      fluent_ui.PaneItem(
-        icon: _svgIcon('assets/ui/FluentColorPerson16.svg'),
-        title: const Text('我的'),
-        body: _buildAnimatedContent(),
+      const FixedNavigationDockItem(
+        icon: Icons.person_outline_rounded,
+        selectedIcon: Icons.person_rounded,
+        label: '我的',
+      ),
+      const FixedNavigationDockItem(
+        icon: Icons.settings_outlined,
+        selectedIcon: Icons.settings_rounded,
+        label: '设置',
       ),
     ];
-
-    // 开发者模式下添加开发者页面
     if (DeveloperModeService().isDeveloperMode) {
       items.add(
-        fluent_ui.PaneItem(
-          icon: _svgIcon('assets/ui/FluentColorCode16.svg'),
-          title: const Text('Dev'),
-          body: _buildAnimatedContent(),
+        const FixedNavigationDockItem(
+          icon: Icons.code_rounded,
+          selectedIcon: Icons.code_rounded,
+          label: '开发',
         ),
       );
     }
-
     return items;
-  }
-
-  /// 底部导航项（设置页面）
-  List<fluent_ui.NavigationPaneItem> get _footerItems {
-    final isLocalMode = PersistentStorageService().enableLocalMode;
-
-    return [
-      fluent_ui.PaneItem(
-        icon: _svgIcon('assets/ui/FluentColorSettings16.svg'),
-        title: Text(isLocalMode ? '退出本地模式' : '设置'),
-        body: _buildAnimatedContent(),
-      ),
-    ];
   }
 
   /// 构建带动画的内容区域（所有页面共享同一个 AnimatedSwitcher）
@@ -180,29 +162,18 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
       const LocalPage(),
       const MyPage(),
     ];
+    // Keep the same order as the tablet dock: settings precedes developer mode.
+    children.add(const _DeferredSettingsPage());
     if (DeveloperModeService().isDeveloperMode) {
       children.add(const DeveloperPage());
     }
-    // footer: 设置
-    children.add(const _DeferredSettingsPage());
     return children;
-  }
-
-  /// 切换 Pane 折叠/展开状态
-  void _togglePane() {
-    setState(() {
-      if (_displayMode == fluent_ui.PaneDisplayMode.compact) {
-        _displayMode = fluent_ui.PaneDisplayMode.expanded;
-      } else {
-        _displayMode = fluent_ui.PaneDisplayMode.compact;
-      }
-    });
   }
 
   @override
   void initState() {
     super.initState();
-    
+
     // Windows 平台初始化
     if (Platform.isWindows) {
       _searchController = TextEditingController();
@@ -215,7 +186,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
         }
       });
     }
-    
+
     // 监听服务变化
     _authFacade.addAuthStateListener(_onAuthChanged);
     DeveloperModeService().addListener(_onDeveloperModeChanged);
@@ -269,7 +240,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
       if (!mounted) return;
       setState(() {
         // 开发者模式切换时，检查当前索引是否有效
-        final totalPageCount = _paneItems.length + _footerItems.length;
+        final totalPageCount = _bodyChildren.length;
         if (_navigationProvider.currentIndex >= totalPageCount) {
           _navigationProvider.navigateTo(0);
         }
@@ -280,7 +251,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
   /// 导航状态变化回调
   void _onNavigationChanged() {
     if (!mounted) return;
-    // 使用 addPostFrameCallback 避免在 NavigationView 布局过程中触发同步 setState
+    // 使用 addPostFrameCallback 避免在布局过程中触发同步 setState
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() {});
@@ -288,7 +259,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
       PageVisibilityNotifier().setCurrentPage(_navigationProvider.currentIndex);
 
       // 设置页面点击时触发开发者模式彩蛋
-      final settingsIndex = _paneItems.length;
+      final settingsIndex = PersistentStorageService().enableLocalMode ? 1 : 5;
       if (_navigationProvider.currentIndex == settingsIndex) {
         DeveloperModeService().onSettingsClicked();
       }
@@ -426,7 +397,8 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
               const SizedBox(height: 16),
               fluent_ui.Button(
                 child: const Text('我的'),
-                onPressed: () => Navigator.pop(context, _FluentUserAction.viewProfile),
+                onPressed: () =>
+                    Navigator.pop(context, _FluentUserAction.viewProfile),
               ),
             ],
           ),
@@ -490,9 +462,9 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
   /// 显示退出登录提示
   void _showLogoutSnackBar() {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已退出登录')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已退出登录')));
   }
 
   /// 构建用户操作组件（头像或登录按钮）
@@ -519,10 +491,8 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
                   width: size,
                   height: size,
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Icon(
-                    fluent_ui.FluentIcons.contact,
-                    size: size,
-                  ),
+                  errorBuilder: (context, error, stackTrace) =>
+                      Icon(fluent_ui.FluentIcons.contact, size: size),
                 ),
         ),
       );
@@ -570,9 +540,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
           Positioned.fill(
             child: GestureDetector(
               onDoubleTap: _handleCaptionMaximizeOrRestore,
-              child: DragToMoveArea(
-                child: const SizedBox.expand(),
-              ),
+              child: DragToMoveArea(child: const SizedBox.expand()),
             ),
           ),
           Align(
@@ -599,7 +567,8 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
                     const SizedBox(width: 1),
                     Text(
                       'Cyrene Music',
-                      style: (typography.subtitle ?? typography.bodyLarge)
+                      style:
+                          (typography.subtitle ?? typography.bodyLarge)
                               ?.copyWith(fontSize: 12) ??
                           const TextStyle(fontSize: 12),
                     ),
@@ -717,21 +686,32 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
     );
   }
 
+  Widget _buildFixedNavigationDock(BuildContext context) {
+    final theme = fluent_ui.FluentTheme.of(context);
+    return FixedNavigationDock(
+      items: _fixedNavigationItems,
+      selectedIndex: _navigationProvider.currentIndex,
+      onSelected: _onPaneIndexChanged,
+      width: FixedNavigationDock.widthFor(context),
+      backgroundColor: theme.micaBackgroundColor,
+      selectedBackgroundColor: theme.resources.controlFillColorSecondary,
+      foregroundColor: theme.resources.textFillColorSecondary,
+      selectedForegroundColor: theme.resources.textFillColorPrimary,
+    );
+  }
+
   /// 构建认证覆盖层
   Widget _buildAuthOverlay(BuildContext context) {
     final overlay = AuthOverlayService();
     final fluentTheme = fluent_ui.FluentTheme.of(context);
-    
-    // 根据 displayMode 计算左侧宽度
-    final double leftPaneWidth = _displayMode == fluent_ui.PaneDisplayMode.compact ? 56.0 : 280.0;
 
     return Row(
       children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOutCubic,
-          width: leftPaneWidth,
-          child: Container(color: fluentTheme.micaBackgroundColor.withOpacity(0.6)),
+        SizedBox(
+          width: FixedNavigationDock.widthFor(context),
+          child: Container(
+            color: fluentTheme.micaBackgroundColor.withOpacity(0.6),
+          ),
         ),
         Expanded(
           child: Container(
@@ -762,21 +742,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
 
   @override
   Widget build(BuildContext context) {
-    
-    // 构建 NavigationView（按照 README 文档标准实现）
-    final navigationView = fluent_ui.NavigationView(
-      titleBar: _buildAppBar(context),
-      pane: fluent_ui.NavigationPane(
-        selected: _navigationProvider.currentIndex,
-        onChanged: _onPaneIndexChanged,
-        displayMode: _displayMode,
-        items: _paneItems,
-        footerItems: _footerItems,
-      ),
-    );
-
-    // 根据 displayMode 计算 Pane 宽度
-    final double paneWidth = _displayMode == fluent_ui.PaneDisplayMode.compact ? 56.0 : 280.0;
+    final paneWidth = FixedNavigationDock.widthFor(context);
 
     Widget content = AnimatedBuilder(
       animation: AuthOverlayService(),
@@ -786,10 +752,16 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
           children: [
             Column(
               children: [
+                _buildAppBar(context),
                 Expanded(
                   child: Stack(
                     children: [
-                      navigationView,
+                      Row(
+                        children: [
+                          _buildFixedNavigationDock(context),
+                          Expanded(child: _buildAnimatedContent()),
+                        ],
+                      ),
                       if (_isSearchVisible)
                         AnimatedPositioned(
                           duration: const Duration(milliseconds: 300),
@@ -807,9 +779,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
               ],
             ),
             if (overlay.isVisible)
-              Positioned.fill(
-                child: _buildAuthOverlay(context),
-              ),
+              Positioned.fill(child: _buildAuthOverlay(context)),
           ],
         );
       },
@@ -818,14 +788,14 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
     // Windows 平台添加圆角边框（仅在未启用窗口材质时包裹）
     if (Platform.isWindows) {
       final isMaximized = _isWindowMaximized;
-      final effectEnabled = ThemeManager().windowEffect != WindowEffect.disabled;
-      final borderRadius = (isMaximized || effectEnabled) ? BorderRadius.zero : BorderRadius.circular(12);
+      final effectEnabled =
+          ThemeManager().windowEffect != WindowEffect.disabled;
+      final borderRadius = (isMaximized || effectEnabled)
+          ? BorderRadius.zero
+          : BorderRadius.circular(12);
 
       if (!effectEnabled) {
-        content = ClipRRect(
-          borderRadius: borderRadius,
-          child: content,
-        );
+        content = ClipRRect(borderRadius: borderRadius, child: content);
       }
     }
 
@@ -834,7 +804,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
       animation: WindowBackgroundService(),
       builder: (context, child) {
         final bgService = WindowBackgroundService();
-        
+
         // 如果启用了窗口背景且有有效媒体
         if (bgService.enabled && bgService.hasValidMedia) {
           return Stack(
@@ -864,14 +834,17 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
                         filterQuality: FilterQuality.medium,
                       ),
                       // 模糊和不透明度层（限制模糊程度避免GPU过载）
-                      if (bgService.blurAmount > 0 && bgService.blurAmount <= 40)
+                      if (bgService.blurAmount > 0 &&
+                          bgService.blurAmount <= 40)
                         BackdropFilter(
                           filter: ImageFilter.blur(
                             sigmaX: bgService.blurAmount,
                             sigmaY: bgService.blurAmount,
                           ),
                           child: Container(
-                            color: Colors.black.withOpacity(1 - bgService.opacity),
+                            color: Colors.black.withOpacity(
+                              1 - bgService.opacity,
+                            ),
                           ),
                         ),
                     ],
@@ -882,7 +855,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
             ],
           );
         }
-        
+
         // 没有背景时直接返回内容
         return child!;
       },
@@ -997,10 +970,7 @@ class _LinuxDoAvatarTitleBarState extends State<_LinuxDoAvatarTitleBar> {
     }
 
     if (_hasFailed || _avatarData == null) {
-      return Icon(
-        fluent_ui.FluentIcons.contact,
-        size: widget.size,
-      );
+      return Icon(fluent_ui.FluentIcons.contact, size: widget.size);
     }
 
     return Image.memory(
@@ -1009,12 +979,8 @@ class _LinuxDoAvatarTitleBarState extends State<_LinuxDoAvatarTitleBar> {
       height: widget.size,
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) {
-        return Icon(
-          fluent_ui.FluentIcons.contact,
-          size: widget.size,
-        );
+        return Icon(fluent_ui.FluentIcons.contact, size: widget.size);
       },
     );
   }
 }
-

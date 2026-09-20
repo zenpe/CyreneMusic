@@ -45,18 +45,20 @@ class PlayerControls extends StatelessWidget {
             builder: (context, position, _) {
               final sliderValue = player.duration.inMilliseconds > 0
                   ? (position.inMilliseconds / player.duration.inMilliseconds)
-                      .clamp(0.0, 1.0)
+                        .clamp(0.0, 1.0)
                   : 0.0;
               final bufferedValue = player.duration.inMilliseconds > 0
                   ? (player.bufferedPosition.inMilliseconds /
-                          player.duration.inMilliseconds)
-                      .clamp(0.0, 1.0)
+                            player.duration.inMilliseconds)
+                        .clamp(0.0, 1.0)
                   : 0.0;
 
               return Column(
                 children: [
                   PlayerErrorBanner(
-                    message: player.errorMessage,
+                    message: player.isAudioSourceNotConfigured
+                        ? null
+                        : player.errorMessage,
                     margin: const EdgeInsets.only(bottom: 10),
                     onRetry: () {
                       player.retryCurrent();
@@ -72,10 +74,12 @@ class PlayerControls extends StatelessWidget {
                   SliderTheme(
                     data: SliderThemeData(
                       trackHeight: 4,
-                      thumbShape:
-                          const RoundSliderThumbShape(enabledThumbRadius: 8),
-                      overlayShape:
-                          const RoundSliderOverlayShape(overlayRadius: 16),
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 8,
+                      ),
+                      overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 16,
+                      ),
                       activeTrackColor: Colors.white,
                       inactiveTrackColor: Colors.white.withOpacity(0.3),
                       secondaryActiveTrackColor: Colors.white.withOpacity(0.55),
@@ -87,8 +91,8 @@ class PlayerControls extends StatelessWidget {
                       secondaryTrackValue: bufferedValue.toDouble(),
                       onChanged: (value) {
                         final nextPosition = Duration(
-                          milliseconds:
-                              (value * player.duration.inMilliseconds).round(),
+                          milliseconds: (value * player.duration.inMilliseconds)
+                              .round(),
                         );
                         player.seek(nextPosition);
                       },
@@ -122,9 +126,9 @@ class PlayerControls extends StatelessWidget {
               );
             },
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // 控制按钮
           _buildControlButtons(context),
         ],
@@ -136,7 +140,7 @@ class PlayerControls extends StatelessWidget {
   Widget _buildControlButtons(BuildContext context) {
     final currentTrack = player.currentTrack;
     const double buttonSpacing = 12.0; // 统一的按钮间距
-    
+
     return Row(
       children: [
         // 左侧按钮组
@@ -151,7 +155,9 @@ class PlayerControls extends StatelessWidget {
                     width: 30,
                     height: 30,
                     decoration: BoxDecoration(
-                      color: showTranslation ? Colors.white.withOpacity(0.2) : Colors.transparent,
+                      color: showTranslation
+                          ? Colors.white.withOpacity(0.2)
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Center(
@@ -171,7 +177,7 @@ class PlayerControls extends StatelessWidget {
                 ),
                 const SizedBox(width: buttonSpacing),
               ],
-              
+
               // 播放模式切换
               AnimatedBuilder(
                 animation: PlaybackModeService(),
@@ -192,7 +198,7 @@ class PlayerControls extends StatelessWidget {
                       icon = Icons.shuffle_rounded;
                       break;
                   }
-                  
+
                   return IconButton(
                     icon: Icon(icon, color: Colors.white),
                     iconSize: 30,
@@ -200,7 +206,9 @@ class PlayerControls extends StatelessWidget {
                       PlaybackModeService().toggleMode();
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('播放模式: ${PlaybackModeService().getModeName()}'),
+                          content: Text(
+                            '播放模式: ${PlaybackModeService().getModeName()}',
+                          ),
                           duration: const Duration(seconds: 1),
                         ),
                       );
@@ -210,24 +218,26 @@ class PlayerControls extends StatelessWidget {
                 },
               ),
               const SizedBox(width: buttonSpacing),
-              
-               // 睡眠定时器
+
+              // 睡眠定时器
               if (onSleepTimerPressed != null)
                 AnimatedBuilder(
                   animation: SleepTimerService(),
                   builder: (context, child) {
                     final timer = SleepTimerService();
                     final isActive = timer.isActive;
-                    
-                     return IconButton(
-                       icon: Icon(
-                         isActive ? Icons.schedule : Icons.schedule_outlined,
-                         color: isActive ? Colors.amber : Colors.white,
-                       ),
-                       iconSize: 30,
-                       onPressed: onSleepTimerPressed,
-                       tooltip: isActive ? '定时停止: ${timer.remainingTimeString}' : '睡眠定时器',
-                     );
+
+                    return IconButton(
+                      icon: Icon(
+                        isActive ? Icons.schedule : Icons.schedule_outlined,
+                        color: isActive ? Colors.amber : Colors.white,
+                      ),
+                      iconSize: 30,
+                      onPressed: onSleepTimerPressed,
+                      tooltip: isActive
+                          ? '定时停止: ${timer.remainingTimeString}'
+                          : '睡眠定时器',
+                    );
                   },
                 ),
               if (onSleepTimerPressed != null)
@@ -242,7 +252,7 @@ class PlayerControls extends StatelessWidget {
                 fontSize: 12,
               ),
               const SizedBox(width: buttonSpacing),
-              
+
               // 添加到歌单按钮
               if (currentTrack != null && onAddToPlaylistPressed != null) ...[
                 IconButton(
@@ -256,12 +266,12 @@ class PlayerControls extends StatelessWidget {
                 ),
                 const SizedBox(width: buttonSpacing),
               ],
-              
+
               const SizedBox(width: 8), // 左侧组与中间组的额外间距
             ],
           ),
         ),
-        
+
         // 中间核心按钮组（上一首、播放/暂停、下一首）- 始终居中
         Row(
           mainAxisSize: MainAxisSize.min,
@@ -276,9 +286,9 @@ class PlayerControls extends StatelessWidget {
               onPressed: player.hasPrevious ? player.playPrevious : null,
               tooltip: '上一首',
             ),
-            
+
             const SizedBox(width: buttonSpacing),
-            
+
             // 播放/暂停
             Container(
               width: 70,
@@ -301,16 +311,18 @@ class PlayerControls extends StatelessWidget {
                     )
                   : IconButton(
                       icon: Icon(
-                        player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        player.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
                         color: Colors.black87,
                       ),
                       iconSize: 40,
                       onPressed: player.togglePlayPause,
                     ),
             ),
-            
+
             const SizedBox(width: buttonSpacing),
-            
+
             // 下一首
             IconButton(
               icon: Icon(
@@ -321,31 +333,37 @@ class PlayerControls extends StatelessWidget {
               onPressed: player.hasNext ? player.playNext : null,
               tooltip: '下一首',
             ),
-            
+
             const SizedBox(width: buttonSpacing),
-            
+
             // 音量控制（常驻显示，悬停弹出滑动条）
             _buildVolumeControl(),
           ],
         ),
-        
+
         // 右侧按钮组
         Expanded(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               const SizedBox(width: 8), // 中间组与右侧组的额外间距
-              
               // 下载按钮
               if (currentTrack != null && player.currentSong != null) ...[
                 const SizedBox(width: buttonSpacing),
-                _buildDownloadButton(context, currentTrack, player.currentSong!),
+                _buildDownloadButton(
+                  context,
+                  currentTrack,
+                  player.currentSong!,
+                ),
               ],
               const SizedBox(width: buttonSpacing),
-              
+
               // 播放列表按钮
               IconButton(
-                icon: const Icon(Icons.queue_music_rounded, color: Colors.white),
+                icon: const Icon(
+                  Icons.queue_music_rounded,
+                  color: Colors.white,
+                ),
                 iconSize: 30,
                 onPressed: onPlaylistPressed,
                 tooltip: '播放列表',
@@ -360,14 +378,14 @@ class PlayerControls extends StatelessWidget {
   /// 构建音量控制按钮
   Widget _buildVolumeControl() {
     final volume = player.volume;
-    
+
     return IconButton(
       icon: Icon(
-        volume == 0 
-            ? Icons.volume_off_rounded 
-            : volume < 0.5 
-                ? Icons.volume_down_rounded 
-                : Icons.volume_up_rounded,
+        volume == 0
+            ? Icons.volume_off_rounded
+            : volume < 0.5
+            ? Icons.volume_down_rounded
+            : Icons.volume_up_rounded,
         color: Colors.white,
       ),
       iconSize: 30,
@@ -377,22 +395,28 @@ class PlayerControls extends StatelessWidget {
   }
 
   /// 构建下载按钮
-  Widget _buildDownloadButton(BuildContext context, Track currentTrack, SongDetail currentSong) {
+  Widget _buildDownloadButton(
+    BuildContext context,
+    Track currentTrack,
+    SongDetail currentSong,
+  ) {
     return AnimatedBuilder(
       animation: DownloadService(),
       builder: (context, child) {
         final downloadService = DownloadService();
         final isDownloading = downloadService.downloadTasks.containsKey(
-          '${currentTrack.source.name}_${currentTrack.id}'
+          '${currentTrack.source.name}_${currentTrack.id}',
         );
-        
+
         return IconButton(
           icon: Icon(
             isDownloading ? Icons.downloading_rounded : Icons.download_rounded,
             color: Colors.white,
           ),
           iconSize: 30,
-          onPressed: isDownloading ? null : () => _handleDownload(context, currentTrack, currentSong),
+          onPressed: isDownloading
+              ? null
+              : () => _handleDownload(context, currentTrack, currentSong),
           tooltip: isDownloading ? '下载中...' : '下载',
         );
       },
@@ -400,11 +424,15 @@ class PlayerControls extends StatelessWidget {
   }
 
   /// 处理下载
-  Future<void> _handleDownload(BuildContext context, Track currentTrack, SongDetail currentSong) async {
+  Future<void> _handleDownload(
+    BuildContext context,
+    Track currentTrack,
+    SongDetail currentSong,
+  ) async {
     try {
       // 检查是否已下载
       final isDownloaded = await DownloadService().isDownloaded(currentTrack);
-      
+
       if (isDownloaded) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -474,33 +502,33 @@ class PlayerControls extends StatelessWidget {
   /// 只有当歌词非中文且存在翻译时才显示
   bool _shouldShowTranslationButton() {
     if (lyrics.isEmpty) return false;
-    
+
     // 检查是否有翻译
-    final hasTranslation = lyrics.any((lyric) => 
-      lyric.translation != null && lyric.translation!.isNotEmpty
+    final hasTranslation = lyrics.any(
+      (lyric) => lyric.translation != null && lyric.translation!.isNotEmpty,
     );
-    
+
     if (!hasTranslation) return false;
-    
+
     // 检查原文是否为中文（检查前几行非空歌词）
     final sampleLyrics = lyrics
         .where((lyric) => lyric.text.trim().isNotEmpty)
         .take(5)
         .map((lyric) => lyric.text)
         .join('');
-    
+
     if (sampleLyrics.isEmpty) return false;
-    
+
     // 判断是否主要为中文（中文字符占比）
     final chineseCount = sampleLyrics.runes.where((rune) {
       return (rune >= 0x4E00 && rune <= 0x9FFF) || // 基本汉字
-             (rune >= 0x3400 && rune <= 0x4DBF) || // 扩展A
-             (rune >= 0x20000 && rune <= 0x2A6DF); // 扩展B
+          (rune >= 0x3400 && rune <= 0x4DBF) || // 扩展A
+          (rune >= 0x20000 && rune <= 0x2A6DF); // 扩展B
     }).length;
-    
+
     final totalCount = sampleLyrics.runes.length;
     final chineseRatio = totalCount > 0 ? chineseCount / totalCount : 0;
-    
+
     // 如果中文字符占比小于30%，认为是非中文歌词
     return chineseRatio < 0.3;
   }

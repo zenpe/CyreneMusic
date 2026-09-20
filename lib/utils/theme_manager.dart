@@ -63,9 +63,8 @@ class ThemeManager extends ChangeNotifier {
   /// 在 `runApp` 之前 await 一次，确保首帧就能用上磁盘里保存的主题框架设置。
   ///
   /// 否则首帧会按平台默认值构建 `FluentApp`，等这里的异步加载完成后再切换成
-  /// `MaterialApp`。两个分支共用 `MyApp.navigatorKey`，Flutter 会把旧 Navigator
-  /// 连同 `FluentApp` 建出的 `FluentPageRoute` 一并重挂到新树下；而 Material 树里
-  /// 没有 `FluentTheme`，`FluentTheme.of` 断言失败会让整个页面渲染成空白。
+  /// `MaterialApp`。根节点切换必须使用独立的 Navigator，不能把旧的
+  /// `FluentPageRoute` 带到没有 `FluentTheme` 的 Material 树下，否则会导致白屏。
   Future<void> ensureSettingsLoaded() => _settingsLoaded;
 
   // ============== Storage Keys ==============

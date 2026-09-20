@@ -17,6 +17,7 @@ import '../services/playlist_queue_service.dart';
 import '../services/player_service.dart';
 import '../pages/auth/auth_page.dart';
 import '../utils/theme_manager.dart';
+import '../utils/image_utils.dart';
 import '../services/api/api_client.dart';
 import '../services/playlist_service.dart';
 
@@ -34,34 +35,41 @@ class DiscoverPlaylistDetailPage extends StatelessWidget {
       data: _discoverPlaylistFontTheme(baseTheme),
       child: Builder(
         builder: (context) {
-          final isExpressive = !ThemeManager().isFluentFramework && 
-                              !ThemeManager().isCupertinoFramework && 
-                              (Platform.isAndroid || Platform.isIOS);
+          final isExpressive =
+              !ThemeManager().isFluentFramework &&
+              !ThemeManager().isCupertinoFramework &&
+              (Platform.isAndroid || Platform.isIOS);
           return Scaffold(
-            backgroundColor: isExpressive ? Theme.of(context).colorScheme.surfaceContainerLow : Theme.of(context).colorScheme.surface,
-            appBar: isExpressive ? null : AppBar(
-              backgroundColor: Colors.transparent,
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              systemOverlayStyle: SystemUiOverlayStyle(
-                statusBarColor: Colors.transparent,
-                statusBarIconBrightness:
-                    Theme.of(context).brightness == Brightness.dark
-                        ? Brightness.light
-                        : Brightness.dark,
-                statusBarBrightness: Theme.of(context).brightness,
-              ),
-              title: const Text('歌单详情'),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.sync),
-                  tooltip: '同步到本地歌单',
-                  onPressed: () =>
-                      _contentKey.currentState?._syncToLocal(context, playlistId),
-                ),
-              ],
-            ),
+            backgroundColor: isExpressive
+                ? Theme.of(context).colorScheme.surfaceContainerLow
+                : Theme.of(context).colorScheme.surface,
+            appBar: isExpressive
+                ? null
+                : AppBar(
+                    backgroundColor: Colors.transparent,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 0,
+                    scrolledUnderElevation: 0,
+                    systemOverlayStyle: SystemUiOverlayStyle(
+                      statusBarColor: Colors.transparent,
+                      statusBarIconBrightness:
+                          Theme.of(context).brightness == Brightness.dark
+                          ? Brightness.light
+                          : Brightness.dark,
+                      statusBarBrightness: Theme.of(context).brightness,
+                    ),
+                    title: const Text('歌单详情'),
+                    actions: [
+                      IconButton(
+                        icon: const Icon(Icons.sync),
+                        tooltip: '同步到本地歌单',
+                        onPressed: () => _contentKey.currentState?._syncToLocal(
+                          context,
+                          playlistId,
+                        ),
+                      ),
+                    ],
+                  ),
 
             body: DiscoverPlaylistDetailContent(
               key: _contentKey,
@@ -170,7 +178,8 @@ class _DiscoverPlaylistDetailContentState
     }
 
     // iOS / Cupertino 风格
-    if ((Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework) {
+    if ((Platform.isIOS || Platform.isAndroid) &&
+        themeManager.isCupertinoFramework) {
       return _buildCupertinoDetail(context);
     }
 
@@ -216,6 +225,7 @@ class _DiscoverPlaylistDetailContentState
                     borderRadius: BorderRadius.circular(8),
                     child: CachedNetworkImage(
                       imageUrl: detail.coverImgUrl,
+                      httpHeaders: getImageHeaders(detail.coverImgUrl),
                       width: 120,
                       height: 120,
                       fit: BoxFit.cover,
@@ -252,7 +262,8 @@ class _DiscoverPlaylistDetailContentState
                       Row(
                         children: [
                           FilledButton.icon(
-                            onPressed: () => _syncToLocal(context, widget.playlistId),
+                            onPressed: () =>
+                                _syncToLocal(context, widget.playlistId),
                             icon: const Icon(Icons.sync),
                             label: const Text('同步到本地歌单'),
                           ),
@@ -366,7 +377,10 @@ class _DiscoverPlaylistDetailContentState
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
         ],
       ),
     );
@@ -394,7 +408,10 @@ class _DiscoverPlaylistDetailContentState
         builder: (context, close) => fluent.InfoBar(
           title: const Text('已开始同步'),
           content: Text('目标歌单：${target.name}'),
-          action: fluent.IconButton(icon: const Icon(fluent.FluentIcons.clear), onPressed: close),
+          action: fluent.IconButton(
+            icon: const Icon(fluent.FluentIcons.clear),
+            onPressed: close,
+          ),
         ),
       );
     } catch (e) {
@@ -407,7 +424,10 @@ class _DiscoverPlaylistDetailContentState
             title: const Text('同步失败'),
             content: Text('$e'),
             actions: [
-              fluent.FilledButton(onPressed: () => Navigator.pop(context), child: const Text('确定')),
+              fluent.FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('确定'),
+              ),
             ],
           ),
         );
@@ -418,7 +438,10 @@ class _DiscoverPlaylistDetailContentState
             title: const Text('同步失败'),
             content: Text('$e'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('确定')),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('确定'),
+              ),
             ],
           ),
         );
@@ -433,21 +456,28 @@ class _DiscoverPlaylistDetailContentState
 
     if (_loading) {
       return Container(
-        color: isDark ? const Color(0xFF000000) : CupertinoColors.systemGroupedBackground,
+        color: isDark
+            ? const Color(0xFF000000)
+            : CupertinoColors.systemGroupedBackground,
         child: const Center(child: CupertinoActivityIndicator(radius: 16)),
       );
     }
 
     if (_error != null) {
       return Container(
-        color: isDark ? const Color(0xFF000000) : CupertinoColors.systemGroupedBackground,
+        color: isDark
+            ? const Color(0xFF000000)
+            : CupertinoColors.systemGroupedBackground,
         padding: const EdgeInsets.all(24),
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(CupertinoIcons.exclamationmark_circle,
-                  size: 48, color: CupertinoColors.systemRed),
+              const Icon(
+                CupertinoIcons.exclamationmark_circle,
+                size: 48,
+                color: CupertinoColors.systemRed,
+              ),
               const SizedBox(height: 16),
               Text(
                 _error!,
@@ -457,10 +487,7 @@ class _DiscoverPlaylistDetailContentState
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              CupertinoButton(
-                child: const Text('重试'),
-                onPressed: _load,
-              ),
+              CupertinoButton(child: const Text('重试'), onPressed: _load),
             ],
           ),
         ),
@@ -482,15 +509,15 @@ class _DiscoverPlaylistDetailContentState
         .toList();
 
     return Container(
-      color: isDark ? const Color(0xFF000000) : CupertinoColors.systemGroupedBackground,
+      color: isDark
+          ? const Color(0xFF000000)
+          : CupertinoColors.systemGroupedBackground,
       child: CustomScrollView(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           // iOS 风格的下拉刷新
-          CupertinoSliverRefreshControl(
-            onRefresh: _load,
-          ),
+          CupertinoSliverRefreshControl(onRefresh: _load),
           // 歌单头部信息
           SliverToBoxAdapter(
             child: Padding(
@@ -506,7 +533,9 @@ class _DiscoverPlaylistDetailContentState
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
+                    color: isDark
+                        ? const Color(0xFF1C1C1E)
+                        : CupertinoColors.white,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -533,29 +562,24 @@ class _DiscoverPlaylistDetailContentState
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final track = tracks[index];
-                  return _buildCupertinoTrackTile(
-                    track: track,
-                    index: index,
-                    isDark: isDark,
-                    onTap: () => _handleCupertinoTrackTap(context, index, tracks),
-                    onCoverReady: (provider) {
-                      final key = _coverKey(track);
-                      _coverProviderCache[key] = provider;
-                      PlaylistQueueService().updateCoverProvider(track, provider);
-                    },
-                  );
-                },
-                childCount: tracks.length,
-              ),
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final track = tracks[index];
+                return _buildCupertinoTrackTile(
+                  track: track,
+                  index: index,
+                  isDark: isDark,
+                  onTap: () => _handleCupertinoTrackTap(context, index, tracks),
+                  onCoverReady: (provider) {
+                    final key = _coverKey(track);
+                    _coverProviderCache[key] = provider;
+                    PlaylistQueueService().updateCoverProvider(track, provider);
+                  },
+                );
+              }, childCount: tracks.length),
             ),
           ),
           // 底部留白
-          const SliverToBoxAdapter(
-            child: SizedBox(height: 100),
-          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
       ),
     );
@@ -580,11 +604,13 @@ class _DiscoverPlaylistDetailContentState
         children: [
           // 歌单封面
           Hero(
-            tag: 'playlist_cover_${detail.id}', // Use detail.id or widget.playlistId, ensuring they match
+            tag:
+                'playlist_cover_${detail.id}', // Use detail.id or widget.playlistId, ensuring they match
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: CachedNetworkImage(
                 imageUrl: detail.coverImgUrl,
+                httpHeaders: getImageHeaders(detail.coverImgUrl),
                 width: 120,
                 height: 120,
                 memCacheWidth: 280,
@@ -593,15 +619,22 @@ class _DiscoverPlaylistDetailContentState
                 placeholder: (context, url) => Container(
                   width: 120,
                   height: 120,
-                  color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey6,
+                  color: isDark
+                      ? const Color(0xFF2C2C2E)
+                      : CupertinoColors.systemGrey6,
                   child: const CupertinoActivityIndicator(),
                 ),
                 errorWidget: (context, url, error) => Container(
                   width: 120,
                   height: 120,
-                  color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey6,
-                  child: const Icon(CupertinoIcons.music_note_2,
-                      size: 40, color: CupertinoColors.systemGrey),
+                  color: isDark
+                      ? const Color(0xFF2C2C2E)
+                      : CupertinoColors.systemGrey6,
+                  child: const Icon(
+                    CupertinoIcons.music_note_2,
+                    size: 40,
+                    color: CupertinoColors.systemGrey,
+                  ),
                 ),
               ),
             ),
@@ -619,7 +652,9 @@ class _DiscoverPlaylistDetailContentState
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                    color: isDark
+                        ? CupertinoColors.white
+                        : CupertinoColors.black,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -639,9 +674,14 @@ class _DiscoverPlaylistDetailContentState
                     children: detail.tags
                         .map(
                           (t) => Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
-                              color: CupertinoColors.systemBlue.withOpacity(0.1),
+                              color: CupertinoColors.systemBlue.withOpacity(
+                                0.1,
+                              ),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -659,16 +699,30 @@ class _DiscoverPlaylistDetailContentState
                 const SizedBox(height: 12),
                 // 同步按钮
                 CupertinoButton(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   color: CupertinoColors.systemBlue,
                   borderRadius: BorderRadius.circular(18),
-                  onPressed: () => _syncToLocalCupertino(context, widget.playlistId),
+                  onPressed: () =>
+                      _syncToLocalCupertino(context, widget.playlistId),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(CupertinoIcons.arrow_2_circlepath, size: 16, color: CupertinoColors.white),
+                      Icon(
+                        CupertinoIcons.arrow_2_circlepath,
+                        size: 16,
+                        color: CupertinoColors.white,
+                      ),
                       SizedBox(width: 6),
-                      Text('同步到本地', style: TextStyle(fontSize: 14, color: CupertinoColors.white)),
+                      Text(
+                        '同步到本地',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: CupertinoColors.white,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -689,7 +743,11 @@ class _DiscoverPlaylistDetailContentState
       ),
       child: Row(
         children: [
-          const Icon(CupertinoIcons.music_note, size: 22, color: CupertinoColors.systemBlue),
+          const Icon(
+            CupertinoIcons.music_note,
+            size: 22,
+            color: CupertinoColors.systemBlue,
+          ),
           const SizedBox(width: 12),
           Text(
             '共 $trackCount 首歌曲',
@@ -709,9 +767,19 @@ class _DiscoverPlaylistDetailContentState
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(CupertinoIcons.play_fill, size: 16, color: CupertinoColors.white),
+                  Icon(
+                    CupertinoIcons.play_fill,
+                    size: 16,
+                    color: CupertinoColors.white,
+                  ),
                   SizedBox(width: 6),
-                  Text('播放全部', style: TextStyle(fontSize: 14, color: CupertinoColors.white)),
+                  Text(
+                    '播放全部',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: CupertinoColors.white,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -745,6 +813,7 @@ class _DiscoverPlaylistDetailContentState
                 borderRadius: BorderRadius.circular(8),
                 child: CachedNetworkImage(
                   imageUrl: track.picUrl,
+                  httpHeaders: getImageHeaders(track.picUrl),
                   memCacheWidth: 128,
                   memCacheHeight: 128,
                   width: 56,
@@ -762,14 +831,24 @@ class _DiscoverPlaylistDetailContentState
                   placeholder: (context, url) => Container(
                     width: 56,
                     height: 56,
-                    color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey6,
-                    child: const Center(child: CupertinoActivityIndicator(radius: 10)),
+                    color: isDark
+                        ? const Color(0xFF2C2C2E)
+                        : CupertinoColors.systemGrey6,
+                    child: const Center(
+                      child: CupertinoActivityIndicator(radius: 10),
+                    ),
                   ),
                   errorWidget: (context, url, error) => Container(
                     width: 56,
                     height: 56,
-                    color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey6,
-                    child: const Icon(CupertinoIcons.music_note, size: 24, color: CupertinoColors.systemGrey),
+                    color: isDark
+                        ? const Color(0xFF2C2C2E)
+                        : CupertinoColors.systemGrey6,
+                    child: const Icon(
+                      CupertinoIcons.music_note,
+                      size: 24,
+                      color: CupertinoColors.systemGrey,
+                    ),
                   ),
                 ),
               ),
@@ -786,7 +865,9 @@ class _DiscoverPlaylistDetailContentState
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
-                        color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                        color: isDark
+                            ? CupertinoColors.white
+                            : CupertinoColors.black,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -812,10 +893,7 @@ class _DiscoverPlaylistDetailContentState
                   ],
                 ),
               ),
-              TrackMoreButton(
-                track: track,
-                onPlay: onTap,
-              ),
+              TrackMoreButton(track: track, onPlay: onTap),
             ],
           ),
         ),
@@ -840,10 +918,7 @@ class _DiscoverPlaylistDetailContentState
 
     final track = allTracks[index];
     final coverProvider = _coverProviderCache[_coverKey(track)];
-    await PlayerService().playTrack(
-      track,
-      coverProvider: coverProvider,
-    );
+    await PlayerService().playTrack(track, coverProvider: coverProvider);
 
     if (mounted) {
       // iOS 风格的提示
@@ -860,12 +935,19 @@ class _DiscoverPlaylistDetailContentState
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(CupertinoIcons.music_note, color: CupertinoColors.white, size: 18),
+              const Icon(
+                CupertinoIcons.music_note,
+                color: CupertinoColors.white,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
                   '正在加载：${track.name}',
-                  style: const TextStyle(color: CupertinoColors.white, fontSize: 14),
+                  style: const TextStyle(
+                    color: CupertinoColors.white,
+                    fontSize: 14,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -910,13 +992,13 @@ class _DiscoverPlaylistDetailContentState
 
     final track = tracks.first;
     final coverProvider = _coverProviderCache[_coverKey(track)];
-    await PlayerService().playTrack(
-      track,
-      coverProvider: coverProvider,
-    );
+    await PlayerService().playTrack(track, coverProvider: coverProvider);
   }
 
-  Future<void> _syncToLocalCupertino(BuildContext context, int neteasePlaylistId) async {
+  Future<void> _syncToLocalCupertino(
+    BuildContext context,
+    int neteasePlaylistId,
+  ) async {
     if (!await _checkLoginStatus()) return;
 
     final playlistService = PlaylistService();
@@ -942,7 +1024,10 @@ class _DiscoverPlaylistDetailContentState
             children: [
               // 标题栏
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
@@ -964,7 +1049,9 @@ class _DiscoverPlaylistDetailContentState
                       style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w600,
-                        color: CupertinoTheme.brightnessOf(context) == Brightness.dark
+                        color:
+                            CupertinoTheme.brightnessOf(context) ==
+                                Brightness.dark
                             ? CupertinoColors.white
                             : CupertinoColors.black,
                       ),
@@ -980,28 +1067,41 @@ class _DiscoverPlaylistDetailContentState
                   itemCount: playlistService.playlists.length,
                   separatorBuilder: (_, __) => Padding(
                     padding: const EdgeInsets.only(left: 72),
-                    child: Container(height: 0.5, color: CupertinoColors.systemGrey4),
+                    child: Container(
+                      height: 0.5,
+                      color: CupertinoColors.systemGrey4,
+                    ),
                   ),
                   itemBuilder: (context, index) {
                     final p = playlistService.playlists[index];
-                    final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
+                    final isDark =
+                        CupertinoTheme.brightnessOf(context) == Brightness.dark;
                     return CupertinoButton(
                       padding: EdgeInsets.zero,
                       onPressed: () => Navigator.pop(context, p),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         child: Row(
                           children: [
                             Container(
                               width: 48,
                               height: 48,
                               decoration: BoxDecoration(
-                                color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5,
+                                color: isDark
+                                    ? const Color(0xFF2C2C2E)
+                                    : CupertinoColors.systemGrey5,
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Icon(
-                                p.isDefault ? CupertinoIcons.heart_fill : CupertinoIcons.music_albums,
-                                color: p.isDefault ? CupertinoColors.systemRed : CupertinoColors.systemBlue,
+                                p.isDefault
+                                    ? CupertinoIcons.heart_fill
+                                    : CupertinoIcons.music_albums,
+                                color: p.isDefault
+                                    ? CupertinoColors.systemRed
+                                    : CupertinoColors.systemBlue,
                                 size: 22,
                               ),
                             ),
@@ -1014,7 +1114,9 @@ class _DiscoverPlaylistDetailContentState
                                     p.name,
                                     style: TextStyle(
                                       fontSize: 16,
-                                      color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                      color: isDark
+                                          ? CupertinoColors.white
+                                          : CupertinoColors.black,
                                     ),
                                   ),
                                   const SizedBox(height: 2),
@@ -1028,8 +1130,11 @@ class _DiscoverPlaylistDetailContentState
                                 ],
                               ),
                             ),
-                            const Icon(CupertinoIcons.chevron_forward,
-                                size: 18, color: CupertinoColors.systemGrey3),
+                            const Icon(
+                              CupertinoIcons.chevron_forward,
+                              size: 18,
+                              color: CupertinoColors.systemGrey3,
+                            ),
                           ],
                         ),
                       ),
@@ -1160,7 +1265,9 @@ class _DiscoverPlaylistDetailContentState
         onRefresh: _load,
         child: CustomScrollView(
           controller: _scrollController,
-          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
           slivers: [
             // Pinned SliverAppBar (Expressive)
             SliverAppBar(
@@ -1209,37 +1316,41 @@ class _DiscoverPlaylistDetailContentState
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: _buildMaterialExpressiveStatsBar(context, tracks.length, tracks, cs),
+                child: _buildMaterialExpressiveStatsBar(
+                  context,
+                  tracks.length,
+                  tracks,
+                  cs,
+                ),
               ),
             ),
             // 歌曲列表
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final track = tracks[index];
-                    return _buildMaterialExpressiveTrackTile(
-                      track: track,
-                      index: index,
-                      cs: cs,
-                      isDark: isDark,
-                      onTap: () => _handleMaterialTrackTap(context, index, tracks),
-                      onCoverReady: (provider) {
-                        final key = _coverKey(track);
-                        _coverProviderCache[key] = provider;
-                        PlaylistQueueService().updateCoverProvider(track, provider);
-                      },
-                    );
-                  },
-                  childCount: tracks.length,
-                ),
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final track = tracks[index];
+                  return _buildMaterialExpressiveTrackTile(
+                    track: track,
+                    index: index,
+                    cs: cs,
+                    isDark: isDark,
+                    onTap: () =>
+                        _handleMaterialTrackTap(context, index, tracks),
+                    onCoverReady: (provider) {
+                      final key = _coverKey(track);
+                      _coverProviderCache[key] = provider;
+                      PlaylistQueueService().updateCoverProvider(
+                        track,
+                        provider,
+                      );
+                    },
+                  );
+                }, childCount: tracks.length),
               ),
             ),
             // 底部留白
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 100),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 100)),
           ],
         ),
       ),
@@ -1325,6 +1436,7 @@ class _DiscoverPlaylistDetailContentState
                 borderRadius: BorderRadius.circular(24),
                 child: CachedNetworkImage(
                   imageUrl: detail.coverImgUrl,
+                  httpHeaders: getImageHeaders(detail.coverImgUrl),
                   width: 140,
                   height: 140,
                   memCacheWidth: 280,
@@ -1467,7 +1579,9 @@ class _DiscoverPlaylistDetailContentState
                 Text(
                   detail.description,
                   maxLines: _descExpanded ? null : 2,
-                  overflow: _descExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                  overflow: _descExpanded
+                      ? TextOverflow.visible
+                      : TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 14,
                     color: cs.onSurface.withOpacity(0.7),
@@ -1485,7 +1599,10 @@ class _DiscoverPlaylistDetailContentState
                     },
                     borderRadius: BorderRadius.circular(8),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       child: Text(
                         _descExpanded ? '收起' : '更多',
                         style: TextStyle(
@@ -1572,7 +1689,10 @@ class _DiscoverPlaylistDetailContentState
               icon: const Icon(Icons.play_arrow_rounded, size: 20),
               label: const Text('播放全部'),
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -1622,6 +1742,7 @@ class _DiscoverPlaylistDetailContentState
                     borderRadius: BorderRadius.circular(14),
                     child: CachedNetworkImage(
                       imageUrl: track.picUrl,
+                      httpHeaders: getImageHeaders(track.picUrl),
                       memCacheWidth: 128,
                       memCacheHeight: 128,
                       width: 56,
@@ -1700,10 +1821,7 @@ class _DiscoverPlaylistDetailContentState
                     ],
                   ),
                 ),
-                TrackMoreButton(
-                  track: track,
-                  onPlay: onTap,
-                ),
+                TrackMoreButton(track: track, onPlay: onTap),
               ],
             ),
           ),
@@ -1729,10 +1847,7 @@ class _DiscoverPlaylistDetailContentState
     );
 
     final coverProvider = _coverProviderCache[_coverKey(track)];
-    await PlayerService().playTrack(
-      track,
-      coverProvider: coverProvider,
-    );
+    await PlayerService().playTrack(track, coverProvider: coverProvider);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1777,7 +1892,8 @@ class _DiscoverPlaylistDetailContentState
         .toList();
 
     final useWindowEffect =
-        Platform.isWindows && ThemeManager().windowEffect != WindowEffect.disabled;
+        Platform.isWindows &&
+        ThemeManager().windowEffect != WindowEffect.disabled;
 
     final listView = fluent.ScrollConfiguration(
       behavior: const fluent.FluentScrollBehavior(),
@@ -1792,34 +1908,29 @@ class _DiscoverPlaylistDetailContentState
               detail.description,
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
-              style: fluent.FluentTheme.of(context)
-                  .typography
-                  ?.body
-                  ?.copyWith(color: fluent.FluentTheme.of(context)
-                      .resources
-                      .textFillColorSecondary),
+              style: fluent.FluentTheme.of(context).typography?.body?.copyWith(
+                color: fluent.FluentTheme.of(
+                  context,
+                ).resources.textFillColorSecondary,
+              ),
             ),
           ],
           const SizedBox(height: 16),
           ...tracks.asMap().entries.map(
-                (entry) => _FluentTrackTile(
-                  track: entry.value,
-                  index: entry.key,
-                  onTap: () => _handleTrackTap(
-                    context,
-                    entry.key,
-                    tracks,
-                  ),
-                  onCoverReady: (provider) {
-                    final key = _coverKey(entry.value);
-                    _coverProviderCache[key] = provider;
-                    PlaylistQueueService().updateCoverProvider(
-                      entry.value,
-                      provider,
-                    );
-                  },
-                ),
-              ),
+            (entry) => _FluentTrackTile(
+              track: entry.value,
+              index: entry.key,
+              onTap: () => _handleTrackTap(context, entry.key, tracks),
+              onCoverReady: (provider) {
+                final key = _coverKey(entry.value);
+                _coverProviderCache[key] = provider;
+                PlaylistQueueService().updateCoverProvider(
+                  entry.value,
+                  provider,
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
@@ -1847,6 +1958,7 @@ class _DiscoverPlaylistDetailContentState
           borderRadius: BorderRadius.circular(8),
           child: CachedNetworkImage(
             imageUrl: detail.coverImgUrl,
+            httpHeaders: getImageHeaders(detail.coverImgUrl),
             width: 120,
             height: 120,
             fit: BoxFit.cover,
@@ -1861,12 +1973,13 @@ class _DiscoverPlaylistDetailContentState
                 detail.name,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: (typography?.subtitle ??
-                        const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w600,
-                        ))
-                    .copyWith(color: resources.textFillColorPrimary),
+                style:
+                    (typography?.subtitle ??
+                            const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w600,
+                            ))
+                        .copyWith(color: resources.textFillColorPrimary),
               ),
               const SizedBox(height: 6),
               Text(
@@ -1942,10 +2055,7 @@ class _DiscoverPlaylistDetailContentState
 
     final track = allTracks[index];
     final coverProvider = _coverProviderCache[_coverKey(track)];
-    await PlayerService().playTrack(
-      track,
-      coverProvider: coverProvider,
-    );
+    await PlayerService().playTrack(track, coverProvider: coverProvider);
 
     if (mounted) {
       fluent.displayInfoBar(
@@ -2001,6 +2111,7 @@ class _DiscoverPlaylistDetailContentState
                   borderRadius: BorderRadius.circular(8),
                   child: CachedNetworkImage(
                     imageUrl: track.picUrl,
+                    httpHeaders: getImageHeaders(track.picUrl),
                     memCacheWidth: 128,
                     memCacheHeight: 128,
                     width: 64,
@@ -2073,10 +2184,7 @@ class _DiscoverPlaylistDetailContentState
                   ),
                 ),
                 const SizedBox(width: 12),
-                TrackMoreButton(
-                  track: track,
-                  onPlay: onTap,
-                ),
+                TrackMoreButton(track: track, onPlay: onTap),
               ],
             ),
           ),
@@ -2104,7 +2212,8 @@ class _DiscoverPlaylistDetailContentState
   }
 
   bool _isCurrentDetailLoad(int requestId, CancelToken cancelToken) {
-    return requestId == _detailLoadRequestId && identical(_detailLoadCancelToken, cancelToken);
+    return requestId == _detailLoadRequestId &&
+        identical(_detailLoadCancelToken, cancelToken);
   }
 
   void _cancelDetailLoadRequest(String reason) {
@@ -2146,7 +2255,8 @@ class _DiscoverPlaylistDetailContentState
     }
 
     // Cupertino (iOS) 风格
-    if ((Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework) {
+    if ((Platform.isIOS || Platform.isAndroid) &&
+        themeManager.isCupertinoFramework) {
       final shouldLogin = await showCupertinoDialog<bool>(
         context: context,
         builder: (context) => CupertinoAlertDialog(

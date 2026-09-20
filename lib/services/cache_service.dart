@@ -200,10 +200,7 @@ class _ResolvedCacheEntry {
   final String key;
   final CacheMetadata metadata;
 
-  const _ResolvedCacheEntry({
-    required this.key,
-    required this.metadata,
-  });
+  const _ResolvedCacheEntry({required this.key, required this.metadata});
 }
 
 class _DigestCaptureSink implements Sink<Digest> {
@@ -291,8 +288,8 @@ class CacheService extends ChangeNotifier {
   Map<String, CacheMetadata> _cacheIndex = {};
   final Map<String, Future<bool>> _pendingCacheWrites = {};
   bool _isInitialized = false;
-  bool _cacheEnabled = false;  // 缓存开关，默认关闭
-  String? _customCacheDir;    // 自定义缓存目录
+  bool _cacheEnabled = false; // 缓存开关，默认关闭
+  String? _customCacheDir; // 自定义缓存目录
   int _maxCacheSizeBytes = _defaultMaxCacheSizeBytes;
   Timer? _indexSaveDebounce;
   Timer? _maintenanceTimer;
@@ -334,16 +331,14 @@ class CacheService extends ChangeNotifier {
 
   static String _backupPathFor(String targetPath) => '$targetPath.bak';
 
-  static String _payloadPartPathFor(String targetPath) => '$targetPath.payload.part';
+  static String _payloadPartPathFor(String targetPath) =>
+      '$targetPath.payload.part';
 
   static String _preferNonEmpty(String primary, String fallback) {
     return primary.isNotEmpty ? primary : fallback;
   }
 
-  void _logCacheDebug(
-    String message, {
-    bool toDeveloperPanel = false,
-  }) {
+  void _logCacheDebug(String message, {bool toDeveloperPanel = false}) {
     print(message);
     if (toDeveloperPanel) {
       DeveloperModeService().addLog(message);
@@ -380,7 +375,7 @@ class CacheService extends ChangeNotifier {
         _cacheDir = Directory('${appDir.path}/music_cache');
         print('📂 [CacheService] 应用文档目录: ${appDir.path}');
       }
-      
+
       print('📂 [CacheService] 缓存目录路径: ${_cacheDir!.path}');
       print('🔧 [CacheService] 缓存开关状态: ${_cacheEnabled ? "已启用" : "已禁用"}');
 
@@ -428,7 +423,11 @@ class CacheService extends ChangeNotifier {
     return normalizeQualityValue(quality);
   }
 
-  String _generateCacheKey(String songId, MusicSource source, [String? quality]) {
+  String _generateCacheKey(
+    String songId,
+    MusicSource source, [
+    String? quality,
+  ]) {
     return '${source.name}_${songId}_${_qualityKey(quality)}';
   }
 
@@ -490,7 +489,10 @@ class CacheService extends ChangeNotifier {
       }
     }
 
-    final legacyKey = _generateLegacyCacheKey(track.id.toString(), track.source);
+    final legacyKey = _generateLegacyCacheKey(
+      track.id.toString(),
+      track.source,
+    );
     final legacyMetadata = _cacheIndex[legacyKey];
     if (legacyMetadata != null) {
       final normalizedMetadata = _normalizeMetadata(legacyMetadata);
@@ -512,10 +514,7 @@ class CacheService extends ChangeNotifier {
         _cacheIndex[key] = metadata;
         _scheduleIndexSave();
       }
-      return _ResolvedCacheEntry(
-        key: key,
-        metadata: metadata,
-      );
+      return _ResolvedCacheEntry(key: key, metadata: metadata);
     }
 
     return null;
@@ -553,7 +552,10 @@ class CacheService extends ChangeNotifier {
       final removedOrphans = await _removeOrphanCacheFiles();
       final trimmedEntries = await _enforceCacheSizeLimit();
 
-      if (migrated || changedIndex || removedOrphans > 0 || trimmedEntries > 0) {
+      if (migrated ||
+          changedIndex ||
+          removedOrphans > 0 ||
+          trimmedEntries > 0) {
         await _saveCacheIndex();
         notifyListeners();
       }
@@ -760,10 +762,7 @@ class CacheService extends ChangeNotifier {
   }
 
   /// 解密数据
-  Uint8List _decryptData(
-    Uint8List encryptedData, {
-    int startOffset = 0,
-  }) {
+  Uint8List _decryptData(Uint8List encryptedData, {int startOffset = 0}) {
     // 异或加密是对称的，加密和解密使用相同的方法
     return decryptAudioBytes(encryptedData, startOffset: startOffset);
   }
@@ -815,10 +814,7 @@ class CacheService extends ChangeNotifier {
     }
   }
 
-  Future<void> _writeBytesAtomically(
-    String targetPath,
-    List<int> bytes,
-  ) async {
+  Future<void> _writeBytesAtomically(String targetPath, List<int> bytes) async {
     final tempFile = File(_partPathFor(targetPath));
     await _deleteFileIfExists(tempFile);
     await tempFile.writeAsBytes(bytes, flush: true);
@@ -838,10 +834,21 @@ class CacheService extends ChangeNotifier {
     await _deleteFileIfExists(payloadTempFile);
 
     IOSink? sink;
+    Future<void> closeSink() async {
+      final current = sink;
+      sink = null;
+      if (current == null) return;
+      try {
+        await current.close();
+      } catch (_) {}
+    }
+
     try {
       final request = http.Request('GET', Uri.parse(songDetail.url))
         ..headers.addAll(buildAudioRequestHeaders(track.source));
-      final response = await client.send(request).timeout(_cacheDownloadTimeout);
+      final response = await client
+          .send(request)
+          .timeout(_cacheDownloadTimeout);
       if (response.statusCode != 200) {
         _logCacheDebug(
           '❌ [CacheService] 缓存下载失败: HTTP ${response.statusCode} '
@@ -851,22 +858,49 @@ class CacheService extends ChangeNotifier {
         return null;
       }
 
+      // 上游声明长度：MD5 只能证明"收到的内容"与缓存读回一致，无法证明
+      // 上游没有提前截断流，因此必须在下载阶段对照 Content-Length。
+      // 缺失（分块传输）或与实际字节数不一致均视为下载不完整，丢弃。
+      final declaredLength = response.contentLength;
+      if (declaredLength == null || declaredLength <= 0) {
+        _logCacheDebug(
+          '⚠️ [CacheService] 缓存下载中止: 上游未声明 Content-Length '
+          'track=${track.name}',
+          toDeveloperPanel: true,
+        );
+        await _deleteFileIfExists(payloadTempFile);
+        return null;
+      }
       final digestSink = _DigestCaptureSink();
       final md5Sink = md5.startChunkedConversion(digestSink);
-      sink = payloadTempFile.openWrite();
+      final outputSink = payloadTempFile.openWrite();
+      sink = outputSink;
 
       var audioLength = 0;
       var chunkOffset = 0;
-      await for (final chunk in response.stream.timeout(_cacheDownloadTimeout)) {
+      await for (final chunk in response.stream.timeout(
+        _cacheDownloadTimeout,
+      )) {
         audioLength += chunk.length;
         md5Sink.add(chunk);
-        sink.add(decryptAudioBytes(chunk, startOffset: chunkOffset));
+        outputSink.add(decryptAudioBytes(chunk, startOffset: chunkOffset));
         chunkOffset += chunk.length;
       }
 
+      if (audioLength != declaredLength) {
+        _logCacheDebug(
+          '❌ [CacheService] 缓存下载不完整: '
+          'declared=$declaredLength actual=$audioLength track=${track.name}',
+          toDeveloperPanel: true,
+        );
+        await closeSink();
+        await _deleteFileIfExists(payloadTempFile);
+        return null;
+      }
+
       md5Sink.close();
-      await sink.flush();
-      await sink.close();
+      await outputSink.flush();
+      await outputSink.close();
       sink = null;
 
       _logCacheDebug(
@@ -880,16 +914,12 @@ class CacheService extends ChangeNotifier {
         checksum: digestSink.value?.toString() ?? '',
       );
     } catch (e) {
+      await closeSink();
       await _deleteFileIfExists(payloadTempFile);
       rethrow;
     } finally {
       client.close();
-      if (sink != null) {
-        try {
-          await sink.flush();
-          await sink.close();
-        } catch (_) {}
-      }
+      await closeSink();
     }
   }
 
@@ -1195,10 +1225,8 @@ class CacheService extends ChangeNotifier {
         throw Exception('文件格式错误');
       }
 
-      final metadataLength = (header[0] << 24) |
-          (header[1] << 16) |
-          (header[2] << 8) |
-          header[3];
+      final metadataLength =
+          (header[0] << 24) | (header[1] << 16) | (header[2] << 8) | header[3];
       final totalLength = await raf.length();
       final payloadOffset = 4 + metadataLength;
       final audioLength = totalLength - payloadOffset;
@@ -1443,7 +1471,9 @@ class CacheService extends ChangeNotifier {
             continue;
           }
           final metadata = CacheMetadata.tryFromJson(
-            Map<String, dynamic>.from((entry.value as Map).cast<String, dynamic>()),
+            Map<String, dynamic>.from(
+              (entry.value as Map).cast<String, dynamic>(),
+            ),
           );
           if (metadata == null) {
             skippedEntries++;
@@ -1487,10 +1517,10 @@ class CacheService extends ChangeNotifier {
       // 转换为 JSON 字符串
       final jsonString = jsonEncode(indexData);
       final jsonBytes = utf8.encode(jsonString);
-      
+
       // 加密索引数据
       final encryptedData = _encryptData(jsonBytes);
-      
+
       // 保存加密后的索引文件
       await _writeBytesAtomically(_getCacheIndexPath(), encryptedData);
       print('💾 [CacheService] 保存加密的缓存索引: ${_cacheIndex.length} 条记录');
@@ -1612,7 +1642,8 @@ class CacheService extends ChangeNotifier {
 
       for (final file in files) {
         if (file is File && file.path.contains('temp_')) {
-          final isAudioTemp = file.path.endsWith('.mp3') || file.path.endsWith('.flac');
+          final isAudioTemp =
+              file.path.endsWith('.mp3') || file.path.endsWith('.flac');
           if (isAudioTemp) {
             try {
               await file.delete();
@@ -1633,14 +1664,14 @@ class CacheService extends ChangeNotifier {
   Future<void> _loadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // 加载缓存开关状态（默认关闭）
       _cacheEnabled = prefs.getBool('cache_enabled') ?? false;
-      
+
       // 加载自定义缓存目录
       _customCacheDir = prefs.getString('custom_cache_dir');
       _maxCacheSizeBytes = await _loadStoredMaxCacheSizeBytes(prefs);
-      
+
       print(
         '⚙️ [CacheService] 加载设置 - '
         '缓存开关: $_cacheEnabled, '
@@ -1649,7 +1680,7 @@ class CacheService extends ChangeNotifier {
       );
     } catch (e) {
       print('❌ [CacheService] 加载设置失败: $e');
-      _cacheEnabled = false;  // 加载失败时默认关闭
+      _cacheEnabled = false; // 加载失败时默认关闭
       _customCacheDir = null;
       _maxCacheSizeBytes = _defaultMaxCacheSizeBytes;
     }
@@ -1708,7 +1739,10 @@ class CacheService extends ChangeNotifier {
   Future<void> _saveMaxCacheSizeBytes() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_maxCacheSizePrefsKey, _maxCacheSizeBytes.toString());
+      await prefs.setString(
+        _maxCacheSizePrefsKey,
+        _maxCacheSizeBytes.toString(),
+      );
       await prefs.remove(_legacyMaxCacheSizePrefsKey);
       print(
         '💾 [CacheService] 缓存空间上限已保存: '
@@ -1762,32 +1796,32 @@ class CacheService extends ChangeNotifier {
       // 验证目录
       if (dirPath != null && dirPath.isNotEmpty) {
         final dir = Directory(dirPath);
-        
+
         // 检查目录是否存在或可创建
         if (!await dir.exists()) {
           await dir.create(recursive: true);
         }
-        
+
         // 测试是否可写
         final testFile = File('${dir.path}/.test');
         await testFile.writeAsString('test');
         await testFile.delete();
-        
+
         _customCacheDir = dirPath;
         print('✅ [CacheService] 自定义目录验证成功: $dirPath');
       } else {
         _customCacheDir = null;
         print('ℹ️ [CacheService] 清除自定义目录，使用默认目录');
       }
-      
+
       await _saveCustomCacheDir();
-      
+
       // 提示需要重启应用
       print('⚠️ [CacheService] 目录更改已保存，需要重启应用才能生效');
       print('ℹ️ [CacheService] 当前缓存目录: ${_cacheDir?.path}');
       print('ℹ️ [CacheService] 新目录将在重启后使用: ${dirPath ?? "默认目录"}');
       notifyListeners();
-      
+
       return true;
     } catch (e) {
       print('❌ [CacheService] 设置自定义目录失败: $e');

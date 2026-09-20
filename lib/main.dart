@@ -383,9 +383,29 @@ Future<void> main() async {
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
-  // 全局 Navigator Key（用于在任何地方显示对话框）
-  static final GlobalKey<NavigatorState> navigatorKey =
-      GlobalKey<NavigatorState>();
+  // 每种应用根节点使用独立的 Navigator。FluentApp 和 MaterialApp 的
+  // Navigator 不能共享路由树，否则切换框架时旧的 FluentPageRoute 可能
+  // 被重新挂到没有 FluentTheme 的 Material 树中，最终表现为白屏。
+  static final GlobalKey<NavigatorState> fluentNavigatorKey =
+      GlobalKey<NavigatorState>(debugLabel: 'fluent-navigator');
+  static final GlobalKey<NavigatorState> materialNavigatorKey =
+      GlobalKey<NavigatorState>(debugLabel: 'material-navigator');
+  static final GlobalKey<NavigatorState> cupertinoNavigatorKey =
+      GlobalKey<NavigatorState>(debugLabel: 'cupertino-navigator');
+
+  /// 当前应用根节点的 Navigator，用于全局弹窗和恢复操作。
+  ///
+  /// 不保留一个跨框架复用的 GlobalKey；框架切换后的下一帧由对应 App
+  /// 分支接管自己的 key，旧导航栈自然被销毁。
+  static GlobalKey<NavigatorState> get navigatorKey {
+    final themeManager = ThemeManager();
+    if (themeManager.isDesktopFluentUI) return fluentNavigatorKey;
+    if ((Platform.isIOS || Platform.isAndroid) &&
+        themeManager.isCupertinoFramework) {
+      return cupertinoNavigatorKey;
+    }
+    return materialNavigatorKey;
+  }
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -461,20 +481,26 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _setupPlaybackFailureCallback() {
-    PlayerService().onPlaybackFailure = _presentPlaybackProblem;
+    // 普通播放失败由播放器内嵌错误条承载。只有音源未配置这种阻塞性
+    // 问题才需要全局配置引导，避免 banner 与弹窗重复打扰用户。
+    PlayerService().onPlaybackFailure = null;
     final currentProblem = PlayerService().currentProblem;
-    if (currentProblem != null) {
+    if (_shouldPresentPlaybackDialog(currentProblem)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _presentPlaybackProblem(currentProblem);
+        _presentPlaybackProblem(currentProblem!);
       });
     }
   }
 
   void _onPlaybackProblemChanged() {
     final problem = PlayerService().problemNotifier.value;
-    if (problem != null) {
+    if (problem != null && _shouldPresentPlaybackDialog(problem)) {
       _presentPlaybackProblem(problem);
     }
+  }
+
+  bool _shouldPresentPlaybackDialog(PlaybackProblem? problem) {
+    return problem?.kind == PlaybackProblemKind.sourceNotConfigured;
   }
 
   void _presentPlaybackProblem(PlaybackProblem problem) {

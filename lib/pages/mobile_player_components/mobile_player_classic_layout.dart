@@ -38,17 +38,16 @@ class MobilePlayerClassicLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     final player = PlayerService();
     final backgroundService = PlayerBackgroundService();
-    
+
     // 检查是否显示封面 (非自适应背景时)
-    final showCover = !backgroundService.enableGradient || 
-                      backgroundService.backgroundType != PlayerBackgroundType.adaptive;
+    final showCover =
+        !backgroundService.enableGradient ||
+        backgroundService.backgroundType != PlayerBackgroundType.adaptive;
 
     return Column(
       children: [
         // 顶部栏
-        MobilePlayerAppBar(
-          onBackPressed: onBackPressed,
-        ),
+        MobilePlayerAppBar(onBackPressed: onBackPressed),
 
         // 主要内容区域
         Expanded(
@@ -57,13 +56,11 @@ class MobilePlayerClassicLayout extends StatelessWidget {
               // 响应式布局参数
               final screenHeight = MediaQuery.of(context).size.height;
               final isSmallScreen = screenHeight < 700;
-              
+
               return SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight,
-                  ),
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
                     child: Column(
@@ -71,14 +68,19 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // 1. 专辑封面区域 (弹性空间，但有最大限制)
-                         if (showCover)
+                        if (showCover)
                           Padding(
-                            padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 16 : 32),
+                            padding: EdgeInsets.symmetric(
+                              vertical: isSmallScreen ? 16 : 32,
+                            ),
                             child: Center(
                               child: AspectRatio(
                                 aspectRatio: 1,
                                 child: Container(
-                                  constraints: const BoxConstraints(maxHeight: 380, maxWidth: 380),
+                                  constraints: const BoxConstraints(
+                                    maxHeight: 380,
+                                    maxWidth: 380,
+                                  ),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(24),
                                     boxShadow: [
@@ -118,21 +120,20 @@ class MobilePlayerClassicLayout extends StatelessWidget {
 
                         // 2. 歌曲信息 (大标题)
                         _buildSongInfo(context, player),
-                        
+
                         const SizedBox(height: 24),
 
                         // 3. 进度条 (Expressive Style - 粗轨道)
                         _buildExpressiveProgressBar(context, player),
-                        
-                        const SizedBox(height: 12), // 时间标签和进度条之间的间距
 
+                        const SizedBox(height: 12), // 时间标签和进度条之间的间距
                         // 4. 控制区域 (分段式胶囊按钮)
                         _buildExpressiveControls(context, player),
 
                         // 5. 底部次要功能 (播放列表、更多等)
                         const SizedBox(height: 24),
                         _buildBottomActions(context),
-                        
+
                         const SizedBox(height: 48), // 底部安全留白
                       ],
                     ),
@@ -155,17 +156,25 @@ class MobilePlayerClassicLayout extends StatelessWidget {
     if (picUrl == null || picUrl.isEmpty) {
       return Container(
         color: Colors.white10,
-        child: const Icon(Icons.music_note_rounded, size: 80, color: Colors.white24),
+        child: const Icon(
+          Icons.music_note_rounded,
+          size: 80,
+          color: Colors.white24,
+        ),
       );
     }
-    
+
     // 这里使用 Image.network 或 CachedNetworkImage，暂用简单的 Image via Network
     return Image.network(
       picUrl,
       fit: BoxFit.cover,
       errorBuilder: (_, __, ___) => Container(
         color: Colors.white10,
-        child: const Icon(Icons.broken_image_rounded, size: 60, color: Colors.white24),
+        child: const Icon(
+          Icons.broken_image_rounded,
+          size: 60,
+          color: Colors.white24,
+        ),
       ),
     );
   }
@@ -207,32 +216,41 @@ class MobilePlayerClassicLayout extends StatelessWidget {
         ),
         // 收藏/喜欢按钮
         if (track != null)
-           IconButton(
-            icon: const Icon(Icons.favorite_border_rounded, color: Colors.white), // TODO: 集成真实的喜欢状态
-            // icon: Icon(isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded, 
+          IconButton(
+            icon: const Icon(
+              Icons.favorite_border_rounded,
+              color: Colors.white,
+            ), // TODO: 集成真实的喜欢状态
+            // icon: Icon(isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
             //       color: isLiked ? Colors.redAccent : Colors.white),
             onPressed: () {
               // TODO: 喜欢逻辑
-               ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('功能开发中')),
-                );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('功能开发中')));
             },
           ),
       ],
     );
   }
 
-  Widget _buildExpressiveProgressBar(BuildContext context, PlayerService player) {
+  Widget _buildExpressiveProgressBar(
+    BuildContext context,
+    PlayerService player,
+  ) {
     return AnimatedBuilder(
       animation: Listenable.merge([player.positionNotifier, player]),
       builder: (context, _) {
         final position = player.positionNotifier.value;
         final duration = player.duration;
         final max = duration.inMilliseconds.toDouble();
-        final value = position.inMilliseconds.toDouble().clamp(0.0, max > 0 ? max : 0.0);
+        final value = position.inMilliseconds.toDouble().clamp(
+          0.0,
+          max > 0 ? max : 0.0,
+        );
         final bufferedValue = duration.inMilliseconds > 0
             ? (player.bufferedPosition.inMilliseconds / duration.inMilliseconds)
-                .clamp(0.0, 1.0)
+                  .clamp(0.0, 1.0)
             : 0.0;
 
         return Column(
@@ -281,17 +299,27 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                 children: [
                   Text(
                     _formatDuration(position),
-                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.5),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   Text(
                     _formatDuration(duration),
-                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.5),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
             ),
             PlayerErrorBanner(
-              message: player.errorMessage,
+              message: player.isAudioSourceNotConfigured
+                  ? null
+                  : player.errorMessage,
               margin: const EdgeInsets.only(top: 6),
               onRetry: () {
                 player.retryCurrent();
@@ -311,7 +339,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
 
   Widget _buildExpressiveControls(BuildContext context, PlayerService player) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -323,9 +351,11 @@ class MobilePlayerClassicLayout extends StatelessWidget {
           size: 64,
           iconSize: 32,
           color: colorScheme.surfaceContainerHighest,
-          iconColor: player.hasPrevious ? colorScheme.onSurface : colorScheme.onSurface.withOpacity(0.38),
+          iconColor: player.hasPrevious
+              ? colorScheme.onSurface
+              : colorScheme.onSurface.withOpacity(0.38),
         ),
-        
+
         const SizedBox(width: 12),
 
         // 播放/暂停
@@ -333,7 +363,9 @@ class MobilePlayerClassicLayout extends StatelessWidget {
           animation: player,
           builder: (context, _) => _buildExpressiveControlButton(
             context: context,
-            icon: player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            icon: player.isPlaying
+                ? Icons.pause_rounded
+                : Icons.play_arrow_rounded,
             onTap: player.togglePlayPause,
             size: 84,
             iconSize: 48,
@@ -354,11 +386,14 @@ class MobilePlayerClassicLayout extends StatelessWidget {
           size: 64,
           iconSize: 32,
           color: colorScheme.surfaceContainerHighest,
-          iconColor: player.hasNext ? colorScheme.onSurface : colorScheme.onSurface.withOpacity(0.38),
+          iconColor: player.hasNext
+              ? colorScheme.onSurface
+              : colorScheme.onSurface.withOpacity(0.38),
         ),
       ],
     );
   }
+
   Widget _buildExpressiveControlButton({
     required BuildContext context,
     required IconData icon,
@@ -371,7 +406,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
     double? borderRadius,
   }) {
     final effectiveBorderRadius = borderRadius ?? (isPrimary ? 28.0 : 24.0);
-    
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
@@ -382,13 +417,15 @@ class MobilePlayerClassicLayout extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(effectiveBorderRadius),
         ),
-        shadows: isPrimary ? [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ] : null,
+        shadows: isPrimary
+            ? [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
       ),
       child: InkWell(
         onTap: onTap,
@@ -396,11 +433,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
           borderRadius: BorderRadius.circular(effectiveBorderRadius),
         ),
         child: Center(
-          child: Icon(
-            icon,
-            size: iconSize,
-            color: iconColor,
-          ),
+          child: Icon(icon, size: iconSize, color: iconColor),
         ),
       ),
     );
@@ -411,7 +444,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-         // 播放模式
+        // 播放模式
         AnimatedBuilder(
           animation: PlaybackModeService(),
           builder: (context, child) {
@@ -436,12 +469,14 @@ class MobilePlayerClassicLayout extends StatelessWidget {
               iconSize: 26,
               onPressed: () {
                 PlaybackModeService().toggleMode();
-                 ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('播放模式: ${PlaybackModeService().getModeName()}'),
-                      duration: const Duration(seconds: 1),
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      '播放模式: ${PlaybackModeService().getModeName()}',
                     ),
-                  );
+                    duration: const Duration(seconds: 1),
+                  ),
+                );
               },
             );
           },
@@ -465,17 +500,17 @@ class MobilePlayerClassicLayout extends StatelessWidget {
 
         // 下载
         IconButton(
-           icon: const Icon(Icons.download_rounded, color: Colors.white70),
-           iconSize: 26,
-           onPressed: () {
-              final track = PlayerService().currentTrack;
-              if (track != null) {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('检查下载状态...')),
-                );
-                // 实际逻辑可参考 MobilePlayerControls
-              }
-           },
+          icon: const Icon(Icons.download_rounded, color: Colors.white70),
+          iconSize: 26,
+          onPressed: () {
+            final track = PlayerService().currentTrack;
+            if (track != null) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('检查下载状态...')));
+              // 实际逻辑可参考 MobilePlayerControls
+            }
+          },
         ),
 
         // 播放列表
