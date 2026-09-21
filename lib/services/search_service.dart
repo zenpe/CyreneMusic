@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/track.dart';
 import '../models/merged_track.dart';
 import 'api/api_client.dart';
-import 'audio_source_service.dart';
+import 'search_provider_catalog.dart';
 
 /// 搜索结果模型
 class SearchResult {
@@ -123,8 +123,10 @@ class SearchService extends ChangeNotifier {
 
   static const String _historyKey = 'search_history';
   static const int _maxHistoryCount = 20; // 最多保存20条历史记录
+  static const SearchProviderCatalog _providerCatalog =
+      SearchProviderCatalog();
 
-  /// 搜索歌曲（根据当前音源支持的平台并行搜索）
+  /// 搜索歌曲（根据后端搜索目录的平台并行搜索）。
   Future<void> search(String keyword, {bool saveHistory = true}) async {
     final normalizedKeyword = keyword.trim();
     if (normalizedKeyword.isEmpty) {
@@ -146,9 +148,9 @@ class SearchService extends ChangeNotifier {
       }
     }
 
-    // 获取当前音源支持的平台
-    final supportedPlatforms = AudioSourceService().currentSupportedPlatforms;
-    print('🔍 [SearchService] 当前音源支持的平台: $supportedPlatforms');
+    // 搜索平台由后端搜索目录决定，与当前播放解析器解耦。
+    final supportedPlatforms = _providerCatalog.platformKeys;
+    print('🔍 [SearchService] 搜索平台: $supportedPlatforms');
 
     // 根据支持的平台设置加载状态
     _searchResult = SearchResult(
@@ -186,8 +188,8 @@ class SearchService extends ChangeNotifier {
     print('✅ [SearchService] 搜索完成，共 ${_searchResult.totalCount} 条结果');
   }
 
-  /// 获取当前音源支持的搜索平台列表
-  List<String> get currentSupportedPlatforms => AudioSourceService().currentSupportedPlatforms;
+  /// 获取后端搜索目录支持的平台列表。
+  List<String> get currentSupportedPlatforms => _providerCatalog.platformKeys;
 
   /// 搜索网易云音乐
   Future<void> _searchNetease(String keyword, int sessionId, CancelToken cancelToken) async {

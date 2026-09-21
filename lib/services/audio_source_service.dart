@@ -39,6 +39,9 @@ class AudioSourceService extends ChangeNotifier {
   /// 是否已初始化
   bool _isInitialized = false;
   Future<void> _mutationQueue = Future.value();
+  Future<void> _lxRuntimeOperation = Future.value();
+  int _lxRuntimeGeneration = 0;
+  String? _lxRuntimeSourceId;
 
   // ==================== 存储键名 ====================
   static const String _keySources = 'audio_source_list';
@@ -81,6 +84,11 @@ class AudioSourceService extends ChangeNotifier {
     return task;
   }
 
+  void _invalidateLxRuntime() {
+    _lxRuntimeGeneration++;
+    _lxRuntimeSourceId = null;
+  }
+
   /// 各音源类型默认支持的搜索平台
   static const Map<AudioSourceType, List<String>> defaultSupportedPlatforms = {
     AudioSourceType.omniparse: ['netease', 'qq', 'kugou', 'kuwo', 'apple', 'spotify'],
@@ -97,7 +105,7 @@ class AudioSourceService extends ChangeNotifier {
 
     // 如果当前有活动音源且是洛雪音源，初始化运行时
     if (activeSource?.type == AudioSourceType.lxmusic) {
-      initializeLxRuntime();
+      await initializeLxRuntime();
     }
 
     _isInitialized = true;
@@ -107,29 +115,52 @@ class AudioSourceService extends ChangeNotifier {
   /// 初始化洛雪运行时环境
   Future<void> initializeLxRuntime() async {
     final source = activeSource;
-    if (source == null || source.type != AudioSourceType.lxmusic) return;
-    
-    try {
-      print('🚀 [AudioSourceService] 正在初始化洛雪运行时...');
-      // 优先使用 config 中的 scriptContent，如果没有则尝试从文件加载（旧版兼容）
-      String? scriptContent = source.scriptContent;
-      if (scriptContent.isEmpty) {
-        scriptContent = await _loadLxScriptContent();
-      }
-      
-      if (scriptContent != null && scriptContent.isNotEmpty) {
-        final runtime = LxMusicRuntimeService();
-        if (!runtime.isInitialized) {
-          await runtime.initialize();
-        }
-        await runtime.loadScript(scriptContent);
-        print('✅ [AudioSourceService] 洛雪运行时初始化成功');
-      } else {
-        print('⚠️ [AudioSourceService] 未找到洛雪脚本内容，无法初始化运行时');
-      }
-    } catch (e) {
-      print('❌ [AudioSourceService] 初始化洛雪运行时失败: $e');
+    final generation = ++_lxRuntimeGeneration;
+    if (source == null || source.type != AudioSourceType.lxmusic) {
+      _lxRuntimeSourceId = null;
+      return;
     }
+
+    final sourceId = source.id;
+    final operation = _lxRuntimeOperation.catchError((_) {}).then((_) async {
+      // Source changes are latest-wins. An older queued initialization must
+      // never load its script after a newer source has become active.
+      if (generation != _lxRuntimeGeneration || activeSource?.id != sourceId) {
+        return;
+      }
+      if (_lxRuntimeSourceId == sourceId &&
+          LxMusicRuntimeService().isScriptReady) {
+        return;
+      }
+
+      try {
+        print('🚀 [AudioSourceService] 正在初始化洛雪运行时: $sourceId');
+        String? scriptContent = source.scriptContent;
+        if (scriptContent.isEmpty) {
+          scriptContent = await _loadLxScriptContent();
+        }
+        if (scriptContent == null || scriptContent.isEmpty) {
+          print('⚠️ [AudioSourceService] 未找到洛雪脚本内容，无法初始化运行时');
+          return;
+        }
+
+        final runtime = LxMusicRuntimeService();
+        final loaded = await runtime.loadScript(scriptContent);
+        if (loaded == null || !runtime.isScriptReady) {
+          print('⚠️ [AudioSourceService] 洛雪脚本加载失败: $sourceId');
+          return;
+        }
+        if (generation == _lxRuntimeGeneration &&
+            activeSource?.id == sourceId) {
+          _lxRuntimeSourceId = sourceId;
+          print('✅ [AudioSourceService] 洛雪运行时初始化成功: $sourceId');
+        }
+      } catch (e) {
+        print('❌ [AudioSourceService] 初始化洛雪运行时失败: $e');
+      }
+    });
+    _lxRuntimeOperation = operation;
+    await operation;
   }
 
   /// 生成唯一 ID
@@ -284,7 +315,10 @@ class AudioSourceService extends ChangeNotifier {
 
         // 如果更新的是当前活动音源，可能需要重新初始化运行时
         if (config.id == _activeSourceId && config.type == AudioSourceType.lxmusic) {
-          initializeLxRuntime();
+          _invalidateLxRuntime();
+          await initializeLxRuntime();
+        } else if (config.id == _activeSourceId) {
+          _invalidateLxRuntime();
         }
 
         notifyListeners();
@@ -307,9 +341,10 @@ class AudioSourceService extends ChangeNotifier {
 
           // 切换到新音源后初始化运行时（如果是洛雪）
           if (activeSource?.type == AudioSourceType.lxmusic) {
-            initializeLxRuntime();
+            await initializeLxRuntime();
           }
         } else {
+          _invalidateLxRuntime();
           await _saveActiveSourceId();
         }
       }
@@ -330,7 +365,9 @@ class AudioSourceService extends ChangeNotifier {
 
       // 切换音源后，如果是洛雪，初始化运行时
       if (activeSource?.type == AudioSourceType.lxmusic) {
-        initializeLxRuntime();
+        await initializeLxRuntime();
+      } else {
+        _invalidateLxRuntime();
       }
 
       notifyListeners();
@@ -364,8 +401,11 @@ class AudioSourceService extends ChangeNotifier {
     return activeSource != null;
   }
 
-  /// 获取当前活动音源支持的搜索平台列表
-  List<String> get currentSupportedPlatforms {
+  /// 获取当前活动解析器支持的播放平台列表。
+  ///
+  /// This is deliberately not used by SearchService. Search capabilities are
+  /// owned by SearchProviderCatalog.
+  List<String> get currentSupportedPlaybackPlatforms {
     if (isNavidromeActive) {
       return const [];
     }
@@ -394,6 +434,10 @@ class AudioSourceService extends ChangeNotifier {
     // 回退到默认配置
     return defaultSupportedPlatforms[source.type] ?? ['netease', 'apple', 'qq', 'kugou', 'kuwo'];
   }
+
+  /// @deprecated Use [currentSupportedPlaybackPlatforms].
+  List<String> get currentSupportedPlatforms =>
+      currentSupportedPlaybackPlatforms;
 
   String get baseUrl {
     final url = activeSource?.url ?? '';
@@ -527,6 +571,7 @@ class AudioSourceService extends ChangeNotifier {
   Future<void> clear() {
     return _enqueueMutation(() async {
       _activeSourceId = '';
+      _invalidateLxRuntime();
       await _saveActiveSourceId();
       notifyListeners();
     });
@@ -536,7 +581,15 @@ class AudioSourceService extends ChangeNotifier {
 
   bool isLxSourceSupported(MusicSource source) {
     if (sourceType != AudioSourceType.lxmusic) return false;
-    return _lxSourceCodeMap.containsKey(source);
+    final sourceCode = _lxSourceCodeMap[source];
+    if (sourceCode == null) return false;
+
+    final runtime = LxMusicRuntimeService();
+    final declaredSources = runtime.currentScript?.supportedSources ?? const [];
+    if (runtime.isScriptReady && declaredSources.isNotEmpty) {
+      return declaredSources.contains(sourceCode);
+    }
+    return true;
   }
 
   String? getLxSourceCode(MusicSource source) => _lxSourceCodeMap[source];
@@ -660,4 +713,3 @@ class AudioSourceService extends ChangeNotifier {
     };
   }
 }
-

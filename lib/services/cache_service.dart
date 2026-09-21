@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import '../utils/format_utils.dart';
 import 'package:path_provider/path_provider.dart';
@@ -23,6 +22,7 @@ class CacheMetadata {
   final String album;
   final String picUrl;
   final String source;
+  final String resolverFingerprint;
   final String quality;
   final String originalUrl;
   final int fileSize;
@@ -43,6 +43,7 @@ class CacheMetadata {
     required this.album,
     required this.picUrl,
     required this.source,
+    this.resolverFingerprint = '',
     required this.quality,
     required this.originalUrl,
     required this.fileSize,
@@ -107,6 +108,7 @@ class CacheMetadata {
       album: _readOptionalString(json['album']),
       picUrl: _readOptionalString(json['picUrl']),
       source: source,
+      resolverFingerprint: _readOptionalString(json['resolverFingerprint']),
       quality: CacheService.normalizeQualityValue(json['quality']?.toString()),
       originalUrl: _readOptionalString(json['originalUrl']),
       fileSize: fileSize,
@@ -138,6 +140,7 @@ class CacheMetadata {
       'album': album,
       'picUrl': picUrl,
       'source': source,
+      'resolverFingerprint': resolverFingerprint,
       'quality': quality,
       'originalUrl': originalUrl,
       'fileSize': fileSize,
@@ -160,6 +163,7 @@ class CacheMetadata {
     String? album,
     String? picUrl,
     String? source,
+    String? resolverFingerprint,
     String? quality,
     String? originalUrl,
     int? fileSize,
@@ -180,6 +184,7 @@ class CacheMetadata {
       album: album ?? this.album,
       picUrl: picUrl ?? this.picUrl,
       source: source ?? this.source,
+      resolverFingerprint: resolverFingerprint ?? this.resolverFingerprint,
       quality: quality ?? this.quality,
       originalUrl: originalUrl ?? this.originalUrl,
       fileSize: fileSize ?? this.fileSize,
@@ -427,12 +432,29 @@ class CacheService extends ChangeNotifier {
     String songId,
     MusicSource source, [
     String? quality,
+    String? resolverFingerprint,
   ]) {
-    return '${source.name}_${songId}_${_qualityKey(quality)}';
+    final base = '${source.name}_${songId}_${_qualityKey(quality)}';
+    if (resolverFingerprint == null || resolverFingerprint.isEmpty) {
+      return base;
+    }
+    final fingerprint = sha1
+        .convert(utf8.encode(resolverFingerprint))
+        .toString()
+        .substring(0, 12);
+    return '${base}_r$fingerprint';
   }
 
   String _generateCacheKeyFromMetadata(CacheMetadata metadata) {
-    return '${metadata.source}_${metadata.songId}_${_qualityKey(metadata.quality)}';
+    return _generateCacheKey(
+      metadata.songId,
+      MusicSource.values.firstWhere(
+        (source) => source.name == metadata.source,
+        orElse: () => MusicSource.netease,
+      ),
+      metadata.quality,
+      metadata.resolverFingerprint,
+    );
   }
 
   String _generateLegacyCacheKey(String songId, MusicSource source) {
@@ -447,7 +469,11 @@ class CacheService extends ChangeNotifier {
     return metadata.copyWith(quality: normalizedQuality);
   }
 
-  List<String> _matchingCacheKeysForTrack(Track track, {String? quality}) {
+  List<String> _matchingCacheKeysForTrack(
+    Track track, {
+    String? quality,
+    String? resolverFingerprint,
+  }) {
     final requestedQuality = quality != null ? _qualityKey(quality) : null;
     final songId = track.id.toString();
     final sourceName = track.source.name;
@@ -456,6 +482,10 @@ class CacheService extends ChangeNotifier {
         .where((entry) {
           final metadata = entry.value;
           if (metadata.songId != songId || metadata.source != sourceName) {
+            return false;
+          }
+          if (resolverFingerprint != null &&
+              metadata.resolverFingerprint != resolverFingerprint) {
             return false;
           }
           if (requestedQuality == null) {
@@ -467,12 +497,17 @@ class CacheService extends ChangeNotifier {
         .toList(growable: false);
   }
 
-  _ResolvedCacheEntry? _resolveCacheEntry(Track track, {String? quality}) {
+  _ResolvedCacheEntry? _resolveCacheEntry(
+    Track track, {
+    String? quality,
+    String? resolverFingerprint,
+  }) {
     final expectedQuality = _qualityKey(quality);
     final qualifiedKey = _generateCacheKey(
       track.id.toString(),
       track.source,
       quality,
+      resolverFingerprint,
     );
     final qualifiedMetadata = _cacheIndex[qualifiedKey];
     if (qualifiedMetadata != null) {
@@ -489,26 +524,32 @@ class CacheService extends ChangeNotifier {
       }
     }
 
-    final legacyKey = _generateLegacyCacheKey(
-      track.id.toString(),
-      track.source,
-    );
-    final legacyMetadata = _cacheIndex[legacyKey];
-    if (legacyMetadata != null) {
-      final normalizedMetadata = _normalizeMetadata(legacyMetadata);
-      if (normalizedMetadata.quality == expectedQuality) {
-        if (!identical(normalizedMetadata, legacyMetadata)) {
-          _cacheIndex[legacyKey] = normalizedMetadata;
-          _scheduleIndexSave();
+    if (resolverFingerprint == null || resolverFingerprint.isEmpty) {
+      final legacyKey = _generateLegacyCacheKey(
+        track.id.toString(),
+        track.source,
+      );
+      final legacyMetadata = _cacheIndex[legacyKey];
+      if (legacyMetadata != null) {
+        final normalizedMetadata = _normalizeMetadata(legacyMetadata);
+        if (normalizedMetadata.quality == expectedQuality) {
+          if (!identical(normalizedMetadata, legacyMetadata)) {
+            _cacheIndex[legacyKey] = normalizedMetadata;
+            _scheduleIndexSave();
+          }
+          return _ResolvedCacheEntry(
+            key: legacyKey,
+            metadata: normalizedMetadata,
+          );
         }
-        return _ResolvedCacheEntry(
-          key: legacyKey,
-          metadata: normalizedMetadata,
-        );
       }
     }
 
-    for (final key in _matchingCacheKeysForTrack(track, quality: quality)) {
+    for (final key in _matchingCacheKeysForTrack(
+      track,
+      quality: quality,
+      resolverFingerprint: resolverFingerprint,
+    )) {
       final metadata = _normalizeMetadata(_cacheIndex[key]!);
       if (!identical(metadata, _cacheIndex[key])) {
         _cacheIndex[key] = metadata;
@@ -1058,21 +1099,47 @@ class CacheService extends ChangeNotifier {
   }
 
   /// 检查缓存是否存在
-  bool isCached(Track track, {String? quality}) {
+  bool isCached(
+    Track track, {
+    String? quality,
+    String? resolverFingerprint,
+  }) {
     if (!_isInitialized || !_cacheEnabled) return false;
-    return _resolveCacheEntry(track, quality: quality) != null;
+    return _resolveCacheEntry(
+          track,
+          quality: quality,
+          resolverFingerprint: resolverFingerprint,
+        ) !=
+        null;
   }
 
   /// 获取缓存的元数据
-  CacheMetadata? getCachedMetadata(Track track, {String? quality}) {
+  CacheMetadata? getCachedMetadata(
+    Track track, {
+    String? quality,
+    String? resolverFingerprint,
+  }) {
     if (!_isInitialized || !_cacheEnabled) return null;
-    return _resolveCacheEntry(track, quality: quality)?.metadata;
+    return _resolveCacheEntry(
+          track,
+          quality: quality,
+          resolverFingerprint: resolverFingerprint,
+        )
+        ?.metadata;
   }
 
   /// 获取加密缓存容器文件路径（不解密）
-  String? getCachedContainerFilePath(Track track, {String? quality}) {
+  String? getCachedContainerFilePath(
+    Track track, {
+    String? quality,
+    String? resolverFingerprint,
+  }) {
     if (!_isInitialized || !_cacheEnabled || _cacheDir == null) return null;
-    final resolved = _resolveCacheEntry(track, quality: quality);
+    final resolved = _resolveCacheEntry(
+      track,
+      quality: quality,
+      resolverFingerprint: resolverFingerprint,
+    );
     if (resolved == null) return null;
     return _getCacheFilePath(resolved.key);
   }
@@ -1081,6 +1148,7 @@ class CacheService extends ChangeNotifier {
     Track track,
     SongDetail songDetail, {
     required String normalizedQuality,
+    required String resolverFingerprint,
     required int fileSize,
     required DateTime cachedAt,
     required DateTime lastAccessedAt,
@@ -1093,6 +1161,7 @@ class CacheService extends ChangeNotifier {
       album: _preferNonEmpty(songDetail.alName, track.album),
       picUrl: _preferNonEmpty(songDetail.pic, track.picUrl),
       source: track.source.name,
+      resolverFingerprint: resolverFingerprint,
       quality: normalizedQuality,
       originalUrl: _isRemoteUrl(songDetail.url) ? songDetail.url : '',
       fileSize: fileSize,
@@ -1187,10 +1256,15 @@ class CacheService extends ChangeNotifier {
   Future<CyreneFileInfo?> getCyreneFileInfo(
     Track track, {
     String? quality,
+    String? resolverFingerprint,
   }) async {
     if (!_isInitialized || !_cacheEnabled || _cacheDir == null) return null;
 
-    final resolved = _resolveCacheEntry(track, quality: quality);
+    final resolved = _resolveCacheEntry(
+      track,
+      quality: quality,
+      resolverFingerprint: resolverFingerprint,
+    );
     if (resolved == null) {
       return null;
     }
@@ -1276,8 +1350,10 @@ class CacheService extends ChangeNotifier {
   Future<bool> cacheSong(
     Track track,
     SongDetail songDetail,
-    String quality,
-  ) async {
+    String quality, {
+    String? resolverFingerprint
+  }) async {
+    resolverFingerprint ??= '';
     final sw = Stopwatch()..start();
     if (!_isInitialized) {
       _logCacheDebug(
@@ -1302,6 +1378,7 @@ class CacheService extends ChangeNotifier {
       track.id.toString(),
       track.source,
       normalizedQuality,
+      resolverFingerprint,
     );
 
     // Apple Music 常用 HLS(m3u8)；当前缓存逻辑是整文件下载，不适用于 HLS。
@@ -1331,7 +1408,11 @@ class CacheService extends ChangeNotifier {
       );
       return pending.then((cached) async {
         if (!cached) return false;
-        final resolved = _resolveCacheEntry(track, quality: normalizedQuality);
+        final resolved = _resolveCacheEntry(
+          track,
+          quality: normalizedQuality,
+          resolverFingerprint: resolverFingerprint,
+        );
         if (resolved == null) {
           return false;
         }
@@ -1350,6 +1431,7 @@ class CacheService extends ChangeNotifier {
       songDetail,
       normalizedQuality: normalizedQuality,
       cacheKey: cacheKey,
+      resolverFingerprint: resolverFingerprint,
     );
     _pendingCacheWrites[cacheKey] = task;
 
@@ -1367,10 +1449,15 @@ class CacheService extends ChangeNotifier {
     SongDetail songDetail, {
     required String normalizedQuality,
     required String cacheKey,
+    required String resolverFingerprint,
   }) async {
     final sw = Stopwatch()..start();
     try {
-      final resolved = _resolveCacheEntry(track, quality: normalizedQuality);
+      final resolved = _resolveCacheEntry(
+        track,
+        quality: normalizedQuality,
+        resolverFingerprint: resolverFingerprint,
+      );
       if (resolved != null) {
         _logCacheDebug(
           'ℹ️ [CacheService] 命中已存在缓存，转为元数据刷新: ${track.name} '
@@ -1406,6 +1493,7 @@ class CacheService extends ChangeNotifier {
         track,
         songDetail,
         normalizedQuality: normalizedQuality,
+        resolverFingerprint: resolverFingerprint,
         fileSize: downloadedPayload.audioLength,
         cachedAt: now,
         lastAccessedAt: now,

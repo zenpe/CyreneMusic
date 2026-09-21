@@ -1299,15 +1299,6 @@ class _PlaylistsPageState extends State<PlaylistsPage>
 
     // 播放选中的歌曲（来自歌单，检查换源限制）
     PlayerService().playTrack(trackList[index], fromPlaylist: true);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('正在播放: ${tracks[index].name}'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    }
   }
 
   /// 播放全部歌曲

@@ -384,12 +384,6 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
         onTap: () {
           final coverProvider = PlaylistQueueService().getCoverProvider(track);
           PlayerService().playTrack(track, coverProvider: coverProvider);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('正在播放: ${track.name}'),
-              duration: const Duration(seconds: 1),
-            ),
-          );
         },
         child: Container(
           height: 74,

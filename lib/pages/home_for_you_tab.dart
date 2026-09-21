@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../features/audio_source/audio_source_feature.dart';
@@ -26,7 +27,11 @@ import 'settings_page/audio_source_settings.dart';
 
 /// 首页 - 为你推荐 Tab 内容（SWR + 分区懒加载）
 class HomeForYouTab extends StatefulWidget {
-  const HomeForYouTab({super.key, this.onOpenPlaylistDetail, this.onOpenDailyDetail});
+  const HomeForYouTab({
+    super.key,
+    this.onOpenPlaylistDetail,
+    this.onOpenDailyDetail,
+  });
 
   final void Function(int playlistId)? onOpenPlaylistDetail;
   final void Function(List<Map<String, dynamic>> tracks)? onOpenDailyDetail;
@@ -41,6 +46,7 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
 
   late bool _lastAudioConfigured;
   int _loadVersion = 0;
+  CancelToken? _activeLoadCancelToken;
 
   bool _isInitialLoading = true;
   bool _isRefreshing = false;
@@ -79,6 +85,8 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
   @override
   void dispose() {
     _loadVersion++;
+    _activeLoadCancelToken?.cancel('HomeForYouTab disposed');
+    _activeLoadCancelToken = null;
     _audioSourceFacade.removeAudioSourceStateListener(_onAudioSourceChanged);
     super.dispose();
   }
@@ -98,6 +106,9 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
 
   Future<void> _reloadData({required bool forceNetwork}) async {
     final loadId = ++_loadVersion;
+    _activeLoadCancelToken?.cancel('新的首页推荐请求');
+    final cancelToken = CancelToken();
+    _activeLoadCancelToken = cancelToken;
     final cached = await _readCacheState();
     if (!_isLoadActive(loadId)) {
       return;
@@ -111,7 +122,8 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
       });
     }
 
-    final shouldFetchNetwork = forceNetwork || cached == null || !cached.isFresh;
+    final shouldFetchNetwork =
+        forceNetwork || cached == null || !cached.isFresh;
     if (!shouldFetchNetwork) {
       setState(() {
         _isRefreshing = false;
@@ -130,10 +142,13 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
       }
     });
 
-    await _loadSections(loadId);
+    await _loadSections(loadId, cancelToken);
+    if (identical(_activeLoadCancelToken, cancelToken)) {
+      _activeLoadCancelToken = null;
+    }
   }
 
-  Future<void> _loadSections(int loadId) async {
+  Future<void> _loadSections(int loadId, CancelToken cancelToken) async {
     final service = NeteaseRecommendService();
     final sectionErrors = <String>[];
 
@@ -141,7 +156,7 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
       _loadSection(
         loadId: loadId,
         sectionName: '每日推荐',
-        request: service.fetchDailySongs,
+        request: () => service.fetchDailySongs(cancelToken: cancelToken),
         sectionErrors: sectionErrors,
         assign: (items) => _dailySongs = items,
         setLoading: (value) => _dailySongsLoading = value,
@@ -149,7 +164,7 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
       _loadSection(
         loadId: loadId,
         sectionName: '私人FM',
-        request: service.fetchPersonalFm,
+        request: () => service.fetchPersonalFm(cancelToken: cancelToken),
         sectionErrors: sectionErrors,
         assign: (items) => _fm = items,
         setLoading: (value) => _fmLoading = value,
@@ -157,7 +172,7 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
       _loadSection(
         loadId: loadId,
         sectionName: '每日推荐歌单',
-        request: service.fetchDailyPlaylists,
+        request: () => service.fetchDailyPlaylists(cancelToken: cancelToken),
         sectionErrors: sectionErrors,
         assign: (items) => _dailyPlaylists = items,
         setLoading: (value) => _dailyPlaylistsLoading = value,
@@ -165,7 +180,10 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
       _loadSection(
         loadId: loadId,
         sectionName: '专属歌单',
-        request: () => service.fetchPersonalizedPlaylists(limit: 12),
+        request: () => service.fetchPersonalizedPlaylists(
+          limit: 12,
+          cancelToken: cancelToken,
+        ),
         sectionErrors: sectionErrors,
         assign: (items) => _personalizedPlaylists = items,
         setLoading: (value) => _personalizedPlaylistsLoading = value,
@@ -173,7 +191,7 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
       _loadSection(
         loadId: loadId,
         sectionName: '雷达歌单',
-        request: service.fetchRadarPlaylists,
+        request: () => service.fetchRadarPlaylists(cancelToken: cancelToken),
         sectionErrors: sectionErrors,
         assign: (items) => _radarPlaylists = items,
         setLoading: (value) => _radarPlaylistsLoading = value,
@@ -181,7 +199,10 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
       _loadSection(
         loadId: loadId,
         sectionName: '新歌',
-        request: () => service.fetchPersonalizedNewsongs(limit: 10),
+        request: () => service.fetchPersonalizedNewsongs(
+          limit: 10,
+          cancelToken: cancelToken,
+        ),
         sectionErrors: sectionErrors,
         assign: (items) => _personalizedNewsongs = items,
         setLoading: (value) => _personalizedNewsongsLoading = value,
@@ -228,8 +249,11 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
         assign(result);
         setLoading(false);
       });
-    } catch (_) {
+    } catch (error) {
       if (!_isLoadActive(loadId)) {
+        return;
+      }
+      if (error is DioException && CancelToken.isCancel(error)) {
         return;
       }
       sectionErrors.add(sectionName);
@@ -256,9 +280,13 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
     _dailySongs = List<Map<String, dynamic>>.from(data.dailySongs);
     _fm = List<Map<String, dynamic>>.from(data.fm);
     _dailyPlaylists = List<Map<String, dynamic>>.from(data.dailyPlaylists);
-    _personalizedPlaylists = List<Map<String, dynamic>>.from(data.personalizedPlaylists);
+    _personalizedPlaylists = List<Map<String, dynamic>>.from(
+      data.personalizedPlaylists,
+    );
     _radarPlaylists = List<Map<String, dynamic>>.from(data.radarPlaylists);
-    _personalizedNewsongs = List<Map<String, dynamic>>.from(data.personalizedNewsongs);
+    _personalizedNewsongs = List<Map<String, dynamic>>.from(
+      data.personalizedNewsongs,
+    );
   }
 
   Future<_CachedForYouState?> _readCacheState() async {
@@ -317,9 +345,7 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
   /// 导航到音源设置页面
   void _navigateToAudioSourceSettings(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const AudioSourceSettings(),
-      ),
+      MaterialPageRoute(builder: (context) => const AudioSourceSettings()),
     );
   }
 
@@ -351,7 +377,8 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
   Widget build(BuildContext context) {
     final themeManager = ThemeManager();
     final isCupertino =
-        (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
+        (Platform.isIOS || Platform.isAndroid) &&
+        themeManager.isCupertinoFramework;
     final isMobile = Platform.isIOS || Platform.isAndroid;
 
     // 未登录状态下显示登录提示
@@ -448,7 +475,8 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
     }
 
     final heroLoading =
-        (_dailySongsLoading && _dailySongs.isEmpty) || (_fmLoading && _fm.isEmpty);
+        (_dailySongsLoading && _dailySongs.isEmpty) ||
+        (_fmLoading && _fm.isEmpty);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -462,7 +490,8 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
           HeroSection(
             dailySongs: _dailySongs,
             fmList: _fm,
-            onOpenDailyDetail: () => widget.onOpenDailyDetail?.call(_dailySongs),
+            onOpenDailyDetail: () =>
+                widget.onOpenDailyDetail?.call(_dailySongs),
           ),
         const SizedBox(height: 28),
         SectionTitle(title: '每日推荐歌单'),
@@ -507,8 +536,5 @@ class _CachedForYouState {
   final ForYouData data;
   final bool isFresh;
 
-  const _CachedForYouState({
-    required this.data,
-    required this.isFresh,
-  });
+  const _CachedForYouState({required this.data, required this.isFresh});
 }

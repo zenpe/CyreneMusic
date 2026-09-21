@@ -14,6 +14,8 @@ import 'playable_source.dart';
 /// 统一播放状态
 enum EngineState { idle, playing, paused }
 
+const _engineStartupTimeout = Duration(seconds: 8);
+
 /// 引擎错误类型
 enum EngineErrorType {
   networkTimeout,
@@ -778,6 +780,85 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     await player.setSpeed(_playbackSpeed);
     if (autoPlay) {
       _fireAndForgetPlay();
+      await _waitForStartup(player);
+    }
+  }
+
+  Future<void> _waitForStartup(ja.AudioPlayer player) async {
+    final completer = Completer<void>();
+    // These streams are broadcast streams and may emit the first playing
+    // event before the listeners below are attached. Seed the gate from the
+    // current player snapshot so a fast source is not reported as a timeout.
+    var playing = player.playing;
+    var progressed =
+        player.bufferedPosition > Duration.zero || player.position > Duration.zero;
+    late final StreamSubscription<ja.PlayerState> stateSub;
+    late final StreamSubscription<Duration> bufferSub;
+    late final StreamSubscription<Duration> positionSub;
+    late final StreamSubscription<EngineError> errorSub;
+    Timer? timeoutTimer;
+
+    void completeIfReady() {
+      if (playing && progressed && !completer.isCompleted) {
+        completer.complete();
+      }
+    }
+
+    stateSub = player.playerStateStream.listen((state) {
+      playing = playing || state.playing;
+      completeIfReady();
+    });
+    bufferSub = player.bufferedPositionStream.listen((position) {
+      progressed = progressed || position > Duration.zero;
+      completeIfReady();
+    });
+    positionSub = player.positionStream.listen((position) {
+      progressed = progressed || position > Duration.zero;
+      completeIfReady();
+    });
+    errorSub = _errorController.stream
+        .where((error) => error.epoch == _dispatchEpoch)
+        .listen((error) {
+          if (!completer.isCompleted) completer.completeError(error);
+        });
+    timeoutTimer = Timer(_engineStartupTimeout, () {
+      if (!completer.isCompleted) {
+        completer.completeError(TimeoutException('音频流启动超时'));
+      }
+    });
+
+    try {
+      await completer.future;
+    } on EngineError catch (error) {
+      _playTicket++;
+      _epochGate.beginStop();
+      try {
+        await player.stop().timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      await _recreatePlayer();
+      throw EngineReportedException(error);
+    } on TimeoutException catch (error) {
+      final mapped = EngineError(
+        type: EngineErrorType.networkTimeout,
+        message: '音频流启动超时',
+        cause: error,
+        retriable: true,
+        epoch: _dispatchEpoch,
+      );
+      _playTicket++;
+      _epochGate.beginStop();
+      try {
+        await player.stop().timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      await _recreatePlayer();
+      _emitError(mapped);
+      throw EngineReportedException(mapped);
+    } finally {
+      timeoutTimer.cancel();
+      await stateSub.cancel();
+      await bufferSub.cancel();
+      await positionSub.cancel();
+      await errorSub.cancel();
     }
   }
 
@@ -1180,6 +1261,82 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     await player.setRate(_playbackSpeed);
     if (autoPlay) {
       await player.play();
+      await _waitForStartup(player);
+    }
+  }
+
+  Future<void> _waitForStartup(mk.Player player) async {
+    final completer = Completer<void>();
+    // media_kit also exposes the current state synchronously; use it to
+    // cover the same subscribe-after-play race as just_audio.
+    var playing = player.state.playing;
+    var progressed =
+        player.state.buffer > Duration.zero || player.state.position > Duration.zero;
+    late final StreamSubscription<bool> playingSub;
+    late final StreamSubscription<Duration> bufferSub;
+    late final StreamSubscription<Duration> positionSub;
+    late final StreamSubscription<EngineError> errorSub;
+    Timer? timeoutTimer;
+
+    void completeIfReady() {
+      if (playing && progressed && !completer.isCompleted) {
+        completer.complete();
+      }
+    }
+
+    playingSub = player.stream.playing.listen((value) {
+      playing = playing || value;
+      completeIfReady();
+    });
+    bufferSub = player.stream.buffer.listen((value) {
+      progressed = progressed || value > Duration.zero;
+      completeIfReady();
+    });
+    positionSub = player.stream.position.listen((value) {
+      progressed = progressed || value > Duration.zero;
+      completeIfReady();
+    });
+    errorSub = _errorController.stream
+        .where((error) => error.epoch == _dispatchEpoch)
+        .listen((error) {
+          if (!completer.isCompleted) completer.completeError(error);
+        });
+    timeoutTimer = Timer(_engineStartupTimeout, () {
+      if (!completer.isCompleted) {
+        completer.completeError(TimeoutException('音频流启动超时'));
+      }
+    });
+
+    try {
+      await completer.future;
+    } on EngineError catch (error) {
+      _epochGate.beginStop();
+      try {
+        await player.stop().timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      _hasMedia = false;
+      throw EngineReportedException(error);
+    } on TimeoutException catch (error) {
+      final mapped = EngineError(
+        type: EngineErrorType.networkTimeout,
+        message: '音频流启动超时',
+        cause: error,
+        retriable: true,
+        epoch: _dispatchEpoch,
+      );
+      _epochGate.beginStop();
+      try {
+        await player.stop().timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      _hasMedia = false;
+      _emitError(mapped);
+      throw EngineReportedException(mapped);
+    } finally {
+      timeoutTimer.cancel();
+      await playingSub.cancel();
+      await bufferSub.cancel();
+      await positionSub.cancel();
+      await errorSub.cancel();
     }
   }
 

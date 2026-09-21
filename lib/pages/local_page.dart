@@ -378,7 +378,6 @@ class _LocalPageState extends State<LocalPage> {
                         index: index,
                         onPlay: () async {
                           await PlayerService().playTrack(tracks[index]);
-                          _showFluentInfo('正在播放: ${tracks[index].name}');
                         },
                       ),
                     ),

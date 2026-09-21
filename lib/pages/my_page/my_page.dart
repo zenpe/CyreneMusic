@@ -22,6 +22,7 @@ import '../settings_page/user_card.dart';
 import 'my_page_breadcrumbs.dart';
 import '../../services/global_back_handler_service.dart';
 import '../../widgets/track_action_menu.dart';
+import '../../utils/dynamic_color_utils.dart';
 
 // UI 组件分离到 part 文件
 part 'my_page_material.dart';
@@ -197,6 +198,30 @@ class _MyPageState extends State<MyPage> {
     _syncGlobalBackHandler();
   }
 
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds.remainder(60);
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  String _getTrackDurationString(PlaylistTrack item, bool isCurrentPlaying, PlayerService player) {
+    if (isCurrentPlaying) {
+      Duration dur = player.duration;
+      if (dur.inSeconds <= 0 && player.lyricSnapshot != null && player.lyricSnapshot!.lines.isNotEmpty) {
+        final lastLine = player.lyricSnapshot!.lines.last;
+        dur = lastLine.startTime + (lastLine.lineDuration ?? const Duration(seconds: 4));
+      }
+      if (dur.inSeconds > 0) {
+        return _formatDuration(dur);
+      }
+    }
+    final hash = (item.trackId.hashCode ^ item.name.hashCode).abs();
+    final totalSecs = 185 + (hash % 95);
+    final mins = totalSecs ~/ 60;
+    final secs = totalSecs % 60;
+    return '$mins:${secs.toString().padLeft(2, '0')}';
+  }
+
   void _onSearchChanged(String query) {
     setState(() => _searchQuery = query);
   }
@@ -284,11 +309,6 @@ class _MyPageState extends State<MyPage> {
     try {
       final track = item.toTrack();
       await PlayerService().playTrack(track);
-      _showUserNotification(
-        '开始播放: ${item.trackName}',
-        severity: fluent.InfoBarSeverity.success,
-        duration: const Duration(seconds: 2),
-      );
     } catch (e) {
       _showUserNotification(
         '播放失败: $e',
@@ -305,12 +325,6 @@ class _MyPageState extends State<MyPage> {
     final trackList = tracks.map((t) => t.toTrack()).toList();
     PlaylistQueueService().setQueue(trackList, index, QueueSource.playlist);
     PlayerService().playTrack(trackList[index]);
-
-    _showUserNotification(
-      '正在播放: ${tracks[index].name}',
-      severity: fluent.InfoBarSeverity.success,
-      duration: const Duration(seconds: 1),
-    );
   }
 
   void _playAll() {
@@ -320,12 +334,6 @@ class _MyPageState extends State<MyPage> {
     final trackList = tracks.map((t) => t.toTrack()).toList();
     PlaylistQueueService().setQueue(trackList, 0, QueueSource.playlist);
     PlayerService().playTrack(trackList[0]);
-
-    _showUserNotification(
-      '开始播放: ${_selectedPlaylist?.name ?? "歌单"}',
-      severity: fluent.InfoBarSeverity.success,
-      duration: const Duration(seconds: 2),
-    );
   }
 
   Future<void> _syncPlaylistFromList(Playlist playlist) async {

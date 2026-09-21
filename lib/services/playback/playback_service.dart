@@ -50,6 +50,7 @@ import 'playback_transaction.dart';
 import 'playback_history_recorder.dart';
 import 'playback_request_router.dart';
 import 'playback_session.dart';
+import 'playback_resolver_registry.dart';
 import 'queue_controller.dart';
 import 'playable_source.dart';
 import 'source_health_tracker.dart';
@@ -219,6 +220,7 @@ class PlaybackService extends ChangeNotifier {
 
   static const int _switchFadeSteps = 8;
   static const Duration _switchFadeStepDelay = Duration(milliseconds: 15);
+  static const Duration _resolutionRetryDelay = Duration(milliseconds: 300);
   static const Duration _trackSwitchSettleDelay = Duration(milliseconds: 80);
   static const Duration _preloadTriggerDelay = Duration(seconds: 3);
   static const Duration _prefetchedSongDetailTtl = Duration(minutes: 5);
@@ -864,8 +866,21 @@ class PlaybackService extends ChangeNotifier {
       case LxRuntimeFailureKind.notReady:
         return SourceHealthFailureKind.runtimeNotReady;
       case LxRuntimeFailureKind.requestFailed:
+        return SourceHealthFailureKind.transientTimeout;
       case null:
         return SourceHealthFailureKind.trackSpecific;
+    }
+  }
+
+  bool _shouldRetryResolutionFailure(LxRuntimeFailure? failure) {
+    switch (failure?.kind) {
+      case LxRuntimeFailureKind.timeout:
+      case LxRuntimeFailureKind.requestFailed:
+      case LxRuntimeFailureKind.notReady:
+      case null:
+        return true;
+      case LxRuntimeFailureKind.scriptRejected:
+        return false;
     }
   }
 
@@ -1527,6 +1542,7 @@ class PlaybackService extends ChangeNotifier {
     final lookup = await _trackResolver.lookupLocalOrCache(
       track: track,
       quality: tx.qualityStr,
+      resolverFingerprint: _resolverFingerprintFor(track),
       skipCache:
           tx.forceRemoteResolution ||
           _cacheBypassKeys.contains(cachePlaybackKey),
@@ -1590,34 +1606,95 @@ class PlaybackService extends ChangeNotifier {
       return null;
     }
 
-    final resolution = await _trackResolver.resolve(
-      songId: track.id,
-      quality: tx.selectedQuality,
-      source: track.source,
-      title: track.name,
-      artist: track.artists,
-      timeout: _playSongDetailTimeout,
-      fetchLyrics: false,
-    );
-    final songDetail = resolution.detail;
-    if (isStale()) {
-      if (lxSourceFingerprint != null) {
+    TrackResolutionResult? resolution;
+    final maxResolutionAttempts =
+        _retriedTrackKey == _buildTrackIdentity(track) ? 1 : 2;
+    var isSameLxSource =
+        lxSourceFingerprint != null &&
+        _activeLxSourceFingerprint() == lxSourceFingerprint;
+
+    for (var attempt = 0; attempt < maxResolutionAttempts; attempt++) {
+      if (attempt > 0 && lxSourceFingerprint != null) {
+        final retryAllowed = _sourceHealthTracker.allowRequest(
+          lxSourceFingerprint,
+        );
+        sourceHealthNotifier.value = _sourceHealthTracker.snapshot(
+          lxSourceFingerprint,
+        );
+        if (!retryAllowed) break;
+      }
+
+      resolution = await _trackResolver.resolve(
+        songId: track.id,
+        quality: tx.selectedQuality,
+        source: track.source,
+        title: track.name,
+        artist: track.artists,
+        timeout: _playSongDetailTimeout,
+        fetchLyrics: false,
+      );
+      if (isStale()) {
+        if (lxSourceFingerprint != null) {
+          _sourceHealthTracker.cancelRequest(lxSourceFingerprint);
+          _syncActiveSourceHealth();
+        }
+        return null;
+      }
+
+      isSameLxSource =
+          lxSourceFingerprint != null &&
+          _activeLxSourceFingerprint() == lxSourceFingerprint;
+      if (lxSourceFingerprint != null && !isSameLxSource) {
         _sourceHealthTracker.cancelRequest(lxSourceFingerprint);
+        // The resolver is bound to the source snapshot captured before the
+        // request. Never commit a URL resolved by an older active source.
+        _syncActiveSourceHealth();
+        return null;
+      }
+
+      if (resolution.isPlayable) {
+        if (isSameLxSource) {
+          _recordSourceResolutionSuccess(lxSourceFingerprint);
+        }
+        break;
+      }
+
+      if (isSameLxSource) {
+        _recordSourceResolutionFailure(
+          lxSourceFingerprint,
+          resolution.lxFailure,
+        );
+      }
+
+      if (attempt + 1 < maxResolutionAttempts &&
+          _shouldRetryResolutionFailure(resolution.lxFailure)) {
+        _state = PBState.loading;
+        _errorMessage = '播放地址无效，正在重新获取...';
+        _logPlaybackDebug(
+          '[PlaybackService] 解析失败，执行一次重试: ${_trackLogKey(track)} '
+          'failure=${resolution.lxFailure?.kind.name ?? 'unknown'}',
+          toDeveloperPanel: true,
+        );
+        notifyListeners();
+        await Future.delayed(_resolutionRetryDelay);
+        continue;
+      }
+      break;
+    }
+
+    final songDetail = resolution?.detail;
+    if (resolution == null) {
+      if (isSameLxSource) {
+        _sourceHealthTracker.cancelRequest(lxSourceFingerprint!);
         _syncActiveSourceHealth();
       }
       return null;
-    }
-    final isSameLxSource =
-        lxSourceFingerprint != null &&
-        _activeLxSourceFingerprint() == lxSourceFingerprint;
-    if (lxSourceFingerprint != null && !isSameLxSource) {
-      _sourceHealthTracker.cancelRequest(lxSourceFingerprint);
     }
     if (songDetail == null || songDetail.url.isEmpty) {
       final lxFailure = isSameLxSource ? resolution.lxFailure : null;
       final sourceHealth = !isSameLxSource
           ? null
-          : _recordSourceResolutionFailure(lxSourceFingerprint, lxFailure);
+          : _sourceHealthTracker.snapshot(lxSourceFingerprint!);
       final circuitOpen = sourceHealth?.isCircuitOpen ?? false;
       _state = PBState.error;
       _errorMessage = _resolutionFailureMessage(lxFailure);
@@ -1637,10 +1714,6 @@ class PlaybackService extends ChangeNotifier {
       );
       if (!circuitOpen) _autoSkipOnError(tx.intent);
       return null;
-    }
-
-    if (isSameLxSource) {
-      _recordSourceResolutionSuccess(lxSourceFingerprint);
     }
 
     final normalizedSong = _normalizeSongDetailForPlayback(track, songDetail);
@@ -2221,7 +2294,12 @@ class PlaybackService extends ChangeNotifier {
   }
 
   String _cachePlaybackKey(Track track, String quality) {
-    return '${_buildTrackIdentity(track)}_$quality';
+    final resolver = _resolverFingerprintFor(track) ?? 'unavailable';
+    return '${_buildTrackIdentity(track)}_${quality}_$resolver';
+  }
+
+  String? _resolverFingerprintFor(Track track) {
+    return PlaybackResolverRegistry().fingerprintFor(track.source);
   }
 
   String _lyricRefreshKey(Track track) {
@@ -3359,7 +3437,11 @@ class PlaybackService extends ChangeNotifier {
     final cacheInfo =
         _cacheBypassKeys.contains(_cachePlaybackKey(track, qualityStr))
         ? null
-        : await CacheService().getCyreneFileInfo(track, quality: qualityStr);
+        : await CacheService().getCyreneFileInfo(
+            track,
+            quality: qualityStr,
+            resolverFingerprint: _resolverFingerprintFor(track),
+          );
 
     if (cacheInfo != null && cacheInfo.metadata.quality == qualityStr) {
       final cachedSong = buildCachedSongDetail(
@@ -3596,7 +3678,12 @@ class PlaybackService extends ChangeNotifier {
         'source=${track.source.name}',
         toDeveloperPanel: true,
       );
-      final cached = await CacheService().cacheSong(track, detail, quality);
+      final cached = await CacheService().cacheSong(
+        track,
+        detail,
+        quality,
+        resolverFingerprint: _resolverFingerprintFor(track) ?? '',
+      );
       if (!cached) {
         _logPlaybackDebug(
           '[PlaybackService] 后台缓存未写入: $key',

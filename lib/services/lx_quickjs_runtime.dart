@@ -6,21 +6,39 @@ import 'lx_http_bridge.dart';
 import 'lx_runtime_interface.dart';
 import 'lx_sandbox_js.dart';
 
+class _LxRuntimeContext {
+  _LxRuntimeContext(this.generation, this.runtime);
+
+  final int generation;
+  final JavascriptRuntime runtime;
+  bool disposed = false;
+}
+
+class _PendingLxRequest {
+  _PendingLxRequest(this.context, this.completer);
+
+  final _LxRuntimeContext context;
+  final Completer<String> completer;
+}
+
 class LxQuickJsRuntime implements LxRuntime {
   JavascriptRuntime? _runtime;
+  _LxRuntimeContext? _context;
+  int _runtimeGeneration = 0;
   bool _isInitialized = false;
   bool _isScriptReady = false;
   bool _isDisabled = false;
   LxScriptInfo? _currentScript;
   LxRuntimeFailure? _lastFailure;
 
-  final Map<String, Completer<String>> _pendingRequests = {};
+  final Map<String, _PendingLxRequest> _pendingRequests = {};
   int _requestCounter = 0;
   List<String> _pendingSupportedSources = [];
   List<String> _pendingSupportedQualities = [];
   Map<String, List<String>> _pendingPlatformQualities = {};
 
   Future<void> _evalQueue = Future.value();
+  Future<void> _operationQueue = Future.value();
 
   void _debug(String message) {
     if (kDebugMode) {
@@ -56,9 +74,14 @@ class LxQuickJsRuntime implements LxRuntime {
 
     _debug('🚀 [LxQuickJsRuntime] 初始化 QuickJS 运行时...');
     try {
-      _runtime = getJavascriptRuntime(xhr: true);
-      _runtime!.enableHandlePromises();
-      _runtime!.onMessage('lx_bridge', _handleBridgeMessage);
+      final runtime = getJavascriptRuntime(xhr: true);
+      final context = _LxRuntimeContext(++_runtimeGeneration, runtime);
+      _runtime = runtime;
+      _context = context;
+      runtime.enableHandlePromises();
+      runtime.onMessage('lx_bridge', (args) {
+        _handleBridgeMessage(context, args);
+      });
 
       await _evaluate('''
         globalThis.__lx_native_send__ = function(handlerName, data) {
@@ -68,15 +91,17 @@ class LxQuickJsRuntime implements LxRuntime {
             sendMessage('lx_bridge', JSON.stringify({handlerName: 'lxOnError', data: String(e)}));
           }
         };
-      ''');
+      ''', context: context);
 
-      await _evaluate(lxSandboxJs);
+      await _evaluate(lxSandboxJs, context: context);
 
       _isInitialized = true;
       _debug('✅ [LxQuickJsRuntime] 初始化完成');
     } catch (e) {
+      _context?.disposed = true;
       _runtime?.dispose();
       _runtime = null;
+      _context = null;
       _isDisabled = true;
       _isInitialized = false;
       _error('❌ [LxQuickJsRuntime] 初始化失败: $e');
@@ -85,7 +110,20 @@ class LxQuickJsRuntime implements LxRuntime {
   }
 
   @override
-  Future<LxScriptInfo?> loadScript(String scriptContent) async {
+  Future<LxScriptInfo?> loadScript(String scriptContent) {
+    return _enqueueOperation(() => _loadScriptInternal(scriptContent));
+  }
+
+  Future<LxScriptInfo?> _loadScriptInternal(String scriptContent) async {
+    // A script may leave unresolved promises, timers, or HTTP callbacks in
+    // the JS global scope. __lx_reset__ cannot cancel those tasks, so a source
+    // switch must get a fresh JS context instead of reusing the old one.
+    if (_isInitialized) {
+      await _resetRuntimeContext();
+    }
+    if (!_isInitialized) {
+      await initialize();
+    }
     if (!_isInitialized || _runtime == null) {
       _error('❌ [LxQuickJsRuntime] 运行时未初始化');
       return null;
@@ -93,6 +131,8 @@ class LxQuickJsRuntime implements LxRuntime {
 
     _debug('📜 [LxQuickJsRuntime] 加载脚本...');
     _isScriptReady = false;
+    final context = _context;
+    if (context == null || context.disposed) return null;
 
     try {
       final scriptInfo = LxScriptParser.parse(scriptContent);
@@ -101,7 +141,7 @@ class LxQuickJsRuntime implements LxRuntime {
       _debug('   版本: ${scriptInfo.version}');
       _debug('   作者: ${scriptInfo.author}');
 
-      await _evaluate('globalThis.__lx_reset__();');
+      await _evaluate('globalThis.__lx_reset__();', context: context);
 
       final scriptBase64 = base64Encode(utf8.encode(scriptContent));
       final scriptInfoJson = jsonEncode({
@@ -113,9 +153,13 @@ class LxQuickJsRuntime implements LxRuntime {
         'scriptBase64': scriptBase64,
       });
 
-      await _evaluate('globalThis.__lx_setScriptInfo__($scriptInfoJson);');
+      await _evaluate(
+        'globalThis.__lx_setScriptInfo__($scriptInfoJson);',
+        context: context,
+      );
 
-      final wrappedScript = '''
+      final wrappedScript =
+          '''
         (function() {
           try {
             $scriptContent
@@ -125,10 +169,11 @@ class LxQuickJsRuntime implements LxRuntime {
         })();
       ''';
 
-      await _evaluate(wrappedScript);
+      await _evaluate(wrappedScript, context: context);
 
       final startTime = DateTime.now();
       while (!_isScriptReady) {
+        if (!identical(context, _context) || context.disposed) return null;
         await Future.delayed(const Duration(milliseconds: 100));
         if (DateTime.now().difference(startTime).inSeconds > 10) {
           _debug('⚠️ [LxQuickJsRuntime] 脚本初始化超时');
@@ -165,6 +210,22 @@ class LxQuickJsRuntime implements LxRuntime {
     required dynamic songId,
     required String quality,
     Map<String, dynamic>? musicInfo,
+  }) {
+    return _enqueueOperation(
+      () => _getMusicUrlInternal(
+        source: source,
+        songId: songId,
+        quality: quality,
+        musicInfo: musicInfo,
+      ),
+    );
+  }
+
+  Future<String?> _getMusicUrlInternal({
+    required String source,
+    required dynamic songId,
+    required String quality,
+    Map<String, dynamic>? musicInfo,
   }) async {
     _lastFailure = null;
     if (!_isInitialized || !_isScriptReady) {
@@ -178,30 +239,40 @@ class LxQuickJsRuntime implements LxRuntime {
 
     final requestKey =
         'req_${++_requestCounter}_${DateTime.now().millisecondsSinceEpoch}';
+    final context = _context;
+    if (context == null || context.disposed) {
+      _lastFailure = const LxRuntimeFailure(
+        kind: LxRuntimeFailureKind.notReady,
+        message: '洛雪音源运行时已被替换',
+      );
+      return null;
+    }
     final completer = Completer<String>();
-    _pendingRequests[requestKey] = completer;
+    _pendingRequests[requestKey] = _PendingLxRequest(context, completer);
 
     try {
-      final info = musicInfo ?? {
-        'songmid': songId.toString(),
-        'copyrightId': songId.toString(),
-        'hash': songId.toString(),
-      };
+      final info =
+          musicInfo ??
+          {
+            'songmid': songId.toString(),
+            'copyrightId': songId.toString(),
+            'hash': songId.toString(),
+          };
 
       final requestData = jsonEncode({
         'requestKey': requestKey,
         'source': source,
         'action': 'musicUrl',
-        'info': {
-          'musicInfo': info,
-          'type': quality,
-        },
+        'info': {'musicInfo': info, 'type': quality},
       });
 
       _debug('🎵 [LxQuickJsRuntime] 请求音乐 URL:');
       _debug('   source: $source, songId: $songId, quality: $quality');
 
-      await _evaluate('globalThis.__lx_sendRequest__($requestData);');
+      await _evaluate(
+        'globalThis.__lx_sendRequest__($requestData);',
+        context: context,
+      );
 
       final result = await completer.future.timeout(
         const Duration(seconds: 30),
@@ -221,15 +292,49 @@ class LxQuickJsRuntime implements LxRuntime {
     }
   }
 
-  @override
-  Future<void> dispose() async {
-    _runtime?.dispose();
+  /// QuickJS scripts are not required to be re-entrant. Serialize the whole
+  /// script operation, including its asynchronous HTTP round trip, so a
+  /// second request cannot overwrite script-level state used by the first.
+  Future<T> _enqueueOperation<T>(Future<T> Function() operation) {
+    final result = _operationQueue.then<T>((_) => operation());
+    _operationQueue = result.then<void>((_) {}, onError: (_, __) {});
+    return result;
+  }
+
+  Future<void> _resetRuntimeContext() async {
+    final oldContext = _context;
+    final oldRuntime = oldContext?.runtime ?? _runtime;
+    if (oldContext != null) oldContext.disposed = true;
     _runtime = null;
+    _context = null;
+    _runtimeGeneration++;
     _isInitialized = false;
     _isScriptReady = false;
     _currentScript = null;
     for (final entry in _pendingRequests.entries) {
-      final completer = entry.value;
+      if (!entry.value.completer.isCompleted) {
+        entry.value.completer.completeError(
+          StateError('LxRuntime script replaced'),
+        );
+      }
+    }
+    _pendingRequests.clear();
+    oldRuntime?.dispose();
+  }
+
+  @override
+  Future<void> dispose() async {
+    final context = _context;
+    if (context != null) context.disposed = true;
+    _runtime?.dispose();
+    _runtime = null;
+    _context = null;
+    _runtimeGeneration++;
+    _isInitialized = false;
+    _isScriptReady = false;
+    _currentScript = null;
+    for (final entry in _pendingRequests.entries) {
+      final completer = entry.value.completer;
       if (!completer.isCompleted) {
         completer.completeError(StateError('LxQuickJsRuntime disposed'));
       }
@@ -237,36 +342,51 @@ class LxQuickJsRuntime implements LxRuntime {
     _pendingRequests.clear();
   }
 
-  Future<void> _evaluate(String code) async {
-    if (_runtime == null) {
+  Future<void> _evaluate(
+    String code, {
+    required _LxRuntimeContext context,
+  }) async {
+    if (context.disposed || !identical(context, _context)) {
+      throw StateError('LxRuntime operation belongs to an obsolete context');
+    }
+    final runtime = context.runtime;
+    if (_runtime == null || !identical(runtime, _runtime)) {
       throw Exception('QuickJS runtime not initialized');
     }
     final completer = Completer<void>();
-    _evalQueue = _evalQueue.then((_) {
-      try {
-        final result = _runtime!.evaluate(code);
-        if (result.isError) {
-          throw Exception(result.stringResult);
-        }
-        // 执行 Promise microtask 队列
-        for (var i = 0; i < 3; i++) {
-          _runtime!.executePendingJob();
-        }
-        completer.complete();
-      } catch (e, st) {
-        if (!completer.isCompleted) {
-          completer.completeError(e, st);
-        }
-      }
-    }).catchError((e, st) {
-      if (!completer.isCompleted) {
-        completer.completeError(e, st);
-      }
-    });
+    _evalQueue = _evalQueue
+        .then((_) {
+          try {
+            if (context.disposed || !identical(context, _context)) {
+              throw StateError(
+                'LxRuntime operation belongs to an obsolete context',
+              );
+            }
+            final result = runtime.evaluate(code);
+            if (result.isError) {
+              throw Exception(result.stringResult);
+            }
+            // 执行 Promise microtask 队列
+            for (var i = 0; i < 3; i++) {
+              runtime.executePendingJob();
+            }
+            completer.complete();
+          } catch (e, st) {
+            if (!completer.isCompleted) {
+              completer.completeError(e, st);
+            }
+          }
+        })
+        .catchError((e, st) {
+          if (!completer.isCompleted) {
+            completer.completeError(e, st);
+          }
+        });
     return completer.future;
   }
 
-  void _handleBridgeMessage(dynamic args) {
+  void _handleBridgeMessage(_LxRuntimeContext context, dynamic args) {
+    if (context.disposed || !identical(context, _context)) return;
     final payload = _normalizePayload(args);
     if (payload == null) return;
 
@@ -285,10 +405,10 @@ class LxQuickJsRuntime implements LxRuntime {
         _handleInited(data);
         break;
       case 'lxRequest':
-        _handleRequest(data);
+        _handleRequest(context, data);
         break;
       case 'lxOnResponse':
-        _handleResponse(data);
+        _handleResponse(context, data);
         break;
       case 'lxOnError':
         _error('❌ [LxQuickJsRuntime] 脚本错误: $data');
@@ -323,8 +443,9 @@ class LxQuickJsRuntime implements LxRuntime {
     if (data is Map) {
       final sources = data['sources'];
       if (sources != null && sources is Map) {
-        _pendingSupportedSources =
-            sources.keys.map((k) => k.toString()).toList();
+        _pendingSupportedSources = sources.keys
+            .map((k) => k.toString())
+            .toList();
         _debug('   支持的音源: $_pendingSupportedSources');
 
         final allQualities = <String>{};
@@ -346,8 +467,9 @@ class LxQuickJsRuntime implements LxRuntime {
         });
 
         final qualityOrder = ['128k', '320k', 'flac', 'flac24bit'];
-        _pendingSupportedQualities =
-            qualityOrder.where((q) => allQualities.contains(q)).toList();
+        _pendingSupportedQualities = qualityOrder
+            .where((q) => allQualities.contains(q))
+            .toList();
 
         _debug('   支持的音质: $_pendingSupportedQualities');
         _debug('   各平台音质: $_pendingPlatformQualities');
@@ -361,7 +483,7 @@ class LxQuickJsRuntime implements LxRuntime {
     _isScriptReady = true;
   }
 
-  void _handleRequest(dynamic data) {
+  void _handleRequest(_LxRuntimeContext context, dynamic data) {
     if (data is! Map) return;
     final requestId = data['requestId']?.toString();
     final url = data['url']?.toString();
@@ -371,10 +493,11 @@ class LxQuickJsRuntime implements LxRuntime {
 
     if (requestId == null || url == null) return;
     _debug('🌐 [LxQuickJsRuntime] HTTP 请求: $url');
-    _executeHttpRequest(requestId, url, options);
+    _executeHttpRequest(context, requestId, url, options);
   }
 
-  void _handleResponse(dynamic data) {
+  void _handleResponse(_LxRuntimeContext context, dynamic data) {
+    if (context.disposed || !identical(context, _context)) return;
     if (data is! Map) return;
     final requestKey = data['requestKey']?.toString();
     if (requestKey == null || !_pendingRequests.containsKey(requestKey)) {
@@ -384,7 +507,9 @@ class LxQuickJsRuntime implements LxRuntime {
     final url = data['url']?.toString();
     final error = data['error']?.toString();
 
-    final completer = _pendingRequests[requestKey]!;
+    final pending = _pendingRequests[requestKey]!;
+    if (!identical(pending.context, context)) return;
+    final completer = pending.completer;
     if (success && url != null) {
       completer.complete(url);
     } else {
@@ -393,17 +518,20 @@ class LxQuickJsRuntime implements LxRuntime {
   }
 
   void _executeHttpRequest(
+    _LxRuntimeContext context,
     String requestId,
     String url,
     Map<String, dynamic> options,
   ) async {
+    if (context.disposed || !identical(context, _context)) return;
     try {
       final result = await LxHttpBridge.performHttpRequest(url, options);
       _debug('✅ [LxQuickJsRuntime] HTTP 请求成功，准备回调 JS');
       _debug('   requestId: $requestId');
       final bodyPreview = result['body']?.toString() ?? '';
-      final preview =
-          bodyPreview.length > 100 ? bodyPreview.substring(0, 100) : bodyPreview;
+      final preview = bodyPreview.length > 100
+          ? bodyPreview.substring(0, 100)
+          : bodyPreview;
       _debug('   body: $preview...');
 
       final responseData = jsonEncode({
@@ -420,7 +548,11 @@ class LxQuickJsRuntime implements LxRuntime {
 
       _debug('📤 [LxQuickJsRuntime] 调用 __lx_handleHttpResponse__');
       _debug('   responseData length: ${responseData.length}');
-      await _evaluate('globalThis.__lx_handleHttpResponse__($responseData);');
+      if (context.disposed || !identical(context, _context)) return;
+      await _evaluate(
+        'globalThis.__lx_handleHttpResponse__($responseData);',
+        context: context,
+      );
       _debug('✅ [LxQuickJsRuntime] __lx_handleHttpResponse__ 调用完成');
     } catch (e, st) {
       _error('❌ [LxQuickJsRuntime] HTTP 请求/回调失败: $e');
@@ -433,7 +565,11 @@ class LxQuickJsRuntime implements LxRuntime {
       });
 
       try {
-        await _evaluate('globalThis.__lx_handleHttpResponse__($errorData);');
+        if (context.disposed || !identical(context, _context)) return;
+        await _evaluate(
+          'globalThis.__lx_handleHttpResponse__($errorData);',
+          context: context,
+        );
       } catch (e2) {
         _error('❌ [LxQuickJsRuntime] 错误回调也失败: $e2');
       }

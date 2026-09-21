@@ -12,11 +12,13 @@ import '../services/playback_mode_service.dart';
 import '../models/track.dart';
 import '../utils/theme_manager.dart';
 import '../utils/image_utils.dart';
+import '../utils/dynamic_color_utils.dart';
 import 'track_action_menu.dart';
 
 /// 迷你播放器组件（底部播放栏）
 class MiniPlayer extends StatefulWidget {
-  const MiniPlayer({super.key});
+  final bool transparent;
+  const MiniPlayer({super.key, this.transparent = false});
 
   @override
   State<MiniPlayer> createState() => _MiniPlayerState();
@@ -27,6 +29,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
   double? _seekRatio;         // 拖拽时的临时进度比例
   DateTime? _lastSeekGestureAt;
   int? _activeSeekPointer;
+  static bool _showRemainingTime = true; // 默认显示剩余时间（可点击切换总时长/剩余时间）
 
   bool get _isCupertino => ThemeManager().isCupertinoFramework;
 
@@ -72,7 +75,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
             child: Icon(
               player.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
               size: playIconSize,
-              color: CupertinoColors.activeBlue,
+              color: DynamicColorUtils.resolveAccent(
+                player.themeColorNotifier.value,
+                Theme.of(context).colorScheme,
+                isDark: isDark,
+              ),
             ),
           ),
         if (!hideSkip)
@@ -332,49 +339,61 @@ class _MiniPlayerState extends State<MiniPlayer> {
     required ColorScheme colorScheme,
     required bool isCompactWidth,
   }) {
-    final backgroundColor = colorScheme.surfaceContainerHighest;
-    final progressBarTrackColor = colorScheme.surfaceContainerHighest;
-    final progressBarActiveColor = colorScheme.primary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dynamicAccent = DynamicColorUtils.resolveAccent(
+      player.themeColorNotifier.value,
+      colorScheme,
+      isDark: isDark,
+    );
+    final dynamicAmbient = DynamicColorUtils.resolveAmbient(
+      player.themeColorNotifier.value,
+      colorScheme,
+      isDark: isDark,
+    );
+    final progressBarActiveColor = dynamicAccent;
     final bool useAlignedLayout = !isCompactWidth;
 
     if (!useAlignedLayout) {
-      return Container(
-        key: const ValueKey('mini_expanded'),
-        height: 64,
-        margin: EdgeInsets.zero,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(color: backgroundColor),
-        child: Column(
-          children: [
-            // Top-aligned full-width progress bar with expanded touch target
-            _buildSeekableProgressBar(
-              player: player,
-              hitHeight: 20,
-              child: SizedBox(
-                width: double.infinity,
-                child: ValueListenableBuilder<Duration>(
-                  valueListenable: player.positionNotifier,
-                  builder: (context, position, child) {
-                    final progress = _seekRatio ??
-                        (player.duration.inMilliseconds > 0
-                            ? position.inMilliseconds /
-                                player.duration.inMilliseconds
-                            : 0.0);
-                    return LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 2,
-                      backgroundColor: progressBarTrackColor,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        progressBarActiveColor,
-                      ),
-                    );
-                  },
+      final decoration = widget.transparent
+          ? const BoxDecoration(color: Colors.transparent)
+          : BoxDecoration(
+              color: colorScheme.surface.withValues(alpha: isDark ? 0.88 : 0.96),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  colorScheme.surface.withValues(alpha: isDark ? 0.92 : 0.97),
+                  dynamicAmbient.withValues(alpha: isDark ? 0.16 : 0.08),
+                  colorScheme.surface.withValues(alpha: isDark ? 0.88 : 0.94),
+                ],
+              ),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+              border: Border(
+                top: BorderSide(
+                  color: dynamicAccent.withValues(alpha: isDark ? 0.28 : 0.35),
+                  width: 1,
                 ),
               ),
-            ),
+            );
+
+      return Container(
+        key: const ValueKey('mini_expanded'),
+        height: 66,
+        margin: EdgeInsets.zero,
+        clipBehavior: Clip.antiAlias,
+        decoration: decoration,
+        child: Column(
+          children: [
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.fromLTRB(16, 5, 12, 0),
                 child: Row(
                   children: [
                     _buildCover(song, track, colorScheme, size: 40),
@@ -386,15 +405,89 @@ class _MiniPlayerState extends State<MiniPlayer> {
                       player,
                       context,
                       colorScheme,
-                      hideSkip: false,
+                      hideSkip: true,
                       compact: true,
                     ),
-                    const SizedBox(width: 6),
-                    _buildPlaybackModeButton(context, colorScheme, compact: true),
+                    IconButton(
+                      icon: Icon(
+                        Icons.skip_next_rounded,
+                        color: player.hasNext ? colorScheme.onSurface : colorScheme.onSurface.withValues(alpha: 0.4),
+                        size: 24,
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                      onPressed: player.hasNext ? () => player.playNext() : null,
+                      tooltip: '下一首',
+                    ),
                     const SizedBox(width: 2),
                     _buildQueueButton(context, colorScheme, compact: true),
                   ],
                 ),
+              ),
+            ),
+            // Middle divider progress line with total duration on the far right
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: AnimatedBuilder(
+                animation: Listenable.merge([player.positionNotifier, player]),
+                builder: (context, _) {
+                  final position = player.positionNotifier.value;
+                  // Authoritative duration, with fallback to lyric timestamps
+                  Duration duration = player.duration;
+                  if (duration.inSeconds <= 0 && player.lyricSnapshot != null && player.lyricSnapshot!.lines.isNotEmpty) {
+                    final lastLine = player.lyricSnapshot!.lines.last;
+                    duration = lastLine.startTime + (lastLine.lineDuration ?? const Duration(seconds: 4));
+                  }
+                  final progress = _seekRatio ??
+                      (duration.inMilliseconds > 0
+                          ? (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0)
+                          : 0.0);
+                  // 计算剩余时间与总时长（默认显示倒计时剩余时间，点击可在剩余时间与总时长间切换）
+                  final remaining = duration > position ? duration - position : Duration.zero;
+                  final String durationStr = duration.inSeconds > 0
+                      ? (_showRemainingTime ? '-${_formatDuration(remaining)}' : _formatDuration(duration))
+                      : '--:--';
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _buildSeekableProgressBar(
+                          player: player,
+                          hitHeight: 12,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(1.5),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 2.5,
+                              backgroundColor: colorScheme.onSurface.withValues(alpha: 0.08),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                progressBarActiveColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          setState(() {
+                            _showRemainingTime = !_showRemainingTime;
+                          });
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 10),
+                          child: Text(
+                            durationStr,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: dynamicAccent,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -407,7 +500,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       constraints: const BoxConstraints(minHeight: 80),
-      decoration: BoxDecoration(color: backgroundColor),
+      decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
@@ -1171,7 +1264,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
       );
     }
 
-    // Material Design 主题保持原样
+    // Material Design 主题
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1179,19 +1272,49 @@ class _MiniPlayerState extends State<MiniPlayer> {
         Text(
           name,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 2),
-        Text(
-          artist,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 0.5),
+              margin: const EdgeInsets.only(right: 5),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(3),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.28),
+                  width: 0.6,
+                ),
+              ),
+              child: Text(
+                'SQ',
+                style: TextStyle(
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w800,
+                  color: Theme.of(context).colorScheme.primary,
+                  height: 1.1,
+                ),
+              ),
+            ),
+            Flexible(
+              child: Text(
+                artist,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -1240,7 +1363,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
     final double playIconSize = compact ? 20 : 24;
     final double skipButtonSize = compact ? 32 : 40;
     final double playButtonSize = compact ? 36 : 44;
-    final activeColor = colorScheme.primary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeColor = DynamicColorUtils.resolveAccent(
+      player.themeColorNotifier.value,
+      colorScheme,
+      isDark: isDark,
+    );
     final iconColor = colorScheme.onSurface;
 
     return Row(
@@ -1286,8 +1414,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
                ]
              ),
              child: IconButton(
-                icon: Icon(player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
-                color: Colors.white,
+                 icon: Icon(player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                 color: ThemeData.estimateBrightnessForColor(activeColor) == Brightness.dark
+                     ? Colors.white
+                     : const Color(0xFF0F172A),
                 iconSize: playIconSize,
                 padding: EdgeInsets.zero,
                 constraints: BoxConstraints.tightFor(
@@ -2319,9 +2449,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                             final coverProvider = PlaylistQueueService().getCoverProvider(t);
                                             PlayerService().playTrack(t, coverProvider: coverProvider);
                                             Navigator.pop(context);
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('正在播放: ${t.name}'), duration: const Duration(seconds: 1)),
-                                            );
+                                            // snackbar removed
                                           },
                                         );
 
@@ -2406,9 +2534,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                             final coverProvider = PlaylistQueueService().getCoverProvider(t);
                                             PlayerService().playTrack(t, coverProvider: coverProvider);
                                             Navigator.pop(context);
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('正在播放: ${t.name}'), duration: const Duration(seconds: 1)),
-                                            );
+                                            // snackbar removed
                                           },
                                         );
                                       },

@@ -79,35 +79,36 @@ class ChartsTab extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 0. Expressive Page Title
-            Padding(
-              padding: const EdgeInsets.only(top: 16, bottom: 40),
-              child: Text(
-                '音乐榜单',
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -1.0,
-                  color: Theme.of(context).colorScheme.onSurface,
+            // 0. Expressive Page Title (仅宽屏桌面展示，移动端避免与顶部AppBar大标题层叠)
+            if (isWide)
+              Padding(
+                padding: const EdgeInsets.only(top: 16, bottom: 40),
+                child: Text(
+                  '音乐榜单',
+                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1.0,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
               ),
-            ),
 
             // 1. 顶部 BENTO GRID
             Padding(
-              padding: const EdgeInsets.only(bottom: 56),
+              padding: const EdgeInsets.only(bottom: 40),
               child: _buildFeaturedSection(context, constraints),
             ),
 
             // 2. 历史与推荐 (Quick Access)
             Padding(
-              padding: const EdgeInsets.only(bottom: 56),
+              padding: const EdgeInsets.only(bottom: 48),
               child: _buildQuickAccessSection(context, isWide),
             ),
 
             // 3. 榜单列表 (更具表现力的间距)
             ...MusicService().toplists.map((toplist) {
               return Padding(
-                padding: const EdgeInsets.only(bottom: 64.0),
+                padding: const EdgeInsets.only(bottom: 48.0),
                 child: _ToplistSection(
                   toplist: toplist,
                   checkLoginStatus: checkLoginStatus,
@@ -115,7 +116,7 @@ class ChartsTab extends StatelessWidget {
               );
             }),
             
-             SizedBox(height: MediaQuery.of(context).padding.bottom + 80),
+             SizedBox(height: MediaQuery.of(context).padding.bottom + 100),
           ],
         );
       },
@@ -170,33 +171,23 @@ class ChartsTab extends StatelessWidget {
       );
     } 
     
-    // 窄屏布局
+    // 窄屏/移动端布局：使用平滑 Peek 轮播图，避免封面被压缩变形
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 24.0),
+          padding: const EdgeInsets.only(bottom: 16.0),
           child: Text(
             '今日推荐',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w800,
               letterSpacing: -0.5,
             ),
           ),
         ),
-        SizedBox(
-          height: 240,
-          child: CarouselView.weighted(
-            flexWeights: const [7, 2, 1], // 强制比例：一大(70%), 一中(20%), 一小(10%)
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            children: cachedRandomTracks.map((track) {
-              return _FeaturedCard(
-                track: track,
-                checkLoginStatus: checkLoginStatus,
-                showDetails: true,
-              );
-            }).toList(),
-          ),
+        _MobileFeaturedCarousel(
+          tracks: cachedRandomTracks,
+          checkLoginStatus: checkLoginStatus,
         ),
       ],
     );
@@ -227,6 +218,91 @@ class ChartsTab extends StatelessWidget {
         ],
       );
     }
+  }
+}
+
+/// 移动端平滑 Peek 轮播组件（主卡片 88% 宽度，下一张边缘自然窥探，防止比例变形）
+class _MobileFeaturedCarousel extends StatefulWidget {
+  final List<Track> tracks;
+  final Future<void> Function() checkLoginStatus;
+
+  const _MobileFeaturedCarousel({
+    required this.tracks,
+    required this.checkLoginStatus,
+  });
+
+  @override
+  State<_MobileFeaturedCarousel> createState() => _MobileFeaturedCarouselState();
+}
+
+class _MobileFeaturedCarouselState extends State<_MobileFeaturedCarousel> {
+  late final PageController _controller;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController(viewportFraction: 0.88);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final trackCount = widget.tracks.length;
+    if (trackCount == 0) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 205,
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: trackCount,
+            onPageChanged: (i) => setState(() => _currentIndex = i),
+            itemBuilder: (context, index) {
+              final track = widget.tracks[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                child: _FeaturedCard(
+                  track: track,
+                  checkLoginStatus: widget.checkLoginStatus,
+                  showDetails: true,
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
+        // 优雅的胶囊指示器
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            trackCount.clamp(0, 6),
+            (i) {
+              final isSelected = i == (_currentIndex % trackCount.clamp(1, 6));
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeOutCubic,
+                margin: const EdgeInsets.symmetric(horizontal: 2.5),
+                width: isSelected ? 16 : 5,
+                height: 4.5,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.onSurface.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }
 

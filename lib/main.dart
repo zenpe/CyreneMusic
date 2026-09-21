@@ -39,6 +39,7 @@ import 'package:cyrene_music/services/mini_player_window_service.dart';
 import 'package:cyrene_music/services/local_library_service.dart';
 import 'package:cyrene_music/pages/mini_player_window_page.dart';
 import 'package:cyrene_music/utils/theme_manager.dart';
+import 'package:cyrene_music/utils/toast_utils.dart';
 import 'package:cyrene_music/services/startup_logger.dart';
 import 'package:cyrene_music/widgets/playback_problem_dialog.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
@@ -481,9 +482,13 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _setupPlaybackFailureCallback() {
-    // 普通播放失败由播放器内嵌错误条承载。只有音源未配置这种阻塞性
-    // 问题才需要全局配置引导，避免 banner 与弹窗重复打扰用户。
-    PlayerService().onPlaybackFailure = null;
+    // 播放器页面会显示内嵌错误条；列表页、歌单页等没有播放器错误条，
+    // 因此普通最终失败需要通过一次 Toast 反馈给用户。重试过程不会调用
+    // 此回调，只有最终失败才会到这里。
+    PlayerService().onPlaybackFailure = (problem) {
+      if (problem.kind == PlaybackProblemKind.sourceNotConfigured) return;
+      ToastUtils.error('${problem.message}\n《${problem.track.name}》');
+    };
     final currentProblem = PlayerService().currentProblem;
     if (_shouldPresentPlaybackDialog(currentProblem)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {

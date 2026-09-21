@@ -643,15 +643,6 @@ extension _SearchWidgetShared on _SearchWidgetState {
       PlayerService().setCurrentCoverImageProvider(provider);
     }
     PlayerService().playTrack(track, coverProvider: provider);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('正在播放: ${track.name}'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    }
   }
 
   // ─── Song results (merged mode) ───────────────────────────────────
@@ -1107,15 +1098,6 @@ extension _SearchWidgetShared on _SearchWidgetState {
       PlayerService().setCurrentCoverImageProvider(provider);
     }
     PlayerService().playTrack(bestTrack, coverProvider: provider);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('正在播放: ${mergedTrack.name}'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    }
   }
 
   // ─── Platform selector (long press) ────────────────────────────────
@@ -1164,12 +1146,6 @@ extension _SearchWidgetShared on _SearchWidgetState {
                       } else {
                         PlayerService().playTrack(track);
                       }
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('正在播放: ${track.name}'),
-                          duration: const Duration(seconds: 1),
-                        ),
-                      );
                     }
                   },
                 ),
@@ -1230,12 +1206,6 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     } else {
                       PlayerService().playTrack(track);
                     }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('正在播放: ${track.name}'),
-                        duration: const Duration(seconds: 1),
-                      ),
-                    );
                   }
                 },
               ),

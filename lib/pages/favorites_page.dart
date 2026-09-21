@@ -317,15 +317,6 @@ class _FavoritesPageState extends State<FavoritesPage>
 
     // 播放选中的歌曲
     PlayerService().playTrack(trackList[index]);
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('正在播放: ${favorites[index].name}'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    }
   }
 
   /// 获取音乐平台图标

@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/cupertino.dart';
 import '../features/auth/auth_feature.dart';
 import '../services/netease_discover_service.dart';
+import '../services/player_service.dart';
 import '../models/netease_discover.dart';
 import '../utils/image_utils.dart';
 import '../utils/theme_manager.dart';
@@ -495,68 +497,111 @@ class _DiscoverPageState extends State<DiscoverPage> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: isExpressive
-          ? colorScheme.surfaceContainerLow
-          : colorScheme.surface,
-      body: RefreshIndicator(
-        onRefresh: () async {
-          final currentCat = NeteaseDiscoverService().currentCat;
-          await NeteaseDiscoverService().fetchDiscoverPlaylists(
-            cat: currentCat,
-          );
-        },
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          slivers: [
-            SliverAppBar(
-              pinned: true,
-              expandedHeight: isExpressive ? 140 : null,
-              collapsedHeight: isExpressive ? 72 : null,
-              backgroundColor: isExpressive
-                  ? colorScheme.surfaceContainerLow
-                  : colorScheme.surface,
-              surfaceTintColor: isExpressive
-                  ? colorScheme.surfaceContainerLow
-                  : colorScheme.surface,
-              flexibleSpace: FlexibleSpaceBar(
-                titlePadding: EdgeInsets.only(
-                  left: isExpressive ? 24 : 16,
-                  bottom: isExpressive ? 16 : 16,
-                ),
-                title: _buildMaterialTitle(colorScheme, isExpressive),
-                centerTitle: false,
-              ),
-            ),
-            SliverPadding(
-              padding: EdgeInsets.all(isExpressive ? 16.0 : 24.0),
-              sliver: SliverToBoxAdapter(
-                child: _buildMaterialContent(service, isExpressive),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgBase = isDark ? const Color(0xFF0F0F13) : const Color(0xFFF7F8FA);
 
-  Widget _buildMaterialTitle(ColorScheme colorScheme, bool isExpressive) {
-    return Text(
-      '发现',
-      style: TextStyle(
-        color: colorScheme.onSurface,
-        fontSize: isExpressive ? 28 : 24,
-        fontWeight: FontWeight.w900,
-        letterSpacing: isExpressive ? -1 : 0,
-      ),
+    return ValueListenableBuilder<Color?>(
+      valueListenable: PlayerService().themeColorNotifier,
+      builder: (context, themeColor, child) {
+        final accent = themeColor ?? colorScheme.primary;
+
+        return Scaffold(
+          backgroundColor: bgBase,
+          body: Stack(
+            children: [
+              // 顶部流体微光背景 (与全站统一的 Apple Music 动态氛围光)
+              Positioned(
+                top: -60,
+                left: 0,
+                right: 0,
+                height: 320,
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: const Alignment(0.0, -0.6),
+                        radius: 1.25,
+                        colors: [
+                          accent.withOpacity(isDark ? 0.22 : 0.16),
+                          accent.withOpacity(isDark ? 0.08 : 0.05),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.55, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              RefreshIndicator(
+                onRefresh: () async {
+                  final currentCat = NeteaseDiscoverService().currentCat;
+                  await NeteaseDiscoverService().fetchDiscoverPlaylists(
+                    cat: currentCat,
+                  );
+                },
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  slivers: [
+                    SliverAppBar(
+                      pinned: true,
+                      backgroundColor: Colors.transparent,
+                      surfaceTintColor: Colors.transparent,
+                      elevation: 0,
+                      scrolledUnderElevation: 0,
+                      flexibleSpace: ClipRect(
+                        child: BackdropFilter(
+                          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                          child: Container(
+                            color: bgBase.withOpacity(0.72),
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        '发现',
+                        style: TextStyle(
+                          color: colorScheme.onSurface,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      actions: [
+                        IconButton(
+                          icon: const Icon(Icons.refresh_rounded),
+                          tooltip: '刷新',
+                          onPressed: () {
+                            final currentCat = NeteaseDiscoverService().currentCat;
+                            NeteaseDiscoverService().fetchDiscoverPlaylists(
+                              cat: currentCat,
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16.0,
+                        vertical: 8.0,
+                      ),
+                      sliver: SliverToBoxAdapter(
+                        child: _buildMaterialContent(service, isExpressive, accent),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
   Widget _buildMaterialContent(
     NeteaseDiscoverService service,
     bool isExpressive,
+    Color accent,
   ) {
     final items = service.playlists;
     final hasItems = items.isNotEmpty;
@@ -675,17 +720,16 @@ class _DiscoverPageState extends State<DiscoverPage> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildMaterialTagSelector(service, isExpressive),
+                _buildMaterialTagSelector(service, accent),
                 const SizedBox(height: 16),
                 GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: crossAxisCount,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    // 调整纵横比，由 0.72 减至 0.7，为卡片文本区提供更多空间
-                    childAspectRatio: isExpressive ? 0.7 : 0.72,
+                    mainAxisSpacing: 18,
+                    crossAxisSpacing: 14,
+                    childAspectRatio: 0.72,
                   ),
                   itemCount: items.length,
                   itemBuilder: (context, index) => _MaterialPlaylistCard(
@@ -699,6 +743,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     },
                   ),
                 ),
+                const SizedBox(height: 120), // 彻底避让悬浮 MiniPlayer
               ],
             );
           },
@@ -709,24 +754,25 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
   Widget _buildMaterialTagSelector(
     NeteaseDiscoverService service,
-    bool isExpressive,
+    Color accent,
   ) {
     final current = service.currentCat;
     final label = current.isEmpty ? '全部歌单' : current;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    if (isExpressive) {
-      return InkWell(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         onTap: () => _showMaterialTagDialog(service),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(16),
+            color: accent.withOpacity(isDark ? 0.16 : 0.08),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: Theme.of(
-                context,
-              ).colorScheme.outlineVariant.withOpacity(0.5),
+              color: accent.withOpacity(isDark ? 0.35 : 0.2),
+              width: 1,
             ),
           ),
           child: Row(
@@ -734,83 +780,291 @@ class _DiscoverPageState extends State<DiscoverPage> {
             children: [
               Icon(
                 Icons.tune_rounded,
-                size: 18,
-                color: Theme.of(context).colorScheme.primary,
+                size: 16,
+                color: accent,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
+                  color: isDark ? Colors.white : const Color(0xFF1E293B),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13.5,
                 ),
               ),
               const SizedBox(width: 4),
               Icon(
                 Icons.keyboard_arrow_down_rounded,
                 size: 18,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                color: accent.withOpacity(0.8),
               ),
             ],
           ),
         ),
-      );
-    }
-
-    return ChoiceChip(
-      label: Text(label),
-      selected: true,
-      onSelected: (_) => _showMaterialTagDialog(service),
+      ),
     );
   }
 
+  static const Map<int, String> _tagCategoryNames = {
+    0: '语种',
+    1: '风格',
+    2: '场景',
+    3: '情感',
+    4: '主题',
+  };
+
   void _showMaterialTagDialog(NeteaseDiscoverService service) {
     final tags = service.tags;
-    final allLabel = '全部歌单';
-    showDialog(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    final themeColor = PlayerService().themeColorNotifier.value ?? colorScheme.primary;
+
+    // 按分类归类
+    final Map<int, List<NeteaseTag>> groupedTags = {};
+    for (final tag in tags) {
+      groupedTags.putIfAbsent(tag.category, () => []).add(tag);
+    }
+
+    showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withOpacity(0.45),
+      isScrollControlled: true,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('选择歌单类型'),
-          content: SingleChildScrollView(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ChoiceChip(
-                  label: const Text('全部歌单'),
-                  selected: service.currentCat == allLabel,
-                  onSelected: (_) {
-                    Navigator.of(context).pop();
-                    NeteaseDiscoverService().fetchDiscoverPlaylists(
-                      cat: allLabel,
-                    );
-                  },
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: BackdropFilter(
+            filter: ui.ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+            child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.75,
+              ),
+              decoration: BoxDecoration(
+                color: (isDark ? const Color(0xFF16161A) : Colors.white).withOpacity(
+                  isDark ? 0.88 : 0.94,
                 ),
-                ...tags.map(
-                  (t) => ChoiceChip(
-                    label: Text(t.name),
-                    selected: service.currentCat == t.name,
-                    onSelected: (_) {
-                      Navigator.of(context).pop();
-                      NeteaseDiscoverService().fetchDiscoverPlaylists(
-                        cat: t.name,
-                      );
-                    },
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                border: Border(
+                  top: BorderSide(
+                    color: (isDark ? Colors.white : Colors.black).withOpacity(0.08),
+                    width: 0.8,
                   ),
                 ),
-              ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 10),
+                  // 顶部抽屉拖动手柄
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4.5,
+                      decoration: BoxDecoration(
+                        color: (isDark ? Colors.white : Colors.black).withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+                  // 顶部标题栏
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(22, 12, 16, 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '歌单分类',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.3,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '当前：${service.currentCat.isEmpty ? '全部歌单' : service.currentCat}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                              ),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 20,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, thickness: 0.5),
+                  // 可滚动分类列表
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 全部歌单快捷按钮
+                          _buildFilterChip(
+                            label: '全部歌单',
+                            icon: Icons.all_inclusive_rounded,
+                            isSelected: service.currentCat.isEmpty || service.currentCat == '全部歌单',
+                            onSelected: () {
+                              Navigator.of(context).pop();
+                              NeteaseDiscoverService().fetchDiscoverPlaylists(cat: '全部歌单');
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          if (groupedTags.isNotEmpty) ...[
+                            for (final entry in groupedTags.entries) ...[
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8, bottom: 10),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 3.5,
+                                      height: 14,
+                                      decoration: BoxDecoration(
+                                        color: themeColor,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _tagCategoryNames[entry.key] ?? '分类 ${entry.key}',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 10,
+                                children: entry.value.map((t) => _buildFilterChip(
+                                  label: t.name,
+                                  isSelected: service.currentCat == t.name,
+                                  onSelected: () {
+                                    Navigator.of(context).pop();
+                                    NeteaseDiscoverService().fetchDiscoverPlaylists(cat: t.name);
+                                  },
+                                )).toList(),
+                              ),
+                              const SizedBox(height: 14),
+                            ],
+                          ] else ...[
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 10,
+                              children: tags.map((t) => _buildFilterChip(
+                                label: t.name,
+                                isSelected: service.currentCat == t.name,
+                                onSelected: () {
+                                  Navigator.of(context).pop();
+                                  NeteaseDiscoverService().fetchDiscoverPlaylists(cat: t.name);
+                                },
+                              )).toList(),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('关闭'),
-            ),
-          ],
         );
       },
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onSelected,
+    IconData? icon,
+  }) {
+    final themeColor = PlayerService().themeColorNotifier.value ?? Theme.of(context).colorScheme.primary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onSelected,
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? themeColor
+                : (isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.04)),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected
+                  ? themeColor
+                  : (isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06)),
+              width: 0.8,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: themeColor.withOpacity(0.35),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(
+                  icon,
+                  size: 14,
+                  color: isSelected
+                      ? Colors.white
+                      : (isDark ? Colors.white70 : const Color(0xFF334155)),
+                ),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected
+                      ? Colors.white
+                      : (isDark ? Colors.white.withOpacity(0.85) : const Color(0xFF334155)),
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1204,56 +1458,69 @@ class _MaterialPlaylistCard extends StatelessWidget {
   final NeteasePlaylistSummary summary;
   final bool isExpressive;
   final void Function(int id, String name)? onOpen;
+
   const _MaterialPlaylistCard({
     required this.summary,
     this.isExpressive = false,
     this.onOpen,
   });
 
+  String _formatPlayCount(int count) {
+    if (count > 100000000) {
+      return '${(count / 100000000).toStringAsFixed(1)}亿';
+    }
+    if (count > 10000) {
+      return '${(count / 10000).toStringAsFixed(1)}万';
+    }
+    return count.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    if (isExpressive) {
-      return Container(
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(
-                Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.05,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          if (onOpen != null) {
+            onOpen!(summary.id, summary.name);
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    DiscoverPlaylistDetailPage(playlistId: summary.id),
               ),
-              blurRadius: 15,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(24),
-          child: InkWell(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      DiscoverPlaylistDetailPage(playlistId: summary.id),
+            );
+          }
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 封面图片 (Apple Music 风格：纯粹大圆角 + 自然阴影 + 右上角微型半透明播放量角标)
+            AspectRatio(
+              aspectRatio: 1,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.35 : 0.08),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-              );
-            },
-            borderRadius: BorderRadius.circular(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AspectRatio(
-                  aspectRatio: 1,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Hero(
-                      tag: 'playlist_cover_${summary.id}',
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Hero(
+                        tag: 'playlist_cover_${summary.id}',
                         child: CachedNetworkImage(
                           imageUrl: summary.coverImgUrl,
                           httpHeaders: getImageHeaders(summary.coverImgUrl),
@@ -1272,145 +1539,66 @@ class _MaterialPlaylistCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      0,
-                      16,
-                      isExpressive ? 8 : 12,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          summary.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: colorScheme.onSurface,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.2,
+                      // 播放量胶囊
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.55),
+                            borderRadius: BorderRadius.circular(6),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'by ${summary.creatorNickname}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: colorScheme.onSurfaceVariant.withOpacity(
-                              0.7,
-                            ),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.play_circle_outline_rounded,
-                              size: 12,
-                              color: colorScheme.primary.withOpacity(0.7),
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                '${summary.playCount} 播放',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: colorScheme.primary.withOpacity(0.7),
-                                  fontSize: 11,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 12,
+                              ),
+                              const SizedBox(width: 2),
+                              Text(
+                                _formatPlayCount(summary.playCount),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () async {
-          if (onOpen != null) onOpen!(summary.id, summary.name);
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AspectRatio(
-              aspectRatio: 1,
-              child: CachedNetworkImage(
-                imageUrl: summary.coverImgUrl,
-                httpHeaders: getImageHeaders(summary.coverImgUrl),
-                fit: BoxFit.cover,
-                memCacheWidth: 280,
-                memCacheHeight: 280,
-                placeholder: (context, url) =>
-                    Container(color: colorScheme.surfaceContainerHighest),
-                errorWidget: (context, url, error) => Container(
-                  color: colorScheme.surfaceContainerHighest,
-                  child: Icon(
-                    Icons.image_not_supported,
-                    color: colorScheme.onSurfaceVariant,
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(10.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      summary.name,
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'by ${summary.creatorNickname}',
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${summary.trackCount} 首 · 播放 ${summary.playCount}',
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
+            const SizedBox(height: 8),
+            // 歌单标题 (2行自适应截断)
+            Text(
+              summary.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colorScheme.onSurface,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+                letterSpacing: -0.1,
+              ),
+            ),
+            const SizedBox(height: 3),
+            // 创建者
+            Text(
+              'by ${summary.creatorNickname}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],

@@ -209,7 +209,6 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                         },
                         onPlay: () {
                           PlayerService().playTrack(history[index].toTrack());
-                          _showFluentInfo('正在播放: ${history[index].name}');
                         },
                       ),
                     ),
@@ -884,12 +883,6 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
           track: item.toTrack(),
           onPlay: () {
             PlayerService().playTrack(item.toTrack());
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('正在播放: ${item.name}'),
-                duration: const Duration(seconds: 1),
-              ),
-            );
           },
           onDelete: () {
             _historyService.removeHistoryItem(item);

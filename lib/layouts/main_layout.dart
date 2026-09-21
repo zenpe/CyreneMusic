@@ -30,6 +30,7 @@ import '../services/experience_profile_service.dart';
 import '../pages/mobile_setup_page.dart';
 import '../widgets/global_watermark.dart';
 import '../widgets/fixed_navigation_dock.dart';
+import '../utils/dynamic_color_utils.dart';
 
 /// 主布局 - 包含侧边导航栏和内容区域
 class MainLayout extends StatefulWidget {
@@ -597,22 +598,23 @@ class _MainLayoutState extends State<MainLayout>
                       ],
                     ),
                   ),
-                  // 悬浮迷你播放器（不占用布局空间）
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: isCupertinoUI ? 80 : 0, // Cupertino 模式下给悬浮 Tab 栏留空间
-                    child: AnimatedBuilder(
-                      animation: PlayerService(),
-                      builder: (context, child) {
-                        final hasMiniPlayer =
-                            PlayerService().currentTrack != null ||
-                            PlayerService().currentSong != null;
-                        if (!hasMiniPlayer) return const SizedBox.shrink();
-                        return const MiniPlayer();
-                      },
+                  // 横屏布局没有使用 bottomNavigationBar，迷你播放器需要单独悬浮在内容底部。
+                  if (isCupertinoUI || isLandscape)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: isCupertinoUI ? 80 : 0,
+                      child: AnimatedBuilder(
+                        animation: PlayerService(),
+                        builder: (context, child) {
+                          final hasMiniPlayer =
+                              PlayerService().currentTrack != null ||
+                              PlayerService().currentSong != null;
+                          if (!hasMiniPlayer) return const SizedBox.shrink();
+                          return const MiniPlayer();
+                        },
+                      ),
                     ),
-                  ),
                   // iOS 26 悬浮液态玻璃 Tab 栏
                   if (isCupertinoUI)
                     Positioned(
@@ -1002,42 +1004,6 @@ class _MainLayoutState extends State<MainLayout>
 
     final bool isLandscape = orientation == Orientation.landscape;
     final int myIndex = _pages.indexWhere((w) => w is MyPage);
-    // Build destinations: core tabs + more
-    final List<NavigationDestination> destinations = isLocalMode
-        ? [
-            const NavigationDestination(
-              icon: Icon(Icons.folder_open_outlined),
-              selectedIcon: Icon(Icons.folder_open),
-              label: '本地',
-            ),
-            const NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
-              label: '设置',
-            ),
-          ]
-        : [
-            const NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
-              label: '首页',
-            ),
-            const NavigationDestination(
-              icon: Icon(Icons.explore_outlined),
-              selectedIcon: Icon(Icons.explore),
-              label: '发现',
-            ),
-            const NavigationDestination(
-              icon: Icon(Icons.person_outlined),
-              selectedIcon: Icon(Icons.person),
-              label: '我的',
-            ),
-            const NavigationDestination(
-              icon: Icon(Icons.more_horiz),
-              selectedIcon: Icon(Icons.more_horiz),
-              label: '更多',
-            ),
-          ];
 
     int navSelectedIndex() {
       final isLocalMode = PersistentStorageService().enableLocalMode;
@@ -1046,46 +1012,79 @@ class _MainLayoutState extends State<MainLayout>
       if (_selectedIndex == 0) return 0; // 首页
       if (_selectedIndex == 1) return 1; // 发现
       if (_selectedIndex == myIndex) return 2; // 我的
-      return destinations.length - 1; // 更多
+      if (_selectedIndex == _settingsIndex) return 3; // 设置
+      return 2;
     }
 
-    final baseNav = NavigationBar(
-      selectedIndex: navSelectedIndex(),
-      onDestinationSelected: (int tabIndex) async {
-        final isLocalMode = PersistentStorageService().enableLocalMode;
-        print(
-          '🖱️ [MainLayout] NavigationBar tab selected: $tabIndex (LocalMode: $isLocalMode)',
-        );
+    final selectedIdx = navSelectedIndex();
+    final tabTitles = isLocalMode
+        ? const ['本地', '设置']
+        : const ['首页', '发现', '我的', '设置'];
 
-        int targetIndex = tabIndex;
-        if (!isLocalMode) {
-          final int moreTab = destinations.length - 1;
-          if (tabIndex == moreTab) {
-            print('📑 [MainLayout] Opening "More" bottom sheet');
-            await _openMoreBottomSheet(context);
-            return;
-          }
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-          // 修复索引映射：从标签索引映射回真实的页面索引
-          if (tabIndex == 0) {
-            targetIndex = 0;
-          } else if (tabIndex == 1) {
-            targetIndex = 1;
-          } else if (tabIndex == 2) {
-            targetIndex = myIndex;
-          }
-        }
+    final baseNav = SizedBox(
+      height: 48.0,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: List.generate(tabTitles.length, (tabIndex) {
+            final isSelected = selectedIdx == tabIndex;
+            final title = tabTitles[tabIndex];
+            return Expanded(
+              child: InkWell(
+                onTap: () async {
+                  final isLocalMode = PersistentStorageService().enableLocalMode;
+                  print(
+                    '🖱️ [MainLayout] Navigation tab selected: $tabIndex (LocalMode: $isLocalMode)',
+                  );
 
-        setState(() {
-          _selectedIndex = targetIndex;
-          print('🔄 [MainLayout] _selectedIndex updated to: $_selectedIndex');
-        });
-        PageVisibilityNotifier().setCurrentPage(targetIndex);
-      },
-      destinations: destinations,
+                  int targetIndex = tabIndex;
+                  if (!isLocalMode) {
+                    if (tabIndex == 0) {
+                      targetIndex = 0;
+                    } else if (tabIndex == 1) {
+                      targetIndex = 1;
+                    } else if (tabIndex == 2) {
+                      targetIndex = myIndex;
+                    } else if (tabIndex == 3) {
+                      targetIndex = _settingsIndex;
+                    }
+                  }
+
+                  setState(() {
+                    _selectedIndex = targetIndex;
+                    print('🔄 [MainLayout] _selectedIndex updated to: $_selectedIndex');
+                  });
+                  PageVisibilityNotifier().setCurrentPage(targetIndex);
+                },
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+                child: Center(
+                  child: AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    style: TextStyle(
+                      fontSize: isSelected ? 16.5 : 15.0,
+                      fontWeight: isSelected ? FontWeight.w900 : FontWeight.w500,
+                      color: isSelected
+                          ? (isDark ? Colors.white : const Color(0xFF0F172A))
+                          : (isDark ? Colors.white54 : const Color(0xFF64748B)),
+                      letterSpacing: -0.2,
+                    ),
+                    child: Text(title),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
     );
 
-    const double navHeight = 80.0;
+    const double navHeight = 48.0;
     Widget navWidget = baseNav;
     if (isLandscape) {
       final width = MediaQuery.of(context).size.width;
@@ -1103,88 +1102,175 @@ class _MainLayoutState extends State<MainLayout>
 
     if (!useGlass) return navWidget;
 
-    final cs = Theme.of(context).colorScheme;
-    final Color? themeTint = PlayerService().themeColorNotifier.value;
-    return Theme(
-      data: Theme.of(context).copyWith(
-        navigationBarTheme: const NavigationBarThemeData(
-          backgroundColor: Colors.transparent,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-        ),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 12,
-              offset: const Offset(0, -2),
+    return ValueListenableBuilder<Color?>(
+      valueListenable: PlayerService().themeColorNotifier,
+      builder: (context, extractedThemeColor, _) {
+        final dynamicAccent = DynamicColorUtils.resolveAccent(
+          extractedThemeColor,
+          cs,
+          isDark: isDark,
+        );
+        final dynamicAmbient = DynamicColorUtils.resolveAmbient(
+          extractedThemeColor,
+          cs,
+          isDark: isDark,
+        );
+
+        return Theme(
+          data: Theme.of(context).copyWith(
+            navigationBarTheme: NavigationBarThemeData(
+              height: 56.0,
+              indicatorColor: Colors.transparent,
+              backgroundColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return TextStyle(
+                    color: dynamicAccent,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  );
+                }
+                return TextStyle(
+                  color: cs.onSurface.withValues(alpha: 0.6),
+                  fontSize: 11,
+                );
+              }),
+              iconTheme: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return IconThemeData(color: dynamicAccent, size: 24);
+                }
+                return IconThemeData(color: cs.onSurface.withValues(alpha: 0.6), size: 24);
+              }),
             ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.zero,
-          child: Stack(
-            children: [
-              // 毛玻璃模糊层
-              Positioned.fill(
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: const SizedBox.shrink(),
-                  ),
-                ),
-              ),
-              // 液态玻璃渐变层
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.white.withOpacity(0.16),
-                        (themeTint ?? cs.primary).withOpacity(0.10),
-                        Colors.white.withOpacity(0.05),
-                      ],
-                      stops: const [0.0, 0.45, 1.0],
-                    ),
-                    border: Border(
-                      top: BorderSide(
-                        color: Colors.white.withOpacity(0.18),
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // 高光
-              Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: true,
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      gradient: RadialGradient(
-                        center: Alignment(-0.9, -0.9),
-                        radius: 1.2,
-                        colors: [
-                          Color(0x33FFFFFF),
-                          Color(0x0AFFFFFF),
-                          Colors.transparent,
-                        ],
-                        stops: [0.0, 0.45, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              navWidget,
-            ],
           ),
-        ),
-      ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 24,
+                  offset: const Offset(0, -6),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              child: Stack(
+                children: [
+                  // 毛玻璃模糊层
+                  Positioned.fill(
+                    child: ClipRect(
+                      child: BackdropFilter(
+                        filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                        child: const SizedBox.shrink(),
+                      ),
+                    ),
+                  ),
+                  // 液态玻璃渐变层（Apple Music 风格动态流光微光）
+                  Positioned.fill(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 400),
+                      curve: Curves.easeOutCubic,
+                      decoration: BoxDecoration(
+                        color: cs.surface.withValues(alpha: isDark ? 0.85 : 0.90),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            cs.surface.withValues(alpha: isDark ? 0.90 : 0.95),
+                            dynamicAmbient.withValues(alpha: isDark ? 0.16 : 0.08),
+                            dynamicAmbient.withValues(alpha: isDark ? 0.08 : 0.04),
+                            cs.surface.withValues(alpha: isDark ? 0.84 : 0.88),
+                          ],
+                          stops: const [0.0, 0.35, 0.70, 1.0],
+                        ),
+                        border: Border(
+                          top: BorderSide(
+                            color: dynamicAccent.withValues(alpha: isDark ? 0.28 : 0.38),
+                            width: 1.0,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Apple Music 风格有机弥散微光光晕 (Fluid Ambient Aura)
+                  Positioned(
+                    top: -30,
+                    left: 16,
+                    width: 220,
+                    height: 120,
+                    child: IgnorePointer(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeOutCubic,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              dynamicAmbient.withValues(alpha: isDark ? 0.22 : 0.14),
+                              dynamicAmbient.withValues(alpha: isDark ? 0.08 : 0.04),
+                              Colors.transparent,
+                            ],
+                            stops: const [0.0, 0.45, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 高光微反光
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      ignoring: true,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          gradient: RadialGradient(
+                            center: Alignment(-0.9, -0.9),
+                            radius: 1.2,
+                            colors: [
+                              Color(0x22FFFFFF),
+                              Color(0x08FFFFFF),
+                              Colors.transparent,
+                            ],
+                            stops: [0.0, 0.45, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 整合 MiniPlayer + 导航栏 (一体化流光晶透底座)
+                  AnimatedBuilder(
+                    animation: PlayerService(),
+                    builder: (context, _) {
+                      final hasMiniPlayer =
+                          PlayerService().currentTrack != null ||
+                          PlayerService().currentSong != null;
+                      return SafeArea(
+                        top: false,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 250),
+                              curve: Curves.easeOutCubic,
+                              child: hasMiniPlayer
+                                  ? const MiniPlayer(transparent: true)
+                                  : const SizedBox.shrink(),
+                            ),
+                            navWidget,
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

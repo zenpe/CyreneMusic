@@ -18,8 +18,9 @@ class AudioSourceConfig {
   /// API Key (optional)
   final String apiKey;
   
-  /// 支持的搜索平台列表
-  /// 可选值: 'netease', 'apple', 'qq', 'kugou', 'kuwo'
+  /// 当前解析器支持的播放平台列表。
+  /// 搜索平台由 SearchProviderCatalog 独立管理。
+  /// 可选值: 'netease', 'apple', 'qq', 'kugou', 'kuwo', 'spotify'
   final List<String> supportedPlatforms;
   
   // --- LxMusic Specific Fields ---

@@ -77,11 +77,16 @@ class TrackResolver {
   Future<TrackLookupResult> lookupLocalOrCache({
     required Track track,
     required String quality,
+    String? resolverFingerprint,
     bool skipCache = false,
   }) async {
     final cacheInfo = skipCache
         ? null
-        : await CacheService().getCyreneFileInfo(track, quality: quality);
+        : await CacheService().getCyreneFileInfo(
+            track,
+            quality: quality,
+            resolverFingerprint: resolverFingerprint,
+          );
     final shouldRefresh =
         cacheInfo != null && needsCachedMetadataRefresh(cacheInfo.metadata);
 

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -7,6 +6,7 @@ import '../../features/auth/auth_feature.dart';
 import '../../services/location_service.dart';
 import '../../services/avatar_fetch_service.dart';
 import '../../utils/theme_manager.dart';
+import '../../services/player_service.dart';
 import '../auth/auth_page.dart';
 
 /// 全局函数：在 Fluent UI 中显示登录对话框
@@ -378,36 +378,79 @@ class _UserCardState extends State<UserCard> {
               children: [
                 Row(
                   children: [
-                    // 用户头像
-                    ClipOval(
-                      child: Container(
-                        width: 60,
-                        height: 60,
-                        color: colorScheme.primaryContainer,
-                        child: avatarUrl != null
-                            ? (avatarUrl.contains('linux.do')
-                                // Linux DO 头像需要使用 AvatarFetchService 加载以绕过 Cloudflare
-                                ? FutureBuilder<Uint8List?>(
-                                    future: AvatarFetchService().fetchAvatar(
-                                      avatarUrl,
-                                      cacheKey: 'linuxdo_${user.id}',
-                                    ),
-                                    builder: (context, snapshot) {
-                                      if (snapshot.connectionState == ConnectionState.waiting) {
-                                        return Center(
-                                          child: SizedBox(
-                                            width: 24,
-                                            height: 24,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: colorScheme.onPrimaryContainer,
-                                            ),
+                    // 用户头像 (带动态光晕光环，与我的页面统一)
+                    ValueListenableBuilder<Color?>(
+                      valueListenable: PlayerService().themeColorNotifier,
+                      builder: (context, themeColor, child) {
+                        final accent = themeColor ?? colorScheme.primary;
+                        return Container(
+                          width: 64,
+                          height: 64,
+                          padding: const EdgeInsets.all(2.5),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: SweepGradient(
+                              colors: [
+                                accent.withOpacity(0.85),
+                                accent.withOpacity(0.3),
+                                accent.withOpacity(0.85),
+                              ],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: accent.withOpacity(0.25),
+                                blurRadius: 12,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: ClipOval(
+                            child: Container(
+                              color: colorScheme.primaryContainer,
+                              child: avatarUrl != null
+                                  ? (avatarUrl.contains('linux.do')
+                                      // Linux DO 头像需要使用 AvatarFetchService 加载以绕过 Cloudflare
+                                      ? FutureBuilder<Uint8List?>(
+                                          future: AvatarFetchService().fetchAvatar(
+                                            avatarUrl,
+                                            cacheKey: 'linuxdo_${user.id}',
                                           ),
-                                        );
-                                      }
-                                      if (snapshot.hasData && snapshot.data != null) {
-                                        return Image.memory(
-                                          snapshot.data!,
+                                          builder: (context, snapshot) {
+                                            if (snapshot.connectionState == ConnectionState.waiting) {
+                                              return Center(
+                                                child: SizedBox(
+                                                  width: 24,
+                                                  height: 24,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    color: colorScheme.onPrimaryContainer,
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                            if (snapshot.hasData && snapshot.data != null) {
+                                              return Image.memory(
+                                                snapshot.data!,
+                                                width: 60,
+                                                height: 60,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (context, error, stackTrace) => Icon(
+                                                  Icons.person,
+                                                  size: 32,
+                                                  color: colorScheme.onPrimaryContainer,
+                                                ),
+                                              );
+                                            }
+                                            return Icon(
+                                              Icons.person,
+                                              size: 32,
+                                              color: colorScheme.onPrimaryContainer,
+                                            );
+                                          },
+                                        )
+                                      // 其他头像（如 QQ 头像）可以直接使用 Image.network
+                                      : Image.network(
+                                          avatarUrl,
                                           width: 60,
                                           height: 60,
                                           fit: BoxFit.cover,
@@ -416,33 +459,16 @@ class _UserCardState extends State<UserCard> {
                                             size: 32,
                                             color: colorScheme.onPrimaryContainer,
                                           ),
-                                        );
-                                      }
-                                      return Icon(
-                                        Icons.person,
-                                        size: 32,
-                                        color: colorScheme.onPrimaryContainer,
-                                      );
-                                    },
-                                  )
-                                // 其他头像（如 QQ 头像）可以直接使用 Image.network
-                                : Image.network(
-                                    avatarUrl,
-                                    width: 60,
-                                    height: 60,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) => Icon(
+                                        ))
+                                  : Icon(
                                       Icons.person,
                                       size: 32,
                                       color: colorScheme.onPrimaryContainer,
                                     ),
-                                  ))
-                            : Icon(
-                                Icons.person,
-                                size: 32,
-                                color: colorScheme.onPrimaryContainer,
-                              ),
-                      ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -474,26 +500,36 @@ class _UserCardState extends State<UserCard> {
                             ],
                           ),
                           if (user.displayEmail != null) ...[
-                            const SizedBox(height: 4),
-                            // 邮箱
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.email_outlined,
-                                  size: 14,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
+                            const SizedBox(height: 6),
+                            // 邮箱胶囊气泡 (与我的页面对齐)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white.withOpacity(0.08)
+                                    : Colors.black.withOpacity(0.04),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.alternate_email,
+                                    size: 12,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
                                     user.displayEmail!,
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: colorScheme.onSurfaceVariant,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ],
 

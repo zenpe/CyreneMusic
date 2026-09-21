@@ -38,6 +38,26 @@ class ToastUtils {
     );
   }
 
+  /// 显示带自定义图标和颜色的居中提示（如播放模式切换）
+  static void infoWithIcon(String message, {required IconData icon, Color? color}) {
+    _ensureInitialized();
+    if (_fToast == null) {
+      Fluttertoast.showToast(msg: message);
+      return;
+    }
+
+    _fToast!.removeCustomToast();
+    _fToast!.showToast(
+      child: _ToastWidget(
+        message: message,
+        icon: icon,
+        color: color ?? Colors.white,
+      ),
+      gravity: ToastGravity.CENTER,
+      toastDuration: const Duration(milliseconds: 1400),
+    );
+  }
+
   /// 显示成功消息
   static void success(String message) {
     _ensureInitialized();

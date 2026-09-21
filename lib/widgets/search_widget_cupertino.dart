@@ -1011,12 +1011,6 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                         } else {
                           PlayerService().playTrack(track);
                         }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('正在播放: ${track.name}'),
-                            duration: const Duration(seconds: 1),
-                          ),
-                        );
                       }
                     },
                     child: Container(

@@ -15,6 +15,8 @@ import 'mobile_player_dialogs.dart';
 import 'mobile_player_settings_sheet.dart';
 import 'dart:async';
 import 'mobile_player_background.dart';
+import 'package:flutter/services.dart';
+import '../../services/playback_mode_service.dart';
 import '../../services/auto_collapse_service.dart';
 import '../../services/audio_quality_service.dart';
 import '../../services/audio_source_service.dart';
@@ -751,7 +753,8 @@ class _MobilePlayerFluidCloudLayoutState
       builder: (context, _) {
         final position = player.positionNotifier.value.inMilliseconds
             .toDouble();
-        final duration = player.duration.inMilliseconds.toDouble();
+        final effectiveDuration = _getEffectiveDuration(player);
+        final duration = effectiveDuration.inMilliseconds.toDouble();
         final progress = (duration > 0)
             ? (position / duration).clamp(0.0, 1.0)
             : 0.0;
@@ -813,17 +816,23 @@ class _MobilePlayerFluidCloudLayoutState
       children: [
         // 时间 - 字体加大
         AnimatedBuilder(
-          animation: player.positionNotifier,
-          builder: (context, _) => Text(
-            '${_formatDurationCompact(player.positionNotifier.value)}/${_formatDurationCompact(player.duration)}',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
-              fontSize: 16, // 加大字体
-              fontWeight: FontWeight.bold,
-              fontFamily: 'Consolas',
-              letterSpacing: 0.5,
-            ),
-          ),
+          animation: Listenable.merge([player.positionNotifier, player]),
+          builder: (context, _) {
+            final effectiveDuration = _getEffectiveDuration(player);
+            final durationStr = effectiveDuration.inSeconds > 0
+                ? _formatDurationCompact(effectiveDuration)
+                : '--:--';
+            return Text(
+              '${_formatDurationCompact(player.positionNotifier.value)}/$durationStr',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 16, // 加大字体
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Consolas',
+                letterSpacing: 0.5,
+              ),
+            );
+          },
         ),
 
         const SizedBox(width: 12),
@@ -1063,7 +1072,8 @@ class _MobilePlayerFluidCloudLayoutState
                 builder: (context, _) {
                   final position = player.positionNotifier.value.inMilliseconds
                       .toDouble();
-                  final duration = player.duration.inMilliseconds.toDouble();
+                  final effectiveDuration = _getEffectiveDuration(player);
+                  final duration = effectiveDuration.inMilliseconds.toDouble();
                   final value = (duration > 0)
                       ? (position / duration).clamp(0.0, 1.0)
                       : 0.0;
@@ -1144,16 +1154,21 @@ class _MobilePlayerFluidCloudLayoutState
                     ),
 
                     AnimatedBuilder(
-                      animation: player,
-                      builder: (context, _) => Text(
-                        _formatDuration(player.duration),
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Consolas',
-                        ),
-                      ),
+                      animation: Listenable.merge([player.positionNotifier, player]),
+                      builder: (context, _) {
+                        final effectiveDuration = _getEffectiveDuration(player);
+                        return Text(
+                          effectiveDuration.inSeconds > 0
+                              ? _formatDuration(effectiveDuration)
+                              : '--:--',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Consolas',
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -1237,65 +1252,110 @@ class _MobilePlayerFluidCloudLayoutState
               CupertinoIcons.quote_bubble,
               color: !_showCoverMode
                   ? Colors.white
-                  : Colors.white.withOpacity(0.4),
+                  : Colors.white.withOpacity(0.5),
             ),
             iconSize: 24,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
+            tooltip: !_showCoverMode ? '显示封面' : '显示歌词',
             onPressed: () {
               setState(() => _showCoverMode = !_showCoverMode);
             },
           ),
 
-          // 2. 下载按钮
-          _buildNavButton(
-            icon: track != null
-                ? _DownloadButton(track: track)
-                : Icon(
-                    Icons.download_rounded,
-                    color: Colors.white.withOpacity(0.3),
-                    size: 24,
-                  ),
-            visible: !_showCoverMode && track != null,
-            placeholder: true,
-          ),
-
-          // 3. 歌曲信息按钮 (仅网易云歌曲显示)
-          _buildNavButton(
-            icon: IconButton(
-              icon: Icon(
-                _showSongWikiPanel
-                    ? CupertinoIcons.text_quote
-                    : CupertinoIcons.info_circle,
-                color: _showSongWikiPanel
-                    ? Colors.white
-                    : Colors.white.withOpacity(0.7),
-              ),
-              iconSize: 22,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              onPressed: () {
-                setState(() => _showSongWikiPanel = !_showSongWikiPanel);
-              },
+          // 2. 下载按钮 (仅在歌词模式显示)
+          if (!_showCoverMode)
+            _buildNavButton(
+              icon: track != null
+                  ? _DownloadButton(track: track)
+                  : Icon(
+                      Icons.download_rounded,
+                      color: Colors.white.withOpacity(0.3),
+                      size: 24,
+                    ),
+              visible: track != null,
+              placeholder: true,
             ),
-            visible:
-                !_showCoverMode &&
-                track != null &&
-                track.source == MusicSource.netease,
-            placeholder: true,
-          ),
 
-          // 4. 播放列表按钮
+          // 3. 播放模式切换按钮 (居中：单点切换，长按呼出面板)
+          _buildPlaybackModeButton(context),
+
+          // 4. 歌曲信息按钮 (仅在歌词模式且网易云歌曲显示)
+          if (!_showCoverMode)
+            _buildNavButton(
+              icon: IconButton(
+                icon: Icon(
+                  _showSongWikiPanel
+                      ? CupertinoIcons.text_quote
+                      : CupertinoIcons.info_circle,
+                  color: _showSongWikiPanel
+                      ? Colors.white
+                      : Colors.white.withOpacity(0.7),
+                ),
+                iconSize: 22,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () {
+                  setState(() => _showSongWikiPanel = !_showSongWikiPanel);
+                },
+              ),
+              visible: track != null && track.source == MusicSource.netease,
+              placeholder: true,
+            ),
+
+          // 5. 播放列表按钮 (最右侧)
           IconButton(
             icon: const Icon(Icons.queue_music_rounded),
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withOpacity(0.85),
             iconSize: 26,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
+            tooltip: '播放队列',
             onPressed: widget.onPlaylistPressed,
           ),
         ],
       ),
+    );
+  }
+
+  /// 构建播放模式按钮（1键切换，长按呼出模式面板）
+  Widget _buildPlaybackModeButton(BuildContext context) {
+    return AnimatedBuilder(
+      animation: PlaybackModeService(),
+      builder: (context, _) {
+        final modeService = PlaybackModeService();
+        final currentMode = modeService.currentMode;
+        final isLoopAll = currentMode == PlaybackMode.loopAll;
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              modeService.toggleMode();
+              ToastUtils.infoWithIcon(
+                modeService.getModeName(),
+                icon: modeService.getModeIcon(),
+              );
+            },
+            onLongPress: () {
+              HapticFeedback.mediumImpact();
+              MobilePlayerDialogs.showPlaybackModeSelector(context);
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Icon(
+                modeService.getModeIcon(),
+                color: isLoopAll
+                    ? Colors.white.withOpacity(0.75)
+                    : Colors.white,
+                size: 24,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1316,6 +1376,19 @@ class _MobilePlayerFluidCloudLayoutState
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds % 60;
     return '${minutes.toString().padLeft(1, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  /// 获取有效时长，当引擎未返回时长时使用歌词时间戳估算（与 mini_player 保持一致）
+  Duration _getEffectiveDuration(PlayerService player) {
+    Duration duration = player.duration;
+    if (duration.inSeconds <= 0 &&
+        player.lyricSnapshot != null &&
+        player.lyricSnapshot!.lines.isNotEmpty) {
+      final lastLine = player.lyricSnapshot!.lines.last;
+      duration = lastLine.startTime +
+          (lastLine.lineDuration ?? const Duration(seconds: 4));
+    }
+    return duration;
   }
 
   /// 构建音质选择按钮
@@ -1367,6 +1440,9 @@ class _MobilePlayerFluidCloudLayoutState
   void _showQualitySelectionSheet(BuildContext context) {
     final qualityService = AudioQualityService();
     final sourceService = AudioSourceService();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
     final supportedQualities = sourceService.activeSource != null
         ? qualityService.getSupportedQualities(sourceService.sourceType)
         : [AudioQuality.standard, AudioQuality.exhigh, AudioQuality.lossless];
@@ -1374,68 +1450,118 @@ class _MobilePlayerFluidCloudLayoutState
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Colors.grey[900]?.withValues(alpha: 0.95),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[800],
-                  borderRadius: BorderRadius.circular(2),
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (context) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+          child: Container(
+            decoration: BoxDecoration(
+              color: (isDark ? const Color(0xFF141418) : Colors.white)
+                  .withOpacity(0.92),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28)),
+              border: Border(
+                top: BorderSide(
+                  color: Colors.white.withOpacity(isDark ? 0.12 : 0.4),
+                  width: 0.8,
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Text(
-                  '选择播放音质',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(isDark ? 0.45 : 0.12),
+                  blurRadius: 30,
+                  offset: const Offset(0, -10),
                 ),
-              ),
-              ...supportedQualities.map((quality) {
-                final isSelected = qualityService.currentQuality == quality;
-                return ListTile(
-                  title: Text(
-                    qualityService.getQualityName(quality),
-                    style: TextStyle(
-                      color: isSelected ? Colors.blueAccent : Colors.white,
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
+              ],
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 38,
+                    height: 4.5,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(2.5),
                     ),
                   ),
-                  subtitle: Text(
-                    qualityService.getQualityDescription(quality),
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 12,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+                    child: Row(
+                      children: [
+                        Text(
+                          '选择播放音质',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: Icon(Icons.close_rounded,
+                              color: colorScheme.onSurfaceVariant, size: 20),
+                          onPressed: () => Navigator.pop(context),
+                          style: IconButton.styleFrom(
+                            backgroundColor: isDark
+                                ? Colors.white.withOpacity(0.08)
+                                : Colors.black.withOpacity(0.05),
+                            padding: const EdgeInsets.all(6),
+                            minimumSize: const Size(32, 32),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  trailing: isSelected
-                      ? const Icon(Icons.check, color: Colors.blueAccent)
-                      : null,
-                  onTap: () {
-                    qualityService.setQuality(quality);
-                    Navigator.pop(context);
-                    ToastUtils.success(
-                      '音质已设置为 ${qualityService.getQualityName(quality)}，将在下次切换歌曲时生效',
+                  Divider(
+                    height: 1,
+                    thickness: 0.6,
+                    color: isDark
+                        ? Colors.white10
+                        : Colors.black.withOpacity(0.06),
+                  ),
+                  ...supportedQualities.map((quality) {
+                    final isSelected =
+                        qualityService.currentQuality == quality;
+                    return ListTile(
+                      title: Text(
+                        qualityService.getQualityName(quality),
+                        style: TextStyle(
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.onSurface,
+                          fontWeight:
+                              isSelected ? FontWeight.bold : FontWeight.w500,
+                        ),
+                      ),
+                      subtitle: Text(
+                        qualityService.getQualityDescription(quality),
+                        style: TextStyle(
+                          color:
+                              colorScheme.onSurfaceVariant.withOpacity(0.7),
+                          fontSize: 12,
+                        ),
+                      ),
+                      trailing: isSelected
+                          ? Icon(Icons.check_circle_rounded,
+                              color: colorScheme.primary)
+                          : null,
+                      onTap: () {
+                        qualityService.setQuality(quality);
+                        Navigator.pop(context);
+                        ToastUtils.success(
+                          '音质已设置为 ${qualityService.getQualityName(quality)}，将在下次切换歌曲时生效',
+                        );
+                      },
                     );
-                  },
-                );
-              }),
-              const SizedBox(height: 20),
-            ],
+                  }),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1540,63 +1666,129 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
   }
 
   void _showManageOptions(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.grey[900],
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 32,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[700],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Text(
-                '已收藏到: ${_playlistNames.join(", ")}',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
-                  fontSize: 14,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (context) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+          child: Container(
+            decoration: BoxDecoration(
+              color: (isDark ? const Color(0xFF141418) : Colors.white)
+                  .withOpacity(0.92),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28)),
+              border: Border(
+                top: BorderSide(
+                  color: Colors.white.withOpacity(isDark ? 0.12 : 0.4),
+                  width: 0.8,
                 ),
-                textAlign: TextAlign.center,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(isDark ? 0.45 : 0.12),
+                  blurRadius: 30,
+                  offset: const Offset(0, -10),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 38,
+                    height: 4.5,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(2.5),
+                    ),
+                  ),
+                  Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: Text(
+                      '已收藏到: ${_playlistNames.join(", ")}',
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant.withOpacity(0.75),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  Divider(
+                    height: 1,
+                    thickness: 0.6,
+                    color: isDark
+                        ? Colors.white10
+                        : Colors.black.withOpacity(0.06),
+                  ),
+                  ListTile(
+                    leading: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.remove_circle_outline_rounded,
+                        color: Colors.redAccent,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      '从所有歌单移除',
+                      style: TextStyle(
+                        color: Colors.redAccent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      await _removeFromPlaylists();
+                    },
+                  ),
+                  ListTile(
+                    leading: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.playlist_add_rounded,
+                        color: colorScheme.primary,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      '添加到其他歌单',
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      MobilePlayerDialogs.showAddToPlaylist(
+                          context, widget.track);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ),
             ),
-            ListTile(
-              leading: const Icon(
-                Icons.remove_circle_outline,
-                color: Colors.redAccent,
-              ),
-              title: const Text(
-                '从所有歌单移除',
-                style: TextStyle(color: Colors.white),
-              ),
-              onTap: () async {
-                Navigator.pop(context);
-                await _removeFromPlaylists();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.playlist_add, color: Colors.white70),
-              title: const Text(
-                '添加到其他歌单',
-                style: TextStyle(color: Colors.white),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                MobilePlayerDialogs.showAddToPlaylist(context, widget.track);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
+          ),
         ),
       ),
     );
@@ -1910,7 +2102,7 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider>
       builder: (context, child) {
         // 交互时 active track 变亮
         final currentActiveColor = widget.activeColor.withOpacity(
-          lerpDouble(0.45, 0.8, _animation.value) ?? 0.45,
+          lerpDouble(0.65, 0.9, _animation.value) ?? 0.65,
         );
 
         final currentInactiveColor =

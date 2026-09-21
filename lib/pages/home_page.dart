@@ -22,6 +22,7 @@ import '../utils/page_visibility_notifier.dart';
 import '../utils/theme_manager.dart';
 import '../pages/auth/auth_page.dart';
 import '../services/play_history_service.dart';
+import '../services/player_service.dart';
 import 'dart:math';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import '../services/netease_login_service.dart';
@@ -1222,11 +1223,47 @@ class _HomePageState extends State<HomePage>
     final bool shouldRemoveTopPadding = windowHeight < 500 || 
         (topPadding > 0 && topPadding / windowHeight > 0.1);
 
-    final scaffold = Scaffold(
-      backgroundColor: colorScheme.surface,
-      body: _buildSlidingSwitcher(
-        _buildMaterialContentArea(context, colorScheme, showTabs),
-      ),
+    final scaffold = ValueListenableBuilder<Color?>(
+      valueListenable: PlayerService().themeColorNotifier,
+      builder: (context, themeColor, child) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final accent = themeColor ?? colorScheme.primary;
+        final bgBase = isDark ? const Color(0xFF0F0F13) : const Color(0xFFF7F8FA);
+
+        return Scaffold(
+          backgroundColor: bgBase,
+          body: Stack(
+            children: [
+              // 顶部流体微光背景 (与歌单页、我的页面对齐的 Apple Music 动态氛围光)
+              Positioned(
+                top: -60,
+                left: 0,
+                right: 0,
+                height: 320,
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: const Alignment(0.0, -0.6),
+                        radius: 1.25,
+                        colors: [
+                          accent.withOpacity(isDark ? 0.22 : 0.16),
+                          accent.withOpacity(isDark ? 0.08 : 0.05),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.55, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              _buildSlidingSwitcher(
+                _buildMaterialContentArea(context, colorScheme, showTabs),
+              ),
+            ],
+          ),
+        );
+      },
     );
 
     // 在需要时移除顶部安全区域 padding
@@ -1807,14 +1844,23 @@ class _HomePageState extends State<HomePage>
     final bool shouldDisablePrimary = windowHeight < 500 || 
         (topPadding > 0 && topPadding / windowHeight > 0.1);
 
+    final isDark = brightness == Brightness.dark;
     return SliverAppBar(
       primary: !shouldDisablePrimary,
       pinned: true,
-      backgroundColor: colorScheme.surface,
-      surfaceTintColor: colorScheme.surface,
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
       systemOverlayStyle: Platform.isAndroid ? systemOverlayStyle : null,
+      flexibleSpace: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(
+            color: (isDark ? const Color(0xFF0F0F13) : const Color(0xFFF7F8FA)).withOpacity(0.72),
+          ),
+        ),
+      ),
       title: Text(
         '首页',
         style: TextStyle(

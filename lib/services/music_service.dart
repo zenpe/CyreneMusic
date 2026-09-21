@@ -893,13 +893,6 @@ class MusicService extends ChangeNotifier {
     print('🎵 [MusicService] 使用洛雪音源获取歌曲: $songId');
     DeveloperModeService().addLog('🎵 [MusicService] 使用洛雪音源');
 
-    // 检查来源是否被洛雪音源支持
-    if (!audioSourceService.isLxSourceSupported(source)) {
-      print('⚠️ [MusicService] 洛雪音源不支持 ${source.name}');
-      DeveloperModeService().addLog('⚠️ [MusicService] 洛雪音源不支持 ${source.name}');
-      throw UnsupportedError('洛雪音源不支持 ${source.name}，请切换到 OmniParse 音源');
-    }
-
     // 获取正确的 songId
     // 不同平台的 ID 字段不同：
     // - 网易云：id (int)
@@ -909,29 +902,26 @@ class MusicService extends ChangeNotifier {
     final String lxSongId = _extractLxSongId(songId, source);
     final sourceCode = audioSourceService.getLxSourceCode(source);
     final lxQuality = audioSourceService.getLxQuality(quality);
+    final sourceId = audioSourceService.activeSource?.id;
 
     try {
       final runtime = LxMusicRuntimeService();
 
-      // 确保运行时已初始化
-      if (!runtime.isInitialized) {
-        print('⚠️ [MusicService] 洛雪运行时未初始化，尝试初始化...');
-        await audioSourceService.initializeLxRuntime();
+      // Runtime is a singleton, so readiness must be tied to the active
+      // source rather than only to the runtime's initialized flag.
+      await audioSourceService.initializeLxRuntime();
+      if (audioSourceService.activeSource?.id != sourceId ||
+          !runtime.isInitialized ||
+          !runtime.isScriptReady) {
+        throw Exception('洛雪音源已切换或脚本尚未就绪，请重试');
       }
 
-      // 再次检查
-      if (!runtime.isInitialized) {
-        throw Exception('无法初始化洛雪运行时服务');
-      }
-
-      // 等待脚本就绪 (如果正在加载中)
-      if (!runtime.isScriptReady) {
-        print('⏳ [MusicService] 等待洛雪脚本就绪...');
-        // 简单等待一下，实际应该由 initializeLxRuntime 保证
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (!runtime.isScriptReady) {
-          throw Exception('洛雪音源脚本未就绪，请检查脚本是否有效');
-        }
+      if (!audioSourceService.isLxSourceSupported(source)) {
+        print('⚠️ [MusicService] 当前洛雪脚本不支持 ${source.name}');
+        DeveloperModeService().addLog(
+          '⚠️ [MusicService] 当前洛雪脚本不支持 ${source.name}',
+        );
+        throw UnsupportedError('当前洛雪音源不支持 ${source.name}，请切换支持该平台的音源');
       }
 
       print(
@@ -948,7 +938,9 @@ class MusicService extends ChangeNotifier {
       if (audioUrl == null || audioUrl.isEmpty) {
         _lastLxFailure = runtime.lastFailure;
         onFailure?.call(_lastLxFailure);
-        _errorMessage = _lastLxFailure?.message ?? '洛雪音源返回空 URL';
+        // Playback resolution errors belong to PlaybackService. Do not write
+        // them into the toplist error state, otherwise returning to the home
+        // page incorrectly renders the charts section as failed.
         print('❌ [MusicService] 洛雪音源返回空 URL');
         DeveloperModeService().addLog('❌ [MusicService] 返回空 URL');
         return null;

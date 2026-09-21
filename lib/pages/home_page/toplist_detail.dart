@@ -11,6 +11,7 @@ import '../../widgets/track_action_menu.dart';
 import 'package:cyrene_music/utils/theme_manager.dart';
 import 'package:cyrene_music/utils/image_utils.dart';
 import 'package:cyrene_music/services/player_service.dart';
+import 'package:cyrene_music/services/playlist_queue_service.dart';
 import 'package:cyrene_music/pages/auth/auth_page.dart';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
@@ -243,41 +244,64 @@ void _showToplistDetailSidebar(BuildContext context, Toplist toplist) {
 
 /// 移动端：从底部弹出抽屉
 void _showToplistDetailBottomSheet(BuildContext context, Toplist toplist) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withOpacity(0.5),
     builder: (context) => DraggableScrollableSheet(
-      initialChildSize: 0.9,
+      initialChildSize: 0.88,
       minChildSize: 0.5,
       maxChildSize: 0.95,
       builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              // 拖动指示器
-              Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurfaceVariant
-                      .withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(2),
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+            child: Container(
+              decoration: BoxDecoration(
+                color: (isDark ? const Color(0xFF141418) : Colors.white)
+                    .withOpacity(0.92),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(28)),
+                border: Border(
+                  top: BorderSide(
+                    color: Colors.white.withOpacity(isDark ? 0.12 : 0.4),
+                    width: 0.8,
+                  ),
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(isDark ? 0.45 : 0.12),
+                    blurRadius: 30,
+                    offset: const Offset(0, -10),
+                  ),
+                ],
               ),
-              // 榜单内容
-              Expanded(
-                child: _ToplistDetailContent(
-                    toplist: toplist, scrollController: scrollController),
+              child: Column(
+                children: [
+                  // 拖动指示器
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 6),
+                    width: 38,
+                    height: 4.5,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(2.5),
+                    ),
+                  ),
+                  // 榜单内容
+                  Expanded(
+                    child: _ToplistDetailContent(
+                      toplist: toplist,
+                      scrollController: scrollController,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },
@@ -540,127 +564,448 @@ class _FluentTrackListTileState extends State<_FluentTrackListTile> {
   }
 }
 
-/// 构建榜单详情内容（桌面端和移动端共用 - Material Design 3 样式）
+/// 构建榜单详情内容（桌面端和移动端共用 - 流光质感风格）
 class _ToplistDetailContent extends StatelessWidget {
   final Toplist toplist;
   final ScrollController? scrollController;
   const _ToplistDetailContent({required this.toplist, this.scrollController});
 
+  Future<bool> _ensureLogin(BuildContext context) async {
+    final authFacade = AuthFacade();
+    if (authFacade.isLoggedIn) return true;
+    final ok = await showAuthDialog(context);
+    return ok == true && authFacade.isLoggedIn;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final isDesktop =
         Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
-    return Column(
-      children: [
-        // M3 标准头部区域
-        Container(
-          padding: EdgeInsets.fromLTRB(
-            isDesktop ? 24.0 : 16.0, // 桌面端使用更大的左右边距
-            isDesktop ? 20.0 : 16.0,
-            isDesktop ? 16.0 : 16.0,
-            16.0,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 封面 - M3 标准圆角
-              Card(
-                elevation: 0,
-                color: colorScheme.surfaceContainerHighest,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12), // M3 标准圆角
+    return ValueListenableBuilder<Color?>(
+      valueListenable: PlayerService().themeColorNotifier,
+      builder: (context, dynamicColor, _) {
+        final accentColor = dynamicColor ?? colorScheme.primary;
+
+        return Column(
+          children: [
+            // 头部信息与动态氛围
+            Container(
+              padding: EdgeInsets.fromLTRB(
+                isDesktop ? 24.0 : 18.0,
+                isDesktop ? 16.0 : 10.0,
+                isDesktop ? 20.0 : 18.0,
+                14.0,
+              ),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    accentColor.withOpacity(isDark ? 0.14 : 0.08),
+                    Colors.transparent,
+                  ],
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: CachedNetworkImage(
-                  imageUrl: toplist.coverImgUrl,
-                  httpHeaders: getImageHeaders(toplist.coverImgUrl),
-                  width: isDesktop ? 96 : 80, // 桌面端稍大
-                  height: isDesktop ? 96 : 80,
-                  memCacheWidth: 200,
-                  memCacheHeight: 200,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    width: isDesktop ? 96 : 80,
-                    height: isDesktop ? 96 : 80,
-                    color: colorScheme.surfaceContainerHighest,
-                    child: Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: colorScheme.primary,
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 封面
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: accentColor.withOpacity(0.25),
+                              blurRadius: 18,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: CachedNetworkImage(
+                            imageUrl: toplist.coverImgUrl,
+                            httpHeaders: getImageHeaders(toplist.coverImgUrl),
+                            width: isDesktop ? 96 : 82,
+                            height: isDesktop ? 96 : 82,
+                            memCacheWidth: 200,
+                            memCacheHeight: 200,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              width: isDesktop ? 96 : 82,
+                              height: isDesktop ? 96 : 82,
+                              color: colorScheme.surfaceContainerHighest,
+                              child: Center(
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: accentColor,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              width: isDesktop ? 96 : 82,
+                              height: isDesktop ? 96 : 82,
+                              color: colorScheme.surfaceContainerHighest,
+                              child: Icon(
+                                Icons.music_note_rounded,
+                                size: 40,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 16),
+                      // 信息区域
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              toplist.name,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.5,
+                                color: colorScheme.onSurface,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 6),
+                            // 创建者与曲数
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.person_outline_rounded,
+                                  size: 15,
+                                  color: colorScheme.onSurfaceVariant
+                                      .withOpacity(0.8),
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    toplist.creator,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurfaceVariant
+                                          .withOpacity(0.85),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '共 ${toplist.trackCount} 首歌曲',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant
+                                    .withOpacity(0.7),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // 关闭按钮
+                      IconButton(
+                        icon: Icon(
+                          Icons.close_rounded,
+                          size: 20,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        onPressed: () => Navigator.of(context).pop(),
+                        tooltip: '关闭',
+                        style: IconButton.styleFrom(
+                          backgroundColor: isDark
+                              ? Colors.white.withOpacity(0.08)
+                              : Colors.black.withOpacity(0.05),
+                          padding: const EdgeInsets.all(8),
+                          minimumSize: const Size(36, 36),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // 播放全部按钮栏
+                  Row(
+                    children: [
+                      Builder(
+                        builder: (context) {
+                          Color effectiveAccent = accentColor;
+                          final hsv = HSVColor.fromColor(accentColor);
+                          if (hsv.saturation < 0.18 && (hsv.value > 0.65 || hsv.value < 0.25)) {
+                            effectiveAccent = colorScheme.primary;
+                          }
+                          final isLight = effectiveAccent.computeLuminance() > 0.55;
+                          final onAccent = isLight ? const Color(0xFF1A1A1A) : Colors.white;
+
+                          return Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(20),
+                              onTap: () async {
+                                if (toplist.tracks.isEmpty) return;
+                                final ok = await _ensureLogin(context);
+                                if (!ok) return;
+
+                                PlaylistQueueService().setQueue(
+                                  toplist.tracks,
+                                  0,
+                                  QueueSource.playlist,
+                                );
+                                await PlayerService()
+                                    .playTrack(toplist.tracks.first);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('开始播放：${toplist.name}'),
+                                      duration: const Duration(seconds: 1),
+                                    ),
+                                  );
+                                }
+                              },
+                              child: Ink(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      effectiveAccent,
+                                      effectiveAccent.withOpacity(0.85),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: effectiveAccent.withOpacity(0.35),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.play_arrow_rounded,
+                                      color: onAccent,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '播放全部 (${toplist.tracks.length})',
+                                      style: TextStyle(
+                                        color: onAccent,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        letterSpacing: -0.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // 优雅分隔线
+            Divider(
+              height: 1,
+              thickness: 0.6,
+              color: isDark ? Colors.white10 : Colors.black.withOpacity(0.06),
+            ),
+            // 歌曲列表
+            Expanded(
+              child: AnimatedBuilder(
+                animation: PlayerService(),
+                builder: (context, _) {
+                  final playingTrack = PlayerService().currentTrack;
+                  return ListView.builder(
+                    controller: scrollController,
+                    padding: EdgeInsets.only(
+                      top: 4,
+                      bottom: MediaQuery.of(context).padding.bottom + 16,
                     ),
+                    itemCount: toplist.tracks.length,
+                    itemBuilder: (context, index) {
+                      final track = toplist.tracks[index];
+                      final isPlaying = playingTrack != null &&
+                          playingTrack.id.toString() == track.id.toString() &&
+                          playingTrack.source == track.source;
+
+                      return _ToplistSongTile(
+                        track: track,
+                        index: index,
+                        isPlaying: isPlaying,
+                        accentColor: accentColor,
+                        onTap: () async {
+                          final ok = await _ensureLogin(context);
+                          if (!ok) return;
+
+                          PlaylistQueueService().setQueue(
+                            toplist.tracks,
+                            index,
+                            QueueSource.playlist,
+                          );
+                          await PlayerService().playTrack(track);
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ToplistSongTile extends StatelessWidget {
+  final Track track;
+  final int index;
+  final bool isPlaying;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  const _ToplistSongTile({
+    required this.track,
+    required this.index,
+    required this.isPlaying,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  Color _getRankColor(int rank, ColorScheme colorScheme) {
+    if (rank == 1) return const Color(0xFFFF9500); // 金色
+    if (rank == 2) return const Color(0xFF0A84FF); // 银蓝
+    if (rank == 3) return const Color(0xFFFF6B4A); // 铜橙
+    return colorScheme.onSurfaceVariant.withOpacity(0.5);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final rank = index + 1;
+    final rankColor = _getRankColor(rank, colorScheme);
+
+    return Material(
+      color: isPlaying
+          ? accentColor.withOpacity(isDark ? 0.15 : 0.1)
+          : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              // 排名或正在播放图标
+              SizedBox(
+                width: 32,
+                child: isPlaying
+                    ? Icon(
+                        Icons.volume_up_rounded,
+                        color: accentColor,
+                        size: 20,
+                      )
+                    : Text(
+                        '$rank',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: rank <= 3 ? 16 : 14,
+                          fontWeight:
+                              rank <= 3 ? FontWeight.w900 : FontWeight.w500,
+                          color: rankColor,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 8),
+              // 封面
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(
+                  imageUrl: track.picUrl,
+                  httpHeaders: getImageHeaders(track.picUrl),
+                  width: 44,
+                  height: 44,
+                  memCacheWidth: 100,
+                  memCacheHeight: 100,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    width: 44,
+                    height: 44,
+                    color: colorScheme.surfaceContainerHighest,
                   ),
                   errorWidget: (context, url, error) => Container(
-                    width: isDesktop ? 96 : 80,
-                    height: isDesktop ? 96 : 80,
+                    width: 44,
+                    height: 44,
                     color: colorScheme.surfaceContainerHighest,
                     child: Icon(
-                      Icons.music_note_rounded, // M3 圆角图标
-                      size: 40,
+                      Icons.music_note_rounded,
+                      size: 20,
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 16),
-              // 信息区域
+              const SizedBox(width: 12),
+              // 歌曲信息
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 榜单名称 - M3 headline 样式
                     Text(
-                      toplist.name,
-                      style: textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w600, // M3 标准字重
-                        color: colorScheme.onSurface,
-                      ),
-                      maxLines: 2,
+                      track.name,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight:
+                            isPlaying ? FontWeight.w700 : FontWeight.w600,
+                        color: isPlaying ? accentColor : colorScheme.onSurface,
+                        letterSpacing: -0.2,
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    // 创建者 - M3 body 样式
+                    const SizedBox(height: 3),
                     Row(
                       children: [
-                        Icon(
-                          Icons.person_rounded,
-                          size: 16,
-                          color: colorScheme.onSurfaceVariant,
+                        Text(
+                          track.getSourceIcon(),
+                          style: const TextStyle(fontSize: 11),
                         ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            toplist.creator,
-                            style: textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
+                            '${track.artists} - ${track.album}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    // 歌曲数量 - M3 label 样式
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.queue_music_rounded,
-                          size: 16,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '共 ${toplist.trackCount} 首歌曲',
-                          style: textTheme.labelLarge?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onSurfaceVariant
+                                  .withOpacity(0.75),
+                            ),
                           ),
                         ),
                       ],
@@ -668,50 +1013,16 @@ class _ToplistDetailContent extends StatelessWidget {
                   ],
                 ),
               ),
-              // 关闭按钮（桌面端显示）- M3 标准图标按钮
-              if (isDesktop)
-                IconButton(
-                  icon: Icon(
-                    Icons.close_rounded, // M3 圆角图标
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                  onPressed: () => Navigator.of(context).pop(),
-                  tooltip: '关闭',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    hoverColor:
-                        colorScheme.onSurface.withOpacity(0.08), // M3 标准悬停效果
-                  ),
-                ),
+              // 更多操作按钮
+              TrackMoreButton(
+                track: track,
+                onPlay: onTap,
+                size: 28,
+              ),
             ],
           ),
         ),
-        // M3 标准分隔线
-        Divider(
-          height: 1,
-          thickness: 1,
-          color: colorScheme.outlineVariant,
-        ),
-        // 歌曲列表
-        Expanded(
-          child: ListView.builder(
-            controller: scrollController,
-            padding: EdgeInsets.only(
-              top: 8,
-              bottom:
-                  MediaQuery.of(context).padding.bottom + 8, // 考虑底部安全区域
-            ),
-            itemCount: toplist.tracks.length,
-            itemBuilder: (context, index) {
-              return TrackListTile(
-                track: toplist.tracks[index],
-                index: index,
-                showMoreButton: true,
-              );
-            },
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
