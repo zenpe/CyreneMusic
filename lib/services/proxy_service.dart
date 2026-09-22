@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
@@ -25,7 +26,7 @@ class ProxyService {
   /// 启动代理服务器
   Future<bool> start() async {
     if (_isRunning) {
-      print('🌐 [ProxyService] 代理服务器已在运行');
+      StructuredLogService.log('🌐 [ProxyService] 代理服务器已在运行');
       DeveloperModeService().addLog('🌐 [ProxyService] 代理服务器已在运行');
       return true;
     }
@@ -34,9 +35,9 @@ class ProxyService {
       // 尝试多个端口，避免端口冲突
       for (int port = 8888; port < 8898; port++) {
         try {
-          print('🌐 [ProxyService] 尝试端口: $port');
+          StructuredLogService.log('🌐 [ProxyService] 尝试端口: $port');
           DeveloperModeService().addLog('🌐 [ProxyService] 尝试端口: $port');
-          
+
           _server = await shelf_io.serve(
             _handleRequest,
             InternetAddress.loopbackIPv4,
@@ -44,11 +45,11 @@ class ProxyService {
           );
           _port = port;
           _isRunning = true;
-          print('✅ [ProxyService] 代理服务器已启动: http://localhost:$_port');
+          StructuredLogService.log('✅ [ProxyService] 代理服务器已启动: http://localhost:$_port');
           DeveloperModeService().addLog('✅ [ProxyService] 代理服务器已启动: http://localhost:$_port');
           return true;
         } catch (e) {
-          print('⚠️ [ProxyService] 端口 $port 启动失败: $e');
+          StructuredLogService.log('⚠️ [ProxyService] 端口 $port 启动失败: $e');
           DeveloperModeService().addLog('⚠️ [ProxyService] 端口 $port 启动失败: $e');
           // 端口被占用，尝试下一个
           if (port == 8897) {
@@ -58,8 +59,8 @@ class ProxyService {
       }
       return false;
     } catch (e, stackTrace) {
-      print('❌ [ProxyService] 启动代理服务器失败: $e');
-      print('Stack trace: $stackTrace');
+      StructuredLogService.log('❌ [ProxyService] 启动代理服务器失败: $e');
+      StructuredLogService.log('Stack trace: $stackTrace');
       DeveloperModeService().addLog('❌ [ProxyService] 启动代理服务器失败: $e');
       DeveloperModeService().addLog('📜 [ProxyService] 堆栈: ${stackTrace.toString().split('\n').take(5).join(' | ')}');
       _isRunning = false;
@@ -73,7 +74,7 @@ class ProxyService {
       await _server!.close();
       _server = null;
       _isRunning = false;
-      print('⏹️ [ProxyService] 代理服务器已停止');
+      StructuredLogService.log('⏹️ [ProxyService] 代理服务器已停止');
       DeveloperModeService().addLog('⏹️ [ProxyService] 代理服务器已停止');
     }
   }
@@ -107,7 +108,7 @@ class ProxyService {
           ? ' range=$rangeHeader'
           : '';
 
-      print('🌐 [ProxyService] 代理请求: $method $targetUrl$rangeText');
+      StructuredLogService.log('🌐 [ProxyService] 代理请求: $method $targetUrl$rangeText');
       DeveloperModeService().addLog(
         '🌐 [ProxyService] 代理请求: $method ${targetUrl.length > 100 ? '${targetUrl.substring(0, 100)}...' : targetUrl}$rangeText',
       );
@@ -172,14 +173,14 @@ class ProxyService {
       }
 
       final isMaybeM3u8 = targetUri.path.toLowerCase().endsWith('.m3u8');
-      print('🔍 [ProxyService] isMaybeM3u8: $isMaybeM3u8, path: ${targetUri.path}');
+      StructuredLogService.log('🔍 [ProxyService] isMaybeM3u8: $isMaybeM3u8, path: ${targetUri.path}');
 
       // 发起请求（使用流式传输）
       http.StreamedResponse streamedResponse;
       try {
         streamedResponse = await client.send(upstreamRequest);
       } catch (e) {
-        print('❌ [ProxyService] 发送上游请求失败: $e');
+        StructuredLogService.log('❌ [ProxyService] 发送上游请求失败: $e');
         client.close();
         rethrow;
       }
@@ -196,9 +197,9 @@ class ProxyService {
 
       final upstreamContentType =
           (streamedResponse.headers['content-type'] ?? '').toLowerCase();
-      
-      print('🔍 [ProxyService] Content-Type: $upstreamContentType');
-      
+
+      StructuredLogService.log('🔍 [ProxyService] Content-Type: $upstreamContentType');
+
       final isM3u8 = isMaybeM3u8 ||
           upstreamContentType.contains('mpegurl') ||
           upstreamContentType.contains('application/vnd.apple.mpegurl') ||
@@ -305,7 +306,7 @@ class ProxyService {
               streamedResponse.headers['content-range']!;
         }
 
-        print('✅ [ProxyService] 开始流式传输音频数据');
+        StructuredLogService.log('✅ [ProxyService] 开始流式传输音频数据');
         DeveloperModeService().addLog('✅ [ProxyService] 开始流式传输音频数据');
         final controller = StreamController<List<int>>();
         late final StreamSubscription<List<int>> sub;
@@ -340,7 +341,7 @@ class ProxyService {
         );
       }
 
-        print('❌ [ProxyService] 上游服务器返回: $upstreamStatus');
+        StructuredLogService.log('❌ [ProxyService] 上游服务器返回: $upstreamStatus');
         DeveloperModeService().addLog('❌ [ProxyService] 上游服务器返回: $upstreamStatus');
         client.close();
         return shelf.Response(
@@ -348,8 +349,8 @@ class ProxyService {
           body: 'Upstream server error: $upstreamStatus',
         );
     } catch (e, stackTrace) {
-      print('❌ [ProxyService] 处理请求失败: $e');
-      print('Stack trace: $stackTrace');
+      StructuredLogService.log('❌ [ProxyService] 处理请求失败: $e');
+      StructuredLogService.log('Stack trace: $stackTrace');
       DeveloperModeService().addLog('❌ [ProxyService] 处理请求失败: $e');
       DeveloperModeService().addLog('📜 [ProxyService] 堆栈: ${stackTrace.toString().split('\n').take(3).join(' | ')}');
       return shelf.Response.internalServerError(
@@ -526,15 +527,15 @@ class ProxyService {
   /// 生成代理 URL
   String getProxyUrl(String originalUrl, String platform) {
     if (!_isRunning) {
-      print('⚠️ [ProxyService] 代理服务器未运行，返回原始 URL');
+      StructuredLogService.log('⚠️ [ProxyService] 代理服务器未运行，返回原始 URL');
       DeveloperModeService().addLog('⚠️ [ProxyService] 代理服务器未运行，返回原始 URL');
       return originalUrl;
     }
-    
+
     final encodedUrl = Uri.encodeComponent(originalUrl);
     final proxyUrl = 'http://localhost:$_port/proxy?url=$encodedUrl&platform=$platform';
-    
-    print('🔗 [ProxyService] 生成代理 URL: $proxyUrl');
+
+    StructuredLogService.log('🔗 [ProxyService] 生成代理 URL: $proxyUrl');
     DeveloperModeService().addLog('🔗 [ProxyService] 生成代理 URL (端口: $_port, 平台: $platform)');
     return proxyUrl;
   }

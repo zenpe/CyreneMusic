@@ -1,3 +1,4 @@
+import '../../services/structured_log_service.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -21,7 +22,7 @@ class PlayerFluidCloudQueuePanel extends StatefulWidget {
 
 class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel> {
   final ScrollController _scrollController = ScrollController();
-  
+
   // 歌手相关歌曲推荐
   List<Track> _artistSongs = [];
   bool _artistSongsLoading = false;
@@ -49,7 +50,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
   /// 加载当前歌手的其他歌曲
   Future<void> _loadArtistSongs() async {
     final currentTrack = PlayerService().currentTrack;
-    
+
     // 仅对网易云音源生效
     if (currentTrack == null || currentTrack.source != MusicSource.netease) {
       if (_artistSongs.isNotEmpty) {
@@ -80,7 +81,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
       int? artistId = _lastArtistId;
       if (artistName != _lastArtistName) {
         artistId = await NeteaseArtistDetailService().resolveArtistIdByName(artistName);
-        print('🎤 [QueuePanel] 搜索歌手 "$artistName" -> ID: $artistId');
+        StructuredLogService.log('🎤 [QueuePanel] 搜索歌手 "$artistName" -> ID: $artistId');
       }
 
       if (artistId == null) {
@@ -123,13 +124,13 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
             );
           })
           // 过滤掉当前播放的歌曲和已在队列中的歌曲
-          .where((t) => 
-              t.id.toString() != currentTrackId && 
+          .where((t) =>
+              t.id.toString() != currentTrackId &&
               !queueTrackIds.contains(t.id.toString()))
           .take(20) // 最多显示20首
           .toList();
 
-      print('🎵 [QueuePanel] 获取歌手 "$artistName" 的 ${tracks.length} 首推荐歌曲');
+      StructuredLogService.log('🎵 [QueuePanel] 获取歌手 "$artistName" 的 ${tracks.length} 首推荐歌曲');
 
       if (mounted) {
         setState(() {
@@ -140,7 +141,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
         });
       }
     } catch (e) {
-      print('❌ [QueuePanel] 加载歌手歌曲失败: $e');
+      StructuredLogService.log('❌ [QueuePanel] 加载歌手歌曲失败: $e');
       if (mounted) {
         setState(() {
           _artistSongs = [];
@@ -182,7 +183,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
 
         // 计算总项目数：队列 + 分隔标题(如果有推荐) + 推荐歌曲
         final hasArtistSection = _artistSongs.isNotEmpty || _artistSongsLoading;
-        final totalItemCount = queue.length + 
+        final totalItemCount = queue.length +
             (hasArtistSection ? 1 : 0) + // 分隔标题
             _artistSongs.length;
 
@@ -226,8 +227,8 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
   /// 构建分隔标题
   Widget _buildSectionHeader() {
     final currentTrack = PlayerService().currentTrack;
-    final artistName = currentTrack != null 
-        ? _extractFirstArtist(currentTrack.artists) 
+    final artistName = currentTrack != null
+        ? _extractFirstArtist(currentTrack.artists)
         : '';
 
     return Container(
@@ -242,9 +243,9 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  Colors.white.withOpacity(0.0),
-                  Colors.white.withOpacity(0.2),
-                  Colors.white.withOpacity(0.0),
+                  Colors.white.withValues(alpha: 0.0),
+                  Colors.white.withValues(alpha: 0.2),
+                  Colors.white.withValues(alpha: 0.0),
                 ],
               ),
             ),
@@ -292,7 +293,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         decoration: BoxDecoration(
-          color: isCurrent ? Colors.white.withOpacity(0.12) : Colors.transparent,
+          color: isCurrent ? Colors.white.withValues(alpha: 0.12) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Material(
@@ -303,7 +304,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
               final coverProvider = PlaylistQueueService().getCoverProvider(track);
               PlayerService().playTrack(track, coverProvider: coverProvider);
             },
-            hoverColor: Colors.white.withOpacity(0.06),
+            hoverColor: Colors.white.withValues(alpha: 0.06),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
@@ -335,7 +336,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: isCurrent ? Colors.white : Colors.white.withOpacity(0.9),
+                            color: isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.9),
                             fontSize: 16,
                             fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
                             fontFamily: 'Microsoft YaHei',
@@ -378,7 +379,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                   IconButton(
                     icon: Icon(
                       Icons.close_rounded,
-                      color: Colors.white.withOpacity(0.4),
+                      color: Colors.white.withValues(alpha: 0.4),
                       size: 16,
                     ),
                     constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -404,10 +405,10 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: Colors.white.withOpacity(0.08),
+            color: Colors.white.withValues(alpha: 0.08),
             width: 1,
           ),
         ),
@@ -419,7 +420,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
               // 播放推荐歌曲
               PlayerService().playTrack(track);
             },
-            hoverColor: Colors.white.withOpacity(0.08),
+            hoverColor: Colors.white.withValues(alpha: 0.08),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Row(
@@ -440,7 +441,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                       placeholder: (context, url) => Container(
                         width: 40,
                         height: 40,
-                        color: Colors.white.withOpacity(0.1),
+                        color: Colors.white.withValues(alpha: 0.1),
                       ),
                     ),
                   ),
@@ -456,7 +457,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.85),
+                            color: Colors.white.withValues(alpha: 0.85),
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                             fontFamily: 'Microsoft YaHei',
@@ -468,7 +469,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.45),
+                            color: Colors.white.withValues(alpha: 0.45),
                             fontSize: 12,
                             fontFamily: 'Microsoft YaHei',
                           ),

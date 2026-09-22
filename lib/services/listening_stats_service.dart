@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/track.dart';
@@ -118,7 +119,7 @@ class ListeningStatsService extends ChangeNotifier {
     _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _syncListeningTime();
     });
-    print('📊 [ListeningStatsService] 服务已初始化');
+    StructuredLogService.log('📊 [ListeningStatsService] 服务已初始化');
   }
 
   /// 累积听歌时长
@@ -129,19 +130,19 @@ class ListeningStatsService extends ChangeNotifier {
   /// 同步听歌时长到服务器
   Future<void> _syncListeningTime() async {
     if (_pendingSeconds <= 0) {
-      print('📊 [ListeningStatsService] 无待同步数据（待同步: ${_pendingSeconds}秒）');
+      StructuredLogService.log('📊 [ListeningStatsService] 无待同步数据（待同步: ${_pendingSeconds}秒）');
       return;
     }
 
     if (!AuthService().isLoggedIn) {
-      print('⚠️ [ListeningStatsService] 用户未登录，无法同步');
+      StructuredLogService.log('⚠️ [ListeningStatsService] 用户未登录，无法同步');
       return;
     }
 
     final seconds = _pendingSeconds;
     _pendingSeconds = 0; // 重置待同步秒数
 
-    print('📤 [ListeningStatsService] 准备同步听歌时长: ${seconds}秒');
+    StructuredLogService.log('📤 [ListeningStatsService] 准备同步听歌时长: ${seconds}秒');
 
     try {
       final result = await _api.postJson(
@@ -149,18 +150,18 @@ class ListeningStatsService extends ChangeNotifier {
         data: {'seconds': seconds},
       );
 
-      print('📥 [ListeningStatsService] 同步响应状态: ${result.statusCode}');
+      StructuredLogService.log('📥 [ListeningStatsService] 同步响应状态: ${result.statusCode}');
 
       if (result.ok) {
         final data = result.data as Map<String, dynamic>?;
-        print('✅ [ListeningStatsService] 听歌时长已同步: +${seconds}秒, 总计: ${data?['data']?['totalListeningTime']}秒');
+        StructuredLogService.log('✅ [ListeningStatsService] 听歌时长已同步: +${seconds}秒, 总计: ${data?['data']?['totalListeningTime']}秒');
       } else {
-        print('❌ [ListeningStatsService] 同步听歌时长失败: ${result.statusCode}');
+        StructuredLogService.log('❌ [ListeningStatsService] 同步听歌时长失败: ${result.statusCode}');
         // 同步失败，将秒数加回待同步队列
         _pendingSeconds += seconds;
       }
     } catch (e) {
-      print('❌ [ListeningStatsService] 同步听歌时长异常: $e');
+      StructuredLogService.log('❌ [ListeningStatsService] 同步听歌时长异常: $e');
       // 异常时将秒数加回待同步队列
       _pendingSeconds += seconds;
     }
@@ -168,7 +169,7 @@ class ListeningStatsService extends ChangeNotifier {
 
   /// 立即同步听歌时长（用于调试）
   Future<void> syncNow() async {
-    print('🔄 [ListeningStatsService] 手动触发同步，待同步: ${_pendingSeconds}秒');
+    StructuredLogService.log('🔄 [ListeningStatsService] 手动触发同步，待同步: ${_pendingSeconds}秒');
     await _syncListeningTime();
   }
 
@@ -190,19 +191,19 @@ class ListeningStatsService extends ChangeNotifier {
       );
 
       if (result.ok) {
-        print('✅ [ListeningStatsService] 播放次数已记录: ${track.name}');
+        StructuredLogService.log('✅ [ListeningStatsService] 播放次数已记录: ${track.name}');
       } else {
-        print('❌ [ListeningStatsService] 记录播放次数失败: ${result.statusCode}');
+        StructuredLogService.log('❌ [ListeningStatsService] 记录播放次数失败: ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [ListeningStatsService] 记录播放次数异常: $e');
+      StructuredLogService.log('❌ [ListeningStatsService] 记录播放次数异常: $e');
     }
   }
 
   /// 获取统计数据
   Future<ListeningStatsData?> fetchStats() async {
     if (!AuthService().isLoggedIn) {
-      print('⚠️ [ListeningStatsService] 用户未登录');
+      StructuredLogService.log('⚠️ [ListeningStatsService] 用户未登录');
       return null;
     }
 
@@ -212,14 +213,14 @@ class ListeningStatsService extends ChangeNotifier {
       if (result.ok) {
         _statsData = ListeningStatsData.fromJson(result.bodyData as Map<String, dynamic>);
         notifyListeners();
-        print('✅ [ListeningStatsService] 统计数据已获取');
+        StructuredLogService.log('✅ [ListeningStatsService] 统计数据已获取');
         return _statsData;
       } else {
-        print('❌ [ListeningStatsService] 获取统计数据失败: ${result.statusCode}');
+        StructuredLogService.log('❌ [ListeningStatsService] 获取统计数据失败: ${result.statusCode}');
         return null;
       }
     } catch (e) {
-      print('❌ [ListeningStatsService] 获取统计数据异常: $e');
+      StructuredLogService.log('❌ [ListeningStatsService] 获取统计数据异常: $e');
       return null;
     }
   }
@@ -241,17 +242,17 @@ class ListeningStatsService extends ChangeNotifier {
 
   /// 在退出前同步数据
   Future<void> syncBeforeExit() async {
-    print('🔄 [ListeningStatsService] 退出前同步数据...');
+    StructuredLogService.log('🔄 [ListeningStatsService] 退出前同步数据...');
     _syncTimer?.cancel();
     await _syncListeningTime();
-    print('✅ [ListeningStatsService] 退出前同步完成');
+    StructuredLogService.log('✅ [ListeningStatsService] 退出前同步完成');
   }
 
   /// 清理资源
   @override
   void dispose() {
     _syncTimer?.cancel();
-    print('🗑️ [ListeningStatsService] 服务已释放');
+    StructuredLogService.log('🗑️ [ListeningStatsService] 服务已释放');
     super.dispose();
   }
 }

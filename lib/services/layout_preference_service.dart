@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:window_manager/window_manager.dart';
@@ -27,11 +28,11 @@ class LayoutPreferenceService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final layoutModeIndex = prefs.getInt('layout_mode') ?? 0;
       _layoutMode = LayoutMode.values[layoutModeIndex];
-      
-      print('🖥️ [LayoutPreference] 从本地加载布局: ${_layoutMode.name}');
+
+      StructuredLogService.log('🖥️ [LayoutPreference] 从本地加载布局: ${_layoutMode.name}');
       notifyListeners();
     } catch (e) {
-      print('❌ [LayoutPreference] 加载布局设置失败: $e');
+      StructuredLogService.log('❌ [LayoutPreference] 加载布局设置失败: $e');
     }
   }
 
@@ -40,9 +41,9 @@ class LayoutPreferenceService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('layout_mode', _layoutMode.index);
-      print('💾 [LayoutPreference] 布局模式已保存: ${_layoutMode.name}');
+      StructuredLogService.log('💾 [LayoutPreference] 布局模式已保存: ${_layoutMode.name}');
     } catch (e) {
-      print('❌ [LayoutPreference] 保存布局模式失败: $e');
+      StructuredLogService.log('❌ [LayoutPreference] 保存布局模式失败: $e');
     }
   }
 
@@ -59,14 +60,14 @@ class LayoutPreferenceService extends ChangeNotifier {
   void setLayoutMode(LayoutMode mode) {
     if (_layoutMode != mode) {
       _layoutMode = mode;
-      print('🖥️ [LayoutPreference] 布局模式已切换: ${mode == LayoutMode.desktop ? "桌面模式" : "移动模式"}');
-      
+      StructuredLogService.log('🖥️ [LayoutPreference] 布局模式已切换: ${mode == LayoutMode.desktop ? "桌面模式" : "移动模式"}');
+
       // 保存到本地
       _saveLayoutMode();
-      
+
       // 先通知监听器更新 UI
       notifyListeners();
-      
+
       // Windows 平台自动调整窗口大小（延迟执行以确保生效）
       if (Platform.isWindows) {
         // 使用 Future.delayed 确保在 UI 更新后再调整窗口
@@ -84,38 +85,38 @@ class LayoutPreferenceService extends ChangeNotifier {
         // 桌面模式：宽屏布局
         final desktopSize = const Size(1320, 880);
         final minSize = const Size(800, 600);
-        
-        print('🖥️ [LayoutPreference] 调整窗口为桌面尺寸: ${desktopSize.width}x${desktopSize.height}');
-        
+
+        StructuredLogService.log('🖥️ [LayoutPreference] 调整窗口为桌面尺寸: ${desktopSize.width}x${desktopSize.height}');
+
         // 先设置最小尺寸，确保新尺寸不会被限制
         // 先设置最小尺寸，确保新尺寸不会被限制
         windowManager.setMinimumSize(minSize);
-        
+
         // 稍作延迟，确保最小尺寸设置生效
         Future.delayed(const Duration(milliseconds: 50), () {
           windowManager.setSize(desktopSize);
           windowManager.center();
-          print('✅ [LayoutPreference] 桌面窗口大小设置完成');
+          StructuredLogService.log('✅ [LayoutPreference] 桌面窗口大小设置完成');
         });
       } else {
         // 移动模式：竖屏布局（类似手机）
         final mobileSize = const Size(400, 850);
         final minSize = const Size(360, 640);
-        
-        print('📱 [LayoutPreference] 调整窗口为移动尺寸: ${mobileSize.width}x${mobileSize.height}');
-        
+
+        StructuredLogService.log('📱 [LayoutPreference] 调整窗口为移动尺寸: ${mobileSize.width}x${mobileSize.height}');
+
         // 先设置更小的最小尺寸，允许窄窗口
         windowManager.setMinimumSize(minSize);
-        
+
         // 稍作延迟，确保最小尺寸设置生效
         Future.delayed(const Duration(milliseconds: 50), () {
           windowManager.setSize(mobileSize);
           windowManager.center();
-          print('✅ [LayoutPreference] 移动窗口大小设置完成');
+          StructuredLogService.log('✅ [LayoutPreference] 移动窗口大小设置完成');
         });
       }
     } catch (e) {
-      print('❌ [LayoutPreference] 调整窗口大小失败: $e');
+      StructuredLogService.log('❌ [LayoutPreference] 调整窗口大小失败: $e');
     }
   }
 

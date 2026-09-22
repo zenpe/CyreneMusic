@@ -7,10 +7,8 @@ import '../cache_service.dart';
 import 'lyric_cache_service.dart';
 import 'lyric_snapshot.dart';
 
-typedef LyricRepositoryLogFn = void Function(
-  String message, {
-  bool toDeveloperPanel,
-});
+typedef LyricRepositoryLogFn =
+    void Function(String message, {bool toDeveloperPanel});
 
 class LyricLookupResult {
   final LyricLoadState state;
@@ -133,7 +131,10 @@ class LyricRepository {
         expiresAt: DateTime.now().add(_readyTtl),
       );
       _remember(cacheKey, entry);
-      log('[LyricService] cache-metadata hit: $cacheKey', toDeveloperPanel: true);
+      log(
+        '[LyricService] cache-metadata hit: $cacheKey',
+        toDeveloperPanel: true,
+      );
       unawaited(_persistEntry(track, quality, cacheKey, entry, log));
       return LyricLookupResult(
         state: LyricLoadState.ready,
@@ -187,7 +188,9 @@ class LyricRepository {
       trackKey: _trackKey(track),
       quality: quality,
       source: track.source.name,
-      title: currentSong?.name.isNotEmpty == true ? currentSong!.name : track.name,
+      title: currentSong?.name.isNotEmpty == true
+          ? currentSong!.name
+          : track.name,
       artist: currentSong?.arName.isNotEmpty == true
           ? currentSong!.arName
           : track.artists,
@@ -215,16 +218,17 @@ class LyricRepository {
   }) async {
     final cacheKey = _cacheKey(track);
     final legacyCacheKey = _legacyCacheKey(track, quality);
-    final previous = _takeMemory(cacheKey) ??
+    final previous =
+        _takeMemory(cacheKey) ??
         (legacyCacheKey != cacheKey ? _takeMemory(legacyCacheKey) : null) ??
         await LyricCacheService().readEntry(cacheKey) ??
         (legacyCacheKey != cacheKey
             ? await LyricCacheService().readEntry(legacyCacheKey)
             : null);
-    final failureCount = (((previous?.failureCount ?? 0) + 1).clamp(
+    final failureCount = ((previous?.failureCount ?? 0) + 1).clamp(
       1,
       _failureBackoffSteps.length,
-    )) as int;
+    );
     final retryAfter = DateTime.now().add(
       _failureBackoffSteps[failureCount - 1],
     );
@@ -232,7 +236,9 @@ class LyricRepository {
       trackKey: _trackKey(track),
       quality: quality,
       source: track.source.name,
-      title: currentSong?.name.isNotEmpty == true ? currentSong!.name : track.name,
+      title: currentSong?.name.isNotEmpty == true
+          ? currentSong!.name
+          : track.name,
       artist: currentSong?.arName.isNotEmpty == true
           ? currentSong!.arName
           : track.artists,
@@ -268,9 +274,11 @@ class LyricRepository {
     final trackKey = _trackKey(track);
     final keysToRemove = quality == null
         ? _memory.keys
-            .where((key) => key == trackKey || key.startsWith('${trackKey}_'))
-            .toList(growable: false)
-        : <String>[_legacyCacheKey(track, CacheService.normalizeQualityValue(quality))];
+              .where((key) => key == trackKey || key.startsWith('${trackKey}_'))
+              .toList(growable: false)
+        : <String>[
+            _legacyCacheKey(track, CacheService.normalizeQualityValue(quality)),
+          ];
     for (final key in keysToRemove) {
       _memory.remove(key);
     }
@@ -445,9 +453,15 @@ class LyricRepository {
   ) async {
     try {
       await LyricCacheService().writeEntry(cacheKey, entry);
-      log('[LyricService] cache write success: $cacheKey', toDeveloperPanel: true);
+      log(
+        '[LyricService] cache write success: $cacheKey',
+        toDeveloperPanel: true,
+      );
     } catch (e) {
-      log('[LyricService] cache write failed: $cacheKey, $e', toDeveloperPanel: true);
+      log(
+        '[LyricService] cache write failed: $cacheKey, $e',
+        toDeveloperPanel: true,
+      );
     }
   }
 

@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -45,7 +46,7 @@ class MusicService extends ChangeNotifier {
   }) async {
     // 如果已有缓存且不是强制刷新，直接返回
     if (_isCached && !forceRefresh) {
-      print('💾 [MusicService] 使用缓存数据，跳过加载');
+      StructuredLogService.log('💾 [MusicService] 使用缓存数据，跳过加载');
       DeveloperModeService().addLog('💾 [MusicService] 使用缓存数据');
       return;
     }
@@ -55,11 +56,11 @@ class MusicService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      print('🎵 [MusicService] 开始获取榜单列表...');
-      print('🎵 [MusicService] 音乐源: ${source.name}');
+      StructuredLogService.log('🎵 [MusicService] 开始获取榜单列表...');
+      StructuredLogService.log('🎵 [MusicService] 音乐源: ${source.name}');
 
       if (forceRefresh) {
-        print('🔄 [MusicService] 强制刷新模式');
+        StructuredLogService.log('🔄 [MusicService] 强制刷新模式');
       }
 
       final result = await ApiClient().getJson(
@@ -67,7 +68,7 @@ class MusicService extends ChangeNotifier {
         timeout: const Duration(seconds: 15),
       );
 
-      print('🎵 [MusicService] 响应状态码: ${result.statusCode}');
+      StructuredLogService.log('🎵 [MusicService] 响应状态码: ${result.statusCode}');
 
       if (result.ok) {
         final data = result.data as Map<String, dynamic>;
@@ -83,27 +84,31 @@ class MusicService extends ChangeNotifier {
               )
               .toList();
 
-          print('✅ [MusicService] 成功获取 ${_toplists.length} 个榜单');
+          StructuredLogService.log(
+            '✅ [MusicService] 成功获取 ${_toplists.length} 个榜单',
+          );
 
           // 打印每个榜单的歌曲数量
           for (var toplist in _toplists) {
-            print('   📊 ${toplist.name}: ${toplist.tracks.length} 首歌曲');
+            StructuredLogService.log(
+              '   📊 ${toplist.name}: ${toplist.tracks.length} 首歌曲',
+            );
           }
 
           _errorMessage = null;
           _isCached = true; // 标记数据已缓存
-          print('💾 [MusicService] 数据已缓存');
+          StructuredLogService.log('💾 [MusicService] 数据已缓存');
         } else {
           _errorMessage = '获取榜单失败: 服务器返回状态 ${data['status']}';
-          print('❌ [MusicService] $_errorMessage');
+          StructuredLogService.log('❌ [MusicService] $_errorMessage');
         }
       } else {
         _errorMessage = '获取榜单失败: HTTP ${result.statusCode}';
-        print('❌ [MusicService] $_errorMessage');
+        StructuredLogService.log('❌ [MusicService] $_errorMessage');
       }
     } catch (e) {
       _errorMessage = '获取榜单失败: $e';
-      print('❌ [MusicService] $_errorMessage');
+      StructuredLogService.log('❌ [MusicService] $_errorMessage');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -114,7 +119,7 @@ class MusicService extends ChangeNotifier {
   Future<void> refreshToplists({
     MusicSource source = MusicSource.netease,
   }) async {
-    print('🔄 [MusicService] 手动刷新榜单');
+    StructuredLogService.log('🔄 [MusicService] 手动刷新榜单');
     await fetchToplists(source: source, forceRefresh: true);
   }
 
@@ -184,10 +189,10 @@ class MusicService extends ChangeNotifier {
     void Function(LxRuntimeFailure? failure)? onLxFailure,
   }) async {
     try {
-      print(
+      StructuredLogService.log(
         '🎵 [MusicService] 获取歌曲详情: $songId (${source.name}), 音质: ${quality.displayName}',
       );
-      print('   Song ID 类型: ${songId.runtimeType}');
+      StructuredLogService.log('   Song ID 类型: ${songId.runtimeType}');
       DeveloperModeService().addLog(
         '🎵 [MusicService] 获取歌曲详情: $songId (${source.name})',
       );
@@ -212,7 +217,7 @@ class MusicService extends ChangeNotifier {
         String tlyricText = '';
         if (fetchLyrics) {
           try {
-            print(
+            StructuredLogService.log(
               '📝 [MusicService] Navidrome 获取歌词: getLyricsBySongId(songId="$songId")',
             );
             final fetched = await api
@@ -221,12 +226,16 @@ class MusicService extends ChangeNotifier {
             if (fetched != null && !fetched.isEmpty) {
               lyricText = fetched.lyric;
               tlyricText = fetched.tlyric;
-              print('✅ [MusicService] Navidrome 歌词获取成功: getLyricsBySongId');
+              StructuredLogService.log(
+                '✅ [MusicService] Navidrome 歌词获取成功: getLyricsBySongId',
+              );
             } else {
-              print('⚠️ [MusicService] Navidrome 歌词为空: getLyricsBySongId');
+              StructuredLogService.log(
+                '⚠️ [MusicService] Navidrome 歌词为空: getLyricsBySongId',
+              );
             }
           } catch (e) {
-            print(
+            StructuredLogService.log(
               '⚠️ [MusicService] Navidrome 获取歌词失败（不影响播放）: '
               'getLyricsBySongId: $e',
             );
@@ -250,7 +259,7 @@ class MusicService extends ChangeNotifier {
       // 检查音源是否已配置
       final audioSourceService = AudioSourceService();
       if (!audioSourceService.isConfigured) {
-        print('⚠️ [MusicService] 音源未配置，无法获取歌曲 URL');
+        StructuredLogService.log('⚠️ [MusicService] 音源未配置，无法获取歌曲 URL');
         DeveloperModeService().addLog('⚠️ [MusicService] 音源未配置');
         throw AudioSourceNotConfiguredException();
       }
@@ -293,7 +302,7 @@ class MusicService extends ChangeNotifier {
         platformQualities,
       );
       if (effectiveQuality != quality) {
-        print(
+        StructuredLogService.log(
           '🔄 [MusicService] OmniParse 音质降级: ${quality.displayName} -> ${effectiveQuality.displayName} (平台: ${source.name})',
         );
         DeveloperModeService().addLog(
@@ -467,7 +476,9 @@ class MusicService extends ChangeNotifier {
           return null;
       }
 
-      print('🎵 [MusicService] 歌曲详情响应状态码: ${response.statusCode}');
+      StructuredLogService.log(
+        '🎵 [MusicService] 歌曲详情响应状态码: ${response.statusCode}',
+      );
       DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
 
       if (response.statusCode == 200) {
@@ -480,43 +491,57 @@ class MusicService extends ChangeNotifier {
         final data = json.decode(responseBody) as Map<String, dynamic>;
 
         // 🔍 调试：打印后端返回的完整数据（根据音乐源不同处理）
-        print('🔍 [MusicService] 后端返回的数据 (${source.name}):');
-        print('   status: ${data['status']}');
+        StructuredLogService.log('🔍 [MusicService] 后端返回的数据 (${source.name}):');
+        StructuredLogService.log('   status: ${data['status']}');
 
         if (source == MusicSource.qq) {
           // QQ音乐格式
-          print('   song 字段存在: ${data.containsKey('song')}');
+          StructuredLogService.log('   song 字段存在: ${data.containsKey('song')}');
           if (data.containsKey('song')) {
             final song = data['song'] as Map<String, dynamic>?;
-            print('   name: ${song?['name']}');
+            StructuredLogService.log('   name: ${song?['name']}');
           }
-          print('   lyric 字段存在: ${data.containsKey('lyric')}');
+          StructuredLogService.log(
+            '   lyric 字段存在: ${data.containsKey('lyric')}',
+          );
           if (data.containsKey('lyric')) {
             final lyricData = data['lyric'];
-            print('   lyric 类型: ${lyricData.runtimeType}');
+            StructuredLogService.log('   lyric 类型: ${lyricData.runtimeType}');
             if (lyricData is Map) {
               final lyricText = lyricData['lyric'];
-              print('   lyric.lyric 类型: ${lyricText.runtimeType}');
+              StructuredLogService.log(
+                '   lyric.lyric 类型: ${lyricText.runtimeType}',
+              );
               if (lyricText is String) {
-                print('   lyric.lyric 长度: ${lyricText.length}');
+                StructuredLogService.log(
+                  '   lyric.lyric 长度: ${lyricText.length}',
+                );
               }
             }
           }
-          print('   music_urls 字段存在: ${data.containsKey('music_urls')}');
+          StructuredLogService.log(
+            '   music_urls 字段存在: ${data.containsKey('music_urls')}',
+          );
         } else {
           // 网易云/Apple/酷狗/酷我格式
-          print('   name: ${data['name']}');
-          print('   url: ${data['url']}');
-          print('   lyric 字段存在: ${data.containsKey('lyric')}');
-          print('   tlyric 字段存在: ${data.containsKey('tlyric')}');
+          StructuredLogService.log('   name: ${data['name']}');
+          StructuredLogService.log('   url: ${data['url']}');
+          StructuredLogService.log(
+            '   lyric 字段存在: ${data.containsKey('lyric')}',
+          );
+          StructuredLogService.log(
+            '   tlyric 字段存在: ${data.containsKey('tlyric')}',
+          );
           if (data.containsKey('lyric')) {
             final lyricContent = data['lyric'];
-            print('   ✅ lyric 类型: ${lyricContent.runtimeType}');
+            StructuredLogService.log(
+              '   ✅ lyric 类型: ${lyricContent.runtimeType}',
+            );
             if (lyricContent is String) {
-              print('   ✅ lyric 长度: ${lyricContent.length}');
+              StructuredLogService.log('   ✅ lyric 长度: ${lyricContent.length}');
               if (lyricContent.isNotEmpty && lyricContent.length > 100) {
                 final preview = lyricContent.substring(0, 100);
-                print('   ✅ lyric 前100字符: $preview');
+                StructuredLogService.log('   ✅ lyric 前100字符: $preview');
               }
             }
           }
@@ -575,17 +600,19 @@ class MusicService extends ChangeNotifier {
               qrcText = qrcValue is String ? qrcValue : '';
               qrcTransText = qrcTransValue is String ? qrcTransValue : '';
 
-              print('🎵 [MusicService] OmniParse QQ音乐歌词获取:');
-              print(
+              StructuredLogService.log('🎵 [MusicService] OmniParse QQ音乐歌词获取:');
+              StructuredLogService.log(
                 '   原文歌词: ${lyricText.isNotEmpty ? "${lyricText.length}字符" : "无"}',
               );
-              print(
+              StructuredLogService.log(
                 '   翻译歌词: ${tlyricText.isNotEmpty ? "${tlyricText.length}字符" : "无"}',
               );
-              print(
+              StructuredLogService.log(
                 '   逐字歌词(QRC): ${qrcText.isNotEmpty ? "${qrcText.length}字符" : "无"}',
               );
-              print('   📋 lyricData 原始字段: ${lyricData?.keys.toList()}');
+              StructuredLogService.log(
+                '   📋 lyricData 原始字段: ${lyricData.keys.toList()}',
+              );
             }
 
             songDetail = SongDetail(
@@ -607,17 +634,19 @@ class MusicService extends ChangeNotifier {
             // 酷狗音乐返回格式
             final song = data['song'] as Map<String, dynamic>?;
             if (song == null) {
-              print('❌ [MusicService] 酷狗音乐返回数据格式错误');
+              StructuredLogService.log('❌ [MusicService] 酷狗音乐返回数据格式错误');
               return null;
             }
 
             // 调试：打印酷狗音乐返回的 song 对象
-            print('🔍 [MusicService] 酷狗音乐 song 对象:');
-            print('   name: ${song['name']}');
-            print('   singer: ${song['singer']}');
-            print('   album: ${song['album']}');
-            print('   pic: ${song['pic']}');
-            print('   url: ${song['url'] != null ? '已获取' : '无'}');
+            StructuredLogService.log('🔍 [MusicService] 酷狗音乐 song 对象:');
+            StructuredLogService.log('   name: ${song['name']}');
+            StructuredLogService.log('   singer: ${song['singer']}');
+            StructuredLogService.log('   album: ${song['album']}');
+            StructuredLogService.log('   pic: ${song['pic']}');
+            StructuredLogService.log(
+              '   url: ${song['url'] != null ? '已获取' : '无'}',
+            );
 
             // 处理 bitrate（可能是 int 或 String）
             final bitrateValue = song['bitrate'];
@@ -640,35 +669,43 @@ class MusicService extends ChangeNotifier {
             // 酷我音乐返回格式
             final song = data['song'] as Map<String, dynamic>?;
             if (song == null) {
-              print('❌ [MusicService] 酷我音乐返回数据格式错误');
+              StructuredLogService.log('❌ [MusicService] 酷我音乐返回数据格式错误');
               return null;
             }
 
             // 调试：打印酷我音乐返回的 song 对象
-            print('🔍 [MusicService] 酷我音乐 song 对象:');
-            print('   name: ${song['name']}');
-            print('   artist: ${song['artist']}');
-            print('   album: ${song['album']}');
-            print('   pic: ${song['pic']}');
-            print('   url: ${song['url'] != null ? '已获取' : '无'}');
-            print('   duration: ${song['duration']}');
+            StructuredLogService.log('🔍 [MusicService] 酷我音乐 song 对象:');
+            StructuredLogService.log('   name: ${song['name']}');
+            StructuredLogService.log('   artist: ${song['artist']}');
+            StructuredLogService.log('   album: ${song['album']}');
+            StructuredLogService.log('   pic: ${song['pic']}');
+            StructuredLogService.log(
+              '   url: ${song['url'] != null ? '已获取' : '无'}',
+            );
+            StructuredLogService.log('   duration: ${song['duration']}');
 
             // 获取歌词
             final lyricText = song['lyric'] is String
                 ? song['lyric'] as String
                 : '';
 
-            print('🎵 [MusicService] 酷我歌词获取结果:');
-            print('   lyricText类型: ${song['lyric'].runtimeType}');
-            print('   lyricText长度: ${lyricText.length}');
+            StructuredLogService.log('🎵 [MusicService] 酷我歌词获取结果:');
+            StructuredLogService.log(
+              '   lyricText类型: ${song['lyric'].runtimeType}',
+            );
+            StructuredLogService.log('   lyricText长度: ${lyricText.length}');
             if (lyricText.isNotEmpty) {
-              print(
+              StructuredLogService.log(
                 '   lyricText前50字符: ${lyricText.substring(0, min(50, lyricText.length))}',
               );
-              print('   lyricText包含换行符: ${lyricText.contains('\n')}');
+              StructuredLogService.log(
+                '   lyricText包含换行符: ${lyricText.contains('\n')}',
+              );
             } else {
-              print('   ❌ 歌词为空！');
-              print('   完整 song 对象 keys: ${song.keys.toList()}');
+              StructuredLogService.log('   ❌ 歌词为空！');
+              StructuredLogService.log(
+                '   完整 song 对象 keys: ${song.keys.toList()}',
+              );
             }
 
             songDetail = SongDetail(
@@ -687,7 +724,9 @@ class MusicService extends ChangeNotifier {
           } else if (source == MusicSource.apple) {
             // Apple Music - 需要特殊处理 URL
             // 后端返回的 url 是加密的 HLS 流，需要替换为解密流端点
-            print('🔧 [MusicService] 开始解析 Apple Music 数据...');
+            StructuredLogService.log(
+              '🔧 [MusicService] 开始解析 Apple Music 数据...',
+            );
 
             final originalUrl = data['url'] as String? ?? '';
             final isEncrypted =
@@ -700,7 +739,9 @@ class MusicService extends ChangeNotifier {
             if (isEncrypted && originalUrl.isNotEmpty) {
               // 构建解密流端点 URL
               playUrl = '$baseUrl/apple/stream?salableAdamId=$songId';
-              print('🔐 [MusicService] Apple Music 流已加密，使用解密端点: $playUrl');
+              StructuredLogService.log(
+                '🔐 [MusicService] Apple Music 流已加密，使用解密端点: $playUrl',
+              );
               DeveloperModeService().addLog('🔐 [MusicService] 使用解密流端点');
             }
 
@@ -718,35 +759,53 @@ class MusicService extends ChangeNotifier {
               source: source,
             );
 
-            print('🔧 [MusicService] 解析完成，检查 SongDetail 对象:');
-            print('   songDetail.lyric 长度: ${songDetail.lyric.length}');
-            print('   songDetail.tlyric 长度: ${songDetail.tlyric.length}');
-            print('   songDetail.url: ${songDetail.url}');
+            StructuredLogService.log(
+              '🔧 [MusicService] 解析完成，检查 SongDetail 对象:',
+            );
+            StructuredLogService.log(
+              '   songDetail.lyric 长度: ${songDetail.lyric.length}',
+            );
+            StructuredLogService.log(
+              '   songDetail.tlyric 长度: ${songDetail.tlyric.length}',
+            );
+            StructuredLogService.log('   songDetail.url: ${songDetail.url}');
           } else {
             // 网易云音乐（同结构）
-            print('🔧 [MusicService] 开始解析 ${source.name} 数据...');
+            StructuredLogService.log(
+              '🔧 [MusicService] 开始解析 ${source.name} 数据...',
+            );
             songDetail = SongDetail.fromJson(data, source: source);
-            print('🔧 [MusicService] 解析完成，检查 SongDetail 对象:');
-            print('   songDetail.lyric 长度: ${songDetail.lyric.length}');
-            print('   songDetail.tlyric 长度: ${songDetail.tlyric.length}');
+            StructuredLogService.log(
+              '🔧 [MusicService] 解析完成，检查 SongDetail 对象:',
+            );
+            StructuredLogService.log(
+              '   songDetail.lyric 长度: ${songDetail.lyric.length}',
+            );
+            StructuredLogService.log(
+              '   songDetail.tlyric 长度: ${songDetail.tlyric.length}',
+            );
           }
 
-          print('✅ [MusicService] 成功获取歌曲详情: ${songDetail.name}');
-          print(
+          StructuredLogService.log(
+            '✅ [MusicService] 成功获取歌曲详情: ${songDetail.name}',
+          );
+          StructuredLogService.log(
             '   🆔 ID: ${songDetail.id} (类型: ${songDetail.id.runtimeType})',
           );
-          print('   🎵 艺术家: ${songDetail.arName}');
-          print('   💿 专辑: ${songDetail.alName}');
-          print(
+          StructuredLogService.log('   🎵 艺术家: ${songDetail.arName}');
+          StructuredLogService.log('   💿 专辑: ${songDetail.alName}');
+          StructuredLogService.log(
             '   🖼️ 封面: ${songDetail.pic.isNotEmpty ? songDetail.pic : "无"}',
           );
-          print('   🎼 音质: ${songDetail.level}');
-          print('   📦 大小: ${songDetail.size}');
-          print('   🔗 URL: ${songDetail.url.isNotEmpty ? "已获取" : "无"}');
-          print(
+          StructuredLogService.log('   🎼 音质: ${songDetail.level}');
+          StructuredLogService.log('   📦 大小: ${songDetail.size}');
+          StructuredLogService.log(
+            '   🔗 URL: ${songDetail.url.isNotEmpty ? "已获取" : "无"}',
+          );
+          StructuredLogService.log(
             '   📝 歌词: ${songDetail.lyric.isNotEmpty ? "${songDetail.lyric.length} 字符" : "无"}',
           );
-          print(
+          StructuredLogService.log(
             '   🌏 翻译: ${songDetail.tlyric.isNotEmpty ? "${songDetail.tlyric.length} 字符" : "无"}',
           );
 
@@ -756,14 +815,18 @@ class MusicService extends ChangeNotifier {
 
           return songDetail;
         } else {
-          print('❌ [MusicService] 获取歌曲详情失败: 服务器返回状态 ${data['status']}');
+          StructuredLogService.log(
+            '❌ [MusicService] 获取歌曲详情失败: 服务器返回状态 ${data['status']}',
+          );
           DeveloperModeService().addLog(
             '❌ [MusicService] 服务器状态 ${data['status']}',
           );
           return null;
         }
       } else {
-        print('❌ [MusicService] 获取歌曲详情失败: HTTP ${response.statusCode}');
+        StructuredLogService.log(
+          '❌ [MusicService] 获取歌曲详情失败: HTTP ${response.statusCode}',
+        );
         DeveloperModeService().addLog(
           '❌ [Network] HTTP ${response.statusCode}',
         );
@@ -773,7 +836,7 @@ class MusicService extends ChangeNotifier {
       // 音源未配置异常需要向上传递，由 PlayerService 处理并显示弹窗
       rethrow;
     } catch (e) {
-      print('❌ [MusicService] 获取歌曲详情异常: $e');
+      StructuredLogService.log('❌ [MusicService] 获取歌曲详情异常: $e');
       DeveloperModeService().addLog('❌ [MusicService] 异常: $e');
       return null;
     }
@@ -832,7 +895,7 @@ class MusicService extends ChangeNotifier {
             source: source,
           );
         } catch (e) {
-          print('⚠️ [MusicService] Navidrome 歌词补全失败: $e');
+          StructuredLogService.log('⚠️ [MusicService] Navidrome 歌词补全失败: $e');
           DeveloperModeService().addLog(
             '❌ [MusicService] Navidrome 歌词补全失败(getLyricsBySongId): $e',
           );
@@ -870,7 +933,7 @@ class MusicService extends ChangeNotifier {
         source: source,
       );
     } catch (e) {
-      print('❌ [MusicService] 歌词补全异常: $e');
+      StructuredLogService.log('❌ [MusicService] 歌词补全异常: $e');
       DeveloperModeService().addLog('❌ [MusicService] 歌词补全异常: $e');
       return null;
     }
@@ -890,7 +953,7 @@ class MusicService extends ChangeNotifier {
   }) async {
     _lastLxFailure = null;
     onFailure?.call(null);
-    print('🎵 [MusicService] 使用洛雪音源获取歌曲: $songId');
+    StructuredLogService.log('🎵 [MusicService] 使用洛雪音源获取歌曲: $songId');
     DeveloperModeService().addLog('🎵 [MusicService] 使用洛雪音源');
 
     // 获取正确的 songId
@@ -917,14 +980,14 @@ class MusicService extends ChangeNotifier {
       }
 
       if (!audioSourceService.isLxSourceSupported(source)) {
-        print('⚠️ [MusicService] 当前洛雪脚本不支持 ${source.name}');
+        StructuredLogService.log('⚠️ [MusicService] 当前洛雪脚本不支持 ${source.name}');
         DeveloperModeService().addLog(
           '⚠️ [MusicService] 当前洛雪脚本不支持 ${source.name}',
         );
         throw UnsupportedError('当前洛雪音源不支持 ${source.name}，请切换支持该平台的音源');
       }
 
-      print(
+      StructuredLogService.log(
         '🌐 [MusicService] 调用洛雪运行时获取 URL: $sourceCode / $lxSongId / $lxQuality',
       );
       DeveloperModeService().addLog('🌐 [Runtime] Get Music URL');
@@ -941,15 +1004,15 @@ class MusicService extends ChangeNotifier {
         // Playback resolution errors belong to PlaybackService. Do not write
         // them into the toplist error state, otherwise returning to the home
         // page incorrectly renders the charts section as failed.
-        print('❌ [MusicService] 洛雪音源返回空 URL');
+        StructuredLogService.log('❌ [MusicService] 洛雪音源返回空 URL');
         DeveloperModeService().addLog('❌ [MusicService] 返回空 URL');
         return null;
       }
 
-      print('✅ [MusicService] 洛雪音源获取成功');
+      StructuredLogService.log('✅ [MusicService] 洛雪音源获取成功');
       _lastLxFailure = null;
       onFailure?.call(null);
-      print(
+      StructuredLogService.log(
         '   🔗 URL: ${audioUrl.length > 50 ? "${audioUrl.substring(0, 50)}..." : audioUrl}',
       );
       DeveloperModeService().addLog('✅ [MusicService] 获取成功');
@@ -971,16 +1034,18 @@ class MusicService extends ChangeNotifier {
             ytlrc = lyricData['ytlrc'] ?? '';
             qrc = lyricData['qrc'] ?? '';
             qrcTrans = lyricData['qrcTrans'] ?? '';
-            print('📝 [MusicService] 成功从后端获取歌词: ${lyric.length} 字符');
+            StructuredLogService.log(
+              '📝 [MusicService] 成功从后端获取歌词: ${lyric.length} 字符',
+            );
             if (qrc.isNotEmpty) {
-              print('   逐字歌词(QRC): ${qrc.length} 字符');
+              StructuredLogService.log('   逐字歌词(QRC): ${qrc.length} 字符');
             }
           }
         } catch (e) {
-          print('⚠️ [MusicService] 获取歌词失败（不影响播放）: $e');
+          StructuredLogService.log('⚠️ [MusicService] 获取歌词失败（不影响播放）: $e');
         }
       } else {
-        print('ℹ️ [MusicService] 跳过同步歌词拉取，优先返回可播放链接');
+        StructuredLogService.log('ℹ️ [MusicService] 跳过同步歌词拉取，优先返回可播放链接');
       }
 
       // 洛雪音源只返回 URL，创建一个简化的 SongDetail
@@ -1007,7 +1072,7 @@ class MusicService extends ChangeNotifier {
       _lastLxFailure =
           LxMusicRuntimeService().lastFailure ?? classifyLxRuntimeFailure(e);
       onFailure?.call(_lastLxFailure);
-      print('❌ [MusicService] 洛雪音源异常: $e');
+      StructuredLogService.log('❌ [MusicService] 洛雪音源异常: $e');
       DeveloperModeService().addLog('❌ [MusicService] 异常: $e');
       return null;
     }
@@ -1047,11 +1112,13 @@ class MusicService extends ChangeNotifier {
       case MusicSource.navidrome:
         return null;
       default:
-        print('⚠️ [MusicService] 后端歌词 API 不支持 ${source.name}');
+        StructuredLogService.log(
+          '⚠️ [MusicService] 后端歌词 API 不支持 ${source.name}',
+        );
         return null;
     }
 
-    print('📝 [MusicService] 获取歌词: $path $queryParameters');
+    StructuredLogService.log('📝 [MusicService] 获取歌词: $path $queryParameters');
 
     try {
       final result = await ApiClient().getJson(
@@ -1074,9 +1141,11 @@ class MusicService extends ChangeNotifier {
           };
         }
       }
-      print('⚠️ [MusicService] 歌词 API 返回异常: ${result.statusCode}');
+      StructuredLogService.log(
+        '⚠️ [MusicService] 歌词 API 返回异常: ${result.statusCode}',
+      );
     } catch (e) {
-      print('❌ [MusicService] 歌词请求失败: $e');
+      StructuredLogService.log('❌ [MusicService] 歌词请求失败: $e');
     }
     return null;
   }
@@ -1094,22 +1163,6 @@ class MusicService extends ChangeNotifier {
   }
 
   /// 获取洛雪音源错误消息
-  String _getLxErrorMessage(dynamic code, String? serverMsg) {
-    switch (code) {
-      case 1:
-        return 'IP 被封禁，请稍后重试';
-      case 2:
-        return '获取音乐链接失败';
-      case 4:
-        return '音源服务器内部错误';
-      case 5:
-        return '请求过于频繁，请稍后重试';
-      case 6:
-        return '参数错误';
-      default:
-        return serverMsg ?? '未知错误 (code: $code)';
-    }
-  }
 
   /// 清除数据和缓存
   void clear() {
@@ -1117,7 +1170,7 @@ class MusicService extends ChangeNotifier {
     _errorMessage = null;
     _isLoading = false;
     _isCached = false; // 清除缓存标志
-    print('🗑️ [MusicService] 已清除数据和缓存');
+    StructuredLogService.log('🗑️ [MusicService] 已清除数据和缓存');
     notifyListeners();
   }
 
@@ -1134,12 +1187,14 @@ class MusicService extends ChangeNotifier {
     required AudioSourceService audioSourceService,
     required bool fetchLyrics,
   }) async {
-    print('🎵 [MusicService] 使用 TuneHub v3 音源获取歌曲: $songId');
+    StructuredLogService.log('🎵 [MusicService] 使用 TuneHub v3 音源获取歌曲: $songId');
     DeveloperModeService().addLog('🎵 [MusicService] 使用 TuneHub v3 音源');
 
     // 检查来源是否被 TuneHub 音源支持
     if (!audioSourceService.isTuneHubSourceSupported(source)) {
-      print('⚠️ [MusicService] TuneHub 音源不支持 ${source.name}');
+      StructuredLogService.log(
+        '⚠️ [MusicService] TuneHub 音源不支持 ${source.name}',
+      );
       DeveloperModeService().addLog(
         '⚠️ [MusicService] TuneHub 音源不支持 ${source.name}',
       );
@@ -1156,8 +1211,10 @@ class MusicService extends ChangeNotifier {
         quality,
       );
 
-      print('🌐 [MusicService] TuneHub v3 音源请求: POST $parseUrl');
-      print('   📦 Body: $body');
+      StructuredLogService.log(
+        '🌐 [MusicService] TuneHub v3 音源请求: POST $parseUrl',
+      );
+      StructuredLogService.log('   📦 Body: $body');
       DeveloperModeService().addLog('🌐 [Network] POST $parseUrl');
 
       final response = await http
@@ -1170,7 +1227,9 @@ class MusicService extends ChangeNotifier {
             },
           );
 
-      print('🎵 [MusicService] TuneHub v3 音源响应状态码: ${response.statusCode}');
+      StructuredLogService.log(
+        '🎵 [MusicService] TuneHub v3 音源响应状态码: ${response.statusCode}',
+      );
       DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
 
       if (response.statusCode == 200) {
@@ -1191,7 +1250,7 @@ class MusicService extends ChangeNotifier {
           final dataList = outerData?['data'] as List<dynamic>?;
 
           if (dataList == null || dataList.isEmpty) {
-            print('❌ [MusicService] TuneHub v3 音源返回空数据');
+            StructuredLogService.log('❌ [MusicService] TuneHub v3 音源返回空数据');
             DeveloperModeService().addLog('❌ [MusicService] 返回空数据');
             return null;
           }
@@ -1203,7 +1262,9 @@ class MusicService extends ChangeNotifier {
           final itemSuccess = songData['success'] as bool? ?? false;
           if (!itemSuccess) {
             final errorMsg = songData['error'] as String? ?? '获取失败';
-            print('❌ [MusicService] TuneHub v3 单曲获取失败: $errorMsg');
+            StructuredLogService.log(
+              '❌ [MusicService] TuneHub v3 单曲获取失败: $errorMsg',
+            );
             DeveloperModeService().addLog('❌ [MusicService] 错误: $errorMsg');
             throw Exception(errorMsg);
           }
@@ -1237,18 +1298,24 @@ class MusicService extends ChangeNotifier {
                 ytlrcText = lyricData['ytlrc'] ?? '';
                 qrcText = lyricData['qrc'] ?? '';
                 qrcTransText = lyricData['qrcTrans'] ?? '';
-                print(
+                StructuredLogService.log(
                   '📝 [MusicService] TuneHub v3 成功从后端获取歌词: ${lyricText.length} 字符',
                 );
                 if (qrcText.isNotEmpty) {
-                  print('   逐字歌词(QRC): ${qrcText.length} 字符');
+                  StructuredLogService.log(
+                    '   逐字歌词(QRC): ${qrcText.length} 字符',
+                  );
                 }
               }
             } catch (e) {
-              print('⚠️ [MusicService] TuneHub v3 获取歌词失败（不影响播放）: $e');
+              StructuredLogService.log(
+                '⚠️ [MusicService] TuneHub v3 获取歌词失败（不影响播放）: $e',
+              );
             }
           } else {
-            print('ℹ️ [MusicService] TuneHub v3 跳过同步歌词拉取，优先返回可播放链接');
+            StructuredLogService.log(
+              'ℹ️ [MusicService] TuneHub v3 跳过同步歌词拉取，优先返回可播放链接',
+            );
           }
 
           // 获取实际音质信息
@@ -1256,11 +1323,11 @@ class MusicService extends ChangeNotifier {
               songData['actualQuality'] as String? ??
               audioSourceService.getTuneHubQuality(quality);
 
-          print('✅ [MusicService] TuneHub v3 音源获取成功');
-          print('   🎵 歌曲: $songName');
-          print('   🎤 艺术家: $artistName');
-          print('   💿 专辑: $albumName');
-          print(
+          StructuredLogService.log('✅ [MusicService] TuneHub v3 音源获取成功');
+          StructuredLogService.log('   🎵 歌曲: $songName');
+          StructuredLogService.log('   🎤 艺术家: $artistName');
+          StructuredLogService.log('   💿 专辑: $albumName');
+          StructuredLogService.log(
             '   🔗 URL: ${audioUrl.length > 50 ? "${audioUrl.substring(0, 50)}..." : audioUrl}',
           );
           DeveloperModeService().addLog('✅ [MusicService] TuneHub v3 获取成功');
@@ -1285,12 +1352,14 @@ class MusicService extends ChangeNotifier {
         } else {
           // 处理 TuneHub 音源错误码
           final errorMsg = data['message'] as String? ?? '未知错误 (code: $code)';
-          print('❌ [MusicService] TuneHub v3 音源错误: $errorMsg');
+          StructuredLogService.log(
+            '❌ [MusicService] TuneHub v3 音源错误: $errorMsg',
+          );
           DeveloperModeService().addLog('❌ [MusicService] 错误: $errorMsg');
           throw Exception(errorMsg);
         }
       } else {
-        print(
+        StructuredLogService.log(
           '❌ [MusicService] TuneHub v3 音源请求失败: HTTP ${response.statusCode}',
         );
         DeveloperModeService().addLog(
@@ -1300,7 +1369,7 @@ class MusicService extends ChangeNotifier {
       }
     } catch (e) {
       if (e is UnsupportedError) rethrow;
-      print('❌ [MusicService] TuneHub v3 音源异常: $e');
+      StructuredLogService.log('❌ [MusicService] TuneHub v3 音源异常: $e');
       DeveloperModeService().addLog('❌ [MusicService] 异常: $e');
       return null;
     }
@@ -1340,7 +1409,7 @@ class MusicService extends ChangeNotifier {
       }
       return null;
     } catch (e) {
-      print('❌ [MusicService] Spotify fetch failed: $e');
+      StructuredLogService.log('❌ [MusicService] Spotify fetch failed: $e');
       return null;
     }
   }

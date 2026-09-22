@@ -12,6 +12,15 @@ class StructuredLogService {
 
   static StructuredLogSink? sink;
 
+  /// Records a free-form diagnostic message without writing directly to stdout.
+  static void log(Object? message, {LogLevel level = LogLevel.debug}) {
+    event(
+      'diagnostic.message',
+      level: level,
+      fields: {'message': message?.toString() ?? 'null'},
+    );
+  }
+
   static void event(
     String event, {
     LogLevel level = LogLevel.info,

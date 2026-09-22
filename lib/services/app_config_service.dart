@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'api/api_client.dart';
 
@@ -81,7 +82,7 @@ class AppConfigService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      print('[AppConfigService] Fetching public config from: /config/public');
+      StructuredLogService.log('[AppConfigService] Fetching public config from: /config/public');
 
       final result = await ApiClient().getJson(
         '/config/public',
@@ -89,8 +90,8 @@ class AppConfigService extends ChangeNotifier {
         timeout: const Duration(seconds: 10),
       );
 
-      print('[AppConfigService] Status: ${result.statusCode}');
-      print('[AppConfigService] Body: ${result.data}');
+      StructuredLogService.log('[AppConfigService] Status: ${result.statusCode}');
+      StructuredLogService.log('[AppConfigService] Body: ${result.data}');
 
       if (result.ok && result.data != null) {
         final body = result.data as Map<String, dynamic>;
@@ -104,7 +105,7 @@ class AppConfigService extends ChangeNotifier {
 
       throw Exception('获取配置失败: ${result.statusCode}');
     } catch (e) {
-      print('[AppConfigService] Exception: $e');
+      StructuredLogService.log('[AppConfigService] Exception: $e');
       _error = e.toString();
       _loading = false;
       _config = AppPublicConfig.empty();

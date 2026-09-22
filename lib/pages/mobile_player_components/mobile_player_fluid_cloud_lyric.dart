@@ -40,7 +40,7 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
   bool _isDragging = false;
   Timer? _dragResetTimer;
   int? _selectedLyricIndex;
-  
+
   // 时间胶囊动画
   AnimationController? _timeCapsuleAnimationController;
   Animation<double>? _timeCapsuleFadeAnimation;
@@ -359,7 +359,7 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
       child: Text(
         message,
         style: TextStyle(
-          color: Colors.white.withOpacity(0.5),
+          color: Colors.white.withValues(alpha: 0.5),
           fontSize: 16,
           fontFamily: fontFamily,
         ),
@@ -384,10 +384,10 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withValues(alpha: 0.3),
               width: 0.5,
             ),
           ),
@@ -596,7 +596,7 @@ class _MobileElasticLyricLineState extends State<_MobileElasticLyricLine> with T
     if (widget.isActive) {
       textColor = Colors.white;
     } else {
-      textColor = Colors.white.withOpacity(0.35);
+      textColor = Colors.white.withValues(alpha: 0.35);
     }
 
     // 构建文本 Widget
@@ -661,7 +661,7 @@ class _MobileElasticLyricLineState extends State<_MobileElasticLyricLine> with T
                 fontFamily: fontFamily,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.white.withOpacity(0.35),
+                color: Colors.white.withValues(alpha: 0.35),
                 height: 1.2,
               ),
             ),
@@ -1032,7 +1032,7 @@ class _MobileWordFillWidgetState extends State<_MobileWordFillWidget> with Ticke
     } else {
       const double glowWidth = 0.05;
       gradientColors = [
-        Colors.white.withOpacity(0.9),
+        Colors.white.withValues(alpha: 0.9),
         Colors.white,
         Colors.white,
         const Color(0x99FFFFFF),
@@ -1104,7 +1104,7 @@ class _MobileWordFillWidgetState extends State<_MobileWordFillWidget> with Ticke
         } else {
           const double glowW = 0.15;
           lColors = [
-            Colors.white.withOpacity(0.9),
+            Colors.white.withValues(alpha: 0.9),
             Colors.white,
             Colors.white,
             const Color(0x99FFFFFF),

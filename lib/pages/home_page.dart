@@ -1,3 +1,4 @@
+import '../services/structured_log_service.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
@@ -96,7 +97,7 @@ class _HomePageState extends State<HomePage>
 
     // 如果还没有数据，自动获取
     if (MusicService().toplists.isEmpty && !MusicService().isLoading) {
-      print('🏠 [HomePage] 首次加载，获取榜单数据...');
+      StructuredLogService.log('🏠 [HomePage] 首次加载，获取榜单数据...');
       MusicService().fetchToplists();
     } else {
       // 如果已有数据，初始化缓存并启动定时器
@@ -199,23 +200,18 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  void _onPlaylistChanged() {
-    if (mounted) {
-      setState(() {});
-    }
-  }
 
   void _onPageVisibilityChanged() {
     final isVisible = PageVisibilityNotifier().isHomePage;
 
     if (isVisible && _isPageVisible == false) {
       // 从隐藏变为可见
-      print('🏠 [HomePage] 页面重新显示，刷新轮播图...');
+      StructuredLogService.log('🏠 [HomePage] 页面重新显示，刷新轮播图...');
       _isPageVisible = true;
       _refreshBannerTracks();
     } else if (!isVisible && _isPageVisible == true) {
       // 从可见变为隐藏
-      print('🏠 [HomePage] 页面隐藏，停止轮播图...');
+      StructuredLogService.log('🏠 [HomePage] 页面隐藏，停止轮播图...');
       _isPageVisible = false;
       _stopBannerTimer();
     }
@@ -227,7 +223,7 @@ class _HomePageState extends State<HomePage>
 
     if (state == AppLifecycleState.resumed && _isPageVisible) {
       // 应用恢复到前台且页面可见时，刷新轮播图
-      print('🏠 [HomePage] 应用恢复，刷新轮播图...');
+      StructuredLogService.log('🏠 [HomePage] 应用恢复，刷新轮播图...');
       _refreshBannerTracks();
     } else if (state == AppLifecycleState.paused) {
       // 应用进入后台时，停止定时器
@@ -271,7 +267,7 @@ class _HomePageState extends State<HomePage>
 
   /// 刷新轮播图歌曲
   void _refreshBannerTracks() {
-    print('🏠 [HomePage] 刷新轮播图歌曲...');
+    StructuredLogService.log('🏠 [HomePage] 刷新轮播图歌曲...');
     if (mounted) {
       setState(() {
         // 重置当前索引
@@ -292,7 +288,7 @@ class _HomePageState extends State<HomePage>
 
     // 只有当有轮播图内容时才启动定时器
     if (_cachedRandomTracks.length > 1) {
-      print('🎵 [HomePage] 启动轮播图定时器，共 ${_cachedRandomTracks.length} 张');
+      StructuredLogService.log('🎵 [HomePage] 启动轮播图定时器，共 ${_cachedRandomTracks.length} 张');
 
       _bannerTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
         if (mounted && _bannerController.hasClients) {
@@ -300,7 +296,7 @@ class _HomePageState extends State<HomePage>
           final nextPage =
               (_currentBannerIndex + 1) % _cachedRandomTracks.length;
 
-          print('🎵 [HomePage] 自动切换轮播图：$_currentBannerIndex -> $nextPage');
+          StructuredLogService.log('🎵 [HomePage] 自动切换轮播图：$_currentBannerIndex -> $nextPage');
 
           // 平滑切换到下一页
           _bannerController.animateToPage(
@@ -311,19 +307,19 @@ class _HomePageState extends State<HomePage>
         }
       });
     } else {
-      print('🎵 [HomePage] 轮播图数量不足，不启动定时器');
+      StructuredLogService.log('🎵 [HomePage] 轮播图数量不足，不启动定时器');
     }
   }
 
   /// 停止轮播图定时器
   void _stopBannerTimer() {
     _bannerTimer?.cancel();
-    print('🎵 [HomePage] 停止轮播图定时器');
+    StructuredLogService.log('🎵 [HomePage] 停止轮播图定时器');
   }
 
   /// 重启轮播图定时器
   void _restartBannerTimer() {
-    print('🎵 [HomePage] 重启轮播图定时器');
+    StructuredLogService.log('🎵 [HomePage] 重启轮播图定时器');
     _stopBannerTimer();
     _startBannerTimer();
   }
@@ -336,57 +332,58 @@ class _HomePageState extends State<HomePage>
 
       if (!mounted) return;
 
-      print('📢 [HomePage] 开始检查公告...');
+      StructuredLogService.log('📢 [HomePage] 开始检查公告...');
 
       final announcementService = AnnouncementService();
 
       // 添加详细的调试信息
-      print('📢 [HomePage] 公告服务状态:');
-      print('  - isInitialized: ${announcementService.isInitialized}');
-      print('  - isLoading: ${announcementService.isLoading}');
-      print('  - error: ${announcementService.error}');
-      print('  - currentAnnouncement: ${announcementService.currentAnnouncement}');
+      StructuredLogService.log('📢 [HomePage] 公告服务状态:');
+      StructuredLogService.log('  - isInitialized: ${announcementService.isInitialized}');
+      StructuredLogService.log('  - isLoading: ${announcementService.isLoading}');
+      StructuredLogService.log('  - error: ${announcementService.error}');
+      StructuredLogService.log('  - currentAnnouncement: ${announcementService.currentAnnouncement}');
 
       if (announcementService.currentAnnouncement != null) {
         final announcement = announcementService.currentAnnouncement!;
-        print('  - announcement.enabled: ${announcement.enabled}');
-        print('  - announcement.id: ${announcement.id}');
-        print('  - announcement.title: ${announcement.title}');
+        StructuredLogService.log('  - announcement.enabled: ${announcement.enabled}');
+        StructuredLogService.log('  - announcement.id: ${announcement.id}');
+        StructuredLogService.log('  - announcement.title: ${announcement.title}');
       }
 
       // 如果服务还在加载中，等待加载完成
       if (announcementService.isLoading) {
-        print('📢 [HomePage] 公告服务正在加载，等待完成...');
+        StructuredLogService.log('📢 [HomePage] 公告服务正在加载，等待完成...');
         // 最多等待5秒
         for (int i = 0; i < 50; i++) {
           await Future.delayed(const Duration(milliseconds: 100));
           if (!announcementService.isLoading) break;
         }
-        print('📢 [HomePage] 等待完成，当前状态: isLoading=${announcementService.isLoading}');
+        StructuredLogService.log('📢 [HomePage] 等待完成，当前状态: isLoading=${announcementService.isLoading}');
       }
 
       // 检查是否应该显示公告
       final shouldShow = announcementService.shouldShowAnnouncement();
-      print('📢 [HomePage] shouldShowAnnouncement() 返回: $shouldShow');
+      StructuredLogService.log('📢 [HomePage] shouldShowAnnouncement() 返回: $shouldShow');
 
       if (shouldShow && announcementService.currentAnnouncement != null) {
-        print('📢 [HomePage] 显示公告: ${announcementService.currentAnnouncement!.title}');
+        StructuredLogService.log('📢 [HomePage] 显示公告: ${announcementService.currentAnnouncement!.title}');
 
+        if (!mounted) return;
         await AnnouncementDialog.show(
           context,
           announcementService.currentAnnouncement!,
         );
 
-        print('📢 [HomePage] 公告已关闭');
+        StructuredLogService.log('📢 [HomePage] 公告已关闭');
       } else {
-        print('📢 [HomePage] 无需显示公告');
+        StructuredLogService.log('📢 [HomePage] 无需显示公告');
         if (announcementService.error != null) {
-          print('📢 [HomePage] 错误信息: ${announcementService.error}');
+          StructuredLogService.log('📢 [HomePage] 错误信息: ${announcementService.error}');
         }
       }
     } catch (e, stackTrace) {
-      print('❌ [HomePage] 检查公告失败: $e');
-      print('❌ [HomePage] 堆栈: $stackTrace');
+      StructuredLogService.log('❌ [HomePage] 检查公告失败: $e');
+      StructuredLogService.log('❌ [HomePage] 堆栈: $stackTrace');
     }
   }
 
@@ -404,11 +401,11 @@ class _HomePageState extends State<HomePage>
 
       // 如果更新提示已关闭且自动更新也未开启，跳过网络请求
       if (!allowStartupUpdatePrompt && !AutoUpdateService().isEnabled) {
-        print('🔕 [HomePage] 更新提示与自动更新均已关闭，跳过版本检查');
+        StructuredLogService.log('🔕 [HomePage] 更新提示与自动更新均已关闭，跳过版本检查');
         return;
       }
 
-      print('🔍 [HomePage] 开始检查更新...');
+      StructuredLogService.log('🔍 [HomePage] 开始检查更新...');
 
       final versionInfo = await VersionService().checkForUpdate(silent: true);
 
@@ -441,7 +438,7 @@ class _HomePageState extends State<HomePage>
         }
 
         if (!allowStartupUpdatePrompt) {
-          print('🔕 [HomePage] 启动更新提示已关闭，跳过弹窗');
+          StructuredLogService.log('🔕 [HomePage] 启动更新提示已关闭，跳过弹窗');
           return;
         }
 
@@ -459,14 +456,14 @@ class _HomePageState extends State<HomePage>
           _showUpdateDialog(versionInfo);
         } else {
           if (hasReminded) {
-            print('⏰ [HomePage] 用户选择了稍后提醒，本次会话不再提示');
+            StructuredLogService.log('⏰ [HomePage] 用户选择了稍后提醒，本次会话不再提示');
           } else {
-            print('🔕 [HomePage] 用户已忽略此版本，不再提示');
+            StructuredLogService.log('🔕 [HomePage] 用户已忽略此版本，不再提示');
           }
         }
       }
     } catch (e) {
-      print('❌ [HomePage] 检查更新失败: $e');
+      StructuredLogService.log('❌ [HomePage] 检查更新失败: $e');
     }
   }
 
@@ -596,7 +593,7 @@ class _HomePageState extends State<HomePage>
               onPressed: () {
                 // 标记本次会话已提醒，不保存到持久化存储
                 VersionService().markVersionReminded(versionInfo.version);
-                if (mounted) {
+                if (context.mounted) {
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -617,7 +614,7 @@ class _HomePageState extends State<HomePage>
                 await VersionService().ignoreCurrentVersion(
                   versionInfo.version,
                 );
-                if (mounted) {
+                if (context.mounted) {
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -732,7 +729,7 @@ class _HomePageState extends State<HomePage>
             fluent.Button(
               onPressed: () {
                 VersionService().markVersionReminded(versionInfo.version);
-                if (mounted) {
+                if (context.mounted) {
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -750,7 +747,7 @@ class _HomePageState extends State<HomePage>
             fluent.Button(
               onPressed: () async {
                 await VersionService().ignoreCurrentVersion(versionInfo.version);
-                if (mounted) {
+                if (context.mounted) {
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -819,7 +816,7 @@ class _HomePageState extends State<HomePage>
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (mounted && Navigator.of(context).canPop()) {
                     Navigator.of(context).pop();
-                    
+
                     if (hasError) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -940,7 +937,7 @@ class _HomePageState extends State<HomePage>
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted && Navigator.of(context).canPop()) {
                   Navigator.of(context).pop();
-                  
+
                   if (hasError) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -1030,7 +1027,7 @@ class _HomePageState extends State<HomePage>
         }
       }
     } catch (e) {
-      print('❌ [HomePage] 打开下载链接失败: $e');
+      StructuredLogService.log('❌ [HomePage] 打开下载链接失败: $e');
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -1216,11 +1213,11 @@ class _HomePageState extends State<HomePage>
     final mediaQuery = MediaQuery.of(context);
     final windowHeight = mediaQuery.size.height;
     final topPadding = mediaQuery.viewPadding.top;
-    
+
     // 检测是否处于安卓小窗模式：
     // 1. 窗口高度较小 (< 500)
     // 2. 或者顶部 padding 占窗口高度的比例过大 (> 10%)，表明系统可能错误地为小窗应用了状态栏高度
-    final bool shouldRemoveTopPadding = windowHeight < 500 || 
+    final bool shouldRemoveTopPadding = windowHeight < 500 ||
         (topPadding > 0 && topPadding / windowHeight > 0.1);
 
     final scaffold = ValueListenableBuilder<Color?>(
@@ -1247,8 +1244,8 @@ class _HomePageState extends State<HomePage>
                         center: const Alignment(0.0, -0.6),
                         radius: 1.25,
                         colors: [
-                          accent.withOpacity(isDark ? 0.22 : 0.16),
-                          accent.withOpacity(isDark ? 0.08 : 0.05),
+                          accent.withValues(alpha: isDark ? 0.22 : 0.16),
+                          accent.withValues(alpha: isDark ? 0.08 : 0.05),
                           Colors.transparent,
                         ],
                         stops: const [0.0, 0.55, 1.0],
@@ -1288,21 +1285,32 @@ class _HomePageState extends State<HomePage>
     final mediaQuery = MediaQuery.of(context);
     final windowHeight = mediaQuery.size.height;
     final topPadding = mediaQuery.viewPadding.top;
-    
+
     // 检测是否处于安卓小窗模式：
     // 1. 窗口高度较小 (< 500)
     // 2. 或者顶部 padding 占窗口高度的比例过大 (> 10%)
-    final bool shouldRemoveTopPadding = windowHeight < 500 || 
+    final bool shouldRemoveTopPadding = windowHeight < 500 ||
         (topPadding > 0 && topPadding / windowHeight > 0.1);
 
+    final isLandscape = mediaQuery.orientation == Orientation.landscape;
     final pageScaffold = Material(
       type: MaterialType.transparency,
       child: CupertinoPageScaffold(
         backgroundColor: backgroundColor,
         // 使用 RepaintBoundary 隔离滚动内容，防止底部 BackdropFilter 导致快速滚动残影
         child: RepaintBoundary(
-          child: _buildSlidingSwitcher(
-            _buildCupertinoContentArea(context, showTabs),
+          child: Stack(
+            children: [
+              _buildSlidingSwitcher(
+                _buildCupertinoContentArea(context, showTabs),
+              ),
+              if (isLandscape && !_showSearch)
+                Positioned(
+                  top: (mediaQuery.padding.top > 0 ? mediaQuery.padding.top : 8) + 6,
+                  right: 20,
+                  child: _buildLandscapeQuickActions(context, Theme.of(context).colorScheme),
+                ),
+            ],
           ),
         ),
       ),
@@ -1347,78 +1355,35 @@ class _HomePageState extends State<HomePage>
   }
 
   /// 构建 Cupertino 风格的返回头部
-  Widget _buildCupertinoBackHeader(
-      BuildContext context, String title, VoidCallback onBack) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      child: Row(
-        children: [
-          CupertinoButton(
-            padding: EdgeInsets.zero,
-            onPressed: onBack,
-            child: Row(
-              children: [
-                Icon(
-                  CupertinoIcons.back,
-                  color: ThemeManager.iosBlue,
-                  size: 22,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '返回',
-                  style: TextStyle(
-                    color: ThemeManager.iosBlue,
-                    fontSize: 17,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          // 占位，保持标题居中
-          const SizedBox(width: 70),
-        ],
-      ),
-    );
-  }
 
   /// 构建 iOS 风格首页 Slivers
   List<Widget> _buildCupertinoHomeSlivers(BuildContext context, bool showTabs) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
     final isLoggedIn = _authFacade.isLoggedIn;
-    
+
     final mediaQuery = MediaQuery.of(context);
     final windowHeight = mediaQuery.size.height;
     final topPadding = mediaQuery.viewPadding.top;
-    
+
     // 检测是否处于安卓小窗模式
-    final bool isSmallWindow = windowHeight < 500 || 
+    final bool isSmallWindow = windowHeight < 500 ||
         (topPadding > 0 && topPadding / windowHeight > 0.1);
-    
+
     return [
       // iOS 下拉刷新
       CupertinoSliverRefreshControl(
         onRefresh: _onRefresh,
       ),
-      // iOS 大标题导航栏
-      // 注意：移除 opacity 以避免与 BackdropFilter 组合导致快速滚动残影
-      CupertinoSliverNavigationBar(
-        // 小窗模式下使用紧凑标题而非大标题
-        largeTitle: isSmallWindow ? null : const Text('首页'),
-        middle: isSmallWindow ? const Text('首页') : null,
-        backgroundColor: isDark
-            ? const Color(0xFF1C1C1E)
-            : CupertinoColors.systemBackground,
-        border: null,
+      // iOS 大标题导航栏（横屏下由侧边栏提供页面标识，隐藏以释放纵向空间）
+      if (mediaQuery.orientation != Orientation.landscape)
+        CupertinoSliverNavigationBar(
+          // 小窗模式下使用紧凑标题而非大标题
+          largeTitle: isSmallWindow ? null : const Text('首页'),
+          middle: isSmallWindow ? const Text('首页') : null,
+          backgroundColor: isDark
+              ? const Color(0xFF1C1C1E)
+              : CupertinoColors.systemBackground,
+          border: null,
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1594,7 +1559,7 @@ class _HomePageState extends State<HomePage>
 
   Future<void> _clearForYouCache() async {
     final prefs = await SharedPreferences.getInstance();
-    final userId = _authFacade.currentUser?.id?.toString() ?? 'guest';
+    final userId = _authFacade.currentUser?.id.toString() ?? 'guest';
     final base = 'home_for_you_$userId';
     await prefs.remove('${base}_data');
     await prefs.remove('${base}_expire');
@@ -1740,19 +1705,31 @@ class _HomePageState extends State<HomePage>
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _onRefresh,
-      displacement: 20,
-      edgeOffset: 0, 
-      child: CustomScrollView(
-        key: const ValueKey('material_home_overview'),
-        slivers: _buildHomeSlivers(
-          context: context,
-          colorScheme: colorScheme,
-          showTabs: showTabs,
-          includeAppBar: true,
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: _onRefresh,
+          displacement: 20,
+          edgeOffset: 0,
+          child: CustomScrollView(
+            key: const ValueKey('material_home_overview'),
+            slivers: _buildHomeSlivers(
+              context: context,
+              colorScheme: colorScheme,
+              showTabs: showTabs,
+              includeAppBar: !isLandscape,
+            ),
+          ),
         ),
-      ),
+        if (isLandscape)
+          Positioned(
+            top: (MediaQuery.of(context).padding.top > 0 ? MediaQuery.of(context).padding.top : 8) + 6,
+            right: 20,
+            child: _buildLandscapeQuickActions(context, colorScheme),
+          ),
+      ],
     );
   }
 
@@ -1779,7 +1756,7 @@ class _HomePageState extends State<HomePage>
     // 根据 _reverseTransition 决定动画方向
     // 只有状态为 forward 时才是新进入的组件
     final bool isEntering = animation.status == AnimationStatus.forward;
-    
+
     Offset begin;
     if (_reverseTransition) {
       // 退出 (Pop)：新页面从左滑入 (-1,0)，旧页面向右滑出 (1,0)
@@ -1839,9 +1816,9 @@ class _HomePageState extends State<HomePage>
     final mediaQuery = MediaQuery.of(context);
     final windowHeight = mediaQuery.size.height;
     final topPadding = mediaQuery.viewPadding.top;
-    
+
     // 检测是否处于安卓小窗模式
-    final bool shouldDisablePrimary = windowHeight < 500 || 
+    final bool shouldDisablePrimary = windowHeight < 500 ||
         (topPadding > 0 && topPadding / windowHeight > 0.1);
 
     final isDark = brightness == Brightness.dark;
@@ -1857,7 +1834,7 @@ class _HomePageState extends State<HomePage>
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Container(
-            color: (isDark ? const Color(0xFF0F0F13) : const Color(0xFFF7F8FA)).withOpacity(0.72),
+            color: (isDark ? const Color(0xFF0F0F13) : const Color(0xFFF7F8FA)).withValues(alpha: 0.72),
           ),
         ),
       ),
@@ -1884,9 +1861,66 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// 构建横屏下的紧凑浮动快捷操作栏（极简搜索 + 刷新）
+  Widget _buildLandscapeQuickActions(BuildContext context, ColorScheme colorScheme) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: (isDark ? const Color(0xFF1E1E24) : Colors.white).withValues(alpha: 0.75),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
+              width: 0.8,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                iconSize: 20,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                icon: Icon(Icons.search_rounded, color: colorScheme.onSurface),
+                tooltip: '搜索',
+                onPressed: () => _handleSearchPressed(context),
+              ),
+              Container(
+                width: 1,
+                height: 16,
+                color: colorScheme.onSurface.withValues(alpha: 0.12),
+              ),
+              IconButton(
+                iconSize: 20,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                icon: Icon(Icons.refresh_rounded, color: colorScheme.onSurface),
+                tooltip: '刷新',
+                onPressed: _onRefresh,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildHomeContentSliver(BuildContext context, bool showTabs) {
     // 未登录状态下直接显示登录提示（通过 HomeForYouTab）
     final isLoggedIn = _authFacade.isLoggedIn;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     if (_isBindingsLoading) {
       return SliverFillRemaining(
@@ -1897,8 +1931,14 @@ class _HomePageState extends State<HomePage>
       );
     }
 
+    final topPad = isLandscape
+        ? (MediaQuery.of(context).padding.top > 0
+            ? MediaQuery.of(context).padding.top + 10
+            : 16.0)
+        : 24.0;
+
     return SliverPadding(
-      padding: const EdgeInsets.all(24.0),
+      padding: EdgeInsets.fromLTRB(24.0, topPad, 24.0, 24.0),
       sliver: SliverList(
         delegate: SliverChildListDelegate([
           // 未登录时不显示 Tabs，只显示登录提示
@@ -2122,7 +2162,7 @@ class _HomePageState extends State<HomePage>
     if (MusicService().toplists.isEmpty) {
       await Future.delayed(const Duration(seconds: 1));
     }
-    
+
     final toplists = MusicService().toplists;
     if (toplists.isEmpty) {
       // 如果还没有榜单数据，尝试刷新一次
@@ -2134,7 +2174,7 @@ class _HomePageState extends State<HomePage>
 
     // 收集所有榜单的前10首歌曲作为候选池
     final List<Track> candidates = [];
-    
+
     // 如果榜单数据中已经包含了 tracks (Track list)，直接使用
     // 注意：Toplist 模型中包含 tracks 字段，是 ToplistTrack 类型
     for (final toplist in MusicService().toplists) {
@@ -2151,7 +2191,7 @@ class _HomePageState extends State<HomePage>
     final random = Random();
     final List<Track> selected = [];
     final count = min(3, candidates.length);
-    
+
     // 简单的随机不重复选择
     final List<int> selectedIndices = [];
     while (selected.length < count) {
@@ -2161,7 +2201,7 @@ class _HomePageState extends State<HomePage>
         selected.add(candidates[index]);
       }
     }
-    
+
     return selected;
   }
 
@@ -2254,16 +2294,16 @@ class _HomeTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isFluent = ThemeManager().isFluentFramework;
-    
+
     // Fluent UI 主题使用 Win11 Pivot 风格
     if (isFluent) {
       return _buildFluentPivotTabs(context);
     }
-    
+
     // Material Design / Android 16 Expressive 风格
     return _buildMaterialExpressiveTabs(context);
   }
-  
+
   /// Win11 风格的 Pivot Tab 栏
   Widget _buildFluentPivotTabs(BuildContext context) {
     final fluentTheme = fluent.FluentTheme.of(context);
@@ -2271,10 +2311,10 @@ class _HomeTabs extends StatelessWidget {
     final accentColor = fluentTheme.accentColor;
     final textColor = fluentTheme.typography.body?.color ??
         (isLight ? Colors.black : Colors.white);
-    final subtleTextColor = isLight 
-        ? Colors.black.withOpacity(0.6) 
-        : Colors.white.withOpacity(0.6);
-    
+    final subtleTextColor = isLight
+        ? Colors.black.withValues(alpha: 0.6)
+        : Colors.white.withValues(alpha: 0.6);
+
     return SizedBox(
       height: 40,
       child: Row(
@@ -2296,12 +2336,12 @@ class _HomeTabs extends StatelessWidget {
       ),
     );
   }
-  
+
   /// Android 16 / Material Expressive 风格 - 摆脱胶囊形态，更开阔的表现力
   Widget _buildMaterialExpressiveTabs(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final selectedColor = cs.primary;
-    final unselectedColor = cs.onSurface.withOpacity(0.7);
+    final unselectedColor = cs.onSurface.withValues(alpha: 0.7);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -2392,24 +2432,24 @@ class _FluentPivotTabItemState extends State<_FluentPivotTabItem> {
   @override
   Widget build(BuildContext context) {
     final isLight = fluent.FluentTheme.of(context).brightness == Brightness.light;
-    
+
     // 计算当前文字颜色
     Color textColor;
     if (widget.isSelected) {
       textColor = widget.selectedTextColor;
     } else if (_isHovering) {
-      textColor = widget.selectedTextColor.withOpacity(0.8);
+      textColor = widget.selectedTextColor.withValues(alpha: 0.8);
     } else {
       textColor = widget.unselectedTextColor;
     }
-    
+
     // 计算下划线颜色和宽度
     final indicatorColor = widget.isSelected ? widget.accentColor : Colors.transparent;
     final indicatorWidth = widget.isSelected ? 20.0 : 0.0;
-    
+
     // hover 背景色
     final hoverBg = _isHovering && !widget.isSelected
-        ? (isLight ? Colors.black.withOpacity(0.04) : Colors.white.withOpacity(0.04))
+        ? (isLight ? Colors.black.withValues(alpha: 0.04) : Colors.white.withValues(alpha: 0.04))
         : Colors.transparent;
 
     return MouseRegion(

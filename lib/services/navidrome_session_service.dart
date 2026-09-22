@@ -83,7 +83,6 @@ class NavidromeSessionService extends ChangeNotifier {
     if (Platform.isAndroid) {
       return const FlutterSecureStorage(
         aOptions: AndroidOptions(
-          encryptedSharedPreferences: true,
         ),
       );
     } else if (Platform.isIOS || Platform.isMacOS) {

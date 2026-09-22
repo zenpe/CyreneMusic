@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:async' as async_lib;
 import 'package:flutter/foundation.dart';
 import 'persistent_storage_service.dart';
@@ -37,9 +38,9 @@ class EqualizerService extends ChangeNotifier {
     if (savedEqGains != null && savedEqGains.length == 10) {
       try {
         _equalizerGains = savedEqGains.map((e) => double.tryParse(e) ?? 0.0).toList();
-        print('🎚️ [EqualizerService] 已加载均衡器设置');
+        StructuredLogService.log('🎚️ [EqualizerService] 已加载均衡器设置');
       } catch (e) {
-        print('⚠️ [EqualizerService] 加载均衡器设置失败: $e');
+        StructuredLogService.log('⚠️ [EqualizerService] 加载均衡器设置失败: $e');
       }
     }
     final savedEqEnabled = PersistentStorageService().getBool('player_eq_enabled');
@@ -90,7 +91,7 @@ class EqualizerService extends ChangeNotifier {
         kEqualizerFrequencies,
       );
     } catch (e) {
-      print('⚠️ [EqualizerService] 应用均衡器失败: $e');
+      StructuredLogService.log('⚠️ [EqualizerService] 应用均衡器失败: $e');
     }
   }
 

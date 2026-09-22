@@ -97,7 +97,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
     final colorScheme = Theme.of(context).colorScheme;
 
     final content = ListView(
-      padding: const EdgeInsets.only(top: 8, bottom: 24),
+      padding: const EdgeInsets.only(top: 8, bottom: 120),
       children: [
         // 主题模式
         MD3SettingsSection(
@@ -253,28 +253,6 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
     );
   }
 
-  Widget _buildMaterialSection(
-    BuildContext context, {
-    required String title,
-    required List<Widget> children,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8, left: 4),
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        Card(child: Column(children: children)),
-      ],
-    );
-  }
 
   /// 构建 Cupertino UI 版本
   Widget _buildCupertinoUI(BuildContext context) {
@@ -371,7 +349,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
     return CupertinoPageScaffold(
       backgroundColor: backgroundColor,
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: backgroundColor.withOpacity(0.8),
+        backgroundColor: backgroundColor.withValues(alpha: 0.8),
         border: null,
         leading: CupertinoButton(
           padding: EdgeInsets.zero,
@@ -384,100 +362,6 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
     );
   }
 
-  void _showCupertinoThemeColorPicker() {
-    showCupertinoModalPopup<void>(
-      context: context,
-      builder: (context) => Container(
-        height: 400,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: CupertinoTheme.of(context).barBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: CupertinoColors.systemGrey,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const Text(
-                '选择主题色',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 5,
-                    childAspectRatio: 1,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                  ),
-                  itemCount: ThemeColors.presets.length,
-                  itemBuilder: (context, index) {
-                    final colorScheme = ThemeColors.presets[index];
-                    final isSelected =
-                        ThemeManager().seedColor.value ==
-                        colorScheme.color.value;
-
-                    return GestureDetector(
-                      onTap: () {
-                        ThemeManager().setSeedColor(colorScheme.color);
-                        Navigator.pop(context);
-                        setState(() {});
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: colorScheme.color,
-                          shape: BoxShape.circle,
-                          border: isSelected
-                              ? Border.all(
-                                  color: CupertinoColors.white,
-                                  width: 3,
-                                )
-                              : null,
-                          boxShadow: isSelected
-                              ? [
-                                  BoxShadow(
-                                    color: colorScheme.color.withOpacity(0.5),
-                                    blurRadius: 8,
-                                    spreadRadius: 2,
-                                  ),
-                                ]
-                              : null,
-                        ),
-                        child: isSelected
-                            ? const Icon(
-                                CupertinoIcons.checkmark,
-                                color: CupertinoColors.white,
-                                size: 24,
-                              )
-                            : null,
-                      ),
-                    );
-                  },
-                ),
-              ),
-              CupertinoButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _showCustomColorPicker();
-                },
-                child: const Text('自定义颜色'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   void _showCupertinoPlayerStyleDialog() {
     showCupertinoModalPopup<void>(
@@ -603,8 +487,8 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                                               context,
                                             ).brightness ==
                                             Brightness.light)
-                                        ? Colors.black.withOpacity(0.12)
-                                        : Colors.white.withOpacity(0.18),
+                                        ? Colors.black.withValues(alpha: 0.12)
+                                        : Colors.white.withValues(alpha: 0.18),
                                   ),
                                 ),
                               ),
@@ -1159,29 +1043,33 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              RadioListTile<LayoutMode>(
-                title: const Text('桌面模式'),
-                subtitle: const Text('侧边导航栏，横屏宽屏布局'),
-                secondary: const Icon(Icons.desktop_windows),
-                value: LayoutMode.desktop,
+              RadioGroup<LayoutMode>(
                 groupValue: LayoutPreferenceService().layoutMode,
                 onChanged: (value) {
                   LayoutPreferenceService().setLayoutMode(value!);
                   Navigator.pop(context);
                   setState(() {});
                 },
+                child: RadioListTile<LayoutMode>(
+                  title: const Text('桌面模式'),
+                  subtitle: const Text('侧边导航栏，横屏宽屏布局'),
+                  secondary: const Icon(Icons.desktop_windows),
+                  value: LayoutMode.desktop,
+                ),
               ),
-              RadioListTile<LayoutMode>(
-                title: const Text('移动模式'),
-                subtitle: const Text('底部导航栏，竖屏手机布局'),
-                secondary: const Icon(Icons.smartphone),
-                value: LayoutMode.mobile,
+              RadioGroup<LayoutMode>(
                 groupValue: LayoutPreferenceService().layoutMode,
                 onChanged: (value) {
                   LayoutPreferenceService().setLayoutMode(value!);
                   Navigator.pop(context);
                   setState(() {});
                 },
+                child: RadioListTile<LayoutMode>(
+                  title: const Text('移动模式'),
+                  subtitle: const Text('底部导航栏，竖屏手机布局'),
+                  secondary: const Icon(Icons.smartphone),
+                  value: LayoutMode.mobile,
+                ),
               ),
             ],
           ),
@@ -1206,12 +1094,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
           children: LyricStyle.values
               .where((style) => style != LyricStyle.defaultStyle)
               .map((style) {
-                return RadioListTile<LyricStyle>(
-                  title: Text(LyricStyleService().getStyleName(style)),
-                  subtitle: Text(
-                    LyricStyleService().getStyleDescription(style),
-                  ),
-                  value: style,
+                return RadioGroup<LyricStyle>(
                   groupValue: LyricStyleService().currentStyle,
                   onChanged: (value) {
                     if (value != null) {
@@ -1220,6 +1103,13 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                       setState(() {});
                     }
                   },
+                  child: RadioListTile<LyricStyle>(
+                    title: Text(LyricStyleService().getStyleName(style)),
+                    subtitle: Text(
+                      LyricStyleService().getStyleDescription(style),
+                    ),
+                    value: style,
+                  ),
                 );
               })
               .toList(),
@@ -1422,11 +1312,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              RadioListTile<MobileThemeFramework>(
-                title: const Text('Material Design 3'),
-                subtitle: const Text('Android 原生设计风格'),
-                secondary: const Icon(Icons.android),
-                value: MobileThemeFramework.material,
+              RadioGroup<MobileThemeFramework>(
                 groupValue: ThemeManager().mobileThemeFramework,
                 onChanged: (value) {
                   if (value == null) return;
@@ -1434,12 +1320,14 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                   Navigator.pop(context);
                   setState(() {});
                 },
+                child: RadioListTile<MobileThemeFramework>(
+                  title: const Text('Material Design 3'),
+                  subtitle: const Text('Android 原生设计风格'),
+                  secondary: const Icon(Icons.android),
+                  value: MobileThemeFramework.material,
+                ),
               ),
-              RadioListTile<MobileThemeFramework>(
-                title: const Text('Cupertino'),
-                subtitle: const Text('iOS 原生设计风格'),
-                secondary: const Icon(Icons.phone_iphone),
-                value: MobileThemeFramework.cupertino,
+              RadioGroup<MobileThemeFramework>(
                 groupValue: ThemeManager().mobileThemeFramework,
                 onChanged: (value) {
                   if (value == null) return;
@@ -1447,6 +1335,12 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                   Navigator.pop(context);
                   setState(() {});
                 },
+                child: RadioListTile<MobileThemeFramework>(
+                  title: const Text('Cupertino'),
+                  subtitle: const Text('iOS 原生设计风格'),
+                  secondary: const Icon(Icons.phone_iphone),
+                  value: MobileThemeFramework.cupertino,
+                ),
               ),
             ],
           ),
@@ -1530,11 +1424,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              RadioListTile<ThemeFramework>(
-                title: const Text('Material Design 3'),
-                subtitle: const Text('保持现有设计语言，适合跨平台体验'),
-                secondary: const Icon(Icons.layers_outlined),
-                value: ThemeFramework.material,
+              RadioGroup<ThemeFramework>(
                 groupValue: ThemeManager().themeFramework,
                 onChanged: (value) {
                   if (value == null) return;
@@ -1542,12 +1432,14 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                   Navigator.pop(context);
                   setState(() {});
                 },
+                child: RadioListTile<ThemeFramework>(
+                  title: const Text('Material Design 3'),
+                  subtitle: const Text('保持现有设计语言，适合跨平台体验'),
+                  secondary: const Icon(Icons.layers_outlined),
+                  value: ThemeFramework.material,
+                ),
               ),
-              RadioListTile<ThemeFramework>(
-                title: const Text('Fluent UI'),
-                subtitle: const Text('与 Windows 11 外观保持一致'),
-                secondary: const Icon(Icons.desktop_windows),
-                value: ThemeFramework.fluent,
+              RadioGroup<ThemeFramework>(
                 groupValue: ThemeManager().themeFramework,
                 onChanged: (value) {
                   if (value == null) return;
@@ -1555,6 +1447,12 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                   Navigator.pop(context);
                   setState(() {});
                 },
+                child: RadioListTile<ThemeFramework>(
+                  title: const Text('Fluent UI'),
+                  subtitle: const Text('与 Windows 11 外观保持一致'),
+                  secondary: const Icon(Icons.desktop_windows),
+                  value: ThemeFramework.fluent,
+                ),
               ),
             ],
           ),
@@ -1570,6 +1468,15 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
   }
 
   void _showWindowEffectDialog() {
+    void applyWindowEffect(WindowEffect? value) {
+      if (value == null) return;
+      ThemeManager().setWindowEffect(value).then((_) {
+        if (!context.mounted) return;
+        Navigator.pop(context);
+        setState(() {});
+      });
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1577,63 +1484,46 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            RadioListTile<WindowEffect>(
-              title: const Text('默认'),
-              subtitle: const Text('不应用特殊的窗口效果'),
-              value: WindowEffect.disabled,
+            RadioGroup<WindowEffect>(
               groupValue: ThemeManager().windowEffect,
-              onChanged: (value) async {
-                if (value != null) {
-                  await ThemeManager().setWindowEffect(value);
-                  Navigator.pop(context);
-                  setState(() {});
-                }
-              },
-            ),
-            RadioListTile<WindowEffect>(
-              title: const Text('云母 (Mica)'),
-              subtitle: Text(
-                ThemeManager().isMicaSupported
-                    ? 'Windows 11 原生材质效果'
-                    : '当前系统不支持（仅限 Win11）',
+              onChanged: applyWindowEffect,
+              child: RadioListTile<WindowEffect>(
+                title: const Text('默认'),
+                subtitle: const Text('不应用特殊的窗口效果'),
+                value: WindowEffect.disabled,
               ),
-              value: WindowEffect.mica,
-              groupValue: ThemeManager().windowEffect,
-              onChanged: ThemeManager().isMicaSupported
-                  ? (value) async {
-                      if (value != null) {
-                        await ThemeManager().setWindowEffect(value);
-                        Navigator.pop(context);
-                        setState(() {});
-                      }
-                    }
-                  : null,
             ),
-            RadioListTile<WindowEffect>(
-              title: const Text('亚克力 (Acrylic)'),
-              subtitle: const Text('经典的毛玻璃半透明效果'),
-              value: WindowEffect.acrylic,
+            RadioGroup<WindowEffect>(
               groupValue: ThemeManager().windowEffect,
-              onChanged: (value) async {
-                if (value != null) {
-                  await ThemeManager().setWindowEffect(value);
-                  Navigator.pop(context);
-                  setState(() {});
-                }
-              },
+              onChanged: applyWindowEffect,
+              child: RadioListTile<WindowEffect>(
+                title: const Text('云母 (Mica)'),
+                subtitle: Text(
+                  ThemeManager().isMicaSupported
+                      ? 'Windows 11 原生材质效果'
+                      : '当前系统不支持（仅限 Win11）',
+                ),
+                value: WindowEffect.mica,
+                enabled: ThemeManager().isMicaSupported,
+              ),
             ),
-            RadioListTile<WindowEffect>(
-              title: const Text('透明'),
-              subtitle: const Text('完全透明的窗口背景'),
-              value: WindowEffect.transparent,
+            RadioGroup<WindowEffect>(
               groupValue: ThemeManager().windowEffect,
-              onChanged: (value) async {
-                if (value != null) {
-                  await ThemeManager().setWindowEffect(value);
-                  Navigator.pop(context);
-                  setState(() {});
-                }
-              },
+              onChanged: applyWindowEffect,
+              child: RadioListTile<WindowEffect>(
+                title: const Text('亚克力 (Acrylic)'),
+                subtitle: const Text('经典的毛玻璃半透明效果'),
+                value: WindowEffect.acrylic,
+              ),
+            ),
+            RadioGroup<WindowEffect>(
+              groupValue: ThemeManager().windowEffect,
+              onChanged: applyWindowEffect,
+              child: RadioListTile<WindowEffect>(
+                title: const Text('透明'),
+                subtitle: const Text('完全透明的窗口背景'),
+                value: WindowEffect.transparent,
+              ),
             ),
           ],
         ),
@@ -1803,8 +1693,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                       final isSelected =
                           LyricFontService().fontType == 'preset' &&
                           LyricFontService().presetFontId == font.id;
-                      return RadioListTile<String>(
-                        value: font.id,
+                      return RadioGroup<String>(
                         groupValue: LyricFontService().fontType == 'preset'
                             ? LyricFontService().presetFontId
                             : null,
@@ -1815,16 +1704,19 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                             if (mounted) setState(() {});
                           }
                         },
-                        title: Text(
-                          font.name,
-                          style: TextStyle(
-                            fontFamily: font.fontFamily,
-                            fontWeight: FontWeight.w600,
+                        child: RadioListTile<String>(
+                          value: font.id,
+                          title: Text(
+                            font.name,
+                            style: TextStyle(
+                              fontFamily: font.fontFamily,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
+                          subtitle: Text(font.description),
+                          dense: true,
+                          selected: isSelected,
                         ),
-                        subtitle: Text(font.description),
-                        dense: true,
-                        selected: isSelected,
                       );
                     }),
 
@@ -2018,8 +1910,8 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                               margin: const EdgeInsets.only(bottom: 8),
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: CupertinoColors.activeGreen.withOpacity(
-                                  0.1,
+                                color: CupertinoColors.activeGreen.withValues(
+                                  alpha: 0.1,
                                 ),
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -2189,7 +2081,7 @@ class _ThemeColorGrid extends StatelessWidget {
                 boxShadow: isSelected
                     ? [
                         BoxShadow(
-                          color: color.withOpacity(0.3),
+                          color: color.withValues(alpha: 0.3),
                           blurRadius: 8,
                           spreadRadius: 1,
                         ),
@@ -2259,7 +2151,7 @@ class _ColorSwatch extends StatelessWidget {
                 boxShadow: isSelected
                     ? [
                         BoxShadow(
-                          color: color.withOpacity(0.3),
+                          color: color.withValues(alpha: 0.3),
                           blurRadius: 8,
                           spreadRadius: 1,
                         ),

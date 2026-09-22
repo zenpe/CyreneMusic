@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -18,10 +19,10 @@ class SleepTimerService extends ChangeNotifier {
     // 初始化原生服务监听
     if (defaultTargetPlatform == TargetPlatform.android) {
         AndroidSleepTimerService().init(onCancelled: () {
-            print('🔄 [SleepTimerService] 收到原生取消事件，停止 Dart 端计时器');
+            StructuredLogService.log('🔄 [SleepTimerService] 收到原生取消事件，停止 Dart 端计时器');
             // 此时原生通知已经关闭，我们需要关闭 Dart 端的计时器
             // 这里调用 cancel() 会再次调用 stop()，但这是安全的
-            cancel(); 
+            cancel();
         });
     }
   }
@@ -72,13 +73,13 @@ class SleepTimerService extends ChangeNotifier {
 
     _startTimer();
     notifyListeners();
-    
+
     // 启动原生通知
     if (_endTime != null) {
       AndroidSleepTimerService().start(_endTime!);
     }
 
-    print('⏰ [SleepTimerService] 设置定时器: ${minutes}分钟后停止播放');
+    StructuredLogService.log('⏰ [SleepTimerService] 设置定时器: ${minutes}分钟后停止播放');
   }
 
   /// 设置定时器（按时间点）
@@ -107,13 +108,13 @@ class SleepTimerService extends ChangeNotifier {
     _endTime = targetDateTime;
     _startTimer();
     notifyListeners();
-    
+
     // 启动原生通知
     if (_endTime != null) {
       AndroidSleepTimerService().start(_endTime!);
     }
 
-    print('⏰ [SleepTimerService] 设置定时器: ${time.hour}:${time.minute} 停止播放');
+    StructuredLogService.log('⏰ [SleepTimerService] 设置定时器: ${time.hour}:${time.minute} 停止播放');
   }
 
   /// 启动定时器
@@ -138,11 +139,11 @@ class SleepTimerService extends ChangeNotifier {
 
   /// 定时器结束处理
   void _onTimerEnd() {
-    print('⏰ [SleepTimerService] 定时时间到，暂停播放');
+    StructuredLogService.log('⏰ [SleepTimerService] 定时时间到，暂停播放');
 
     // 暂停播放
     PlayerService().pause();
-    
+
     // 停止原生通知
     AndroidSleepTimerService().stop();
 
@@ -153,7 +154,7 @@ class SleepTimerService extends ChangeNotifier {
 
     notifyListeners();
 
-    print('✅ [SleepTimerService] 定时器已完成');
+    StructuredLogService.log('✅ [SleepTimerService] 定时器已完成');
   }
 
   /// 取消定时器
@@ -165,13 +166,13 @@ class SleepTimerService extends ChangeNotifier {
       _mode = null;
       _durationMinutes = null;
       _targetTime = null;
-      
+
       // 停止原生通知
       AndroidSleepTimerService().stop();
 
       notifyListeners();
 
-      print('❌ [SleepTimerService] 定时器已取消');
+      StructuredLogService.log('❌ [SleepTimerService] 定时器已取消');
     }
   }
 
@@ -179,12 +180,12 @@ class SleepTimerService extends ChangeNotifier {
   void extend(int minutes) {
     if (_endTime != null) {
       _endTime = _endTime!.add(Duration(minutes: minutes));
-      
+
       // 更新原生通知
       AndroidSleepTimerService().start(_endTime!);
-      
+
       notifyListeners();
-      print('⏰ [SleepTimerService] 定时器已延长 ${minutes} 分钟');
+      StructuredLogService.log('⏰ [SleepTimerService] 定时器已延长 ${minutes} 分钟');
     }
   }
 

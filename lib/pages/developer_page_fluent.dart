@@ -19,7 +19,7 @@ extension _DeveloperPageFluent on _DeveloperPageState {
       ),
       content: fluent.TabView(
         currentIndex: _fluentTabIndex,
-        onChanged: (index) => setState(() => _fluentTabIndex = index),
+        onChanged: (index) => _refreshState(() => _fluentTabIndex = index),
         tabs: [
           fluent.Tab(
             text: const Text('日志'),
@@ -282,7 +282,7 @@ extension _DeveloperPageFluent on _DeveloperPageState {
         Expanded(
           child: fluent.TabView(
             currentIndex: adminTabIndex,
-            onChanged: (index) => setState(() => _fluentAdminTabIndex = index),
+            onChanged: (index) => _refreshState(() => _fluentAdminTabIndex = index),
             tabs: [
               fluent.Tab(
                 text: const Text('用户列表'),
@@ -570,7 +570,7 @@ extension _DeveloperPageFluent on _DeveloperPageState {
             trailing: fluent.ToggleSwitch(
               checked: DeveloperModeService().isSearchResultMergeEnabled,
               onChanged: (value) {
-                setState(() {
+                _refreshState(() {
                   DeveloperModeService().toggleSearchResultMerge(value);
                 });
               },
@@ -586,7 +586,7 @@ extension _DeveloperPageFluent on _DeveloperPageState {
             trailing: fluent.ToggleSwitch(
               checked: DeveloperModeService().showPerformanceOverlay,
               onChanged: (value) {
-                setState(() {
+                _refreshState(() {
                   DeveloperModeService().togglePerformanceOverlay(value);
                 });
               },
@@ -815,4 +815,3 @@ extension _DeveloperPageFluent on _DeveloperPageState {
     return 'Unknown';
   }
 }
-

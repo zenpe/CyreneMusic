@@ -19,13 +19,13 @@ class LocalPage extends StatefulWidget {
 extension on _LocalPageState {
   void _showFluentInfo(String text, [fluent.InfoBarSeverity severity = fluent.InfoBarSeverity.info]) {
     _infoBarTimer?.cancel();
-    setState(() {
+    _refreshState(() {
       _fluentInfoText = text;
       _fluentInfoSeverity = severity;
     });
     _infoBarTimer = Timer(const Duration(seconds: 1), () {
       if (!mounted) return;
-      setState(() {
+      _refreshState(() {
         _fluentInfoText = null;
       });
     });
@@ -228,6 +228,11 @@ class _LocalPageState extends State<LocalPage> {
   String? _fluentInfoText;
   fluent.InfoBarSeverity _fluentInfoSeverity = fluent.InfoBarSeverity.info;
   Timer? _infoBarTimer;
+
+  void _refreshState(VoidCallback action) {
+    if (!mounted) return;
+    setState(action);
+  }
 
   @override
   void initState() {
@@ -449,7 +454,7 @@ class _LocalPageState extends State<LocalPage> {
         backgroundColor: isDark ? const Color(0xFF000000) : CupertinoColors.systemGroupedBackground,
         navigationBar: CupertinoNavigationBar(
           middle: const Text('本地'),
-          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withOpacity(0.9),
+          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withValues(alpha: 0.9),
           border: null,
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
@@ -518,7 +523,7 @@ class _LocalPageState extends State<LocalPage> {
                     Icon(
                       CupertinoIcons.folder,
                       size: compact ? 56 : 80,
-                      color: CupertinoColors.systemGrey.withOpacity(0.5),
+                      color: CupertinoColors.systemGrey.withValues(alpha: 0.5),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -602,7 +607,7 @@ class _LocalPageState extends State<LocalPage> {
               // 播放按钮
               CupertinoButton(
                 padding: const EdgeInsets.all(8),
-                minSize: 0,
+                minimumSize: Size.zero,
                 onPressed: () async {
                   await PlayerService().playTrack(track);
                 },
@@ -721,5 +726,3 @@ class _LocalTrackTile extends StatelessWidget {
     return '';
   }
 }
-
-

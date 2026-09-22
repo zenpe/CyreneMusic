@@ -24,6 +24,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
   final LyricLoadState lyricState;
   final VoidCallback onBackPressed;
   final VoidCallback? onPlaylistPressed;
+  final VoidCallback? onVolumeControlPressed;
 
   const MobilePlayerClassicLayout({
     super.key,
@@ -32,6 +33,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
     required this.lyricState,
     required this.onBackPressed,
     this.onPlaylistPressed,
+    this.onVolumeControlPressed,
   });
 
   @override
@@ -85,7 +87,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(24),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.3),
+                                        color: Colors.black.withValues(alpha: 0.3),
                                         blurRadius: 20,
                                         offset: const Offset(0, 10),
                                       ),
@@ -149,8 +151,6 @@ class MobilePlayerClassicLayout extends StatelessWidget {
 
   Widget _buildAlbumCover(PlayerService player) {
     // 复用现有逻辑获取封面URL
-    final song = player.currentSong;
-    final track = player.currentTrack;
     final picUrl = player.currentCoverUrl;
 
     if (picUrl == null || picUrl.isEmpty) {
@@ -205,7 +205,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
               Text(
                 artist,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w500,
                 ),
                 maxLines: 1,
@@ -263,7 +263,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                   Container(
                     height: 3,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.14),
+                      color: Colors.white.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
@@ -274,7 +274,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                       child: Container(
                         height: 3,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(999),
                         ),
                       ),
@@ -300,7 +300,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                   Text(
                     _formatDuration(position),
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
+                      color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -308,7 +308,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                   Text(
                     _formatDuration(duration),
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
+                      color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -353,7 +353,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
           color: colorScheme.surfaceContainerHighest,
           iconColor: player.hasPrevious
               ? colorScheme.onSurface
-              : colorScheme.onSurface.withOpacity(0.38),
+              : colorScheme.onSurface.withValues(alpha: 0.38),
         ),
 
         const SizedBox(width: 12),
@@ -388,7 +388,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
           color: colorScheme.surfaceContainerHighest,
           iconColor: player.hasNext
               ? colorScheme.onSurface
-              : colorScheme.onSurface.withOpacity(0.38),
+              : colorScheme.onSurface.withValues(alpha: 0.38),
         ),
       ],
     );
@@ -420,7 +420,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
         shadows: isPrimary
             ? [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: Colors.black.withValues(alpha: 0.2),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -492,7 +492,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
         PlayerSpeedSelector(
           speed: player.playbackSpeed,
           onSelected: (value) => player.setPlaybackSpeed(value),
-          menuColor: Colors.black.withOpacity(0.85),
+          menuColor: Colors.black.withValues(alpha: 0.85),
           borderColor: Colors.white30,
           textColor: Colors.white70,
           fontSize: 11,
@@ -512,6 +512,34 @@ class MobilePlayerClassicLayout extends StatelessWidget {
             }
           },
         ),
+
+        // 音量控制
+        if (onVolumeControlPressed != null)
+          Builder(
+            builder: (btnContext) {
+              return AnimatedBuilder(
+                animation: PlayerService(),
+                builder: (context, _) {
+                  final volume = PlayerService().volume;
+                  return IconButton(
+                    icon: Icon(
+                      volume == 0
+                          ? Icons.volume_off_rounded
+                          : volume < 0.5
+                              ? Icons.volume_down_rounded
+                              : Icons.volume_up_rounded,
+                      color: Colors.white70,
+                    ),
+                    iconSize: 26,
+                    tooltip: '音量调节',
+                    onPressed: () {
+                      MobilePlayerDialogs.showVolumePopup(btnContext);
+                    },
+                  );
+                },
+              );
+            },
+          ),
 
         // 播放列表
         IconButton(

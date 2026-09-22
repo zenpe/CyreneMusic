@@ -28,7 +28,7 @@ class CupertinoDiscoverPlaylistCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: CupertinoColors.black.withOpacity(isDark ? 0.3 : 0.05),
+              color: CupertinoColors.black.withValues(alpha: isDark ? 0.3 : 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -67,7 +67,7 @@ class CupertinoDiscoverPlaylistCard extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: CupertinoColors.black.withOpacity(0.6),
+                          color: CupertinoColors.black.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Row(
@@ -155,10 +155,10 @@ class CupertinoTagSelector extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: ThemeManager.iosBlue.withOpacity(0.1),
+          color: ThemeManager.iosBlue.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: ThemeManager.iosBlue.withOpacity(0.3),
+            color: ThemeManager.iosBlue.withValues(alpha: 0.3),
             width: 1,
           ),
         ),

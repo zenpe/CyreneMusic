@@ -457,7 +457,7 @@ class _AudioSourceSettingsContentState
         children: [
           CupertinoButton(
             padding: EdgeInsets.zero,
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: _closeNavidromeSettings,
             child: const Icon(CupertinoIcons.back),
           ),
@@ -892,7 +892,7 @@ class _AudioSourceSettingsContentState
                     foregroundColor: WidgetStateProperty.resolveWith((states) {
                       if (states.contains(WidgetState.hovered))
                         return fluent.Colors.red;
-                      return fluent.Colors.red.withOpacity(0.8);
+                      return fluent.Colors.red.withValues(alpha: 0.8);
                     }),
                   ),
                 ),
@@ -1291,7 +1291,7 @@ class _AudioSourceSettingsContentState
                       Expanded(
                         child: CupertinoButton(
                           padding: const EdgeInsets.symmetric(vertical: 8),
-                          minSize: 0,
+                          minimumSize: Size.zero,
                           onPressed: _isSourceActionBusy
                               ? null
                               : () async {
@@ -1330,7 +1330,7 @@ class _AudioSourceSettingsContentState
                       Expanded(
                         child: CupertinoButton(
                           padding: const EdgeInsets.symmetric(vertical: 8),
-                          minSize: 0,
+                          minimumSize: Size.zero,
                           onPressed: isActive || _isSourceActionBusy
                               ? null
                               : () async {
@@ -1584,7 +1584,7 @@ class _AudioSourceSettingsContentState
                       Expanded(
                         child: CupertinoButton(
                           padding: const EdgeInsets.symmetric(vertical: 8),
-                          minSize: 0,
+                          minimumSize: Size.zero,
                           onPressed: _isSourceActionBusy
                               ? null
                               : () => _showEditSourceDialog(config),
@@ -1621,7 +1621,7 @@ class _AudioSourceSettingsContentState
                       Expanded(
                         child: CupertinoButton(
                           padding: const EdgeInsets.symmetric(vertical: 8),
-                          minSize: 0,
+                          minimumSize: Size.zero,
                           onPressed: _isSourceActionBusy
                               ? null
                               : () => _deleteSource(config.id),
@@ -1817,7 +1817,7 @@ class _AudioSourceSettingsContentState
                 ),
               ),
 
-              const SizedBox(height: 32),
+              const SizedBox(height: 120), // 彻底避让悬浮 MiniPlayer
             ],
           );
 
@@ -1844,53 +1844,70 @@ class _AudioSourceSettingsContentState
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final sourceHealth = _visibleSourceHealth;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     final content = _showNavidromeConfig
         ? _buildNavidromeConfigBody(context)
         : ListView(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: EdgeInsets.fromLTRB(0, 8, 0, isLandscape ? 130 : 120),
             children: [
               if (sourceHealth != null)
                 _buildMaterialHealthBanner(context, sourceHealth),
               // 说明卡片
               Padding(
-                padding: const EdgeInsets.symmetric(
+                padding: EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 8,
+                  vertical: isLandscape ? 4 : 8,
                 ),
                 child: Container(
-                  padding: const EdgeInsets.all(20),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: isLandscape ? 10 : 16,
+                  ),
                   decoration: BoxDecoration(
                     color: colorScheme.secondaryContainer.withValues(
                       alpha: 0.3,
                     ),
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(isLandscape ? 16 : 24),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.info_outline, color: colorScheme.secondary),
-                      const SizedBox(width: 16),
+                      Icon(
+                        Icons.info_outline,
+                        color: colorScheme.secondary,
+                        size: isLandscape ? 20 : 24,
+                      ),
+                      const SizedBox(width: 12),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '关于音源',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.onSecondaryContainer,
+                        child: isLandscape
+                            ? Text(
+                                '添加并管理多个音源，您可以随时切换当前使用的音源。',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.onSecondaryContainer
+                                      .withValues(alpha: 0.9),
+                                  fontSize: 13,
+                                ),
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '关于音源',
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: colorScheme.onSecondaryContainer,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '添加并管理多个音源。您可以随时切换当前使用的音源。',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: colorScheme.onSecondaryContainer
+                                          .withValues(alpha: 0.8),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '添加并管理多个音源。您可以随时切换当前使用的音源。',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: colorScheme.onSecondaryContainer
-                                    .withValues(alpha: 0.8),
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
                     ],
                   ),
@@ -1928,6 +1945,7 @@ class _AudioSourceSettingsContentState
                   ),
                 ],
               ),
+              const SizedBox(height: 120), // 彻底避让悬浮 MiniPlayer
             ],
           );
 

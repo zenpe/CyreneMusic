@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -63,9 +64,9 @@ class DownloadService extends ChangeNotifier {
         await _setDefaultDownloadPath();
       }
 
-      print('📁 [DownloadService] 下载路径: $_downloadPath');
+      StructuredLogService.log('📁 [DownloadService] 下载路径: $_downloadPath');
     } catch (e) {
-      print('❌ [DownloadService] 加载下载路径失败: $e');
+      StructuredLogService.log('❌ [DownloadService] 加载下载路径失败: $e');
       await _setDefaultDownloadPath();
     }
     notifyListeners();
@@ -81,7 +82,7 @@ class DownloadService extends ChangeNotifier {
 
         if (!await appDownloadDir.exists()) {
           await appDownloadDir.create(recursive: true);
-          print('✅ [DownloadService] 创建 Android 下载目录: ${appDownloadDir.path}');
+          StructuredLogService.log('✅ [DownloadService] 创建 Android 下载目录: ${appDownloadDir.path}');
         }
 
         _downloadPath = appDownloadDir.path;
@@ -92,7 +93,7 @@ class DownloadService extends ChangeNotifier {
 
         if (!await musicDir.exists()) {
           await musicDir.create(recursive: true);
-          print('✅ [DownloadService] 创建 Windows 下载目录: ${musicDir.path}');
+          StructuredLogService.log('✅ [DownloadService] 创建 Windows 下载目录: ${musicDir.path}');
         }
 
         _downloadPath = musicDir.path;
@@ -112,7 +113,7 @@ class DownloadService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('download_path', _downloadPath!);
     } catch (e) {
-      print('❌ [DownloadService] 设置默认下载路径失败: $e');
+      StructuredLogService.log('❌ [DownloadService] 设置默认下载路径失败: $e');
     }
   }
 
@@ -137,11 +138,11 @@ class DownloadService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('download_path', path);
 
-      print('✅ [DownloadService] 下载路径已更新: $path');
+      StructuredLogService.log('✅ [DownloadService] 下载路径已更新: $path');
       notifyListeners();
       return true;
     } catch (e) {
-      print('❌ [DownloadService] 设置下载路径失败: $e');
+      StructuredLogService.log('❌ [DownloadService] 设置下载路径失败: $e');
       return false;
     }
   }
@@ -190,7 +191,7 @@ class DownloadService extends ChangeNotifier {
     String? quality,
   }) async {
     try {
-      print('📦 [DownloadService] 从缓存下载: ${track.name}');
+      StructuredLogService.log('📦 [DownloadService] 从缓存下载: ${track.name}');
 
       final cacheService = CacheService();
       final cacheQuality = _resolveCacheQualityKey(quality);
@@ -199,13 +200,13 @@ class DownloadService extends ChangeNotifier {
         quality: cacheQuality,
       );
       if (cacheFilePath == null) {
-        print('⚠️ [DownloadService] 未找到匹配音质的缓存文件');
+        StructuredLogService.log('⚠️ [DownloadService] 未找到匹配音质的缓存文件');
         return false;
       }
       final cacheFile = File(cacheFilePath);
 
       if (!await cacheFile.exists()) {
-        print('⚠️ [DownloadService] 缓存文件不存在');
+        StructuredLogService.log('⚠️ [DownloadService] 缓存文件不存在');
         return false;
       }
 
@@ -239,10 +240,10 @@ class DownloadService extends ChangeNotifier {
       final outputFile = File(outputPath);
       await outputFile.writeAsBytes(decryptedData);
 
-      print('✅ [DownloadService] 从缓存下载成功: $outputPath');
+      StructuredLogService.log('✅ [DownloadService] 从缓存下载成功: $outputPath');
       return true;
     } catch (e) {
-      print('❌ [DownloadService] 从缓存下载失败: $e');
+      StructuredLogService.log('❌ [DownloadService] 从缓存下载失败: $e');
       return false;
     }
   }
@@ -254,7 +255,7 @@ class DownloadService extends ChangeNotifier {
     DownloadProgressCallback? onProgress,
   ) async {
     try {
-      print('🌐 [DownloadService] 从网络下载: $url');
+      StructuredLogService.log('🌐 [DownloadService] 从网络下载: $url');
 
       final request = http.Request('GET', Uri.parse(url));
       final response = await request.send();
@@ -281,10 +282,10 @@ class DownloadService extends ChangeNotifier {
 
       await sink.close();
 
-      print('✅ [DownloadService] 从网络下载成功: $outputPath');
+      StructuredLogService.log('✅ [DownloadService] 从网络下载成功: $outputPath');
       return true;
     } catch (e) {
-      print('❌ [DownloadService] 从网络下载失败: $e');
+      StructuredLogService.log('❌ [DownloadService] 从网络下载失败: $e');
       return false;
     }
   }
@@ -296,7 +297,7 @@ class DownloadService extends ChangeNotifier {
     DownloadProgressCallback? onProgress,
   }) async {
     if (_downloadPath == null) {
-      print('❌ [DownloadService] 下载路径未设置');
+      StructuredLogService.log('❌ [DownloadService] 下载路径未设置');
       return false;
     }
 
@@ -307,7 +308,7 @@ class DownloadService extends ChangeNotifier {
 
       // 检查文件是否已存在
       if (await File(outputPath).exists()) {
-        print('⚠️ [DownloadService] 文件已存在: $outputPath');
+        StructuredLogService.log('⚠️ [DownloadService] 文件已存在: $outputPath');
         return false;
       }
 
@@ -316,14 +317,14 @@ class DownloadService extends ChangeNotifier {
       _downloadTasks[trackId] = task;
       notifyListeners();
 
-      print('🎵 [DownloadService] 开始下载: ${track.name}');
+      StructuredLogService.log('🎵 [DownloadService] 开始下载: ${track.name}');
 
       bool success = false;
 
       // 优先从缓存下载
       final cacheQuality = _resolveCacheQualityKey(songDetail.level);
       if (CacheService().isCached(track, quality: cacheQuality)) {
-        print('📦 [DownloadService] 尝试从缓存下载');
+        StructuredLogService.log('📦 [DownloadService] 尝试从缓存下载');
         success = await _downloadFromCache(
           track,
           outputPath,
@@ -333,7 +334,7 @@ class DownloadService extends ChangeNotifier {
 
       // 如果缓存下载失败或没有缓存，从网络下载
       if (!success) {
-        print('🌐 [DownloadService] 从网络下载');
+        StructuredLogService.log('🌐 [DownloadService] 从网络下载');
         success = await _downloadFromUrl(
           songDetail.url,
           outputPath,
@@ -349,8 +350,8 @@ class DownloadService extends ChangeNotifier {
       if (success) {
         task.isCompleted = true;
         task.progress = 1.0;
-        print('✅ [DownloadService] 下载完成: $fileName');
-        
+        StructuredLogService.log('✅ [DownloadService] 下载完成: $fileName');
+
         // 启动元数据嵌入服务 (封面 & 歌词)
         final coverUrl = songDetail.pic.isNotEmpty ? songDetail.pic : track.picUrl;
         await _embedMetadata(
@@ -361,7 +362,7 @@ class DownloadService extends ChangeNotifier {
           artist: track.artists,
           album: track.album,
         );
-        
+
         // 发送下载完成通知
         await _showDownloadCompleteNotification(
           trackName: track.name,
@@ -369,11 +370,11 @@ class DownloadService extends ChangeNotifier {
           filePath: outputPath,
           coverUrl: coverUrl,
         );
-        
+
       } else {
         task.isFailed = true;
         task.errorMessage = '下载失败';
-        print('❌ [DownloadService] 下载失败: $fileName');
+        StructuredLogService.log('❌ [DownloadService] 下载失败: $fileName');
       }
 
       notifyListeners();
@@ -386,7 +387,7 @@ class DownloadService extends ChangeNotifier {
 
       return success;
     } catch (e) {
-      print('❌ [DownloadService] 下载歌曲失败: $e');
+      StructuredLogService.log('❌ [DownloadService] 下载歌曲失败: $e');
       return false;
     }
   }
@@ -437,8 +438,8 @@ class DownloadService extends ChangeNotifier {
 
       if (!isMp3 && !isFlac) return;
 
-      print('🖼️ [DownloadService] 正在为 ${isMp3 ? "MP3" : "FLAC"} 注入元数据...');
-      
+      StructuredLogService.log('🖼️ [DownloadService] 正在为 ${isMp3 ? "MP3" : "FLAC"} 注入元数据...');
+
       Uint8List? coverData;
       if (coverUrl != null && coverUrl.isNotEmpty) {
         final resp = await http.get(Uri.parse(coverUrl)).timeout(const Duration(seconds: 10));
@@ -454,7 +455,7 @@ class DownloadService extends ChangeNotifier {
         await _embedFlacMetadata(filePath, originalData, coverData, lyrics, title, artist, album);
       }
     } catch (e) {
-      print('❌ [DownloadService] 元数据嵌入失败: $e');
+      StructuredLogService.log('❌ [DownloadService] 元数据嵌入失败: $e');
     }
   }
 
@@ -476,7 +477,7 @@ class DownloadService extends ChangeNotifier {
   /// 内部方法：嵌入 FLAC 元数据
   Future<void> _embedFlacMetadata(String filePath, Uint8List fileData, Uint8List? coverData, String? lyrics, String title, String artist, String? album) async {
     if (fileData.length < 4 || utf8.decode(fileData.sublist(0, 4)) != 'fLaC') throw Exception('无效 FLAC');
-    
+
     final builder = BytesBuilder();
     builder.add(fileData.sublist(0, 4));
 
@@ -512,7 +513,7 @@ class DownloadService extends ChangeNotifier {
       builder.add(fileData.sublist(offset, offset + 4 + blockLength));
       offset += 4 + blockLength;
     }
-    
+
     if (offset < fileData.length) builder.add(fileData.sublist(offset));
     await File(filePath).writeAsBytes(builder.toBytes());
   }
@@ -524,7 +525,7 @@ class DownloadService extends ChangeNotifier {
     final vendor = utf8.encode('CyreneMusic');
     content.addByte(vendor.length & 0xFF); content.addByte(0); content.addByte(0); content.addByte(0);
     content.add(vendor);
-    
+
     // User comment list length (4 bytes)
     final comments = <Uint8List>[];
     comments.add(utf8.encode('TITLE=$title'));
@@ -535,7 +536,7 @@ class DownloadService extends ChangeNotifier {
     if (lyrics != null && lyrics.isNotEmpty) {
       comments.add(utf8.encode('LYRICS=$lyrics'));
     }
-    
+
     content.addByte(comments.length & 0xFF); content.addByte(0); content.addByte(0); content.addByte(0);
     for (final c in comments) {
       content.addByte(c.length & 0xFF); content.addByte((c.length >> 8) & 0xFF); content.addByte((c.length >> 16) & 0xFF); content.addByte((c.length >> 24) & 0xFF);
@@ -555,41 +556,41 @@ class DownloadService extends ChangeNotifier {
   /// 构建 FLAC PICTURE 元数据块 (Type 6)
   Uint8List _buildFlacPictureBlock(Uint8List imageData, {bool isLast = false}) {
     final blockContent = BytesBuilder();
-    
+
     // 1. Picture type (4 bytes): 3 = Front Cover
     blockContent.addByte(0); blockContent.addByte(0); blockContent.addByte(0); blockContent.addByte(3);
-    
+
     // 2. MIME type
     final mimeType = imageData.length >= 8 && imageData[0] == 0x89 ? 'image/png' : 'image/jpeg';
     final mimeBytes = utf8.encode(mimeType);
     blockContent.addByte(0); blockContent.addByte(0); blockContent.addByte(0); blockContent.addByte(mimeBytes.length);
     blockContent.add(mimeBytes);
-    
+
     // 3. Description (Empty)
     blockContent.addByte(0); blockContent.addByte(0); blockContent.addByte(0); blockContent.addByte(0);
-    
+
     // 4. Width, Height, Depth, Colors (All 0 for simple embedding, player will auto-detect)
     for (int i = 0; i < 16; i++) blockContent.addByte(0);
-    
+
     // 5. Picture data length
     blockContent.addByte((imageData.length >> 24) & 0xFF);
     blockContent.addByte((imageData.length >> 16) & 0xFF);
     blockContent.addByte((imageData.length >> 8) & 0xFF);
     blockContent.addByte(imageData.length & 0xFF);
-    
+
     // 6. Picture data
     blockContent.add(imageData);
-    
+
     final contentBytes = blockContent.toBytes();
     final result = BytesBuilder();
-    
+
     // Block Header: [Last-flag | Type(6)] [Length(24bit)]
     result.addByte((isLast ? 0x80 : 0x00) | 0x06);
     result.addByte((contentBytes.length >> 16) & 0xFF);
     result.addByte((contentBytes.length >> 8) & 0xFF);
     result.addByte(contentBytes.length & 0xFF);
     result.add(contentBytes);
-    
+
     return result.toBytes();
   }
 
@@ -602,18 +603,18 @@ class DownloadService extends ChangeNotifier {
     String? lyrics,
   }) {
     final frames = <Uint8List>[];
-    
+
     // TIT2 帧 (标题)
     frames.add(_buildTextFrame('TIT2', title));
-    
+
     // TPE1 帧 (艺术家)
     frames.add(_buildTextFrame('TPE1', artist));
-    
+
     // TALB 帧 (专辑)
     if (album.isNotEmpty) {
       frames.add(_buildTextFrame('TALB', album));
     }
-    
+
     // APIC 帧 (专辑封面)
     if (coverData != null) {
       frames.add(_buildApicFrame(coverData));
@@ -623,13 +624,13 @@ class DownloadService extends ChangeNotifier {
     if (lyrics != null && lyrics.isNotEmpty) {
       frames.add(_buildUsltFrame(lyrics));
     }
-    
+
     // 计算所有帧的总大小
     int totalFrameSize = 0;
     for (final frame in frames) {
       totalFrameSize += frame.length;
     }
-    
+
     // 构建 ID3v2.3 头部
     final header = Uint8List(10);
     header[0] = 0x49; // 'I'
@@ -638,23 +639,23 @@ class DownloadService extends ChangeNotifier {
     header[3] = 0x03; // 版本 2.3
     header[4] = 0x00; // 修订版本
     header[5] = 0x00; // 标志
-    
+
     // 大小使用 syncsafe 整数（每字节只用7位）
     header[6] = (totalFrameSize >> 21) & 0x7F;
     header[7] = (totalFrameSize >> 14) & 0x7F;
     header[8] = (totalFrameSize >> 7) & 0x7F;
     header[9] = totalFrameSize & 0x7F;
-    
+
     // 合并头部和所有帧
     final result = Uint8List(10 + totalFrameSize);
     result.setRange(0, 10, header);
-    
+
     int offset = 10;
     for (final frame in frames) {
       result.setRange(offset, offset + frame.length, frame);
       offset += frame.length;
     }
-    
+
     return result;
   }
 
@@ -663,31 +664,31 @@ class DownloadService extends ChangeNotifier {
     // 使用 UTF-8 编码
     final textBytes = utf8.encode(text);
     final frameSize = 1 + textBytes.length; // 1 字节编码标识 + 文本
-    
+
     final frame = Uint8List(10 + frameSize);
-    
+
     // 帧 ID (4 字节)
     frame[0] = frameId.codeUnitAt(0);
     frame[1] = frameId.codeUnitAt(1);
     frame[2] = frameId.codeUnitAt(2);
     frame[3] = frameId.codeUnitAt(3);
-    
+
     // 帧大小 (4 字节，大端序)
     frame[4] = (frameSize >> 24) & 0xFF;
     frame[5] = (frameSize >> 16) & 0xFF;
     frame[6] = (frameSize >> 8) & 0xFF;
     frame[7] = frameSize & 0xFF;
-    
+
     // 标志 (2 字节)
     frame[8] = 0x00;
     frame[9] = 0x00;
-    
+
     // 编码标识 (0x03 = UTF-8)
     frame[10] = 0x03;
-    
+
     // 文本内容
     frame.setRange(11, 11 + textBytes.length, textBytes);
-    
+
     return frame;
   }
 
@@ -702,54 +703,54 @@ class DownloadService extends ChangeNotifier {
         imageData[3] == 0x47) {
       mimeType = 'image/png';
     }
-    
+
     final mimeBytes = utf8.encode(mimeType);
-    
+
     // APIC 帧内容:
     // - 1 字节: 文本编码 (0x00 = ISO-8859-1)
     // - MIME 类型 + 0x00 终止符
     // - 1 字节: 图片类型 (0x03 = 封面正面)
     // - 描述 + 0x00 终止符
     // - 图片数据
-    
+
     final frameContentSize = 1 + mimeBytes.length + 1 + 1 + 1 + imageData.length;
     final frame = Uint8List(10 + frameContentSize);
-    
+
     // 帧 ID
     frame[0] = 0x41; // 'A'
     frame[1] = 0x50; // 'P'
     frame[2] = 0x49; // 'I'
     frame[3] = 0x43; // 'C'
-    
+
     // 帧大小 (4 字节，大端序)
     frame[4] = (frameContentSize >> 24) & 0xFF;
     frame[5] = (frameContentSize >> 16) & 0xFF;
     frame[6] = (frameContentSize >> 8) & 0xFF;
     frame[7] = frameContentSize & 0xFF;
-    
+
     // 标志
     frame[8] = 0x00;
     frame[9] = 0x00;
-    
+
     int offset = 10;
-    
+
     // 文本编码 (ISO-8859-1)
     frame[offset++] = 0x00;
-    
+
     // MIME 类型
     frame.setRange(offset, offset + mimeBytes.length, mimeBytes);
     offset += mimeBytes.length;
     frame[offset++] = 0x00; // 终止符
-    
+
     // 图片类型 (封面正面)
     frame[offset++] = 0x03;
-    
+
     // 描述 (空)
     frame[offset++] = 0x00;
-    
+
     // 图片数据
     frame.setRange(offset, offset + imageData.length, imageData);
-    
+
     return frame;
   }
 
@@ -758,22 +759,22 @@ class DownloadService extends ChangeNotifier {
     // 文本编码 (1 byte) + Language (3 bytes) + Content descriptor + lyrics
     final lang = utf8.encode('eng');
     final lyricsBytes = utf8.encode(lyrics);
-    
+
     final frameContentSize = 1 + 3 + 1 + lyricsBytes.length;
     final frame = Uint8List(10 + frameContentSize);
-    
+
     frame[0] = 0x55; frame[1] = 0x53; frame[2] = 0x4C; frame[3] = 0x54; // 'USLT'
     frame[4] = (frameContentSize >> 24) & 0xFF;
     frame[5] = (frameContentSize >> 16) & 0xFF;
     frame[6] = (frameContentSize >> 8) & 0xFF;
     frame[7] = frameContentSize & 0xFF;
-    
+
     int offset = 10;
     frame[offset++] = 0x03; // UTF-8
     frame.setRange(offset, offset + 3, lang); offset += 3;
     frame[offset++] = 0x00; // 描述结束符
     frame.setRange(offset, offset + lyricsBytes.length, lyricsBytes);
-    
+
     return frame;
   }
 
@@ -785,8 +786,8 @@ class DownloadService extends ChangeNotifier {
     String? coverUrl,
   }) async {
     try {
-      print('🔔 [DownloadService] 发送下载完成通知...');
-      
+      StructuredLogService.log('🔔 [DownloadService] 发送下载完成通知...');
+
       await NotificationService().showDownloadCompleteNotification(
         trackName: trackName,
         artist: artist,
@@ -794,10 +795,10 @@ class DownloadService extends ChangeNotifier {
         folderPath: _downloadPath!,
         coverUrl: coverUrl,
       );
-      
-      print('✅ [DownloadService] 下载完成通知已发送');
+
+      StructuredLogService.log('✅ [DownloadService] 下载完成通知已发送');
     } catch (e) {
-      print('❌ [DownloadService] 发送下载完成通知失败: $e');
+      StructuredLogService.log('❌ [DownloadService] 发送下载完成通知失败: $e');
     }
   }
 }

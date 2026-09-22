@@ -11,11 +11,7 @@ import '../../models/track.dart';
 import '../cache_service.dart';
 import '../developer_mode_service.dart';
 
-enum LyricCacheState {
-  ready,
-  empty,
-  failed,
-}
+enum LyricCacheState { ready, empty, failed }
 
 class LyricCacheEntry {
   final String trackKey;
@@ -89,7 +85,8 @@ class LyricCacheEntry {
       hasContent: json['hasContent'] as bool? ?? false,
       completeness: json['completeness'] as String? ?? 'empty',
       state: _stateFromName(json['state'] as String?),
-      fetchedAt: DateTime.tryParse(json['fetchedAt'] as String? ?? '') ??
+      fetchedAt:
+          DateTime.tryParse(json['fetchedAt'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
       expiresAt: json['expiresAt'] == null
           ? null
@@ -253,9 +250,9 @@ class LyricCacheService extends ChangeNotifier {
   Directory? _cacheDir;
   bool _isInitialized = false;
   bool _indexDirty = false;
-  final Map<String, Map<String, dynamic>> _index = <String, Map<String, dynamic>>{};
-  final Map<String, Set<String>> _trackCacheKeys =
-      <String, Set<String>>{};
+  final Map<String, Map<String, dynamic>> _index =
+      <String, Map<String, dynamic>>{};
+  final Map<String, Set<String>> _trackCacheKeys = <String, Set<String>>{};
 
   bool get isInitialized => _isInitialized;
   String? get currentCacheDir => _cacheDir?.path;
@@ -291,9 +288,8 @@ class LyricCacheService extends ChangeNotifier {
         final parentDir = path.dirname(musicCacheDir);
         _cacheDir = Directory(path.join(parentDir, 'lyrics_cache'));
       } else if (Platform.isWindows) {
-        final executablePath = Platform.resolvedExecutable;
-        final executableDir = path.dirname(executablePath);
-        _cacheDir = Directory(path.join(executableDir, 'lyrics_cache'));
+        final appDir = await getApplicationSupportDirectory();
+        _cacheDir = Directory(path.join(appDir.path, 'lyrics_cache'));
       } else {
         final appDir = await getApplicationDocumentsDirectory();
         _cacheDir = Directory(path.join(appDir.path, 'lyrics_cache'));
@@ -301,6 +297,16 @@ class LyricCacheService extends ChangeNotifier {
 
       if (!await _cacheDir!.exists()) {
         await _cacheDir!.create(recursive: true);
+      }
+
+      if (Platform.isWindows) {
+        final defaultMusicCacheDir = await CacheService().getDefaultCacheDir();
+        final currentMusicCacheDir = CacheService().currentCacheDir;
+        if (currentMusicCacheDir == null ||
+            path.normalize(currentMusicCacheDir) ==
+                path.normalize(defaultMusicCacheDir)) {
+          await _migrateLegacyWindowsCache(_cacheDir!);
+        }
       }
 
       await _recoverSidecars();
@@ -315,6 +321,42 @@ class LyricCacheService extends ChangeNotifier {
     } catch (e) {
       _isInitialized = false;
       _log('❌ [LyricCacheService] 初始化失败: $e', toDeveloperPanel: true);
+    }
+  }
+
+  /// 将旧版本写入安装目录的歌词缓存补迁移到应用支持目录。
+  Future<void> _migrateLegacyWindowsCache(Directory targetDir) async {
+    final legacyDir = Directory(
+      path.join(path.dirname(Platform.resolvedExecutable), 'lyrics_cache'),
+    );
+    if (path.normalize(legacyDir.path) == path.normalize(targetDir.path) ||
+        !await legacyDir.exists()) {
+      return;
+    }
+
+    var migratedCount = 0;
+    try {
+      await for (final entity in legacyDir.list(recursive: true)) {
+        if (entity is! File) continue;
+        final relativePath = path.relative(entity.path, from: legacyDir.path);
+        final targetFile = File(path.join(targetDir.path, relativePath));
+        if (await targetFile.exists()) continue;
+
+        await targetFile.parent.create(recursive: true);
+        await entity.copy(targetFile.path);
+        migratedCount++;
+      }
+      if (migratedCount > 0) {
+        _log(
+          '📦 [LyricCacheService] 已迁移 Windows 旧歌词缓存文件: $migratedCount 个',
+          toDeveloperPanel: true,
+        );
+      }
+    } catch (e) {
+      _log(
+        '⚠️ [LyricCacheService] 迁移 Windows 旧歌词缓存失败: $e',
+        toDeveloperPanel: true,
+      );
     }
   }
 
@@ -589,10 +631,7 @@ class LyricCacheService extends ChangeNotifier {
     }
   }
 
-  Future<void> _writeStringAtomically(
-    String targetPath,
-    String content,
-  ) async {
+  Future<void> _writeStringAtomically(String targetPath, String content) async {
     final tempFile = File(_partPathFor(targetPath));
     await _deleteFileIfExists(tempFile);
     await tempFile.writeAsString(content, flush: true);
@@ -602,7 +641,10 @@ class LyricCacheService extends ChangeNotifier {
     );
   }
 
-  Map<String, dynamic> _buildIndexValue(LyricCacheEntry entry, {int fileSize = 0}) {
+  Map<String, dynamic> _buildIndexValue(
+    LyricCacheEntry entry, {
+    int fileSize = 0,
+  }) {
     return {
       'trackKey': entry.trackKey,
       'quality': entry.quality,
@@ -642,10 +684,8 @@ class LyricCacheService extends ChangeNotifier {
           ..clear()
           ..addAll(
             json.map(
-              (key, value) => MapEntry(
-                key,
-                (value as Map).cast<String, dynamic>(),
-              ),
+              (key, value) =>
+                  MapEntry(key, (value as Map).cast<String, dynamic>()),
             ),
           );
         _rebuildTrackCacheKeys();
@@ -744,13 +784,17 @@ class LyricCacheService extends ChangeNotifier {
     );
   }
 
-  Future<String?> _selectPreferredMigrationKey(List<String> candidateKeys) async {
+  Future<String?> _selectPreferredMigrationKey(
+    List<String> candidateKeys,
+  ) async {
     String? bestKey;
     LyricCacheEntry? bestEntry;
     var bestHasFile = false;
 
     for (final cacheKey in candidateKeys) {
-      final entry = LyricCacheEntry.tryFromJson(_index[cacheKey] ?? const <String, dynamic>{});
+      final entry = LyricCacheEntry.tryFromJson(
+        _index[cacheKey] ?? const <String, dynamic>{},
+      );
       if (entry == null) {
         continue;
       }
@@ -805,10 +849,7 @@ class LyricCacheService extends ChangeNotifier {
     try {
       await _deleteFileIfExists(tempFile);
       await fromFile.copy(tempFile.path);
-      await _promotePreparedTempFile(
-        tempFile: tempFile,
-        targetFile: toFile,
-      );
+      await _promotePreparedTempFile(tempFile: tempFile, targetFile: toFile);
       await _deleteTargetArtifacts(fromPath);
       return true;
     } catch (_) {

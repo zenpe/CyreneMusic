@@ -8,3 +8,4 @@ export 'lyric_detail_section.dart';
 export 'background_section.dart';
 export 'sleep_timer_section.dart';
 export 'equalizer_section.dart';
+export 'volume_section.dart';

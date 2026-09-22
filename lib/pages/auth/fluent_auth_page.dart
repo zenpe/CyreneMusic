@@ -14,7 +14,7 @@ final AuthFacade _authFacade = AuthFacade();
 class FluentAuthPage extends StatefulWidget {
   final int initialTab;
   final bool embedded;
-  
+
   const FluentAuthPage({super.key, this.initialTab = 0, this.embedded = false});
 
   @override
@@ -23,7 +23,7 @@ class FluentAuthPage extends StatefulWidget {
 
 class _FluentAuthPageState extends State<FluentAuthPage> {
   late int _selectedTab;
-  
+
   @override
   void initState() {
     super.initState();
@@ -33,7 +33,7 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
   @override
   Widget build(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
-    
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -42,7 +42,7 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
           // Logo 和标题
           _buildHeader(theme),
           const SizedBox(height: 32),
-          
+
           // Tab 选择器
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -55,7 +55,7 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
             ],
           ),
           const SizedBox(height: 24),
-          
+
           // Tab 内容
           Center(
             child: AnimatedSwitcher(
@@ -67,7 +67,7 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
       ),
     );
   }
-  
+
   Widget _buildTabButton(fluent.FluentThemeData theme, int index, String label) {
     final isSelected = _selectedTab == index;
     return fluent.Button(
@@ -89,7 +89,7 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
       ),
     );
   }
-  
+
   Widget _buildHeader(fluent.FluentThemeData theme) {
     return Column(
       children: [
@@ -98,7 +98,7 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: theme.accentColor.withOpacity(0.15),
+            color: theme.accentColor.withValues(alpha: 0.15),
             shape: BoxShape.circle,
           ),
           child: Center(
@@ -112,7 +112,7 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
           ),
         ),
         const SizedBox(height: 20),
-        
+
         // 标题
         Text(
           'Cyrene Music',
@@ -125,15 +125,15 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
         Text(
           '发现美好音乐',
           style: theme.typography.body?.copyWith(
-            color: theme.brightness == Brightness.dark 
-                ? Colors.white70 
+            color: theme.brightness == Brightness.dark
+                ? Colors.white70
                 : Colors.black54,
           ),
         ),
       ],
     );
   }
-  
+
   Widget _buildTabContent() {
     switch (_selectedTab) {
       case 0:
@@ -225,7 +225,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
   }
 
   Future<void> _handleLogin() async {
-    if (_accountController.text.trim().isEmpty || 
+    if (_accountController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
       _showInfoBar('请填写完整信息', fluent.InfoBarSeverity.warning);
       return;
@@ -265,7 +265,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
       nav.pop(true);
     }
   }
-  
+
   void _showInfoBar(String message, fluent.InfoBarSeverity severity) {
     fluent.displayInfoBar(
       context,
@@ -280,7 +280,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
   @override
   Widget build(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
-    
+
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 400),
       child: Column(
@@ -299,7 +299,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // 密码输入
           fluent.InfoLabel(
             label: '密码',
@@ -313,8 +313,8 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
               ),
               suffix: fluent.IconButton(
                 icon: Icon(
-                  _obscurePassword 
-                      ? fluent.FluentIcons.view 
+                  _obscurePassword
+                      ? fluent.FluentIcons.view
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
@@ -343,7 +343,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
             ),
           ],
           const SizedBox(height: 24),
-          
+
           // 登录按钮
           fluent.FilledButton(
             onPressed: _isLoading ? null : _handleLogin,
@@ -364,8 +364,8 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
             child: Text(
               '第一次使用？切换到注册标签页创建账号',
               style: theme.typography.caption?.copyWith(
-                color: theme.brightness == Brightness.dark 
-                    ? Colors.white54 
+                color: theme.brightness == Brightness.dark
+                    ? Colors.white54
                     : Colors.black45,
               ),
             ),
@@ -374,7 +374,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
       ),
     );
   }
-  
+
 }
 
 /// Fluent UI 注册视图
@@ -451,7 +451,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
   }
 
   Future<void> _sendCode() async {
-    if (_qqNumberController.text.trim().isEmpty || 
+    if (_qqNumberController.text.trim().isEmpty ||
         _usernameController.text.trim().isEmpty) {
       _showInfoBar('请先填写 QQ 号和用户名', fluent.InfoBarSeverity.warning);
       return;
@@ -522,7 +522,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
       }
     }
   }
-  
+
   void _showInfoBar(String message, fluent.InfoBarSeverity severity) {
     fluent.displayInfoBar(
       context,
@@ -537,7 +537,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
   @override
   Widget build(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
-    
+
     if (_checkingStatus) {
       return const Center(child: fluent.ProgressRing());
     }
@@ -596,7 +596,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
               onChanged: (_) => setState(() {}),
             ),
           ),
-          
+
           if (_qqNumberController.text.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(left: 4, top: 4),
@@ -609,7 +609,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
               ),
             ),
           const SizedBox(height: 16),
-          
+
           // 用户名
           fluent.InfoLabel(
             label: '用户名',
@@ -623,7 +623,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // 密码
           fluent.InfoLabel(
             label: '密码',
@@ -637,8 +637,8 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
               ),
               suffix: fluent.IconButton(
                 icon: Icon(
-                  _obscurePassword 
-                      ? fluent.FluentIcons.view 
+                  _obscurePassword
+                      ? fluent.FluentIcons.view
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
@@ -647,7 +647,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // 确认密码
           fluent.InfoLabel(
             label: '确认密码',
@@ -661,8 +661,8 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
               ),
               suffix: fluent.IconButton(
                 icon: Icon(
-                  _obscureConfirmPassword 
-                      ? fluent.FluentIcons.view 
+                  _obscureConfirmPassword
+                      ? fluent.FluentIcons.view
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
@@ -671,7 +671,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // 验证码
           Row(
             children: [
@@ -700,7 +700,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
             ],
           ),
           const SizedBox(height: 24),
-          
+
           // 注册按钮
           fluent.FilledButton(
             onPressed: _isLoading ? null : _handleRegister,
@@ -715,14 +715,14 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
                     child: Text('注册', style: TextStyle(fontWeight: FontWeight.w600)),
                   ),
           ),
-          
+
           const SizedBox(height: 12),
           Center(
             child: Text(
               '注册即表示您同意我们的服务条款和隐私政策',
               style: theme.typography.caption?.copyWith(
-                color: theme.brightness == Brightness.dark 
-                    ? Colors.white54 
+                color: theme.brightness == Brightness.dark
+                    ? Colors.white54
                     : Colors.black45,
               ),
             ),
@@ -748,7 +748,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
   final _codeController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -849,7 +849,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
       }
     }
   }
-  
+
   void _showInfoBar(String message, fluent.InfoBarSeverity severity) {
     fluent.displayInfoBar(
       context,
@@ -863,7 +863,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
 
   @override
   Widget build(BuildContext context) {
-    
+
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 400),
       child: Column(
@@ -876,7 +876,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
             isLong: true,
           ),
           const SizedBox(height: 20),
-          
+
           // 邮箱
           fluent.InfoLabel(
             label: '注册邮箱',
@@ -890,7 +890,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // 验证码
           Row(
             children: [
@@ -919,7 +919,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // 新密码
           fluent.InfoLabel(
             label: '新密码',
@@ -933,8 +933,8 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
               ),
               suffix: fluent.IconButton(
                 icon: Icon(
-                  _obscurePassword 
-                      ? fluent.FluentIcons.view 
+                  _obscurePassword
+                      ? fluent.FluentIcons.view
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
@@ -943,7 +943,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // 确认新密码
           fluent.InfoLabel(
             label: '确认新密码',
@@ -957,8 +957,8 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
               ),
               suffix: fluent.IconButton(
                 icon: Icon(
-                  _obscureConfirmPassword 
-                      ? fluent.FluentIcons.view 
+                  _obscureConfirmPassword
+                      ? fluent.FluentIcons.view
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
@@ -967,7 +967,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
             ),
           ),
           const SizedBox(height: 24),
-          
+
           // 重置密码按钮
           fluent.FilledButton(
             onPressed: _isLoading ? null : _handleReset,

@@ -1,6 +1,6 @@
+import '../services/structured_log_service.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
-import '../services/audio_source_service.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -16,7 +16,6 @@ import '../pages/my_page/my_page.dart';
 import '../pages/local_page.dart';
 import '../pages/settings_page.dart';
 import '../pages/developer_page.dart';
-import '../features/auth/auth_feature.dart';
 import '../services/layout_preference_service.dart';
 import '../services/developer_mode_service.dart';
 import '../services/global_back_handler_service.dart';
@@ -42,12 +41,10 @@ class MainLayout extends StatefulWidget {
 
 class _MainLayoutState extends State<MainLayout>
     with SingleTickerProviderStateMixin {
-  final AuthFacade _authFacade = AuthFacade();
   int _selectedIndex = 0;
   // NavigationDrawer 固定宽度与 NavigationRail 展开状态一致（Material 3 默认 256）
   static const double _drawerWidth = 256.0;
   static const double _collapsedWidth = 80.0; // 折叠状态宽度，仅显示图标
-  static const double _landscapeRailWidth = 84.0; // 横屏侧栏宽度（移动端）
   bool _isDrawerCollapsed = true; // 抽屉是否处于折叠状态（默认收起）
 
   // 页面列表
@@ -80,194 +77,50 @@ class _MainLayoutState extends State<MainLayout>
 
   int get _settingsIndex => _pages.indexWhere((w) => w is SettingsPage);
 
-  Future<void> _openMoreBottomSheet(BuildContext context) async {
-    final isLocalMode = PersistentStorageService().enableLocalMode;
-    if (isLocalMode) return; // 本地模式下没有“更多”选项，因为只有 2 个 Tab
-
-    await showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        final isPortrait =
-            MediaQuery.of(context).orientation == Orientation.portrait;
-        return SafeArea(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.history_outlined),
-                  title: const Text('历史'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    setState(() => _selectedIndex = 2); // 历史
-                    PageVisibilityNotifier().setCurrentPage(2);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.folder_open),
-                  title: const Text('本地'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    setState(() => _selectedIndex = 3); // 本地
-                    PageVisibilityNotifier().setCurrentPage(3);
-                  },
-                ),
-                const Divider(height: 8),
-                ListTile(
-                  leading: const Icon(Icons.settings_outlined),
-                  title: const Text('设置'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    final idx = _settingsIndex;
-                    setState(() => _selectedIndex = idx); // 设置
-                    PageVisibilityNotifier().setCurrentPage(idx);
-                    // 触发开发者模式（与设置点击一致）
-                    DeveloperModeService().onSettingsClicked();
-                  },
-                ),
-                if (DeveloperModeService().isDeveloperMode)
-                  ListTile(
-                    leading: const Icon(Icons.code),
-                    title: const Text('Dev'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      setState(() => _selectedIndex = _pages.length - 1);
-                      PageVisibilityNotifier().setCurrentPage(
-                        _pages.length - 1,
-                      );
-                    },
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   void initState() {
     super.initState();
-    // 监听认证状态变化
-    _authFacade.addAuthStateListener(_onAuthChanged);
-    // 监听布局偏好变化
-    LayoutPreferenceService().addListener(_onLayoutPreferenceChanged);
-    // 监听页面可见性通知器（用于跨组件切换 Tab）
     PageVisibilityNotifier().addListener(_onPageVisibilityNotifierChanged);
-    // 监听开发者模式变化
     DeveloperModeService().addListener(_onDeveloperModeChanged);
-    // 监听主题变化（包括移动端主题框架切换）
-    ThemeManager().addListener(_onThemeChanged);
-    // 监听音源服务变化（用于本地模式切换）
-    AudioSourceService().addListener(
-      _onThemeChanged,
-    ); // 重用 _onThemeChanged 逻辑即可
-
-    // 初始化系统主题色（在 build 完成后执行）
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        ThemeManager().initializeSystemColor(context);
-      }
-    });
-
-    // 应用启动后验证持久化的登录状态（Material 布局）
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _authFacade.validateToken();
-    });
-
-    // 初始化 PageVisibilityNotifier 状态与当前页面一致
-    // 避免因为热重启或某些情况导致状态不同步（Notifier 是单例可能保留了旧状态）
     PageVisibilityNotifier().setCurrentPage(_selectedIndex);
   }
 
   @override
   void dispose() {
-    _authFacade.removeAuthStateListener(_onAuthChanged);
-    LayoutPreferenceService().removeListener(_onLayoutPreferenceChanged);
     PageVisibilityNotifier().removeListener(_onPageVisibilityNotifierChanged);
     DeveloperModeService().removeListener(_onDeveloperModeChanged);
-    ThemeManager().removeListener(_onThemeChanged);
-    AudioSourceService().removeListener(_onThemeChanged);
     super.dispose();
   }
 
-  void _onAuthChanged() {
-    if (mounted) {
-      // 使用 addPostFrameCallback 避免在构建期间调用 setState
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {});
-        }
-      });
-    }
-  }
-
-  void _onLayoutPreferenceChanged() {
-    if (mounted) {
-      // 使用 addPostFrameCallback 避免在构建期间调用 setState
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {});
-        }
-      });
-    }
-  }
-
-  void _onThemeChanged() {
-    print(
-      '🎨 [MainLayout] _onThemeChanged called (Theme or AudioSource change)',
-    );
-    if (mounted) {
-      // 使用 addPostFrameCallback 避免在构建期间调用 setState
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {});
-        }
-      });
-    }
-  }
-
   void _onPageVisibilityNotifierChanged() {
-    if (mounted) {
-      final newIndex = PageVisibilityNotifier().currentPageIndex;
-      if (_selectedIndex != newIndex && newIndex < _pages.length) {
-        print(
-          '📡 [MainLayout] PageVisibilityNotifier triggered index: $newIndex (Current: $_selectedIndex)',
-        );
-        // 使用 addPostFrameCallback 避免在构建期间调用 setState
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() {
-              _selectedIndex = newIndex;
-              print(
-                '🔄 [MainLayout] _selectedIndex updated via Notifier to: $_selectedIndex',
-              );
-            });
-          }
-        });
-      }
+    if (!mounted) return;
+
+    final newIndex = PageVisibilityNotifier().currentPageIndex;
+    if (newIndex < 0 ||
+        newIndex >= _pages.length ||
+        newIndex == _selectedIndex) {
+      return;
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _selectedIndex = newIndex);
+    });
   }
 
   void _onDeveloperModeChanged() {
-    if (mounted) {
-      // 使用 addPostFrameCallback 延迟到构建完成后再调用 setState
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {
-            // 如果当前选中的索引超出可用页面（例如从 Dev 切换为非 Dev），切换到首页
-            final maxIndex = _pages.length - 1;
-            if (_selectedIndex > maxIndex) {
-              _selectedIndex = 0;
-            }
-          });
-        }
-      });
-    }
+    if (!mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final maxIndex = _pages.length - 1;
+      if (_selectedIndex <= maxIndex) return;
+
+      setState(() => _selectedIndex = 0);
+      PageVisibilityNotifier().setCurrentPage(0);
+    });
   }
 
-  /// 处理 Android 返回键
   void _handleAndroidBack() {
     // 1. 首先检查全局返回处理器（二级页面等）
     if (GlobalBackHandlerService().handleBack()) {
@@ -287,100 +140,9 @@ class _MainLayoutState extends State<MainLayout>
     SystemNavigator.pop();
   }
 
-  void _handleUserButtonTap() {
-    if (_authFacade.isLoggedIn) {
-      // 已登录，显示用户菜单
-      _showUserMenu();
-    } else {
-      // 未登录：真正的桌面端操作系统使用覆盖层；移动端操作系统（Android/iOS，含平板模式）使用弹窗/整页
-      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-        AuthOverlayService().show().then((_) {
-          if (mounted) setState(() {});
-        });
-      } else {
-        showAuthDialog(context).then((_) {
-          if (mounted) setState(() {});
-        });
-      }
-    }
-  }
-
-  void _showUserMenu() {
-    final user = _authFacade.currentUser;
-    if (user == null) return;
-
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: CircleAvatar(
-                backgroundImage: user.avatarUrl != null
-                    ? NetworkImage(user.avatarUrl!)
-                    : null,
-                child: user.avatarUrl == null
-                    ? Text(user.username[0].toUpperCase())
-                    : null,
-              ),
-              title: Text(user.username),
-              subtitle: Text(user.email),
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.person_outline),
-              title: const Text('我的'),
-              onTap: () {
-                Navigator.pop(context);
-                setState(() {
-                  _selectedIndex = 4; // 切换到我的页面
-                });
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: const Text('退出登录'),
-              onTap: () {
-                Navigator.pop(context);
-                _confirmLogout();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _confirmLogout() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('退出登录'),
-        content: const Text('确定要退出登录吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              _authFacade.logout();
-              Navigator.pop(context);
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('已退出登录')));
-            },
-            child: const Text('退出'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    print(
+    StructuredLogService.log(
       '🏗️ [MainLayout] build called. SelectedIndex: $_selectedIndex, LocalMode: ${PersistentStorageService().enableLocalMode}',
     );
     // 根据平台选择不同的布局
@@ -413,7 +175,9 @@ class _MainLayoutState extends State<MainLayout>
         animation: LayoutPreferenceService(),
         builder: (context, child) {
           final isDesktop = LayoutPreferenceService().isDesktopLayout;
-          print('🖥️ [MainLayout] 当前布局模式: ${isDesktop ? "桌面模式" : "移动模式"}');
+          StructuredLogService.log(
+            '🖥️ [MainLayout] 当前布局模式: ${isDesktop ? "桌面模式" : "移动模式"}',
+          );
 
           return GlobalWatermark(
             child: isDesktop
@@ -525,7 +289,7 @@ class _MainLayoutState extends State<MainLayout>
   /// 构建移动端布局（Android/iOS）
   Widget _buildMobileLayout(BuildContext context) {
     final isLocalMode = PersistentStorageService().enableLocalMode;
-    print(
+    StructuredLogService.log(
       '📱 [MainLayout] Building Mobile Layout (LocalMode: $isLocalMode, SelectedIndex: $_selectedIndex)',
     );
 
@@ -534,7 +298,7 @@ class _MainLayoutState extends State<MainLayout>
         (Platform.isIOS || Platform.isAndroid) &&
         ThemeManager().isCupertinoFramework;
     final orientation = MediaQuery.of(context).orientation;
-    final bool isLandscape = orientation == Orientation.landscape;
+    final isLandscape = orientation == Orientation.landscape;
 
     final scaffold = PopScope(
       canPop: false, // 始终拦截返回键
@@ -668,139 +432,264 @@ class _MainLayoutState extends State<MainLayout>
   }
 
   Widget _buildLandscapeSideNavigation(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final int myIndex = _pages.indexWhere((w) => w is MyPage);
 
-    final List<NavigationRailDestination> destinations = const [
-      NavigationRailDestination(
-        icon: Icon(Icons.home_outlined),
-        selectedIcon: Icon(Icons.home),
-        label: Text('首页'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.explore_outlined),
-        selectedIcon: Icon(Icons.explore),
-        label: Text('发现'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.person_outlined),
-        selectedIcon: Icon(Icons.person),
-        label: Text('我的'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.more_horiz),
-        selectedIcon: Icon(Icons.more_horiz),
-        label: Text('更多'),
-      ),
-    ];
+    final isLocalMode = PersistentStorageService().enableLocalMode;
 
     int navSelectedIndex() {
+      if (isLocalMode) return _selectedIndex;
       if (_selectedIndex == 0) return 0; // 首页
       if (_selectedIndex == 1) return 1; // 发现
       if (_selectedIndex == myIndex) return 2; // 我的
-      return 3; // 更多
+      if (_selectedIndex == _settingsIndex) return 3; // 设置
+      return 2;
     }
 
-    final Color? themeTint = PlayerService().themeColorNotifier.value;
-    return SafeArea(
-      left: true,
-      right: false,
-      top: true,
-      bottom: true,
-      child: SizedBox(
-        width: _landscapeRailWidth,
-        child: ClipRRect(
-          borderRadius: const BorderRadius.only(
-            topRight: Radius.circular(16),
-            bottomRight: Radius.circular(16),
-          ),
+    final selectedIdx = navSelectedIndex();
+
+    return ValueListenableBuilder<Color?>(
+      valueListenable: PlayerService().themeColorNotifier,
+      builder: (context, extractedThemeColor, _) {
+        final dynamicAccent = DynamicColorUtils.resolveAccent(
+          extractedThemeColor,
+          colorScheme,
+          isDark: isDark,
+        );
+        final dynamicAmbient = DynamicColorUtils.resolveAmbient(
+          extractedThemeColor,
+          colorScheme,
+          isDark: isDark,
+        );
+
+        final items = isLocalMode
+            ? [
+                (
+                  icon: Icons.folder_outlined,
+                  activeIcon: Icons.folder_rounded,
+                  label: '本地',
+                ),
+                (
+                  icon: Icons.settings_outlined,
+                  activeIcon: Icons.settings_rounded,
+                  label: '设置',
+                ),
+              ]
+            : [
+                (
+                  icon: Icons.home_outlined,
+                  activeIcon: Icons.home_rounded,
+                  label: '首页',
+                ),
+                (
+                  icon: Icons.explore_outlined,
+                  activeIcon: Icons.explore_rounded,
+                  label: '发现',
+                ),
+                (
+                  icon: Icons.person_outline_rounded,
+                  activeIcon: Icons.person_rounded,
+                  label: '我的',
+                ),
+                (
+                  icon: Icons.settings_outlined,
+                  activeIcon: Icons.settings_rounded,
+                  label: '设置',
+                ),
+              ];
+
+        final safePadding = MediaQuery.of(context).padding;
+
+        return SizedBox(
+          width: 74,
+          height: double.infinity,
           child: Stack(
             children: [
+              // 1. 毛玻璃模糊层 (铺满全高)
               Positioned.fill(
                 child: BackdropFilter(
-                  filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
                   child: const SizedBox.shrink(),
                 ),
               ),
+              // 2. 液态玻璃动态流光渐变背景 + 右侧微光细边框 (铺满全高)
               Positioned.fill(
-                child: Container(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeOutCubic,
                   decoration: BoxDecoration(
+                    color: colorScheme.surface.withValues(
+                      alpha: isDark ? 0.82 : 0.88,
+                    ),
                     gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
                       colors: [
-                        Colors.white.withOpacity(0.24),
-                        (themeTint ?? colorScheme.primary).withOpacity(0.08),
-                        Colors.white.withOpacity(0.06),
+                        colorScheme.surface.withValues(
+                          alpha: isDark ? 0.88 : 0.92,
+                        ),
+                        dynamicAmbient.withValues(alpha: isDark ? 0.16 : 0.08),
+                        dynamicAmbient.withValues(alpha: isDark ? 0.06 : 0.03),
+                        colorScheme.surface.withValues(
+                          alpha: isDark ? 0.82 : 0.86,
+                        ),
                       ],
+                      stops: const [0.0, 0.35, 0.70, 1.0],
                     ),
                     border: Border(
                       right: BorderSide(
-                        color: Colors.white.withOpacity(0.18),
-                        width: 1,
+                        color: dynamicAccent.withValues(
+                          alpha: isDark ? 0.28 : 0.38,
+                        ),
+                        width: 0.8,
+                      ),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.25 : 0.06,
+                        ),
+                        blurRadius: 16,
+                        offset: const Offset(2, 0),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // 3. Apple Music 风格有机弥散微光光晕 (顶部微光)
+              Positioned(
+                top: -20,
+                left: -20,
+                width: 110,
+                height: 110,
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          dynamicAmbient.withValues(
+                            alpha: isDark ? 0.25 : 0.16,
+                          ),
+                          Colors.transparent,
+                        ],
                       ),
                     ),
                   ),
                 ),
               ),
+              // 4. 侧边栏内容 (内部根据安全区域适配，垂直居中排布)
               Padding(
-                padding: const EdgeInsets.only(top: 6, bottom: 6),
-                child: NavigationRail(
-                  backgroundColor: Colors.transparent,
-                  selectedIndex: navSelectedIndex(),
-                  labelType: NavigationRailLabelType.selected,
-                  groupAlignment: -0.95,
-                  minWidth: _landscapeRailWidth,
-                  minExtendedWidth: _landscapeRailWidth,
-                  selectedIconTheme: IconThemeData(
-                    color: colorScheme.primary,
-                    size: 22,
-                  ),
-                  unselectedIconTheme: IconThemeData(
-                    color: colorScheme.onSurfaceVariant,
-                    size: 22,
-                  ),
-                  selectedLabelTextStyle: TextStyle(
-                    color: colorScheme.primary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  unselectedLabelTextStyle: TextStyle(
-                    color: colorScheme.onSurfaceVariant,
-                    fontSize: 11,
-                  ),
-                  onDestinationSelected: (tabIndex) async {
-                    final int moreTab = destinations.length - 1;
-                    if (tabIndex == moreTab) {
-                      await _openMoreBottomSheet(context);
-                      return;
-                    }
+                padding: EdgeInsets.only(
+                  top: safePadding.top > 0 ? safePadding.top + 4 : 12,
+                  bottom: safePadding.bottom > 0 ? safePadding.bottom + 4 : 12,
+                ),
+                child: Column(
+                  children: List.generate(items.length, (index) {
+                    final item = items[index];
+                    final isSelected = selectedIdx == index;
 
-                    int targetPageIndex = _selectedIndex;
-                    if (tabIndex == 0) targetPageIndex = 0; // 首页
-                    if (tabIndex == 1) targetPageIndex = 1; // 发现
-                    if (tabIndex == 2) targetPageIndex = myIndex; // 我的
+                    return Expanded(
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            StructuredLogService.log(
+                              '🖱️ [MainLayout] Landscape side dock tab tapped: $index',
+                            );
+                            HapticFeedback.lightImpact();
 
-                    setState(() {
-                      _selectedIndex = targetPageIndex;
-                    });
-                    PageVisibilityNotifier().setCurrentPage(targetPageIndex);
-                  },
-                  destinations: destinations,
+                            int targetPageIndex = _selectedIndex;
+                            if (isLocalMode) {
+                              targetPageIndex = index;
+                            } else {
+                              if (index == 0) targetPageIndex = 0;
+                              if (index == 1) targetPageIndex = 1;
+                              if (index == 2) targetPageIndex = myIndex;
+                              if (index == 3) targetPageIndex = _settingsIndex;
+                            }
+
+                            setState(() {
+                              _selectedIndex = targetPageIndex;
+                            });
+                            PageVisibilityNotifier().setCurrentPage(
+                              targetPageIndex,
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(16),
+                          splashColor: Colors.transparent,
+                          highlightColor: Colors.transparent,
+                          child: Center(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 240),
+                              curve: Curves.easeOutCubic,
+                              width: 58,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? dynamicAccent.withValues(
+                                        alpha: isDark ? 0.22 : 0.12,
+                                      )
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(16),
+                                border: isSelected
+                                    ? Border.all(
+                                        color: dynamicAccent.withValues(
+                                          alpha: isDark ? 0.40 : 0.25,
+                                        ),
+                                        width: 0.8,
+                                      )
+                                    : null,
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    isSelected ? item.activeIcon : item.icon,
+                                    size: 22,
+                                    color: isSelected
+                                        ? dynamicAccent
+                                        : colorScheme.onSurfaceVariant
+                                              .withValues(alpha: 0.70),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  AnimatedDefaultTextStyle(
+                                    duration: const Duration(milliseconds: 180),
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.w500,
+                                      color: isSelected
+                                          ? dynamicAccent
+                                          : colorScheme.onSurfaceVariant
+                                                .withValues(alpha: 0.70),
+                                      letterSpacing: -0.2,
+                                    ),
+                                    child: Text(item.label),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
                 ),
               ),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   /// 构建 iOS 26 风格的悬浮液态玻璃底部导航栏
   Widget _buildCupertinoTabBar(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final orientation = MediaQuery.of(context).orientation;
-    final bool isLandscape = orientation == Orientation.landscape;
     final int myIndex = _pages.indexWhere((w) => w is MyPage);
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
@@ -921,7 +810,7 @@ class _MainLayoutState extends State<MainLayout>
                         ),
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? ThemeManager.iosBlue.withOpacity(0.2)
+                              ? ThemeManager.iosBlue.withValues(alpha: 0.2)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -944,11 +833,11 @@ class _MainLayoutState extends State<MainLayout>
                           color: isSelected
                               ? ThemeManager.iosBlue
                               : (isDark
-                                    ? Colors.white.withOpacity(0.7)
-                                    : Colors.black.withOpacity(0.5)),
+                                    ? Colors.white.withValues(alpha: 0.7)
+                                    : Colors.black.withValues(alpha: 0.5)),
                           shadows: [
                             Shadow(
-                              color: Colors.black.withOpacity(0.2),
+                              color: Colors.black.withValues(alpha: 0.2),
                               blurRadius: 4,
                               offset: const Offset(0, 1),
                             ),
@@ -995,7 +884,7 @@ class _MainLayoutState extends State<MainLayout>
 
   Widget _buildGlassBottomNavigationBar(BuildContext context) {
     final isLocalMode = PersistentStorageService().enableLocalMode;
-    print(
+    StructuredLogService.log(
       '🎨 [MainLayout] Building Glass Bottom Navigation (LocalMode: $isLocalMode)',
     );
     final orientation = MediaQuery.of(context).orientation;
@@ -1036,8 +925,9 @@ class _MainLayoutState extends State<MainLayout>
             return Expanded(
               child: InkWell(
                 onTap: () async {
-                  final isLocalMode = PersistentStorageService().enableLocalMode;
-                  print(
+                  final isLocalMode =
+                      PersistentStorageService().enableLocalMode;
+                  StructuredLogService.log(
                     '🖱️ [MainLayout] Navigation tab selected: $tabIndex (LocalMode: $isLocalMode)',
                   );
 
@@ -1056,7 +946,9 @@ class _MainLayoutState extends State<MainLayout>
 
                   setState(() {
                     _selectedIndex = targetIndex;
-                    print('🔄 [MainLayout] _selectedIndex updated to: $_selectedIndex');
+                    StructuredLogService.log(
+                      '🔄 [MainLayout] _selectedIndex updated to: $_selectedIndex',
+                    );
                   });
                   PageVisibilityNotifier().setCurrentPage(targetIndex);
                 },
@@ -1068,7 +960,9 @@ class _MainLayoutState extends State<MainLayout>
                     curve: Curves.easeOutCubic,
                     style: TextStyle(
                       fontSize: isSelected ? 16.5 : 15.0,
-                      fontWeight: isSelected ? FontWeight.w900 : FontWeight.w500,
+                      fontWeight: isSelected
+                          ? FontWeight.w900
+                          : FontWeight.w500,
                       color: isSelected
                           ? (isDark ? Colors.white : const Color(0xFF0F172A))
                           : (isDark ? Colors.white54 : const Color(0xFF64748B)),
@@ -1141,7 +1035,10 @@ class _MainLayoutState extends State<MainLayout>
                 if (states.contains(WidgetState.selected)) {
                   return IconThemeData(color: dynamicAccent, size: 24);
                 }
-                return IconThemeData(color: cs.onSurface.withValues(alpha: 0.6), size: 24);
+                return IconThemeData(
+                  color: cs.onSurface.withValues(alpha: 0.6),
+                  size: 24,
+                );
               }),
             ),
           ),
@@ -1157,7 +1054,9 @@ class _MainLayoutState extends State<MainLayout>
               ],
             ),
             child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
               child: Stack(
                 children: [
                   // 毛玻璃模糊层
@@ -1175,21 +1074,29 @@ class _MainLayoutState extends State<MainLayout>
                       duration: const Duration(milliseconds: 400),
                       curve: Curves.easeOutCubic,
                       decoration: BoxDecoration(
-                        color: cs.surface.withValues(alpha: isDark ? 0.85 : 0.90),
+                        color: cs.surface.withValues(
+                          alpha: isDark ? 0.85 : 0.90,
+                        ),
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
                             cs.surface.withValues(alpha: isDark ? 0.90 : 0.95),
-                            dynamicAmbient.withValues(alpha: isDark ? 0.16 : 0.08),
-                            dynamicAmbient.withValues(alpha: isDark ? 0.08 : 0.04),
+                            dynamicAmbient.withValues(
+                              alpha: isDark ? 0.16 : 0.08,
+                            ),
+                            dynamicAmbient.withValues(
+                              alpha: isDark ? 0.08 : 0.04,
+                            ),
                             cs.surface.withValues(alpha: isDark ? 0.84 : 0.88),
                           ],
                           stops: const [0.0, 0.35, 0.70, 1.0],
                         ),
                         border: Border(
                           top: BorderSide(
-                            color: dynamicAccent.withValues(alpha: isDark ? 0.28 : 0.38),
+                            color: dynamicAccent.withValues(
+                              alpha: isDark ? 0.28 : 0.38,
+                            ),
                             width: 1.0,
                           ),
                         ),
@@ -1210,8 +1117,12 @@ class _MainLayoutState extends State<MainLayout>
                           shape: BoxShape.circle,
                           gradient: RadialGradient(
                             colors: [
-                              dynamicAmbient.withValues(alpha: isDark ? 0.22 : 0.14),
-                              dynamicAmbient.withValues(alpha: isDark ? 0.08 : 0.04),
+                              dynamicAmbient.withValues(
+                                alpha: isDark ? 0.22 : 0.14,
+                              ),
+                              dynamicAmbient.withValues(
+                                alpha: isDark ? 0.08 : 0.04,
+                              ),
                               Colors.transparent,
                             ],
                             stops: const [0.0, 0.45, 1.0],
@@ -1406,7 +1317,7 @@ class _MainLayoutState extends State<MainLayout>
                           onDestinationSelected: (int index) {
                             final isLocalMode =
                                 PersistentStorageService().enableLocalMode;
-                            print(
+                            StructuredLogService.log(
                               '🖱️ [MainLayout] NavigationDrawer index selected: $index (LocalMode: $isLocalMode)',
                             );
 
@@ -1417,7 +1328,7 @@ class _MainLayoutState extends State<MainLayout>
 
                             setState(() {
                               _selectedIndex = index;
-                              print(
+                              StructuredLogService.log(
                                 '🔄 [MainLayout] _selectedIndex updated to: $_selectedIndex',
                               );
                             });
@@ -1564,7 +1475,7 @@ class _MainLayoutState extends State<MainLayout>
                 onTap: () {
                   final isLocalMode =
                       PersistentStorageService().enableLocalMode;
-                  print(
+                  StructuredLogService.log(
                     '🖱️ [MainLayout] Collapsed Drawer item selected: $index (LocalMode: $isLocalMode)',
                   );
 
@@ -1574,7 +1485,7 @@ class _MainLayoutState extends State<MainLayout>
 
                   setState(() {
                     _selectedIndex = index;
-                    print(
+                    StructuredLogService.log(
                       '🔄 [MainLayout] _selectedIndex updated via Collapsed Drawer to: $_selectedIndex',
                     );
                   });
@@ -1596,37 +1507,6 @@ class _MainLayoutState extends State<MainLayout>
           ),
         );
       },
-    );
-  }
-
-  /// 构建用户头像
-  Widget _buildUserAvatar({double size = 24}) {
-    final user = _authFacade.currentUser;
-
-    if (user == null || !_authFacade.isLoggedIn) {
-      return Icon(Icons.account_circle_outlined, size: size);
-    }
-
-    // 如果有QQ头像，显示头像
-    if (user.avatarUrl != null && user.avatarUrl!.isNotEmpty) {
-      return CircleAvatar(
-        radius: size / 2,
-        backgroundImage: NetworkImage(user.avatarUrl!),
-        onBackgroundImageError: (exception, stackTrace) {
-          // 头像加载失败时的处理
-          print('头像加载失败: $exception');
-        },
-        child: null,
-      );
-    }
-
-    // 没有头像时显示用户名首字母
-    return CircleAvatar(
-      radius: size / 2,
-      child: Text(
-        user.username[0].toUpperCase(),
-        style: TextStyle(fontSize: size / 2),
-      ),
     );
   }
 }
@@ -1673,14 +1553,14 @@ class _LiquidGlassContainer extends StatelessWidget {
         // 外部阴影
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.5 : 0.15),
+            color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.15),
             blurRadius: 32,
             offset: const Offset(0, 12),
             spreadRadius: -4,
           ),
           // 底部环境光反射
           BoxShadow(
-            color: ThemeManager.iosBlue.withOpacity(isDark ? 0.2 : 0.1),
+            color: ThemeManager.iosBlue.withValues(alpha: isDark ? 0.2 : 0.1),
             blurRadius: 24,
             offset: const Offset(0, 8),
             spreadRadius: -8,
@@ -1706,9 +1586,9 @@ class _LiquidGlassContainer extends StatelessWidget {
                   end: Alignment.bottomRight,
                   colors: [
                     (isDark ? const Color(0xFF3A3A3C) : Colors.white)
-                        .withOpacity(isDark ? 0.6 : 0.5),
+                        .withValues(alpha: isDark ? 0.6 : 0.5),
                     (isDark ? const Color(0xFF1C1C1E) : Colors.white)
-                        .withOpacity(isDark ? 0.4 : 0.2),
+                        .withValues(alpha: isDark ? 0.4 : 0.2),
                   ],
                 ),
                 // 边框由 Painter 绘制以实现渐变
@@ -1727,8 +1607,8 @@ class _LiquidGlassContainer extends StatelessWidget {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.white.withOpacity(isDark ? 0.1 : 0.4),
-                            Colors.white.withOpacity(0),
+                            Colors.white.withValues(alpha: isDark ? 0.1 : 0.4),
+                            Colors.white.withValues(alpha: 0),
                           ],
                         ),
                         borderRadius: BorderRadius.vertical(
@@ -1769,10 +1649,10 @@ class _LiquidGlassPainter extends CustomPainter {
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          Colors.white.withOpacity(isDark ? 0.3 : 0.8),
-          Colors.white.withOpacity(isDark ? 0.05 : 0.1),
-          Colors.white.withOpacity(isDark ? 0.05 : 0.1),
-          Colors.white.withOpacity(isDark ? 0.2 : 0.4),
+          Colors.white.withValues(alpha: isDark ? 0.3 : 0.8),
+          Colors.white.withValues(alpha: isDark ? 0.05 : 0.1),
+          Colors.white.withValues(alpha: isDark ? 0.05 : 0.1),
+          Colors.white.withValues(alpha: isDark ? 0.2 : 0.4),
         ],
         stops: const [0.0, 0.4, 0.6, 1.0],
       ).createShader(rect);
@@ -1785,7 +1665,7 @@ class _LiquidGlassPainter extends CustomPainter {
         center: const Alignment(0, -0.8),
         radius: 1.0,
         colors: [
-          Colors.white.withOpacity(isDark ? 0.1 : 0.2),
+          Colors.white.withValues(alpha: isDark ? 0.1 : 0.2),
           Colors.transparent,
         ],
         stops: const [0.0, 0.7],

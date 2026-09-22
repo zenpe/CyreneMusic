@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -143,14 +144,14 @@ class SearchService extends ChangeNotifier {
     if (saveHistory) {
       await _addToSearchHistory(normalizedKeyword);
       if (!_isSessionActive(sessionId, normalizedKeyword)) {
-        print('⏭️ [SearchService] 忽略过期搜索（历史保存后）: $normalizedKeyword');
+        StructuredLogService.log('⏭️ [SearchService] 忽略过期搜索（历史保存后）: $normalizedKeyword');
         return;
       }
     }
 
     // 搜索平台由后端搜索目录决定，与当前播放解析器解耦。
     final supportedPlatforms = _providerCatalog.platformKeys;
-    print('🔍 [SearchService] 搜索平台: $supportedPlatforms');
+    StructuredLogService.log('🔍 [SearchService] 搜索平台: $supportedPlatforms');
 
     // 根据支持的平台设置加载状态
     _searchResult = SearchResult(
@@ -163,7 +164,7 @@ class SearchService extends ChangeNotifier {
     );
     notifyListeners();
 
-    print('🔍 [SearchService] 开始搜索: $normalizedKeyword');
+    StructuredLogService.log('🔍 [SearchService] 开始搜索: $normalizedKeyword');
 
     // 只向支持的平台发送搜索请求
     final futures = <Future<void>>[];
@@ -177,7 +178,7 @@ class SearchService extends ChangeNotifier {
     await Future.wait(futures);
 
     if (!_isSessionActive(sessionId, normalizedKeyword)) {
-      print('⏭️ [SearchService] 忽略过期搜索（全部返回后）: $normalizedKeyword');
+      StructuredLogService.log('⏭️ [SearchService] 忽略过期搜索（全部返回后）: $normalizedKeyword');
       return;
     }
 
@@ -185,7 +186,7 @@ class SearchService extends ChangeNotifier {
       _activeSearchCancelToken = null;
     }
 
-    print('✅ [SearchService] 搜索完成，共 ${_searchResult.totalCount} 条结果');
+    StructuredLogService.log('✅ [SearchService] 搜索完成，共 ${_searchResult.totalCount} 条结果');
   }
 
   /// 获取后端搜索目录支持的平台列表。
@@ -194,7 +195,7 @@ class SearchService extends ChangeNotifier {
   /// 搜索网易云音乐
   Future<void> _searchNetease(String keyword, int sessionId, CancelToken cancelToken) async {
     try {
-      print('🎵 [SearchService] 网易云搜索: $keyword');
+      StructuredLogService.log('🎵 [SearchService] 网易云搜索: $keyword');
 
       final result = await ApiClient().postJson(
         '/search',
@@ -220,7 +221,7 @@ class SearchService extends ChangeNotifier {
               .toList();
 
           if (!_isSessionActive(sessionId, keyword)) {
-            print('⏭️ [SearchService] 丢弃过期网易云结果: $keyword');
+            StructuredLogService.log('⏭️ [SearchService] 丢弃过期网易云结果: $keyword');
             return;
           }
 
@@ -229,7 +230,7 @@ class SearchService extends ChangeNotifier {
             neteaseLoading: false,
           );
 
-          print('✅ [SearchService] 网易云搜索完成: ${results.length} 条结果');
+          StructuredLogService.log('✅ [SearchService] 网易云搜索完成: ${results.length} 条结果');
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
@@ -237,9 +238,9 @@ class SearchService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [SearchService] 网易云搜索失败: $e');
+      StructuredLogService.log('❌ [SearchService] 网易云搜索失败: $e');
       if (!_isSessionActive(sessionId, keyword)) {
-        print('⏭️ [SearchService] 丢弃过期网易云错误: $keyword');
+        StructuredLogService.log('⏭️ [SearchService] 丢弃过期网易云错误: $keyword');
         return;
       }
       _searchResult = _searchResult.copyWith(
@@ -248,7 +249,7 @@ class SearchService extends ChangeNotifier {
       );
     }
     if (!_isSessionActive(sessionId, keyword)) {
-      print('⏭️ [SearchService] 跳过过期网易云刷新: $keyword');
+      StructuredLogService.log('⏭️ [SearchService] 跳过过期网易云刷新: $keyword');
       return;
     }
     notifyListeners();
@@ -257,7 +258,7 @@ class SearchService extends ChangeNotifier {
   /// 搜索 Apple Music
   Future<void> _searchApple(String keyword, int sessionId, CancelToken cancelToken) async {
     try {
-      print('🍎 [SearchService] Apple Music 搜索: $keyword');
+      StructuredLogService.log('🍎 [SearchService] Apple Music 搜索: $keyword');
 
       final result = await ApiClient().getJson(
         '/apple/search',
@@ -282,7 +283,7 @@ class SearchService extends ChangeNotifier {
               .toList();
 
           if (!_isSessionActive(sessionId, keyword)) {
-            print('⏭️ [SearchService] 丢弃过期 Apple 结果: $keyword');
+            StructuredLogService.log('⏭️ [SearchService] 丢弃过期 Apple 结果: $keyword');
             return;
           }
 
@@ -291,7 +292,7 @@ class SearchService extends ChangeNotifier {
             appleLoading: false,
           );
 
-          print('✅ [SearchService] Apple Music 搜索完成: ${results.length} 条结果');
+          StructuredLogService.log('✅ [SearchService] Apple Music 搜索完成: ${results.length} 条结果');
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
@@ -299,9 +300,9 @@ class SearchService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [SearchService] Apple Music 搜索失败: $e');
+      StructuredLogService.log('❌ [SearchService] Apple Music 搜索失败: $e');
       if (!_isSessionActive(sessionId, keyword)) {
-        print('⏭️ [SearchService] 丢弃过期 Apple 错误: $keyword');
+        StructuredLogService.log('⏭️ [SearchService] 丢弃过期 Apple 错误: $keyword');
         return;
       }
       _searchResult = _searchResult.copyWith(
@@ -310,7 +311,7 @@ class SearchService extends ChangeNotifier {
       );
     }
     if (!_isSessionActive(sessionId, keyword)) {
-      print('⏭️ [SearchService] 跳过过期 Apple 刷新: $keyword');
+      StructuredLogService.log('⏭️ [SearchService] 跳过过期 Apple 刷新: $keyword');
       return;
     }
     notifyListeners();
@@ -319,7 +320,7 @@ class SearchService extends ChangeNotifier {
   /// 搜索QQ音乐
   Future<void> _searchQQ(String keyword, int sessionId, CancelToken cancelToken) async {
     try {
-      print('🎶 [SearchService] QQ音乐搜索: $keyword');
+      StructuredLogService.log('🎶 [SearchService] QQ音乐搜索: $keyword');
 
       final result = await ApiClient().getJson(
         '/qq/search',
@@ -344,7 +345,7 @@ class SearchService extends ChangeNotifier {
               .toList();
 
           if (!_isSessionActive(sessionId, keyword)) {
-            print('⏭️ [SearchService] 丢弃过期 QQ 结果: $keyword');
+            StructuredLogService.log('⏭️ [SearchService] 丢弃过期 QQ 结果: $keyword');
             return;
           }
 
@@ -353,7 +354,7 @@ class SearchService extends ChangeNotifier {
             qqLoading: false,
           );
 
-          print('✅ [SearchService] QQ音乐搜索完成: ${results.length} 条结果');
+          StructuredLogService.log('✅ [SearchService] QQ音乐搜索完成: ${results.length} 条结果');
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
@@ -361,9 +362,9 @@ class SearchService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [SearchService] QQ音乐搜索失败: $e');
+      StructuredLogService.log('❌ [SearchService] QQ音乐搜索失败: $e');
       if (!_isSessionActive(sessionId, keyword)) {
-        print('⏭️ [SearchService] 丢弃过期 QQ 错误: $keyword');
+        StructuredLogService.log('⏭️ [SearchService] 丢弃过期 QQ 错误: $keyword');
         return;
       }
       _searchResult = _searchResult.copyWith(
@@ -372,7 +373,7 @@ class SearchService extends ChangeNotifier {
       );
     }
     if (!_isSessionActive(sessionId, keyword)) {
-      print('⏭️ [SearchService] 跳过过期 QQ 刷新: $keyword');
+      StructuredLogService.log('⏭️ [SearchService] 跳过过期 QQ 刷新: $keyword');
       return;
     }
     notifyListeners();
@@ -381,7 +382,7 @@ class SearchService extends ChangeNotifier {
   /// 搜索酷狗音乐
   Future<void> _searchKugou(String keyword, int sessionId, CancelToken cancelToken) async {
     try {
-      print('🎼 [SearchService] 酷狗音乐搜索: $keyword');
+      StructuredLogService.log('🎼 [SearchService] 酷狗音乐搜索: $keyword');
 
       final result = await ApiClient().getJson(
         '/kugou/search',
@@ -406,7 +407,7 @@ class SearchService extends ChangeNotifier {
               .toList();
 
           if (!_isSessionActive(sessionId, keyword)) {
-            print('⏭️ [SearchService] 丢弃过期酷狗结果: $keyword');
+            StructuredLogService.log('⏭️ [SearchService] 丢弃过期酷狗结果: $keyword');
             return;
           }
 
@@ -415,7 +416,7 @@ class SearchService extends ChangeNotifier {
             kugouLoading: false,
           );
 
-          print('✅ [SearchService] 酷狗音乐搜索完成: ${results.length} 条结果');
+          StructuredLogService.log('✅ [SearchService] 酷狗音乐搜索完成: ${results.length} 条结果');
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
@@ -423,9 +424,9 @@ class SearchService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [SearchService] 酷狗音乐搜索失败: $e');
+      StructuredLogService.log('❌ [SearchService] 酷狗音乐搜索失败: $e');
       if (!_isSessionActive(sessionId, keyword)) {
-        print('⏭️ [SearchService] 丢弃过期酷狗错误: $keyword');
+        StructuredLogService.log('⏭️ [SearchService] 丢弃过期酷狗错误: $keyword');
         return;
       }
       _searchResult = _searchResult.copyWith(
@@ -434,7 +435,7 @@ class SearchService extends ChangeNotifier {
       );
     }
     if (!_isSessionActive(sessionId, keyword)) {
-      print('⏭️ [SearchService] 跳过过期酷狗刷新: $keyword');
+      StructuredLogService.log('⏭️ [SearchService] 跳过过期酷狗刷新: $keyword');
       return;
     }
     notifyListeners();
@@ -443,7 +444,7 @@ class SearchService extends ChangeNotifier {
   /// 搜索酷我音乐
   Future<void> _searchKuwo(String keyword, int sessionId, CancelToken cancelToken) async {
     try {
-      print('🎸 [SearchService] 酷我音乐搜索: $keyword');
+      StructuredLogService.log('🎸 [SearchService] 酷我音乐搜索: $keyword');
 
       final result = await ApiClient().getJson(
         '/kuwo/search',
@@ -469,7 +470,7 @@ class SearchService extends ChangeNotifier {
               .toList();
 
           if (!_isSessionActive(sessionId, keyword)) {
-            print('⏭️ [SearchService] 丢弃过期酷我结果: $keyword');
+            StructuredLogService.log('⏭️ [SearchService] 丢弃过期酷我结果: $keyword');
             return;
           }
 
@@ -478,7 +479,7 @@ class SearchService extends ChangeNotifier {
             kuwoLoading: false,
           );
 
-          print('✅ [SearchService] 酷我音乐搜索完成: ${results.length} 条结果');
+          StructuredLogService.log('✅ [SearchService] 酷我音乐搜索完成: ${results.length} 条结果');
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
@@ -486,9 +487,9 @@ class SearchService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [SearchService] 酷我音乐搜索失败: $e');
+      StructuredLogService.log('❌ [SearchService] 酷我音乐搜索失败: $e');
       if (!_isSessionActive(sessionId, keyword)) {
-        print('⏭️ [SearchService] 丢弃过期酷我错误: $keyword');
+        StructuredLogService.log('⏭️ [SearchService] 丢弃过期酷我错误: $keyword');
         return;
       }
       _searchResult = _searchResult.copyWith(
@@ -497,7 +498,7 @@ class SearchService extends ChangeNotifier {
       );
     }
     if (!_isSessionActive(sessionId, keyword)) {
-      print('⏭️ [SearchService] 跳过过期酷我刷新: $keyword');
+      StructuredLogService.log('⏭️ [SearchService] 跳过过期酷我刷新: $keyword');
       return;
     }
     notifyListeners();
@@ -506,7 +507,7 @@ class SearchService extends ChangeNotifier {
   /// 搜索 Spotify
   Future<void> _searchSpotify(String keyword, int sessionId, CancelToken cancelToken) async {
     try {
-      print('🟢 [SearchService] Spotify 搜索: $keyword');
+      StructuredLogService.log('🟢 [SearchService] Spotify 搜索: $keyword');
 
       final result = await ApiClient().getJson(
         '/spotify/search',
@@ -536,7 +537,7 @@ class SearchService extends ChangeNotifier {
           }).toList();
 
           if (!_isSessionActive(sessionId, keyword)) {
-            print('⏭️ [SearchService] 丢弃过期 Spotify 结果: $keyword');
+            StructuredLogService.log('⏭️ [SearchService] 丢弃过期 Spotify 结果: $keyword');
             return;
           }
 
@@ -545,7 +546,7 @@ class SearchService extends ChangeNotifier {
             spotifyLoading: false,
           );
 
-          print('✅ [SearchService] Spotify 搜索完成: ${results.length} 条结果');
+          StructuredLogService.log('✅ [SearchService] Spotify 搜索完成: ${results.length} 条结果');
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
@@ -553,9 +554,9 @@ class SearchService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [SearchService] Spotify 搜索失败: $e');
+      StructuredLogService.log('❌ [SearchService] Spotify 搜索失败: $e');
       if (!_isSessionActive(sessionId, keyword)) {
-        print('⏭️ [SearchService] 丢弃过期 Spotify 错误: $keyword');
+        StructuredLogService.log('⏭️ [SearchService] 丢弃过期 Spotify 错误: $keyword');
         return;
       }
       _searchResult = _searchResult.copyWith(
@@ -564,7 +565,7 @@ class SearchService extends ChangeNotifier {
       );
     }
     if (!_isSessionActive(sessionId, keyword)) {
-      print('⏭️ [SearchService] 跳过过期 Spotify 刷新: $keyword');
+      StructuredLogService.log('⏭️ [SearchService] 跳过过期 Spotify 刷新: $keyword');
       return;
     }
     notifyListeners();
@@ -606,7 +607,7 @@ class SearchService extends ChangeNotifier {
         .map((tracks) => MergedTrack.fromTracks(tracks))
         .toList();
 
-    print('🔍 [SearchService] 合并结果: ${allTracks.length} 首 → ${mergedTracks.length} 首');
+    StructuredLogService.log('🔍 [SearchService] 合并结果: ${allTracks.length} 首 → ${mergedTracks.length} 首');
 
     if (_currentKeyword.trim().isNotEmpty) {
       final keyword = _currentKeyword;
@@ -797,9 +798,9 @@ class SearchService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final history = prefs.getStringList(_historyKey) ?? [];
       _searchHistory = history;
-      print('📚 [SearchService] 加载搜索历史: ${_searchHistory.length} 条');
+      StructuredLogService.log('📚 [SearchService] 加载搜索历史: ${_searchHistory.length} 条');
     } catch (e) {
-      print('❌ [SearchService] 加载搜索历史失败: $e');
+      StructuredLogService.log('❌ [SearchService] 加载搜索历史失败: $e');
       _searchHistory = [];
     }
   }
@@ -825,10 +826,10 @@ class SearchService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_historyKey, _searchHistory);
 
-      print('💾 [SearchService] 保存搜索历史: $trimmedKeyword');
+      StructuredLogService.log('💾 [SearchService] 保存搜索历史: $trimmedKeyword');
       notifyListeners();
     } catch (e) {
-      print('❌ [SearchService] 保存搜索历史失败: $e');
+      StructuredLogService.log('❌ [SearchService] 保存搜索历史失败: $e');
     }
   }
 
@@ -840,10 +841,10 @@ class SearchService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_historyKey, _searchHistory);
 
-      print('🗑️ [SearchService] 删除搜索历史: $keyword');
+      StructuredLogService.log('🗑️ [SearchService] 删除搜索历史: $keyword');
       notifyListeners();
     } catch (e) {
-      print('❌ [SearchService] 删除搜索历史失败: $e');
+      StructuredLogService.log('❌ [SearchService] 删除搜索历史失败: $e');
     }
   }
 
@@ -855,10 +856,10 @@ class SearchService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_historyKey);
 
-      print('🗑️ [SearchService] 清空所有搜索历史');
+      StructuredLogService.log('🗑️ [SearchService] 清空所有搜索历史');
       notifyListeners();
     } catch (e) {
-      print('❌ [SearchService] 清空搜索历史失败: $e');
+      StructuredLogService.log('❌ [SearchService] 清空搜索历史失败: $e');
     }
   }
 }

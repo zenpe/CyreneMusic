@@ -9,14 +9,260 @@ import '../../services/playlist_queue_service.dart';
 import '../../services/play_history_service.dart';
 import '../../services/playback_mode_service.dart';
 import '../../services/player_service.dart';
+import '../../services/system_volume_service.dart';
 import '../../utils/image_utils.dart';
 import '../../utils/toast_utils.dart';
 import '../../models/track.dart';
 import '../../widgets/track_action_menu.dart';
 
 /// 移动端播放器对话框工具类
-/// 包含睡眠定时器、添加到歌单、播放列表等对话框
+/// 包含睡眠定时器、添加到歌单、播放列表、音量调节等对话框
 class MobilePlayerDialogs {
+  /// 显示轻量音量调节悬浮气泡
+  static Future<void> showVolumePopup(
+    BuildContext context, {
+    GlobalKey? buttonKey,
+  }) async {
+    final player = PlayerService();
+    final systemService = SystemVolumeService();
+    bool systemSupported = false;
+    double systemTemp = 0.0;
+    try {
+      systemSupported = await systemService.isSupported();
+      if (systemSupported) {
+        systemTemp = (await systemService.getVolume()) ?? player.volume;
+      }
+    } catch (_) {}
+
+    final overlay = Overlay.of(context);
+    final overlayBox = overlay.context.findRenderObject() as RenderBox?;
+    final screenSize = overlayBox?.size ?? MediaQuery.of(context).size;
+
+    final cardWidth = (screenSize.width - 48).clamp(240.0, 320.0);
+    final cardHeight = systemSupported ? 116.0 : 64.0;
+    const double padding = 12.0;
+
+    double left = (screenSize.width - cardWidth) / 2;
+    double top = screenSize.height * 0.75;
+
+    if (buttonKey != null &&
+        buttonKey.currentContext != null &&
+        overlayBox != null) {
+      final renderBox =
+          buttonKey.currentContext!.findRenderObject() as RenderBox?;
+      if (renderBox != null) {
+        final target = renderBox.localToGlobal(
+          Offset.zero,
+          ancestor: overlayBox,
+        );
+        final size = renderBox.size;
+        final preferredTop = target.dy - cardHeight - padding;
+        top = preferredTop >= 60
+            ? preferredTop
+            : target.dy + size.height + padding;
+        left = (target.dx + size.width / 2 - cardWidth / 2).clamp(
+          16.0,
+          screenSize.width - cardWidth - 16.0,
+        );
+      }
+    }
+
+    double appTemp = player.volume;
+    if (!context.mounted) return;
+
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'VolumePopup',
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 180),
+      transitionBuilder: (context, anim, _, child) {
+        return FadeTransition(
+          opacity: CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.92, end: 1.0).animate(
+              CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+            ),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (context, _, __) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => Navigator.of(context).pop(),
+              ),
+            ),
+            Positioned(
+              left: left,
+              top: top,
+              child: Material(
+                color: Colors.transparent,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                    child: Container(
+                      width: cardWidth,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: (isDark ? const Color(0xFF1E1E24) : Colors.white)
+                            .withValues(alpha: 0.92),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withValues(
+                            alpha: isDark ? 0.12 : 0.3,
+                          ),
+                          width: 0.8,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            blurRadius: 24,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: StatefulBuilder(
+                        builder: (context, setLocal) {
+                          Widget buildRow({
+                            required IconData icon,
+                            required String label,
+                            required double value,
+                            required ValueChanged<double> onChanged,
+                          }) {
+                            return Row(
+                              children: [
+                                Icon(
+                                  value == 0
+                                      ? Icons.volume_off_rounded
+                                      : value < 0.5
+                                      ? Icons.volume_down_rounded
+                                      : Icons.volume_up_rounded,
+                                  size: 20,
+                                  color: isDark
+                                      ? Colors.white70
+                                      : Colors.black87,
+                                ),
+                                if (systemSupported) ...[
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    label,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.black87,
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      trackHeight: 4,
+                                      thumbShape: const RoundSliderThumbShape(
+                                        enabledThumbRadius: 7,
+                                      ),
+                                      overlayShape:
+                                          const RoundSliderOverlayShape(
+                                            overlayRadius: 14,
+                                          ),
+                                      activeTrackColor: isDark
+                                          ? Colors.white
+                                          : Colors.black87,
+                                      inactiveTrackColor:
+                                          (isDark ? Colors.white : Colors.black)
+                                              .withValues(alpha: 0.15),
+                                      thumbColor: isDark
+                                          ? Colors.white
+                                          : Colors.black87,
+                                    ),
+                                    child: Slider(
+                                      value: value,
+                                      min: 0.0,
+                                      max: 1.0,
+                                      onChanged: onChanged,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 38,
+                                  child: Text(
+                                    '${(value * 100).toInt()}%',
+                                    textAlign: TextAlign.end,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.black87,
+                                      fontFamily: 'Consolas',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+
+                          if (!systemSupported) {
+                            return buildRow(
+                              icon: Icons.volume_up_rounded,
+                              label: '应用',
+                              value: appTemp,
+                              onChanged: (v) {
+                                setLocal(() => appTemp = v);
+                                player.setVolume(v);
+                              },
+                            );
+                          }
+
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              buildRow(
+                                icon: Icons.speaker,
+                                label: '系统',
+                                value: systemTemp,
+                                onChanged: (v) {
+                                  setLocal(() => systemTemp = v);
+                                  systemService.setVolume(v);
+                                },
+                              ),
+                              const SizedBox(height: 6),
+                              buildRow(
+                                icon: Icons.music_note,
+                                label: '应用',
+                                value: appTemp,
+                                onChanged: (v) {
+                                  setLocal(() => appTemp = v);
+                                  player.setVolume(v);
+                                },
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   /// 显示睡眠定时器对话框
   static void showSleepTimer(BuildContext context) {
     showDialog(
@@ -35,7 +281,7 @@ class MobilePlayerDialogs {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withOpacity(0.5),
+      barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (context) => ValueListenableBuilder<Color?>(
         valueListenable: PlayerService().themeColorNotifier,
         builder: (context, dynamicColor, _) {
@@ -48,18 +294,23 @@ class MobilePlayerDialogs {
               child: Container(
                 decoration: BoxDecoration(
                   color: (isDark ? const Color(0xFF141418) : Colors.white)
-                      .withOpacity(0.92),
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(28)),
+                      .withValues(alpha: 0.92),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(28),
+                  ),
                   border: Border(
                     top: BorderSide(
-                      color: Colors.white.withOpacity(isDark ? 0.12 : 0.4),
+                      color: Colors.white.withValues(
+                        alpha: isDark ? 0.12 : 0.4,
+                      ),
                       width: 0.8,
                     ),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.45 : 0.12),
+                      color: Colors.black.withValues(
+                        alpha: isDark ? 0.45 : 0.12,
+                      ),
                       blurRadius: 30,
                       offset: const Offset(0, -10),
                     ),
@@ -87,7 +338,9 @@ class MobilePlayerDialogs {
                             Container(
                               padding: const EdgeInsets.all(6),
                               decoration: BoxDecoration(
-                                color: accentColor.withOpacity(isDark ? 0.18 : 0.1),
+                                color: accentColor.withValues(
+                                  alpha: isDark ? 0.18 : 0.1,
+                                ),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Icon(
@@ -112,7 +365,7 @@ class MobilePlayerDialogs {
                               style: IconButton.styleFrom(
                                 backgroundColor: isDark
                                     ? Colors.white10
-                                    : Colors.black.withOpacity(0.05),
+                                    : Colors.black.withValues(alpha: 0.05),
                               ),
                             ),
                           ],
@@ -132,7 +385,8 @@ class MobilePlayerDialogs {
                                   title: '列表循环',
                                   subtitle: '循环播放当前列表所有歌曲',
                                   icon: Icons.repeat_rounded,
-                                  isSelected: currentMode == PlaybackMode.loopAll,
+                                  isSelected:
+                                      currentMode == PlaybackMode.loopAll,
                                   accentColor: accentColor,
                                   isDark: isDark,
                                   onTap: () {
@@ -151,7 +405,8 @@ class MobilePlayerDialogs {
                                   title: '随机播放',
                                   subtitle: '随机打乱播放队列中的歌曲',
                                   icon: Icons.shuffle_rounded,
-                                  isSelected: currentMode == PlaybackMode.shuffle,
+                                  isSelected:
+                                      currentMode == PlaybackMode.shuffle,
                                   accentColor: accentColor,
                                   isDark: isDark,
                                   onTap: () {
@@ -170,7 +425,8 @@ class MobilePlayerDialogs {
                                   title: '单曲循环',
                                   subtitle: '单曲播放结束后自动重播',
                                   icon: Icons.repeat_one_rounded,
-                                  isSelected: currentMode == PlaybackMode.repeatOne,
+                                  isSelected:
+                                      currentMode == PlaybackMode.repeatOne,
                                   accentColor: accentColor,
                                   isDark: isDark,
                                   onTap: () {
@@ -189,12 +445,15 @@ class MobilePlayerDialogs {
                                   title: '顺序播放',
                                   subtitle: '按顺序播放，播完最后一首后停止',
                                   icon: Icons.arrow_forward_rounded,
-                                  isSelected: currentMode == PlaybackMode.sequential,
+                                  isSelected:
+                                      currentMode == PlaybackMode.sequential,
                                   accentColor: accentColor,
                                   isDark: isDark,
                                   onTap: () {
                                     HapticFeedback.lightImpact();
-                                    modeService.setMode(PlaybackMode.sequential);
+                                    modeService.setMode(
+                                      PlaybackMode.sequential,
+                                    );
                                     ToastUtils.infoWithIcon(
                                       '顺序播放',
                                       icon: Icons.arrow_forward_rounded,
@@ -239,13 +498,15 @@ class MobilePlayerDialogs {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: isSelected
-                ? accentColor.withOpacity(isDark ? 0.18 : 0.1)
-                : (isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03)),
+                ? accentColor.withValues(alpha: isDark ? 0.18 : 0.1)
+                : (isDark
+                      ? Colors.white.withValues(alpha: 0.04)
+                      : Colors.black.withValues(alpha: 0.03)),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isSelected
-                  ? accentColor.withOpacity(isDark ? 0.35 : 0.25)
-                  : Colors.white.withOpacity(isDark ? 0.06 : 0.1),
+                  ? accentColor.withValues(alpha: isDark ? 0.35 : 0.25)
+                  : Colors.white.withValues(alpha: isDark ? 0.06 : 0.1),
               width: isSelected ? 1.2 : 0.8,
             ),
           ),
@@ -256,13 +517,17 @@ class MobilePlayerDialogs {
                 decoration: BoxDecoration(
                   color: isSelected
                       ? accentColor
-                      : (isDark ? Colors.white10 : Colors.black.withOpacity(0.06)),
+                      : (isDark
+                            ? Colors.white10
+                            : Colors.black.withValues(alpha: 0.06)),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   icon,
                   size: 20,
-                  color: isSelected ? Colors.white : colorScheme.onSurfaceVariant,
+                  color: isSelected
+                      ? Colors.white
+                      : colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(width: 14),
@@ -274,7 +539,9 @@ class MobilePlayerDialogs {
                       title,
                       style: TextStyle(
                         fontSize: 15,
-                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                        fontWeight: isSelected
+                            ? FontWeight.w800
+                            : FontWeight.w600,
                         color: isSelected ? accentColor : colorScheme.onSurface,
                       ),
                     ),
@@ -283,18 +550,16 @@ class MobilePlayerDialogs {
                       subtitle,
                       style: TextStyle(
                         fontSize: 12,
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.8),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.8,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
               if (isSelected)
-                Icon(
-                  Icons.check_circle_rounded,
-                  color: accentColor,
-                  size: 22,
-                )
+                Icon(Icons.check_circle_rounded, color: accentColor, size: 22)
               else
                 const SizedBox(width: 22),
             ],
@@ -311,7 +576,7 @@ class MobilePlayerDialogs {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final colorScheme = theme.colorScheme;
-    
+
     // 确保已加载歌单列表
     if (playlistService.playlists.isEmpty) {
       playlistService.loadPlaylists();
@@ -321,7 +586,7 @@ class MobilePlayerDialogs {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withOpacity(0.5),
+      barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (context) => ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         child: BackdropFilter(
@@ -329,18 +594,19 @@ class MobilePlayerDialogs {
           child: Container(
             decoration: BoxDecoration(
               color: (isDark ? const Color(0xFF141418) : Colors.white)
-                  .withOpacity(0.92),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(28)),
+                  .withValues(alpha: 0.92),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(28),
+              ),
               border: Border(
                 top: BorderSide(
-                  color: Colors.white.withOpacity(isDark ? 0.12 : 0.4),
+                  color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.4),
                   width: 0.8,
                 ),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(isDark ? 0.45 : 0.12),
+                  color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
                   blurRadius: 30,
                   offset: const Offset(0, -10),
                 ),
@@ -351,7 +617,7 @@ class MobilePlayerDialogs {
                 animation: playlistService,
                 builder: (context, child) {
                   final playlists = playlistService.playlists;
-                  
+
                   if (playlists.isEmpty) {
                     return Center(
                       child: Padding(
@@ -378,7 +644,9 @@ class MobilePlayerDialogs {
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 8),
+                          horizontal: 20,
+                          vertical: 8,
+                        ),
                         child: Row(
                           children: [
                             Text(
@@ -391,14 +659,16 @@ class MobilePlayerDialogs {
                             ),
                             const Spacer(),
                             IconButton(
-                              icon: Icon(Icons.close_rounded,
-                                  color: colorScheme.onSurfaceVariant,
-                                  size: 20),
+                              icon: Icon(
+                                Icons.close_rounded,
+                                color: colorScheme.onSurfaceVariant,
+                                size: 20,
+                              ),
                               onPressed: () => Navigator.pop(context),
                               style: IconButton.styleFrom(
                                 backgroundColor: isDark
-                                    ? Colors.white.withOpacity(0.08)
-                                    : Colors.black.withOpacity(0.05),
+                                    ? Colors.white.withValues(alpha: 0.08)
+                                    : Colors.black.withValues(alpha: 0.05),
                                 padding: const EdgeInsets.all(6),
                                 minimumSize: const Size(32, 32),
                               ),
@@ -411,7 +681,7 @@ class MobilePlayerDialogs {
                         thickness: 0.6,
                         color: isDark
                             ? Colors.white10
-                            : Colors.black.withOpacity(0.06),
+                            : Colors.black.withValues(alpha: 0.06),
                       ),
                       Flexible(
                         child: ListView.builder(
@@ -426,8 +696,10 @@ class MobilePlayerDialogs {
                                 height: 40,
                                 decoration: BoxDecoration(
                                   color: playlist.isDefault
-                                      ? Colors.red.withOpacity(0.12)
-                                      : colorScheme.primary.withOpacity(0.12),
+                                      ? Colors.red.withValues(alpha: 0.12)
+                                      : colorScheme.primary.withValues(
+                                          alpha: 0.12,
+                                        ),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Icon(
@@ -452,7 +724,7 @@ class MobilePlayerDialogs {
                                 '${playlist.trackCount} 首歌曲',
                                 style: TextStyle(
                                   color: colorScheme.onSurfaceVariant
-                                      .withOpacity(0.75),
+                                      .withValues(alpha: 0.75),
                                   fontSize: 12,
                                 ),
                               ),
@@ -505,7 +777,6 @@ class MobilePlayerDialogs {
       case QueueSource.toplist:
         return '播放队列 · 榜单';
       case QueueSource.none:
-      default:
         return '播放队列';
     }
   }
@@ -518,12 +789,12 @@ class MobilePlayerDialogs {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final colorScheme = theme.colorScheme;
-    
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      barrierColor: Colors.black.withOpacity(0.5),
+      barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (context) => DraggableScrollableSheet(
         initialChildSize: 0.72,
         minChildSize: 0.5,
@@ -531,25 +802,29 @@ class MobilePlayerDialogs {
         expand: false,
         builder: (context, scrollController) {
           return ClipRRect(
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(28)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
               child: Container(
                 decoration: BoxDecoration(
                   color: (isDark ? const Color(0xFF141418) : Colors.white)
-                      .withOpacity(0.92),
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(28)),
+                      .withValues(alpha: 0.92),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(28),
+                  ),
                   border: Border(
                     top: BorderSide(
-                      color: Colors.white.withOpacity(isDark ? 0.12 : 0.4),
+                      color: Colors.white.withValues(
+                        alpha: isDark ? 0.12 : 0.4,
+                      ),
                       width: 0.8,
                     ),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.45 : 0.12),
+                      color: Colors.black.withValues(
+                        alpha: isDark ? 0.45 : 0.12,
+                      ),
                       blurRadius: 30,
                       offset: const Offset(0, -10),
                     ),
@@ -561,15 +836,17 @@ class MobilePlayerDialogs {
                     final accentColor = dynamicColor ?? colorScheme.primary;
 
                     return AnimatedBuilder(
-                      animation:
-                          Listenable.merge([queueService, historyService]),
+                      animation: Listenable.merge([
+                        queueService,
+                        historyService,
+                      ]),
                       builder: (context, _) {
                         final bool hasQueue = queueService.hasQueue;
                         final List<Track> displayList = hasQueue
                             ? List<Track>.from(queueService.queue)
                             : historyService.history
-                                .map((h) => h.toTrack())
-                                .toList();
+                                  .map((h) => h.toTrack())
+                                  .toList();
                         final String listTitle = hasQueue
                             ? _getQueueSourceTitle(queueService.source)
                             : '播放历史';
@@ -580,8 +857,7 @@ class MobilePlayerDialogs {
                             Container(
                               width: 38,
                               height: 4.5,
-                              margin:
-                                  const EdgeInsets.only(top: 12, bottom: 8),
+                              margin: const EdgeInsets.only(top: 12, bottom: 8),
                               decoration: BoxDecoration(
                                 color: isDark ? Colors.white24 : Colors.black12,
                                 borderRadius: BorderRadius.circular(2.5),
@@ -596,7 +872,8 @@ class MobilePlayerDialogs {
                                     animation: PlaybackModeService(),
                                     builder: (context, _) {
                                       final modeService = PlaybackModeService();
-                                      final modeName = modeService.getModeName();
+                                      final modeName = modeService
+                                          .getModeName();
                                       return Material(
                                         color: Colors.transparent,
                                         child: InkWell(
@@ -610,19 +887,28 @@ class MobilePlayerDialogs {
                                           },
                                           onLongPress: () {
                                             HapticFeedback.mediumImpact();
-                                            MobilePlayerDialogs.showPlaybackModeSelector(context);
+                                            MobilePlayerDialogs.showPlaybackModeSelector(
+                                              context,
+                                            );
                                           },
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                           child: Container(
                                             padding: const EdgeInsets.symmetric(
-                                                horizontal: 10, vertical: 6),
+                                              horizontal: 10,
+                                              vertical: 6,
+                                            ),
                                             decoration: BoxDecoration(
-                                              color: accentColor.withOpacity(
-                                                  isDark ? 0.16 : 0.08),
-                                              borderRadius: BorderRadius.circular(12),
+                                              color: accentColor.withValues(
+                                                alpha: isDark ? 0.16 : 0.08,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
                                               border: Border.all(
-                                                color: accentColor.withOpacity(
-                                                    isDark ? 0.25 : 0.15),
+                                                color: accentColor.withValues(
+                                                  alpha: isDark ? 0.25 : 0.15,
+                                                ),
                                                 width: 0.8,
                                               ),
                                             ),
@@ -636,9 +922,12 @@ class MobilePlayerDialogs {
                                                 ),
                                                 const SizedBox(width: 6),
                                                 Text(
-                                                  hasQueue ? modeName : '$listTitle · $modeName',
+                                                  hasQueue
+                                                      ? modeName
+                                                      : '$listTitle · $modeName',
                                                   style: TextStyle(
-                                                    color: colorScheme.onSurface,
+                                                    color:
+                                                        colorScheme.onSurface,
                                                     fontSize: 15,
                                                     fontWeight: FontWeight.w700,
                                                     letterSpacing: -0.2,
@@ -646,19 +935,30 @@ class MobilePlayerDialogs {
                                                 ),
                                                 const SizedBox(width: 6),
                                                 Container(
-                                                  padding: const EdgeInsets.symmetric(
-                                                      horizontal: 6, vertical: 1.5),
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 6,
+                                                        vertical: 1.5,
+                                                      ),
                                                   decoration: BoxDecoration(
-                                                    color: accentColor.withOpacity(
-                                                        isDark ? 0.2 : 0.12),
-                                                    borderRadius: BorderRadius.circular(8),
+                                                    color: accentColor
+                                                        .withValues(
+                                                          alpha: isDark
+                                                              ? 0.2
+                                                              : 0.12,
+                                                        ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
                                                   ),
                                                   child: Text(
                                                     '${displayList.length} 首',
                                                     style: TextStyle(
                                                       color: accentColor,
                                                       fontSize: 11,
-                                                      fontWeight: FontWeight.bold,
+                                                      fontWeight:
+                                                          FontWeight.bold,
                                                     ),
                                                   ),
                                                 ),
@@ -666,7 +966,9 @@ class MobilePlayerDialogs {
                                                 Icon(
                                                   Icons.swap_horiz_rounded,
                                                   size: 14,
-                                                  color: accentColor.withOpacity(0.6),
+                                                  color: accentColor.withValues(
+                                                    alpha: 0.6,
+                                                  ),
                                                 ),
                                               ],
                                             ),
@@ -691,7 +993,7 @@ class MobilePlayerDialogs {
                                       size: 16,
                                       color: displayList.isEmpty
                                           ? colorScheme.onSurfaceVariant
-                                              .withOpacity(0.3)
+                                                .withValues(alpha: 0.3)
                                           : colorScheme.onSurfaceVariant,
                                     ),
                                     label: Text(
@@ -699,7 +1001,7 @@ class MobilePlayerDialogs {
                                       style: TextStyle(
                                         color: displayList.isEmpty
                                             ? colorScheme.onSurfaceVariant
-                                                .withOpacity(0.3)
+                                                  .withValues(alpha: 0.3)
                                             : colorScheme.onSurfaceVariant,
                                         fontSize: 13,
                                         fontWeight: FontWeight.w600,
@@ -707,7 +1009,9 @@ class MobilePlayerDialogs {
                                     ),
                                     style: TextButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 6),
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
                                       minimumSize: Size.zero,
                                       tapTargetSize:
                                           MaterialTapTargetSize.shrinkWrap,
@@ -720,7 +1024,7 @@ class MobilePlayerDialogs {
                             Divider(
                               color: isDark
                                   ? Colors.white10
-                                  : Colors.black.withOpacity(0.06),
+                                  : Colors.black.withValues(alpha: 0.06),
                               height: 1,
                               thickness: 0.6,
                             ),
@@ -737,7 +1041,7 @@ class MobilePlayerDialogs {
                                             Icons.music_off_rounded,
                                             size: 56,
                                             color: colorScheme.onSurfaceVariant
-                                                .withOpacity(0.3),
+                                                .withValues(alpha: 0.3),
                                           ),
                                           const SizedBox(height: 12),
                                           Text(
@@ -745,7 +1049,7 @@ class MobilePlayerDialogs {
                                             style: TextStyle(
                                               color: colorScheme
                                                   .onSurfaceVariant
-                                                  .withOpacity(0.6),
+                                                  .withValues(alpha: 0.6),
                                               fontSize: 15,
                                               fontWeight: FontWeight.w500,
                                             ),
@@ -754,68 +1058,72 @@ class MobilePlayerDialogs {
                                       ),
                                     )
                                   : (hasQueue
-                                      ? ReorderableListView.builder(
-                                          buildDefaultDragHandles: false,
-                                          scrollController: scrollController,
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 4),
-                                          itemCount: displayList.length,
-                                          onReorder: (oldIndex, newIndex) {
-                                            if (newIndex > oldIndex) {
-                                              newIndex -= 1;
-                                            }
-                                            queueService.move(
-                                                oldIndex, newIndex);
-                                          },
-                                          itemBuilder: (context, index) {
-                                            final track = displayList[index];
-                                            final isCurrentTrack =
-                                                currentTrack != null &&
-                                                    track.id.toString() ==
-                                                        currentTrack.id
-                                                            .toString() &&
-                                                    track.source ==
-                                                        currentTrack.source;
+                                        ? ReorderableListView.builder(
+                                            buildDefaultDragHandles: false,
+                                            scrollController: scrollController,
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 4,
+                                            ),
+                                            itemCount: displayList.length,
+                                            onReorder: (oldIndex, newIndex) {
+                                              if (newIndex > oldIndex) {
+                                                newIndex -= 1;
+                                              }
+                                              queueService.move(
+                                                oldIndex,
+                                                newIndex,
+                                              );
+                                            },
+                                            itemBuilder: (context, index) {
+                                              final track = displayList[index];
+                                              final isCurrentTrack =
+                                                  currentTrack != null &&
+                                                  track.id.toString() ==
+                                                      currentTrack.id
+                                                          .toString() &&
+                                                  track.source ==
+                                                      currentTrack.source;
 
-                                            return _buildPlaylistItem(
-                                              context,
-                                              track,
-                                              index,
-                                              isCurrentTrack,
-                                              hasQueue: true,
-                                              queueService: queueService,
-                                              accentColor: accentColor,
-                                              key: ValueKey(
-                                                '${track.source.name}_${track.id}',
-                                              ),
-                                            );
-                                          },
-                                        )
-                                      : ListView.builder(
-                                          controller: scrollController,
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 4),
-                                          itemCount: displayList.length,
-                                          itemBuilder: (context, index) {
-                                            final track = displayList[index];
-                                            final isCurrentTrack =
-                                                currentTrack != null &&
-                                                    track.id.toString() ==
-                                                        currentTrack.id
-                                                            .toString() &&
-                                                    track.source ==
-                                                        currentTrack.source;
+                                              return _buildPlaylistItem(
+                                                context,
+                                                track,
+                                                index,
+                                                isCurrentTrack,
+                                                hasQueue: true,
+                                                queueService: queueService,
+                                                accentColor: accentColor,
+                                                key: ValueKey(
+                                                  '${track.source.name}_${track.id}',
+                                                ),
+                                              );
+                                            },
+                                          )
+                                        : ListView.builder(
+                                            controller: scrollController,
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 4,
+                                            ),
+                                            itemCount: displayList.length,
+                                            itemBuilder: (context, index) {
+                                              final track = displayList[index];
+                                              final isCurrentTrack =
+                                                  currentTrack != null &&
+                                                  track.id.toString() ==
+                                                      currentTrack.id
+                                                          .toString() &&
+                                                  track.source ==
+                                                      currentTrack.source;
 
-                                            return _buildPlaylistItem(
-                                              context,
-                                              track,
-                                              index,
-                                              isCurrentTrack,
-                                              hasQueue: false,
-                                              accentColor: accentColor,
-                                            );
-                                          },
-                                        )),
+                                              return _buildPlaylistItem(
+                                                context,
+                                                track,
+                                                index,
+                                                isCurrentTrack,
+                                                hasQueue: false,
+                                                accentColor: accentColor,
+                                              );
+                                            },
+                                          )),
                             ),
                           ],
                         );
@@ -850,7 +1158,7 @@ class MobilePlayerDialogs {
     return Material(
       key: key,
       color: isCurrentTrack
-          ? activeColor.withOpacity(isDark ? 0.16 : 0.08)
+          ? activeColor.withValues(alpha: isDark ? 0.16 : 0.08)
           : Colors.transparent,
       child: InkWell(
         onTap: () {
@@ -873,7 +1181,9 @@ class MobilePlayerDialogs {
                     : Text(
                         '${index + 1}',
                         style: TextStyle(
-                          color: colorScheme.onSurfaceVariant.withOpacity(0.55),
+                          color: colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.55,
+                          ),
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                         ),
@@ -905,8 +1215,9 @@ class MobilePlayerDialogs {
                             ? activeColor
                             : colorScheme.onSurface,
                         fontSize: 15,
-                        fontWeight:
-                            isCurrentTrack ? FontWeight.w700 : FontWeight.w500,
+                        fontWeight: isCurrentTrack
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                         letterSpacing: -0.2,
                       ),
                     ),
@@ -916,7 +1227,9 @@ class MobilePlayerDialogs {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.7,
+                        ),
                         fontSize: 12,
                       ),
                     ),
@@ -935,7 +1248,9 @@ class MobilePlayerDialogs {
                       return IconButton(
                         icon: Icon(
                           Icons.more_vert_rounded,
-                          color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                          color: colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.7,
+                          ),
                           size: 20,
                         ),
                         onPressed: () {
@@ -955,7 +1270,9 @@ class MobilePlayerDialogs {
                     IconButton(
                       icon: Icon(
                         Icons.close_rounded,
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.7,
+                        ),
                         size: 20,
                       ),
                       onPressed: () => queueService?.removeAt(index),
@@ -968,7 +1285,9 @@ class MobilePlayerDialogs {
                         height: 36,
                         child: Icon(
                           Icons.drag_handle_rounded,
-                          color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                          color: colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.5,
+                          ),
                           size: 20,
                         ),
                       ),
@@ -986,8 +1305,9 @@ class MobilePlayerDialogs {
   /// 构建封面图片（支持网络 URL 和本地文件路径）
   static Widget _buildCoverImage(String imageUrl) {
     // 判断是网络 URL 还是本地文件路径
-    final isNetwork = imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
-    
+    final isNetwork =
+        imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
+
     if (isNetwork) {
       return CachedNetworkImage(
         imageUrl: imageUrl,
@@ -997,20 +1317,13 @@ class MobilePlayerDialogs {
         fit: BoxFit.cover,
         memCacheWidth: 128,
         memCacheHeight: 128,
-        placeholder: (context, url) => Container(
-          width: 48,
-          height: 48,
-          color: Colors.white12,
-        ),
+        placeholder: (context, url) =>
+            Container(width: 48, height: 48, color: Colors.white12),
         errorWidget: (context, url, error) => Container(
           width: 48,
           height: 48,
           color: Colors.white12,
-          child: const Icon(
-            Icons.music_note,
-            color: Colors.white38,
-            size: 24,
-          ),
+          child: const Icon(Icons.music_note, color: Colors.white38, size: 24),
         ),
       );
     } else {
@@ -1067,15 +1380,13 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
               onPressed: () {
                 timer.cancel();
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('定时器已取消')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('定时器已取消')));
               },
               icon: const Icon(Icons.cancel),
               label: const Text('取消定时'),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.red,
-              ),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
             ),
         ],
       ),
@@ -1095,10 +1406,7 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.schedule,
-                      color: colorScheme.onPrimaryContainer,
-                    ),
+                    Icon(Icons.schedule, color: colorScheme.onPrimaryContainer),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -1211,9 +1519,7 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
                   SleepTimerService().setTimerByDuration(duration);
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('定时器已设置: ${duration}分钟后停止播放'),
-                    ),
+                    SnackBar(content: Text('定时器已设置: ${duration}分钟后停止播放')),
                   );
                 }
               },
@@ -1248,14 +1554,15 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
                 initialTime: TimeOfDay.now(),
                 builder: (context, child) {
                   return MediaQuery(
-                    data: MediaQuery.of(context).copyWith(
-                      alwaysUse24HourFormat: true,
-                    ),
+                    data: MediaQuery.of(
+                      context,
+                    ).copyWith(alwaysUse24HourFormat: true),
                     child: child!,
                   );
                 },
               );
 
+              if (!context.mounted) return;
               if (selectedTime != null) {
                 SleepTimerService().setTimerByTime(selectedTime);
                 Navigator.pop(context);
@@ -1277,7 +1584,7 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
           '音乐将在指定时间自动停止播放',
           style: TextStyle(
             fontSize: 12,
-            color: colorScheme.onSurface.withOpacity(0.6),
+            color: colorScheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
       ],

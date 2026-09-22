@@ -773,6 +773,11 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     // 装载成功：纪元翻转，窗口关闭。此后流事件按新纪元分发。
     _epochGate.commitArm(generation);
 
+    _duration = player.duration ?? Duration.zero;
+    if (_duration > Duration.zero) {
+      _durationController.add(_duration);
+    }
+
     _position = initialPosition ?? Duration.zero;
     _positionController.add(_position);
     _androidEqualizerDirty = Platform.isAndroid;
@@ -1249,6 +1254,15 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
 
     // 装载成功：纪元翻转，窗口关闭。此后流事件按新纪元分发。
     _epochGate.commitArm(generation);
+
+    _duration = player.state.duration;
+    if (_duration > Duration.zero) {
+      _durationController.add(_duration);
+    }
+    if (player.state.buffer > Duration.zero) {
+      _bufferedPosition = player.state.buffer;
+      _bufferedPositionController.add(_bufferedPosition);
+    }
 
     if (initialPosition != null && initialPosition > Duration.zero) {
       await player.seek(initialPosition);

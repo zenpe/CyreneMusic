@@ -1,3 +1,4 @@
+import '../../services/structured_log_service.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -17,7 +18,14 @@ Future<bool?> showFluentLoginDialog(BuildContext context) {
 
 /// 用户卡片组件
 class UserCard extends StatefulWidget {
-  const UserCard({super.key});
+  final EdgeInsetsGeometry? margin;
+  final EdgeInsetsGeometry? padding;
+
+  const UserCard({
+    super.key,
+    this.margin,
+    this.padding,
+  });
 
   @override
   State<UserCard> createState() => _UserCardState();
@@ -109,7 +117,7 @@ class _UserCardState extends State<UserCard> {
                   ? null
                   : () async {
                       final newUsername = _usernameController.text.trim();
-                      
+
                       if (newUsername.isEmpty) {
                         setDialogState(() {
                           _usernameError = '用户名不能为空';
@@ -131,7 +139,7 @@ class _UserCardState extends State<UserCard> {
 
                       final result = await _authFacade.updateUsername(newUsername);
 
-                      if (!mounted) return;
+                      if (!mounted || !dialogContext.mounted || !context.mounted) return;
 
                       if (result['success'] == true) {
                         Navigator.pop(dialogContext);
@@ -218,7 +226,7 @@ class _UserCardState extends State<UserCard> {
                   ? null
                   : () async {
                       final newUsername = _usernameController.text.trim();
-                      
+
                       if (newUsername.isEmpty) {
                         setDialogState(() {
                           _usernameError = '用户名不能为空';
@@ -240,7 +248,7 @@ class _UserCardState extends State<UserCard> {
 
                       final result = await _authFacade.updateUsername(newUsername);
 
-                      if (!mounted) return;
+                      if (!mounted || !dialogContext.mounted || !context.mounted) return;
 
                       if (result['success'] == true) {
                         Navigator.pop(dialogContext);
@@ -279,13 +287,13 @@ class _UserCardState extends State<UserCard> {
     final user = _authFacade.currentUser;
     final isFluentUI = ThemeManager().isDesktopFluentUI;
     final isCupertinoUI = ThemeManager().isCupertinoFramework;
-    
+
     if (!isLoggedIn || user == null) {
       if (isFluentUI) return _buildLoginCardFluent(context);
       if (isCupertinoUI) return _buildLoginCardCupertino(context);
       return _buildLoginCard(context);
     }
-    
+
     if (isFluentUI) return _buildUserInfoCardFluent(context, user);
     if (isCupertinoUI) return _buildUserInfoCardCupertino(context, user);
     return _buildUserInfoCard(context, user);
@@ -294,11 +302,11 @@ class _UserCardState extends State<UserCard> {
   Widget _buildLoginCard(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
-    
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      padding: widget.margin ?? const EdgeInsets.symmetric(horizontal: 16.0),
       child: Container(
-        padding: const EdgeInsets.all(24.0),
+        padding: widget.padding ?? const EdgeInsets.all(24.0),
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(24),
@@ -355,20 +363,20 @@ class _UserCardState extends State<UserCard> {
     // 优先使用服务器返回的头像 URL（如 Linux Do 用户），否则尝试从 QQ 邮箱生成
     final qqNumber = _extractQQNumber(user.email);
     final avatarUrl = user.avatarUrl ?? _getQQAvatarUrl(qqNumber);
-    print('🖼️ [UserCard] user.avatarUrl: ${user.avatarUrl}');
-    print('🖼️ [UserCard] 最终使用的 avatarUrl: $avatarUrl');
-    
+    StructuredLogService.log('🖼️ [UserCard] user.avatarUrl: ${user.avatarUrl}');
+    StructuredLogService.log('🖼️ [UserCard] 最终使用的 avatarUrl: $avatarUrl');
+
     return AnimatedBuilder(
       animation: LocationService(),
       builder: (context, child) {
         final location = LocationService().currentLocation;
         final isLoadingLocation = LocationService().isLoading;
         final theme = Theme.of(context);
-      
+
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          padding: widget.margin ?? const EdgeInsets.symmetric(horizontal: 16.0),
           child: Container(
-            padding: const EdgeInsets.all(24.0),
+            padding: widget.padding ?? const EdgeInsets.all(24.0),
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerLow,
               borderRadius: BorderRadius.circular(24),
@@ -391,14 +399,14 @@ class _UserCardState extends State<UserCard> {
                             shape: BoxShape.circle,
                             gradient: SweepGradient(
                               colors: [
-                                accent.withOpacity(0.85),
-                                accent.withOpacity(0.3),
-                                accent.withOpacity(0.85),
+                                accent.withValues(alpha: 0.85),
+                                accent.withValues(alpha: 0.3),
+                                accent.withValues(alpha: 0.85),
                               ],
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: accent.withOpacity(0.25),
+                                color: accent.withValues(alpha: 0.25),
                                 blurRadius: 12,
                                 offset: const Offset(0, 3),
                               ),
@@ -506,8 +514,8 @@ class _UserCardState extends State<UserCard> {
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                               decoration: BoxDecoration(
                                 color: Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white.withOpacity(0.08)
-                                    : Colors.black.withOpacity(0.04),
+                                    ? Colors.white.withValues(alpha: 0.08)
+                                    : Colors.black.withValues(alpha: 0.04),
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Row(
@@ -587,7 +595,7 @@ class _UserCardState extends State<UserCard> {
                                       const SizedBox(width: 4),
                                       InkWell(
                                         onTap: () {
-                                          print('🔄 [UserCard] 手动刷新IP归属地...');
+                                          StructuredLogService.log('🔄 [UserCard] 手动刷新IP归属地...');
                                           LocationService().fetchLocation();
                                         },
                                         child: Icon(
@@ -625,11 +633,11 @@ class _UserCardState extends State<UserCard> {
   String? _extractQQNumber(String email) {
     final qqEmailPattern = RegExp(r'^(\d+)@qq\.com$');
     final match = qqEmailPattern.firstMatch(email.toLowerCase());
-    
+
     if (match != null && match.groupCount >= 1) {
       return match.group(1);
     }
-    
+
     return null;
   }
 
@@ -638,50 +646,24 @@ class _UserCardState extends State<UserCard> {
     if (qqNumber == null || qqNumber.isEmpty) {
       return null;
     }
-    
+
     return 'https://q1.qlogo.cn/g?b=qq&nk=$qqNumber&s=100';
   }
 
   /// 处理登录
   Future<void> _handleLogin(BuildContext context) async {
-    print('👤 [UserCard] 打开登录页面...');
+    StructuredLogService.log('👤 [UserCard] 打开登录页面...');
     final result = await showAuthDialog(context);
 
-    print('👤 [UserCard] 登录页面返回，结果: $result');
+    StructuredLogService.log('👤 [UserCard] 登录页面返回，结果: $result');
 
     if (result == true && _authFacade.isLoggedIn) {
-      print('👤 [UserCard] 登录成功，开始获取IP归属地...');
+      StructuredLogService.log('👤 [UserCard] 登录成功，开始获取IP归属地...');
       LocationService().fetchLocation();
     }
   }
 
   /// 处理退出登录
-  void _handleLogout(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('退出登录'),
-        content: const Text('确定要退出登录吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              _authFacade.logout();
-              LocationService().clearLocation();
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已退出登录')),
-              );
-            },
-            child: const Text('退出'),
-          ),
-        ],
-      ),
-    );
-  }
 
   // ==================== Cupertino UI 版本 ====================
 
@@ -742,7 +724,7 @@ class _UserCardState extends State<UserCard> {
   Widget _buildUserInfoCardCupertino(BuildContext context, User user) {
     final qqNumber = _extractQQNumber(user.email);
     final avatarUrl = _getQQAvatarUrl(qqNumber);
-    
+
     return CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: () => _showCupertinoUserActions(context),
@@ -870,14 +852,14 @@ class _UserCardState extends State<UserCard> {
       ),
     );
   }
-  
+
   /// 修改用户名对话框 - Cupertino
   void _showUpdateUsernameDialogCupertino(BuildContext context) {
     final currentUser = _authFacade.currentUser;
     if (currentUser == null) return;
-    
+
     _usernameController.text = currentUser.username;
-    
+
     showCupertinoDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -907,9 +889,9 @@ class _UserCardState extends State<UserCard> {
               onPressed: () async {
                 final newUsername = _usernameController.text.trim();
                 if (newUsername.isEmpty || newUsername == currentUser.username) return;
-                
+
                 final result = await _authFacade.updateUsername(newUsername);
-                if (result['success'] == true && mounted) {
+                if (result['success'] == true && context.mounted) {
                   Navigator.pop(context);
                 }
               },
@@ -976,17 +958,17 @@ class _UserCardState extends State<UserCard> {
     final qqNumber = _extractQQNumber(user.email);
     final avatarUrl = user.avatarUrl ?? _getQQAvatarUrl(qqNumber);
     final isLinuxDoAvatar = avatarUrl != null && avatarUrl.contains('linux.do');
-    
-    print('🖼️ [UserCard-Fluent] user.avatarUrl: ${user.avatarUrl}');
-    print('🖼️ [UserCard-Fluent] 最终使用的 avatarUrl: $avatarUrl');
-    print('🖼️ [UserCard-Fluent] 是否为 Linux Do 头像: $isLinuxDoAvatar');
-    
+
+    StructuredLogService.log('🖼️ [UserCard-Fluent] user.avatarUrl: ${user.avatarUrl}');
+    StructuredLogService.log('🖼️ [UserCard-Fluent] 最终使用的 avatarUrl: $avatarUrl');
+    StructuredLogService.log('🖼️ [UserCard-Fluent] 是否为 Linux Do 头像: $isLinuxDoAvatar');
+
     return AnimatedBuilder(
       animation: LocationService(),
       builder: (context, child) {
         final location = LocationService().currentLocation;
         final isLoadingLocation = LocationService().isLoading;
-        
+
         return fluent_ui.Card(
           child: Padding(
             padding: const EdgeInsets.all(24.0),
@@ -1000,7 +982,7 @@ class _UserCardState extends State<UserCard> {
                     color: const Color(0xFF0078D4),
                     child: isLinuxDoAvatar
                         ? _LinuxDoAvatarWidget(
-                            url: avatarUrl!,
+                             url: avatarUrl,
                             userId: user.id,
                           )
                         : avatarUrl != null
@@ -1111,7 +1093,7 @@ class _UserCardState extends State<UserCard> {
                                   fluent_ui.IconButton(
                                     icon: const Icon(fluent_ui.FluentIcons.refresh, size: 14),
                                     onPressed: () {
-                                      print('🔄 [UserCard] 手动刷新IP归属地...');
+                                      StructuredLogService.log('🔄 [UserCard] 手动刷新IP归属地...');
                                       LocationService().fetchLocation();
                                     },
                                   ),
@@ -1163,7 +1145,7 @@ class _UserCardState extends State<UserCard> {
 
 
 /// Linux Do 头像组件
-/// 
+///
 /// 使用 WebView 服务获取头像，绕过 Cloudflare 保护
 class _LinuxDoAvatarWidget extends StatefulWidget {
   final String url;
@@ -1217,7 +1199,7 @@ class _LinuxDoAvatarWidgetState extends State<_LinuxDoAvatarWidget> {
         });
       }
     } catch (e) {
-      print('❌ [LinuxDoAvatar] 加载失败: $e');
+      StructuredLogService.log('❌ [LinuxDoAvatar] 加载失败: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;

@@ -1,4 +1,6 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api/api_client.dart';
 
@@ -107,10 +109,7 @@ class LocationStat {
   LocationStat({required this.location, required this.count});
 
   factory LocationStat.fromJson(Map<String, dynamic> json) {
-    return LocationStat(
-      location: json['location'],
-      count: json['count'],
-    );
+    return LocationStat(location: json['location'], count: json['count']);
   }
 }
 
@@ -122,10 +121,7 @@ class TrendData {
   TrendData({required this.date, required this.count});
 
   factory TrendData.fromJson(Map<String, dynamic> json) {
-    return TrendData(
-      date: json['date'],
-      count: json['count'],
-    );
+    return TrendData(date: json['date'], count: json['count']);
   }
 }
 
@@ -137,6 +133,9 @@ class AdminService extends ChangeNotifier {
     _loadToken();
   }
 
+  static const String _tokenKey = 'admin_token';
+
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   String? _adminToken;
   bool _isAuthenticated = false;
   List<AdminUserData> _users = [];
@@ -152,49 +151,60 @@ class AdminService extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   /// Admin auth headers (used for authenticated admin calls)
-  Map<String, String> get _authHeaders =>
-      {'Authorization': 'Bearer $_adminToken'};
+  Map<String, String> get _authHeaders => {
+    'Authorization': 'Bearer $_adminToken',
+  };
 
   /// 从本地存储加载令牌
   Future<void> _loadToken() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      _adminToken = prefs.getString('admin_token');
-      if (_adminToken != null && _adminToken!.isNotEmpty) {
+      final token = await _secureStorage.read(key: _tokenKey);
+      if (token != null && token.isNotEmpty) {
+        _adminToken = token;
         _isAuthenticated = true;
-        print('👑 [AdminService] 从本地加载管理员令牌');
+        StructuredLogService.log('👑 [AdminService] 从本地加载管理员令牌');
         notifyListeners();
       }
     } catch (e) {
-      print('❌ [AdminService] 加载令牌失败: $e');
+      _adminToken = null;
+      _isAuthenticated = false;
+      StructuredLogService.log('⚠️ [AdminService] 安全令牌不可用，需要重新登录: $e');
     }
   }
 
   /// 保存令牌到本地
-  Future<void> _saveToken(String token) async {
+  Future<bool> _saveToken(String token) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('admin_token', token);
-      print('💾 [AdminService] 管理员令牌已保存');
+      await _secureStorage.write(key: _tokenKey, value: token);
+      StructuredLogService.log('💾 [AdminService] 管理员令牌已保存');
+      return true;
     } catch (e) {
-      print('❌ [AdminService] 保存令牌失败: $e');
+      StructuredLogService.log('❌ [AdminService] 保存安全令牌失败: $e');
+      return false;
     }
   }
 
   /// 清除令牌
   Future<void> _clearToken() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('admin_token');
-      print('🗑️ [AdminService] 管理员令牌已清除');
+      await _secureStorage.delete(key: _tokenKey);
     } catch (e) {
-      print('❌ [AdminService] 清除令牌失败: $e');
+      StructuredLogService.log('⚠️ [AdminService] 清除安全令牌失败: $e');
+    }
+
+    // 清理旧版本可能留下的明文值，防止被持久化备份继续收集。
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_tokenKey);
+      StructuredLogService.log('🗑️ [AdminService] 管理员令牌已清除');
+    } catch (e) {
+      StructuredLogService.log('⚠️ [AdminService] 清理旧令牌失败: $e');
     }
   }
 
   /// 管理员登录
   Future<Map<String, dynamic>> login(String password) async {
-    print('👑 [AdminService] 开始管理员登录...');
+    StructuredLogService.log('👑 [AdminService] 开始管理员登录...');
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -206,16 +216,30 @@ class AdminService extends ChangeNotifier {
         auth: false,
       );
 
-      print('📥 [AdminService] 状态码: ${result.statusCode}');
+      StructuredLogService.log('📥 [AdminService] 状态码: ${result.statusCode}');
 
       final data = result.data as Map<String, dynamic>?;
 
       if (result.ok) {
-        _adminToken = data?['data']?['token'];
-        _isAuthenticated = true;
-        await _saveToken(_adminToken!);
+        final token = data?['data']?['token']?.toString();
+        if (token == null || token.isEmpty) {
+          _errorMessage = '登录响应缺少有效令牌';
+          _isLoading = false;
+          notifyListeners();
+          return {'success': false, 'message': _errorMessage};
+        }
 
-        print('✅ [AdminService] 管理员登录成功');
+        if (!await _saveToken(token)) {
+          _errorMessage = '无法保存登录凭据，请重试';
+          _isLoading = false;
+          notifyListeners();
+          return {'success': false, 'message': _errorMessage};
+        }
+
+        _adminToken = token;
+        _isAuthenticated = true;
+
+        StructuredLogService.log('✅ [AdminService] 管理员登录成功');
 
         _isLoading = false;
         notifyListeners();
@@ -229,7 +253,7 @@ class AdminService extends ChangeNotifier {
         return {'success': false, 'message': data?['message']};
       }
     } catch (e) {
-      print('❌ [AdminService] 登录异常: $e');
+      StructuredLogService.log('❌ [AdminService] 登录异常: $e');
       _errorMessage = '网络错误: ${e.toString()}';
       _isLoading = false;
       notifyListeners();
@@ -240,7 +264,7 @@ class AdminService extends ChangeNotifier {
 
   /// 管理员登出
   Future<void> logout() async {
-    print('👑 [AdminService] 管理员登出...');
+    StructuredLogService.log('👑 [AdminService] 管理员登出...');
 
     if (_adminToken != null) {
       try {
@@ -250,7 +274,7 @@ class AdminService extends ChangeNotifier {
           headers: _authHeaders,
         );
       } catch (e) {
-        print('⚠️ [AdminService] 登出请求失败: $e');
+        StructuredLogService.log('⚠️ [AdminService] 登出请求失败: $e');
       }
     }
 
@@ -260,18 +284,18 @@ class AdminService extends ChangeNotifier {
     _stats = null;
     await _clearToken();
 
-    print('✅ [AdminService] 管理员已登出');
+    StructuredLogService.log('✅ [AdminService] 管理员已登出');
     notifyListeners();
   }
 
   /// 获取所有用户列表
   Future<bool> fetchUsers() async {
     if (!_isAuthenticated || _adminToken == null) {
-      print('⚠️ [AdminService] 未登录，无法获取用户列表');
+      StructuredLogService.log('⚠️ [AdminService] 未登录，无法获取用户列表');
       return false;
     }
 
-    print('👑 [AdminService] 获取用户列表...');
+    StructuredLogService.log('👑 [AdminService] 获取用户列表...');
     _isLoading = true;
     _errorMessage = null; // 清除之前的错误信息
     notifyListeners();
@@ -283,7 +307,7 @@ class AdminService extends ChangeNotifier {
         headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${result.statusCode}');
+      StructuredLogService.log('📥 [AdminService] 状态码: ${result.statusCode}');
 
       if (result.statusCode == 401) {
         // 令牌无效，但不立即登出，给用户一个重试机会
@@ -299,7 +323,7 @@ class AdminService extends ChangeNotifier {
         final usersList = data?['data']?['users'] as List;
         _users = usersList.map((json) => AdminUserData.fromJson(json)).toList();
 
-        print('✅ [AdminService] 获取用户列表成功: ${_users.length} 个用户');
+        StructuredLogService.log('✅ [AdminService] 获取用户列表成功: ${_users.length} 个用户');
 
         _isLoading = false;
         notifyListeners();
@@ -311,7 +335,7 @@ class AdminService extends ChangeNotifier {
         return false;
       }
     } catch (e) {
-      print('❌ [AdminService] 获取用户列表异常: $e');
+      StructuredLogService.log('❌ [AdminService] 获取用户列表异常: $e');
       _errorMessage = '网络错误: ${e.toString()}';
       _isLoading = false;
       notifyListeners();
@@ -322,11 +346,11 @@ class AdminService extends ChangeNotifier {
   /// 获取统计数据
   Future<bool> fetchStats() async {
     if (!_isAuthenticated || _adminToken == null) {
-      print('⚠️ [AdminService] 未登录，无法获取统计数据');
+      StructuredLogService.log('⚠️ [AdminService] 未登录，无法获取统计数据');
       return false;
     }
 
-    print('👑 [AdminService] 获取统计数据...');
+    StructuredLogService.log('👑 [AdminService] 获取统计数据...');
     _isLoading = true;
     _errorMessage = null; // 清除之前的错误信息
     notifyListeners();
@@ -338,7 +362,7 @@ class AdminService extends ChangeNotifier {
         headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${result.statusCode}');
+      StructuredLogService.log('📥 [AdminService] 状态码: ${result.statusCode}');
 
       if (result.statusCode == 401) {
         // 令牌无效，但不立即登出，给用户一个重试机会
@@ -353,7 +377,7 @@ class AdminService extends ChangeNotifier {
       if (result.ok) {
         _stats = UserStats.fromJson(data!['data']);
 
-        print('✅ [AdminService] 获取统计数据成功');
+        StructuredLogService.log('✅ [AdminService] 获取统计数据成功');
 
         _isLoading = false;
         notifyListeners();
@@ -365,7 +389,7 @@ class AdminService extends ChangeNotifier {
         return false;
       }
     } catch (e) {
-      print('❌ [AdminService] 获取统计数据异常: $e');
+      StructuredLogService.log('❌ [AdminService] 获取统计数据异常: $e');
       _errorMessage = '网络错误: ${e.toString()}';
       _isLoading = false;
       notifyListeners();
@@ -376,11 +400,11 @@ class AdminService extends ChangeNotifier {
   /// 删除用户
   Future<bool> deleteUser(int userId) async {
     if (!_isAuthenticated || _adminToken == null) {
-      print('⚠️ [AdminService] 未登录，无法删除用户');
+      StructuredLogService.log('⚠️ [AdminService] 未登录，无法删除用户');
       return false;
     }
 
-    print('👑 [AdminService] 删除用户 ID: $userId');
+    StructuredLogService.log('👑 [AdminService] 删除用户 ID: $userId');
 
     try {
       final result = await ApiClient().deleteJson(
@@ -390,7 +414,7 @@ class AdminService extends ChangeNotifier {
         headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${result.statusCode}');
+      StructuredLogService.log('📥 [AdminService] 状态码: ${result.statusCode}');
 
       if (result.statusCode == 401) {
         await logout();
@@ -400,7 +424,7 @@ class AdminService extends ChangeNotifier {
       final data = result.data as Map<String, dynamic>?;
 
       if (result.ok) {
-        print('✅ [AdminService] 用户已删除');
+        StructuredLogService.log('✅ [AdminService] 用户已删除');
 
         // 从本地列表中移除
         _users.removeWhere((user) => user.id == userId);
@@ -408,13 +432,12 @@ class AdminService extends ChangeNotifier {
 
         return true;
       } else {
-        print('❌ [AdminService] 删除失败: ${data?['message']}');
+        StructuredLogService.log('❌ [AdminService] 删除失败: ${data?['message']}');
         return false;
       }
     } catch (e) {
-      print('❌ [AdminService] 删除用户异常: $e');
+      StructuredLogService.log('❌ [AdminService] 删除用户异常: $e');
       return false;
     }
   }
-
 }

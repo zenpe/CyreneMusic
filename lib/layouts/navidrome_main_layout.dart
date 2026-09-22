@@ -518,14 +518,14 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Colors.white.withOpacity(0.24),
-                        (themeTint ?? colorScheme.primary).withOpacity(0.08),
-                        Colors.white.withOpacity(0.06),
+                        Colors.white.withValues(alpha: 0.24),
+                        (themeTint ?? colorScheme.primary).withValues(alpha: 0.08),
+                        Colors.white.withValues(alpha: 0.06),
                       ],
                     ),
                     border: Border(
                       right: BorderSide(
-                        color: Colors.white.withOpacity(0.18),
+                        color: Colors.white.withValues(alpha: 0.18),
                         width: 1,
                       ),
                     ),
@@ -627,7 +627,7 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
       },
       destinations: destinations,
     );
- 
+
     if (!useGlass) return baseNav;
 
     final cs = Theme.of(context).colorScheme;
@@ -645,7 +645,7 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
           color: Colors.transparent,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08),
+              color: Colors.black.withValues(alpha: 0.08),
               blurRadius: 12,
               offset: const Offset(0, -2),
             ),
@@ -670,15 +670,15 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Colors.white.withOpacity(0.16),
-                        (themeTint ?? cs.primary).withOpacity(0.10),
-                        Colors.white.withOpacity(0.05),
+                        Colors.white.withValues(alpha: 0.16),
+                        (themeTint ?? cs.primary).withValues(alpha: 0.10),
+                        Colors.white.withValues(alpha: 0.05),
                       ],
                       stops: const [0.0, 0.45, 1.0],
                     ),
                     border: Border(
                       top: BorderSide(
-                        color: Colors.white.withOpacity(0.18),
+                        color: Colors.white.withValues(alpha: 0.18),
                         width: 1,
                       ),
                     ),

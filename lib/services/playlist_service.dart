@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
@@ -76,20 +77,20 @@ class PlaylistService extends ChangeNotifier {
   Future<PlaylistSyncResult> syncPlaylist(int playlistId) async {
     if (!AuthService().isLoggedIn) return PlaylistSyncResult.empty();
     try {
-      print('🚀 [PlaylistService] 同步开始: /playlists/$playlistId/sync (playlistId=$playlistId)');
+      StructuredLogService.log('🚀 [PlaylistService] 同步开始: /playlists/$playlistId/sync (playlistId=$playlistId)');
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/sync',
         timeout: const Duration(minutes: 2),
       );
-      print('📥 [PlaylistService] 同步响应: status=${result.statusCode}');
+      StructuredLogService.log('📥 [PlaylistService] 同步响应: status=${result.statusCode}');
       if (result.text != null && result.text!.isNotEmpty) {
-        print('📄 [PlaylistService] 响应内容: ${result.text}');
+        StructuredLogService.log('📄 [PlaylistService] 响应内容: ${result.text}');
       }
       if (result.ok) {
         final data = result.data as Map<String, dynamic>;
         if ((data['status'] as int?) != 200) {
           final failureMessage = data['message'] as String? ?? '同步失败';
-          print('⚠️ [PlaylistService] 同步失败: $failureMessage');
+          StructuredLogService.log('⚠️ [PlaylistService] 同步失败: $failureMessage');
           return PlaylistSyncResult.empty(message: failureMessage);
         }
         final inserted = data['insertedCount'] as int? ?? 0;
@@ -97,7 +98,7 @@ class PlaylistService extends ChangeNotifier {
             .map((item) => PlaylistTrack.fromJson(item as Map<String, dynamic>))
             .toList();
         final message = data['message'] as String? ?? '同步完成';
-        print('✅ [PlaylistService] 同步完成，新增 $inserted 首');
+        StructuredLogService.log('✅ [PlaylistService] 同步完成，新增 $inserted 首');
         if (inserted > 0) {
           _applySyncUpdates(playlistId, inserted, newTracks);
         }
@@ -107,9 +108,9 @@ class PlaylistService extends ChangeNotifier {
           message: message,
         );
       }
-      print('⚠️ [PlaylistService] 同步失败: HTTP ${result.statusCode}');
+      StructuredLogService.log('⚠️ [PlaylistService] 同步失败: HTTP ${result.statusCode}');
     } catch (e) {
-      print('❌ [PlaylistService] 同步异常: $e');
+      StructuredLogService.log('❌ [PlaylistService] 同步异常: $e');
       return PlaylistSyncResult.empty(message: '同步失败: $e');
     }
     return PlaylistSyncResult.empty(message: '同步失败');
@@ -189,7 +190,7 @@ class PlaylistService extends ChangeNotifier {
   /// 加载歌单列表
   Future<void> loadPlaylists() async {
     if (!AuthService().isLoggedIn) {
-      print('⚠️ [PlaylistService] 未登录，无法加载歌单');
+      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法加载歌单');
       return;
     }
 
@@ -211,7 +212,7 @@ class PlaylistService extends ChangeNotifier {
               .map((item) => Playlist.fromJson(item as Map<String, dynamic>))
               .toList();
 
-          print('✅ [PlaylistService] 加载歌单列表: ${_playlists.length} 个');
+          StructuredLogService.log('✅ [PlaylistService] 加载歌单列表: ${_playlists.length} 个');
         } else {
           throw Exception(data['message'] ?? '加载失败');
         }
@@ -219,7 +220,7 @@ class PlaylistService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [PlaylistService] 加载歌单列表失败: $e');
+      StructuredLogService.log('❌ [PlaylistService] 加载歌单列表失败: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -230,12 +231,12 @@ class PlaylistService extends ChangeNotifier {
   /// 返回新创建的 Playlist 对象，失败时返回 null
   Future<Playlist?> createPlaylist(String name) async {
     if (!AuthService().isLoggedIn) {
-      print('⚠️ [PlaylistService] 未登录，无法创建歌单');
+      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法创建歌单');
       return null;
     }
 
     if (name.trim().isEmpty) {
-      print('⚠️ [PlaylistService] 歌单名称不能为空');
+      StructuredLogService.log('⚠️ [PlaylistService] 歌单名称不能为空');
       return null;
     }
 
@@ -254,7 +255,7 @@ class PlaylistService extends ChangeNotifier {
           final newPlaylist = Playlist.fromJson(data['playlist'] as Map<String, dynamic>);
           _playlists.add(newPlaylist);
 
-          print('✅ [PlaylistService] 创建歌单成功: $name (id=${newPlaylist.id})');
+          StructuredLogService.log('✅ [PlaylistService] 创建歌单成功: $name (id=${newPlaylist.id})');
           notifyListeners();
           return newPlaylist;
         } else {
@@ -264,7 +265,7 @@ class PlaylistService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [PlaylistService] 创建歌单失败: $e');
+      StructuredLogService.log('❌ [PlaylistService] 创建歌单失败: $e');
       return null;
     }
   }
@@ -272,12 +273,12 @@ class PlaylistService extends ChangeNotifier {
   /// 更新歌单（重命名）
   Future<bool> updatePlaylist(int playlistId, String name) async {
     if (!AuthService().isLoggedIn) {
-      print('⚠️ [PlaylistService] 未登录，无法更新歌单');
+      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法更新歌单');
       return false;
     }
 
     if (name.trim().isEmpty) {
-      print('⚠️ [PlaylistService] 歌单名称不能为空');
+      StructuredLogService.log('⚠️ [PlaylistService] 歌单名称不能为空');
       return false;
     }
 
@@ -307,7 +308,7 @@ class PlaylistService extends ChangeNotifier {
             );
           }
 
-          print('✅ [PlaylistService] 更新歌单成功: $name');
+          StructuredLogService.log('✅ [PlaylistService] 更新歌单成功: $name');
           notifyListeners();
           return true;
         } else {
@@ -317,7 +318,7 @@ class PlaylistService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [PlaylistService] 更新歌单失败: $e');
+      StructuredLogService.log('❌ [PlaylistService] 更新歌单失败: $e');
       return false;
     }
   }
@@ -325,7 +326,7 @@ class PlaylistService extends ChangeNotifier {
   /// 删除歌单
   Future<bool> deletePlaylist(int playlistId) async {
     if (!AuthService().isLoggedIn) {
-      print('⚠️ [PlaylistService] 未登录，无法删除歌单');
+      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法删除歌单');
       return false;
     }
 
@@ -349,7 +350,7 @@ class PlaylistService extends ChangeNotifier {
             _currentTracks = [];
           }
 
-          print('✅ [PlaylistService] 删除歌单成功');
+          StructuredLogService.log('✅ [PlaylistService] 删除歌单成功');
           notifyListeners();
           return true;
         } else {
@@ -359,7 +360,7 @@ class PlaylistService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [PlaylistService] 删除歌单失败: $e');
+      StructuredLogService.log('❌ [PlaylistService] 删除歌单失败: $e');
       return false;
     }
   }
@@ -367,7 +368,7 @@ class PlaylistService extends ChangeNotifier {
   /// 添加歌曲到歌单
   Future<bool> addTrackToPlaylist(int playlistId, Track track) async {
     if (!AuthService().isLoggedIn) {
-      print('⚠️ [PlaylistService] 未登录，无法添加歌曲');
+      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法添加歌曲');
       return false;
     }
 
@@ -404,7 +405,7 @@ class PlaylistService extends ChangeNotifier {
             _currentTracks.insert(0, playlistTrack);
           }
 
-          print('✅ [PlaylistService] 添加歌曲成功: ${track.name}');
+          StructuredLogService.log('✅ [PlaylistService] 添加歌曲成功: ${track.name}');
           notifyListeners();
           return true;
         } else {
@@ -414,7 +415,7 @@ class PlaylistService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [PlaylistService] 添加歌曲失败: $e');
+      StructuredLogService.log('❌ [PlaylistService] 添加歌曲失败: $e');
       return false;
     }
   }
@@ -431,7 +432,7 @@ class PlaylistService extends ChangeNotifier {
     String mode = 'append',
   }) async {
     if (!AuthService().isLoggedIn) {
-      print('⚠️ [PlaylistService] 未登录，无法批量添加歌曲');
+      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法批量添加歌曲');
       return {'successCount': 0, 'skipCount': 0, 'failCount': tracks.length};
     }
 
@@ -478,7 +479,7 @@ class PlaylistService extends ChangeNotifier {
             );
           }
 
-          print('✅ [PlaylistService] 批量添加完成: 成功=$successCount, 跳过=$skipCount, 失败=$failCount');
+          StructuredLogService.log('✅ [PlaylistService] 批量添加完成: 成功=$successCount, 跳过=$skipCount, 失败=$failCount');
           notifyListeners();
           return {'successCount': successCount, 'skipCount': skipCount, 'failCount': failCount};
         } else {
@@ -488,7 +489,7 @@ class PlaylistService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [PlaylistService] 批量添加歌曲失败: $e');
+      StructuredLogService.log('❌ [PlaylistService] 批量添加歌曲失败: $e');
       return {'successCount': 0, 'skipCount': 0, 'failCount': tracks.length};
     }
   }
@@ -496,7 +497,7 @@ class PlaylistService extends ChangeNotifier {
   /// 加载歌单中的歌曲
   Future<void> loadPlaylistTracks(int playlistId) async {
     if (!AuthService().isLoggedIn) {
-      print('⚠️ [PlaylistService] 未登录，无法加载歌曲');
+      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法加载歌曲');
       return;
     }
 
@@ -519,7 +520,7 @@ class PlaylistService extends ChangeNotifier {
               .map((item) => PlaylistTrack.fromJson(item as Map<String, dynamic>))
               .toList();
 
-          print('✅ [PlaylistService] 加载歌曲列表: ${_currentTracks.length} 首');
+          StructuredLogService.log('✅ [PlaylistService] 加载歌曲列表: ${_currentTracks.length} 首');
         } else {
           throw Exception(data['message'] ?? '加载失败');
         }
@@ -527,7 +528,7 @@ class PlaylistService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [PlaylistService] 加载歌曲列表失败: $e');
+      StructuredLogService.log('❌ [PlaylistService] 加载歌曲列表失败: $e');
     } finally {
       _isLoadingTracks = false;
       notifyListeners();
@@ -537,17 +538,17 @@ class PlaylistService extends ChangeNotifier {
   /// 从歌单删除歌曲（通过 trackId 和 source 字符串）
   Future<bool> removeTrackFromPlaylist(int playlistId, String trackId, String source) async {
     if (!AuthService().isLoggedIn) {
-      print('⚠️ [PlaylistService] 未登录，无法删除歌曲');
+      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法删除歌曲');
       return false;
     }
 
     try {
       // 诊断日志
-      print('🗑️ [PlaylistService] 准备删除歌曲:');
-      print('   PlaylistId: $playlistId');
-      print('   TrackId: $trackId');
-      print('   Source: $source');
-      print('   URL: /playlists/$playlistId/tracks/remove');
+      StructuredLogService.log('🗑️ [PlaylistService] 准备删除歌曲:');
+      StructuredLogService.log('   PlaylistId: $playlistId');
+      StructuredLogService.log('   TrackId: $trackId');
+      StructuredLogService.log('   Source: $source');
+      StructuredLogService.log('   URL: /playlists/$playlistId/tracks/remove');
 
       // 使用 POST 请求代替 DELETE（避免某些框架的解析问题）
       final result = await ApiClient().postJson(
@@ -559,9 +560,9 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 10),
       );
 
-      print('📥 [PlaylistService] 删除请求响应状态码: ${result.statusCode}');
+      StructuredLogService.log('📥 [PlaylistService] 删除请求响应状态码: ${result.statusCode}');
       if (!result.ok) {
-        print('📄 [PlaylistService] 响应内容: ${result.text}');
+        StructuredLogService.log('📄 [PlaylistService] 响应内容: ${result.text}');
       }
 
       if (result.ok) {
@@ -590,7 +591,7 @@ class PlaylistService extends ChangeNotifier {
             );
           }
 
-          print('✅ [PlaylistService] 删除歌曲成功');
+          StructuredLogService.log('✅ [PlaylistService] 删除歌曲成功');
           notifyListeners();
           return true;
         } else {
@@ -600,7 +601,7 @@ class PlaylistService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [PlaylistService] 删除歌曲失败: $e');
+      StructuredLogService.log('❌ [PlaylistService] 删除歌曲失败: $e');
       return false;
     }
   }
@@ -614,12 +615,12 @@ class PlaylistService extends ChangeNotifier {
   /// 批量删除歌曲
   Future<int> removeTracksFromPlaylist(int playlistId, List<PlaylistTrack> tracks) async {
     if (!AuthService().isLoggedIn) {
-      print('⚠️ [PlaylistService] 未登录，无法批量删除歌曲');
+      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法批量删除歌曲');
       return 0;
     }
 
     if (tracks.isEmpty) {
-      print('⚠️ [PlaylistService] 歌曲列表为空');
+      StructuredLogService.log('⚠️ [PlaylistService] 歌曲列表为空');
       return 0;
     }
 
@@ -630,7 +631,7 @@ class PlaylistService extends ChangeNotifier {
         'source': track.source.toString().split('.').last,
       }).toList();
 
-      print('🗑️ [PlaylistService] 准备批量删除 ${tracks.length} 首歌曲');
+      StructuredLogService.log('🗑️ [PlaylistService] 准备批量删除 ${tracks.length} 首歌曲');
 
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/tracks/batch-remove',
@@ -640,7 +641,7 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 30),
       );
 
-      print('📥 [PlaylistService] 批量删除响应状态码: ${result.statusCode}');
+      StructuredLogService.log('📥 [PlaylistService] 批量删除响应状态码: ${result.statusCode}');
 
       if (result.ok) {
         final data = result.data as Map<String, dynamic>;
@@ -672,7 +673,7 @@ class PlaylistService extends ChangeNotifier {
             }
           }
 
-          print('✅ [PlaylistService] 批量删除成功: $deletedCount 首');
+          StructuredLogService.log('✅ [PlaylistService] 批量删除成功: $deletedCount 首');
           notifyListeners();
           return deletedCount;
         } else {
@@ -682,7 +683,7 @@ class PlaylistService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('❌ [PlaylistService] 批量删除失败: $e');
+      StructuredLogService.log('❌ [PlaylistService] 批量删除失败: $e');
       return 0;
     }
   }
@@ -722,7 +723,7 @@ class PlaylistService extends ChangeNotifier {
         );
       }
     } catch (e) {
-      print('❌ [PlaylistService] 检查歌曲是否在歌单中失败: $e');
+      StructuredLogService.log('❌ [PlaylistService] 检查歌曲是否在歌单中失败: $e');
     }
 
     return TrackInPlaylistResult(inPlaylist: false, playlistIds: [], playlistNames: []);

@@ -398,7 +398,7 @@ class PlaybackService extends ChangeNotifier {
   void _onEngineEvent(EngineEvent event) {
     if (event.epoch != _playGeneration) {
       if (event is EngineFailureEvent) {
-        print('[PlaybackService] 丢弃旧纪元引擎事件: ${event.error}');
+        StructuredLogService.log('[PlaybackService] 丢弃旧纪元引擎事件: ${event.error}');
       }
       return;
     }
@@ -454,7 +454,7 @@ class PlaybackService extends ChangeNotifier {
     PlaybackModeService().addListener(_precacheNextCover);
     _bindPreloadDependencyListeners();
 
-    print('[PlaybackService] 初始化完成');
+    StructuredLogService.log('[PlaybackService] 初始化完成');
   }
 
   Future<bool> restoreSessionOnStartup({
@@ -476,7 +476,7 @@ class PlaybackService extends ChangeNotifier {
       _scheduleSessionPersist();
       return true;
     } catch (e) {
-      print('[PlaybackService] 恢复本地播放会话失败: $e');
+      StructuredLogService.log('[PlaybackService] 恢复本地播放会话失败: $e');
       return false;
     }
   }
@@ -667,7 +667,7 @@ class PlaybackService extends ChangeNotifier {
     // 纪元守卫：错误携带引擎源头纪元，属于旧纪元的迟到错误直接丢弃，
     // 避免旧歌错误触发新歌的重试/跳歌/报错。
     if (error.epoch != _playGeneration) {
-      print('[PlaybackService] 丢弃旧纪元引擎错误: $error');
+      StructuredLogService.log('[PlaybackService] 丢弃旧纪元引擎错误: $error');
       return;
     }
     _updateSessionPhase(PlaybackPhase.failed);
@@ -687,9 +687,9 @@ class PlaybackService extends ChangeNotifier {
       _retriedTrackKey = trackKey;
       final requestEpoch = _requestRouter.begin();
       if (cacheQuality != null) {
-        print('[PlaybackService] 缓存流播放失败，绕过当前缓存后重试: $error');
+        StructuredLogService.log('[PlaybackService] 缓存流播放失败，绕过当前缓存后重试: $error');
       } else {
-        print('[PlaybackService] 引擎错误，强制重新解析后重试: $error');
+        StructuredLogService.log('[PlaybackService] 引擎错误，强制重新解析后重试: $error');
       }
       final current = _pendingTrack ?? currentTrack;
       if (current == null || _buildTrackIdentity(current) != trackKey) return;
@@ -1562,7 +1562,7 @@ class PlaybackService extends ChangeNotifier {
     }
 
     if (cacheInfo != null && cacheInfo.metadata.quality != tx.qualityStr) {
-      print(
+      StructuredLogService.log(
         '[PlaybackService] 跳过缓存命中，音质不匹配: ${cacheInfo.metadata.quality} != ${tx.qualityStr}',
       );
     }
@@ -2142,9 +2142,6 @@ class PlaybackService extends ChangeNotifier {
         a.qrcTrans == b.qrcTrans;
   }
 
-  bool _hasAnyLyrics(SongDetail song) {
-    return song.lyric.isNotEmpty || song.yrc.isNotEmpty || song.qrc.isNotEmpty;
-  }
 
   bool _hasAnyLyricPayload(SongDetail song) {
     return song.lyric.isNotEmpty ||
@@ -2456,12 +2453,12 @@ class PlaybackService extends ChangeNotifier {
   }) {
     if (imageUrl.isEmpty || imageUrl == track.picUrl) return;
     try {
-      print(
+      StructuredLogService.log(
         '[PlaybackService] 调度封面补全($reason): ${_trackLogKey(track)} -> $imageUrl',
       );
       coverManager.updateCoverNonBlocking(imageUrl, notify: true, force: true);
     } catch (e) {
-      print('[PlaybackService] 调度封面补全失败($reason): ${_trackLogKey(track)}, $e');
+      StructuredLogService.log('[PlaybackService] 调度封面补全失败($reason): ${_trackLogKey(track)}, $e');
     }
   }
 
@@ -2472,10 +2469,10 @@ class PlaybackService extends ChangeNotifier {
   }) {
     if (imageUrl.isEmpty) return;
     try {
-      print('[PlaybackService] 调度主题色提取($reason): ${_trackLogKey(track)}');
+      StructuredLogService.log('[PlaybackService] 调度主题色提取($reason): ${_trackLogKey(track)}');
       coverManager.extractThemeColorNonBlocking(imageUrl);
     } catch (e) {
-      print('[PlaybackService] 调度主题色提取失败($reason): ${_trackLogKey(track)}, $e');
+      StructuredLogService.log('[PlaybackService] 调度主题色提取失败($reason): ${_trackLogKey(track)}, $e');
     }
   }
 
@@ -3149,7 +3146,7 @@ class PlaybackService extends ChangeNotifier {
       fetchLyrics: fetchLyrics,
     );
     if (result.timedOut) {
-      print('[PlaybackService] 获取歌曲详情超时($purpose)');
+      StructuredLogService.log('[PlaybackService] 获取歌曲详情超时($purpose)');
     }
     return result.detail;
   }
@@ -3316,7 +3313,7 @@ class PlaybackService extends ChangeNotifier {
         _lastPreloadedTargetKey = nextKey;
       }
     } catch (e) {
-      print('[PlaybackService] 预加载下一首失败: $e');
+      StructuredLogService.log('[PlaybackService] 预加载下一首失败: $e');
     } finally {
       _preloadingNext = false;
     }
@@ -3352,7 +3349,7 @@ class PlaybackService extends ChangeNotifier {
       // 已由 _onEngineError 处理重试/跳过策略。
       return true;
     } catch (e) {
-      print('[PlaybackService] repeatOne 复用当前音源失败，回退重新拉流: $e');
+      StructuredLogService.log('[PlaybackService] repeatOne 复用当前音源失败，回退重新拉流: $e');
       return false;
     }
   }
@@ -3385,7 +3382,7 @@ class PlaybackService extends ChangeNotifier {
             cacheInfo.metadata.quality,
             reason: 'proxy-unavailable',
           );
-          print(
+          StructuredLogService.log(
             '[PlaybackService] 缓存流式播放跳过: 本地缓存代理不可用 '
             'track=${track != null ? _buildTrackIdentity(track) : '<unknown>'} '
             'quality=${cacheInfo.metadata.quality}',
@@ -3404,7 +3401,7 @@ class PlaybackService extends ChangeNotifier {
         initialPosition: initialPosition,
         preload: preload,
       );
-      print(
+      StructuredLogService.log(
         '[PlaybackService] 缓存流式播放已提交 ${sw.elapsedMilliseconds}ms '
         'source=${_describePlayableSource(source)}',
       );
@@ -3418,7 +3415,7 @@ class PlaybackService extends ChangeNotifier {
       await _replaceCurrentTempFilePath(null);
       return true;
     } catch (e) {
-      print('[PlaybackService] 缓存流式播放失败，回退网络链路: $e');
+      StructuredLogService.log('[PlaybackService] 缓存流式播放失败，回退网络链路: $e');
       _markCachePlaybackBypassed(
         _pendingTrack ?? currentTrack,
         cacheInfo.metadata.quality,
@@ -3621,11 +3618,6 @@ class PlaybackService extends ChangeNotifier {
     return buildAudioRequestHeaders(source);
   }
 
-  String _getServerProxyUrl(String originalUrl, String platform) {
-    final baseUrl = UrlService().baseUrl;
-    final encodedUrl = Uri.encodeComponent(originalUrl);
-    return '$baseUrl/audio-proxy/stream?url=$encodedUrl&platform=$platform';
-  }
 
   Future<bool> _ensureLocalProxyRunning(String platform) async {
     if (ProxyService().isRunning) return true;
@@ -3733,11 +3725,11 @@ class PlaybackService extends ChangeNotifier {
       queueLength: _queue.length,
     );
     if (decision.reachedFailureLimit) {
-      print('[PlaybackService] 连续 $_consecutiveErrors 首播放失败，停止自动跳过');
+      StructuredLogService.log('[PlaybackService] 连续 $_consecutiveErrors 首播放失败，停止自动跳过');
       return;
     }
     if (!decision.shouldAutoSkip) return;
-    print(
+    StructuredLogService.log(
       '[PlaybackService] 自动播放失败，${decision.delay.inSeconds} 秒后跳到下一首 '
       '($_consecutiveErrors/${_failurePolicy.maxConsecutiveFailures})',
     );
@@ -3977,7 +3969,7 @@ class PlaybackService extends ChangeNotifier {
       _historyRecorder.dispose();
       await _engine.dispose();
     } catch (e) {
-      print('[PlaybackService] 释放资源失败: $e');
+      StructuredLogService.log('[PlaybackService] 释放资源失败: $e');
     }
   }
 

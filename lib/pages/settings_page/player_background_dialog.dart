@@ -11,7 +11,7 @@ import '../../utils/theme_manager.dart';
 /// 播放器背景设置对话框
 class PlayerBackgroundDialog extends StatefulWidget {
   final VoidCallback onChanged;
-  
+
   const PlayerBackgroundDialog({super.key, required this.onChanged});
 
   @override
@@ -24,7 +24,9 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
     final backgroundService = PlayerBackgroundService();
     final currentType = backgroundService.backgroundType;
     final isFluent = ThemeManager().isDesktopFluentUI;
-    final isCupertino = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
+    final isCupertino =
+        (Platform.isIOS || Platform.isAndroid) &&
+        ThemeManager().isCupertinoFramework;
 
     if (isCupertino) {
       return _buildCupertinoDialog(context, backgroundService, currentType);
@@ -46,165 +48,179 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-              // 自适应背景
-              const fluent_ui.RadioButton<PlayerBackgroundType>(
-                value: PlayerBackgroundType.adaptive,
-                content: const Text('自适应背景'),
-              ),
-              // 渐变开关（仅在自适应背景时显示，流体云样式下隐藏）
-              if (currentType == PlayerBackgroundType.adaptive && 
-                  LyricStyleService().currentStyle != LyricStyle.fluidCloud) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Expanded(child: Text('封面渐变效果')),
-                    fluent_ui.ToggleSwitch(
-                      checked: backgroundService.enableGradient,
-                      onChanged: (value) async {
-                        await backgroundService.setEnableGradient(value);
-                        setState(() {});
-                        widget.onChanged();
-                      },
-                    ),
-                  ],
+                // 自适应背景
+                const fluent_ui.RadioButton<PlayerBackgroundType>(
+                  value: PlayerBackgroundType.adaptive,
+                  content: const Text('自适应背景'),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
-                  child: Text(
-                    Platform.isWindows || Platform.isMacOS || Platform.isLinux
-                        ? '专辑封面位于左侧，向右渐变到主题色'
-                        : '专辑封面位于顶部，向下渐变到主题色',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 8),
-
-              // 纯色背景
-              const fluent_ui.RadioButton<PlayerBackgroundType>(
-                value: PlayerBackgroundType.solidColor,
-                content: const Text('纯色背景'),
-              ),
-              if (currentType == PlayerBackgroundType.solidColor) ...[
-                const SizedBox(height: 8),
-                fluent_ui.FilledButton(
-                  onPressed: _showSolidColorPicker,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                // 渐变开关（仅在自适应背景时显示，流体云样式下隐藏）
+                if (currentType == PlayerBackgroundType.adaptive &&
+                    LyricStyleService().currentStyle !=
+                        LyricStyle.fluidCloud) ...[
+                  const SizedBox(height: 8),
+                  Row(
                     children: [
-                      Icon(Icons.palette, color: backgroundService.solidColor),
-                      const SizedBox(width: 8),
-                      const Text('选择颜色'),
-                    ],
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 8),
-
-              // 图片背景
-              fluent_ui.RadioButton<PlayerBackgroundType>(
-                value: PlayerBackgroundType.image,
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      backgroundService.mediaPath != null && backgroundService.isImage 
-                          ? '图片背景（已设置）' 
-                          : '图片背景',
-                    ),
-                  ],
-                ),
-              ),
-               
-              const SizedBox(height: 8),
-               
-              // 视频背景
-              fluent_ui.RadioButton<PlayerBackgroundType>(
-                value: PlayerBackgroundType.video,
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      backgroundService.mediaPath != null && backgroundService.isVideo 
-                          ? '视频背景（已设置）' 
-                          : '视频背景',
-                    ),
-                  ],
-                ),
-              ),
-              if (currentType == PlayerBackgroundType.image || currentType == PlayerBackgroundType.video) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: fluent_ui.FilledButton(
-                        onPressed: _selectBackgroundMedia,
-                        child: Text(currentType == PlayerBackgroundType.image ? '选择图片' : '选择视频'),
-                      ),
-                    ),
-                    if (backgroundService.mediaPath != null) ...[
-                      const SizedBox(width: 8),
-                      fluent_ui.IconButton(
-                        icon: const Icon(fluent_ui.FluentIcons.clear),
-                        onPressed: () async {
-                          await backgroundService.clearMediaBackground();
+                      const Expanded(child: Text('封面渐变效果')),
+                      fluent_ui.ToggleSwitch(
+                        checked: backgroundService.enableGradient,
+                        onChanged: (value) async {
+                          await backgroundService.setEnableGradient(value);
                           setState(() {});
                           widget.onChanged();
                         },
                       ),
                     ],
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text('模糊程度: ${backgroundService.blurAmount.toStringAsFixed(0)}'),
-                fluent_ui.Slider(
-                  value: backgroundService.blurAmount,
-                  min: 0,
-                  max: 50,
-                  divisions: 50,
-                  onChanged: (value) async {
-                    await backgroundService.setBlurAmount(value);
-                    setState(() {});
-                    widget.onChanged();
-                  },
-                ),
-                const Text('0 = 清晰，50 = 最模糊', style: TextStyle(fontSize: 12)),
-              ],
-              
-              // 动态背景（仅在流体云样式下显示）
-              if (LyricStyleService().currentStyle == LyricStyle.fluidCloud) ...[
-                const SizedBox(height: 16),
-                const fluent_ui.Divider(),
-                const SizedBox(height: 8),
-                const Text(
-                  '流体云专属',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey,
                   ),
-                ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4.0),
+                    child: Text(
+                      Platform.isWindows || Platform.isMacOS || Platform.isLinux
+                          ? '专辑封面位于左侧，向右渐变到主题色'
+                          : '专辑封面位于顶部，向下渐变到主题色',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: 8),
-                fluent_ui.RadioButton(
-                  value: PlayerBackgroundType.dynamic,
+
+                // 纯色背景
+                const fluent_ui.RadioButton<PlayerBackgroundType>(
+                  value: PlayerBackgroundType.solidColor,
+                  content: const Text('纯色背景'),
+                ),
+                if (currentType == PlayerBackgroundType.solidColor) ...[
+                  const SizedBox(height: 8),
+                  fluent_ui.FilledButton(
+                    onPressed: _showSolidColorPicker,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.palette,
+                          color: backgroundService.solidColor,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('选择颜色'),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 8),
+
+                // 图片背景
+                fluent_ui.RadioButton<PlayerBackgroundType>(
+                  value: PlayerBackgroundType.image,
                   content: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text('动态背景'),
-                      Padding(
-                        padding: EdgeInsets.only(top: 4.0),
-                        child: Text(
-                          '基于封面提取3个颜色，生成流动的渐变动画',
-                          style: TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
+                    children: [
+                      Text(
+                        backgroundService.mediaPath != null &&
+                                backgroundService.isImage
+                            ? '图片背景（已设置）'
+                            : '图片背景',
                       ),
                     ],
                   ),
                 ),
+
+                const SizedBox(height: 8),
+
+                // 视频背景
+                fluent_ui.RadioButton<PlayerBackgroundType>(
+                  value: PlayerBackgroundType.video,
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        backgroundService.mediaPath != null &&
+                                backgroundService.isVideo
+                            ? '视频背景（已设置）'
+                            : '视频背景',
+                      ),
+                    ],
+                  ),
+                ),
+                if (currentType == PlayerBackgroundType.image ||
+                    currentType == PlayerBackgroundType.video) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: fluent_ui.FilledButton(
+                          onPressed: _selectBackgroundMedia,
+                          child: Text(
+                            currentType == PlayerBackgroundType.image
+                                ? '选择图片'
+                                : '选择视频',
+                          ),
+                        ),
+                      ),
+                      if (backgroundService.mediaPath != null) ...[
+                        const SizedBox(width: 8),
+                        fluent_ui.IconButton(
+                          icon: const Icon(fluent_ui.FluentIcons.clear),
+                          onPressed: () async {
+                            await backgroundService.clearMediaBackground();
+                            setState(() {});
+                            widget.onChanged();
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '模糊程度: ${backgroundService.blurAmount.toStringAsFixed(0)}',
+                  ),
+                  fluent_ui.Slider(
+                    value: backgroundService.blurAmount,
+                    min: 0,
+                    max: 50,
+                    divisions: 50,
+                    onChanged: (value) async {
+                      await backgroundService.setBlurAmount(value);
+                      setState(() {});
+                      widget.onChanged();
+                    },
+                  ),
+                  const Text('0 = 清晰，50 = 最模糊', style: TextStyle(fontSize: 12)),
+                ],
+
+                // 动态背景（仅在流体云样式下显示）
+                if (LyricStyleService().currentStyle ==
+                    LyricStyle.fluidCloud) ...[
+                  const SizedBox(height: 16),
+                  const fluent_ui.Divider(),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '流体云专属',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  fluent_ui.RadioButton(
+                    value: PlayerBackgroundType.dynamic,
+                    content: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text('动态背景'),
+                        Padding(
+                          padding: EdgeInsets.only(top: 4.0),
+                          child: Text(
+                            '基于封面提取3个颜色，生成流动的渐变动画',
+                            style: TextStyle(fontSize: 11, color: Colors.grey),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
-            ],
             ),
           ),
         ),
@@ -219,11 +235,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
 
     return AlertDialog(
       title: const Row(
-        children: [
-          Icon(Icons.wallpaper),
-          SizedBox(width: 8),
-          Text('播放器背景设置'),
-        ],
+        children: [Icon(Icons.wallpaper), SizedBox(width: 8), Text('播放器背景设置')],
       ),
       content: SingleChildScrollView(
         child: Column(
@@ -231,20 +243,22 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 自适应背景
-            RadioListTile<PlayerBackgroundType>(
-              title: const Text('自适应背景'),
-              subtitle: const Text('基于专辑封面提取颜色'),
-              value: PlayerBackgroundType.adaptive,
+            RadioGroup<PlayerBackgroundType>(
               groupValue: currentType,
               onChanged: (value) async {
                 await backgroundService.setBackgroundType(value!);
                 setState(() {});
                 widget.onChanged();
               },
+              child: RadioListTile<PlayerBackgroundType>(
+                title: const Text('自适应背景'),
+                subtitle: const Text('基于专辑封面提取颜色'),
+                value: PlayerBackgroundType.adaptive,
+              ),
             ),
-            
+
             // 渐变开关（仅在自适应背景时显示，流体云样式下隐藏）
-            if (currentType == PlayerBackgroundType.adaptive && 
+            if (currentType == PlayerBackgroundType.adaptive &&
                 LyricStyleService().currentStyle != LyricStyle.fluidCloud) ...[
               Padding(
                 padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
@@ -270,20 +284,22 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 ),
               ),
             ],
-            
+
             // 纯色背景
-            RadioListTile<PlayerBackgroundType>(
-              title: const Text('纯色背景'),
-              subtitle: const Text('使用自定义纯色'),
-              value: PlayerBackgroundType.solidColor,
+            RadioGroup<PlayerBackgroundType>(
               groupValue: currentType,
               onChanged: (value) async {
                 await backgroundService.setBackgroundType(value!);
                 setState(() {});
                 widget.onChanged();
               },
+              child: RadioListTile<PlayerBackgroundType>(
+                title: const Text('纯色背景'),
+                subtitle: const Text('使用自定义纯色'),
+                value: PlayerBackgroundType.solidColor,
+              ),
             ),
-            
+
             // 纯色选择器（仅在选择纯色时显示）
             if (currentType == PlayerBackgroundType.solidColor) ...[
               const SizedBox(height: 8),
@@ -299,45 +315,52 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 ),
               ),
             ],
-            
+
             const SizedBox(height: 8),
-            
+
             // 图片背景
-            RadioListTile<PlayerBackgroundType>(
-              title: const Text('图片背景'),
-              subtitle: Text(
-                backgroundService.mediaPath != null && backgroundService.isImage
-                    ? '已设置自定义图片'
-                    : '未设置图片',
-              ),
-              value: PlayerBackgroundType.image,
+            RadioGroup<PlayerBackgroundType>(
               groupValue: currentType,
               onChanged: (value) async {
                 await backgroundService.setBackgroundType(value!);
                 setState(() {});
                 widget.onChanged();
               },
+              child: RadioListTile<PlayerBackgroundType>(
+                title: const Text('图片背景'),
+                subtitle: Text(
+                  backgroundService.mediaPath != null &&
+                          backgroundService.isImage
+                      ? '已设置自定义图片'
+                      : '未设置图片',
+                ),
+                value: PlayerBackgroundType.image,
+              ),
             ),
-             
+
             // 视频背景
-            RadioListTile<PlayerBackgroundType>(
-              title: const Text('视频背景'),
-              subtitle: Text(
-                backgroundService.mediaPath != null && backgroundService.isVideo
-                    ? '已设置自定义视频'
-                    : '未设置视频',
-              ),
-              value: PlayerBackgroundType.video,
+            RadioGroup<PlayerBackgroundType>(
               groupValue: currentType,
               onChanged: (value) async {
                 await backgroundService.setBackgroundType(value!);
                 setState(() {});
                 widget.onChanged();
               },
+              child: RadioListTile<PlayerBackgroundType>(
+                title: const Text('视频背景'),
+                subtitle: Text(
+                  backgroundService.mediaPath != null &&
+                          backgroundService.isVideo
+                      ? '已设置自定义视频'
+                      : '未设置视频',
+                ),
+                value: PlayerBackgroundType.video,
+              ),
             ),
-                
+
             // 媒体选择和模糊设置（仅在选择图片或视频背景时显示）
-            if (currentType == PlayerBackgroundType.image || currentType == PlayerBackgroundType.video) ...[
+            if (currentType == PlayerBackgroundType.image ||
+                currentType == PlayerBackgroundType.video) ...[
               const SizedBox(height: 8),
               Padding(
                 padding: const EdgeInsets.only(left: 16, right: 16),
@@ -350,8 +373,16 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: _selectBackgroundMedia,
-                            icon: Icon(currentType == PlayerBackgroundType.image ? Icons.image : Icons.video_library),
-                            label: Text(currentType == PlayerBackgroundType.image ? '选择图片' : '选择视频'),
+                            icon: Icon(
+                              currentType == PlayerBackgroundType.image
+                                  ? Icons.image
+                                  : Icons.video_library,
+                            ),
+                            label: Text(
+                              currentType == PlayerBackgroundType.image
+                                  ? '选择图片'
+                                  : '选择视频',
+                            ),
                           ),
                         ),
                         if (backgroundService.mediaPath != null) ...[
@@ -363,14 +394,15 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                               widget.onChanged();
                             },
                             icon: const Icon(Icons.clear),
-                            tooltip: '清除${currentType == PlayerBackgroundType.image ? '图片' : '视频'}',
+                            tooltip:
+                                '清除${currentType == PlayerBackgroundType.image ? '图片' : '视频'}',
                           ),
                         ],
                       ],
                     ),
-                    
+
                     const SizedBox(height: 16),
-                    
+
                     // 模糊程度调节
                     Text(
                       '模糊程度: ${backgroundService.blurAmount.toStringAsFixed(0)}',
@@ -398,7 +430,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 ),
               ),
             ],
-            
+
             // 动态背景（仅在流体云样式下显示）
             if (LyricStyleService().currentStyle == LyricStyle.fluidCloud) ...[
               const SizedBox(height: 16),
@@ -413,16 +445,18 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                   ),
                 ),
               ),
-              RadioListTile<PlayerBackgroundType>(
-                title: const Text('动态背景'),
-                subtitle: const Text('基于封面提取3个颜色，生成流动的渐变动画'),
-                value: PlayerBackgroundType.dynamic,
+              RadioGroup<PlayerBackgroundType>(
                 groupValue: currentType,
                 onChanged: (value) async {
                   await backgroundService.setBackgroundType(value!);
                   setState(() {});
                   widget.onChanged();
                 },
+                child: RadioListTile<PlayerBackgroundType>(
+                  title: const Text('动态背景'),
+                  subtitle: const Text('基于封面提取3个颜色，生成流动的渐变动画'),
+                  value: PlayerBackgroundType.dynamic,
+                ),
               ),
             ],
           ],
@@ -459,35 +493,40 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: [
-                    Colors.grey[900]!,
-                    Colors.black,
-                    Colors.blue[900]!,
-                    Colors.purple[900]!,
-                    Colors.red[900]!,
-                    Colors.green[900]!,
-                    Colors.orange[900]!,
-                    Colors.teal[900]!,
-                  ].map((color) => GestureDetector(
-                    onTap: () {
-                      selectedColor = color;
-                      Navigator.pop(context);
-                    },
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: color == backgroundService.solidColor
-                              ? Colors.white.withOpacity(0.6)
-                              : Colors.transparent,
-                          width: 3,
-                        ),
-                      ),
-                    ),
-                  )).toList(),
+                  children:
+                      [
+                            Colors.grey[900]!,
+                            Colors.black,
+                            Colors.blue[900]!,
+                            Colors.purple[900]!,
+                            Colors.red[900]!,
+                            Colors.green[900]!,
+                            Colors.orange[900]!,
+                            Colors.teal[900]!,
+                          ]
+                          .map(
+                            (color) => GestureDetector(
+                              onTap: () {
+                                selectedColor = color;
+                                Navigator.pop(context);
+                              },
+                              child: Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: color == backgroundService.solidColor
+                                        ? Colors.white.withValues(alpha: 0.6)
+                                        : Colors.transparent,
+                                    width: 3,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
                 ),
                 const SizedBox(height: 20),
                 fluent_ui.Button(
@@ -521,48 +560,50 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 // 预设颜色
                 const Text(
                   '预设颜色',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: [
-                    Colors.grey[900]!,
-                    Colors.black,
-                    Colors.blue[900]!,
-                    Colors.purple[900]!,
-                    Colors.red[900]!,
-                    Colors.green[900]!,
-                    Colors.orange[900]!,
-                    Colors.teal[900]!,
-                  ].map((color) => InkWell(
-                    onTap: () {
-                      selectedColor = color;
-                      Navigator.pop(context);
-                    },
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: color == backgroundService.solidColor
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.transparent,
-                          width: 3,
-                        ),
-                      ),
-                    ),
-                  )).toList(),
+                  children:
+                      [
+                            Colors.grey[900]!,
+                            Colors.black,
+                            Colors.blue[900]!,
+                            Colors.purple[900]!,
+                            Colors.red[900]!,
+                            Colors.green[900]!,
+                            Colors.orange[900]!,
+                            Colors.teal[900]!,
+                          ]
+                          .map(
+                            (color) => InkWell(
+                              onTap: () {
+                                selectedColor = color;
+                                Navigator.pop(context);
+                              },
+                              child: Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: color == backgroundService.solidColor
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Colors.transparent,
+                                    width: 3,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
                 ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 // 自定义颜色按钮
                 OutlinedButton.icon(
                   onPressed: () {
@@ -594,7 +635,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
       widget.onChanged();
     }
   }
-  
+
   /// 显示自定义颜色选择器（调色盘）
   Future<void> _showCustomColorPicker() async {
     final backgroundService = PlayerBackgroundService();
@@ -615,10 +656,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
               enableAlpha: false,
               displayThumbColor: true,
               pickerAreaHeightPercent: 0.8,
-              labelTypes: const [
-                ColorLabelType.rgb,
-                ColorLabelType.hsv,
-              ],
+              labelTypes: const [ColorLabelType.rgb, ColorLabelType.hsv],
             ),
           ),
           actions: [
@@ -631,7 +669,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 await backgroundService.setSolidColor(pickerColor);
                 setState(() {});
                 widget.onChanged();
-                if (mounted) {
+                if (context.mounted) {
                   Navigator.pop(context);
                 }
               },
@@ -654,10 +692,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
               enableAlpha: false,
               displayThumbColor: true,
               pickerAreaHeightPercent: 0.8,
-              labelTypes: const [
-                ColorLabelType.rgb,
-                ColorLabelType.hsv,
-              ],
+              labelTypes: const [ColorLabelType.rgb, ColorLabelType.hsv],
             ),
           ),
           actions: [
@@ -670,7 +705,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 await backgroundService.setSolidColor(pickerColor);
                 setState(() {});
                 widget.onChanged();
-                if (mounted) {
+                if (context.mounted) {
                   Navigator.pop(context);
                 }
               },
@@ -685,8 +720,9 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
   /// 选择背景媒体（图片或视频）
   Future<void> _selectBackgroundMedia() async {
     final backgroundService = PlayerBackgroundService();
-    final isVideo = backgroundService.backgroundType == PlayerBackgroundType.video;
-    
+    final isVideo =
+        backgroundService.backgroundType == PlayerBackgroundType.video;
+
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: isVideo
@@ -700,10 +736,10 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
       await backgroundService.setMediaBackground(mediaPath);
       setState(() {});
       widget.onChanged();
-      
+
       if (mounted) {
         final isFluent = ThemeManager().isDesktopFluentUI;
-        
+
         if (isFluent) {
           fluent_ui.displayInfoBar(
             context,
@@ -723,11 +759,8 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
       }
     }
   }
-  
+
   /// 选择背景图片（兼容旧代码）
-  Future<void> _selectBackgroundImage() async {
-    await _selectBackgroundMedia();
-  }
 
   /// 构建 Cupertino 风格对话框
   Widget _buildCupertinoDialog(
@@ -748,14 +781,16 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
               subtitle: '基于专辑封面提取颜色',
               isSelected: currentType == PlayerBackgroundType.adaptive,
               onTap: () async {
-                await backgroundService.setBackgroundType(PlayerBackgroundType.adaptive);
+                await backgroundService.setBackgroundType(
+                  PlayerBackgroundType.adaptive,
+                );
                 setState(() {});
                 widget.onChanged();
               },
             ),
-            
+
             // 渐变开关（仅在自适应背景时显示）
-            if (currentType == PlayerBackgroundType.adaptive && 
+            if (currentType == PlayerBackgroundType.adaptive &&
                 LyricStyleService().currentStyle != LyricStyle.fluidCloud)
               Padding(
                 padding: const EdgeInsets.only(left: 24, top: 8),
@@ -775,30 +810,36 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                   ],
                 ),
               ),
-            
+
             const SizedBox(height: 8),
-            
+
             // 纯色背景
             _buildCupertinoRadioOption(
               title: '纯色背景',
               subtitle: '使用自定义纯色',
               isSelected: currentType == PlayerBackgroundType.solidColor,
               onTap: () async {
-                await backgroundService.setBackgroundType(PlayerBackgroundType.solidColor);
+                await backgroundService.setBackgroundType(
+                  PlayerBackgroundType.solidColor,
+                );
                 setState(() {});
                 widget.onChanged();
               },
             ),
-            
+
             // 颜色选择按钮
             if (currentType == PlayerBackgroundType.solidColor)
               Padding(
                 padding: const EdgeInsets.only(left: 24, top: 8),
                 child: CupertinoButton(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   color: ThemeManager.iosBlue,
-                  minSize: 0,
-                  onPressed: () => _showCupertinSolidColorPicker(backgroundService),
+                  minimumSize: Size.zero,
+                  onPressed: () =>
+                      _showCupertinSolidColorPicker(backgroundService),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -808,52 +849,70 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                         decoration: BoxDecoration(
                           color: backgroundService.solidColor,
                           borderRadius: BorderRadius.circular(3),
-                          border: Border.all(color: CupertinoColors.white, width: 1),
+                          border: Border.all(
+                            color: CupertinoColors.white,
+                            width: 1,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),
-                      const Text('选择颜色', style: TextStyle(fontSize: 13, color: CupertinoColors.white)),
+                      const Text(
+                        '选择颜色',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: CupertinoColors.white,
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
-            
+
             const SizedBox(height: 8),
-            
+
             // 图片背景
             _buildCupertinoRadioOption(
               title: '图片背景',
-              subtitle: backgroundService.mediaPath != null && backgroundService.isImage
+              subtitle:
+                  backgroundService.mediaPath != null &&
+                      backgroundService.isImage
                   ? '已设置自定义图片'
                   : '未设置图片',
               isSelected: currentType == PlayerBackgroundType.image,
               enabled: true,
               onTap: () async {
-                await backgroundService.setBackgroundType(PlayerBackgroundType.image);
+                await backgroundService.setBackgroundType(
+                  PlayerBackgroundType.image,
+                );
                 setState(() {});
                 widget.onChanged();
               },
             ),
-            
+
             const SizedBox(height: 8),
-            
+
             // 视频背景
             _buildCupertinoRadioOption(
               title: '视频背景',
-              subtitle: backgroundService.mediaPath != null && backgroundService.isVideo
+              subtitle:
+                  backgroundService.mediaPath != null &&
+                      backgroundService.isVideo
                   ? '已设置自定义视频'
                   : '未设置视频',
               isSelected: currentType == PlayerBackgroundType.video,
               enabled: true,
               onTap: () async {
-                await backgroundService.setBackgroundType(PlayerBackgroundType.video);
+                await backgroundService.setBackgroundType(
+                  PlayerBackgroundType.video,
+                );
                 setState(() {});
                 widget.onChanged();
               },
             ),
-            
+
             // 媒体选择和模糊设置
-            if (currentType == PlayerBackgroundType.image || currentType == PlayerBackgroundType.video) ...[
+            if (currentType == PlayerBackgroundType.image ||
+                currentType == PlayerBackgroundType.video) ...[
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -861,11 +920,16 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                     child: CupertinoButton(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       color: ThemeManager.iosBlue,
-                      minSize: 0,
+                      minimumSize: Size.zero,
                       onPressed: _selectBackgroundMedia,
                       child: Text(
-                        currentType == PlayerBackgroundType.image ? '选择图片' : '选择视频',
-                        style: const TextStyle(fontSize: 14, color: CupertinoColors.white),
+                        currentType == PlayerBackgroundType.image
+                            ? '选择图片'
+                            : '选择视频',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: CupertinoColors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -874,13 +938,17 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                     CupertinoButton(
                       padding: const EdgeInsets.all(8),
                       color: CupertinoColors.systemRed,
-                      minSize: 0,
+                      minimumSize: Size.zero,
                       onPressed: () async {
                         await backgroundService.clearMediaBackground();
                         setState(() {});
                         widget.onChanged();
                       },
-                      child: const Icon(CupertinoIcons.delete, color: CupertinoColors.white, size: 18),
+                      child: const Icon(
+                        CupertinoIcons.delete,
+                        color: CupertinoColors.white,
+                        size: 18,
+                      ),
                     ),
                   ],
                 ],
@@ -907,7 +975,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 ],
               ),
             ],
-            
+
             // 动态背景（仅在流体云样式下显示）
             if (LyricStyleService().currentStyle == LyricStyle.fluidCloud) ...[
               const SizedBox(height: 12),
@@ -925,7 +993,9 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 subtitle: '生成流动的渐变动画',
                 isSelected: currentType == PlayerBackgroundType.dynamic,
                 onTap: () async {
-                  await backgroundService.setBackgroundType(PlayerBackgroundType.dynamic);
+                  await backgroundService.setBackgroundType(
+                    PlayerBackgroundType.dynamic,
+                  );
                   setState(() {});
                   widget.onChanged();
                 },
@@ -942,7 +1012,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
       ],
     );
   }
-  
+
   /// 构建 Cupertino 单选项
   Widget _buildCupertinoRadioOption({
     required String title,
@@ -960,8 +1030,12 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
           child: Row(
             children: [
               Icon(
-                isSelected ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
-                color: isSelected ? ThemeManager.iosBlue : CupertinoColors.systemGrey,
+                isSelected
+                    ? CupertinoIcons.checkmark_circle_fill
+                    : CupertinoIcons.circle,
+                color: isSelected
+                    ? ThemeManager.iosBlue
+                    : CupertinoColors.systemGrey,
                 size: 22,
               ),
               const SizedBox(width: 10),
@@ -969,10 +1043,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(fontSize: 15),
-                    ),
+                    Text(title, style: const TextStyle(fontSize: 15)),
                     Text(
                       subtitle,
                       style: TextStyle(
@@ -991,7 +1062,9 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
   }
 
   /// 显示 Cupertino 风格纯色选择器
-  Future<void> _showCupertinSolidColorPicker(PlayerBackgroundService backgroundService) async {
+  Future<void> _showCupertinSolidColorPicker(
+    PlayerBackgroundService backgroundService,
+  ) async {
     final presetColors = [
       Colors.grey[900]!,
       Colors.black,
@@ -1002,7 +1075,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
       Colors.orange[900]!,
       Colors.teal[900]!,
     ];
-    
+
     await showCupertinoDialog<void>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
@@ -1014,13 +1087,15 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
             runSpacing: 12,
             alignment: WrapAlignment.center,
             children: presetColors.map((color) {
-              final isSelected = backgroundService.solidColor.value == color.value;
-              
+              final isSelected =
+                  backgroundService.solidColor.toARGB32() == color.toARGB32();
+
               return GestureDetector(
                 onTap: () async {
                   await backgroundService.setSolidColor(color);
                   setState(() {});
                   widget.onChanged();
+                  if (!context.mounted) return;
                   Navigator.pop(context);
                 },
                 child: Container(
@@ -1029,12 +1104,16 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                   decoration: BoxDecoration(
                     color: color,
                     borderRadius: BorderRadius.circular(8),
-                    border: isSelected 
+                    border: isSelected
                         ? Border.all(color: ThemeManager.iosBlue, width: 3)
                         : null,
                   ),
-                  child: isSelected 
-                      ? const Icon(CupertinoIcons.checkmark, color: CupertinoColors.white, size: 20)
+                  child: isSelected
+                      ? const Icon(
+                          CupertinoIcons.checkmark,
+                          color: CupertinoColors.white,
+                          size: 20,
+                        )
                       : null,
                 ),
               );
@@ -1058,4 +1137,3 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
     );
   }
 }
-

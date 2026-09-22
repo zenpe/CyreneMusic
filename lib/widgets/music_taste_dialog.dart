@@ -13,7 +13,7 @@ class MusicTasteDialog extends StatefulWidget {
   /// 显示对话框的静态方法
   static Future<void> show(BuildContext context) async {
     final themeManager = ThemeManager();
-    
+
     if (themeManager.isFluentFramework) {
       await fluent.showDialog(
         context: context,
@@ -49,7 +49,7 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
 
   // 选中的歌单
   final Set<int> _selectedPlaylistIds = {};
-  
+
   // 当前步骤：0=选择歌单，1=生成中/显示结果
   int _currentStep = 0;
 
@@ -103,7 +103,7 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
         .toList();
 
     setState(() => _currentStep = 1);
-    
+
     await _tasteService.generateTasteSummary(selectedPlaylists, mode: _mode);
   }
 
@@ -131,7 +131,7 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
   Widget _buildMaterialDialog(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final size = MediaQuery.of(context).size;
-    
+
     return Dialog(
       child: Container(
         width: size.width * 0.9,
@@ -202,13 +202,13 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
                       Icon(
                         Icons.library_music_outlined,
                         size: compact ? 52 : 64,
-                        color: colorScheme.onSurface.withOpacity(0.3),
+                        color: colorScheme.onSurface.withValues(alpha: 0.3),
                       ),
                       SizedBox(height: compact ? 10 : 16),
                       Text(
                         '暂无歌单',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+                        style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6)),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -216,7 +216,7 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 12,
-                          color: colorScheme.onSurface.withOpacity(0.5),
+                          color: colorScheme.onSurface.withValues(alpha: 0.5),
                         ),
                       ),
                     ],
@@ -239,7 +239,7 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
             children: [
               Text(
                 '选择要分析的歌单（可多选）',
-                style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7)),
+                style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.7)),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -271,7 +271,7 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 8),
-                color: isSelected ? colorScheme.primaryContainer.withOpacity(0.3) : null,
+                color: isSelected ? colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
                 child: ListTile(
                   leading: Checkbox(
                     value: isSelected,
@@ -317,9 +317,9 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
           children: [
             const CircularProgressIndicator(),
             const SizedBox(height: 24),
-            Text('正在分析你的音乐品味...', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7))),
+            Text('正在分析你的音乐品味...', style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.7))),
             const SizedBox(height: 8),
-            Text('这可能需要一点时间', style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.5))),
+            Text('这可能需要一点时间', style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withValues(alpha: 0.5))),
           ],
         ),
       );
@@ -353,7 +353,7 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
                   child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.primary),
                 ),
                 const SizedBox(width: 8),
-                Text('生成中...', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.5))),
+                Text('生成中...', style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.5))),
               ],
             ),
           ],
@@ -545,7 +545,7 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: fluent.Card(
-                  backgroundColor: isSelected ? theme.accentColor.withOpacity(0.1) : null,
+                  backgroundColor: isSelected ? theme.accentColor.withValues(alpha: 0.1) : null,
                   child: fluent.ListTile(
                     leading: fluent.Checkbox(
                       checked: isSelected,
@@ -808,7 +808,7 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
                 final isSelected = _selectedPlaylistIds.contains(playlist.id);
 
                 return CupertinoListTile(
-                  backgroundColor: isSelected ? CupertinoColors.activeBlue.withOpacity(0.1) : null,
+                  backgroundColor: isSelected ? CupertinoColors.activeBlue.withValues(alpha: 0.1) : null,
                   leading: Icon(
                     isSelected ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
                     color: isSelected ? CupertinoColors.activeBlue : CupertinoColors.systemGrey,
@@ -872,9 +872,9 @@ class _MusicTasteDialogState extends State<MusicTasteDialog> {
               ),
               headingColor: isDark ? CupertinoColors.white : CupertinoColors.black,
               codeBackgroundColor: (isDark ? CupertinoColors.systemGrey6.darkColor : CupertinoColors.systemGrey6)
-                  .withOpacity(isDark ? 0.25 : 0.6),
+                  .withValues(alpha: isDark ? 0.25 : 0.6),
               codeBorderColor: (isDark ? CupertinoColors.systemGrey4.darkColor : CupertinoColors.systemGrey4)
-                  .withOpacity(isDark ? 0.5 : 0.8),
+                  .withValues(alpha: isDark ? 0.5 : 0.8),
             ),
             if (_tasteService.isStreaming) ...[
               const SizedBox(height: 8),

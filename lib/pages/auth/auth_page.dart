@@ -1,3 +1,4 @@
+import '../../services/structured_log_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -83,9 +84,9 @@ class AuthPage extends StatefulWidget {
 class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _selectedSegment = 0;
-  
+
   bool get _isCupertino => ThemeManager().isCupertinoFramework;
-  
+
   @override
   void initState() {
     super.initState();
@@ -97,7 +98,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
       }
     });
   }
-  
+
   @override
   void dispose() {
     _tabController.dispose();
@@ -135,7 +136,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
                       center: Alignment.topRight,
                       radius: 1.8,
                       colors: [
-                        colorScheme.primaryContainer.withOpacity(0.12),
+                        colorScheme.primaryContainer.withValues(alpha: 0.12),
                         Colors.transparent,
                       ],
                     ),
@@ -210,7 +211,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
         backgroundColor: isDark ? const Color(0xFF000000) : CupertinoColors.systemGroupedBackground,
         navigationBar: CupertinoNavigationBar(
           middle: const Text('账号'),
-          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withOpacity(0.9),
+          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withValues(alpha: 0.9),
           border: null,
         ),
         child: SafeArea(
@@ -302,7 +303,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: colorScheme.primary.withOpacity(0.25),
+                color: colorScheme.primary.withValues(alpha: 0.25),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -315,7 +316,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
           ),
         ),
         const SizedBox(height: 24),
-        
+
         // Title - 纯色设计，更大字号
         Text(
           'Cyrene Music',
@@ -351,7 +352,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
         borderRadius: BorderRadius.circular(3),
       ),
       indicatorSize: TabBarIndicatorSize.label,
-      dividerColor: colorScheme.outlineVariant.withOpacity(0.5),
+      dividerColor: colorScheme.outlineVariant.withValues(alpha: 0.5),
       labelColor: colorScheme.primary,
       unselectedLabelColor: colorScheme.onSurfaceVariant,
       labelStyle: const TextStyle(
@@ -465,16 +466,16 @@ class _LoginViewState extends State<_LoginView> {
             ),
           ),
         );
-        
+
         // 登录成功后，自动上报IP归属地
         _authFacade.updateLocation().then((locationResult) {
           if (locationResult['success']) {
-            print('✅ [AuthPage] IP归属地已更新: ${locationResult['data']?['location']}');
+            StructuredLogService.log('✅ [AuthPage] IP归属地已更新: ${locationResult['data']?['location']}');
           }
         }).catchError((error) {
-          print('❌ [AuthPage] IP归属地更新异常: $error');
+          StructuredLogService.log('❌ [AuthPage] IP归属地更新异常: $error');
         });
-        
+
         // 嵌入模式：不操作路由，由父级监听 AuthService 自行推进
         if (!widget.embedded) {
           if (AuthOverlayService().isVisible) {
@@ -511,7 +512,7 @@ class _LoginViewState extends State<_LoginView> {
         children: [
           // 顶部间距，避免与 Tab 指示器重叠
           const SizedBox(height: 24),
-          
+
           // 账号输入框
           _buildTextField(
             controller: _accountController,
@@ -582,7 +583,7 @@ class _LoginViewState extends State<_LoginView> {
           ),
 
           const SizedBox(height: 16),
-          
+
           // 提示文字
           Center(
             child: Text(
@@ -1058,9 +1059,9 @@ class _RegisterViewState extends State<_RegisterView> {
             onPressed: _handleRegister,
             colorScheme: colorScheme,
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // 用户协议
           Center(
             child: Text(
@@ -1094,7 +1095,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
   final _codeController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -1259,10 +1260,10 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: colorScheme.primaryContainer.withOpacity(0.5),
+              color: colorScheme.primaryContainer.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: colorScheme.primary.withOpacity(0.2),
+                color: colorScheme.primary.withValues(alpha: 0.2),
                 width: 1,
               ),
             ),
@@ -1417,7 +1418,7 @@ Widget _buildGradientButton({
   double? height,
 }) {
   final isEnabled = onPressed != null;
-  
+
   return Container(
     height: height ?? 54,
     decoration: BoxDecoration(
@@ -1426,7 +1427,7 @@ Widget _buildGradientButton({
       boxShadow: isEnabled
           ? [
               BoxShadow(
-                color: colorScheme.primary.withOpacity(0.25),
+                color: colorScheme.primary.withValues(alpha: 0.25),
                 blurRadius: 12,
                 offset: const Offset(0, 6),
               ),
@@ -1455,7 +1456,7 @@ Widget _buildGradientButton({
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.1,
-                    color: isEnabled ? Colors.white : colorScheme.onSurface.withOpacity(0.4),
+                    color: isEnabled ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.4),
                   ),
                 ),
         ),
@@ -1509,8 +1510,8 @@ Widget _buildTextField({
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(
-          icon, 
-          color: colorScheme.onSecondaryContainer, 
+          icon,
+          color: colorScheme.onSecondaryContainer,
           size: 20,
         ),
       ),
@@ -1724,7 +1725,7 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
           isDark: widget.isDark,
           suffix: CupertinoButton(
             padding: EdgeInsets.zero,
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             child: Icon(
               _obscurePassword ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill,
@@ -1767,7 +1768,7 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
         ),
 
         const SizedBox(height: 20),
-        
+
         // 提示文字
         Center(
           child: Text(
@@ -2078,7 +2079,7 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
           isDark: widget.isDark,
           suffix: CupertinoButton(
             padding: EdgeInsets.zero,
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             child: Icon(
               _obscurePassword ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill,
@@ -2098,7 +2099,7 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
           isDark: widget.isDark,
           suffix: CupertinoButton(
             padding: EdgeInsets.zero,
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
             child: Icon(
               _obscureConfirmPassword ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill,
@@ -2142,9 +2143,9 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
           isLoading: _isLoading,
           onPressed: _handleRegister,
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         Center(
           child: Text(
             '注册即表示您同意我们的服务条款和隐私政策',
@@ -2176,7 +2177,7 @@ class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordVi
   final _codeController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -2314,7 +2315,7 @@ class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordVi
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: CupertinoColors.activeBlue.withOpacity(0.1),
+            color: CupertinoColors.activeBlue.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
@@ -2382,7 +2383,7 @@ class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordVi
           isDark: widget.isDark,
           suffix: CupertinoButton(
             padding: EdgeInsets.zero,
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             child: Icon(
               _obscurePassword ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill,
@@ -2402,7 +2403,7 @@ class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordVi
           isDark: widget.isDark,
           suffix: CupertinoButton(
             padding: EdgeInsets.zero,
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
             child: Icon(
               _obscureConfirmPassword ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill,

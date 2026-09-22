@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
 
@@ -37,7 +38,7 @@ class RhythmService {
       });
       _isStarted = true;
     } catch (e) {
-      print('RhythmService Error starting: $e');
+      StructuredLogService.log('RhythmService Error starting: $e');
     }
   }
 
@@ -49,12 +50,12 @@ class RhythmService {
       await _subscription?.cancel();
       _subscription = null;
       _isStarted = false;
-      
+
       // 重置数据
       _smoothedBands = List.filled(16, 0.0);
       _bandsController.add(_smoothedBands);
     } catch (e) {
-      print('RhythmService Error stopping: $e');
+      StructuredLogService.log('RhythmService Error stopping: $e');
     }
   }
 
@@ -68,7 +69,7 @@ class RhythmService {
 
     _bandsController.add(List.from(_smoothedBands));
   }
-  
+
   /// 获取低频强度 (Bass) - 通常是前 3 个频段
   double get bassIntensity {
     if (_smoothedBands.isEmpty) return 0.0;

@@ -1,3 +1,4 @@
+import 'services/structured_log_service.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
@@ -57,7 +58,7 @@ Future<void> main() async {
   final startupLogger = StartupLogger.bootstrapSync(appName: 'CyreneMusic');
   startupLogger.log('main() entered');
   if (startupLogger.filePath != null && kDebugMode) {
-    print(' [StartupLogger] ${startupLogger.filePath}');
+    StructuredLogService.log(' [StartupLogger] ${startupLogger.filePath}');
   }
 
   await runZonedGuarded(
@@ -448,9 +449,9 @@ class _MyAppState extends State<MyApp> {
       // 获取所有可用的模式
       final modes = await FlutterDisplayMode.supported;
       if (modes.isNotEmpty) {
-        print(' [DisplayMode] 发现 ${modes.length} 个可用模式:');
+        StructuredLogService.log(' [DisplayMode] 发现 ${modes.length} 个可用模式:');
         for (var mode in modes) {
-          print(
+          StructuredLogService.log(
             '   - ID: ${mode.id}, ${mode.width}x${mode.height} @${mode.refreshRate.toStringAsFixed(0)}Hz',
           );
         }
@@ -464,7 +465,7 @@ class _MyAppState extends State<MyApp> {
           return curr;
         });
 
-        print(
+        StructuredLogService.log(
           ' [DisplayMode] 尝试设置最高刷新率模式: ID: ${optimalMode.id}, ${optimalMode.width}x${optimalMode.height} @${optimalMode.refreshRate.toStringAsFixed(0)}Hz',
         );
         await FlutterDisplayMode.setPreferredMode(optimalMode);
@@ -473,11 +474,11 @@ class _MyAppState extends State<MyApp> {
       }
 
       final activeMode = await FlutterDisplayMode.active;
-      print(
+      StructuredLogService.log(
         ' [DisplayMode] 最终激活模式: ${activeMode.width}x${activeMode.height} @${activeMode.refreshRate.toStringAsFixed(0)}Hz',
       );
     } catch (e) {
-      print(' [DisplayMode] 设置高刷新率失败: $e');
+      StructuredLogService.log(' [DisplayMode] 设置高刷新率失败: $e');
     }
   }
 
@@ -552,7 +553,7 @@ class _MyAppState extends State<MyApp> {
         MyApp.navigatorKey.currentState?.overlay?.context ??
         MyApp.navigatorKey.currentContext ??
         GlobalContextHolder.context;
-    if (recoveryContext != null) {
+    if (recoveryContext != null && recoveryContext.mounted) {
       await _handlePlaybackRecoveryAction(recoveryContext, problem, action);
     }
     if (_queuedPlaybackProblem != null) {
@@ -884,7 +885,7 @@ class _WindowsRoundedContainerState extends State<_WindowsRoundedContainer>
 
     // 正常窗口：8px 边距区域可拖动移动窗口
     return Container(
-      color: Theme.of(context).colorScheme.background,
+      color: Theme.of(context).colorScheme.surface,
       child: Stack(
         children: [
           // 底层：整个区域（含 8px 边距）可拖动

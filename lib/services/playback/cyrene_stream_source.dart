@@ -1,3 +1,7 @@
+// just_audio currently exposes custom stream sources as experimental APIs.
+// This source is required for decrypting cached audio while it is streamed.
+// ignore_for_file: experimental_member_use
+
 import 'dart:io';
 
 import 'package:just_audio/just_audio.dart' as ja;

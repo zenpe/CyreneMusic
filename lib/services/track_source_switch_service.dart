@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import '../models/track.dart';
 import '../models/playlist.dart';
@@ -181,7 +182,7 @@ class TrackSourceSwitchService extends ChangeNotifier {
           return [];
       }
     } catch (e) {
-      print('❌ [TrackSourceSwitchService] 搜索失败: $e');
+      StructuredLogService.log('❌ [TrackSourceSwitchService] 搜索失败: $e');
       rethrow;
     }
   }

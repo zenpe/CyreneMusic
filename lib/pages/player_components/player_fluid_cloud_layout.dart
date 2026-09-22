@@ -197,7 +197,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
                 child: Container(
-                  color: Colors.black.withOpacity(0.2), // 降低亮度以突出内容
+                  color: Colors.black.withValues(alpha: 0.2), // 降低亮度以突出内容
                 ),
               ),
             ),
@@ -425,10 +425,10 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
             width: 32,
             height: 80,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: Colors.white.withOpacity(0.25),
+                color: Colors.white.withValues(alpha: 0.25),
                 width: 1,
               ),
             ),
@@ -438,7 +438,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                 turns: _isLyricsCollapsed ? 0.5 : 0,
                 child: Icon(
                   CupertinoIcons.chevron_right,
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                   size: 20,
                 ),
               ),
@@ -470,7 +470,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withValues(alpha: 0.4),
               blurRadius: 40,
               offset: const Offset(0, 20),
             ),
@@ -609,7 +609,9 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                       Container(
                                         height: 3,
                                         decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.14),
+                                          color: Colors.white.withValues(
+                                            alpha: 0.14,
+                                          ),
                                           borderRadius: BorderRadius.circular(
                                             999,
                                           ),
@@ -622,8 +624,8 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                           child: Container(
                                             height: 3,
                                             decoration: BoxDecoration(
-                                              color: Colors.white.withOpacity(
-                                                0.32,
+                                              color: Colors.white.withValues(
+                                                alpha: 0.32,
                                               ),
                                               borderRadius:
                                                   BorderRadius.circular(999),
@@ -654,7 +656,9 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                         player.positionNotifier.value,
                                       ),
                                       style: TextStyle(
-                                        color: Colors.white.withOpacity(0.6),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.6,
+                                        ),
                                         fontSize: 12,
                                         fontWeight: FontWeight.bold,
                                         fontFamily: 'Consolas',
@@ -663,7 +667,9 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                     Text(
                                       _formatDuration(player.duration),
                                       style: TextStyle(
-                                        color: Colors.white.withOpacity(0.6),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.6,
+                                        ),
                                         fontSize: 12,
                                         fontWeight: FontWeight.bold,
                                         fontFamily: 'Consolas',
@@ -697,7 +703,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                           children: [
                             IconButton(
                               icon: const Icon(CupertinoIcons.backward_fill),
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withValues(alpha: 0.9),
                               iconSize: 36,
                               onPressed: player.hasPrevious
                                   ? player.playPrevious
@@ -723,7 +729,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                             const SizedBox(width: 24),
                             IconButton(
                               icon: const Icon(CupertinoIcons.forward_fill),
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withValues(alpha: 0.9),
                               iconSize: 36,
                               onPressed: player.hasNext
                                   ? player.playNext
@@ -823,7 +829,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                             Container(
                               height: 3,
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.14),
+                                color: Colors.white.withValues(alpha: 0.14),
                                 borderRadius: BorderRadius.circular(999),
                               ),
                             ),
@@ -834,7 +840,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                 child: Container(
                                   height: 3,
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.32),
+                                    color: Colors.white.withValues(alpha: 0.32),
                                     borderRadius: BorderRadius.circular(999),
                                   ),
                                 ),
@@ -861,7 +867,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                             Text(
                               _formatDuration(player.positionNotifier.value),
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.6),
+                                color: Colors.white.withValues(alpha: 0.6),
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                                 fontFamily: 'Consolas',
@@ -870,7 +876,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                             Text(
                               _formatDuration(player.duration),
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.6),
+                                color: Colors.white.withValues(alpha: 0.6),
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                                 fontFamily: 'Consolas',
@@ -909,7 +915,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                     // 上一首 - iOS 风格粗图标
                     IconButton(
                       icon: const Icon(CupertinoIcons.backward_fill),
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       iconSize: 36,
                       onPressed: player.hasPrevious
                           ? player.playPrevious
@@ -939,7 +945,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                     // 下一首 - iOS 风格粗图标
                     IconButton(
                       icon: const Icon(CupertinoIcons.forward_fill),
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       iconSize: 36,
                       onPressed: player.hasNext ? player.playNext : null,
                     ),
@@ -969,7 +975,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
             // 静音图标
             Icon(
               CupertinoIcons.speaker_fill,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               size: 16,
             ),
             const SizedBox(width: 8),
@@ -990,7 +996,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
             // 最大音量图标
             Icon(
               CupertinoIcons.speaker_3_fill,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               size: 16,
             ),
           ],
@@ -1006,7 +1012,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
         PlayerSpeedSelector(
           speed: player.playbackSpeed,
           onSelected: (value) => player.setPlaybackSpeed(value),
-          menuColor: Colors.black.withOpacity(0.85),
+          menuColor: Colors.black.withValues(alpha: 0.85),
           borderColor: Colors.white24,
           textColor: Colors.white,
           fontSize: 12,
@@ -1175,10 +1181,10 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w400,
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontFamily: 'Microsoft YaHei',
                       decoration: TextDecoration.underline,
-                      decorationColor: Colors.white.withOpacity(0.3),
+                      decorationColor: Colors.white.withValues(alpha: 0.3),
                     ),
                   ),
                 ),
@@ -1191,7 +1197,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                 ' / ',
                 style: TextStyle(
                   fontSize: 18,
-                  color: Colors.white.withOpacity(0.6),
+                  color: Colors.white.withValues(alpha: 0.6),
                   fontFamily: 'Microsoft YaHei',
                 ),
               ),
@@ -1241,6 +1247,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
       artistName,
     );
     if (id == null) {
+      if (!context.mounted) return;
       _searchInDialog(context, artistName);
       return;
     }
@@ -1251,9 +1258,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
     if (isFluent) {
       // Fluent UI 样式对话框
       final fluentTheme = fluent.FluentTheme.of(context);
-      final backgroundColor =
-          fluentTheme.micaBackgroundColor ??
-          fluentTheme.scaffoldBackgroundColor;
+      final backgroundColor = fluentTheme.micaBackgroundColor;
 
       fluent.showDialog(
         context: context,
@@ -1315,9 +1320,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
     if (isFluent) {
       // Fluent UI 样式对话框
       final fluentTheme = fluent.FluentTheme.of(context);
-      final backgroundColor =
-          fluentTheme.micaBackgroundColor ??
-          fluentTheme.scaffoldBackgroundColor;
+      final backgroundColor = fluentTheme.micaBackgroundColor;
 
       fluent.showDialog(
         context: context,
@@ -1466,7 +1469,7 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
           child: Text(
             '已收藏到: ${_playlistNames.join(", ")}',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.6),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 12,
             ),
           ),
@@ -1501,6 +1504,7 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
       if (value == 'remove') {
         _removeFromPlaylists();
       } else if (value == 'add') {
+        if (!context.mounted) return;
         PlayerDialogs.showAddToPlaylist(context, widget.track);
       }
     });
@@ -1544,7 +1548,7 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
             _isInPlaylist ? Icons.favorite : Icons.favorite_border,
             color: _isInPlaylist
                 ? Colors.redAccent
-                : Colors.white.withOpacity(0.7),
+                : Colors.white.withValues(alpha: 0.7),
             size: 26,
           ),
         ),
@@ -1562,17 +1566,17 @@ class _AppleMusicSlider extends StatefulWidget {
   final ValueChanged<double>? onChanged;
   final double min;
   final double max;
-  final Color activeColor;
-  final Color inactiveColor;
 
   const _AppleMusicSlider({
     required this.value,
     required this.onChanged,
     this.min = 0.0,
     this.max = 1.0,
-    this.activeColor = Colors.white,
-    this.inactiveColor = const Color(0x1FFFFFFF), // 约 12% 不透明度
   });
+
+  Color get activeColor => Colors.white;
+
+  Color get inactiveColor => const Color(0x1FFFFFFF); // 约 12% 不透明度
 
   @override
   State<_AppleMusicSlider> createState() => _AppleMusicSliderState();
@@ -1619,11 +1623,11 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider>
         builder: (context, child) {
           // 非悬停时，active track 颜色变得非常淡 (约 45%)，背景轨道则保持极致透明
           final currentActiveColor = _isHovering
-              ? widget.activeColor.withOpacity(0.8)
-              : widget.activeColor.withOpacity(0.45);
+              ? widget.activeColor.withValues(alpha: 0.8)
+              : widget.activeColor.withValues(alpha: 0.45);
 
           final currentInactiveColor = _isHovering
-              ? Colors.white.withOpacity(0.3)
+              ? Colors.white.withValues(alpha: 0.3)
               : widget.inactiveColor; // 默认即为 12%
 
           return SliderTheme(
@@ -1655,14 +1659,14 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider>
 
 /// 自定义圆形滑块，支持缩放动画
 class _AppleMusicThumbShape extends SliderComponentShape {
+  static const maxRadius = 6.0;
   final double scale;
-  final double maxRadius;
 
-  const _AppleMusicThumbShape({required this.scale, this.maxRadius = 6.0});
+  const _AppleMusicThumbShape({required this.scale});
 
   @override
   Size getPreferredSize(bool isEnabled, bool isDiscrete) {
-    return Size.fromRadius(maxRadius * scale);
+    return Size.fromRadius(6.0 * scale);
   }
 
   @override
@@ -1688,7 +1692,7 @@ class _AppleMusicThumbShape extends SliderComponentShape {
     final path = Path()
       ..addOval(Rect.fromCircle(center: center, radius: maxRadius * scale));
 
-    canvas.drawShadow(path, Colors.black.withOpacity(0.3), 3.0, true);
+    canvas.drawShadow(path, Colors.black.withValues(alpha: 0.3), 3.0, true);
 
     // 绘制白色圆点
     final Paint paint = Paint()

@@ -1,3 +1,4 @@
+import '../services/structured_log_service.dart';
 import '../models/lyric_line.dart';
 
 /// 歌词解析器
@@ -92,7 +93,7 @@ class LyricParser {
         }
       } catch (e) {
         // 解析失败，跳过该行
-        print('YRC解析失败: $line, 错误: $e');
+        StructuredLogService.log('YRC解析失败: $line, 错误: $e');
         continue;
       }
     }
@@ -102,7 +103,7 @@ class LyricParser {
 
     // 调试日志：确认解析了多少行逐字歌词
     final wordsCount = lines.where((l) => l.hasWordByWord).length;
-    print('[YRC解析] 总行数: ${lines.length}, 包含逐字数据: $wordsCount行');
+    StructuredLogService.log('[YRC解析] 总行数: ${lines.length}, 包含逐字数据: $wordsCount行');
 
     return lines;
   }
@@ -320,7 +321,7 @@ class LyricParser {
         }
       } catch (e) {
         // 解析失败，跳过该行
-        print('QRC解析失败: $line, 错误: $e');
+        StructuredLogService.log('QRC解析失败: $line, 错误: $e');
         continue;
       }
     }
@@ -330,7 +331,7 @@ class LyricParser {
 
     // 调试日志
     final wordsCount = lines.where((l) => l.hasWordByWord).length;
-    print('[QRC解析] 总行数: ${lines.length}, 包含逐字数据: $wordsCount行');
+    StructuredLogService.log('[QRC解析] 总行数: ${lines.length}, 包含逐字数据: $wordsCount行');
 
     return lines;
   }

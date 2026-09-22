@@ -25,13 +25,13 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
   Map<String, dynamic>? _wikiData;
   Map<String, dynamic>? _musicDetail;
   Map<String, dynamic>? _userMemory;
-  
+
   // 歌手相关数据 (支持多位歌手)
   List<Map<String, dynamic>> _artistsDataList = [];
-  
+
   bool _loading = true;
   dynamic _lastSongId;
-  
+
   // 歌单详情相关 (内嵌子视图)
   int? _selectedPlaylistId;
   NeteasePlaylistDetail? _playlistDetail;
@@ -57,7 +57,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
 
   Future<void> _loadSongData() async {
     final track = PlayerService().currentTrack;
-    
+
     if (track == null || track.source != MusicSource.netease) {
       if (mounted && _wikiData != null) {
         setState(() {
@@ -78,7 +78,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
       // 1. 获取所有歌手名
       final allArtistsName = track.artists;
       final artistNames = _splitArtists(allArtistsName);
-      
+
       // 2. 基础请求：网易云百科 + 用户回忆坐标
       final baseFutures = <Future<dynamic>>[
         NeteaseSongWikiService().fetchSongWiki(track.id),
@@ -87,23 +87,23 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
       ];
 
       final baseResults = await Future.wait(baseFutures);
-      
+
       // 3. 并行获取每位歌手的详情
       List<Map<String, dynamic>> newArtistsDataList = [];
-      
+
       final artistFutures = artistNames.map((name) async {
          try {
            final artistId = await NeteaseArtistDetailService().resolveArtistIdByName(name);
            if (artistId == null) return null;
-           
+
            final results = await Future.wait([
              NeteaseArtistDetailService().fetchArtistDesc(artistId),
              NeteaseArtistDetailService().fetchArtistDetail(artistId),
            ]);
-           
+
            final descData = results[0];
            final detailData = results[1];
-           
+
            String briefDesc = '';
            if (descData != null && descData['briefDesc'] != null) {
               briefDesc = descData['briefDesc'].toString();
@@ -111,16 +111,16 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
               final val = detailData['artist']['briefDesc'] ?? detailData['artist']['description'];
               briefDesc = val?.toString() ?? '';
            }
-           
+
            String avatarUrl = '';
            if (detailData != null && detailData['artist'] != null) {
               final artistObj = detailData['artist'];
               if (artistObj is Map) {
-                avatarUrl = artistObj['img1v1Url']?.toString() ?? 
+                avatarUrl = artistObj['img1v1Url']?.toString() ??
                             artistObj['picUrl']?.toString() ?? '';
               }
            }
-           
+
            List<Track> hotSongs = [];
            if (detailData != null && detailData['songs'] != null) {
              final songsData = detailData['songs'] as List<dynamic>;
@@ -136,7 +136,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                );
              }).toList();
            }
-           
+
            return {
              'name': name,
              'desc': briefDesc,
@@ -150,7 +150,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
       }).toList();
 
       final artistsResults = await Future.wait(artistFutures);
-      
+
       for (final item in artistsResults) {
         if (item != null) {
           newArtistsDataList.add(item);
@@ -162,7 +162,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
           _wikiData = baseResults[0] as Map<String, dynamic>?;
           _musicDetail = baseResults[1] as Map<String, dynamic>?;
           _userMemory = baseResults[2] as Map<String, dynamic>?;
-          
+
           _artistsDataList = newArtistsDataList;
 
           _loading = false;
@@ -196,16 +196,16 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
   Map<String, dynamic> _parseBasicInfo() {
     final basicBlock = _findBlock('SONG_PLAY_ABOUT_SONG_BASIC');
     final creatives = basicBlock?['creatives'] as List? ?? [];
-    
+
     List<String> styles = [];
     String language = '';
     String bpm = '';
-    
+
     for (final creative in creatives) {
       if (creative is! Map) continue;
       final creativeType = creative['creativeType']?.toString() ?? '';
       final uiElement = creative['uiElement'] as Map?;
-      
+
       if (creativeType == 'songTag') {
         final resources = creative['resources'] as List? ?? [];
         for (final res in resources) {
@@ -228,7 +228,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
         }
       }
     }
-    
+
     return {'styles': styles, 'language': language, 'bpm': bpm};
   }
 
@@ -236,22 +236,22 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
   Map<String, dynamic> _parseMemoryInfo() {
     final memoryBlock = _findBlock('SONG_PLAY_ABOUT_MUSIC_MEMORY');
     final creatives = memoryBlock?['creatives'] as List? ?? [];
-    
+
     String firstListenDate = '';
     String firstListenSeason = '';
     String firstListenPeriod = '';
     int playCount = 0;
     String playDescription = '';
-    
+
     for (final creative in creatives) {
       if (creative is! Map) continue;
       final resources = creative['resources'] as List? ?? [];
-      
+
       for (final res in resources) {
         if (res is! Map) continue;
         final resourceType = res['resourceType']?.toString() ?? '';
         final resourceExt = res['resourceExt'] as Map?;
-        
+
         if (resourceType == 'FIRST_LISTEN') {
           final dto = resourceExt?['musicFirstListenDto'] as Map?;
           if (dto != null) {
@@ -268,7 +268,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
         }
       }
     }
-    
+
     return {
       'firstListenDate': firstListenDate,
       'firstListenSeason': firstListenSeason,
@@ -282,36 +282,36 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
   List<Map<String, dynamic>> _parseSimilarSongs() {
     final similarBlock = _findBlock('SONG_PLAY_ABOUT_SIMILAR_SONG');
     final creatives = similarBlock?['creatives'] as List? ?? [];
-    
+
     List<Map<String, dynamic>> songs = [];
-    
+
     for (final creative in creatives) {
       if (creative is! Map) continue;
       final resources = creative['resources'] as List? ?? [];
-      
+
       for (final res in resources) {
         if (res is! Map) continue;
         if (res['resourceType'] != 'SONG') continue;
-        
+
         final uiElement = res['uiElement'] as Map?;
         if (uiElement == null) continue;
-        
+
         final title = uiElement['mainTitle']?['title']?.toString() ?? '';
-        
+
         final subTitles = uiElement['subTitles'] as List? ?? [];
         String artist = '';
         if (subTitles.isNotEmpty && subTitles[0] is Map) {
           artist = (subTitles[0] as Map)['title']?.toString() ?? '';
         }
-        
+
         final images = uiElement['images'] as List? ?? [];
         String imageUrl = '';
         if (images.isNotEmpty && images[0] is Map) {
           imageUrl = ((images[0] as Map)['imageUrl']?.toString() ?? '').replaceAll('http://', 'https://');
         }
-        
+
         final songId = res['resourceId']?.toString() ?? '';
-        
+
         if (title.isNotEmpty) {
           songs.add({
             'id': songId,
@@ -322,7 +322,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
         }
       }
     }
-    
+
     return songs.take(6).toList();
   }
 
@@ -330,35 +330,35 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
   List<Map<String, dynamic>> _parseRelatedPlaylists() {
     final relatedBlock = _findBlock('SONG_PLAY_ABOUT_RELATED_PLAYLIST');
     final creatives = relatedBlock?['creatives'] as List? ?? [];
-    
+
     List<Map<String, dynamic>> playlists = [];
-    
+
     for (final creative in creatives) {
       if (creative is! Map) continue;
       final resources = creative['resources'] as List? ?? [];
-      
+
       for (final res in resources) {
         if (res is! Map) continue;
         if (res['resourceType'] != 'PLAYLIST') continue;
-        
+
         final uiElement = res['uiElement'] as Map?;
         if (uiElement == null) continue;
-        
+
         final title = uiElement['mainTitle']?['title']?.toString() ?? '';
-        
+
         // 解析封面
         final images = uiElement['images'] as List? ?? [];
         String imageUrl = '';
         if (images.isNotEmpty && images[0] is Map) {
           imageUrl = ((images[0] as Map)['imageUrl']?.toString() ?? '').replaceAll('http://', 'https://');
         }
-        
+
         // 解析播放量
         final resourceExt = res['resourceExt'] as Map?;
         final playCount = resourceExt?['playCount'] ?? 0;
-        
+
         final playlistId = res['resourceId']?.toString() ?? '';
-        
+
         if (title.isNotEmpty) {
           playlists.add({
             'id': playlistId,
@@ -369,7 +369,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
         }
       }
     }
-    
+
     return playlists.take(6).toList(); // 移动端最多显示6个歌单
   }
 
@@ -386,7 +386,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
     } else {
       season = '冬天';
     }
-    
+
     String period;
     final hour = date.hour;
     if (hour >= 6 && hour < 12) {
@@ -400,7 +400,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
     } else {
       period = '深夜';
     }
-    
+
     return '$season · $period';
   }
 
@@ -414,7 +414,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
       return Center(
         child: Text(
           '暂无歌曲信息',
-          style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 16),
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 16),
         ),
       );
     }
@@ -437,17 +437,17 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
     final memoryInfo = _parseMemoryInfo();
     final similarSongs = _parseSimilarSongs();
     final relatedPlaylists = _parseRelatedPlaylists();
-    
+
     final styles = basicInfo['styles'] as List<String>;
     final language = basicInfo['language'] as String;
     final bpm = basicInfo['bpm'] as String;
-    
+
     // 优先使用用户自己的回忆坐标
     String firstListenDate = '';
     String firstListenDesc = '';
     int playCount = 0;
     String playDescription = '';
-    
+
     if (_userMemory != null) {
       final firstPlayedAt = _userMemory!['firstPlayedAt'] as String?;
       if (firstPlayedAt != null && firstPlayedAt.isNotEmpty) {
@@ -486,7 +486,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
         Text(
           track?.artists ?? '',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.6),
+            color: Colors.white.withValues(alpha: 0.6),
             fontSize: 16,
           ),
         ),
@@ -515,7 +515,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
+              color: Colors.white.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -524,7 +524,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                 if (firstListenDate.isNotEmpty) ...[
                   Row(
                     children: [
-                      Icon(Icons.access_time_rounded, color: Colors.white.withOpacity(0.6), size: 18),
+                      Icon(Icons.access_time_rounded, color: Colors.white.withValues(alpha: 0.6), size: 18),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -533,7 +533,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                             Text(
                               '第一次听',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.5),
+                                color: Colors.white.withValues(alpha: 0.5),
                                 fontSize: 11,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -557,7 +557,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                 if (playCount > 0) ...[
                   Row(
                     children: [
-                      Icon(Icons.replay_rounded, color: Colors.white.withOpacity(0.6), size: 18),
+                      Icon(Icons.replay_rounded, color: Colors.white.withValues(alpha: 0.6), size: 18),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -566,7 +566,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                             Text(
                               '累计播放 $playCount 次',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.5),
+                                color: Colors.white.withValues(alpha: 0.5),
                                 fontSize: 11,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -576,7 +576,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                               Text(
                                 playDescription,
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.8),
+                                  color: Colors.white.withValues(alpha: 0.8),
                                   fontSize: 12,
                                   fontStyle: FontStyle.italic,
                                 ),
@@ -624,13 +624,13 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
         // 歌手介绍
         if (_artistsDataList.isNotEmpty) ...[
           _buildSectionTitle('关于歌手'),
-          
+
           ..._artistsDataList.map((artistData) {
              final name = artistData['name'] as String;
              final desc = artistData['desc'] as String;
              final avatarUrl = artistData['avatarUrl'] as String;
              final hotSongs = artistData['hotSongs'] as List<Track>;
-             
+
              return Column(
                crossAxisAlignment: CrossAxisAlignment.start,
                children: [
@@ -650,11 +650,11 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                             memCacheHeight: 128,
                             placeholder: (context, url) => Container(
                               color: Colors.white10,
-                              child: Icon(CupertinoIcons.person_fill, size: 18, color: Colors.white.withOpacity(0.5)),
+                              child: Icon(CupertinoIcons.person_fill, size: 18, color: Colors.white.withValues(alpha: 0.5)),
                             ),
                             errorWidget: (context, url, error) => Container(
                               color: Colors.white10,
-                              child: Icon(CupertinoIcons.person_fill, size: 18, color: Colors.white.withOpacity(0.5)),
+                              child: Icon(CupertinoIcons.person_fill, size: 18, color: Colors.white.withValues(alpha: 0.5)),
                             ),
                           ),
                         )
@@ -664,17 +664,17 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                           height: 36,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.1),
+                            color: Colors.white.withValues(alpha: 0.1),
                           ),
-                          child: Icon(CupertinoIcons.person_fill, size: 18, color: Colors.white.withOpacity(0.6)),
+                          child: Icon(CupertinoIcons.person_fill, size: 18, color: Colors.white.withValues(alpha: 0.6)),
                         ),
-                        
+
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                          name,
                          style: TextStyle(
-                           color: Colors.white.withOpacity(0.9),
+                           color: Colors.white.withValues(alpha: 0.9),
                            fontSize: 16,
                            fontWeight: FontWeight.bold,
                          ),
@@ -683,13 +683,13 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                    ],
                  ),
                  const SizedBox(height: 12),
-                 
+
                  // 简介
                  if (desc.isNotEmpty) ...[
                    Text(
                      desc,
                      style: TextStyle(
-                       color: Colors.white.withOpacity(0.7),
+                       color: Colors.white.withValues(alpha: 0.7),
                        fontSize: 13,
                        height: 1.5,
                      ),
@@ -698,13 +698,13 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                    ),
                    const SizedBox(height: 16),
                  ],
-                 
+
                  // 热门作品
                  if (hotSongs.isNotEmpty) ...[
                     Text(
                       '$name 的热门作品',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.white.withValues(alpha: 0.5),
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
                       ),
@@ -712,18 +712,18 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                     const SizedBox(height: 8),
                     ...hotSongs.take(4).map((track) => _buildArtistSongItem(track)),
                  ],
-                 
+
                  // 分隔线
                  if (artistData != _artistsDataList.last)
                    Padding(
                      padding: const EdgeInsets.symmetric(vertical: 16),
-                     child: Divider(color: Colors.white.withOpacity(0.1), height: 1),
+                     child: Divider(color: Colors.white.withValues(alpha: 0.1), height: 1),
                    ),
                ],
              );
           }),
         ],
-        
+
         const SizedBox(height: 60), // 底部留白
       ],
     );
@@ -733,7 +733,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
     return Text(
       title,
       style: TextStyle(
-        color: Colors.white.withOpacity(0.9),
+        color: Colors.white.withValues(alpha: 0.9),
         fontSize: 18,
         fontWeight: FontWeight.bold,
       ),
@@ -748,7 +748,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.5),
+            color: Colors.white.withValues(alpha: 0.5),
             fontSize: 11,
             fontWeight: FontWeight.w500,
           ),
@@ -757,7 +757,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
@@ -777,14 +777,14 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
     final imageUrl = song['imageUrl'] as String? ?? '';
     final name = song['name'] as String? ?? '';
     final artist = song['artist'] as String? ?? '';
-    
+
     return GestureDetector(
       onTap: () => _playSimilarSong(song),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06),
+          color: Colors.white.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -810,14 +810,14 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                         width: 44,
                         height: 44,
                         color: Colors.white10,
-                        child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3), size: 20),
+                        child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3), size: 20),
                       ),
                     )
                   : Container(
                       width: 44,
                       height: 44,
                       color: Colors.white10,
-                      child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3), size: 20),
+                      child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3), size: 20),
                     ),
             ),
             const SizedBox(width: 12),
@@ -840,7 +840,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                   Text(
                     artist,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
+                      color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12,
                     ),
                     maxLines: 1,
@@ -858,7 +858,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
   void _playSimilarSong(Map<String, dynamic> song) {
     final songId = song['id']?.toString();
     if (songId == null || songId.isEmpty) return;
-    
+
     final track = Track(
       id: int.tryParse(songId) ?? 0,
       name: song['name']?.toString() ?? '',
@@ -867,7 +867,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
       picUrl: song['imageUrl']?.toString() ?? '',
       source: MusicSource.netease,
     );
-    
+
     // 使用 PlayerService 直接播放，与桌面端行为一致
     PlayerService().playTrack(track);
   }
@@ -879,7 +879,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -905,14 +905,14 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                         width: 36,
                         height: 36,
                         color: Colors.white10,
-                        child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3), size: 16),
+                        child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3), size: 16),
                       ),
                     )
                   : Container(
                       width: 36,
                       height: 36,
                       color: Colors.white10,
-                      child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3), size: 16),
+                      child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3), size: 16),
                     ),
             ),
             const SizedBox(width: 10),
@@ -967,12 +967,12 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                     memCacheWidth: 280,
                     memCacheHeight: 280,
                     placeholder: (_, __) => Container(
-                      color: Colors.white.withOpacity(0.1),
-                      child: Icon(Icons.queue_music, color: Colors.white.withOpacity(0.3), size: 28),
+                      color: Colors.white.withValues(alpha: 0.1),
+                      child: Icon(Icons.queue_music, color: Colors.white.withValues(alpha: 0.3), size: 28),
                     ),
                     errorWidget: (_, __, ___) => Container(
-                      color: Colors.white.withOpacity(0.1),
-                      child: Icon(Icons.queue_music, color: Colors.white.withOpacity(0.3), size: 28),
+                      color: Colors.white.withValues(alpha: 0.1),
+                      child: Icon(Icons.queue_music, color: Colors.white.withValues(alpha: 0.3), size: 28),
                     ),
                   ),
                   // 播放量标签
@@ -983,18 +983,18 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
+                          color: Colors.black.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.play_arrow, color: Colors.white.withOpacity(0.9), size: 10),
+                            Icon(Icons.play_arrow, color: Colors.white.withValues(alpha: 0.9), size: 10),
                             const SizedBox(width: 2),
                             Text(
                               playCountText,
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.9),
+                                color: Colors.white.withValues(alpha: 0.9),
                                 fontSize: 9,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -1014,7 +1014,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
             child: Text(
               playlist['name'] ?? '',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withValues(alpha: 0.9),
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -1030,17 +1030,17 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
   void _openPlaylist(Map<String, dynamic> playlist) async {
     final playlistId = playlist['id'];
     if (playlistId == null || playlistId.isEmpty) return;
-    
+
     final id = int.tryParse(playlistId);
     if (id == null) return;
-    
+
     // 立即切换到歌单详情视图，显示加载状态
     setState(() {
       _selectedPlaylistId = id;
       _loadingPlaylist = true;
       _playlistDetail = null;
     });
-    
+
     // 异步加载歌单详情
     try {
       final detail = await NeteaseDiscoverService().fetchPlaylistDetail(id);
@@ -1087,14 +1087,14 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                     children: [
                       Icon(
                         Icons.error_outline,
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.white.withValues(alpha: 0.5),
                         size: compact ? 34 : 40,
                       ),
                       SizedBox(height: compact ? 10 : 12),
                       Text(
                         '加载失败',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14),
                       ),
                       SizedBox(height: compact ? 12 : 16),
                       GestureDetector(
@@ -1105,12 +1105,12 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
+                            color: Colors.white.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Text(
                             '返回',
-                            style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13),
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
                           ),
                         ),
                       ),
@@ -1144,22 +1144,22 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.08),
+                color: Colors.white.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.arrow_back_ios, color: Colors.white.withOpacity(0.7), size: 14),
+                  Icon(Icons.arrow_back_ios, color: Colors.white.withValues(alpha: 0.7), size: 14),
                   const SizedBox(width: 4),
-                  Text('歌曲信息', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12)),
+                  Text('歌曲信息', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
                 ],
               ),
             ),
           ),
         ),
         const SizedBox(height: 20),
-        
+
         // 歌单封面和信息
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1177,8 +1177,8 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                 memCacheHeight: 200,
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Container(
-                  color: Colors.white.withOpacity(0.1),
-                  child: Icon(Icons.queue_music, color: Colors.white.withOpacity(0.3), size: 36),
+                  color: Colors.white.withValues(alpha: 0.1),
+                  child: Icon(Icons.queue_music, color: Colors.white.withValues(alpha: 0.3), size: 36),
                 ),
               ),
             ),
@@ -1196,18 +1196,18 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                   const SizedBox(height: 6),
                   Text(
                     detail.creator,
-                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
                   ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      Icon(Icons.play_circle_outline, color: Colors.white.withOpacity(0.5), size: 13),
+                      Icon(Icons.play_circle_outline, color: Colors.white.withValues(alpha: 0.5), size: 13),
                       const SizedBox(width: 3),
-                      Text(playCountText, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10)),
+                      Text(playCountText, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10)),
                       const SizedBox(width: 10),
-                      Icon(Icons.music_note_outlined, color: Colors.white.withOpacity(0.5), size: 13),
+                      Icon(Icons.music_note_outlined, color: Colors.white.withValues(alpha: 0.5), size: 13),
                       const SizedBox(width: 3),
-                      Text('${detail.trackCount}首', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10)),
+                      Text('${detail.trackCount}首', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10)),
                     ],
                   ),
                 ],
@@ -1215,9 +1215,9 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
             ),
           ],
         ),
-        
+
         const SizedBox(height: 20),
-        
+
         // 播放全部按钮
         GestureDetector(
           onTap: () {
@@ -1229,29 +1229,29 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.12),
+              color: Colors.white.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             alignment: Alignment.center,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.play_arrow_rounded, color: Colors.white.withOpacity(0.85), size: 20),
+                Icon(Icons.play_arrow_rounded, color: Colors.white.withValues(alpha: 0.85), size: 20),
                 const SizedBox(width: 6),
                 Text(
                   '播放全部',
-                  style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 13, fontWeight: FontWeight.w600),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 13, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
           ),
         ),
-        
+
         const SizedBox(height: 20),
-        
+
         // 歌曲列表
         ...detail.tracks.take(50).map((track) => _buildPlaylistTrackTile(track, detail.tracks)).toList(),
-        
+
         const SizedBox(height: 60),
       ],
     );
@@ -1282,8 +1282,8 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                 memCacheWidth: 128,
                 memCacheHeight: 128,
                 placeholder: (_, __) => Container(
-                  color: Colors.white.withOpacity(0.1),
-                  child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3), size: 16),
+                  color: Colors.white.withValues(alpha: 0.1),
+                  child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3), size: 16),
                 ),
               ),
             ),
@@ -1301,7 +1301,7 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
                   const SizedBox(height: 2),
                   Text(
                     track.artists,
-                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

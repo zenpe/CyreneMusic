@@ -17,22 +17,22 @@ class _BackgroundSectionState extends State<BackgroundSection> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return AnimatedBuilder(
       animation: PlayerBackgroundService(),
       builder: (context, _) {
         final bgService = PlayerBackgroundService();
         final currentType = bgService.backgroundType;
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withOpacity(isDark ? 0.6 : 0.8),
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: colorScheme.outlineVariant.withOpacity(0.3),
+                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -60,7 +60,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                   ],
                 ),
                 const SizedBox(height: 18),
-                
+
                 // 基础背景选项 - 胶囊芯片
                 Wrap(
                   spacing: 10,
@@ -89,13 +89,13 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                     ),
                   ],
                 ),
-                
+
                 // 纯色选择器
                 if (currentType == PlayerBackgroundType.solidColor) ...[
                   const SizedBox(height: 16),
                   _buildSolidColorPicker(bgService, colorScheme, isDark),
                 ],
-                
+
                 const SizedBox(height: 20),
 
                 // 背景媒体选项
@@ -105,7 +105,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                   children: [
                     _buildPillChip(
                       icon: Icons.image_rounded,
-                      label: bgService.mediaPath != null && bgService.isImage 
+                      label: bgService.mediaPath != null && bgService.isImage
                           ? '图片 ✓' : '图片',
                       isSelected: currentType == PlayerBackgroundType.image,
                       onTap: () => bgService.setBackgroundType(PlayerBackgroundType.image),
@@ -113,7 +113,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                     ),
                     _buildPillChip(
                       icon: Icons.video_library_rounded,
-                      label: bgService.mediaPath != null && bgService.isVideo 
+                      label: bgService.mediaPath != null && bgService.isVideo
                           ? '视频 ✓' : '视频',
                       isSelected: currentType == PlayerBackgroundType.video,
                       onTap: () => bgService.setBackgroundType(PlayerBackgroundType.video),
@@ -121,9 +121,9 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                     ),
                   ],
                 ),
-                
+
                 // 图片/视频设置
-                if ((currentType == PlayerBackgroundType.image || 
+                if ((currentType == PlayerBackgroundType.image ||
                      currentType == PlayerBackgroundType.video)) ...[
                   const SizedBox(height: 16),
                   _buildMediaBackgroundSettings(bgService, currentType, colorScheme, isDark),
@@ -145,10 +145,10 @@ class _BackgroundSectionState extends State<BackgroundSection> {
     required ColorScheme colorScheme,
     bool isDisabled = false,
   }) {
-    final effectiveColor = isDisabled 
-        ? colorScheme.outline 
+    final effectiveColor = isDisabled
+        ? colorScheme.outline
         : (isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant);
-    
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -159,22 +159,22 @@ class _BackgroundSectionState extends State<BackgroundSection> {
               ? LinearGradient(
                   colors: [
                     colorScheme.primaryContainer,
-                    colorScheme.primaryContainer.withOpacity(0.7),
+                    colorScheme.primaryContainer.withValues(alpha: 0.7),
                   ],
                 )
               : null,
           color: isSelected ? null : colorScheme.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: isSelected 
-                ? colorScheme.primary 
-                : colorScheme.outlineVariant.withOpacity(0.3),
+            color: isSelected
+                ? colorScheme.primary
+                : colorScheme.outlineVariant.withValues(alpha: 0.3),
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected && !isDisabled
               ? [
                   BoxShadow(
-                    color: colorScheme.primary.withOpacity(0.2),
+                    color: colorScheme.primary.withValues(alpha: 0.2),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -220,11 +220,11 @@ class _BackgroundSectionState extends State<BackgroundSection> {
       Colors.orange[900]!,
       Colors.teal[900]!,
     ];
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHigh.withOpacity(0.6),
+        color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -268,7 +268,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
@@ -307,7 +307,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: color.withOpacity(0.4),
+                    color: color.withValues(alpha: 0.4),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -327,7 +327,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
     ColorScheme colorScheme,
   ) async {
     Color pickerColor = bgService.solidColor;
-    
+
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -360,6 +360,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
           FilledButton(
             onPressed: () async {
               await bgService.setSolidColor(pickerColor);
+              if (!context.mounted) return;
               setState(() {});
               if (mounted) {
                 Navigator.pop(context);
@@ -380,11 +381,11 @@ class _BackgroundSectionState extends State<BackgroundSection> {
     bool isDark,
   ) {
     final isVideo = currentType == PlayerBackgroundType.video;
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHigh.withOpacity(0.6),
+        color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -449,9 +450,9 @@ class _BackgroundSectionState extends State<BackgroundSection> {
               ],
             ],
           ),
-          
+
           const SizedBox(height: 18),
-          
+
           // 模糊程度调节
           Row(
             children: [
@@ -459,7 +460,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: colorScheme.primary.withOpacity(0.15),
+                  color: colorScheme.primary.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -484,8 +485,8 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      colorScheme.primary.withOpacity(0.2),
-                      colorScheme.primary.withOpacity(0.1),
+                      colorScheme.primary.withValues(alpha: 0.2),
+                      colorScheme.primary.withValues(alpha: 0.1),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(12),
@@ -507,7 +508,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
               activeTrackColor: colorScheme.primary,
               inactiveTrackColor: colorScheme.surfaceContainerHighest,
               thumbColor: colorScheme.primary,
-              overlayColor: colorScheme.primary.withOpacity(0.15),
+              overlayColor: colorScheme.primary.withValues(alpha: 0.15),
               trackHeight: 6,
               thumbShape: const RoundSliderThumbShape(
                 enabledThumbRadius: 10,
@@ -554,7 +555,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
       final mediaPath = result.files.single.path!;
       await bgService.setMediaBackground(mediaPath);
       setState(() {});
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

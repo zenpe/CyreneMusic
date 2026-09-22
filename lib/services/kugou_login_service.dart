@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'api/api_client.dart';
 
@@ -162,7 +163,7 @@ class KugouLoginService extends ChangeNotifier {
     };
 
     if (kDebugMode) {
-      print('[KugouLoginService] checkQrStatus 请求: /kugou/login/qr/check $queryParams');
+      StructuredLogService.log('[KugouLoginService] checkQrStatus 请求: /kugou/login/qr/check $queryParams');
     }
 
     final r = await ApiClient().getJson(
@@ -175,7 +176,7 @@ class KugouLoginService extends ChangeNotifier {
     final data = r.data as Map<String, dynamic>? ?? {};
 
     if (kDebugMode) {
-      print('[KugouLoginService] checkQrStatus 响应: statusCode=${r.statusCode}, data=$data');
+      StructuredLogService.log('[KugouLoginService] checkQrStatus 响应: statusCode=${r.statusCode}, data=$data');
     }
 
     if (!r.ok) {
@@ -191,7 +192,7 @@ class KugouLoginService extends ChangeNotifier {
     }
 
     if (kDebugMode) {
-      print('[KugouLoginService] checkQrStatus 解析结果: status=$statusVal');
+      StructuredLogService.log('[KugouLoginService] checkQrStatus 解析结果: status=$statusVal');
     }
 
     final result = KugouQrCheckResult(

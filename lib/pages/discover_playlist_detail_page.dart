@@ -333,7 +333,7 @@ class _DiscoverPlaylistDetailContentState
                   track,
                   coverProvider: coverProvider,
                 );
-                if (mounted) {
+                if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('正在加载：${track.name}'),
@@ -355,7 +355,7 @@ class _DiscoverPlaylistDetailContentState
     if (playlistService.playlists.isEmpty) {
       await playlistService.loadPlaylists();
     }
-    if (!mounted) return;
+    if (!context.mounted) return;
     final target = await showDialog<Playlist>(
       context: context,
       builder: (context) => AlertDialog(
@@ -402,7 +402,7 @@ class _DiscoverPlaylistDetailContentState
       if (!postResp.ok) {
         throw Exception('同步失败: HTTP ${postResp.statusCode}');
       }
-      if (!mounted) return;
+      if (!context.mounted) return;
       fluent.displayInfoBar(
         context,
         builder: (context, close) => fluent.InfoBar(
@@ -415,7 +415,7 @@ class _DiscoverPlaylistDetailContentState
         ),
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       final themeManager = ThemeManager();
       if (themeManager.isFluentFramework) {
         await fluent.showDialog(
@@ -593,7 +593,7 @@ class _DiscoverPlaylistDetailContentState
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: CupertinoColors.black.withOpacity(isDark ? 0.3 : 0.05),
+            color: CupertinoColors.black.withValues(alpha: isDark ? 0.3 : 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -679,7 +679,7 @@ class _DiscoverPlaylistDetailContentState
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: CupertinoColors.systemBlue.withOpacity(
+                              color: CupertinoColors.systemBlue.withValues(alpha:
                                 0.1,
                               ),
                               borderRadius: BorderRadius.circular(12),
@@ -887,7 +887,7 @@ class _DiscoverPlaylistDetailContentState
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: CupertinoColors.systemGrey.withOpacity(0.8),
+                        color: CupertinoColors.systemGrey.withValues(alpha: 0.8),
                       ),
                     ),
                   ],
@@ -920,7 +920,7 @@ class _DiscoverPlaylistDetailContentState
     final coverProvider = _coverProviderCache[_coverKey(track)];
     await PlayerService().playTrack(track, coverProvider: coverProvider);
 
-    if (mounted) {
+    if (context.mounted) {
       // iOS 风格的提示
       showCupertinoModalPopup(
         context: context,
@@ -957,7 +957,7 @@ class _DiscoverPlaylistDetailContentState
       );
       // 自动关闭提示
       Future.delayed(const Duration(seconds: 2), () {
-        if (mounted && Navigator.of(context).canPop()) {
+        if (context.mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         }
       });
@@ -1005,7 +1005,7 @@ class _DiscoverPlaylistDetailContentState
     if (playlistService.playlists.isEmpty) {
       await playlistService.loadPlaylists();
     }
-    if (!mounted) return;
+    if (!context.mounted) return;
 
     // iOS 风格的歌单选择对话框
     final target = await showCupertinoModalPopup<Playlist>(
@@ -1167,7 +1167,7 @@ class _DiscoverPlaylistDetailContentState
       if (!postResp.ok) {
         throw Exception('同步失败: HTTP ${postResp.statusCode}');
       }
-      if (!mounted) return;
+      if (!context.mounted) return;
 
       // iOS 风格的成功提示
       showCupertinoDialog(
@@ -1185,7 +1185,7 @@ class _DiscoverPlaylistDetailContentState
         ),
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
 
       // iOS 风格的错误提示
       showCupertinoDialog(
@@ -1403,13 +1403,13 @@ class _DiscoverPlaylistDetailContentState
           end: Alignment.bottomRight,
           colors: [
             cs.surfaceContainerHigh,
-            cs.surfaceContainerHighest.withOpacity(0.8),
+            cs.surfaceContainerHighest.withValues(alpha: 0.8),
           ],
         ),
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -1426,7 +1426,7 @@ class _DiscoverPlaylistDetailContentState
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
+                    color: Colors.black.withValues(alpha: 0.15),
                     blurRadius: 12,
                     offset: const Offset(0, 6),
                   ),
@@ -1455,7 +1455,7 @@ class _DiscoverPlaylistDetailContentState
                     child: Icon(
                       Icons.music_note,
                       size: 48,
-                      color: cs.onSurface.withOpacity(0.3),
+                      color: cs.onSurface.withValues(alpha: 0.3),
                     ),
                   ),
                 ),
@@ -1540,7 +1540,7 @@ class _DiscoverPlaylistDetailContentState
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: cs.surfaceContainerHigh.withOpacity(0.5),
+            color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(24),
           ),
           child: Column(
@@ -1558,7 +1558,7 @@ class _DiscoverPlaylistDetailContentState
                             vertical: 5,
                           ),
                           decoration: BoxDecoration(
-                            color: cs.primaryContainer.withOpacity(0.6),
+                            color: cs.primaryContainer.withValues(alpha: 0.6),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
@@ -1584,7 +1584,7 @@ class _DiscoverPlaylistDetailContentState
                       : TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 14,
-                    color: cs.onSurface.withOpacity(0.7),
+                    color: cs.onSurface.withValues(alpha: 0.7),
                     height: 1.5,
                   ),
                 ),
@@ -1667,7 +1667,7 @@ class _DiscoverPlaylistDetailContentState
                   '点击即刻聆听',
                   style: TextStyle(
                     fontSize: 11,
-                    color: cs.onSurface.withOpacity(0.5),
+                    color: cs.onSurface.withValues(alpha: 0.5),
                   ),
                 ),
               ],
@@ -1732,7 +1732,7 @@ class _DiscoverPlaylistDetailContentState
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 6,
                         offset: const Offset(0, 2),
                       ),
@@ -1776,7 +1776,7 @@ class _DiscoverPlaylistDetailContentState
                         child: Icon(
                           Icons.music_note,
                           size: 24,
-                          color: cs.onSurface.withOpacity(0.3),
+                          color: cs.onSurface.withValues(alpha: 0.3),
                         ),
                       ),
                     ),
@@ -1805,7 +1805,7 @@ class _DiscoverPlaylistDetailContentState
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 14,
-                          color: cs.onSurface.withOpacity(0.7),
+                          color: cs.onSurface.withValues(alpha: 0.7),
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1815,7 +1815,7 @@ class _DiscoverPlaylistDetailContentState
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12,
-                          color: cs.onSurface.withOpacity(0.5),
+                          color: cs.onSurface.withValues(alpha: 0.5),
                         ),
                       ),
                     ],
@@ -1849,7 +1849,7 @@ class _DiscoverPlaylistDetailContentState
     final coverProvider = _coverProviderCache[_coverKey(track)];
     await PlayerService().playTrack(track, coverProvider: coverProvider);
 
-    if (mounted) {
+    if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('正在加载：${track.name}'),
@@ -1908,7 +1908,7 @@ class _DiscoverPlaylistDetailContentState
               detail.description,
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
-              style: fluent.FluentTheme.of(context).typography?.body?.copyWith(
+              style: fluent.FluentTheme.of(context).typography.body?.copyWith(
                 color: fluent.FluentTheme.of(
                   context,
                 ).resources.textFillColorSecondary,
@@ -1974,7 +1974,7 @@ class _DiscoverPlaylistDetailContentState
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style:
-                    (typography?.subtitle ??
+                    (typography.subtitle ??
                             const TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w600,
@@ -1984,7 +1984,7 @@ class _DiscoverPlaylistDetailContentState
               const SizedBox(height: 6),
               Text(
                 'by ${detail.creator}',
-                style: (typography?.body ?? const TextStyle(fontSize: 14))
+                 style: (typography.body ?? const TextStyle(fontSize: 14))
                     .copyWith(color: resources.textFillColorSecondary),
               ),
               const SizedBox(height: 6),
@@ -2057,7 +2057,7 @@ class _DiscoverPlaylistDetailContentState
     final coverProvider = _coverProviderCache[_coverKey(track)];
     await PlayerService().playTrack(track, coverProvider: coverProvider);
 
-    if (mounted) {
+    if (context.mounted) {
       fluent.displayInfoBar(
         context,
         builder: (context, close) => fluent.InfoBar(

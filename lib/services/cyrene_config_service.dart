@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:pointycastle/pointycastle.dart';
@@ -31,7 +32,7 @@ class CyreneConfig {
 }
 
 /// Cyrene 配置文件服务
-/// 
+///
 /// 用于解析和解密 .cyrene 配置文件
 class CyreneConfigService {
   // 单例模式
@@ -51,9 +52,9 @@ class CyreneConfigService {
   static const int _supportedVersion = 1;
 
   /// 解密 .cyrene 配置文件
-  /// 
+  ///
   /// [data] - .cyrene 文件的原始字节数据
-  /// 
+  ///
   /// 返回解密后的配置，如果解密失败则返回 null
   CyreneConfig? decrypt(Uint8List data) {
     try {
@@ -80,7 +81,7 @@ class CyreneConfigService {
 
       return CyreneConfig.fromJson(json);
     } catch (e) {
-      print('CyreneConfigService: 解密失败 - $e');
+      StructuredLogService.log('CyreneConfigService: 解密失败 - $e');
       return null;
     }
   }
@@ -89,14 +90,14 @@ class CyreneConfigService {
   bool _validateFormat(Uint8List data) {
     // 最小文件大小: 魔数(4) + 版本(1) + IV(12) + 最小数据(1) + AuthTag(16) = 34 字节
     if (data.length < 34) {
-      print('CyreneConfigService: 文件太小');
+      StructuredLogService.log('CyreneConfigService: 文件太小');
       return false;
     }
 
     // 检查魔数
     for (int i = 0; i < 4; i++) {
       if (data[i] != _magicNumber[i]) {
-        print('CyreneConfigService: 魔数不匹配');
+        StructuredLogService.log('CyreneConfigService: 魔数不匹配');
         return false;
       }
     }
@@ -104,7 +105,7 @@ class CyreneConfigService {
     // 检查版本
     final version = data[4];
     if (version != _supportedVersion) {
-      print('CyreneConfigService: 不支持的版本 $version');
+      StructuredLogService.log('CyreneConfigService: 不支持的版本 $version');
       return false;
     }
 
@@ -141,7 +142,7 @@ class CyreneConfigService {
 
       return decrypted.sublist(0, actualLength);
     } catch (e) {
-      print('CyreneConfigService: AES-GCM 解密失败 - $e');
+      StructuredLogService.log('CyreneConfigService: AES-GCM 解密失败 - $e');
       return null;
     }
   }

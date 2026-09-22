@@ -762,8 +762,9 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
     final tracks = await _buildAlbumTracks(album);
     if (tracks.isEmpty) return;
     PlaylistQueueService().appendToQueue(tracks);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+    final pageContext = context;
+    if (pageContext.mounted) {
+      ScaffoldMessenger.of(pageContext).showSnackBar(
         const SnackBar(content: Text('已加入播放队列')),
       );
     }
@@ -1070,7 +1071,7 @@ class _NavidromeAlbumPageState extends State<NavidromeAlbumPage> {
                               gradient: LinearGradient(
                                 colors: [
                                   navTheme.isDark
-                                      ? colorScheme.primaryContainer.withOpacity(0.45)
+                                      ? colorScheme.primaryContainer.withValues(alpha: 0.45)
                                       : NavidromeColors.lightBackground,
                                   navTheme.isDark
                                       ? colorScheme.surface

@@ -338,7 +338,7 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
   }
 
   String _cacheBaseKey() {
-    final userId = _authFacade.currentUser?.id?.toString() ?? 'guest';
+    final userId = _authFacade.currentUser?.id.toString() ?? 'guest';
     return 'home_for_you_$userId';
   }
 

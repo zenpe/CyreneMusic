@@ -1,3 +1,4 @@
+import '../services/structured_log_service.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -17,7 +18,7 @@ class MetadataReader {
         return await _extractMp3Lyrics(file);
       }
     } catch (e) {
-      print('❌ [MetadataReader] 提取歌词失败: $e');
+      StructuredLogService.log('❌ [MetadataReader] 提取歌词失败: $e');
     }
     return null;
   }
@@ -49,7 +50,7 @@ class MetadataReader {
   static String? _parseVorbisComment(Uint8List block) {
     try {
       int offset = 0;
-      
+
       // Vendor string
       final vendorLength = block[offset] | (block[offset + 1] << 8) | (block[offset + 2] << 16) | (block[offset + 3] << 24);
       offset += 4 + vendorLength;
@@ -61,7 +62,7 @@ class MetadataReader {
       for (int i = 0; i < commentListLength; i++) {
         final commentLength = block[offset] | (block[offset + 1] << 8) | (block[offset + 2] << 16) | (block[offset + 3] << 24);
         offset += 4;
-        
+
         final comment = utf8.decode(block.sublist(offset, offset + commentLength), allowMalformed: true);
         offset += commentLength;
 
@@ -71,7 +72,7 @@ class MetadataReader {
         }
       }
     } catch (e) {
-      print('❌ [MetadataReader] 解析 VorbisComment 失败: $e');
+      StructuredLogService.log('❌ [MetadataReader] 解析 VorbisComment 失败: $e');
     }
     return null;
   }
@@ -83,14 +84,14 @@ class MetadataReader {
 
     // ID3v2 头部大小计算 (syncsafe)
     final tagSize = ((bytes[6] & 0x7F) << 21) | ((bytes[7] & 0x7F) << 14) | ((bytes[8] & 0x7F) << 7) | (bytes[9] & 0x7F);
-    
+
     int offset = 10;
     final end = 10 + tagSize;
 
     while (offset + 10 < end) {
       final frameId = utf8.decode(bytes.sublist(offset, offset + 4), allowMalformed: true);
       final frameSize = (bytes[offset + 4] << 24) | (bytes[offset + 5] << 16) | (bytes[offset + 6] << 8) | bytes[offset + 7];
-      
+
       if (frameId == 'USLT') {
         final frameContent = bytes.sublist(offset + 10, offset + 10 + frameSize);
         return _parseUsltFrame(frameContent);
@@ -109,7 +110,7 @@ class MetadataReader {
       final encoding = content[0];
       // 1-3 bytes: language ('eng' etc.)
       const langSize = 3;
-      
+
       // 寻找内容描述符后的结束符 (0x00)
       int lyricsStart = 1 + langSize;
       while (lyricsStart < content.length && content[lyricsStart] != 0) {
@@ -128,7 +129,7 @@ class MetadataReader {
         return String.fromCharCodes(lyricsData.buffer.asUint16List());
       }
     } catch (e) {
-      print('❌ [MetadataReader] 解析 USLT 帧失败: $e');
+      StructuredLogService.log('❌ [MetadataReader] 解析 USLT 帧失败: $e');
     }
     return null;
   }

@@ -3,10 +3,7 @@ part of 'search_widget.dart';
 extension _SearchWidgetFluent on _SearchWidgetState {
   Widget _buildFluentSearch(BuildContext context, SearchResult searchResult) {
     final fluentTheme = fluent.FluentTheme.of(context);
-    final overlayBackground =
-        fluentTheme.micaBackgroundColor ??
-        fluentTheme.scaffoldBackgroundColor ??
-        Colors.transparent;
+    final overlayBackground = fluentTheme.micaBackgroundColor;
 
     return SafeArea(
       bottom: false,
@@ -39,14 +36,12 @@ extension _SearchWidgetFluent on _SearchWidgetState {
   }
 
   Widget _buildFluentSearchBar(fluent.FluentThemeData theme) {
-    final dividerColor =
-        theme.resources?.dividerStrokeColorDefault ??
-        Colors.black.withOpacity(0.06);
+    final dividerColor = theme.resources.dividerStrokeColorDefault;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: theme.micaBackgroundColor ?? theme.scaffoldBackgroundColor,
+        color: theme.micaBackgroundColor,
         border: Border(bottom: BorderSide(color: dividerColor, width: 1)),
       ),
       child: Row(
@@ -109,7 +104,7 @@ extension _SearchWidgetFluent on _SearchWidgetState {
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: dotColor.withOpacity(0.3),
+                color: dotColor.withValues(alpha: 0.3),
                 blurRadius: 4,
                 spreadRadius: 1,
               ),
@@ -180,7 +175,7 @@ extension _SearchWidgetFluent on _SearchWidgetState {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () {
-            setState(() {
+            _refreshState(() {
               _secondaryArtistId = artist.id;
               _secondaryArtistName = artist.name;
             });
@@ -346,7 +341,7 @@ class _FluentPivotTabs extends StatelessWidget {
               final isHovering = states.contains(WidgetState.hovered);
               final textColor = isSelected
                   ? theme.typography.body?.color
-                  : theme.typography.body?.color?.withOpacity(0.7);
+                  : theme.typography.body?.color?.withValues(alpha: 0.7);
 
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -376,4 +371,3 @@ class _FluentPivotTabs extends StatelessWidget {
     );
   }
 }
-

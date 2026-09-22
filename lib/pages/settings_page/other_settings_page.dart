@@ -62,7 +62,7 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
         final credentials = AuthCredentialsService();
         final canToggleAutoPlay = settings.restorePlaybackSessionOnStartup;
         return ListView(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 120),
           children: [
             MD3SettingsSection(
               title: '启动行为',
@@ -199,7 +199,7 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
     return CupertinoPageScaffold(
       backgroundColor: backgroundColor,
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: backgroundColor.withOpacity(0.8),
+        backgroundColor: backgroundColor.withValues(alpha: 0.8),
         border: null,
         leading: CupertinoButton(
           padding: EdgeInsets.zero,

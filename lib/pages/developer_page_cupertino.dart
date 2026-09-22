@@ -12,7 +12,7 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
         backgroundColor: isDark ? CupertinoColors.black : CupertinoColors.systemGroupedBackground,
         navigationBar: CupertinoNavigationBar(
           middle: const Text('开发者模式'),
-          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withOpacity(0.9),
+          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withValues(alpha: 0.9),
           border: null,
           trailing: CupertinoButton(
             padding: EdgeInsets.zero,
@@ -31,7 +31,7 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
                   groupValue: _cupertinoTabIndex,
                   onValueChanged: (value) {
                     if (value != null) {
-                      setState(() => _cupertinoTabIndex = value);
+                      _refreshState(() => _cupertinoTabIndex = value);
                     }
                   },
                   children: const {
@@ -408,7 +408,7 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
             trailing: CupertinoSwitch(
               value: DeveloperModeService().isSearchResultMergeEnabled,
               onChanged: (value) {
-                setState(() {
+                _refreshState(() {
                   DeveloperModeService().toggleSearchResultMerge(value);
                 });
               },
@@ -429,7 +429,7 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
             trailing: CupertinoSwitch(
               value: DeveloperModeService().showPerformanceOverlay,
               onChanged: (value) {
-                setState(() {
+                _refreshState(() {
                   DeveloperModeService().togglePerformanceOverlay(value);
                 });
               },

@@ -5,7 +5,6 @@ import 'package:window_manager/window_manager.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/models/toplist.dart';
-import 'package:cyrene_music/widgets/track_list_tile.dart';
 import 'package:cyrene_music/features/auth/auth_feature.dart';
 import '../../widgets/track_action_menu.dart';
 import 'package:cyrene_music/utils/theme_manager.dart';
@@ -35,12 +34,12 @@ void showToplistDetail(BuildContext context, Toplist toplist) {
 /// 桌面端：从左侧弹出侧边栏（Fluent UI 样式）
 void _showToplistDetailSidebarFluent(BuildContext context, Toplist toplist) {
   final fluentTheme = fluent.FluentTheme.of(context);
-  
+
   showGeneralDialog(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Dismiss',
-    barrierColor: Colors.transparent, 
+    barrierColor: Colors.transparent,
     transitionDuration: const Duration(milliseconds: 300),
     pageBuilder: (context, animation, secondaryAnimation) {
       final curvedAnimation = CurvedAnimation(
@@ -60,14 +59,12 @@ void _showToplistDetailSidebarFluent(BuildContext context, Toplist toplist) {
                 onTap: () => Navigator.of(context).pop(),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
-                  child: Container(
-                    color: Colors.black.withOpacity(0.2), 
-                  ),
+                  child: Container(color: Colors.black.withValues(alpha: 0.2)),
                 ),
               ),
             ),
           ),
-          
+
           // 侧边栏内容
           SlideTransition(
             position: Tween<Offset>(
@@ -77,7 +74,7 @@ void _showToplistDetailSidebarFluent(BuildContext context, Toplist toplist) {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Padding(
-                padding: const EdgeInsets.only(top: 0, bottom: 0, left: 0), 
+                padding: const EdgeInsets.only(top: 0, bottom: 0, left: 0),
                 child: Container(
                   width: 420,
                   height: double.infinity,
@@ -85,7 +82,7 @@ void _showToplistDetailSidebarFluent(BuildContext context, Toplist toplist) {
                     color: fluentTheme.micaBackgroundColor,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withValues(alpha: 0.2),
                         blurRadius: 24,
                         offset: const Offset(4, 0),
                       ),
@@ -103,24 +100,24 @@ void _showToplistDetailSidebarFluent(BuildContext context, Toplist toplist) {
             ),
           ),
 
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 40,
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onPanStart: (details) {
-                  windowManager.startDragging();
-                },
-                child: Container(color: Colors.transparent),
-              ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 40,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onPanStart: (details) {
+                windowManager.startDragging();
+              },
+              child: Container(color: Colors.transparent),
             ),
+          ),
         ],
       );
     },
     transitionBuilder: (context, animation, secondaryAnimation, child) {
-      return child!;
+      return child;
     },
   );
 }
@@ -160,7 +157,7 @@ void _showToplistDetailSidebar(BuildContext context, Toplist toplist) {
                       sigmaY: 10.0, // 垂直模糊强度
                     ),
                     child: Container(
-                      color: colorScheme.scrim.withOpacity(0.25), // 半透明遮罩
+                      color: colorScheme.scrim.withValues(alpha: 0.25), // 半透明遮罩
                     ),
                   ),
                 ),
@@ -168,21 +165,19 @@ void _showToplistDetailSidebar(BuildContext context, Toplist toplist) {
             ),
           ),
           // Windows 标题栏可拖动区域（覆盖在模糊层上方）
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 48, // 标题栏高度
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onPanStart: (details) {
-                  windowManager.startDragging();
-                },
-                child: Container(
-                  color: Colors.transparent,
-                ),
-              ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 48, // 标题栏高度
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onPanStart: (details) {
+                windowManager.startDragging();
+              },
+              child: Container(color: Colors.transparent),
             ),
+          ),
           // 侧边栏内容（滑入 + 淡入效果）
           SlideTransition(
             position: Tween<Offset>(
@@ -204,27 +199,24 @@ void _showToplistDetailSidebar(BuildContext context, Toplist toplist) {
                       // 减去上下的 padding，避免超出主窗口
                       height: MediaQuery.of(context).size.height - 16,
                       decoration: BoxDecoration(
-                        color:
-                            colorScheme.surfaceContainerHigh, // M3 标准侧板背景色
-                        borderRadius:
-                            BorderRadius.circular(12), // 与主窗口圆角保持一致
+                        color: colorScheme.surfaceContainerHigh, // M3 标准侧板背景色
+                        borderRadius: BorderRadius.circular(12), // 与主窗口圆角保持一致
                         // M3 标准阴影
                         boxShadow: [
                           BoxShadow(
-                            color: colorScheme.shadow.withOpacity(0.08),
+                            color: colorScheme.shadow.withValues(alpha: 0.08),
                             blurRadius: 4,
                             offset: const Offset(2, 0),
                           ),
                           BoxShadow(
-                            color: colorScheme.shadow.withOpacity(0.16),
+                            color: colorScheme.shadow.withValues(alpha: 0.16),
                             blurRadius: 12,
                             offset: const Offset(4, 0),
                           ),
                         ],
                       ),
                       child: ClipRRect(
-                        borderRadius:
-                            BorderRadius.circular(12), // 裁剪内容，与主窗口一致
+                        borderRadius: BorderRadius.circular(12), // 裁剪内容，与主窗口一致
                         child: _ToplistDetailContent(toplist: toplist),
                       ),
                     ),
@@ -237,7 +229,7 @@ void _showToplistDetailSidebar(BuildContext context, Toplist toplist) {
       );
     },
     transitionBuilder: (context, animation, secondaryAnimation, child) {
-      return child!;
+      return child;
     },
   );
 }
@@ -250,7 +242,7 @@ void _showToplistDetailBottomSheet(BuildContext context, Toplist toplist) {
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withOpacity(0.5),
+    barrierColor: Colors.black.withValues(alpha: 0.5),
     builder: (context) => DraggableScrollableSheet(
       initialChildSize: 0.88,
       minChildSize: 0.5,
@@ -263,18 +255,19 @@ void _showToplistDetailBottomSheet(BuildContext context, Toplist toplist) {
             child: Container(
               decoration: BoxDecoration(
                 color: (isDark ? const Color(0xFF141418) : Colors.white)
-                    .withOpacity(0.92),
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(28)),
+                    .withValues(alpha: 0.92),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
                 border: Border(
                   top: BorderSide(
-                    color: Colors.white.withOpacity(isDark ? 0.12 : 0.4),
+                    color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.4),
                     width: 0.8,
                   ),
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.45 : 0.12),
+                    color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
                     blurRadius: 30,
                     offset: const Offset(0, -10),
                   ),
@@ -317,7 +310,7 @@ class _ToplistDetailContentFluent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
-    
+
     return Column(
       children: [
         // 头部
@@ -333,8 +326,8 @@ class _ToplistDetailContentFluent extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
                   boxShadow: [
-                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -359,19 +352,27 @@ class _ToplistDetailContentFluent extends StatelessWidget {
                   children: [
                     Text(
                       toplist.name,
-                      style: theme.typography.subtitle?.copyWith(fontWeight: FontWeight.bold),
+                      style: theme.typography.subtitle?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
                     Row(
-                       children: [
-                        Icon(fluent.FluentIcons.contact, size: 14, color: theme.resources.textFillColorSecondary),
+                      children: [
+                        Icon(
+                          fluent.FluentIcons.contact,
+                          size: 14,
+                          color: theme.resources.textFillColorSecondary,
+                        ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             toplist.creator,
-                            style: theme.typography.caption?.copyWith(color: theme.resources.textFillColorSecondary),
+                            style: theme.typography.caption?.copyWith(
+                              color: theme.resources.textFillColorSecondary,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -381,7 +382,9 @@ class _ToplistDetailContentFluent extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       '${toplist.trackCount} songs',
-                      style: theme.typography.caption?.copyWith(color: theme.resources.textFillColorTertiary),
+                      style: theme.typography.caption?.copyWith(
+                        color: theme.resources.textFillColorTertiary,
+                      ),
                     ),
                   ],
                 ),
@@ -397,24 +400,27 @@ class _ToplistDetailContentFluent extends StatelessWidget {
             ],
           ),
         ),
-        
+
         // 分隔线
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Container(height: 1, color: theme.resources.cardStrokeColorDefault),
+          child: Container(
+            height: 1,
+            color: theme.resources.cardStrokeColorDefault,
+          ),
         ),
 
         // 列表
         Expanded(
           child: fluent.ListView.builder(
-             padding: const EdgeInsets.symmetric(vertical: 12),
-             itemCount: toplist.tracks.length,
-             itemBuilder: (context, index) {
-               return _FluentTrackListTile(
-                 track: toplist.tracks[index],
-                 index: index,
-               );
-             },
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            itemCount: toplist.tracks.length,
+            itemBuilder: (context, index) {
+              return _FluentTrackListTile(
+                track: toplist.tracks[index],
+                index: index,
+              );
+            },
           ),
         ),
       ],
@@ -425,11 +431,8 @@ class _ToplistDetailContentFluent extends StatelessWidget {
 class _FluentTrackListTile extends StatefulWidget {
   final Track track;
   final int index;
-  
-  const _FluentTrackListTile({
-    required this.track,
-    required this.index,
-  });
+
+  const _FluentTrackListTile({required this.track, required this.index});
 
   @override
   State<_FluentTrackListTile> createState() => _FluentTrackListTileState();
@@ -440,108 +443,108 @@ class _FluentTrackListTileState extends State<_FluentTrackListTile> {
 
   // 复用 track_list_tile.dart 中的登录检查逻辑
   Future<bool> _checkLoginStatus() async {
-     if (_authFacade.isLoggedIn) return true;
-     
-     // Fluent UI Dialog
-     final result = await fluent.showDialog<bool>(
-       context: context,
-       builder: (context) => fluent.ContentDialog(
-         title: const Text('需要登录'),
-         content: const Text('此功能需要登录后才能使用，请先登录。'),
-         actions: [
-            fluent.Button(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
-            ),
-            fluent.FilledButton(
-               onPressed: () => Navigator.pop(context, true),
-               child: const Text('去登录'),
-            )
-         ],
-       ),
-     );
-     
-     if (result == true && mounted) {
-        // 假设 showAuthDialog 是全局可用的，或者我们需要引入它
-        // 由于是独立文件，我们需要确认 showAuthDialog 的可用性
-        // 它在 auth_page.dart 中定义，我们有 import
-        final authResult = await showAuthDialog(context);
-        return authResult == true && _authFacade.isLoggedIn;
-     }
-     return false;
+    if (_authFacade.isLoggedIn) return true;
+
+    // Fluent UI Dialog
+    final result = await fluent.showDialog<bool>(
+      context: context,
+      builder: (context) => fluent.ContentDialog(
+        title: const Text('需要登录'),
+        content: const Text('此功能需要登录后才能使用，请先登录。'),
+        actions: [
+          fluent.Button(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          fluent.FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('去登录'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      // 假设 showAuthDialog 是全局可用的，或者我们需要引入它
+      // 由于是独立文件，我们需要确认 showAuthDialog 的可用性
+      // 它在 auth_page.dart 中定义，我们有 import
+      final authResult = await showAuthDialog(context);
+      return authResult == true && _authFacade.isLoggedIn;
+    }
+    return false;
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
     final isTop3 = widget.index < 3;
-    final rankColor = isTop3 ? theme.accentColor : theme.resources.textFillColorSecondary;
+    final rankColor = isTop3
+        ? theme.accentColor
+        : theme.resources.textFillColorSecondary;
 
     return fluent.ListTile.selectable(
       selectionMode: fluent.ListTileSelectionMode.none,
       onPressed: () async {
-         if (await _checkLoginStatus() && mounted) {
-             PlayerService().playTrack(widget.track);
-             // 简单的 toast
-             _showToast(context, '正在加载: ${widget.track.name}');
-         }
+        if (await _checkLoginStatus() && context.mounted) {
+          PlayerService().playTrack(widget.track);
+          // 简单的 toast
+          _showToast(context, '正在加载: ${widget.track.name}');
+        }
       },
       leading: SizedBox(
         width: 32,
         child: Center(
           child: Text(
             '${widget.index + 1}',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: rankColor,
-            ),
+            style: TextStyle(fontWeight: FontWeight.bold, color: rankColor),
           ),
         ),
       ),
       title: Row(
         children: [
-           ClipRRect(
-             borderRadius: BorderRadius.circular(4),
-             child: CachedNetworkImage(
-               imageUrl: widget.track.picUrl,
-               httpHeaders: getImageHeaders(widget.track.picUrl),
-               width: 40,
-               height: 40,
-               memCacheWidth: 128,
-               memCacheHeight: 128,
-               fit: BoxFit.cover,
-               placeholder: (c, u) => Container(color: theme.resources.controlFillColorSecondary),
-             ),
-           ),
-           const SizedBox(width: 12),
-           Expanded(
-             child: Column(
-               mainAxisAlignment: MainAxisAlignment.center,
-               crossAxisAlignment: CrossAxisAlignment.start,
-               children: [
-                 Text(
-                   widget.track.name,
-                   maxLines: 1,
-                   overflow: TextOverflow.ellipsis,
-                   style: const TextStyle(fontWeight: FontWeight.w500),
-                 ),
-                 Text(
-                   '${widget.track.artists} - ${widget.track.album}',
-                   maxLines: 1,
-                   overflow: TextOverflow.ellipsis,
-                   style: theme.typography.caption?.copyWith(
-                     color: theme.resources.textFillColorSecondary,
-                   ),
-                 ),
-               ],
-             ),
-           ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: CachedNetworkImage(
+              imageUrl: widget.track.picUrl,
+              httpHeaders: getImageHeaders(widget.track.picUrl),
+              width: 40,
+              height: 40,
+              memCacheWidth: 128,
+              memCacheHeight: 128,
+              fit: BoxFit.cover,
+              placeholder: (c, u) =>
+                  Container(color: theme.resources.controlFillColorSecondary),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.track.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  '${widget.track.artists} - ${widget.track.album}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.typography.caption?.copyWith(
+                    color: theme.resources.textFillColorSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
       trailing: TrackMoreButton(
         track: widget.track,
         onPlay: () async {
-          if (await _checkLoginStatus() && mounted) {
+          if (await _checkLoginStatus() && context.mounted) {
             PlayerService().playTrack(widget.track);
             _showToast(context, '正在加载: ${widget.track.name}');
           }
@@ -556,7 +559,10 @@ class _FluentTrackListTileState extends State<_FluentTrackListTile> {
     // Fluent 应用如果嵌套在 MaterialApp 下通常有 ScaffoldMessenger
     try {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(milliseconds: 1000)),
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(milliseconds: 1000),
+        ),
       );
     } catch (_) {
       // 忽略错误
@@ -605,7 +611,7 @@ class _ToplistDetailContent extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    accentColor.withOpacity(isDark ? 0.14 : 0.08),
+                    accentColor.withValues(alpha: isDark ? 0.14 : 0.08),
                     Colors.transparent,
                   ],
                 ),
@@ -621,7 +627,7 @@ class _ToplistDetailContent extends StatelessWidget {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: accentColor.withOpacity(0.25),
+                              color: accentColor.withValues(alpha: 0.25),
                               blurRadius: 18,
                               offset: const Offset(0, 6),
                             ),
@@ -689,7 +695,7 @@ class _ToplistDetailContent extends StatelessWidget {
                                   Icons.person_outline_rounded,
                                   size: 15,
                                   color: colorScheme.onSurfaceVariant
-                                      .withOpacity(0.8),
+                                      .withValues(alpha: 0.8),
                                 ),
                                 const SizedBox(width: 4),
                                 Expanded(
@@ -697,7 +703,7 @@ class _ToplistDetailContent extends StatelessWidget {
                                     toplist.creator,
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: colorScheme.onSurfaceVariant
-                                          .withOpacity(0.85),
+                                          .withValues(alpha: 0.85),
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -709,8 +715,9 @@ class _ToplistDetailContent extends StatelessWidget {
                             Text(
                               '共 ${toplist.trackCount} 首歌曲',
                               style: theme.textTheme.labelMedium?.copyWith(
-                                color: colorScheme.onSurfaceVariant
-                                    .withOpacity(0.7),
+                                color: colorScheme.onSurfaceVariant.withValues(
+                                  alpha: 0.7,
+                                ),
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -728,8 +735,8 @@ class _ToplistDetailContent extends StatelessWidget {
                         tooltip: '关闭',
                         style: IconButton.styleFrom(
                           backgroundColor: isDark
-                              ? Colors.white.withOpacity(0.08)
-                              : Colors.black.withOpacity(0.05),
+                              ? Colors.white.withValues(alpha: 0.08)
+                              : Colors.black.withValues(alpha: 0.05),
                           padding: const EdgeInsets.all(8),
                           minimumSize: const Size(36, 36),
                         ),
@@ -744,11 +751,15 @@ class _ToplistDetailContent extends StatelessWidget {
                         builder: (context) {
                           Color effectiveAccent = accentColor;
                           final hsv = HSVColor.fromColor(accentColor);
-                          if (hsv.saturation < 0.18 && (hsv.value > 0.65 || hsv.value < 0.25)) {
+                          if (hsv.saturation < 0.18 &&
+                              (hsv.value > 0.65 || hsv.value < 0.25)) {
                             effectiveAccent = colorScheme.primary;
                           }
-                          final isLight = effectiveAccent.computeLuminance() > 0.55;
-                          final onAccent = isLight ? const Color(0xFF1A1A1A) : Colors.white;
+                          final isLight =
+                              effectiveAccent.computeLuminance() > 0.55;
+                          final onAccent = isLight
+                              ? const Color(0xFF1A1A1A)
+                              : Colors.white;
 
                           return Material(
                             color: Colors.transparent,
@@ -764,8 +775,9 @@ class _ToplistDetailContent extends StatelessWidget {
                                   0,
                                   QueueSource.playlist,
                                 );
-                                await PlayerService()
-                                    .playTrack(toplist.tracks.first);
+                                await PlayerService().playTrack(
+                                  toplist.tracks.first,
+                                );
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -784,13 +796,15 @@ class _ToplistDetailContent extends StatelessWidget {
                                   gradient: LinearGradient(
                                     colors: [
                                       effectiveAccent,
-                                      effectiveAccent.withOpacity(0.85),
+                                      effectiveAccent.withValues(alpha: 0.85),
                                     ],
                                   ),
                                   borderRadius: BorderRadius.circular(20),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: effectiveAccent.withOpacity(0.35),
+                                      color: effectiveAccent.withValues(
+                                        alpha: 0.35,
+                                      ),
                                       blurRadius: 12,
                                       offset: const Offset(0, 3),
                                     ),
@@ -830,7 +844,9 @@ class _ToplistDetailContent extends StatelessWidget {
             Divider(
               height: 1,
               thickness: 0.6,
-              color: isDark ? Colors.white10 : Colors.black.withOpacity(0.06),
+              color: isDark
+                  ? Colors.white10
+                  : Colors.black.withValues(alpha: 0.06),
             ),
             // 歌曲列表
             Expanded(
@@ -847,7 +863,8 @@ class _ToplistDetailContent extends StatelessWidget {
                     itemCount: toplist.tracks.length,
                     itemBuilder: (context, index) {
                       final track = toplist.tracks[index];
-                      final isPlaying = playingTrack != null &&
+                      final isPlaying =
+                          playingTrack != null &&
                           playingTrack.id.toString() == track.id.toString() &&
                           playingTrack.source == track.source;
 
@@ -899,7 +916,7 @@ class _ToplistSongTile extends StatelessWidget {
     if (rank == 1) return const Color(0xFFFF9500); // 金色
     if (rank == 2) return const Color(0xFF0A84FF); // 银蓝
     if (rank == 3) return const Color(0xFFFF6B4A); // 铜橙
-    return colorScheme.onSurfaceVariant.withOpacity(0.5);
+    return colorScheme.onSurfaceVariant.withValues(alpha: 0.5);
   }
 
   @override
@@ -912,7 +929,7 @@ class _ToplistSongTile extends StatelessWidget {
 
     return Material(
       color: isPlaying
-          ? accentColor.withOpacity(isDark ? 0.15 : 0.1)
+          ? accentColor.withValues(alpha: isDark ? 0.15 : 0.1)
           : Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -934,8 +951,9 @@ class _ToplistSongTile extends StatelessWidget {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: rank <= 3 ? 16 : 14,
-                          fontWeight:
-                              rank <= 3 ? FontWeight.w900 : FontWeight.w500,
+                          fontWeight: rank <= 3
+                              ? FontWeight.w900
+                              : FontWeight.w500,
                           color: rankColor,
                           letterSpacing: -0.3,
                         ),
@@ -982,8 +1000,9 @@ class _ToplistSongTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 15,
-                        fontWeight:
-                            isPlaying ? FontWeight.w700 : FontWeight.w600,
+                        fontWeight: isPlaying
+                            ? FontWeight.w700
+                            : FontWeight.w600,
                         color: isPlaying ? accentColor : colorScheme.onSurface,
                         letterSpacing: -0.2,
                       ),
@@ -1003,8 +1022,9 @@ class _ToplistSongTile extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 12,
-                              color: colorScheme.onSurfaceVariant
-                                  .withOpacity(0.75),
+                              color: colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.75,
+                              ),
                             ),
                           ),
                         ),
@@ -1014,11 +1034,7 @@ class _ToplistSongTile extends StatelessWidget {
                 ),
               ),
               // 更多操作按钮
-              TrackMoreButton(
-                track: track,
-                onPlay: onTap,
-                size: 28,
-              ),
+              TrackMoreButton(track: track, onPlay: onTap, size: 28),
             ],
           ),
         ),

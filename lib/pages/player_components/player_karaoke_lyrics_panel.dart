@@ -23,10 +23,12 @@ class PlayerKaraokeLyricsPanel extends StatefulWidget {
   });
 
   @override
-  State<PlayerKaraokeLyricsPanel> createState() => _PlayerKaraokeLyricsPanelState();
+  State<PlayerKaraokeLyricsPanel> createState() =>
+      _PlayerKaraokeLyricsPanelState();
 }
 
-class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> with TickerProviderStateMixin {
+class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel>
+    with TickerProviderStateMixin {
   int? _selectedLyricIndex; // 手动选择的歌词索引
   bool _isManualMode = false; // 是否处于手动模式
   Timer? _autoResetTimer; // 自动回退定时器
@@ -48,7 +50,7 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
     _timeCapsuleAnimationController?.dispose();
     super.dispose();
   }
-  
+
   /// 字体变化回调
   void _onFontChanged() {
     if (mounted) {
@@ -62,13 +64,12 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    _timeCapsuleFadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _timeCapsuleAnimationController!,
-      curve: Curves.easeInOut,
-    ));
+    _timeCapsuleFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _timeCapsuleAnimationController!,
+        curve: Curves.easeInOut,
+      ),
+    );
   }
 
   /// 开始手动模式
@@ -77,7 +78,7 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
       _isManualMode = true;
       _selectedLyricIndex = lyricIndex;
     });
-    
+
     _timeCapsuleAnimationController?.forward();
     _resetAutoTimer();
   }
@@ -91,34 +92,31 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
   /// 退出手动模式
   void _exitManualMode() {
     if (!mounted) return;
-    
+
     setState(() {
       _isManualMode = false;
       _selectedLyricIndex = null;
     });
-    
+
     _timeCapsuleAnimationController?.reverse();
     _autoResetTimer?.cancel();
   }
 
   /// 跳转到选中的歌词时间
   void _seekToSelectedLyric() {
-    if (_selectedLyricIndex != null && 
-        _selectedLyricIndex! >= 0 && 
+    if (_selectedLyricIndex != null &&
+        _selectedLyricIndex! >= 0 &&
         _selectedLyricIndex! < widget.lyrics.length) {
-      
       final selectedLyric = widget.lyrics[_selectedLyricIndex!];
-      if (selectedLyric.startTime != null) {
-        PlayerService().seek(selectedLyric.startTime!);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已跳转到: ${selectedLyric.text}'),
-            duration: const Duration(seconds: 1),
-          ),
-        );
-      }
+      PlayerService().seek(selectedLyric.startTime);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已跳转到: ${selectedLyric.text}'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
     }
-    
+
     _exitManualMode();
   }
 
@@ -126,11 +124,11 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
   void _handleScrollEvent(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
     if (widget.lyrics.isEmpty) return;
-    
+
     final scrollDelta = event.scrollDelta.dy;
     final currentIndex = _selectedLyricIndex ?? widget.currentLyricIndex;
     int newIndex = currentIndex;
-    
+
     if (scrollDelta > 0) {
       // 向下滚动，选择下一句歌词
       newIndex = (currentIndex + 1).clamp(0, widget.lyrics.length - 1);
@@ -138,7 +136,7 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
       // 向上滚动，选择上一句歌词
       newIndex = (currentIndex - 1).clamp(0, widget.lyrics.length - 1);
     }
-    
+
     if (newIndex != currentIndex) {
       if (!_isManualMode) {
         _startManualMode(newIndex);
@@ -164,7 +162,7 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
                 ? _buildLyricStatus()
                 : _buildKaraokeLyricList(),
           ),
-          
+
           // 时间胶囊组件（桌面端版本）
           if (_isManualMode && _selectedLyricIndex != null)
             Positioned(
@@ -183,15 +181,15 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
-        final textColor = _getAdaptiveLyricColor(themeColor, false).withOpacity(0.5);
+        final textColor = _getAdaptiveLyricColor(
+          themeColor,
+          false,
+        ).withValues(alpha: 0.5);
         final message = widget.lyricState.displayText;
         return Center(
           child: Text(
             message,
-            style: TextStyle(
-              color: textColor,
-              fontSize: 16,
-            ),
+            style: TextStyle(color: textColor, fontSize: 16),
           ),
         );
       },
@@ -209,72 +207,85 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
             builder: (context, constraints) {
               const int totalVisibleLines = 8; // 总共显示8行
               const int currentLinePosition = 3; // 当前歌词在第4行（索引3）
-              
+
               // 根据容器高度计算每行的实际高度
               final itemHeight = constraints.maxHeight / totalVisibleLines;
-              
+
               // 使用手动选择的索引或当前播放索引
-              final displayIndex = _selectedLyricIndex ?? widget.currentLyricIndex;
-              
+              final displayIndex =
+                  _selectedLyricIndex ?? widget.currentLyricIndex;
+
               // 计算显示范围
               int startIndex = displayIndex - currentLinePosition;
-              
+
               // 生成要显示的歌词列表
               List<Widget> lyricWidgets = [];
-              
+
               for (int i = 0; i < totalVisibleLines; i++) {
                 int lyricIndex = startIndex + i;
-                
+
                 // 判断是否在有效范围内
                 if (lyricIndex < 0 || lyricIndex >= widget.lyrics.length) {
                   // 空行占位
                   lyricWidgets.add(
-                    SizedBox(
-                      height: itemHeight,
-                      key: ValueKey('empty_$i'),
-                    ),
+                    SizedBox(height: itemHeight, key: ValueKey('empty_$i')),
                   );
                 } else {
                   // 显示歌词
                   final lyric = widget.lyrics[lyricIndex];
                   final isCurrent = lyricIndex == displayIndex;
-                  final isActuallyPlaying = lyricIndex == widget.currentLyricIndex;
-                  
+                  final isActuallyPlaying =
+                      lyricIndex == widget.currentLyricIndex;
+
                   lyricWidgets.add(
                     SizedBox(
                       height: itemHeight,
                       key: ValueKey('lyric_$lyricIndex'),
                       child: Center(
                         child: isCurrent
-                            ? _buildKaraokeLyricLine(lyric, themeColor, itemHeight, isActuallyPlaying)
-                            : _buildNormalLyricLine(lyric, themeColor, itemHeight, false),
+                            ? _buildKaraokeLyricLine(
+                                lyric,
+                                themeColor,
+                                itemHeight,
+                                isActuallyPlaying,
+                              )
+                            : _buildNormalLyricLine(
+                                lyric,
+                                themeColor,
+                                itemHeight,
+                                false,
+                              ),
                       ),
                     ),
                   );
                 }
               }
-        
+
               // 使用 AnimatedSwitcher 实现丝滑滚动效果
               return AnimatedSwitcher(
                 duration: const Duration(milliseconds: 400),
-                layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
-                  return Stack(
-                    alignment: Alignment.center,
-                    children: <Widget>[
-                      if (currentChild != null) currentChild,
-                    ],
-                  );
-                },
+                layoutBuilder:
+                    (Widget? currentChild, List<Widget> previousChildren) {
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: <Widget>[
+                          if (currentChild != null) currentChild,
+                        ],
+                      );
+                    },
                 transitionBuilder: (Widget child, Animation<double> animation) {
                   // 向上滑动的过渡效果
-                  final offsetAnimation = Tween<Offset>(
-                    begin: const Offset(0.0, 0.1), // 从下方10%处开始
-                    end: Offset.zero,
-                  ).animate(CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeOutCubic,
-                  ));
-                  
+                  final offsetAnimation =
+                      Tween<Offset>(
+                        begin: const Offset(0.0, 0.1), // 从下方10%处开始
+                        end: Offset.zero,
+                      ).animate(
+                        CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOutCubic,
+                        ),
+                      );
+
                   return SlideTransition(
                     position: offsetAnimation,
                     child: child,
@@ -295,15 +306,22 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
   }
 
   /// 构建卡拉OK样式的歌词行（当前歌词）
-  Widget _buildKaraokeLyricLine(LyricLine lyric, Color? themeColor, double itemHeight, bool isActuallyPlaying) {
+  Widget _buildKaraokeLyricLine(
+    LyricLine lyric,
+    Color? themeColor,
+    double itemHeight,
+    bool isActuallyPlaying,
+  ) {
     return AnimatedBuilder(
       animation: PlayerService(),
       builder: (context, child) {
         final player = PlayerService();
         // 只有正在播放的歌词才显示填充效果，手动选择的显示静态高亮
-        final fillProgress = isActuallyPlaying ? _calculateFillProgress(lyric, player.position) : 0.0;
+        final fillProgress = isActuallyPlaying
+            ? _calculateFillProgress(lyric, player.position)
+            : 0.0;
         final isSelected = _isManualMode && !isActuallyPlaying;
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
@@ -320,9 +338,11 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
                 lyric: lyric,
                 currentPosition: player.position,
               ),
-              
+
               // 翻译歌词（根据开关显示）- 普通高亮
-              if (widget.showTranslation && lyric.translation != null && lyric.translation!.isNotEmpty)
+              if (widget.showTranslation &&
+                  lyric.translation != null &&
+                  lyric.translation!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
@@ -331,7 +351,10 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: _getAdaptiveLyricColor(themeColor, false).withOpacity(0.75),
+                      color: _getAdaptiveLyricColor(
+                        themeColor,
+                        false,
+                      ).withValues(alpha: 0.75),
                       fontSize: 13,
                       fontFamily: LyricFontService().currentFontFamily,
                     ),
@@ -345,14 +368,19 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
   }
 
   /// 构建普通歌词行（非当前歌词）
-  Widget _buildNormalLyricLine(LyricLine lyric, Color? themeColor, double itemHeight, bool isCurrent) {
+  Widget _buildNormalLyricLine(
+    LyricLine lyric,
+    Color? themeColor,
+    double itemHeight,
+    bool isCurrent,
+  ) {
     // 获取自适应颜色
     final lyricColor = _getAdaptiveLyricColor(themeColor, isCurrent);
     final translationColor = _getAdaptiveLyricColor(
-      themeColor, 
+      themeColor,
       false, // 翻译始终使用非当前行的颜色
-    ).withOpacity(isCurrent ? 0.75 : 0.5);
-    
+    ).withValues(alpha: isCurrent ? 0.75 : 0.5);
+
     return AnimatedDefaultTextStyle(
       duration: const Duration(milliseconds: 300),
       style: TextStyle(
@@ -376,7 +404,9 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
               overflow: TextOverflow.ellipsis,
             ),
             // 翻译歌词（根据开关显示）
-            if (widget.showTranslation && lyric.translation != null && lyric.translation!.isNotEmpty)
+            if (widget.showTranslation &&
+                lyric.translation != null &&
+                lyric.translation!.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Text(
@@ -412,9 +442,13 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
   }) {
     final baseColor = _getAdaptiveLyricColor(themeColor, false);
     final highlightColor = _getAdaptiveLyricColor(themeColor, true);
-    
+
     // 如果有逐字歌词数据，使用逐字填充模式
-    if (lyric != null && lyric.hasWordByWord && lyric.words != null && currentPosition != null && !isSelected) {
+    if (lyric != null &&
+        lyric.hasWordByWord &&
+        lyric.words != null &&
+        currentPosition != null &&
+        !isSelected) {
       return _buildWordByWordKaraokeText(
         lyric: lyric,
         currentPosition: currentPosition,
@@ -423,7 +457,7 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
         highlightColor: highlightColor,
       );
     }
-    
+
     // 回退到整行填充模式
     return Stack(
       children: [
@@ -441,7 +475,7 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        
+
         // 上层：填充的文字（高亮色或选中色）
         ClipRect(
           clipper: _DesktopKaraokeClipper(isSelected ? 1.0 : fillProgress),
@@ -456,9 +490,9 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
               // 添加发光效果
               shadows: [
                 Shadow(
-                  color: isSelected 
-                      ? Colors.orange.withOpacity(0.6)
-                      : highlightColor.withOpacity(0.5),
+                  color: isSelected
+                      ? Colors.orange.withValues(alpha: 0.6)
+                      : highlightColor.withValues(alpha: 0.5),
                   blurRadius: isSelected ? 12 : 8,
                   offset: const Offset(0, 0),
                 ),
@@ -482,13 +516,13 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
     required Color highlightColor,
   }) {
     final words = lyric.words!;
-    
+
     return Wrap(
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: List.generate(words.length, (index) {
         final word = words[index];
-        
+
         // 计算这个字的填充进度
         double wordProgress;
         if (currentPosition < word.startTime) {
@@ -500,9 +534,13 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
         } else {
           // 正在唱这个字，计算内部进度
           final wordElapsed = currentPosition - word.startTime;
-          wordProgress = (wordElapsed.inMilliseconds / word.duration.inMilliseconds).clamp(0.0, 1.0);
+          wordProgress =
+              (wordElapsed.inMilliseconds / word.duration.inMilliseconds).clamp(
+                0.0,
+                1.0,
+              );
         }
-        
+
         return _KaraokeWordWidget(
           text: word.text,
           progress: wordProgress,
@@ -517,40 +555,38 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
   /// 计算填充进度（0.0 - 1.0）
   /// 支持逐字歌词的精确时间同步
   double _calculateFillProgress(LyricLine lyric, Duration currentPosition) {
-    if (lyric.startTime == null) return 0.0;
-    
     // 检查是否有逐字歌词数据
-    if (lyric.hasWordByWord && lyric.words != null) {
+    if (lyric.hasWordByWord) {
       // 使用逐字歌词计算精确进度
       return _calculateWordByWordProgress(lyric, currentPosition);
     }
-    
+
     // 否则使用平均时间计算（原有逻辑）
-    final startMs = lyric.startTime!.inMilliseconds;
+    final startMs = lyric.startTime.inMilliseconds;
     final currentMs = currentPosition.inMilliseconds;
-    
+
     // 如果还没开始，返回0
     if (currentMs < startMs) return 0.0;
-    
+
     // 计算歌词行的持续时间（到下一行开始或3秒默认）
     final nextLyricIndex = widget.currentLyricIndex + 1;
     Duration endTime;
-    
-    if (nextLyricIndex < widget.lyrics.length && widget.lyrics[nextLyricIndex].startTime != null) {
-      endTime = widget.lyrics[nextLyricIndex].startTime!;
+
+    if (nextLyricIndex < widget.lyrics.length) {
+      endTime = widget.lyrics[nextLyricIndex].startTime;
     } else {
       // 最后一行或下一行没有时间戳，使用3秒默认持续时间
-      endTime = lyric.startTime! + const Duration(seconds: 3);
+      endTime = lyric.startTime + const Duration(seconds: 3);
     }
-    
+
     final endMs = endTime.inMilliseconds;
     final durationMs = endMs - startMs;
-    
+
     if (durationMs <= 0) return 1.0; // 避免除零
-    
+
     final elapsedMs = currentMs - startMs;
     final progress = (elapsedMs / durationMs).clamp(0.0, 1.0);
-    
+
     return progress;
   }
 
@@ -567,15 +603,15 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
       final lastWord = words.last;
       totalDuration = lastWord.endTime - words.first.startTime;
     }
-    
+
     if (totalDuration.inMilliseconds == 0) return 0.0;
 
-    final elapsedFromLineStart = currentPos - lyric.startTime!;
-    
+    final elapsedFromLineStart = currentPos - lyric.startTime;
+
     if (elapsedFromLineStart.inMilliseconds < 0) {
       return 0.0;
     }
-    
+
     if (elapsedFromLineStart >= totalDuration) {
       return 1.0;
     }
@@ -585,11 +621,16 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
 
     for (int i = 0; i < words.length; i++) {
       final word = words[i];
-      final wordTimeRatio = word.duration.inMilliseconds / totalDuration.inMilliseconds;
+      final wordTimeRatio =
+          word.duration.inMilliseconds / totalDuration.inMilliseconds;
 
       if (currentPos >= word.startTime && currentPos < word.endTime) {
         final wordElapsed = currentPos - word.startTime;
-        final wordInternalProgress = (wordElapsed.inMilliseconds / word.duration.inMilliseconds).clamp(0.0, 1.0);
+        final wordInternalProgress =
+            (wordElapsed.inMilliseconds / word.duration.inMilliseconds).clamp(
+              0.0,
+              1.0,
+            );
         accumulatedProgress += wordInternalProgress * wordTimeRatio;
         return accumulatedProgress.clamp(0.0, 1.0);
       } else if (currentPos >= word.endTime) {
@@ -604,16 +645,14 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
 
   /// 构建桌面端时间胶囊组件
   Widget _buildDesktopTimeCapsule() {
-    if (_selectedLyricIndex == null || 
-        _selectedLyricIndex! < 0 || 
+    if (_selectedLyricIndex == null ||
+        _selectedLyricIndex! < 0 ||
         _selectedLyricIndex! >= widget.lyrics.length) {
       return const SizedBox.shrink();
     }
 
     final selectedLyric = widget.lyrics[_selectedLyricIndex!];
-    final timeText = selectedLyric.startTime != null 
-        ? _formatDuration(selectedLyric.startTime!)
-        : '00:00';
+    final timeText = _formatDuration(selectedLyric.startTime);
 
     return FadeTransition(
       opacity: _timeCapsuleFadeAnimation!,
@@ -625,15 +664,15 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.9),
+                color: Colors.orange.withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.3),
+                  color: Colors.white.withValues(alpha: 0.3),
                   width: 1,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.orange.withOpacity(0.4),
+                    color: Colors.orange.withValues(alpha: 0.4),
                     blurRadius: 16,
                     offset: const Offset(0, 6),
                   ),
@@ -688,17 +727,13 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel> wit
   Color _getAdaptiveLyricColor(Color? themeColor, bool isCurrent) {
     final color = themeColor ?? Colors.grey[700]!;
     final useDarkText = _shouldUseDarkText(color);
-    
+
     if (useDarkText) {
       // 亮色背景，使用深色文字
-      return isCurrent 
-          ? Colors.black87 
-          : Colors.black54;
+      return isCurrent ? Colors.black87 : Colors.black54;
     } else {
       // 暗色背景，使用浅色文字
-      return isCurrent 
-          ? Colors.white 
-          : Colors.white.withOpacity(0.45);
+      return isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.45);
     }
   }
 }
@@ -758,7 +793,7 @@ class _KaraokeWordWidget extends StatelessWidget {
               height: 1.4,
             ),
           ),
-          
+
           // 上层：填充的亮色文字（通过 ClipRect 裁剪）
           ClipRect(
             clipper: _DesktopKaraokeClipper(progress),
@@ -773,7 +808,7 @@ class _KaraokeWordWidget extends StatelessWidget {
                 // 添加发光效果
                 shadows: [
                   Shadow(
-                    color: highlightColor.withOpacity(0.5),
+                    color: highlightColor.withValues(alpha: 0.5),
                     blurRadius: 8,
                     offset: const Offset(0, 0),
                   ),

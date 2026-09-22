@@ -43,7 +43,7 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       // 先同步当前待同步的数据
       await ListeningStatsService().syncNow();
-      
+
       // 然后获取最新统计数据
       final stats = await ListeningStatsService().fetchStats();
       setState(() {
@@ -63,7 +63,7 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final track = item.toTrack();
       await PlayerService().playTrack(track);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -123,14 +123,14 @@ class _ProfilePageState extends State<ProfilePage> {
                     children: [
                       // 用户信息卡片
                       _buildUserCard(user, colorScheme),
-                      
+
                       const SizedBox(height: 16),
-                      
+
                       // 统计卡片
                       _buildStatsCard(colorScheme),
-                      
+
                       const SizedBox(height: 16),
-                      
+
                       // 播放排行榜
                       _buildPlayCountsSection(colorScheme),
                     ],
@@ -161,9 +161,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     )
                   : null,
             ),
-            
+
             const SizedBox(width: 16),
-            
+
             // 用户信息
             Expanded(
               child: Column(
@@ -177,7 +177,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   Text(
                     user.email,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurface.withOpacity(0.6),
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
                   ),
                 ],
@@ -203,9 +203,9 @@ class _ProfilePageState extends State<ProfilePage> {
               '听歌统计',
               style: Theme.of(context).textTheme.titleMedium,
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // 统计数据行
             Row(
               children: [
@@ -219,9 +219,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     colorScheme: colorScheme,
                   ),
                 ),
-                
+
                 const SizedBox(width: 16),
-                
+
                 Expanded(
                   child: _buildStatItem(
                     icon: Icons.play_circle_outline,
@@ -260,7 +260,7 @@ class _ProfilePageState extends State<ProfilePage> {
             label,
             style: TextStyle(
               fontSize: 12,
-              color: colorScheme.onSurface.withOpacity(0.6),
+              color: colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
           const SizedBox(height: 4),
@@ -288,13 +288,13 @@ class _ProfilePageState extends State<ProfilePage> {
                 Icon(
                   Icons.music_note,
                   size: 64,
-                  color: colorScheme.onSurface.withOpacity(0.3),
+                  color: colorScheme.onSurface.withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: 16),
                 Text(
                   '暂无播放记录',
                   style: TextStyle(
-                    color: colorScheme.onSurface.withOpacity(0.6),
+                    color: colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
               ],
@@ -314,9 +314,9 @@ class _ProfilePageState extends State<ProfilePage> {
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
-        
+
         const SizedBox(height: 8),
-        
+
         Card(
           child: ListView.separated(
             shrinkWrap: true,
@@ -376,7 +376,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ),
           ),
-          
+
           // 排名徽章
           Positioned(
             left: 0,
@@ -412,7 +412,7 @@ class _ProfilePageState extends State<ProfilePage> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: colorScheme.onSurface.withOpacity(0.6),
+          color: colorScheme.onSurface.withValues(alpha: 0.6),
         ),
       ),
       trailing: Row(
@@ -432,7 +432,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 item.toTrack().getSourceName(),
                 style: TextStyle(
                   fontSize: 10,
-                  color: colorScheme.onSurface.withOpacity(0.5),
+                  color: colorScheme.onSurface.withValues(alpha: 0.5),
                 ),
               ),
             ],

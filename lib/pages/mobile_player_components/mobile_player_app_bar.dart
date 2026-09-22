@@ -20,7 +20,7 @@ class MobilePlayerAppBar extends StatelessWidget {
       return Container(
         height: 40,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.3),
+          color: Colors.black.withValues(alpha: 0.3),
         ),
         child: Row(
           children: [
@@ -31,7 +31,7 @@ class MobilePlayerAppBar extends StatelessWidget {
               onPressed: onBackPressed,
               tooltip: '返回',
             ),
-            
+
             // 中间：可拖动区域
             Expanded(
               child: GestureDetector(
@@ -51,7 +51,7 @@ class MobilePlayerAppBar extends StatelessWidget {
                 ),
               ),
             ),
-            
+
             // 右侧：窗口控制按钮
             _buildWindowButton(
               icon: Icons.remove,
@@ -74,7 +74,7 @@ class MobilePlayerAppBar extends StatelessWidget {
         ),
       );
     }
-    
+
     // 移动平台：显示普通返回按钮
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -122,17 +122,17 @@ class MobilePlayerAppBar extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: onPressed,
-            hoverColor: isClose 
-                ? Colors.red.withOpacity(0.8)
+            hoverColor: isClose
+                ? Colors.red.withValues(alpha: 0.8)
                 : isDisabled
                     ? Colors.transparent
-                    : Colors.white.withOpacity(0.1),
+                    : Colors.white.withValues(alpha: 0.1),
             child: Center(
               child: Icon(
                 icon,
                 size: 18,
-                color: isDisabled 
-                    ? Colors.white.withOpacity(0.3)
+                color: isDisabled
+                    ? Colors.white.withValues(alpha: 0.3)
                     : Colors.white,
               ),
             ),

@@ -12,16 +12,16 @@ import 'hero_section.dart'; // 复用 convertToTrack 函数
 class MobilePersonalFm extends StatelessWidget {
   final List<Map<String, dynamic>> list;
   const MobilePersonalFm({super.key, required this.list});
-  
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final themeManager = ThemeManager();
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     if (list.isEmpty) return Text('暂无数据', style: Theme.of(context).textTheme.bodySmall);
-    
+
     return AnimatedBuilder(
       animation: PlayerService(),
       builder: (context, _) {
@@ -67,7 +67,7 @@ class MobilePersonalFm extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: CupertinoColors.black.withOpacity(isDark ? 0.2 : 0.08),
+                  color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.08),
                   blurRadius: 10,
                   offset: const Offset(0, 2),
                 ),
@@ -86,12 +86,12 @@ class MobilePersonalFm extends StatelessWidget {
               end: Alignment.centerRight,
               colors: [
                 cs.surfaceContainer,
-                cs.surfaceContainerHigh.withOpacity(0.9),
+                cs.surfaceContainerHigh.withValues(alpha: 0.9),
               ],
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.25 : 0.04),
+                color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
                 blurRadius: 16,
                 offset: const Offset(0, 4),
               ),
@@ -112,9 +112,9 @@ class MobilePersonalFm extends StatelessWidget {
 
   /// 这里的样式代码主要是为了兼容旧版和其他主题
   Widget _buildOldCardContent(
-    BuildContext context, 
-    String pic, 
-    Map<String, dynamic> display, 
+    BuildContext context,
+    String pic,
+    Map<String, dynamic> display,
     String artistsText,
     bool isFmPlaying,
     List<Track> fmTracks,
@@ -151,9 +151,9 @@ class MobilePersonalFm extends StatelessWidget {
 
   /// Android 16 表现力风格内容 - Redesigned for better control placement
   Widget _buildMaterialFmContent(
-    BuildContext context, 
-    String pic, 
-    Map<String, dynamic> display, 
+    BuildContext context,
+    String pic,
+    Map<String, dynamic> display,
     String artistsText,
     bool isFmPlaying,
     List<Track> fmTracks,
@@ -172,7 +172,7 @@ class MobilePersonalFm extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withValues(alpha: 0.15),
                   blurRadius: 12,
                   offset: const Offset(0, 6),
                 ),
@@ -193,9 +193,9 @@ class MobilePersonalFm extends StatelessWidget {
                 children: [
                   // Text Content at the top
                   Text(
-                    display['name']?.toString() ?? '', 
-                    maxLines: 1, 
-                    overflow: TextOverflow.ellipsis, 
+                    display['name']?.toString() ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
@@ -205,13 +205,13 @@ class MobilePersonalFm extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    artistsText, 
-                    maxLines: 1, 
-                    overflow: TextOverflow.ellipsis, 
+                    artistsText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: cs.onSurface.withOpacity(0.6),
+                      color: cs.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
                   const Spacer(),
@@ -222,8 +222,8 @@ class MobilePersonalFm extends StatelessWidget {
                       // Skip Button - Subtle Surface
                       _buildMaterialControlBtn(
                         onPressed: () => _handleSkipAction(fmTracks),
-                        icon: Icon(Icons.skip_next_rounded, color: cs.onSurface.withOpacity(0.8), size: 26),
-                        bgColor: cs.surfaceContainerHighest.withOpacity(0.5),
+                        icon: Icon(Icons.skip_next_rounded, color: cs.onSurface.withValues(alpha: 0.8), size: 26),
+                        bgColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
                         size: 40,
                       ),
                       const SizedBox(width: 12),
@@ -246,8 +246,8 @@ class MobilePersonalFm extends StatelessWidget {
   }
 
   Widget _buildMaterialControlBtn({
-    required VoidCallback onPressed, 
-    required Widget icon, 
+    required VoidCallback onPressed,
+    required Widget icon,
     required Color bgColor,
     double size = 48,
   }) {
@@ -258,9 +258,9 @@ class MobilePersonalFm extends StatelessWidget {
         color: bgColor,
         borderRadius: BorderRadius.circular(size / 3), // Dynamic rounded square
         boxShadow: [
-          if (bgColor != Colors.transparent && bgColor != Colors.transparent.withOpacity(0.5))
+          if (bgColor != Colors.transparent && bgColor != Colors.transparent.withValues(alpha: 0.5))
             BoxShadow(
-              color: bgColor.withOpacity(0.3),
+              color: bgColor.withValues(alpha: 0.3),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -281,12 +281,12 @@ class MobilePersonalFm extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        isCupertino 
+        isCupertino
             ? CupertinoButton(
                 padding: const EdgeInsets.all(8),
                 onPressed: () => _handlePlayAction(context, fmTracks, isFmPlaying, isFmQueue, isFmCurrent),
                 child: Icon(
-                  isFmPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill, 
+                  isFmPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
                   color: ThemeManager.iosBlue,
                   size: 28,
                 ),
@@ -299,12 +299,12 @@ class MobilePersonalFm extends StatelessWidget {
                 icon: Icon(isFmPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: cs.onSurface),
               ),
         const SizedBox(width: 8),
-        isCupertino 
+        isCupertino
             ? CupertinoButton(
                 padding: const EdgeInsets.all(8),
                 onPressed: () => _handleSkipAction(fmTracks),
                 child: Icon(
-                  CupertinoIcons.forward_fill, 
+                  CupertinoIcons.forward_fill,
                   color: ThemeManager.iosBlue,
                   size: 28,
                 ),

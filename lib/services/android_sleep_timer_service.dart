@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:io';
 import 'package:flutter/services.dart';
 
@@ -12,10 +13,10 @@ class AndroidSleepTimerService {
   /// 初始化监听
   void init({required VoidCallback onCancelled}) {
     if (!Platform.isAndroid) return;
-    
+
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onTimerCancelled') {
-        print('📱 [AndroidSleepTimer] 收到原生取消回调');
+        StructuredLogService.log('📱 [AndroidSleepTimer] 收到原生取消回调');
         onCancelled();
       }
     });
@@ -29,9 +30,9 @@ class AndroidSleepTimerService {
       await _channel.invokeMethod('start', {
         'endTimeMs': endTime.millisecondsSinceEpoch,
       });
-      print('✅ [AndroidSleepTimer] 已启动原生计时器通知');
+      StructuredLogService.log('✅ [AndroidSleepTimer] 已启动原生计时器通知');
     } catch (e) {
-      print('❌ [AndroidSleepTimer] 启动失败: $e');
+      StructuredLogService.log('❌ [AndroidSleepTimer] 启动失败: $e');
     }
   }
 
@@ -40,9 +41,9 @@ class AndroidSleepTimerService {
     if (!Platform.isAndroid) return;
     try {
       await _channel.invokeMethod('stop');
-      print('✅ [AndroidSleepTimer] 已停止原生计时器通知');
+      StructuredLogService.log('✅ [AndroidSleepTimer] 已停止原生计时器通知');
     } catch (e) {
-      print('❌ [AndroidSleepTimer] 停止失败: $e');
+      StructuredLogService.log('❌ [AndroidSleepTimer] 停止失败: $e');
     }
   }
 }

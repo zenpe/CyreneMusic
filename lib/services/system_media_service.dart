@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'player_service.dart';
@@ -33,16 +34,16 @@ class SystemMediaService {
       } else if (Platform.isAndroid || Platform.isIOS) {
         // 🔧 关键修复：移动端不在启动时初始化 audio_service，避免音频系统初始化导致的杂音
         // audio_service 将在第一次播放时才初始化（见 _ensureMobileInitialized 方法）
-        print('📱 [SystemMediaService] 移动端 audio_service 将在首次播放时初始化');
+        StructuredLogService.log('📱 [SystemMediaService] 移动端 audio_service 将在首次播放时初始化');
       }
 
       // 监听播放器状态变化
       PlayerService().addListener(_onPlayerStateChanged);
 
       _initialized = true;
-      print('🎵 [SystemMediaService] 系统媒体控件初始化完成');
+      StructuredLogService.log('🎵 [SystemMediaService] 系统媒体控件初始化完成');
     } catch (e) {
-      print('❌ [SystemMediaService] 初始化失败: $e');
+      StructuredLogService.log('❌ [SystemMediaService] 初始化失败: $e');
     }
   }
 
@@ -86,9 +87,9 @@ class SystemMediaService {
       // 初始状态设置为停止
       await _nativeSmtc!.updatePlaybackStatus(SmtcPlaybackStatus.stopped);
 
-      print('✅ [SystemMediaService] Windows SMTC 初始化成功');
+      StructuredLogService.log('✅ [SystemMediaService] Windows SMTC 初始化成功');
     } catch (e) {
-      print('❌ [SystemMediaService] Windows SMTC 初始化失败: $e');
+      StructuredLogService.log('❌ [SystemMediaService] Windows SMTC 初始化失败: $e');
     }
   }
 
@@ -96,7 +97,7 @@ class SystemMediaService {
   Future<void> _initializeMobile() async {
     try {
       final platformName = Platform.isAndroid ? 'Android' : 'iOS';
-      print('📱 [SystemMediaService] 开始初始化 $platformName audio_service...');
+      StructuredLogService.log('📱 [SystemMediaService] 开始初始化 $platformName audio_service...');
 
       // 初始化 audio_service 并创建 AudioHandler
       // 根据文档：androidStopForegroundOnPause = false 时，androidNotificationOngoing 必须也为 false
@@ -119,21 +120,21 @@ class SystemMediaService {
         // “静音” AudioTrack 来抢占媒体按键路由，部分设备上会产生可闻杂音。
         // 这里不再调用该 workaround，优先保证启动恢复与首次播放的无噪音。
 
-        print('✅ [SystemMediaService] $platformName audio_service 初始化成功');
-        print('   AudioHandler 类型: ${_audioHandler.runtimeType}');
+        StructuredLogService.log('✅ [SystemMediaService] $platformName audio_service 初始化成功');
+        StructuredLogService.log('   AudioHandler 类型: ${_audioHandler.runtimeType}');
         if (Platform.isAndroid) {
-          print('   通知渠道 ID: com.cyrene.music.channel.audio');
-          print('   ⚠️ 如果通知未显示，请检查：');
-          print('      1. 是否授予了通知权限（Android 13+）');
-          print('      2. 是否播放了歌曲触发状态更新');
-          print('      3. 查看 AudioHandler 日志确认状态是否更新');
+          StructuredLogService.log('   通知渠道 ID: com.cyrene.music.channel.audio');
+          StructuredLogService.log('   ⚠️ 如果通知未显示，请检查：');
+          StructuredLogService.log('      1. 是否授予了通知权限（Android 13+）');
+          StructuredLogService.log('      2. 是否播放了歌曲触发状态更新');
+          StructuredLogService.log('      3. 查看 AudioHandler 日志确认状态是否更新');
         }
       } else {
-        print('❌ [SystemMediaService] AudioHandler 为 null');
+        StructuredLogService.log('❌ [SystemMediaService] AudioHandler 为 null');
       }
     } catch (e, stackTrace) {
-      print('❌ [SystemMediaService] 移动端 audio_service 初始化失败: $e');
-      print('   堆栈跟踪: $stackTrace');
+      StructuredLogService.log('❌ [SystemMediaService] 移动端 audio_service 初始化失败: $e');
+      StructuredLogService.log('   堆栈跟踪: $stackTrace');
     }
   }
 
@@ -143,23 +144,23 @@ class SystemMediaService {
 
     switch (button) {
       case SmtcButton.play:
-        print('▶️ [SystemMediaService] 系统媒体控件: 播放');
+        StructuredLogService.log('▶️ [SystemMediaService] 系统媒体控件: 播放');
         player.resume();
         break;
       case SmtcButton.pause:
-        print('⏸️ [SystemMediaService] 系统媒体控件: 暂停');
+        StructuredLogService.log('⏸️ [SystemMediaService] 系统媒体控件: 暂停');
         player.pause();
         break;
       case SmtcButton.stop:
-        print('⏹️ [SystemMediaService] 系统媒体控件: 停止');
+        StructuredLogService.log('⏹️ [SystemMediaService] 系统媒体控件: 停止');
         player.stop();
         break;
       case SmtcButton.next:
-        print('⏭️ [SystemMediaService] 系统媒体控件: 下一曲');
+        StructuredLogService.log('⏭️ [SystemMediaService] 系统媒体控件: 下一曲');
         player.playNext();
         break;
       case SmtcButton.previous:
-        print('⏮️ [SystemMediaService] 系统媒体控件: 上一曲');
+        StructuredLogService.log('⏮️ [SystemMediaService] 系统媒体控件: 上一曲');
         player.playPrevious();
         break;
       default:
@@ -174,7 +175,7 @@ class SystemMediaService {
         try {
           await ensureMobileInitialized();
         } catch (e) {
-          print('❌ [SystemMediaService] 更新小部件前初始化 audio_service 失败: $e');
+          StructuredLogService.log('❌ [SystemMediaService] 更新小部件前初始化 audio_service 失败: $e');
           return;
         }
       }
@@ -188,7 +189,7 @@ class SystemMediaService {
   void _onPlayerStateChanged() {
     // 如果已释放或未初始化，不再处理
     if (!_initialized || _isDisposed) {
-      print('⚠️ [SystemMediaService] 已释放，跳过状态更新');
+      StructuredLogService.log('⚠️ [SystemMediaService] 已释放，跳过状态更新');
       return;
     }
 
@@ -200,15 +201,15 @@ class SystemMediaService {
     // 提前拉起媒体服务干扰启动恢复链路的音频建链时序。
     if ((Platform.isAndroid || Platform.isIOS) && !_mobileInitialized) {
       if (player.state == PlayerState.playing) {
-        print('🎵 [SystemMediaService] 检测到首次播放，初始化 audio_service...');
+        StructuredLogService.log('🎵 [SystemMediaService] 检测到首次播放，初始化 audio_service...');
         ensureMobileInitialized()
             .then((_) {
-              print('✅ [SystemMediaService] audio_service 初始化完成，继续更新状态');
+              StructuredLogService.log('✅ [SystemMediaService] audio_service 初始化完成，继续更新状态');
               // 初始化完成后，再次触发状态更新
               _onPlayerStateChanged();
             })
             .catchError((e) {
-              print('❌ [SystemMediaService] audio_service 初始化失败: $e');
+              StructuredLogService.log('❌ [SystemMediaService] audio_service 初始化失败: $e');
             });
         return; // 等待初始化完成
       } else {
@@ -254,7 +255,7 @@ class SystemMediaService {
           currentState != PlayerState.error;
 
       if (shouldEnableSmtc) {
-        print('▶️ [SystemMediaService] 重新启用 SMTC');
+        StructuredLogService.log('▶️ [SystemMediaService] 重新启用 SMTC');
         _nativeSmtc!.enable();
       }
 
@@ -262,7 +263,7 @@ class SystemMediaService {
       final isSongChanged =
           currentSongId != _lastSongId && currentSongId != null;
       if (isSongChanged) {
-        print('🎵 [SystemMediaService] 歌曲切换，更新元数据...');
+        StructuredLogService.log('🎵 [SystemMediaService] 歌曲切换，更新元数据...');
         _updateMetadata(song, track);
         _lastSongId = currentSongId;
       }
@@ -271,7 +272,7 @@ class SystemMediaService {
       final isStateChanged = currentState != _lastPlayerState;
       if (isStateChanged) {
         final status = _getPlaybackStatus(currentState);
-        print(
+        StructuredLogService.log(
           '🎮 [SystemMediaService] 状态改变: ${currentState.name} -> ${status.value}',
         );
 
@@ -281,7 +282,7 @@ class SystemMediaService {
         // 如果是停止或空闲状态，禁用 SMTC
         if (status == SmtcPlaybackStatus.stopped &&
             currentState == PlayerState.idle) {
-          print('⏹️ [SystemMediaService] 停止播放，禁用 SMTC');
+          StructuredLogService.log('⏹️ [SystemMediaService] 停止播放，禁用 SMTC');
           _nativeSmtc!.disable();
           _lastSongId = null; // 清除缓存，下次播放时重新更新元数据
         }
@@ -292,7 +293,7 @@ class SystemMediaService {
       if (currentState == PlayerState.playing &&
           player.duration.inMilliseconds > 0 &&
           (isSongChanged || isStateChanged)) {
-        print('⏱️ [SystemMediaService] 更新播放进度');
+        StructuredLogService.log('⏱️ [SystemMediaService] 更新播放进度');
 
         _nativeSmtc!.updateTimeline(
           startTimeMs: 0,
@@ -303,14 +304,14 @@ class SystemMediaService {
         );
       }
     } catch (e) {
-      print('❌ [SystemMediaService] 更新 Windows 媒体信息失败: $e');
+      StructuredLogService.log('❌ [SystemMediaService] 更新 Windows 媒体信息失败: $e');
     }
   }
 
   /// 更新元数据（标题、艺术家、封面等）
   void _updateMetadata(dynamic song, dynamic track) {
     if (song == null && track == null) {
-      print('⚠️ [SystemMediaService] 没有歌曲信息，跳过元数据更新');
+      StructuredLogService.log('⚠️ [SystemMediaService] 没有歌曲信息，跳过元数据更新');
       return;
     }
 
@@ -324,11 +325,11 @@ class SystemMediaService {
       thumbnail = thumbnail.replaceFirst('http://', 'https://');
     }
 
-    print('🖼️ [SystemMediaService] 更新元数据:');
-    print('   📝 标题: $title');
-    print('   👤 艺术家: $artist');
-    print('   💿 专辑: $album');
-    print('   🖼️ 封面: ${thumbnail.isNotEmpty ? "已设置" : "无"}');
+    StructuredLogService.log('🖼️ [SystemMediaService] 更新元数据:');
+    StructuredLogService.log('   📝 标题: $title');
+    StructuredLogService.log('   👤 艺术家: $artist');
+    StructuredLogService.log('   💿 专辑: $album');
+    StructuredLogService.log('   🖼️ 封面: ${thumbnail.isNotEmpty ? "已设置" : "无"}');
 
     _nativeSmtc!.updateMetadata(
       title: title,
@@ -337,7 +338,7 @@ class SystemMediaService {
       thumbnail: thumbnail.isNotEmpty ? thumbnail : null,
     );
 
-    print('✅ [SystemMediaService] 元数据已更新到 SMTC');
+    StructuredLogService.log('✅ [SystemMediaService] 元数据已更新到 SMTC');
   }
 
   /// 将播放状态转换为 SMTC 播放状态
@@ -357,11 +358,11 @@ class SystemMediaService {
   /// 清理资源
   void dispose() {
     if (_isDisposed) {
-      print('⚠️ [SystemMediaService] 已经清理过，跳过');
+      StructuredLogService.log('⚠️ [SystemMediaService] 已经清理过，跳过');
       return;
     }
 
-    print('🎵 [SystemMediaService] 开始清理系统媒体控件...');
+    StructuredLogService.log('🎵 [SystemMediaService] 开始清理系统媒体控件...');
 
     // 立即设置标志，阻止继续更新（必须在最前面）
     _isDisposed = true;
@@ -369,7 +370,7 @@ class SystemMediaService {
 
     try {
       // 移除播放器监听器（防止后续状态改变触发更新）
-      print('🔌 [SystemMediaService] 移除播放器监听器...');
+      StructuredLogService.log('🔌 [SystemMediaService] 移除播放器监听器...');
       PlayerService().removeListener(_onPlayerStateChanged);
 
       // 清除缓存状态
@@ -378,20 +379,20 @@ class SystemMediaService {
 
       // 释放 SMTC（不等待，让系统自动清理）
       if (_nativeSmtc != null) {
-        print('🗑️ [SystemMediaService] 释放 SMTC 资源...');
+        StructuredLogService.log('🗑️ [SystemMediaService] 释放 SMTC 资源...');
         _nativeSmtc?.dispose();
         _nativeSmtc = null;
       }
 
       // 释放 Android AudioHandler
       if (_audioHandler != null) {
-        print('🗑️ [SystemMediaService] 释放 AudioHandler 资源...');
+        StructuredLogService.log('🗑️ [SystemMediaService] 释放 AudioHandler 资源...');
         _audioHandler = null;
       }
 
-      print('✅ [SystemMediaService] 系统媒体控件已清理');
+      StructuredLogService.log('✅ [SystemMediaService] 系统媒体控件已清理');
     } catch (e) {
-      print('⚠️ [SystemMediaService] 清理失败: $e');
+      StructuredLogService.log('⚠️ [SystemMediaService] 清理失败: $e');
     }
   }
 }

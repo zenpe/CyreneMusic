@@ -7,15 +7,15 @@ import '../../utils/theme_manager.dart';
 class MobileNewsongList extends StatelessWidget {
   final List<Map<String, dynamic>> list;
   const MobileNewsongList({super.key, required this.list});
-  
+
   @override
   Widget build(BuildContext context) {
     final themeManager = ThemeManager();
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     if (list.isEmpty) return Text('暂无数据', style: Theme.of(context).textTheme.bodySmall);
-    
+
     if (isCupertino) {
       return Container(
         decoration: BoxDecoration(
@@ -23,7 +23,7 @@ class MobileNewsongList extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: CupertinoColors.black.withOpacity(isDark ? 0.2 : 0.08),
+              color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.08),
               blurRadius: 10,
               offset: const Offset(0, 2),
             ),
@@ -36,9 +36,9 @@ class MobileNewsongList extends StatelessWidget {
           itemCount: list.length,
           separatorBuilder: (_, __) => Divider(
             height: 0.5,
-            color: isDark 
-                ? CupertinoColors.systemGrey.withOpacity(0.3)
-                : CupertinoColors.systemGrey.withOpacity(0.2),
+            color: isDark
+                ? CupertinoColors.systemGrey.withValues(alpha: 0.3)
+                : CupertinoColors.systemGrey.withValues(alpha: 0.2),
           ),
           itemBuilder: (context, i) {
             final s = list[i];
@@ -57,7 +57,7 @@ class MobileNewsongList extends StatelessWidget {
                 child: Row(
                   children: [
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(6), 
+                      borderRadius: BorderRadius.circular(6),
                       child: Image.network(pic, width: 48, height: 48, fit: BoxFit.cover),
                     ),
                     const SizedBox(width: 12),
@@ -66,8 +66,8 @@ class MobileNewsongList extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            song['name']?.toString() ?? '', 
-                            maxLines: 1, 
+                            song['name']?.toString() ?? '',
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 15,
@@ -77,8 +77,8 @@ class MobileNewsongList extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            artists, 
-                            maxLines: 1, 
+                            artists,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 13,
@@ -101,7 +101,7 @@ class MobileNewsongList extends StatelessWidget {
         ),
       );
     }
-    
+
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),

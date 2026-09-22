@@ -205,7 +205,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
               await AdminService().fetchUsers();
               await AdminService().fetchStats();
             } catch (e) {
-              print('❌ [DeveloperPage] 数据加载失败: $e');
+              StructuredLogService.log('❌ [DeveloperPage] 数据加载失败: $e');
               // 不自动登出，让用户手动重试
             }
           }
@@ -736,7 +736,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
             onPressed: () async {
               Navigator.pop(context);
               final success = await AdminService().deleteUser(user.id);
-              if (mounted) {
+              if (mounted && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(success ? '用户已删除' : '删除失败'),
@@ -794,7 +794,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
             trailing: Switch.adaptive(
               value: DeveloperModeService().isSearchResultMergeEnabled,
               onChanged: (value) {
-                setState(() {
+                _refreshState(() {
                   DeveloperModeService().toggleSearchResultMerge(value);
                 });
               },
@@ -810,7 +810,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
             trailing: Switch.adaptive(
               value: DeveloperModeService().showPerformanceOverlay,
               onChanged: (value) {
-                setState(() {
+                _refreshState(() {
                   DeveloperModeService().togglePerformanceOverlay(value);
                 });
               },
@@ -1002,7 +1002,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
       password: password,
     );
 
-    if (mounted) {
+    if (mounted && dialogContext.mounted) {
       Navigator.pop(dialogContext);
 
       if (loginResult['success']) {
@@ -1148,40 +1148,4 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
   }
 
   /// 构建数据区块
-  Widget _buildDataSection(String title, IconData icon, List<String> items) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const Divider(),
-            ...items.map((item) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: SelectableText(
-                item,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                ),
-              ),
-            )),
-          ],
-        ),
-      ),
-    );
-  }
 }
-

@@ -33,14 +33,14 @@ class MeshGradientBackground extends StatefulWidget {
 class _MeshGradientBackgroundState extends State<MeshGradientBackground>
     with TickerProviderStateMixin {
   late Ticker _ticker;
-  
+
   // 性能优化：使用 ValueNotifier 替代 setState，避免整个 Widget 树重建
   final ValueNotifier<_MeshPaintData> _paintDataNotifier = ValueNotifier(
     _MeshPaintData(time: 0.0, colors: [], bassIntensity: 0.0),
   );
-  
+
   double _time = 0.0;
-  
+
   // 用于色彩平滑过渡的控制器
   late AnimationController _colorController;
   List<Color> _previousColors = [];
@@ -98,7 +98,7 @@ class _MeshGradientBackgroundState extends State<MeshGradientBackground>
     List<Color> result = List.from(colors);
     // 补齐到至少 5 个颜色以保证丰富度
     while (result.length < 5) {
-      result.add(result[result.length % result.length].withOpacity(0.8));
+      result.add(result[result.length % result.length].withValues(alpha: 0.8));
     }
     return result;
   }
@@ -106,7 +106,7 @@ class _MeshGradientBackgroundState extends State<MeshGradientBackground>
   @override
   void didUpdateWidget(MeshGradientBackground oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
+
     if (!_colorsEqual(oldWidget.colors, widget.colors)) {
       _previousColors = List.from(_currentColors);
       _targetColors = _ensureMinColors(widget.colors);
@@ -116,7 +116,7 @@ class _MeshGradientBackgroundState extends State<MeshGradientBackground>
       _targetColors = _ensureMinColors(widget.colors);
       _currentColors = List.from(_targetColors);
     }
-    
+
     if (widget.animate != oldWidget.animate) {
       if (widget.animate) {
         _ticker.start();
@@ -139,23 +139,23 @@ class _MeshGradientBackgroundState extends State<MeshGradientBackground>
 
   void _onTick(Duration elapsed) {
     if (!mounted) return;
-    
+
     // 模拟节奏模式：使用正弦波生成平滑的强度变化
     if (_shouldSimulateRhythm) {
       final elapsedSeconds = elapsed.inMilliseconds / 1000.0;
       // 多重正弦波叠加，模拟自然的节奏感
-      _bassIntensity = 0.25 + 
-          0.15 * math.sin(elapsedSeconds * 2.5) + 
+      _bassIntensity = 0.25 +
+          0.15 * math.sin(elapsedSeconds * 2.5) +
           0.10 * math.sin(elapsedSeconds * 1.7 + 0.5) +
           0.08 * math.sin(elapsedSeconds * 4.1 + 1.2);
       _bassIntensity = _bassIntensity.clamp(0.0, 0.8);
     }
-    
+
     // 根据重低音强度增加额外的时间偏移，产生动态加速感
     _extraTime += _bassIntensity * 0.03;
-    
+
     _time = (elapsed.inMilliseconds / 1000.0 * widget.speed) + _extraTime;
-    
+
     // 更新当前色彩（平滑过渡）
     if (_colorController.isAnimating) {
       final t = Curves.easeInOut.transform(_colorController.value);
@@ -164,7 +164,7 @@ class _MeshGradientBackgroundState extends State<MeshGradientBackground>
         return Color.lerp(startColor, _targetColors[i], t)!;
       });
     }
-    
+
     // 性能优化：使用 ValueNotifier 通知重绘，而不是通过 setState 触发整个 Widget 树重建
     _paintDataNotifier.value = _MeshPaintData(
       time: _time,
@@ -250,7 +250,7 @@ class _MeshGradientPainter extends CustomPainter {
 
     // 2. 绘制 5 个动态光斑 (参考 bg.html)
     // 映射颜色：确保至少有 5 个颜色
-    
+
     // ✅ 优化 0：配置静态化，消除每帧分配
     final blobConfigs = _blobConfigs;
 
@@ -258,7 +258,7 @@ class _MeshGradientPainter extends CustomPainter {
     // 移动端通常只绘制前 3 个光斑，足以覆盖大部分视野并具有良好的运动感
     final bool isMobile = Platform.isAndroid || Platform.isIOS;
     final int blobCount = isMobile ? 3 : 5;
-    
+
     // ✅ 优化 2：预先提取颜色 HSL 提升效率
     final List<Color> boostedColors = colors.map((color) {
       final hsl = HSLColor.fromColor(color);
@@ -271,23 +271,23 @@ class _MeshGradientPainter extends CustomPainter {
     for (int i = 0; i < blobCount; i++) {
       final config = blobConfigs[i];
       final color = boostedColors[i % boostedColors.length];
-      
+
       // ✅ 优化 3：使用内联数学公式替代闭包函数调用，消除每帧函数开销
       final double dx = config.moveFactor.dx * math.sin(time * config.moveSpeed.dx);
       final double dy = config.moveFactor.dy * math.cos(time * config.moveSpeed.dy);
-      
+
       final centerX = size.width * (config.basePos.dx + dx);
       final centerY = size.height * (config.basePos.dy + dy);
-      
+
       // 这里的 sizeRatio 在 mobile 上适当减小以降低像素填充率
       double radius = shortestSide * config.sizeRatio * (isMobile ? 0.8 : 1.0);
-      
+
       final double scale = config.scaleBase + config.scaleRange * math.sin(time * config.scaleSpeed);
       radius *= scale;
-      
+
       // 律动加成
       radius += (shortestSide * 0.1) * bassIntensity;
-      
+
       if (radius < 10) radius = 10;
 
       final paintBlob = Paint()
@@ -299,9 +299,9 @@ class _MeshGradientPainter extends CustomPainter {
         Offset(centerX, centerY),
         radius,
         [
-          color.withOpacity(config.opacity),
-          color.withOpacity(config.opacity * 0.5),
-          color.withOpacity(0.0),
+          color.withValues(alpha: config.opacity),
+          color.withValues(alpha: config.opacity * 0.5),
+          color.withValues(alpha: 0.0),
         ],
         const [0.0, 0.4, 1.0],
       );
@@ -377,8 +377,8 @@ class _MeshGradientPainter extends CustomPainter {
   ];
 
   @override
-  bool shouldRepaint(_MeshGradientPainter oldDelegate) => 
-      oldDelegate.time != time || 
+  bool shouldRepaint(_MeshGradientPainter oldDelegate) =>
+      oldDelegate.time != time ||
       oldDelegate.colors != colors ||
       oldDelegate.bassIntensity != bassIntensity;
 }
@@ -417,7 +417,7 @@ class _MeshPaintData {
   final double time;
   final List<Color> colors;
   final double bassIntensity;
-  
+
   _MeshPaintData({
     required this.time,
     required this.colors,
@@ -445,14 +445,14 @@ class _CachedGrainTextureState extends State<_CachedGrainTexture> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
-        
+
         // 检查是否需要重新生成缓存（尺寸变化）
-        if (_cachedGrainImage == null || 
+        if (_cachedGrainImage == null ||
             _cachedSize == null ||
             (_cachedSize!.width < size.width || _cachedSize!.height < size.height)) {
           _generateGrainImage(size);
         }
-        
+
         if (_cachedGrainImage != null) {
           return Opacity(
             opacity: 0.04,
@@ -464,7 +464,7 @@ class _CachedGrainTextureState extends State<_CachedGrainTexture> {
             ),
           );
         }
-        
+
         // 生成中显示空白
         return const SizedBox.shrink();
       },
@@ -474,41 +474,41 @@ class _CachedGrainTextureState extends State<_CachedGrainTexture> {
   void _generateGrainImage(Size size) async {
     if (_isGenerating) return;
     _isGenerating = true;
-    
+
     try {
       // 使用固定的较大尺寸生成噪点图，避免频繁重新生成
       final targetSize = Size(
         math.max(size.width, 1920).ceilToDouble(),
         math.max(size.height, 1080).ceilToDouble(),
       );
-      
+
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      
+
       final random = math.Random(123); // 固定种子确保一致性
       final paint = Paint()
-        ..color = Colors.white.withOpacity(0.08)
+        ..color = Colors.white.withValues(alpha: 0.08)
         ..style = PaintingStyle.fill;
-      
+
       // 根据尺寸调整噪点数量
       final pointCount = ((targetSize.width * targetSize.height) / 1000).clamp(1000, 3000).toInt();
-      
+
       for (int i = 0; i < pointCount; i++) {
         final x = random.nextDouble() * targetSize.width;
         final y = random.nextDouble() * targetSize.height;
         final dotSize = 0.5 + random.nextDouble() * 0.8;
         canvas.drawRect(Rect.fromLTWH(x, y, dotSize, dotSize), paint);
       }
-      
+
       final picture = recorder.endRecording();
       final image = await picture.toImage(
         targetSize.width.toInt(),
         targetSize.height.toInt(),
       );
-      
+
       _cachedGrainImage = image;
       _cachedSize = targetSize;
-      
+
       if (mounted) {
         setState(() {});
       }
@@ -529,7 +529,7 @@ class DynamicBackgroundColorExtractor {
     Color? darkMutedColor,
   }) {
     final List<Color> result = [];
-    
+
     // 候选池：按优先级排序
     final List<Color?> candidates = [
       vibrantColor,
@@ -547,7 +547,7 @@ class DynamicBackgroundColorExtractor {
         result.add(color);
       }
     }
-    
+
     // 3. 增强逻辑：如果颜色少于 3 个，通过色相旋转生成互补/邻近色，确保背景丰富度
     if (result.length < 3) {
       if (result.isEmpty) {
@@ -555,7 +555,7 @@ class DynamicBackgroundColorExtractor {
       } else {
         final baseColor = result[0];
         final hsl = HSLColor.fromColor(baseColor);
-        
+
         // 如果只有一个颜色，生成三元色 (Triadic) + 更大的明度差异
         if (result.length == 1) {
           // 第二色：色相 +120°，明度略微调暗
@@ -572,7 +572,7 @@ class DynamicBackgroundColorExtractor {
               .toColor();
           result.add(color2);
           result.add(color3);
-        } 
+        }
         // 如果有两个颜色，生成一个互补色（色相 +180°）
         else if (result.length == 2) {
           final color3 = hsl
@@ -584,7 +584,7 @@ class DynamicBackgroundColorExtractor {
         }
       }
     }
-    
+
     // 4. 最终补齐到 5 个（通过更大的色相偏移和明度变化防止单调）
     int fillIndex = 0;
     while (result.length < 5) {
@@ -599,28 +599,28 @@ class DynamicBackgroundColorExtractor {
           .toColor());
       fillIndex++;
     }
-    
+
     return result.take(5).toList();
   }
-  
+
   /// 色彩相似度判定 (基于 HSL 颜色空间)
   /// 使用色相、饱和度、明度三个维度综合判断，比 RGB 欧几里得距离更符合人眼感知
   static bool _isSimilarColor(Color color, List<Color> existingColors) {
     final hsl = HSLColor.fromColor(color);
-    
+
     for (final existing in existingColors) {
       final existingHsl = HSLColor.fromColor(existing);
-      
+
       // 计算色相差（考虑色环的循环特性，0° 和 360° 是同一个颜色）
       double hueDiff = (hsl.hue - existingHsl.hue).abs();
       if (hueDiff > 180) hueDiff = 360 - hueDiff;
-      
+
       // 明度差
       final lightnessDiff = (hsl.lightness - existingHsl.lightness).abs();
-      
+
       // 饱和度差
       final saturationDiff = (hsl.saturation - existingHsl.saturation).abs();
-      
+
       // 判定规则：
       // - 色相差 < 25° 且 明度差 < 0.12 且 饱和度差 < 0.2 => 认为相似
       // - 任一维度超出阈值则认为不同
@@ -631,10 +631,6 @@ class DynamicBackgroundColorExtractor {
     return false;
   }
 
-  static Color _adjustBrightness(Color color, double amount) {
-    final hsl = HSLColor.fromColor(color);
-    return hsl.withLightness((hsl.lightness + amount).clamp(0.0, 1.0)).toColor();
-  }
 
   static List<Color> getDefaultColors() => const [
     Color(0xFF60A5FA), Color(0xFF1E3A5F), Color(0xFF3B82F6),

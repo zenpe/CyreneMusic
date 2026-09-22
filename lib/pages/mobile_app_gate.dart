@@ -1,3 +1,4 @@
+import '../services/structured_log_service.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -60,7 +61,7 @@ class _MobileAppGateState extends State<MobileAppGate>
       await PlaybackService().persistSessionImmediately();
       await PersistentStorageService().forceBackup();
     } catch (e) {
-      print('⚠️ [MobileAppGate] 生命周期保存播放会话失败: $e');
+      StructuredLogService.log('⚠️ [MobileAppGate] 生命周期保存播放会话失败: $e');
     }
   }
 

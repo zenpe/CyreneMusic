@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../features/auth/auth_feature.dart';
-import '../services/api/api_client.dart';
 import '../services/playlist_service.dart';
 import '../services/player_service.dart';
 import '../services/playlist_queue_service.dart';
@@ -9,7 +8,6 @@ import '../models/playlist.dart';
 import '../models/track.dart';
 import '../widgets/import_playlist_dialog.dart';
 import '../widgets/track_action_menu.dart';
-import '../models/music_platform.dart';
 
 /// 歌单页面
 class PlaylistsPage extends StatefulWidget {
@@ -24,7 +22,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
   final AuthFacade _authFacade = AuthFacade();
   final PlaylistService _playlistService = PlaylistService();
   Playlist? _selectedPlaylist; // 当前选中的歌单
-  
+
   // 批量删除相关状态
   bool _isEditMode = false; // 是否处于编辑模式
   final Set<String> _selectedTrackIds = {}; // 选中的歌曲ID集合（trackId + source）
@@ -40,187 +38,6 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     // 加载歌单列表
     if (_authFacade.isLoggedIn) {
       _playlistService.loadPlaylists();
-    }
-  }
-
-  Future<void> _syncFromSource(Playlist playlist) async {
-    if (!mounted) return;
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (context) {
-        MusicPlatform selected = MusicPlatform.netease;
-        final controller = TextEditingController();
-        return StatefulBuilder(
-          builder: (context, setState) => AlertDialog(
-            title: const Text('同步歌单'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: MusicPlatform.values.map((p) {
-                    final isSel = selected == p;
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                        child: ChoiceChip(
-                          label: Text(p.name),
-                          selected: isSel,
-                          onSelected: (v) {
-                            if (v) setState(() => selected = p);
-                          },
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  decoration: const InputDecoration(
-                    labelText: '歌单ID或URL',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 2,
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  final input = controller.text.trim();
-                  if (input.isEmpty) return;
-                  String? pid;
-                  if (selected == MusicPlatform.netease) {
-                    pid = _parseNeteasePlaylistId(input);
-                  } else {
-                    pid = _parseQQPlaylistId(input);
-                  }
-                  if (pid == null) return;
-                  Navigator.pop(context, { 'platform': selected, 'playlistId': pid });
-                },
-                child: const Text('开始同步'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    if (result == null) return;
-    await _performSync(
-      playlist,
-      result['platform'] as MusicPlatform,
-      result['playlistId'] as String,
-    );
-  }
-
-  String? _parseNeteasePlaylistId(String input) {
-    final s = input.trim();
-    if (RegExp(r'^\d+$').hasMatch(s)) return s;
-    try {
-      final uri = Uri.parse(s);
-      final p = uri.queryParameters['id'];
-      if (p != null && RegExp(r'^\d+$').hasMatch(p)) return p;
-      if (uri.fragment.isNotEmpty) {
-        final parts = uri.fragment.split('?');
-        if (parts.length > 1) {
-          final qp = Uri.splitQueryString(parts[1]);
-          final id = qp['id'];
-          if (id != null && RegExp(r'^\d+$').hasMatch(id)) return id;
-        }
-      }
-      final m = RegExp(r'[?&]id=(\d+)').firstMatch(s);
-      if (m != null) return m.group(1);
-    } catch (_) {}
-    return null;
-  }
-
-  String? _parseQQPlaylistId(String input) {
-    final s = input.trim();
-    if (RegExp(r'^\d+$').hasMatch(s)) return s;
-    try {
-      final uri = Uri.parse(s);
-      final p = uri.queryParameters['id'];
-      if (p != null && RegExp(r'^\d+$').hasMatch(p)) return p;
-      if (uri.pathSegments.isNotEmpty) {
-        final last = uri.pathSegments.last;
-        if (RegExp(r'^\d+$').hasMatch(last)) return last;
-      }
-      final m = RegExp(r'[\?&/](?:id=|playlist/)(\d+)').firstMatch(s);
-      if (m != null) return m.group(1);
-    } catch (_) {}
-    return null;
-  }
-
-  Future<void> _performSync(Playlist target, MusicPlatform platform, String sourcePlaylistId) async {
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-    try {
-      final path = platform == MusicPlatform.netease ? '/playlist' : '/qq/playlist';
-      final resp = await ApiClient().getJson(
-        path,
-        queryParameters: {'id': sourcePlaylistId, 'limit': 1000},
-        timeout: const Duration(seconds: 30),
-      );
-      if (!resp.ok) {
-        throw Exception('HTTP ${resp.statusCode}');
-      }
-      final data = resp.data as Map<String, dynamic>;
-      if ((data['status'] as int?) != 200 || data['success'] != true) {
-        throw Exception(data['msg'] ?? '获取歌单失败');
-      }
-      final playlistData = (data['data'] as Map<String, dynamic>)['playlist'] as Map<String, dynamic>;
-      final tracksJson = (playlistData['tracks'] as List).cast<dynamic>();
-      final existing = _playlistService.currentTracks.map((t) => '${t.trackId}_${t.source.toString().split('.').last}').toSet();
-      final List<Track> toAdd = [];
-      for (final e in tracksJson) {
-        final m = e as Map<String, dynamic>;
-        final id = (m['id']).toString();
-        final key = '${id}_${platform == MusicPlatform.netease ? 'netease' : 'qq'}';
-        if (!existing.contains(key)) {
-          toAdd.add(Track(
-            id: int.tryParse(id) ?? id,
-            name: m['name'] as String,
-            artists: m['artists'] as String,
-            album: m['album'] as String,
-            picUrl: (m['picUrl'] as String?) ?? '',
-            source: platform == MusicPlatform.netease ? MusicSource.netease : MusicSource.qq,
-          ));
-        }
-      }
-      int ok = 0;
-      for (final t in toAdd) {
-        final success = await _playlistService.addTrackToPlaylist(target.id, t);
-        if (success) ok++;
-      }
-      if (!mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('同步完成，新增 $ok 首')),
-      );
-      await _playlistService.loadPlaylistTracks(target.id);
-      final bound = await _playlistService.updateImportConfig(
-        target.id,
-        source: platform == MusicPlatform.netease ? 'netease' : 'qq',
-        sourcePlaylistId: sourcePlaylistId,
-      );
-      if (!bound) {
-        print('⚠️ [PlaylistsPage] 更新导入配置失败，需手动绑定');
-      }
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('同步失败: $e')),
-      );
     }
   }
 
@@ -246,9 +63,9 @@ class _PlaylistsPageState extends State<PlaylistsPage>
   Future<void> _syncPlaylistFromList(Playlist playlist) async {
     if (!_hasImportConfig(playlist)) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先在“导入管理”中绑定歌单来源后再同步')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先在“导入管理”中绑定歌单来源后再同步')));
       return;
     }
 
@@ -258,9 +75,9 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     );
     final result = await _playlistService.syncPlaylist(playlist.id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_formatSyncResultMessage(result))),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(_formatSyncResultMessage(result))));
     if (_selectedPlaylist?.id == playlist.id) {
       await _playlistService.loadPlaylistTracks(playlist.id);
     }
@@ -271,9 +88,9 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     final target = _selectedPlaylist!;
     if (!_hasImportConfig(target)) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先在“导入管理”中绑定歌单来源后再同步')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先在“导入管理”中绑定歌单来源后再同步')));
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
@@ -281,9 +98,9 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     );
     final result = await _playlistService.syncPlaylist(target.id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_formatSyncResultMessage(result))),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(_formatSyncResultMessage(result))));
     await _playlistService.loadPlaylistTracks(target.id);
   }
 
@@ -311,9 +128,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
         body: CustomScrollView(
           slivers: [
             _buildAppBar(colorScheme),
-            SliverFillRemaining(
-              child: _buildLoginPrompt(colorScheme),
-            ),
+            SliverFillRemaining(child: _buildLoginPrompt(colorScheme)),
           ],
         ),
       );
@@ -338,15 +153,11 @@ class _PlaylistsPageState extends State<PlaylistsPage>
           // 加载状态
           if (isLoading && playlists.isEmpty)
             const SliverFillRemaining(
-              child: Center(
-                child: CircularProgressIndicator(),
-              ),
+              child: Center(child: CircularProgressIndicator()),
             )
           // 歌单列表
           else if (playlists.isEmpty)
-            SliverFillRemaining(
-              child: _buildEmptyState(colorScheme),
-            )
+            SliverFillRemaining(child: _buildEmptyState(colorScheme))
           else ...[
             // 统计信息
             SliverToBoxAdapter(
@@ -360,20 +171,15 @@ class _PlaylistsPageState extends State<PlaylistsPage>
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final playlist = playlists[index];
-                    return _buildPlaylistItem(playlist, colorScheme);
-                  },
-                  childCount: playlists.length,
-                ),
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final playlist = playlists[index];
+                  return _buildPlaylistItem(playlist, colorScheme);
+                }, childCount: playlists.length),
               ),
             ),
 
             // 底部留白
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 16),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
           ],
         ],
       ),
@@ -432,8 +238,10 @@ class _PlaylistsPageState extends State<PlaylistsPage>
 
   /// 构建统计信息卡片
   Widget _buildStatisticsCard(ColorScheme colorScheme, int count) {
-    final totalTracks = _playlistService.playlists
-        .fold<int>(0, (sum, playlist) => sum + playlist.trackCount);
+    final totalTracks = _playlistService.playlists.fold<int>(
+      0,
+      (sum, playlist) => sum + playlist.trackCount,
+    );
 
     return Card(
       child: Padding(
@@ -447,11 +255,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
               '歌单',
               count.toString(),
             ),
-            Container(
-              width: 1,
-              height: 40,
-              color: colorScheme.outlineVariant,
-            ),
+            Container(width: 1, height: 40, color: colorScheme.outlineVariant),
             _buildStatItem(
               colorScheme,
               Icons.music_note,
@@ -465,21 +269,22 @@ class _PlaylistsPageState extends State<PlaylistsPage>
   }
 
   Widget _buildStatItem(
-      ColorScheme colorScheme, IconData icon, String label, String value) {
+    ColorScheme colorScheme,
+    IconData icon,
+    String label,
+    String value,
+  ) {
     return Column(
       children: [
         Icon(icon, color: colorScheme.primary),
         const SizedBox(height: 8),
         Text(
           value,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
         ),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
       ],
     );
   }
@@ -535,7 +340,9 @@ class _PlaylistsPageState extends State<PlaylistsPage>
               IconButton(
                 icon: const Icon(Icons.sync, size: 20),
                 color: canSync ? colorScheme.primary : null,
-                onPressed: canSync ? () => _syncPlaylistFromList(playlist) : null,
+                onPressed: canSync
+                    ? () => _syncPlaylistFromList(playlist)
+                    : null,
                 tooltip: canSync ? '同步歌单' : '请先设置导入来源',
               ),
               IconButton(
@@ -600,7 +407,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
         ),
       );
     }
-    
+
     // 没有封面时显示默认图标
     return Container(
       width: 48,
@@ -699,9 +506,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             child: const Text('删除'),
           ),
         ],
@@ -768,16 +573,16 @@ class _PlaylistsPageState extends State<PlaylistsPage>
             onPressed: () async {
               final name = controller.text.trim();
               if (name.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('歌单名称不能为空')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('歌单名称不能为空')));
                 return;
               }
 
               Navigator.pop(context);
 
               final newPlaylist = await _playlistService.createPlaylist(name);
-              if (mounted) {
+              if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(newPlaylist != null ? '创建成功' : '创建失败'),
@@ -802,9 +607,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
         title: const Text('重命名歌单'),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
-            labelText: '歌单名称',
-          ),
+          decoration: const InputDecoration(labelText: '歌单名称'),
           autofocus: true,
           maxLength: 30,
         ),
@@ -817,21 +620,21 @@ class _PlaylistsPageState extends State<PlaylistsPage>
             onPressed: () async {
               final name = controller.text.trim();
               if (name.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('歌单名称不能为空')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('歌单名称不能为空')));
                 return;
               }
 
               Navigator.pop(context);
 
-              final success =
-                  await _playlistService.updatePlaylist(playlist.id, name);
-              if (mounted) {
+              final success = await _playlistService.updatePlaylist(
+                playlist.id,
+                name,
+              );
+              if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(success ? '重命名成功' : '重命名失败'),
-                  ),
+                  SnackBar(content: Text(success ? '重命名成功' : '重命名失败')),
                 );
               }
             },
@@ -858,18 +661,16 @@ class _PlaylistsPageState extends State<PlaylistsPage>
             onPressed: () async {
               Navigator.pop(context);
 
-              final success = await _playlistService.deletePlaylist(playlist.id);
-              if (mounted) {
+              final success = await _playlistService.deletePlaylist(
+                playlist.id,
+              );
+              if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(success ? '删除成功' : '删除失败'),
-                  ),
+                  SnackBar(content: Text(success ? '删除成功' : '删除失败')),
                 );
               }
             },
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             child: const Text('删除'),
           ),
         ],
@@ -882,22 +683,30 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
-        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        final compact =
+            constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 0.0;
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       Icons.library_music_outlined,
                       size: compact ? 56 : 80,
-                      color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.3,
+                      ),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -916,7 +725,9 @@ class _PlaylistsPageState extends State<PlaylistsPage>
                       maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.7,
+                        ),
                       ),
                     ),
                   ],
@@ -934,22 +745,30 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
-        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        final compact =
+            constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 0.0;
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       Icons.login,
                       size: compact ? 56 : 80,
-                      color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.3,
+                      ),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -968,7 +787,9 @@ class _PlaylistsPageState extends State<PlaylistsPage>
                       maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.7,
+                        ),
                       ),
                     ),
                   ],
@@ -998,15 +819,11 @@ class _PlaylistsPageState extends State<PlaylistsPage>
           // 加载状态
           if (isLoading && tracks.isEmpty)
             const SliverFillRemaining(
-              child: Center(
-                child: CircularProgressIndicator(),
-              ),
+              child: Center(child: CircularProgressIndicator()),
             )
           // 歌曲列表
           else if (tracks.isEmpty)
-            SliverFillRemaining(
-              child: _buildDetailEmptyState(colorScheme),
-            )
+            SliverFillRemaining(child: _buildDetailEmptyState(colorScheme))
           else ...[
             // 统计信息和播放按钮
             SliverToBoxAdapter(
@@ -1020,20 +837,15 @@ class _PlaylistsPageState extends State<PlaylistsPage>
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final track = tracks[index];
-                    return _buildTrackItem(track, index, colorScheme);
-                  },
-                  childCount: tracks.length,
-                ),
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final track = tracks[index];
+                  return _buildTrackItem(track, index, colorScheme);
+                }, childCount: tracks.length),
               ),
             ),
 
             // 底部留白
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 16),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
           ],
         ],
       ),
@@ -1043,7 +855,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
   /// 构建歌单详情顶部栏
   Widget _buildDetailAppBar(Playlist playlist, ColorScheme colorScheme) {
     final tracks = _playlistService.currentTracks;
-    
+
     return SliverAppBar(
       floating: true,
       snap: true,
@@ -1092,10 +904,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
             tooltip: '删除选中',
           ),
           // 取消按钮
-          TextButton(
-            onPressed: _toggleEditMode,
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: _toggleEditMode, child: const Text('取消')),
         ] else ...[
           // 编辑按钮
           if (tracks.isNotEmpty)
@@ -1114,9 +923,9 @@ class _PlaylistsPageState extends State<PlaylistsPage>
             icon: const Icon(Icons.sync),
             onPressed: () async {
               if (!_hasImportConfig(playlist)) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请先设置导入来源后再同步')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('请先设置导入来源后再同步')));
                 return;
               }
               ScaffoldMessenger.of(context).showSnackBar(
@@ -1146,17 +955,13 @@ class _PlaylistsPageState extends State<PlaylistsPage>
         padding: const EdgeInsets.all(16.0),
         child: Row(
           children: [
-            Icon(
-              Icons.music_note,
-              size: 24,
-              color: colorScheme.primary,
-            ),
+            Icon(Icons.music_note, size: 24, color: colorScheme.primary),
             const SizedBox(width: 12),
             Text(
               '共 $count 首歌曲',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             const Spacer(),
             if (count > 0)
@@ -1173,14 +978,17 @@ class _PlaylistsPageState extends State<PlaylistsPage>
 
   /// 构建歌曲项
   Widget _buildTrackItem(
-      PlaylistTrack item, int index, ColorScheme colorScheme) {
+    PlaylistTrack item,
+    int index,
+    ColorScheme colorScheme,
+  ) {
     final trackKey = _getTrackKey(item);
     final isSelected = _selectedTrackIds.contains(trackKey);
-    
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      color: isSelected && _isEditMode 
-          ? colorScheme.primaryContainer.withOpacity(0.3) 
+      color: isSelected && _isEditMode
+          ? colorScheme.primaryContainer.withValues(alpha: 0.3)
           : null,
       child: ListTile(
         leading: _isEditMode
@@ -1227,7 +1035,10 @@ class _PlaylistsPageState extends State<PlaylistsPage>
                     bottom: 0,
                     right: 0,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: colorScheme.primaryContainer,
                         borderRadius: const BorderRadius.only(
@@ -1246,11 +1057,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
                   ),
                 ],
               ),
-        title: Text(
-          item.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Row(
           children: [
             Expanded(
@@ -1291,11 +1098,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     final trackList = tracks.map((t) => t.toTrack()).toList();
 
     // 设置播放队列
-    PlaylistQueueService().setQueue(
-      trackList,
-      index,
-      QueueSource.playlist,
-    );
+    PlaylistQueueService().setQueue(trackList, index, QueueSource.playlist);
 
     // 播放选中的歌曲（来自歌单，检查换源限制）
     PlayerService().playTrack(trackList[index], fromPlaylist: true);
@@ -1310,11 +1113,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     final trackList = tracks.map((t) => t.toTrack()).toList();
 
     // 设置播放队列并播放第一首
-    PlaylistQueueService().setQueue(
-      trackList,
-      0,
-      QueueSource.playlist,
-    );
+    PlaylistQueueService().setQueue(trackList, 0, QueueSource.playlist);
 
     PlayerService().playTrack(trackList[0], fromPlaylist: true);
 
@@ -1334,7 +1133,9 @@ class _PlaylistsPageState extends State<PlaylistsPage>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('从歌单移除'),
-        content: Text('确定要从「${_selectedPlaylist?.name ?? "歌单"}」中移除「${track.name}」吗？'),
+        content: Text(
+          '确定要从「${_selectedPlaylist?.name ?? "歌单"}」中移除「${track.name}」吗？',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -1342,9 +1143,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             child: const Text('移除'),
           ),
         ],
@@ -1352,8 +1151,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     );
 
     if (confirmed == true && _selectedPlaylist != null) {
-      await _playlistService.removePlaylistTrack(
-          _selectedPlaylist!.id, track);
+      await _playlistService.removePlaylistTrack(_selectedPlaylist!.id, track);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1392,22 +1190,30 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
-        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        final compact =
+            constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 0.0;
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       Icons.music_note_outlined,
                       size: compact ? 56 : 80,
-                      color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.3,
+                      ),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -1426,7 +1232,9 @@ class _PlaylistsPageState extends State<PlaylistsPage>
                       maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.7,
+                        ),
                       ),
                     ),
                   ],
@@ -1439,4 +1247,3 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     );
   }
 }
-

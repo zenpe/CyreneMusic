@@ -25,7 +25,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
   Map<String, dynamic>? _wikiData;
   Map<String, dynamic>? _musicDetail;
   Map<String, dynamic>? _userMemory; // 用户自己的回忆坐标
-  
+
   // 歌手相关数据 (支持多位歌手)
   // List<{
   //   'name': String,              // 歌手名
@@ -33,10 +33,10 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
   //   'hotSongs': List<Track>,     // 热门歌曲
   // }>
   List<Map<String, dynamic>> _artistsDataList = [];
-  
+
   bool _loading = true;
   dynamic _lastSongId;
-  
+
   // 内嵌歌单详情视图状态
   int? _selectedPlaylistId;
   NeteasePlaylistDetail? _playlistDetail;
@@ -62,7 +62,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
 
   Future<void> _loadSongData() async {
     final track = PlayerService().currentTrack;
-    
+
     if (track == null || track.source != MusicSource.netease) {
       if (mounted && _wikiData != null) {
         setState(() {
@@ -83,7 +83,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
       // 1. 获取所有歌手名
       final allArtistsName = track.artists;
       final artistNames = _splitArtists(allArtistsName);
-      
+
       // 2. 基础请求：网易云百科 + 用户回忆坐标
       final baseFutures = <Future<dynamic>>[
         NeteaseSongWikiService().fetchSongWiki(track.id),             // 0
@@ -92,25 +92,25 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
       ];
 
       final baseResults = await Future.wait(baseFutures);
-      
+
       // 3. 并行获取每位歌手的详情
       List<Map<String, dynamic>> newArtistsDataList = [];
-      
+
       // 并行执行所有歌手的数据获取
       final artistFutures = artistNames.map((name) async {
          try {
            final artistId = await NeteaseArtistDetailService().resolveArtistIdByName(name);
            if (artistId == null) return null;
-           
+
            // 获取详情和描述
            final results = await Future.wait([
              NeteaseArtistDetailService().fetchArtistDesc(artistId),
              NeteaseArtistDetailService().fetchArtistDetail(artistId),
            ]);
-           
+
            final descData = results[0];
            final detailData = results[1];
-           
+
            // 简介: 优先使用 descData (artist/desc 接口)，其次使用 detailData (artist/detail 接口)
            String briefDesc = '';
            if (descData != null && descData['briefDesc'] != null) {
@@ -119,17 +119,17 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
               final val = detailData['artist']['briefDesc'] ?? detailData['artist']['description'];
               briefDesc = val?.toString() ?? '';
            }
-           
+
            // 头像: 必须从 detailData (artist/detail 接口) 中获取
            String avatarUrl = '';
            if (detailData != null && detailData['artist'] != null) {
               final artistObj = detailData['artist'];
               if (artistObj is Map) {
-                avatarUrl = artistObj['img1v1Url']?.toString() ?? 
+                avatarUrl = artistObj['img1v1Url']?.toString() ??
                             artistObj['picUrl']?.toString() ?? '';
               }
            }
-           
+
            // 热门歌曲
            List<Track> hotSongs = [];
            if (detailData != null && detailData['songs'] != null) {
@@ -146,7 +146,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                );
              }).toList();
            }
-           
+
            return {
              'name': name,
              'desc': briefDesc,
@@ -160,7 +160,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
       }).toList();
 
       final artistsResults = await Future.wait(artistFutures);
-      
+
       // 过滤掉失败的结果
       for (final item in artistsResults) {
         if (item != null) {
@@ -173,7 +173,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
           _wikiData = baseResults[0] as Map<String, dynamic>?;
           _musicDetail = baseResults[1] as Map<String, dynamic>?;
           _userMemory = baseResults[2] as Map<String, dynamic>?;
-          
+
           _artistsDataList = newArtistsDataList;
 
           _loading = false;
@@ -207,16 +207,16 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
   Map<String, dynamic> _parseBasicInfo() {
     final basicBlock = _findBlock('SONG_PLAY_ABOUT_SONG_BASIC');
     final creatives = basicBlock?['creatives'] as List? ?? [];
-    
+
     List<String> styles = [];
     String language = '';
     String bpm = '';
-    
+
     for (final creative in creatives) {
       if (creative is! Map) continue;
       final creativeType = creative['creativeType']?.toString() ?? '';
       final uiElement = creative['uiElement'] as Map?;
-      
+
       if (creativeType == 'songTag') {
         final resources = creative['resources'] as List? ?? [];
         for (final res in resources) {
@@ -239,7 +239,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
         }
       }
     }
-    
+
     return {'styles': styles, 'language': language, 'bpm': bpm};
   }
 
@@ -247,22 +247,22 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
   Map<String, dynamic> _parseMemoryInfo() {
     final memoryBlock = _findBlock('SONG_PLAY_ABOUT_MUSIC_MEMORY');
     final creatives = memoryBlock?['creatives'] as List? ?? [];
-    
+
     String firstListenDate = '';
     String firstListenSeason = '';
     String firstListenPeriod = '';
     int playCount = 0;
     String playDescription = '';
-    
+
     for (final creative in creatives) {
       if (creative is! Map) continue;
       final resources = creative['resources'] as List? ?? [];
-      
+
       for (final res in resources) {
         if (res is! Map) continue;
         final resourceType = res['resourceType']?.toString() ?? '';
         final resourceExt = res['resourceExt'] as Map?;
-        
+
         if (resourceType == 'FIRST_LISTEN') {
           final dto = resourceExt?['musicFirstListenDto'] as Map?;
           if (dto != null) {
@@ -279,7 +279,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
         }
       }
     }
-    
+
     return {
       'firstListenDate': firstListenDate,
       'firstListenSeason': firstListenSeason,
@@ -293,38 +293,38 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
   List<Map<String, dynamic>> _parseSimilarSongs() {
     final similarBlock = _findBlock('SONG_PLAY_ABOUT_SIMILAR_SONG');
     final creatives = similarBlock?['creatives'] as List? ?? [];
-    
+
     List<Map<String, dynamic>> songs = [];
-    
+
     for (final creative in creatives) {
       if (creative is! Map) continue;
       final resources = creative['resources'] as List? ?? [];
-      
+
       for (final res in resources) {
         if (res is! Map) continue;
         if (res['resourceType'] != 'SONG') continue;
-        
+
         final uiElement = res['uiElement'] as Map?;
         if (uiElement == null) continue;
-        
+
         final title = uiElement['mainTitle']?['title']?.toString() ?? '';
-        
+
         // 解析歌手
         final subTitles = uiElement['subTitles'] as List? ?? [];
         String artist = '';
         if (subTitles.isNotEmpty && subTitles[0] is Map) {
           artist = (subTitles[0] as Map)['title']?.toString() ?? '';
         }
-        
+
         // 解析封面
         final images = uiElement['images'] as List? ?? [];
         String imageUrl = '';
         if (images.isNotEmpty && images[0] is Map) {
           imageUrl = ((images[0] as Map)['imageUrl']?.toString() ?? '').replaceAll('http://', 'https://');
         }
-        
+
         final songId = res['resourceId']?.toString() ?? '';
-        
+
         if (title.isNotEmpty) {
           songs.add({
             'id': songId,
@@ -335,7 +335,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
         }
       }
     }
-    
+
     return songs.take(6).toList(); // 最多显示6首
   }
 
@@ -343,35 +343,35 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
   List<Map<String, dynamic>> _parseRelatedPlaylists() {
     final relatedBlock = _findBlock('SONG_PLAY_ABOUT_RELATED_PLAYLIST');
     final creatives = relatedBlock?['creatives'] as List? ?? [];
-    
+
     List<Map<String, dynamic>> playlists = [];
-    
+
     for (final creative in creatives) {
       if (creative is! Map) continue;
       final resources = creative['resources'] as List? ?? [];
-      
+
       for (final res in resources) {
         if (res is! Map) continue;
         if (res['resourceType'] != 'PLAYLIST') continue;
-        
+
         final uiElement = res['uiElement'] as Map?;
         if (uiElement == null) continue;
-        
+
         final title = uiElement['mainTitle']?['title']?.toString() ?? '';
-        
+
         // 解析封面
         final images = uiElement['images'] as List? ?? [];
         String imageUrl = '';
         if (images.isNotEmpty && images[0] is Map) {
           imageUrl = ((images[0] as Map)['imageUrl']?.toString() ?? '').replaceAll('http://', 'https://');
         }
-        
+
         // 解析播放量
         final resourceExt = res['resourceExt'] as Map?;
         final playCount = resourceExt?['playCount'] ?? 0;
-        
+
         final playlistId = res['resourceId']?.toString() ?? '';
-        
+
         if (title.isNotEmpty) {
           playlists.add({
             'id': playlistId,
@@ -382,7 +382,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
         }
       }
     }
-    
+
     return playlists.take(9).toList(); // 最多显示9个歌单
   }
 
@@ -400,7 +400,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
     } else {
       season = '冬天';
     }
-    
+
     // 时段
     String period;
     final hour = date.hour;
@@ -415,7 +415,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
     } else {
       period = '深夜';
     }
-    
+
     return '$season · $period';
   }
 
@@ -451,17 +451,17 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
     final memoryInfo = _parseMemoryInfo();
     final similarSongs = _parseSimilarSongs();
     final relatedPlaylists = _parseRelatedPlaylists();
-    
+
     final styles = basicInfo['styles'] as List<String>;
     final language = basicInfo['language'] as String;
     final bpm = basicInfo['bpm'] as String;
-    
+
     // 优先使用用户自己的回忆坐标，若无则回退到网易云数据
     String firstListenDate = '';
     String firstListenDesc = '';
     int playCount = 0;
     String playDescription = '';
-    
+
     if (_userMemory != null) {
       // 用户自己的回忆坐标
       debugPrint('📊 [SongWikiPanel] 回忆坐标来源: 用户自己的播放记录 (来自后端 /stats/song-memory)');
@@ -513,7 +513,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
             Text(
               track?.artists ?? '',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 18,
               ),
             ),
@@ -542,7 +542,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
+                  color: Colors.white.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
@@ -551,7 +551,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                     if (firstListenDate.isNotEmpty) ...[
                       Row(
                         children: [
-                          Icon(Icons.access_time_rounded, color: Colors.white.withOpacity(0.6), size: 20),
+                          Icon(Icons.access_time_rounded, color: Colors.white.withValues(alpha: 0.6), size: 20),
                           const SizedBox(width: 12),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,7 +559,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                               Text(
                                 '第一次听',
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
+                                  color: Colors.white.withValues(alpha: 0.5),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -582,7 +582,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                     if (playCount > 0) ...[
                       Row(
                         children: [
-                          Icon(Icons.replay_rounded, color: Colors.white.withOpacity(0.6), size: 20),
+                          Icon(Icons.replay_rounded, color: Colors.white.withValues(alpha: 0.6), size: 20),
                           const SizedBox(width: 12),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -590,7 +590,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                               Text(
                                 '累计播放 $playCount 次',
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
+                                  color: Colors.white.withValues(alpha: 0.5),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -600,7 +600,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                                 Text(
                                   playDescription,
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.8),
+                                    color: Colors.white.withValues(alpha: 0.8),
                                     fontSize: 14,
                                     fontStyle: FontStyle.italic,
                                   ),
@@ -650,13 +650,13 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
             if (_artistsDataList.isNotEmpty) ...[
               const SizedBox(height: 24),
               _buildSectionTitle('关于歌手'),
-              
+
               ..._artistsDataList.map((artistData) {
                  final name = artistData['name'] as String;
                  final desc = artistData['desc'] as String;
                  final avatarUrl = artistData['avatarUrl'] as String;
                  final hotSongs = artistData['hotSongs'] as List<Track>;
-                 
+
                  return Column(
                    crossAxisAlignment: CrossAxisAlignment.start,
                    children: [
@@ -676,11 +676,11 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                                 memCacheHeight: 128,
                                 placeholder: (context, url) => Container(
                                   color: Colors.white10,
-                                  child: Icon(CupertinoIcons.person_fill, size: 20, color: Colors.white.withOpacity(0.5)),
+                                  child: Icon(CupertinoIcons.person_fill, size: 20, color: Colors.white.withValues(alpha: 0.5)),
                                 ),
                                 errorWidget: (context, url, error) => Container(
                                   color: Colors.white10,
-                                  child: Icon(CupertinoIcons.person_fill, size: 20, color: Colors.white.withOpacity(0.5)),
+                                  child: Icon(CupertinoIcons.person_fill, size: 20, color: Colors.white.withValues(alpha: 0.5)),
                                 ),
                               ),
                             )
@@ -690,16 +690,16 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                               height: 40,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.white.withOpacity(0.1),
+                                color: Colors.white.withValues(alpha: 0.1),
                               ),
-                              child: Icon(CupertinoIcons.person_fill, size: 20, color: Colors.white.withOpacity(0.6)),
+                              child: Icon(CupertinoIcons.person_fill, size: 20, color: Colors.white.withValues(alpha: 0.6)),
                             ),
-                            
+
                           const SizedBox(width: 12),
                           Text(
                            name,
                            style: TextStyle(
-                             color: Colors.white.withOpacity(0.9),
+                             color: Colors.white.withValues(alpha: 0.9),
                              fontSize: 18,
                              fontWeight: FontWeight.bold,
                              fontFamily: 'Microsoft YaHei',
@@ -708,13 +708,13 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                        ],
                      ),
                      const SizedBox(height: 16),
-                     
+
                      // 简介
                      if (desc.isNotEmpty) ...[
                        Text(
                          desc,
                          style: TextStyle(
-                           color: Colors.white.withOpacity(0.8),
+                           color: Colors.white.withValues(alpha: 0.8),
                            fontSize: 15,
                            height: 1.6,
                            fontFamily: 'Microsoft YaHei',
@@ -724,13 +724,13 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                        ),
                        const SizedBox(height: 20),
                      ],
-                     
+
                      // 热门作品
                      if (hotSongs.isNotEmpty) ...[
                         Text(
                           '$name 的热门作品',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.5),
+                            color: Colors.white.withValues(alpha: 0.5),
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
@@ -738,18 +738,18 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                         const SizedBox(height: 12),
                         ...hotSongs.take(5).map((track) => _buildArtistSongItem(track)),
                      ],
-                     
+
                      // 分隔线 (若不是最后一个)
                      if (artistData != _artistsDataList.last)
                        Padding(
                          padding: const EdgeInsets.symmetric(vertical: 24),
-                         child: Divider(color: Colors.white.withOpacity(0.1), height: 1),
+                         child: Divider(color: Colors.white.withValues(alpha: 0.1), height: 1),
                        ),
                    ],
                  );
               }),
             ],
-            
+
             const SizedBox(height: 80), // 底部留白
             ],
           ),
@@ -757,7 +757,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
       ),
     );
   }
-  
+
   /// Apple Music 风格的内嵌歌单详情视图
   Widget _buildPlaylistDetailView() {
     if (_loadingPlaylist) {
@@ -785,14 +785,14 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                     children: [
                       Icon(
                         Icons.error_outline,
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.white.withValues(alpha: 0.5),
                         size: compact ? 40 : 48,
                       ),
                       SizedBox(height: compact ? 10 : 16),
                       Text(
                         '加载失败',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 16),
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 16),
                       ),
                       SizedBox(height: compact ? 16 : 24),
                       TextButton.icon(
@@ -836,8 +836,8 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                       _selectedPlaylistId = null;
                       _playlistDetail = null;
                     }),
-                    icon: Icon(Icons.arrow_back_ios, color: Colors.white.withOpacity(0.7), size: 18),
-                    label: Text('歌曲信息', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14)),
+                    icon: Icon(Icons.arrow_back_ios, color: Colors.white.withValues(alpha: 0.7), size: 18),
+                    label: Text('歌曲信息', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14)),
                     style: TextButton.styleFrom(
                       padding: EdgeInsets.zero,
                       minimumSize: Size.zero,
@@ -846,7 +846,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                   ),
                 ),
                 const SizedBox(height: 24),
-                
+
                 // 歌单封面和信息
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -865,12 +865,12 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                         memCacheHeight: 280,
                         fit: BoxFit.cover,
                         placeholder: (_, __) => Container(
-                          color: Colors.white.withOpacity(0.1),
-                          child: Icon(Icons.queue_music, color: Colors.white.withOpacity(0.3), size: 48),
+                          color: Colors.white.withValues(alpha: 0.1),
+                          child: Icon(Icons.queue_music, color: Colors.white.withValues(alpha: 0.3), size: 48),
                         ),
                         errorWidget: (_, __, ___) => Container(
-                          color: Colors.white.withOpacity(0.1),
-                          child: Icon(Icons.queue_music, color: Colors.white.withOpacity(0.3), size: 48),
+                          color: Colors.white.withValues(alpha: 0.1),
+                          child: Icon(Icons.queue_music, color: Colors.white.withValues(alpha: 0.3), size: 48),
                         ),
                       ),
                     ),
@@ -894,7 +894,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                           Text(
                             detail.creator,
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha: 0.6),
                               fontSize: 14,
                             ),
                           ),
@@ -902,18 +902,18 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                           // 播放量和歌曲数
                           Row(
                             children: [
-                              Icon(Icons.play_circle_outline, color: Colors.white.withOpacity(0.5), size: 16),
+                              Icon(Icons.play_circle_outline, color: Colors.white.withValues(alpha: 0.5), size: 16),
                               const SizedBox(width: 4),
                               Text(
                                 playCountText,
-                                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+                                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
                               ),
                               const SizedBox(width: 16),
-                              Icon(Icons.music_note_outlined, color: Colors.white.withOpacity(0.5), size: 16),
+                              Icon(Icons.music_note_outlined, color: Colors.white.withValues(alpha: 0.5), size: 16),
                               const SizedBox(width: 4),
                               Text(
                                 '${detail.trackCount}首',
-                                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+                                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
                               ),
                             ],
                           ),
@@ -926,12 +926,12 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                               children: detail.tags.take(3).map((tag) => Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.1),
+                                  color: Colors.white.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
                                   tag,
-                                  style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11),
+                                  style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 11),
                                 ),
                               )).toList(),
                             ),
@@ -941,14 +941,14 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                     ),
                   ],
                 ),
-                
+
                 // 简介
                 if (detail.description.isNotEmpty) ...[
                   const SizedBox(height: 20),
                   Text(
                     detail.description,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 13,
                       height: 1.5,
                     ),
@@ -956,12 +956,12 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
-                
+
                 const SizedBox(height: 28),
-                
+
                 // 播放全部按钮
                 Material(
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(24),
                   child: InkWell(
                     onTap: () {
@@ -977,12 +977,12 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.play_arrow_rounded, color: Colors.white.withOpacity(0.9), size: 24),
+                          Icon(Icons.play_arrow_rounded, color: Colors.white.withValues(alpha: 0.9), size: 24),
                           const SizedBox(width: 8),
                           Text(
                             '播放全部',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withValues(alpha: 0.9),
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
                             ),
@@ -992,23 +992,23 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 24),
-                
+
                 // 歌曲列表
                 Text(
                   '歌曲列表',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.white.withValues(alpha: 0.5),
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 1,
                   ),
                 ),
                 const SizedBox(height: 12),
-                
+
                 ...detail.tracks.take(50).map((track) => _buildPlaylistTrackTile(track, detail.tracks)),
-                
+
                 const SizedBox(height: 60),
               ],
             ),
@@ -1017,7 +1017,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
       ),
     );
   }
-  
+
   Widget _buildPlaylistTrackTile(Track track, List<Track> allTracks) {
     return Material(
       color: Colors.transparent,
@@ -1045,12 +1045,12 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                   memCacheWidth: 128,
                   memCacheHeight: 128,
                   placeholder: (_, __) => Container(
-                    color: Colors.white.withOpacity(0.1),
-                    child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3), size: 20),
+                    color: Colors.white.withValues(alpha: 0.1),
+                    child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3), size: 20),
                   ),
                   errorWidget: (_, __, ___) => Container(
-                    color: Colors.white.withOpacity(0.1),
-                    child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3), size: 20),
+                    color: Colors.white.withValues(alpha: 0.1),
+                    child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3), size: 20),
                   ),
                 ),
               ),
@@ -1075,7 +1075,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                     Text(
                       track.artists,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.white.withValues(alpha: 0.5),
                         fontSize: 12,
                         fontFamily: 'Microsoft YaHei',
                       ),
@@ -1096,7 +1096,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
     return Text(
       title,
       style: TextStyle(
-        color: Colors.white.withOpacity(0.7),
+        color: Colors.white.withValues(alpha: 0.7),
         fontSize: 14,
         fontWeight: FontWeight.bold,
         letterSpacing: 1,
@@ -1111,7 +1111,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
         Text(
           label.toUpperCase(),
           style: TextStyle(
-            color: Colors.white.withOpacity(0.4),
+            color: Colors.white.withValues(alpha: 0.4),
             fontSize: 11,
             fontWeight: FontWeight.bold,
             letterSpacing: 1,
@@ -1152,12 +1152,12 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                   memCacheWidth: 128,
                   memCacheHeight: 128,
                   placeholder: (_, __) => Container(
-                    color: Colors.white.withOpacity(0.1),
-                    child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3)),
+                    color: Colors.white.withValues(alpha: 0.1),
+                    child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3)),
                   ),
                   errorWidget: (_, __, ___) => Container(
-                    color: Colors.white.withOpacity(0.1),
-                    child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3)),
+                    color: Colors.white.withValues(alpha: 0.1),
+                    child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3)),
                   ),
                 ),
               ),
@@ -1182,7 +1182,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                     Text(
                       song['artist'] ?? '',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.white.withValues(alpha: 0.5),
                         fontSize: 13,
                         fontFamily: 'Microsoft YaHei',
                       ),
@@ -1202,7 +1202,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
   void _playSimilarSong(Map<String, dynamic> song) {
     final songId = song['id'];
     if (songId == null || songId.isEmpty) return;
-    
+
     // 构建 Track 对象并播放
     final track = Track(
       id: int.tryParse(songId) ?? songId,
@@ -1212,7 +1212,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
       picUrl: song['imageUrl'] ?? '',
       source: MusicSource.netease,
     );
-    
+
     PlayerService().playTrack(track);
   }
 
@@ -1240,8 +1240,8 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                     memCacheWidth: 128,
                     memCacheHeight: 128,
                     placeholder: (_, __) => Container(
-                      color: Colors.white.withOpacity(0.1),
-                      child: Icon(Icons.music_note, color: Colors.white.withOpacity(0.3)),
+                      color: Colors.white.withValues(alpha: 0.1),
+                      child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3)),
                     ),
                   ),
                 ),
@@ -1267,7 +1267,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
+                          color: Colors.white.withValues(alpha: 0.5),
                           fontSize: 13,
                           fontFamily: 'Microsoft YaHei',
                         ),
@@ -1317,12 +1317,12 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                       memCacheWidth: 280,
                       memCacheHeight: 280,
                       placeholder: (_, __) => Container(
-                        color: Colors.white.withOpacity(0.1),
-                        child: Icon(Icons.queue_music, color: Colors.white.withOpacity(0.3), size: 32),
+                        color: Colors.white.withValues(alpha: 0.1),
+                        child: Icon(Icons.queue_music, color: Colors.white.withValues(alpha: 0.3), size: 32),
                       ),
                       errorWidget: (_, __, ___) => Container(
-                        color: Colors.white.withOpacity(0.1),
-                        child: Icon(Icons.queue_music, color: Colors.white.withOpacity(0.3), size: 32),
+                        color: Colors.white.withValues(alpha: 0.1),
+                        child: Icon(Icons.queue_music, color: Colors.white.withValues(alpha: 0.3), size: 32),
                       ),
                     ),
                     // 播放量标签
@@ -1332,18 +1332,18 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
+                          color: Colors.black.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.play_arrow, color: Colors.white.withOpacity(0.9), size: 12),
+                            Icon(Icons.play_arrow, color: Colors.white.withValues(alpha: 0.9), size: 12),
                             const SizedBox(width: 2),
                             Text(
                               playCountText,
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.9),
+                                color: Colors.white.withValues(alpha: 0.9),
                                 fontSize: 10,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -1361,7 +1361,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
             Text(
               playlist['name'] ?? '',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withValues(alpha: 0.9),
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
                 fontFamily: 'Microsoft YaHei',
@@ -1378,17 +1378,17 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
   void _openPlaylist(Map<String, dynamic> playlist) async {
     final playlistId = playlist['id'];
     if (playlistId == null || playlistId.isEmpty) return;
-    
+
     final id = int.tryParse(playlistId);
     if (id == null) return;
-    
+
     // 设置加载状态并切换到歌单详情视图
     setState(() {
       _selectedPlaylistId = id;
       _loadingPlaylist = true;
       _playlistDetail = null;
     });
-    
+
     // 加载歌单详情
     try {
       final detail = await NeteaseDiscoverService().fetchPlaylistDetail(id);

@@ -13,6 +13,7 @@ import '../services/netease_artist_service.dart';
 import '../pages/artist_detail_page.dart';
 import '../pages/album_detail_page.dart';
 import '../services/player_service.dart';
+import '../services/structured_log_service.dart';
 import '../features/auth/auth_feature.dart';
 import '../pages/auth/auth_page.dart';
 import '../utils/image_utils.dart';
@@ -46,7 +47,7 @@ Color _getPlatformDotColor(String platformCode, Brightness brightness) {
 
 /// 判断是否为平台tab（非歌手/歌曲等功能tab）
 bool _isPlatformTab(String tab) {
-  return tab == 'netease' || tab == 'qq' || tab == 'kugou' || 
+  return tab == 'netease' || tab == 'qq' || tab == 'kugou' ||
          tab == 'kuwo' || tab == 'apple' || tab == 'spotify' ||
          tab.contains('网易云') || tab.contains('QQ') || tab.contains('酷狗') ||
          tab.contains('酷我') || tab.contains('Apple') || tab.contains('Spotify');
@@ -93,7 +94,7 @@ class _SearchExpressiveTabs extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final brightness = Theme.of(context).brightness;
-    
+
     // 品牌配色映射
     Color getPlatformColor(String tab) {
       final code = _getPlatformCodeFromLabel(tab);
@@ -108,7 +109,7 @@ class _SearchExpressiveTabs extends StatelessWidget {
       builder: (context, constraints) {
         final count = tabs.length;
         if (count == 0) return const SizedBox.shrink();
-        
+
         final totalWidth = constraints.maxWidth;
         final tabWidth = totalWidth / count;
         const height = 56.0;
@@ -140,14 +141,14 @@ class _SearchExpressiveTabs extends StatelessWidget {
                   final selected = i == currentIndex;
                   final platformColor = getPlatformColor(tabs[i]);
                   final isPlatform = _isPlatformTab(tabs[i]);
-                  
+
                   return Expanded(
                     child: GestureDetector(
                       onTap: () => onChanged(i),
                       behavior: HitTestBehavior.opaque,
                       child: Container(
                         alignment: Alignment.center,
-                        child: isPlatform 
+                        child: isPlatform
                           // 平台tab：显示彩色小球
                           ? AnimatedContainer(
                               duration: const Duration(milliseconds: 250),
@@ -155,11 +156,11 @@ class _SearchExpressiveTabs extends StatelessWidget {
                               width: selected ? 20 : 14,
                               height: selected ? 20 : 14,
                               decoration: BoxDecoration(
-                                color: platformColor.withOpacity(selected ? 1.0 : 0.5),
+                                color: platformColor.withValues(alpha: selected ? 1.0 : 0.5),
                                 shape: BoxShape.circle,
                                 boxShadow: selected ? [
                                   BoxShadow(
-                                    color: platformColor.withOpacity(0.4),
+                                    color: platformColor.withValues(alpha: 0.4),
                                     blurRadius: 8,
                                     spreadRadius: 1,
                                   ),
@@ -171,7 +172,7 @@ class _SearchExpressiveTabs extends StatelessWidget {
                               duration: const Duration(milliseconds: 250),
                               curve: Curves.easeOutCubic,
                               style: TextStyle(
-                                color: selected ? (brightness == Brightness.dark ? Colors.white : Colors.black87) : cs.onSurface.withOpacity(0.5),
+                                color: selected ? (brightness == Brightness.dark ? Colors.white : Colors.black87) : cs.onSurface.withValues(alpha: 0.5),
                                 fontSize: selected ? 19 : 15,
                                 fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
                                 letterSpacing: selected ? -0.2 : 0,
@@ -228,6 +229,11 @@ class _SearchWidgetState extends State<SearchWidget> {
   String _lastTrackSearchKeyword = '';
   String _lastArtistSearchKeyword = '';
 
+  void _refreshState(VoidCallback action) {
+    if (!mounted) return;
+    setState(action);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -272,7 +278,7 @@ class _SearchWidgetState extends State<SearchWidget> {
 
     // 显示提示并询问是否要登录
     bool? shouldLogin;
-    
+
     if (_isFluent) {
       shouldLogin = await fluent.showDialog<bool>(
         context: context,
@@ -439,7 +445,7 @@ class _SearchWidgetState extends State<SearchWidget> {
     // 合并模式: 歌手索引为 1，分平台模式: 歌手索引为平台数量
     final artistTabIndex = isMergeEnabled ? 1 : _getSupportedPlatformCodes().length;
     final isArtistTab = index == artistTabIndex;
-    
+
     if (_currentTabIndex == index) {
       if (isArtistTab) {
         _triggerArtistSearchIfNeeded();
@@ -553,7 +559,7 @@ class _SearchWidgetState extends State<SearchWidget> {
                         child: Container(
                           height: 52,
                           decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(26),
                           ),
                           child: TextField(
@@ -566,12 +572,12 @@ class _SearchWidgetState extends State<SearchWidget> {
                             decoration: InputDecoration(
                               hintText: '搜索歌曲、歌手...',
                               hintStyle: TextStyle(
-                                color: colorScheme.onSurfaceVariant.withOpacity(0.6),
+                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                                 fontSize: 16,
                               ),
                               prefixIcon: Icon(
                                 Icons.search,
-                                color: colorScheme.primary.withOpacity(0.7),
+                                color: colorScheme.primary.withValues(alpha: 0.7),
                                 size: 22,
                               ),
                               suffixIcon: ValueListenableBuilder<TextEditingValue>(
@@ -608,7 +614,7 @@ class _SearchWidgetState extends State<SearchWidget> {
                             ),
                             padding: const EdgeInsets.symmetric(horizontal: 20),
                             elevation: 2,
-                            shadowColor: colorScheme.primary.withOpacity(0.3),
+                            shadowColor: colorScheme.primary.withValues(alpha: 0.3),
                           ),
                           child: const Text(
                             '搜索',

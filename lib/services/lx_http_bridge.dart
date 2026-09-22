@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -10,16 +11,16 @@ class LxHttpBridge {
     try {
       final debug = kDebugMode;
       if (debug) {
-        print('========== [HTTP Request Debug] ==========');
-        print('🔍 [HTTP] 原始 URL: $url');
-        print('🔍 [HTTP] 原始 options: $options');
+        StructuredLogService.log('========== [HTTP Request Debug] ==========');
+        StructuredLogService.log('🔍 [HTTP] 原始 URL: $url');
+        StructuredLogService.log('🔍 [HTTP] 原始 options: $options');
         if (options['headers'] != null) {
-          print('🔍 [HTTP] 原始 headers: ${options['headers']}');
-          print('🔍 [HTTP] headers 类型: ${options['headers'].runtimeType}');
+          StructuredLogService.log('🔍 [HTTP] 原始 headers: ${options['headers']}');
+          StructuredLogService.log('🔍 [HTTP] headers 类型: ${options['headers'].runtimeType}');
         } else {
-          print('🔍 [HTTP] 原始 headers: (null - 脚本未传递请求头)');
+          StructuredLogService.log('🔍 [HTTP] 原始 headers: (null - 脚本未传递请求头)');
         }
-        print('==========================================');
+        StructuredLogService.log('==========================================');
       }
 
       final method = (options['method'] as String?)?.toUpperCase() ?? 'GET';
@@ -53,9 +54,9 @@ class LxHttpBridge {
       });
 
       if (debug) {
-        print('🌐 [HTTP] $method $url');
-        print('   Headers (原始): $headers');
-        print('   Headers (规范化): $normalizedHeaders');
+        StructuredLogService.log('🌐 [HTTP] $method $url');
+        StructuredLogService.log('   Headers (原始): $headers');
+        StructuredLogService.log('   Headers (规范化): $normalizedHeaders');
       }
 
       http.Response response;
@@ -101,7 +102,7 @@ class LxHttpBridge {
       }
 
       if (debug) {
-        print('📥 [HTTP] Status: ${response.statusCode}');
+        StructuredLogService.log('📥 [HTTP] Status: ${response.statusCode}');
       }
 
       dynamic responseBody = response.body;
@@ -120,7 +121,7 @@ class LxHttpBridge {
         'bytes': response.bodyBytes.length,
       };
     } catch (e) {
-      print('❌ [HTTP] Error: $e');
+      StructuredLogService.log('❌ [HTTP] Error: $e');
       rethrow;
     }
   }

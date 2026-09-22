@@ -13,6 +13,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'audio_quality_service.dart';
 import 'developer_mode_service.dart';
+import 'structured_log_service.dart';
 
 /// 缓存元数据模型
 class CacheMetadata {
@@ -344,7 +345,16 @@ class CacheService extends ChangeNotifier {
   }
 
   void _logCacheDebug(String message, {bool toDeveloperPanel = false}) {
-    print(message);
+    final level = message.contains('❌')
+        ? LogLevel.error
+        : message.contains('⚠️')
+        ? LogLevel.warning
+        : LogLevel.debug;
+    StructuredLogService.event(
+      'cache_service.log',
+      level: level,
+      fields: {'message': message},
+    );
     if (toDeveloperPanel) {
       DeveloperModeService().addLog(message);
     }
@@ -353,12 +363,12 @@ class CacheService extends ChangeNotifier {
   /// 初始化缓存服务
   Future<void> initialize() async {
     if (_isInitialized) {
-      print('ℹ️ [CacheService] 缓存服务已初始化，跳过');
+      _logCacheDebug('ℹ️ [CacheService] 缓存服务已初始化，跳过');
       return;
     }
 
     try {
-      print('💾 [CacheService] 开始初始化缓存服务...');
+      _logCacheDebug('💾 [CacheService] 开始初始化缓存服务...');
 
       // 加载缓存设置
       await _loadSettings();
@@ -367,30 +377,36 @@ class CacheService extends ChangeNotifier {
       if (_customCacheDir != null && _customCacheDir!.isNotEmpty) {
         // 使用自定义目录
         _cacheDir = Directory(_customCacheDir!);
-        print('📂 [CacheService] 使用自定义目录: ${_customCacheDir!}');
+        _logCacheDebug('📂 [CacheService] 使用自定义目录: ${_customCacheDir!}');
       } else if (Platform.isWindows) {
-        // Windows: 使用当前运行目录
-        final executablePath = Platform.resolvedExecutable;
-        final executableDir = path.dirname(executablePath);
-        _cacheDir = Directory(path.join(executableDir, 'music_cache'));
-        print('📂 [CacheService] 运行目录: $executableDir');
+        // Windows: 使用应用支持目录，避免缓存写入安装目录
+        final appDir = await getApplicationSupportDirectory();
+        _cacheDir = Directory(path.join(appDir.path, 'music_cache'));
+        _logCacheDebug('📂 [CacheService] 应用支持目录: ${appDir.path}');
       } else {
         // 其他平台: 使用应用文档目录
         final appDir = await getApplicationDocumentsDirectory();
         _cacheDir = Directory('${appDir.path}/music_cache');
-        print('📂 [CacheService] 应用文档目录: ${appDir.path}');
+        _logCacheDebug('📂 [CacheService] 应用文档目录: ${appDir.path}');
       }
 
-      print('📂 [CacheService] 缓存目录路径: ${_cacheDir!.path}');
-      print('🔧 [CacheService] 缓存开关状态: ${_cacheEnabled ? "已启用" : "已禁用"}');
+      _logCacheDebug('📂 [CacheService] 缓存目录路径: ${_cacheDir!.path}');
+      _logCacheDebug(
+        '🔧 [CacheService] 缓存开关状态: ${_cacheEnabled ? "已启用" : "已禁用"}',
+      );
 
       // 创建缓存目录
       if (!await _cacheDir!.exists()) {
-        print('📁 [CacheService] 缓存目录不存在，创建中...');
+        _logCacheDebug('📁 [CacheService] 缓存目录不存在，创建中...');
         await _cacheDir!.create(recursive: true);
-        print('✅ [CacheService] 缓存目录已创建: ${_cacheDir!.path}');
+        _logCacheDebug('✅ [CacheService] 缓存目录已创建: ${_cacheDir!.path}');
       } else {
-        print('✅ [CacheService] 缓存目录已存在: ${_cacheDir!.path}');
+        _logCacheDebug('✅ [CacheService] 缓存目录已存在: ${_cacheDir!.path}');
+      }
+
+      if (Platform.isWindows &&
+          (_customCacheDir == null || _customCacheDir!.isEmpty)) {
+        await _migrateLegacyWindowsCache(_cacheDir!);
       }
 
       // 验证目录是否可写
@@ -398,9 +414,9 @@ class CacheService extends ChangeNotifier {
         final testFile = File('${_cacheDir!.path}/.test');
         await testFile.writeAsString('test');
         await testFile.delete();
-        print('✅ [CacheService] 缓存目录可写');
+        _logCacheDebug('✅ [CacheService] 缓存目录可写');
       } catch (e) {
-        print('❌ [CacheService] 缓存目录不可写: $e');
+        _logCacheDebug('❌ [CacheService] 缓存目录不可写: $e');
         throw Exception('缓存目录不可写');
       }
 
@@ -414,13 +430,46 @@ class CacheService extends ChangeNotifier {
 
       _scheduleMaintenance();
 
-      print('✅ [CacheService] 缓存服务初始化完成！');
-      print('📊 [CacheService] 已缓存歌曲数: ${_cacheIndex.length}');
-      print('📁 [CacheService] 缓存位置: ${_cacheDir!.path}');
+      _logCacheDebug('✅ [CacheService] 缓存服务初始化完成！');
+      _logCacheDebug('📊 [CacheService] 已缓存歌曲数: ${_cacheIndex.length}');
+      _logCacheDebug('📁 [CacheService] 缓存位置: ${_cacheDir!.path}');
     } catch (e, stackTrace) {
-      print('❌ [CacheService] 初始化失败: $e');
-      print('❌ [CacheService] 错误堆栈: $stackTrace');
+      _logCacheDebug('❌ [CacheService] 初始化失败: $e');
+      _logCacheDebug('❌ [CacheService] 错误堆栈: $stackTrace');
       _isInitialized = false;
+    }
+  }
+
+  /// 将旧版本写入安装目录的缓存补迁移到应用支持目录。
+  ///
+  /// 只复制目标目录中不存在的文件，并保留旧目录，避免升级过程中因权限
+  /// 或磁盘空间问题导致用户已有缓存丢失。
+  Future<void> _migrateLegacyWindowsCache(Directory targetDir) async {
+    final legacyDir = Directory(
+      path.join(path.dirname(Platform.resolvedExecutable), 'music_cache'),
+    );
+    if (path.normalize(legacyDir.path) == path.normalize(targetDir.path) ||
+        !await legacyDir.exists()) {
+      return;
+    }
+
+    var migratedCount = 0;
+    try {
+      await for (final entity in legacyDir.list(recursive: true)) {
+        if (entity is! File) continue;
+        final relativePath = path.relative(entity.path, from: legacyDir.path);
+        final targetFile = File(path.join(targetDir.path, relativePath));
+        if (await targetFile.exists()) continue;
+
+        await targetFile.parent.create(recursive: true);
+        await entity.copy(targetFile.path);
+        migratedCount++;
+      }
+      if (migratedCount > 0) {
+        _logCacheDebug('📦 [CacheService] 已迁移 Windows 旧缓存文件: $migratedCount 个');
+      }
+    } catch (e) {
+      _logCacheDebug('⚠️ [CacheService] 迁移 Windows 旧缓存失败: $e');
     }
   }
 
@@ -601,7 +650,7 @@ class CacheService extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      print('❌ [CacheService] 缓存治理失败: $e');
+      _logCacheDebug('❌ [CacheService] 缓存治理失败: $e');
     } finally {
       _maintenanceRunning = false;
     }
@@ -638,7 +687,7 @@ class CacheService extends ChangeNotifier {
               await sourceFile.delete();
             } catch (copyError) {
               migrationFailed = true;
-              print(
+              _logCacheDebug(
                 '⚠️ [CacheService] 迁移旧缓存文件失败: $sourcePath -> $targetPath, '
                 'rename=$renameError, copy=$copyError',
               );
@@ -1099,11 +1148,7 @@ class CacheService extends ChangeNotifier {
   }
 
   /// 检查缓存是否存在
-  bool isCached(
-    Track track, {
-    String? quality,
-    String? resolverFingerprint,
-  }) {
+  bool isCached(Track track, {String? quality, String? resolverFingerprint}) {
     if (!_isInitialized || !_cacheEnabled) return false;
     return _resolveCacheEntry(
           track,
@@ -1121,11 +1166,10 @@ class CacheService extends ChangeNotifier {
   }) {
     if (!_isInitialized || !_cacheEnabled) return null;
     return _resolveCacheEntry(
-          track,
-          quality: quality,
-          resolverFingerprint: resolverFingerprint,
-        )
-        ?.metadata;
+      track,
+      quality: quality,
+      resolverFingerprint: resolverFingerprint,
+    )?.metadata;
   }
 
   /// 获取加密缓存容器文件路径（不解密）
@@ -1242,13 +1286,13 @@ class CacheService extends ChangeNotifier {
       normalizedQuality: normalizedQuality,
     );
     if (_isSameCacheMetadataPayload(existing, updated)) {
-      print('ℹ️ [CacheService] 歌曲已缓存: ${track.name}');
+      _logCacheDebug('ℹ️ [CacheService] 歌曲已缓存: ${track.name}');
       return true;
     }
 
     _cacheIndex[cacheKey] = updated;
     await _saveCacheIndex();
-    print('📝 [CacheService] 更新缓存元数据: ${track.name}');
+    _logCacheDebug('📝 [CacheService] 更新缓存元数据: ${track.name}');
     notifyListeners();
     return true;
   }
@@ -1271,7 +1315,7 @@ class CacheService extends ChangeNotifier {
 
     final expectedQuality = _qualityKey(quality);
     if (resolved.metadata.quality != expectedQuality) {
-      print(
+      _logCacheDebug(
         '⚠️ [CacheService] 缓存音质不匹配: ${resolved.metadata.quality} != $expectedQuality',
       );
       return null;
@@ -1283,7 +1327,7 @@ class CacheService extends ChangeNotifier {
     final cacheFile = File(cacheFilePath);
 
     if (!await cacheFile.exists()) {
-      print('⚠️ [CacheService] 缓存文件不存在: $cacheFilePath');
+      _logCacheDebug('⚠️ [CacheService] 缓存文件不存在: $cacheFilePath');
       await _deleteCacheArtifacts(cacheFilePath);
       _cacheIndex.remove(cacheKey);
       _forgetVerifiedChecksum(cacheKey);
@@ -1331,7 +1375,7 @@ class CacheService extends ChangeNotifier {
         contentType: _contentTypeForQuality(metadata.quality),
       );
     } catch (e) {
-      print('❌ [CacheService] 读取缓存容器信息失败: $e');
+      _logCacheDebug('❌ [CacheService] 读取缓存容器信息失败: $e');
       try {
         await raf?.close();
       } catch (_) {}
@@ -1351,7 +1395,7 @@ class CacheService extends ChangeNotifier {
     Track track,
     SongDetail songDetail,
     String quality, {
-    String? resolverFingerprint
+    String? resolverFingerprint,
   }) async {
     resolverFingerprint ??= '';
     final sw = Stopwatch()..start();
@@ -1572,7 +1616,7 @@ class CacheService extends ChangeNotifier {
 
         _cacheIndex = nextIndex;
         _verifiedCacheChecksums.clear();
-        print(
+        _logCacheDebug(
           '📑 [CacheService] 加载缓存索引: ${_cacheIndex.length} 条记录 '
           'source=${path.basename(candidate.path)} skipped=$skippedEntries',
         );
@@ -1581,13 +1625,13 @@ class CacheService extends ChangeNotifier {
         }
         return;
       } catch (e) {
-        print(
+        _logCacheDebug(
           '❌ [CacheService] 读取缓存索引候选失败: ${path.basename(candidate.path)}, $e',
         );
       }
     }
 
-    print('📑 [CacheService] 未找到可用缓存索引，创建新索引');
+    _logCacheDebug('📑 [CacheService] 未找到可用缓存索引，创建新索引');
     _cacheIndex = {};
     _verifiedCacheChecksums.clear();
   }
@@ -1611,9 +1655,9 @@ class CacheService extends ChangeNotifier {
 
       // 保存加密后的索引文件
       await _writeBytesAtomically(_getCacheIndexPath(), encryptedData);
-      print('💾 [CacheService] 保存加密的缓存索引: ${_cacheIndex.length} 条记录');
+      _logCacheDebug('💾 [CacheService] 保存加密的缓存索引: ${_cacheIndex.length} 条记录');
     } catch (e) {
-      print('❌ [CacheService] 保存缓存索引失败: $e');
+      _logCacheDebug('❌ [CacheService] 保存缓存索引失败: $e');
     }
   }
 
@@ -1664,7 +1708,7 @@ class CacheService extends ChangeNotifier {
     if (!_isInitialized) return;
 
     try {
-      print('🗑️ [CacheService] 清除所有缓存...');
+      _logCacheDebug('🗑️ [CacheService] 清除所有缓存...');
 
       // 删除所有缓存文件
       final files = await _cacheDir!.list().toList();
@@ -1679,10 +1723,10 @@ class CacheService extends ChangeNotifier {
       _verifiedCacheChecksums.clear();
       await _saveCacheIndex();
 
-      print('✅ [CacheService] 缓存已清除');
+      _logCacheDebug('✅ [CacheService] 缓存已清除');
       notifyListeners();
     } catch (e) {
-      print('❌ [CacheService] 清除缓存失败: $e');
+      _logCacheDebug('❌ [CacheService] 清除缓存失败: $e');
     }
   }
 
@@ -1701,7 +1745,9 @@ class CacheService extends ChangeNotifier {
         try {
           await _deleteCacheArtifacts(cacheFilePath);
         } catch (e) {
-          print('⚠️ [CacheService] 删除缓存文件失败，将仅移除索引: $cacheFilePath, $e');
+          _logCacheDebug(
+            '⚠️ [CacheService] 删除缓存文件失败，将仅移除索引: $cacheFilePath, $e',
+          );
         }
         _cacheIndex.remove(cacheKey);
         _forgetVerifiedChecksum(cacheKey);
@@ -1709,10 +1755,10 @@ class CacheService extends ChangeNotifier {
 
       await _saveCacheIndex();
 
-      print('🗑️ [CacheService] 删除缓存: ${track.name}');
+      _logCacheDebug('🗑️ [CacheService] 删除缓存: ${track.name}');
       notifyListeners();
     } catch (e) {
-      print('❌ [CacheService] 删除缓存失败: $e');
+      _logCacheDebug('❌ [CacheService] 删除缓存失败: $e');
     }
   }
 
@@ -1742,9 +1788,9 @@ class CacheService extends ChangeNotifier {
         }
       }
 
-      print('🧹 [CacheService] 清理临时文件完成');
+      _logCacheDebug('🧹 [CacheService] 清理临时文件完成');
     } catch (e) {
-      print('⚠️ [CacheService] 清理临时文件失败: $e');
+      _logCacheDebug('⚠️ [CacheService] 清理临时文件失败: $e');
     }
   }
 
@@ -1760,14 +1806,14 @@ class CacheService extends ChangeNotifier {
       _customCacheDir = prefs.getString('custom_cache_dir');
       _maxCacheSizeBytes = await _loadStoredMaxCacheSizeBytes(prefs);
 
-      print(
+      _logCacheDebug(
         '⚙️ [CacheService] 加载设置 - '
         '缓存开关: $_cacheEnabled, '
         '自定义目录: ${_customCacheDir ?? "无"}, '
         '空间上限: ${formatFileSize(_maxCacheSizeBytes)}',
       );
     } catch (e) {
-      print('❌ [CacheService] 加载设置失败: $e');
+      _logCacheDebug('❌ [CacheService] 加载设置失败: $e');
       _cacheEnabled = false; // 加载失败时默认关闭
       _customCacheDir = null;
       _maxCacheSizeBytes = _defaultMaxCacheSizeBytes;
@@ -1779,9 +1825,9 @@ class CacheService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('cache_enabled', _cacheEnabled);
-      print('💾 [CacheService] 缓存开关已保存: $_cacheEnabled');
+      _logCacheDebug('💾 [CacheService] 缓存开关已保存: $_cacheEnabled');
     } catch (e) {
-      print('❌ [CacheService] 保存缓存开关失败: $e');
+      _logCacheDebug('❌ [CacheService] 保存缓存开关失败: $e');
     }
   }
 
@@ -1791,13 +1837,13 @@ class CacheService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       if (_customCacheDir != null && _customCacheDir!.isNotEmpty) {
         await prefs.setString('custom_cache_dir', _customCacheDir!);
-        print('💾 [CacheService] 自定义目录已保存: $_customCacheDir');
+        _logCacheDebug('💾 [CacheService] 自定义目录已保存: $_customCacheDir');
       } else {
         await prefs.remove('custom_cache_dir');
-        print('💾 [CacheService] 已清除自定义目录');
+        _logCacheDebug('💾 [CacheService] 已清除自定义目录');
       }
     } catch (e) {
-      print('❌ [CacheService] 保存自定义目录失败: $e');
+      _logCacheDebug('❌ [CacheService] 保存自定义目录失败: $e');
     }
   }
 
@@ -1832,12 +1878,12 @@ class CacheService extends ChangeNotifier {
         _maxCacheSizeBytes.toString(),
       );
       await prefs.remove(_legacyMaxCacheSizePrefsKey);
-      print(
+      _logCacheDebug(
         '💾 [CacheService] 缓存空间上限已保存: '
         '${formatFileSize(_maxCacheSizeBytes)} ($_maxCacheSizeBytes bytes)',
       );
     } catch (e) {
-      print('❌ [CacheService] 保存缓存空间上限失败: $e');
+      _logCacheDebug('❌ [CacheService] 保存缓存空间上限失败: $e');
     }
   }
 
@@ -1846,7 +1892,7 @@ class CacheService extends ChangeNotifier {
     if (_cacheEnabled != enabled) {
       _cacheEnabled = enabled;
       await _saveCacheEnabled();
-      print('🔧 [CacheService] 缓存功能${enabled ? "已启用" : "已禁用"}');
+      _logCacheDebug('🔧 [CacheService] 缓存功能${enabled ? "已启用" : "已禁用"}');
       if (enabled) {
         _scheduleMaintenance();
       }
@@ -1863,7 +1909,7 @@ class CacheService extends ChangeNotifier {
 
     _maxCacheSizeBytes = normalizedBytes;
     await _saveMaxCacheSizeBytes();
-    print(
+    _logCacheDebug(
       '🔧 [CacheService] 缓存空间上限已更新: '
       '${formatFileSize(_maxCacheSizeBytes)} ($_maxCacheSizeBytes bytes)',
     );
@@ -1896,23 +1942,23 @@ class CacheService extends ChangeNotifier {
         await testFile.delete();
 
         _customCacheDir = dirPath;
-        print('✅ [CacheService] 自定义目录验证成功: $dirPath');
+        _logCacheDebug('✅ [CacheService] 自定义目录验证成功: $dirPath');
       } else {
         _customCacheDir = null;
-        print('ℹ️ [CacheService] 清除自定义目录，使用默认目录');
+        _logCacheDebug('ℹ️ [CacheService] 清除自定义目录，使用默认目录');
       }
 
       await _saveCustomCacheDir();
 
       // 提示需要重启应用
-      print('⚠️ [CacheService] 目录更改已保存，需要重启应用才能生效');
-      print('ℹ️ [CacheService] 当前缓存目录: ${_cacheDir?.path}');
-      print('ℹ️ [CacheService] 新目录将在重启后使用: ${dirPath ?? "默认目录"}');
+      _logCacheDebug('⚠️ [CacheService] 目录更改已保存，需要重启应用才能生效');
+      _logCacheDebug('ℹ️ [CacheService] 当前缓存目录: ${_cacheDir?.path}');
+      _logCacheDebug('ℹ️ [CacheService] 新目录将在重启后使用: ${dirPath ?? "默认目录"}');
       notifyListeners();
 
       return true;
     } catch (e) {
-      print('❌ [CacheService] 设置自定义目录失败: $e');
+      _logCacheDebug('❌ [CacheService] 设置自定义目录失败: $e');
       return false;
     }
   }
@@ -1920,9 +1966,8 @@ class CacheService extends ChangeNotifier {
   /// 获取默认缓存目录路径
   Future<String> getDefaultCacheDir() async {
     if (Platform.isWindows) {
-      final executablePath = Platform.resolvedExecutable;
-      final executableDir = path.dirname(executablePath);
-      return path.join(executableDir, 'music_cache');
+      final appDir = await getApplicationSupportDirectory();
+      return path.join(appDir.path, 'music_cache');
     } else {
       final appDir = await getApplicationDocumentsDirectory();
       return '${appDir.path}/music_cache';

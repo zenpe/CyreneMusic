@@ -10,23 +10,23 @@ class PlayerStyleSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return AnimatedBuilder(
       animation: LyricStyleService(),
       builder: (context, _) {
         final styleService = LyricStyleService();
         final currentStyle = styleService.currentStyle;
         final alignmentIndex = styleService.currentAlignment == LyricAlignment.center ? 0 : 1;
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withOpacity(isDark ? 0.6 : 0.8),
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: colorScheme.outlineVariant.withOpacity(0.3),
+                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -54,7 +54,7 @@ class PlayerStyleSection extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 18),
-                
+
                 // 样式卡片选择
                 Row(
                   children: [
@@ -92,9 +92,9 @@ class PlayerStyleSection extends StatelessWidget {
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 // 歌词对齐 - 分段控制器风格
                 Text(
                   '歌词对齐',
@@ -105,7 +105,7 @@ class PlayerStyleSection extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                
+
                 // 分段选择器
                 Container(
                   height: 48,
@@ -116,7 +116,7 @@ class PlayerStyleSection extends StatelessWidget {
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final tabWidth = constraints.maxWidth / 2;
-                      
+
                       return Stack(
                         children: [
                           // 滑块指示器
@@ -133,7 +133,7 @@ class PlayerStyleSection extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(12),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: colorScheme.shadow.withOpacity(0.1),
+                                    color: colorScheme.shadow.withValues(alpha: 0.1),
                                     blurRadius: 8,
                                     offset: const Offset(0, 2),
                                   ),
@@ -193,7 +193,7 @@ class PlayerStyleSection extends StatelessWidget {
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.all(18),
-          transform: Matrix4.identity()..scale(isSelected ? 1.0 : 0.98),
+          transform: Matrix4.identity()..scaleByDouble(isSelected ? 1.0 : 0.98, isSelected ? 1.0 : 0.98, 1.0, 1.0),
           transformAlignment: Alignment.center,
           decoration: BoxDecoration(
             gradient: isSelected
@@ -202,7 +202,7 @@ class PlayerStyleSection extends StatelessWidget {
                     end: Alignment.bottomRight,
                     colors: [
                       colorScheme.primaryContainer,
-                      colorScheme.primaryContainer.withOpacity(0.7),
+                      colorScheme.primaryContainer.withValues(alpha: 0.7),
                     ],
                   )
                 : null,
@@ -210,14 +210,14 @@ class PlayerStyleSection extends StatelessWidget {
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: isSelected
-                  ? colorScheme.primary.withOpacity(0.5)
-                  : colorScheme.outlineVariant.withOpacity(0.3),
+                  ? colorScheme.primary.withValues(alpha: 0.5)
+                  : colorScheme.outlineVariant.withValues(alpha: 0.3),
               width: isSelected ? 2 : 1,
             ),
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: colorScheme.primary.withOpacity(0.2),
+                      color: colorScheme.primary.withValues(alpha: 0.2),
                       blurRadius: 16,
                       offset: const Offset(0, 6),
                     ),
@@ -236,8 +236,8 @@ class PlayerStyleSection extends StatelessWidget {
                   gradient: isSelected
                       ? LinearGradient(
                           colors: [
-                            colorScheme.primary.withOpacity(0.3),
-                            colorScheme.primary.withOpacity(0.1),
+                            colorScheme.primary.withValues(alpha: 0.3),
+                            colorScheme.primary.withValues(alpha: 0.1),
                           ],
                         )
                       : null,
@@ -248,7 +248,7 @@ class PlayerStyleSection extends StatelessWidget {
                   icon,
                   color: isSelected
                       ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant.withOpacity(0.6),
+                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                   size: 26,
                 ),
               ),
@@ -271,8 +271,8 @@ class PlayerStyleSection extends StatelessWidget {
                 description,
                 style: TextStyle(
                   color: isSelected
-                      ? colorScheme.onPrimaryContainer.withOpacity(0.7)
-                      : colorScheme.onSurfaceVariant.withOpacity(0.7),
+                      ? colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
+                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -308,7 +308,7 @@ class PlayerStyleSection extends StatelessWidget {
                   icon,
                   color: isSelected
                       ? colorScheme.onSecondaryContainer
-                      : colorScheme.onSurfaceVariant.withOpacity(0.6),
+                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                   size: 18,
                 ),
               ),
@@ -318,7 +318,7 @@ class PlayerStyleSection extends StatelessWidget {
                 style: TextStyle(
                   color: isSelected
                       ? colorScheme.onSecondaryContainer
-                      : colorScheme.onSurfaceVariant.withOpacity(0.6),
+                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                   fontSize: 13,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 ),

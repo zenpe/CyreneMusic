@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'api/api_client.dart';
 
@@ -39,7 +40,7 @@ class LocationInfo {
   /// 获取简短的归属地描述
   String get shortDescription {
     if (country.isEmpty) return '未知';
-    
+
     // 如果是中国，显示省份和城市
     if (country == '中国') {
       if (province.isNotEmpty && city.isNotEmpty) {
@@ -51,7 +52,7 @@ class LocationInfo {
       }
       return country;
     }
-    
+
     // 其他国家只显示国家名
     return country;
   }
@@ -59,11 +60,11 @@ class LocationInfo {
   /// 获取完整的归属地描述
   String get fullDescription {
     final parts = <String>[];
-    
+
     if (country.isNotEmpty) parts.add(country);
     if (province.isNotEmpty && province != country) parts.add(province);
     if (city.isNotEmpty) parts.add(city);
-    
+
     return parts.isNotEmpty ? parts.join(' ') : '未知';
   }
 }
@@ -85,7 +86,7 @@ class LocationService extends ChangeNotifier {
 
   /// 获取当前 IP 归属地
   Future<LocationInfo?> fetchLocation() async {
-    print('🌍 [LocationService] 开始获取IP归属地...');
+    StructuredLogService.log('🌍 [LocationService] 开始获取IP归属地...');
 
     _isLoading = true;
     _errorMessage = null;
@@ -94,15 +95,15 @@ class LocationService extends ChangeNotifier {
     try {
       final result = await ApiClient().getJson('/ip-location', auth: false);
 
-      print('🌍 [LocationService] 收到响应 - 状态码: ${result.statusCode}');
+      StructuredLogService.log('🌍 [LocationService] 收到响应 - 状态码: ${result.statusCode}');
 
       if (result.ok) {
         final data = result.data as Map<String, dynamic>?;
 
         if (data != null && data['success'] == true) {
           _currentLocation = LocationInfo.fromJson(data);
-          print('✅ [LocationService] IP: ${_currentLocation?.ip}');
-          print('🌍 [LocationService] 归属地: ${_currentLocation?.shortDescription}');
+          StructuredLogService.log('✅ [LocationService] IP: ${_currentLocation?.ip}');
+          StructuredLogService.log('🌍 [LocationService] 归属地: ${_currentLocation?.shortDescription}');
 
           _isLoading = false;
           notifyListeners();
@@ -114,8 +115,8 @@ class LocationService extends ChangeNotifier {
         throw Exception('请求失败: ${result.statusCode}');
       }
     } catch (e, stackTrace) {
-      print('❌ [LocationService] 发生错误: $e');
-      print('❌ [LocationService] 错误堆栈: $stackTrace');
+      StructuredLogService.log('❌ [LocationService] 发生错误: $e');
+      StructuredLogService.log('❌ [LocationService] 错误堆栈: $stackTrace');
 
       _errorMessage = e.toString();
       _isLoading = false;

@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -5,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 enum LyricStyle {
   /// 默认样式 (卡拉OK样式)
   defaultStyle,
-  
+
   /// 流体云样式
   fluidCloud,
 
@@ -34,10 +35,10 @@ class LyricStyleService extends ChangeNotifier {
   static const String _lineHeightKey = 'lyric_line_height';
   static const String _blurSigmaKey = 'lyric_blur_sigma';
   static const String _autoLineHeightKey = 'lyric_auto_line_height';
-  
+
   LyricStyle _currentStyle = LyricStyle.defaultStyle;
   LyricAlignment _currentAlignment = LyricAlignment.center;
-  
+
   // 歌词配置项
   double _fontSize = 32.0;
   double _lineHeight = 100.0;
@@ -46,7 +47,7 @@ class LyricStyleService extends ChangeNotifier {
 
   /// 获取当前歌词样式
   LyricStyle get currentStyle => _currentStyle;
-  
+
   /// 获取当前歌词对齐方式
   LyricAlignment get currentAlignment => _currentAlignment;
 
@@ -71,7 +72,7 @@ class LyricStyleService extends ChangeNotifier {
   Future<void> _loadStyle() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // 加载样式
       final savedStyleIndex = prefs.getInt(_storageKey);
       if (savedStyleIndex != null && savedStyleIndex >= 0 && savedStyleIndex < LyricStyle.values.length) {
@@ -79,7 +80,7 @@ class LyricStyleService extends ChangeNotifier {
       } else {
         _currentStyle = LyricStyle.fluidCloud;
       }
-      
+
       // 加载对齐方式
       final savedAlignmentIndex = prefs.getInt(_alignmentStorageKey);
       if (savedAlignmentIndex != null && savedAlignmentIndex >= 0 && savedAlignmentIndex < LyricAlignment.values.length) {
@@ -93,10 +94,10 @@ class LyricStyleService extends ChangeNotifier {
       _lineHeight = prefs.getDouble(_lineHeightKey) ?? 100.0;
       _blurSigma = prefs.getDouble(_blurSigmaKey) ?? 4.0;
       _autoLineHeight = prefs.getBool(_autoLineHeightKey) ?? true;
-      
+
       notifyListeners();
     } catch (e) {
-      print('❌ [LyricStyleService] 加载歌词配置失败: $e');
+      StructuredLogService.log('❌ [LyricStyleService] 加载歌词配置失败: $e');
       _currentStyle = LyricStyle.fluidCloud;
       _currentAlignment = LyricAlignment.center;
     }
@@ -105,32 +106,32 @@ class LyricStyleService extends ChangeNotifier {
   /// 设置歌词样式
   Future<void> setStyle(LyricStyle style) async {
     if (_currentStyle == style) return;
-    
+
     _currentStyle = style;
     notifyListeners();
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_storageKey, style.index);
-      print('✅ [LyricStyleService] 歌词样式已保存: ${_getStyleName(style)}');
+      StructuredLogService.log('✅ [LyricStyleService] 歌词样式已保存: ${_getStyleName(style)}');
     } catch (e) {
-      print('❌ [LyricStyleService] 保存歌词样式失败: $e');
+      StructuredLogService.log('❌ [LyricStyleService] 保存歌词样式失败: $e');
     }
   }
 
   /// 设置歌词对齐方式
   Future<void> setAlignment(LyricAlignment alignment) async {
     if (_currentAlignment == alignment) return;
-    
+
     _currentAlignment = alignment;
     notifyListeners();
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_alignmentStorageKey, alignment.index);
-      print('✅ [LyricStyleService] 歌词对齐已保存: ${alignment.name}');
+      StructuredLogService.log('✅ [LyricStyleService] 歌词对齐已保存: ${alignment.name}');
     } catch (e) {
-      print('❌ [LyricStyleService] 保存歌词对齐失败: $e');
+      StructuredLogService.log('❌ [LyricStyleService] 保存歌词对齐失败: $e');
     }
   }
 
@@ -138,12 +139,12 @@ class LyricStyleService extends ChangeNotifier {
   Future<void> setFontSize(double size) async {
     if ((_fontSize - size).abs() < 0.1) return;
     _fontSize = size;
-    
+
     // 自适应逻辑：如果开启，则自动按比例调整行高
     if (_autoLineHeight) {
       _lineHeight = size * (100.0 / 32.0); // 保持原有比例
     }
-    
+
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -180,11 +181,11 @@ class LyricStyleService extends ChangeNotifier {
   Future<void> setAutoLineHeight(bool auto) async {
     if (_autoLineHeight == auto) return;
     _autoLineHeight = auto;
-    
+
     if (auto) {
       _lineHeight = _fontSize * (100.0 / 32.0);
     }
-    
+
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();

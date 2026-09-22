@@ -43,7 +43,7 @@ class _MobileThemeColorCache {
 /// 动态模式下使用 Apple Music 风格的 Mesh Gradient 背景
 class MobilePlayerBackground extends StatefulWidget {
   final double dragOffset;
-  
+
   const MobilePlayerBackground({
     super.key,
     this.dragOffset = 0.0,
@@ -59,7 +59,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
   bool _isFirstBuild = true;
   int _pendingExtractionId = 0;
   String? _lastScheduledImageUrl;
-  
+
   // 主题色提取相关
   String? _currentThemeColorImageUrl;
   int _pendingThemeColorExtractionId = 0;
@@ -81,14 +81,14 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
 
   void _onPlayerServiceChanged() {
     if (!mounted) return;
-    
+
     final backgroundType = PlayerBackgroundService().backgroundType;
-    
+
     // 动态背景 (流体云) 不需要提取颜色，由 FlowingLightBackground 直接处理图片
     // if (backgroundType == PlayerBackgroundType.dynamic) {
     //   _scheduleColorExtraction();
     // }
-    
+
     // 自适应背景需要提取主题色
     if (backgroundType == PlayerBackgroundType.adaptive) {
       _scheduleThemeColorExtraction();
@@ -97,9 +97,9 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
 
   void _onBackgroundChanged() {
     if (!mounted) return;
-    
+
     setState(() {});
-    
+
     final backgroundType = PlayerBackgroundService().backgroundType;
     if (backgroundType == PlayerBackgroundType.dynamic) {
       // _scheduleColorExtraction();
@@ -113,8 +113,6 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
     final backgroundService = PlayerBackgroundService();
     if (backgroundService.backgroundType != PlayerBackgroundType.dynamic) return;
 
-    final song = PlayerService().currentSong;
-    final track = PlayerService().currentTrack;
     final imageUrl = PlayerService().currentCoverUrl ?? '';
 
     if (imageUrl.isEmpty || imageUrl == _currentImageUrl) return;
@@ -138,14 +136,12 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
       _extractColorsFromImage(imageUrl);
     });
   }
-  
+
   /// 延迟调度主题色提取（带防抖）
   void _scheduleThemeColorExtraction() {
     final backgroundService = PlayerBackgroundService();
     if (backgroundService.backgroundType != PlayerBackgroundType.adaptive) return;
 
-    final song = PlayerService().currentSong;
-    final track = PlayerService().currentTrack;
     final imageUrl = PlayerService().currentCoverUrl ?? '';
 
     if (imageUrl.isEmpty || imageUrl == _currentThemeColorImageUrl) return;
@@ -178,7 +174,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
       _currentImageUrl = imageUrl;
       return;
     }
-    
+
     _currentImageUrl = imageUrl;
 
     try {
@@ -196,7 +192,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
       debugPrint('⚠️ [移动端背景] 动态背景颜色提取失败: $e');
     }
   }
-  
+
   /// 从图片中提取主题色（使用 isolate，不阻塞主线程）
   Future<void> _extractThemeColorFromImage(String imageUrl) async {
     // 检查缓存
@@ -206,7 +202,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
       PlayerService().themeColorNotifier.value = cachedColor;
       return;
     }
-    
+
     _currentThemeColorImageUrl = imageUrl;
 
     try {
@@ -252,10 +248,10 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
     final player = PlayerService();
     final song = player.currentSong;
     final track = player.currentTrack;
-    
+
     // 检查是否为流体云样式
     final isFluidCloud = LyricStyleService().currentStyle == LyricStyle.fluidCloud;
-    
+
     switch (backgroundService.backgroundType) {
       case PlayerBackgroundType.adaptive:
         // 自适应背景
@@ -268,20 +264,20 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
         } else {
           return _buildColorGradientBackground();
         }
-        
+
       case PlayerBackgroundType.dynamic:
         // 动态背景 - Apple Music 风格的 Mesh Gradient
         // 流体云样式下加一层模糊
         return _buildDynamicMeshBackground(song, track, addBlur: isFluidCloud);
-        
+
       case PlayerBackgroundType.solidColor:
         // 纯色背景
         return _buildSolidColorBackground(backgroundService);
-        
+
       case PlayerBackgroundType.image:
         // 图片背景
         return _buildImageBackground(backgroundService);
-        
+
       case PlayerBackgroundType.video:
         // 视频背景
         return _buildVideoBackground(backgroundService);
@@ -299,14 +295,12 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
         final player = PlayerService();
         // 优先使用缓存的 Provider
         ImageProvider? imageProvider = player.currentCoverImageProvider;
-        
+
         // 如果没有 Provider，尝试从 URL 构建
         if (imageProvider == null) {
-            final currentSong = player.currentSong;
-            final currentTrack = player.currentTrack;
             final imageUrl = player.currentCoverUrl ?? '';
-            
-             if (imageUrl != null && imageUrl.isNotEmpty) {
+
+             if (imageUrl.isNotEmpty) {
                 if (imageUrl.startsWith('http')) {
                  imageProvider = CachedNetworkImageProvider(
                    imageUrl,
@@ -320,14 +314,14 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
 
         final bg = FlowingLightBackground(
           imageProvider: imageProvider,
-          child: addBlur ? Container(color: Colors.black.withOpacity(0.15)) : null,
+          child: addBlur ? Container(color: Colors.black.withValues(alpha: 0.15)) : null,
         );
-        
+
         return RepaintBoundary(child: bg);
       },
     );
   }
-  
+
   /// 构建流体云样式下的自适应背景
   /// 封面位于顶部，向下渐变到主题色，整体覆盖一层模糊
   Widget _buildFluidCloudAdaptiveBackground(SongDetail? song, Track? track) {
@@ -335,22 +329,20 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
     return ListenableBuilder(
       listenable: PlayerService(),
       builder: (context, _) {
-        final currentSong = PlayerService().currentSong;
-        final currentTrack = PlayerService().currentTrack;
         final imageUrl = PlayerService().currentCoverUrl ?? '';
-        
+
         // 如果图片URL变化，触发主题色提取
         if (imageUrl.isNotEmpty && imageUrl != _currentThemeColorImageUrl) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _scheduleThemeColorExtraction();
           });
         }
-        
+
         return ValueListenableBuilder<Color?>(
           valueListenable: PlayerService().themeColorNotifier,
           builder: (context, themeColor, child) {
             final color = themeColor ?? Colors.grey[700]!;
-            
+
             return RepaintBoundary(
               child: Stack(
                 children: [
@@ -361,7 +353,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
                       color: color,
                     ),
                   ),
-                  
+
                   // 专辑封面层 - 等比例放大至占满宽度，位于顶部，带渐变融合效果
                   if (imageUrl.isNotEmpty)
                     Positioned(
@@ -385,12 +377,12 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
                                     colors: [
                                       Colors.transparent,
                                       Colors.transparent,
-                                      color.withOpacity(0.05),
-                                      color.withOpacity(0.12),
-                                      color.withOpacity(0.25),
-                                      color.withOpacity(0.45),
-                                      color.withOpacity(0.65),
-                                      color.withOpacity(0.85),
+                                      color.withValues(alpha: 0.05),
+                                      color.withValues(alpha: 0.12),
+                                      color.withValues(alpha: 0.25),
+                                      color.withValues(alpha: 0.45),
+                                      color.withValues(alpha: 0.65),
+                                      color.withValues(alpha: 0.85),
                                       color,
                                     ],
                                     stops: const [0.0, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.90, 1.0],
@@ -402,14 +394,14 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
                         ),
                       ),
                     ),
-                  
+
                   // 整体模糊层 (始终保持固定模糊度)
                   // ✅ 性能优化：限制模糊半径最大值为 30，避免 GPU 过载
                   Positioned.fill(
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
                       child: Container(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                       ),
                     ),
                   ),
@@ -428,23 +420,21 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
     return ListenableBuilder(
       listenable: PlayerService(),
       builder: (context, _) {
-        final currentSong = PlayerService().currentSong;
-        final currentTrack = PlayerService().currentTrack;
         final imageUrl = PlayerService().currentCoverUrl ?? '';
-        
+
         // 如果图片URL变化，触发主题色提取
         if (imageUrl.isNotEmpty && imageUrl != _currentThemeColorImageUrl) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _scheduleThemeColorExtraction();
           });
         }
-        
+
         return ValueListenableBuilder<Color?>(
           valueListenable: PlayerService().themeColorNotifier,
           builder: (context, themeColor, child) {
             // 确保总是有颜色显示，优先使用提取的主题色，回退到深紫色
             final color = themeColor ?? Colors.grey[700]!;
-        
+
          return Stack(
            children: [
              // 底层纯主题色背景
@@ -454,7 +444,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
                  color: color,  // 整个背景使用主题色
                ),
              ),
-             
+
              // 专辑封面层 - 等比例放大至占满宽度，位于顶部，带渐变融合效果
              if (imageUrl.isNotEmpty)
                Positioned(
@@ -478,12 +468,12 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
                                colors: [
                                  Colors.transparent,           // 顶部完全透明，显示原封面
                                  Colors.transparent,           // 上1/4保持透明
-                                 color.withOpacity(0.05),     // 提前开始轻微融合
-                                 color.withOpacity(0.12),     // 渐进增加透明度
-                                 color.withOpacity(0.25),     // 四分之一透明度
-                                 color.withOpacity(0.45),     // 接近一半透明度
-                                 color.withOpacity(0.65),     // 较强融合
-                                 color.withOpacity(0.85),     // 非常强的融合
+                                 color.withValues(alpha: 0.05),     // 提前开始轻微融合
+                                 color.withValues(alpha: 0.12),     // 渐进增加透明度
+                                 color.withValues(alpha: 0.25),     // 四分之一透明度
+                                 color.withValues(alpha: 0.45),     // 接近一半透明度
+                                 color.withValues(alpha: 0.65),     // 较强融合
+                                 color.withValues(alpha: 0.85),     // 非常强的融合
                                  color,                       // 最底部完全融入主题色
                                ],
                                stops: const [0.0, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.90, 1.0],
@@ -510,7 +500,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
       builder: (context, themeColor, child) {
         // 使用提取的主题色，回退到深紫色
         final color = themeColor ?? Colors.grey[700]!;
-        
+
         return Stack(
           children: [
             // 底层纯黑背景，确保不透明
@@ -522,7 +512,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    color.withOpacity(0.3),
+                    color.withValues(alpha: 0.3),
                     Colors.black,
                     Colors.black,
                   ],
@@ -539,7 +529,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
   Widget _buildCoverImage(String imageUrl) {
     // 判断是网络 URL 还是本地文件路径
     final isNetwork = imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
-    
+
     if (isNetwork) {
       return CachedNetworkImage(
         imageUrl: imageUrl,
@@ -613,7 +603,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
                       sigmaY: backgroundService.blurAmount.clamp(0.0, 25.0),
                     ),
                     child: Container(
-                      color: Colors.black.withOpacity(0.3), // 添加半透明遮罩
+                      color: Colors.black.withValues(alpha: 0.3), // 添加半透明遮罩
                     ),
                   ),
                 )
@@ -621,7 +611,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
                 // 无模糊时也添加浅色遮罩以确保文字可读
                 Positioned.fill(
                   child: Container(
-                    color: Colors.black.withOpacity(0.2),
+                    color: Colors.black.withValues(alpha: 0.2),
                   ),
                 ),
             ],
@@ -629,7 +619,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
         );
       }
     }
-    
+
     // 如果没有设置图片，使用默认背景
     return Container(
       decoration: BoxDecoration(
@@ -645,7 +635,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
       ),
     );
   }
-  
+
   /// 构建视频背景
   Widget _buildVideoBackground(PlayerBackgroundService backgroundService) {
     if (backgroundService.mediaPath != null) {
@@ -665,14 +655,14 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
             if (backgroundService.blurAmount == 0)
               Positioned.fill(
                 child: Container(
-                  color: Colors.black.withOpacity(0.2),
+                  color: Colors.black.withValues(alpha: 0.2),
                 ),
               ),
           ],
         );
       }
     }
-    
+
     // 如果没有设置视频，使用默认背景
     return Container(
       decoration: BoxDecoration(

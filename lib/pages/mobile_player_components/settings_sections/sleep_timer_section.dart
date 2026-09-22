@@ -11,22 +11,22 @@ class SleepTimerSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return AnimatedBuilder(
       animation: SleepTimerService(),
       builder: (context, _) {
         final timer = SleepTimerService();
         final isActive = timer.isActive;
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withOpacity(isDark ? 0.6 : 0.8),
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: colorScheme.outlineVariant.withOpacity(0.3),
+                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -59,7 +59,7 @@ class SleepTimerSection extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 18),
-                
+
                 if (isActive)
                   // 定时器运行中
                   _buildActiveState(context, timer, colorScheme)
@@ -88,13 +88,13 @@ class SleepTimerSection extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  Colors.green.withOpacity(0.25),
-                  Colors.green.withOpacity(0.15),
+                  Colors.green.withValues(alpha: 0.25),
+                  Colors.green.withValues(alpha: 0.15),
                 ],
               ),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: Colors.green.withOpacity(0.4),
+                color: Colors.green.withValues(alpha: 0.4),
                 width: 1,
               ),
             ),
@@ -109,7 +109,7 @@ class SleepTimerSection extends StatelessWidget {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.green.withOpacity(0.5),
+                        color: Colors.green.withValues(alpha: 0.5),
                         blurRadius: 6,
                       ),
                     ],
@@ -197,7 +197,7 @@ class SleepTimerSection extends StatelessWidget {
     bool isDark,
   ) {
     final timeOptions = [15, 30, 45, 60, 90];
-    
+
     return Wrap(
       spacing: 10,
       runSpacing: 10,
@@ -260,19 +260,19 @@ class SleepTimerSection extends StatelessWidget {
             gradient: LinearGradient(
               colors: isCustom
                   ? [
-                      colorScheme.tertiaryContainer.withOpacity(0.8),
-                      colorScheme.tertiaryContainer.withOpacity(0.5),
+                      colorScheme.tertiaryContainer.withValues(alpha: 0.8),
+                      colorScheme.tertiaryContainer.withValues(alpha: 0.5),
                     ]
                   : [
                       colorScheme.surfaceContainerHigh,
-                      colorScheme.surfaceContainerHigh.withOpacity(0.7),
+                      colorScheme.surfaceContainerHigh.withValues(alpha: 0.7),
                     ],
             ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isCustom
-                  ? colorScheme.tertiary.withOpacity(0.3)
-                  : colorScheme.outlineVariant.withOpacity(0.3),
+                  ? colorScheme.tertiary.withValues(alpha: 0.3)
+                  : colorScheme.outlineVariant.withValues(alpha: 0.3),
               width: 1,
             ),
           ),
@@ -316,7 +316,7 @@ class SleepTimerSection extends StatelessWidget {
     final fgColor = isDestructive
         ? colorScheme.onErrorContainer
         : (isPrimary ? colorScheme.onPrimaryContainer : colorScheme.onSurface);
-    
+
     return Material(
       color: bgColor,
       borderRadius: BorderRadius.circular(18),

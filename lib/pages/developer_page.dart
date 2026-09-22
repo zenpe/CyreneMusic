@@ -9,6 +9,7 @@ import '../services/developer_mode_service.dart';
 import '../services/admin_service.dart';
 import '../services/notification_service.dart';
 import '../services/player_service.dart';
+import '../services/structured_log_service.dart';
 import '../utils/theme_manager.dart';
 import 'lx_music_runtime_test_page.dart';
 
@@ -32,11 +33,16 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
   int _fluentAdminTabIndex = 0;
   int _cupertinoTabIndex = 0; // iOS 标签页索引
 
+  void _refreshState(VoidCallback action) {
+    if (!mounted) return;
+    setState(action);
+  }
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    
+
     // 监听日志更新，自动滚动到底部
     DeveloperModeService().addListener(_scrollToBottom);
   }
@@ -76,7 +82,7 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
     }
 
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(

@@ -102,7 +102,7 @@ class NavidromeSettingsPage extends StatelessWidget {
               NavidromeCard(
                 onTap: () => _confirmResetAudioSource(context),
                 padding: const EdgeInsets.all(12),
-                borderColor: colorScheme.error.withOpacity(0.35),
+                borderColor: colorScheme.error.withValues(alpha: 0.35),
                 backgroundColor: navTheme.card,
                 child: Row(
                   children: [
@@ -146,7 +146,7 @@ class NavidromeSettingsPage extends StatelessWidget {
                 onTap: () => _confirmExit(context),
                 padding: const EdgeInsets.all(12),
                 backgroundColor: navTheme.card,
-                borderColor: colorScheme.error.withOpacity(0.4),
+                borderColor: colorScheme.error.withValues(alpha: 0.4),
                 child: Row(
                   children: [
                     _IconBadge(

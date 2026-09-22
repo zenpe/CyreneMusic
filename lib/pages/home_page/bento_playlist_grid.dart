@@ -11,11 +11,11 @@ class BentoPlaylistGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (list.isEmpty) return Text('暂无数据', style: Theme.of(context).textTheme.bodySmall);
-    
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 600;
-        
+
         if (isWide && list.length >= 5) {
           // Bento 布局：左边大卡+右边 2x2
           return SizedBox(
@@ -54,7 +54,7 @@ class BentoPlaylistGrid extends StatelessWidget {
             ),
           );
         }
-        
+
         // 默认网格
         return GridView.builder(
           shrinkWrap: true,
@@ -100,9 +100,9 @@ class _LargePlaylistCardState extends State<LargePlaylistCard> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             boxShadow: _hovering ? [
-              BoxShadow(color: cs.primary.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8)),
+              BoxShadow(color: cs.primary.withValues(alpha: 0.2), blurRadius: 20, offset: const Offset(0, 8)),
             ] : [
-              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
           child: ClipRRect(
@@ -126,7 +126,7 @@ class _LargePlaylistCardState extends State<LargePlaylistCard> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
+                      colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
                     ),
                   ),
                 ),
@@ -141,7 +141,7 @@ class _LargePlaylistCardState extends State<LargePlaylistCard> {
                       decoration: BoxDecoration(
                         color: cs.primary,
                         shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: cs.primary.withOpacity(0.4), blurRadius: 12)],
+                        boxShadow: [BoxShadow(color: cs.primary.withValues(alpha: 0.4), blurRadius: 12)],
                       ),
                       child: Icon(Icons.play_arrow_rounded, color: cs.onPrimary, size: 28),
                     ),
@@ -192,7 +192,7 @@ class _SmallPlaylistCardState extends State<SmallPlaylistCard> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             boxShadow: _hovering ? [
-              BoxShadow(color: cs.shadow.withOpacity(0.15), blurRadius: 12, offset: const Offset(0, 4)),
+              BoxShadow(color: cs.shadow.withValues(alpha: 0.15), blurRadius: 12, offset: const Offset(0, 4)),
             ] : [],
           ),
           child: ClipRRect(
@@ -215,7 +215,7 @@ class _SmallPlaylistCardState extends State<SmallPlaylistCard> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Colors.black.withOpacity(0.6)],
+                      colors: [Colors.transparent, Colors.black.withValues(alpha: 0.6)],
                     ),
                   ),
                 ),

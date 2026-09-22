@@ -12,24 +12,24 @@ class LoginPrompt extends StatefulWidget {
   final VoidCallback onLoginPressed;
   final String? title;
   final String? subtitle;
-  
+
   const LoginPrompt({
     super.key,
     required this.onLoginPressed,
     this.title,
     this.subtitle,
   });
-  
+
   @override
   State<LoginPrompt> createState() => _LoginPromptState();
 }
 
-class _LoginPromptState extends State<LoginPrompt> 
+class _LoginPromptState extends State<LoginPrompt>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
-  
+
   @override
   void initState() {
     super.initState();
@@ -46,36 +46,36 @@ class _LoginPromptState extends State<LoginPrompt>
     ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOutCubic));
     _animationController.forward();
   }
-  
+
   @override
   void dispose() {
     _animationController.dispose();
     super.dispose();
   }
-  
+
   String get _title => widget.title ?? '登录后查看更多内容';
   String get _subtitle => widget.subtitle ?? '登录即可获取每日推荐、私人FM、专属歌单等个性化内容';
-  
+
   @override
   Widget build(BuildContext context) {
     final themeManager = ThemeManager();
     final isMobile = Platform.isIOS || Platform.isAndroid;
-    
+
     if (themeManager.isFluentFramework) {
       return _buildFluentPrompt(context);
     }
-    
+
     if (isMobile && themeManager.isCupertinoFramework) {
       return _buildCupertinoPrompt(context);
     }
-    
+
     return _buildMaterialPrompt(context);
   }
-  
+
   /// Material Design 3 风格登录提示
   Widget _buildMaterialPrompt(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    
+
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
@@ -102,14 +102,14 @@ class _LoginPromptState extends State<LoginPrompt>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          cs.primary.withOpacity(0.15),
-                          cs.tertiary.withOpacity(0.1),
+                          cs.primary.withValues(alpha: 0.15),
+                          cs.tertiary.withValues(alpha: 0.1),
                         ],
                       ),
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: cs.primary.withOpacity(0.1),
+                          color: cs.primary.withValues(alpha: 0.1),
                           blurRadius: 30,
                           spreadRadius: 5,
                         ),
@@ -125,7 +125,7 @@ class _LoginPromptState extends State<LoginPrompt>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: cs.primary.withOpacity(0.3),
+                              color: cs.primary.withValues(alpha: 0.3),
                               width: 2,
                             ),
                           ),
@@ -147,7 +147,7 @@ class _LoginPromptState extends State<LoginPrompt>
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
+                                  color: Colors.black.withValues(alpha: 0.1),
                                   blurRadius: 8,
                                 ),
                               ],
@@ -225,14 +225,14 @@ class _LoginPromptState extends State<LoginPrompt>
       ),
     );
   }
-  
+
   Widget _buildFeatureChip(BuildContext context, IconData icon, String label, ColorScheme cs) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(0.5),
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outline.withOpacity(0.2)),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -244,11 +244,11 @@ class _LoginPromptState extends State<LoginPrompt>
       ),
     );
   }
-  
+
   /// iOS Cupertino 风格登录提示
   Widget _buildCupertinoPrompt(BuildContext context) {
     final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
-    
+
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
@@ -275,8 +275,8 @@ class _LoginPromptState extends State<LoginPrompt>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          CupertinoColors.systemBlue.withOpacity(0.15),
-                          CupertinoColors.systemIndigo.withOpacity(0.1),
+                          CupertinoColors.systemBlue.withValues(alpha: 0.15),
+                          CupertinoColors.systemIndigo.withValues(alpha: 0.1),
                         ],
                       ),
                       shape: BoxShape.circle,
@@ -291,7 +291,7 @@ class _LoginPromptState extends State<LoginPrompt>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: CupertinoColors.systemBlue.withOpacity(0.3),
+                              color: CupertinoColors.systemBlue.withValues(alpha: 0.3),
                               width: 2,
                             ),
                           ),
@@ -313,7 +313,7 @@ class _LoginPromptState extends State<LoginPrompt>
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
+                                  color: Colors.black.withValues(alpha: 0.1),
                                   blurRadius: 8,
                                 ),
                               ],
@@ -400,7 +400,7 @@ class _LoginPromptState extends State<LoginPrompt>
       ),
     );
   }
-  
+
   Widget _buildCupertinoFeatureChip(IconData icon, String label, bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -425,11 +425,11 @@ class _LoginPromptState extends State<LoginPrompt>
       ),
     );
   }
-  
+
   /// Fluent UI 风格登录提示
   Widget _buildFluentPrompt(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
-    
+
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
@@ -456,8 +456,8 @@ class _LoginPromptState extends State<LoginPrompt>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          theme.accentColor.withOpacity(0.15),
-                          theme.accentColor.withOpacity(0.05),
+                          theme.accentColor.withValues(alpha: 0.15),
+                          theme.accentColor.withValues(alpha: 0.05),
                         ],
                       ),
                       shape: BoxShape.circle,
@@ -472,7 +472,7 @@ class _LoginPromptState extends State<LoginPrompt>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: theme.accentColor.withOpacity(0.3),
+                              color: theme.accentColor.withValues(alpha: 0.3),
                               width: 2,
                             ),
                           ),
@@ -576,7 +576,7 @@ class _LoginPromptState extends State<LoginPrompt>
       ),
     );
   }
-  
+
   Widget _buildFluentFeatureChip(IconData icon, String label, fluent.FluentThemeData theme) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

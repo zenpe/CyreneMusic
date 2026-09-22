@@ -79,7 +79,7 @@ class MD3SettingsTile extends StatelessWidget {
       leading: leading != null
           ? IconTheme.merge(
               data: IconThemeData(
-                color: enabled ? colorScheme.onSurfaceVariant : colorScheme.onSurface.withOpacity(0.38),
+                color: enabled ? colorScheme.onSurfaceVariant : colorScheme.onSurface.withValues(alpha: 0.38),
                 size: 24,
               ),
               child: leading!,
@@ -88,7 +88,7 @@ class MD3SettingsTile extends StatelessWidget {
       title: Text(
         title,
         style: theme.textTheme.bodyLarge?.copyWith(
-          color: enabled ? colorScheme.onSurface : colorScheme.onSurface.withOpacity(0.38),
+          color: enabled ? colorScheme.onSurface : colorScheme.onSurface.withValues(alpha: 0.38),
           fontWeight: FontWeight.w500,
         ),
       ),
@@ -96,14 +96,14 @@ class MD3SettingsTile extends StatelessWidget {
           ? Text(
               subtitle!,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: enabled ? colorScheme.onSurfaceVariant : colorScheme.onSurface.withOpacity(0.38),
+                color: enabled ? colorScheme.onSurfaceVariant : colorScheme.onSurface.withValues(alpha: 0.38),
               ),
             )
           : null,
       trailing: trailing != null
           ? IconTheme.merge(
               data: IconThemeData(
-                color: enabled ? colorScheme.onSurfaceVariant : colorScheme.onSurface.withOpacity(0.38),
+                color: enabled ? colorScheme.onSurfaceVariant : colorScheme.onSurface.withValues(alpha: 0.38),
                 size: 18,
               ),
               child: trailing!,

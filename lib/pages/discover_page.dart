@@ -253,7 +253,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: CupertinoColors.systemRed.withOpacity(0.12),
+                color: CupertinoColors.systemRed.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -280,7 +280,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                       horizontal: 8,
                       vertical: 4,
                     ),
-                    minSize: 0,
+                    minimumSize: Size.zero,
                     onPressed: () {
                       final currentCat = NeteaseDiscoverService().currentCat;
                       NeteaseDiscoverService().fetchDiscoverPlaylists(
@@ -402,24 +402,26 @@ class _DiscoverPageState extends State<DiscoverPage> {
         (Platform.isAndroid || Platform.isIOS);
 
     // 未登录状态下显示登录提示
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     if (!_authFacade.isLoggedIn) {
       return Scaffold(
         backgroundColor: colorScheme.surface,
         body: CustomScrollView(
           slivers: [
-            SliverAppBar(
-              floating: true,
-              snap: true,
-              backgroundColor: colorScheme.surface,
-              title: Text(
-                '发现',
-                style: TextStyle(
-                  color: colorScheme.onSurface,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+            if (!isLandscape)
+              SliverAppBar(
+                floating: true,
+                snap: true,
+                backgroundColor: colorScheme.surface,
+                title: Text(
+                  '发现',
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
             SliverFillRemaining(
               child: LoginPrompt(
                 title: '登录后发现更多精彩',
@@ -443,19 +445,20 @@ class _DiscoverPageState extends State<DiscoverPage> {
         backgroundColor: colorScheme.surface,
         body: CustomScrollView(
           slivers: [
-            SliverAppBar(
-              floating: true,
-              snap: true,
-              backgroundColor: colorScheme.surface,
-              title: Text(
-                '发现',
-                style: TextStyle(
-                  color: colorScheme.onSurface,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+            if (!isLandscape)
+              SliverAppBar(
+                floating: true,
+                snap: true,
+                backgroundColor: colorScheme.surface,
+                title: Text(
+                  '发现',
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
             SliverFillRemaining(
               child: AudioSourcePrompt(
                 title: '配置音源后发现更多',
@@ -504,6 +507,11 @@ class _DiscoverPageState extends State<DiscoverPage> {
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         final accent = themeColor ?? colorScheme.primary;
+        final topPad = isLandscape
+            ? (MediaQuery.of(context).padding.top > 0
+                ? MediaQuery.of(context).padding.top + 10
+                : 14.0)
+            : 8.0;
 
         return Scaffold(
           backgroundColor: bgBase,
@@ -522,8 +530,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
                         center: const Alignment(0.0, -0.6),
                         radius: 1.25,
                         colors: [
-                          accent.withOpacity(isDark ? 0.22 : 0.16),
-                          accent.withOpacity(isDark ? 0.08 : 0.05),
+                          accent.withValues(alpha: isDark ? 0.22 : 0.16),
+                          accent.withValues(alpha: isDark ? 0.08 : 0.05),
                           Colors.transparent,
                         ],
                         stops: const [0.0, 0.55, 1.0],
@@ -544,31 +552,81 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     parent: BouncingScrollPhysics(),
                   ),
                   slivers: [
-                    SliverAppBar(
-                      pinned: true,
-                      backgroundColor: Colors.transparent,
-                      surfaceTintColor: Colors.transparent,
-                      elevation: 0,
-                      scrolledUnderElevation: 0,
-                      flexibleSpace: ClipRect(
-                        child: BackdropFilter(
-                          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                          child: Container(
-                            color: bgBase.withOpacity(0.72),
+                    if (!isLandscape)
+                      SliverAppBar(
+                        pinned: true,
+                        backgroundColor: Colors.transparent,
+                        surfaceTintColor: Colors.transparent,
+                        elevation: 0,
+                        scrolledUnderElevation: 0,
+                        flexibleSpace: ClipRect(
+                          child: BackdropFilter(
+                            filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                            child: Container(
+                              color: bgBase.withValues(alpha: 0.72),
+                            ),
                           ),
                         ),
-                      ),
-                      title: Text(
-                        '发现',
-                        style: TextStyle(
-                          color: colorScheme.onSurface,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
+                        title: Text(
+                          '发现',
+                          style: TextStyle(
+                            color: colorScheme.onSurface,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
+                        actions: [
+                          IconButton(
+                            icon: const Icon(Icons.refresh_rounded),
+                            tooltip: '刷新',
+                            onPressed: () {
+                              final currentCat = NeteaseDiscoverService().currentCat;
+                              NeteaseDiscoverService().fetchDiscoverPlaylists(
+                                cat: currentCat,
+                              );
+                            },
+                          ),
+                        ],
                       ),
-                      actions: [
-                        IconButton(
-                          icon: const Icon(Icons.refresh_rounded),
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(16.0, topPad, 16.0, 8.0),
+                      sliver: SliverToBoxAdapter(
+                        child: _buildMaterialContent(service, isExpressive, accent),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isLandscape)
+                Positioned(
+                  top: (MediaQuery.of(context).padding.top > 0 ? MediaQuery.of(context).padding.top : 8) + 6,
+                  right: 16,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                      child: Container(
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: (isDark ? const Color(0xFF1E1E24) : Colors.white).withValues(alpha: 0.75),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
+                            width: 0.8,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: IconButton(
+                          iconSize: 20,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
+                          icon: Icon(Icons.refresh_rounded, color: colorScheme.onSurface),
                           tooltip: '刷新',
                           onPressed: () {
                             final currentCat = NeteaseDiscoverService().currentCat;
@@ -577,20 +635,10 @@ class _DiscoverPageState extends State<DiscoverPage> {
                             );
                           },
                         ),
-                      ],
-                    ),
-                    SliverPadding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16.0,
-                        vertical: 8.0,
-                      ),
-                      sliver: SliverToBoxAdapter(
-                        child: _buildMaterialContent(service, isExpressive, accent),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
             ],
           ),
         );
@@ -671,7 +719,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
             decoration: BoxDecoration(
               color: Theme.of(
                 context,
-              ).colorScheme.errorContainer.withOpacity(0.65),
+              ).colorScheme.errorContainer.withValues(alpha: 0.65),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -768,10 +816,10 @@ class _DiscoverPageState extends State<DiscoverPage> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           decoration: BoxDecoration(
-            color: accent.withOpacity(isDark ? 0.16 : 0.08),
+            color: accent.withValues(alpha: isDark ? 0.16 : 0.08),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: accent.withOpacity(isDark ? 0.35 : 0.2),
+              color: accent.withValues(alpha: isDark ? 0.35 : 0.2),
               width: 1,
             ),
           ),
@@ -796,7 +844,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
               Icon(
                 Icons.keyboard_arrow_down_rounded,
                 size: 18,
-                color: accent.withOpacity(0.8),
+                color: accent.withValues(alpha: 0.8),
               ),
             ],
           ),
@@ -828,7 +876,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withOpacity(0.45),
+      barrierColor: Colors.black.withValues(alpha: 0.45),
       isScrollControlled: true,
       builder: (context) {
         return ClipRRect(
@@ -840,13 +888,13 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 maxHeight: MediaQuery.of(context).size.height * 0.75,
               ),
               decoration: BoxDecoration(
-                color: (isDark ? const Color(0xFF16161A) : Colors.white).withOpacity(
+                color: (isDark ? const Color(0xFF16161A) : Colors.white).withValues(alpha:
                   isDark ? 0.88 : 0.94,
                 ),
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                 border: Border(
                   top: BorderSide(
-                    color: (isDark ? Colors.white : Colors.black).withOpacity(0.08),
+                    color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
                     width: 0.8,
                   ),
                 ),
@@ -861,7 +909,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                       width: 40,
                       height: 4.5,
                       decoration: BoxDecoration(
-                        color: (isDark ? Colors.white : Colors.black).withOpacity(0.18),
+                        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(3),
                       ),
                     ),
@@ -889,7 +937,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                               '当前：${service.currentCat.isEmpty ? '全部歌单' : service.currentCat}',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                               ),
                             ),
                           ],
@@ -899,7 +947,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                           icon: Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
+                              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
@@ -1020,18 +1068,18 @@ class _DiscoverPageState extends State<DiscoverPage> {
           decoration: BoxDecoration(
             color: isSelected
                 ? themeColor
-                : (isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.04)),
+                : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04)),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isSelected
                   ? themeColor
-                  : (isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06)),
+                  : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06)),
               width: 0.8,
             ),
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: themeColor.withOpacity(0.35),
+                      color: themeColor.withValues(alpha: 0.35),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -1056,7 +1104,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 style: TextStyle(
                   color: isSelected
                       ? Colors.white
-                      : (isDark ? Colors.white.withOpacity(0.85) : const Color(0xFF334155)),
+                      : (isDark ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF334155)),
                   fontSize: 13,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 ),
@@ -1508,7 +1556,7 @@ class _MaterialPlaylistCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.35 : 0.08),
+                      color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -1546,7 +1594,7 @@ class _MaterialPlaylistCard extends StatelessWidget {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.55),
+                            color: Colors.black.withValues(alpha: 0.55),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(
@@ -1596,7 +1644,7 @@ class _MaterialPlaylistCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                 fontSize: 11.5,
                 fontWeight: FontWeight.w500,
               ),

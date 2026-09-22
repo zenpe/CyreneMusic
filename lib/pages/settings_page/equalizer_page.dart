@@ -69,7 +69,7 @@ class _EqualizerContentState extends State<EqualizerContent> {
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: cs.secondaryContainer.withOpacity(0.4),
+                color: cs.secondaryContainer.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -276,7 +276,7 @@ class _EqualizerContentState extends State<EqualizerContent> {
         final enabled = playerService.equalizerEnabled;
         final primaryColor = CupertinoTheme.of(context).primaryColor;
         if (!available) return _buildCupertinoUnavailable(context);
-        
+
         return Material(
           type: MaterialType.transparency,
           child: Column(
@@ -308,13 +308,13 @@ class _EqualizerContentState extends State<EqualizerContent> {
                 ),
                 child: Row(
                   children: [
-                    Icon(CupertinoIcons.info, size: 16, color: CupertinoColors.label.resolveFrom(context).withOpacity(0.6)),
+                    Icon(CupertinoIcons.info, size: 16, color: CupertinoColors.label.resolveFrom(context).withValues(alpha: 0.6)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '不同音源和编码格式的均衡器效果可能存在差异',
                         style: TextStyle(
-                          color: CupertinoColors.label.resolveFrom(context).withOpacity(0.6),
+                          color: CupertinoColors.label.resolveFrom(context).withValues(alpha: 0.6),
                           fontSize: 12,
                         ),
                       ),
@@ -333,7 +333,7 @@ class _EqualizerContentState extends State<EqualizerContent> {
                   itemBuilder: (context, index) {
                     final name = _presets.keys.elementAt(index);
                     final presetGains = _presets[name]!;
-                    
+
                     bool isSelected = true;
                     for (int i = 0; i < 10; i++) {
                       if ((gains[i] - presetGains[i]).abs() > 0.1) {
@@ -369,12 +369,12 @@ class _EqualizerContentState extends State<EqualizerContent> {
                   },
                 ),
               ),
-              
+
               const Padding(
                  padding: EdgeInsets.symmetric(horizontal: 16),
                  child: Divider(height: 1, color: CupertinoColors.systemGrey5),
               ),
-              
+
               // 均衡器推子区域
               Expanded(
                 child: Padding(
@@ -386,13 +386,13 @@ class _EqualizerContentState extends State<EqualizerContent> {
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final width = constraints.maxWidth / 10;
-                          
+
                           return Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: List.generate(10, (index) {
                               final freq = PlayerService.kEqualizerFrequencies[index];
                               final gain = gains[index];
-                              
+
                               String freqLabel;
                               if (freq >= 1000) {
                                 freqLabel = '${freq ~/ 1000}k';
@@ -409,7 +409,7 @@ class _EqualizerContentState extends State<EqualizerContent> {
                                       '${gain > 0 ? "+" : ""}${gain.toStringAsFixed(1)}',
                                       style: TextStyle(
                                         fontSize: 10,
-                                        color: CupertinoColors.label.resolveFrom(context).withOpacity(0.6),
+                                        color: CupertinoColors.label.resolveFrom(context).withValues(alpha: 0.6),
                                       ),
                                     ),
                                     const SizedBox(height: 8),
@@ -434,7 +434,7 @@ class _EqualizerContentState extends State<EqualizerContent> {
                                       style: TextStyle(
                                         fontSize: 10,
                                         fontWeight: FontWeight.w600,
-                                        color: CupertinoColors.label.resolveFrom(context).withOpacity(0.6),
+                                        color: CupertinoColors.label.resolveFrom(context).withValues(alpha: 0.6),
                                       ),
                                     ),
                                   ],
@@ -448,7 +448,7 @@ class _EqualizerContentState extends State<EqualizerContent> {
                   ),
                 ),
               ),
-              
+
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Text(
@@ -473,7 +473,7 @@ class _EqualizerContentState extends State<EqualizerContent> {
         final enabled = playerService.equalizerEnabled;
         final theme = fluent.FluentTheme.of(context);
         if (!available) return _buildFluentUnavailable(context);
-        
+
         return fluent.ListView(
           padding: widget.embed ? const EdgeInsets.all(24) : const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           children: [
@@ -791,7 +791,7 @@ class _SplitCapsuleSliderTrackShape extends SliderTrackShape with BaseSliderTrac
       thumbCenter.dx - gapHeight,
       trackRect.bottom,
     );
-    
+
     if (leftTrackRect.width > 0) {
       context.canvas.drawRRect(
         RRect.fromLTRBAndCorners(
@@ -814,7 +814,7 @@ class _SplitCapsuleSliderTrackShape extends SliderTrackShape with BaseSliderTrac
       trackRect.right,
       trackRect.bottom,
     );
-    
+
     if (rightTrackRect.width > 0) {
       context.canvas.drawRRect(
         RRect.fromLTRBAndCorners(
@@ -855,7 +855,7 @@ class _LineSliderThumbShape extends SliderComponentShape {
     required Size sizeWithOverflow,
   }) {
     final Canvas canvas = context.canvas;
-    
+
     final Paint paint = Paint()
       ..color = sliderTheme.thumbColor ?? Colors.blue
       ..style = PaintingStyle.fill;
@@ -866,7 +866,7 @@ class _LineSliderThumbShape extends SliderComponentShape {
       Rect.fromCenter(center: center, width: currentWidth, height: 28.0),
       Radius.circular(currentWidth / 2),
     );
-    
+
     canvas.drawRRect(line, paint);
   }
 }

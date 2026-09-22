@@ -155,7 +155,7 @@ class WeatherService {
             if (pds.isNotEmpty) {
               final p0 = pds.first as Map<String, dynamic>;
               provAdcode = (p0['adcode'] ?? '').toString();
-              if (provAdcode != null && provAdcode.length >= 2) {
+              if (provAdcode.length >= 2) {
                 provPrefix = provAdcode.substring(0, 2);
               }
               final children = (p0['districts'] as List?) ?? const [];

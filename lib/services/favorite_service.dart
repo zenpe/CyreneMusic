@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import '../models/track.dart';
 import 'auth_service.dart';
@@ -111,7 +112,7 @@ class FavoriteService extends ChangeNotifier {
   /// 加载收藏列表
   Future<void> loadFavorites() async {
     if (!AuthService().isLoggedIn) {
-      print('[FavoriteService] not logged in');
+      StructuredLogService.log('[FavoriteService] not logged in');
       return;
     }
 
@@ -135,7 +136,7 @@ class FavoriteService extends ChangeNotifier {
               .map((f) => '${f.source}_${f.id}')
               .toSet();
 
-          print('[FavoriteService] loaded ${_favorites.length} favorites');
+          StructuredLogService.log('[FavoriteService] loaded ${_favorites.length} favorites');
         } else {
           throw Exception(data?['message'] ?? '加载失败');
         }
@@ -143,7 +144,7 @@ class FavoriteService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('[FavoriteService] loadFavorites failed: $e');
+      StructuredLogService.log('[FavoriteService] loadFavorites failed: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -153,7 +154,7 @@ class FavoriteService extends ChangeNotifier {
   /// 添加收藏
   Future<bool> addFavorite(Track track) async {
     if (!AuthService().isLoggedIn) {
-      print('[FavoriteService] not logged in');
+      StructuredLogService.log('[FavoriteService] not logged in');
       return false;
     }
 
@@ -173,7 +174,7 @@ class FavoriteService extends ChangeNotifier {
           _favorites.insert(0, favoriteTrack);
           _favoriteIds.add('${track.source}_${track.id}');
 
-          print('[FavoriteService] added: ${track.name}');
+          StructuredLogService.log('[FavoriteService] added: ${track.name}');
           notifyListeners();
           return true;
         } else {
@@ -183,7 +184,7 @@ class FavoriteService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('[FavoriteService] addFavorite failed: $e');
+      StructuredLogService.log('[FavoriteService] addFavorite failed: $e');
       return false;
     }
   }
@@ -191,7 +192,7 @@ class FavoriteService extends ChangeNotifier {
   /// 删除收藏
   Future<bool> removeFavorite(Track track) async {
     if (!AuthService().isLoggedIn) {
-      print('[FavoriteService] not logged in');
+      StructuredLogService.log('[FavoriteService] not logged in');
       return false;
     }
 
@@ -209,7 +210,7 @@ class FavoriteService extends ChangeNotifier {
           _favorites.removeWhere((f) => f.id == trackId && f.source == track.source);
           _favoriteIds.remove('${track.source}_${track.id}');
 
-          print('[FavoriteService] removed: ${track.name}');
+          StructuredLogService.log('[FavoriteService] removed: ${track.name}');
           notifyListeners();
           return true;
         } else {
@@ -219,7 +220,7 @@ class FavoriteService extends ChangeNotifier {
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
-      print('[FavoriteService] removeFavorite failed: $e');
+      StructuredLogService.log('[FavoriteService] removeFavorite failed: $e');
       return false;
     }
   }

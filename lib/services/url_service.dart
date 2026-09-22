@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -28,13 +29,13 @@ class UrlService extends ChangeNotifier {
   /// 初始化服务（必须在应用启动时调用）
   Future<void> initialize() async {
     if (_isInitialized) {
-      print('⚠️ [UrlService] 已经初始化，跳过重复初始化');
+      StructuredLogService.log('⚠️ [UrlService] 已经初始化，跳过重复初始化');
       return;
     }
-    
+
     await _loadSettings();
     _isInitialized = true;
-    print('✅ [UrlService] 初始化完成');
+    StructuredLogService.log('✅ [UrlService] 初始化完成');
   }
 
   /// 从本地存储加载设置
@@ -66,10 +67,10 @@ class UrlService extends ChangeNotifier {
         _sourceType = BackendSourceType.official;
       }
 
-      print('🌐 [UrlService] 从本地加载配置: ${_sourceType.name}, 自定义源: $_customBaseUrl');
+      StructuredLogService.log('🌐 [UrlService] 从本地加载配置: ${_sourceType.name}, 自定义源: $_customBaseUrl');
       notifyListeners();
     } catch (e) {
-      print('❌ [UrlService] 加载配置失败: $e');
+      StructuredLogService.log('❌ [UrlService] 加载配置失败: $e');
     }
   }
 
@@ -78,9 +79,9 @@ class UrlService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('backend_source_type', _sourceType.name);
-      print('💾 [UrlService] 源类型已保存: ${_sourceType.name}');
+      StructuredLogService.log('💾 [UrlService] 源类型已保存: ${_sourceType.name}');
     } catch (e) {
-      print('❌ [UrlService] 保存源类型失败: $e');
+      StructuredLogService.log('❌ [UrlService] 保存源类型失败: $e');
     }
   }
 
@@ -89,9 +90,9 @@ class UrlService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('custom_base_url', _customBaseUrl);
-      print('💾 [UrlService] 自定义源已保存: $_customBaseUrl');
+      StructuredLogService.log('💾 [UrlService] 自定义源已保存: $_customBaseUrl');
     } catch (e) {
-      print('❌ [UrlService] 保存自定义源失败: $e');
+      StructuredLogService.log('❌ [UrlService] 保存自定义源失败: $e');
     }
   }
 
@@ -126,10 +127,10 @@ class UrlService extends ChangeNotifier {
   /// 设置自定义源地址
   void setCustomBaseUrl(String url) {
     // 移除末尾的斜杠
-    final cleanUrl = url.trim().endsWith('/') 
-        ? url.trim().substring(0, url.trim().length - 1) 
+    final cleanUrl = url.trim().endsWith('/')
+        ? url.trim().substring(0, url.trim().length - 1)
         : url.trim();
-    
+
     if (_customBaseUrl != cleanUrl) {
       _customBaseUrl = cleanUrl;
       _saveCustomBaseUrl();
@@ -212,7 +213,7 @@ class UrlService extends ChangeNotifier {
 
   // Version API
   String get versionLatestUrl => '$baseUrl/version/latest';
-  
+
   // Weather API
   String get weatherUrl => '$baseUrl/weather';
 
@@ -227,7 +228,7 @@ class UrlService extends ChangeNotifier {
   /// 验证 URL 格式
   static bool isValidUrl(String url) {
     if (url.isEmpty) return false;
-    
+
     try {
       final uri = Uri.parse(url);
       return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https');

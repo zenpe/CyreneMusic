@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -48,25 +49,25 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   final Map<String, Duration> _artNegativeTtlOverride = <String, Duration>{};
   static const Duration _artNegativeCacheTtl = Duration(minutes: 10);
   static const Duration _artNegativeCacheTtlTransient = Duration(minutes: 2);
-  
+
   // 构造函数
   CyreneAudioHandler() {
-    print('🎵 [AudioHandler] 开始初始化...');
-    
+    StructuredLogService.log('🎵 [AudioHandler] 开始初始化...');
+
     // 🔧 关键修复：立即设置初始播放状态（必需，否则通知不会显示）
     _setInitialPlaybackState();
-    
+
     // 监听播放器状态变化
     PlayerService().addListener(_onPlayerStateChanged);
-    
+
     // 🔧 性能优化：不在初始化时启动定时器，改为在 _onPlayerStateChanged() 中按需启动
     // 避免用户启动应用但未播放时定时器空转
     // 主动调用一次以根据当前状态决定是否启动定时器
     _onPlayerStateChanged();
-    
-    print('✅ [AudioHandler] 初始化完成');
+
+    StructuredLogService.log('✅ [AudioHandler] 初始化完成');
   }
-  
+
   /// 启动悬浮歌词后台更新定时器
   void _startLyricUpdateTimer() {
     _lyricUpdateTimer?.cancel();
@@ -80,7 +81,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         await PlayerService().updateFloatingLyricManually();
       }
     });
-    print('✅ [AudioHandler] 悬浮歌词后台更新定时器已启动（2000ms间隔，定期校准）');
+    StructuredLogService.log('✅ [AudioHandler] 悬浮歌词后台更新定时器已启动（2000ms间隔，定期校准）');
   }
 
   /// 🍎 iOS 专用：启动状态刷新定时器
@@ -94,12 +95,12 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         // 强制重新发送当前状态，保持 iOS 锁屏显示
         final song = player.currentSong;
         final track = player.currentTrack;
-        
+
         // 更新 mediaItem（确保封面、歌名等信息不丢失）
         if (song != null || track != null) {
           _updateMediaItem(song, track);
         }
-        
+
         // 更新播放状态
         _updatePlaybackState(
           player.state,
@@ -109,7 +110,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         );
       }
     });
-    print('✅ [AudioHandler] iOS 状态刷新定时器已启动（3秒间隔，保持锁屏显示）');
+    StructuredLogService.log('✅ [AudioHandler] iOS 状态刷新定时器已启动（3秒间隔，保持锁屏显示）');
   }
 
   /// 启动进度条更新定时器（播放时定期更新进度）
@@ -126,7 +127,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         final currentPosition = player.position;
         final currentBuffered = player.bufferedPosition;
         final currentSpeed = player.playbackSpeed;
-        
+
         // 🔧 性能优化：只有当位置变化超过 0.5 秒或状态改变时才更新
         // 这样可以大幅减少系统通知的更新频率
         final positionChanged = _lastUpdatedPosition == null ||
@@ -134,11 +135,11 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         final stateChanged = _lastUpdatedState != player.state;
         final playingStateChanged = currentState.playing != isPlaying;
         final bufferedChanged = currentState.bufferedPosition != currentBuffered;
-        
+
         // 🍎 iOS 始终更新以保持锁屏显示活跃，Android 使用优化逻辑
-        final shouldUpdate = Platform.isIOS || 
+        final shouldUpdate = Platform.isIOS ||
             positionChanged || stateChanged || playingStateChanged || bufferedChanged;
-        
+
         // 只有当位置、状态或时长有显著变化时才更新（或 iOS 始终更新）
         if (shouldUpdate) {
           // 更新播放状态和进度
@@ -148,7 +149,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
             bufferedPosition: currentBuffered,
             speed: isPlaying ? currentSpeed : 0.0,
           ));
-          
+
           // 记录上次更新的值
           _lastUpdatedPosition = currentPosition;
           _lastUpdatedState = player.state;
@@ -159,9 +160,9 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         _lastUpdatedState = null;
       }
     });
-    print('✅ [AudioHandler] 进度条更新定时器已启动（1秒间隔，带位置变化阈值）');
+    StructuredLogService.log('✅ [AudioHandler] 进度条更新定时器已启动（1秒间隔，带位置变化阈值）');
   }
-  
+
   @override
   Future<void> onTaskRemoved() async {
     // 清理定时器
@@ -182,7 +183,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       album: '',
       duration: Duration.zero,
     ));
-    
+
     // 设置初始 PlaybackState（这是显示通知的关键）
     // 只显示 3 个按钮：上一首、播放、下一首
     playbackState.add(PlaybackState(
@@ -206,8 +207,8 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       speed: 0.0,
       queueIndex: 0,
     ));
-    
-    print('✅ [AudioHandler] 初始播放状态已设置（3个按钮：上一首/播放/下一首）');
+
+    StructuredLogService.log('✅ [AudioHandler] 初始播放状态已设置（3个按钮：上一首/播放/下一首）');
   }
 
   /// 播放器状态变化回调（带防抖）
@@ -228,56 +229,56 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       _lyricUpdateTimer?.cancel(); _lyricUpdateTimer = null;
       _iosStateRefreshTimer?.cancel(); _iosStateRefreshTimer = null;
     }
-    
+
     // 🔧 性能优化：忽略仅位置变化的情况（位置更新由专门的定时器处理）
     // 只有当播放状态、歌曲或时长真正改变时才需要更新
     final isOnlyPositionChange = currentState == _lastUpdatedState &&
         (currentState == PlayerState.playing || currentState == PlayerState.paused);
-    
+
     if (isOnlyPositionChange) {
       // 仅位置变化，由定时器处理，不需要触发完整的状态更新
       return;
     }
-    
+
     // 🔧 关键修复：在播放开始时（loading 或 playing）立即更新，不等待防抖
     // 这样可以确保初次播放时状态和进度立即显示
     // 🔧 关键修复：在播放开始或暂停时都立即更新，不等待防抖
     // 这样可以确保状态切换（播放/暂停）立即响应
-    final shouldUpdateImmediately = currentState == PlayerState.loading || 
+    final shouldUpdateImmediately = currentState == PlayerState.loading ||
         (currentState == PlayerState.playing && !previousState.playing) ||
         (currentState == PlayerState.paused && previousState.playing);
-    
+
     if (shouldUpdateImmediately) {
       // 立即更新，不等待防抖
       _updateTimer?.cancel();
       _updatePending = false;
       unawaited(_performUpdate());
-      
+
       // 清除位置缓存，确保下次更新
       _lastUpdatedPosition = null;
       _lastUpdatedState = null;
-      
+
       // 🔧 优化日志：只在状态真正改变时打印，且限制频率（最多每秒一次）
       final stateChanged = _lastLoggedState != currentState;
-      final timeSinceLastLog = _lastLogTime == null || 
+      final timeSinceLastLog = _lastLogTime == null ||
           now.difference(_lastLogTime!).inSeconds >= 1;
-      
+
       // 只在状态改变时打印，或者每秒最多打印一次（避免进度更新时频繁打印）
       if (stateChanged && timeSinceLastLog) {
-        print('🔄 [AudioHandler] 播放状态变化: ${_lastLoggedState?.name ?? "null"} -> ${currentState.name}');
+        StructuredLogService.log('🔄 [AudioHandler] 播放状态变化: ${_lastLoggedState?.name ?? "null"} -> ${currentState.name}');
         _lastLoggedState = currentState;
         _lastLogTime = now;
       }
       return;
     }
-    
+
     // 🔧 性能优化：使用防抖机制，避免过于频繁的更新（例如调整音量时）
     // 取消之前的定时器
     _updateTimer?.cancel();
-    
+
     // 标记有待处理的更新
     _updatePending = true;
-    
+
     // 🔧 性能优化：增加防抖延迟到 200ms，减少更新频率
     // 设置新的定时器，延迟 200ms 执行更新
     _updateTimer = Timer(const Duration(milliseconds: 200), () {
@@ -293,16 +294,16 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
   /// 外部手动触发更新（例如在设置中开启小部件后立即同步）
   void refreshWidget() {
-    print('🔄 [AudioHandler] 手动触发小部件更新...');
+    StructuredLogService.log('🔄 [AudioHandler] 手动触发小部件更新...');
     unawaited(_performUpdate());
   }
-  
+
   /// 实际执行更新操作
   Future<void> _performUpdate() {
     _updateQueue = _updateQueue.then((_) async {
       await _performUpdateInternal();
     }).catchError((e, st) {
-      print('⚠️ [AudioHandler] 更新队列执行失败: $e');
+      StructuredLogService.log('⚠️ [AudioHandler] 更新队列执行失败: $e');
     });
     return _updateQueue;
   }
@@ -311,7 +312,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     final player = PlayerService();
     final song = player.currentSong;
     final track = player.currentTrack;
-    
+
     // 更新播放状态
     _updatePlaybackState(
       player.state,
@@ -324,7 +325,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     if (song != null || track != null) {
       await _updateMediaItem(song, track);
     }
-    
+
     // 更新桌面小部件
     unawaited(_enqueueWidgetUpdate(player.state, song ?? track));
   }
@@ -333,7 +334,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     _widgetUpdateQueue = _widgetUpdateQueue.then((_) async {
       await _updateWidget(state, songOrTrack);
     }).catchError((e, st) {
-      print('⚠️ [AudioHandler] 小部件更新队列失败: $e');
+      StructuredLogService.log('⚠️ [AudioHandler] 小部件更新队列失败: $e');
     });
     return _widgetUpdateQueue;
   }
@@ -341,7 +342,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   /// 更新桌面小部件数据
   Future<void> _updateWidget(PlayerState state, dynamic songOrTrack) async {
     if (!Platform.isAndroid) return;
-    
+
     // 检查小部件是否在实验室设置中手动开启
     if (!LabFunctionsService().enableAndroidWidget) {
       // 如果未开启，将小部件内容替换为提示文字
@@ -355,11 +356,11 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         ]);
         await _triggerWidgetUpdates();
       } catch (e) {
-        print('⚠️ [AudioHandler] 更新小部件禁用状态提示失败: $e');
+        StructuredLogService.log('⚠️ [AudioHandler] 更新小部件禁用状态提示失败: $e');
       }
       return;
     }
-    
+
     try {
       final title = songOrTrack?.name ?? songOrTrack?.title ?? 'Not Playing';
       final artist = songOrTrack?.arName ?? songOrTrack?.artist ?? 'Cyrene Music';
@@ -384,7 +385,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         if (artUri.startsWith('http')) {
           // 网络图片：下载并保存到固定文件（覆盖式）
           try {
-            print('🌐 [AudioHandler] 歌曲或封面变化，更新小部件封面: $artUri');
+            StructuredLogService.log('🌐 [AudioHandler] 歌曲或封面变化，更新小部件封面: $artUri');
             final response = await http.get(
               Uri.parse(artUri),
               headers: getImageHeaders(artUri),
@@ -401,7 +402,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
               await HomeWidget.saveWidgetData<int>('art_version', DateTime.now().millisecondsSinceEpoch);
             }
           } catch (e) {
-            print('⚠️ [AudioHandler] 下载小部件封面失败: $e');
+            StructuredLogService.log('⚠️ [AudioHandler] 下载小部件封面失败: $e');
           }
         } else if (artUri.startsWith('/') || artUri.startsWith('file://')) {
           // 本地图片：直接使用路径
@@ -421,15 +422,15 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
           _lastWidgetSongKey = currentSongKey;
         }
       }
-      
+
       await HomeWidget.saveWidgetData<String>('albumArtPath', albumArtPath ?? '');
-      
-      print('📱 [AudioHandler] 更新小部件数据: Title=$title, Artist=$artist, Playing=$isPlaying, ArtPath=$albumArtPath');
+
+      StructuredLogService.log('📱 [AudioHandler] 更新小部件数据: Title=$title, Artist=$artist, Playing=$isPlaying, ArtPath=$albumArtPath');
 
       // 触发小部件更新
       _triggerWidgetUpdates();
     } catch (e) {
-      print('⚠️ [AudioHandler] 更新桌面小部件失败: $e');
+      StructuredLogService.log('⚠️ [AudioHandler] 更新桌面小部件失败: $e');
     }
   }
 
@@ -440,13 +441,13 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       name: 'MusicWidget',
       qualifiedAndroidName: 'com.cyrene.music.MusicWidget',
     );
-    
+
     // 触发小部件更新 (MusicWidgetSmall)
     await HomeWidget.updateWidget(
       name: 'MusicWidgetSmall',
       qualifiedAndroidName: 'com.cyrene.music.MusicWidgetSmall',
     );
-    print('✅ [AudioHandler] 小部件更新请求已发送 (Large & Small)');
+    StructuredLogService.log('✅ [AudioHandler] 小部件更新请求已发送 (Large & Small)');
   }
 
   /// 更新媒体信息
@@ -583,7 +584,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       final bytes = await _loadArtBytes(artUri);
       if (bytes == null || bytes.isEmpty) return;
       if (bytes.lengthInBytes > 15 * 1024 * 1024) {
-        print('⚠️ [AudioHandler] 封面图片过大，跳过缓存: ${bytes.lengthInBytes} bytes');
+        StructuredLogService.log('⚠️ [AudioHandler] 封面图片过大，跳过缓存: ${bytes.lengthInBytes} bytes');
         _markNegativeCache(artUri, _artNegativeCacheTtl);
         return;
       }
@@ -594,7 +595,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         unawaited(_cleanupArtCacheIfNeeded());
       }
     } catch (e) {
-      print('⚠️ [AudioHandler] 缓存封面失败: $e');
+      StructuredLogService.log('⚠️ [AudioHandler] 缓存封面失败: $e');
       _markNegativeCache(artUri, _artNegativeCacheTtlTransient);
       return;
     } finally {
@@ -626,7 +627,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
           }
           final response = await client.send(request).timeout(const Duration(seconds: 6));
           if (response.statusCode != 200) {
-            print('⚠️ [AudioHandler] 下载封面失败: HTTP ${response.statusCode}');
+            StructuredLogService.log('⚠️ [AudioHandler] 下载封面失败: HTTP ${response.statusCode}');
             _markNegativeCache(artUri, _artNegativeCacheTtlTransient);
             return null;
           }
@@ -636,7 +637,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
           await for (final chunk in response.stream) {
             total += chunk.length;
             if (total > 15 * 1024 * 1024) {
-              print('⚠️ [AudioHandler] 封面下载超限，停止: $total bytes');
+              StructuredLogService.log('⚠️ [AudioHandler] 封面下载超限，停止: $total bytes');
               _markNegativeCache(artUri, _artNegativeCacheTtl);
               return null;
             }
@@ -660,7 +661,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         return await file.readAsBytes();
       }
     } catch (e) {
-      print('⚠️ [AudioHandler] 读取封面失败: $e');
+      StructuredLogService.log('⚠️ [AudioHandler] 读取封面失败: $e');
       _markNegativeCache(artUri, _artNegativeCacheTtlTransient);
     }
     return null;
@@ -742,7 +743,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       }
       _lastCacheCleanup = DateTime.now();
     } catch (e) {
-      print('⚠️ [AudioHandler] 清理封面缓存失败: $e');
+      StructuredLogService.log('⚠️ [AudioHandler] 清理封面缓存失败: $e');
     } finally {
       _cacheCleanupInProgress = false;
     }
@@ -808,7 +809,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         currentState.processingState != processingState ||
         currentState.controls.length != controls.length ||
         !_controlsEqual(currentState.controls, controls);
-    
+
     if (stateChanged) {
       playbackState.add(currentState.copyWith(
         controls: controls,
@@ -841,7 +842,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       }
     }
   }
-  
+
   /// 检查两个控件列表是否相等
   bool _controlsEqual(List<MediaControl> a, List<MediaControl> b) {
     if (a.length != b.length) return false;
@@ -852,28 +853,6 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   }
 
   /// 强制立即更新播放状态（用于按钮点击时立即同步状态）
-  void _forceUpdatePlaybackState() {
-    // 取消防抖定时器，立即执行更新
-    _updateTimer?.cancel();
-    _updatePending = false;
-    
-    // 立即执行更新
-    final player = PlayerService();
-    final currentState = player.state;
-    final currentPosition = player.position;
-    final currentDuration = player.duration;
-    final currentBuffered = player.bufferedPosition;
-    final currentSpeed = player.playbackSpeed;
-    
-    _updatePlaybackState(
-      currentState,
-      currentPosition,
-      currentBuffered,
-      currentSpeed,
-    );
-    
-    print('🔄 [AudioHandler] 强制更新播放状态: ${currentState.name}, 位置: ${currentPosition.inSeconds}s/${currentDuration.inSeconds}s');
-  }
 
   /// 转换播放状态
   AudioProcessingState _getProcessingState(PlayerState state) {
@@ -894,7 +873,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
   @override
   Future<void> play() async {
-    print('🎮 [AudioHandler] 蓝牙/系统媒体控件: 播放');
+    StructuredLogService.log('🎮 [AudioHandler] 蓝牙/系统媒体控件: 播放');
     final player = PlayerService();
     await player.resume();
     // 🔧 移除手动强制更新，依赖 _onPlayerStateChanged 监听器自动更新
@@ -903,7 +882,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
   @override
   Future<void> pause() async {
-    print('🎮 [AudioHandler] 蓝牙/系统媒体控件: 暂停');
+    StructuredLogService.log('🎮 [AudioHandler] 蓝牙/系统媒体控件: 暂停');
     final player = PlayerService();
     await player.pause();
     // 🔧 移除手动强制更新，依赖 _onPlayerStateChanged 监听器自动更新
@@ -911,14 +890,14 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
   @override
   Future<void> stop() async {
-    print('🎮 [AudioHandler] 蓝牙/系统媒体控件: 停止');
+    StructuredLogService.log('🎮 [AudioHandler] 蓝牙/系统媒体控件: 停止');
     await PlayerService().stop();
     await super.stop();
   }
 
   @override
   Future<void> skipToNext() async {
-    print('🎮 [AudioHandler] 蓝牙/系统媒体控件: 下一首');
+    StructuredLogService.log('🎮 [AudioHandler] 蓝牙/系统媒体控件: 下一首');
     // 🔧 修复：使用 PlayerService 的 playNext 方法
     // 这样可以正确处理播放队列和播放历史
     await PlayerService().playNext();
@@ -927,7 +906,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
   @override
   Future<void> skipToPrevious() async {
-    print('🎮 [AudioHandler] 蓝牙/系统媒体控件: 上一首');
+    StructuredLogService.log('🎮 [AudioHandler] 蓝牙/系统媒体控件: 上一首');
     // 🔧 修复：使用 PlayerService 的 playPrevious 方法
     // 这样可以正确处理播放队列和播放历史
     await PlayerService().playPrevious();
@@ -946,7 +925,7 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
     if (name == 'toggle_floating_lyric') {
       // 来自系统媒体控件“词”按钮的指令
-      print('🎮 [AudioHandler] 系统媒体控件: 切换悬浮歌词');
+      StructuredLogService.log('🎮 [AudioHandler] 系统媒体控件: 切换悬浮歌词');
       await AndroidFloatingLyricService().toggle();
       return;
     }

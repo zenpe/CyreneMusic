@@ -535,8 +535,8 @@ class NavidromeCoverPlaceholder extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final base = baseColor ?? scheme.surfaceContainerHighest;
     final top = Color.lerp(base, scheme.surface, contrast) ?? base;
-    final bottom = Color.lerp(base, scheme.surfaceVariant, contrast) ?? base;
-    final border = scheme.outlineVariant.withOpacity(borderOpacity);
+    final bottom = Color.lerp(base, scheme.surfaceContainerHighest, contrast) ?? base;
+    final border = scheme.outlineVariant.withValues(alpha: borderOpacity);
 
     return Container(
       decoration: BoxDecoration(
@@ -552,7 +552,7 @@ class NavidromeCoverPlaceholder extends StatelessWidget {
         child: Icon(
           Icons.album_rounded,
           size: iconSize,
-          color: scheme.onSurfaceVariant.withOpacity(iconOpacity),
+          color: scheme.onSurfaceVariant.withValues(alpha: iconOpacity),
         ),
       ),
     );

@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,7 +8,7 @@ import '../utils/toast_utils.dart';
 class DeveloperModeService extends ChangeNotifier {
   static final DeveloperModeService _instance = DeveloperModeService._internal();
   factory DeveloperModeService() => _instance;
-  
+
   DeveloperModeService._internal();
 
   bool _isDeveloperMode = false;
@@ -26,13 +27,13 @@ class DeveloperModeService extends ChangeNotifier {
   Future<void>? _initFuture;
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
-  
+
   /// 初始化服务（必须在 WidgetsFlutterBinding.ensureInitialized() 之后调用）
   Future<void> initialize() {
     _initFuture ??= _loadDeveloperMode();
     return _initFuture!;
   }
-  
+
   /// 等待初始化完成（如果尚未初始化则先初始化）
   Future<void> ensureInitialized() => initialize();
 
@@ -74,17 +75,17 @@ class DeveloperModeService extends ChangeNotifier {
   /// 统一处理触发逻辑
   void _handleTrigger() {
     final now = DateTime.now();
-    
+
     // 如果距离上次点击超过2秒，重置计数
     if (_lastClickTime != null && now.difference(_lastClickTime!).inSeconds > 2) {
       _settingsClickCount = 0;
     }
-    
+
     _lastClickTime = now;
     _settingsClickCount++;
-    
-    print('🔧 [DeveloperMode] 触发按钮点击次数: $_settingsClickCount');
-    
+
+    StructuredLogService.log('🔧 [DeveloperMode] 触发按钮点击次数: $_settingsClickCount');
+
     if (_isDeveloperMode) {
       // 如果已经开启，点击5次提示（类似于 Android 逻辑）
       if (_settingsClickCount >= 5) {
@@ -111,7 +112,7 @@ class DeveloperModeService extends ChangeNotifier {
     addLog('🚀 开发者模式已启用');
     ToastUtils.success('开发者模式已启用');
     _notifyListenersSafely();
-    print('🚀 [DeveloperMode] 开发者模式已启用');
+    StructuredLogService.log('🚀 [DeveloperMode] 开发者模式已启用');
   }
 
   /// 禁用开发者模式
@@ -120,7 +121,7 @@ class DeveloperModeService extends ChangeNotifier {
     await _saveDeveloperMode();
     addLog('🔒 开发者模式已禁用');
     _notifyListenersSafely();
-    print('🔒 [DeveloperMode] 开发者模式已禁用');
+    StructuredLogService.log('🔒 [DeveloperMode] 开发者模式已禁用');
   }
 
   /// 切换搜索结果合并开关
@@ -144,12 +145,12 @@ class DeveloperModeService extends ChangeNotifier {
     final timestamp = DateTime.now().toString().substring(11, 19);
     final logEntry = '[$timestamp] $message';
     _logs.add(logEntry);
-    
+
     // 限制日志数量，最多保留1000条
     if (_logs.length > 1000) {
       _logs.removeAt(0);
     }
-    
+
     _notifyListenersSafely();
   }
 
@@ -169,13 +170,13 @@ class DeveloperModeService extends ChangeNotifier {
       _showPerformanceOverlay = prefs.getBool('show_performance_overlay') ?? false;
       _isInitialized = true;
       if (_isDeveloperMode) {
-        print('🔧 [DeveloperMode] 从本地加载: 已启用');
+        StructuredLogService.log('🔧 [DeveloperMode] 从本地加载: 已启用');
         addLog('🔄 开发者模式状态已恢复');
       }
-      print('🔧 [DeveloperMode] 搜索结果合并设置加载: $_isSearchResultMergeEnabled');
+      StructuredLogService.log('🔧 [DeveloperMode] 搜索结果合并设置加载: $_isSearchResultMergeEnabled');
       _notifyListenersSafely();
     } catch (e) {
-      print('❌ [DeveloperMode] 加载失败: $e');
+      StructuredLogService.log('❌ [DeveloperMode] 加载失败: $e');
       _isInitialized = true; // 即使加载失败也标记为已初始化，使用默认值
       _notifyListenersSafely();
     }
@@ -188,9 +189,9 @@ class DeveloperModeService extends ChangeNotifier {
       await prefs.setBool('developer_mode', _isDeveloperMode);
       await prefs.setBool('search_result_merge_enabled', _isSearchResultMergeEnabled);
       await prefs.setBool('show_performance_overlay', _showPerformanceOverlay);
-      print('💾 [DeveloperMode] 状态已保存: 开发者模式=$_isDeveloperMode, 搜索合并=$_isSearchResultMergeEnabled');
+      StructuredLogService.log('💾 [DeveloperMode] 状态已保存: 开发者模式=$_isDeveloperMode, 搜索合并=$_isSearchResultMergeEnabled');
     } catch (e) {
-      print('❌ [DeveloperMode] 保存失败: $e');
+      StructuredLogService.log('❌ [DeveloperMode] 保存失败: $e');
     }
   }
 }

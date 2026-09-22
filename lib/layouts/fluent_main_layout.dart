@@ -368,104 +368,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout>
     });
   }
 
-  Future<void> _handleUserButtonTap() async {
-    if (_authFacade.isLoggedIn) {
-      await _showUserMenu();
-    } else {
-      await AuthOverlayService().show();
-      if (mounted) {
-        setState(() {});
-      }
-    }
-  }
-
-  /// 显示用户菜单
-  Future<void> _showUserMenu() async {
-    final user = _authFacade.currentUser;
-    if (user == null || !mounted) return;
-
-    final result = await fluent_ui.showDialog<_FluentUserAction>(
-      context: context,
-      builder: (context) {
-        return fluent_ui.ContentDialog(
-          title: Text(user.username),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(user.email),
-              const SizedBox(height: 16),
-              fluent_ui.Button(
-                child: const Text('我的'),
-                onPressed: () =>
-                    Navigator.pop(context, _FluentUserAction.viewProfile),
-              ),
-            ],
-          ),
-          actions: [
-            fluent_ui.Button(
-              child: const Text('关闭'),
-              onPressed: () => Navigator.pop(context),
-            ),
-            fluent_ui.FilledButton(
-              child: const Text('退出登录'),
-              onPressed: () => Navigator.pop(context, _FluentUserAction.logout),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (!mounted) return;
-
-    switch (result) {
-      case _FluentUserAction.viewProfile:
-        _navigationProvider.navigateTo(4); // 导航到「我的」页面
-        break;
-      case _FluentUserAction.logout:
-        await _confirmLogout();
-        break;
-      case null:
-        break;
-    }
-  }
-
-  /// 确认退出登录
-  Future<void> _confirmLogout() async {
-    final shouldLogout = await fluent_ui.showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return fluent_ui.ContentDialog(
-          title: const Text('退出登录'),
-          content: const Text('确定要退出当前账号吗？'),
-          actions: [
-            fluent_ui.Button(
-              child: const Text('取消'),
-              onPressed: () => Navigator.pop(context, false),
-            ),
-            fluent_ui.FilledButton(
-              child: const Text('退出'),
-              onPressed: () => Navigator.pop(context, true),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldLogout == true) {
-      _authFacade.logout();
-      if (!mounted) return;
-      _showLogoutSnackBar();
-    }
-  }
-
   /// 显示退出登录提示
-  void _showLogoutSnackBar() {
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('已退出登录')));
-  }
 
   /// 构建用户操作组件（头像或登录按钮）
   Widget _buildUserActionWidget() {
@@ -710,7 +613,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout>
         SizedBox(
           width: FixedNavigationDock.widthFor(context),
           child: Container(
-            color: fluentTheme.micaBackgroundColor.withOpacity(0.6),
+            color: fluentTheme.micaBackgroundColor.withValues(alpha: 0.6),
           ),
         ),
         Expanded(
@@ -842,8 +745,8 @@ class _FluentMainLayoutState extends State<FluentMainLayout>
                             sigmaY: bgService.blurAmount,
                           ),
                           child: Container(
-                            color: Colors.black.withOpacity(
-                              1 - bgService.opacity,
+                            color: Colors.black.withValues(
+                              alpha: 1 - bgService.opacity,
                             ),
                           ),
                         ),
@@ -866,7 +769,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout>
 
 /// 首次进入设置页时延迟一个帧再渲染真实内容，避免在 NavigationView 首帧布局期间产生重入布局
 class _DeferredSettingsPage extends StatefulWidget {
-  const _DeferredSettingsPage({super.key});
+  const _DeferredSettingsPage();
 
   @override
   State<_DeferredSettingsPage> createState() => _DeferredSettingsPageState();
@@ -892,8 +795,6 @@ class _DeferredSettingsPageState extends State<_DeferredSettingsPage> {
     return const SettingsPage();
   }
 }
-
-enum _FluentUserAction { viewProfile, logout }
 
 /// 标题栏 Linux Do 头像组件
 class _LinuxDoAvatarTitleBar extends StatefulWidget {

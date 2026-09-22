@@ -60,7 +60,7 @@ class _SelectTargetPlaylistDialogState
           children: [
             // 源歌单信息
             Card(
-              color: colorScheme.primaryContainer.withOpacity(0.3),
+              color: colorScheme.primaryContainer.withValues(alpha: 0.3),
               child: Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Row(
@@ -136,7 +136,7 @@ class _SelectTargetPlaylistDialogState
               subtitle: const Text('创建一个新歌单来导入'),
               onTap: () async {
                 final newPlaylist = await _showCreatePlaylistDialog();
-                if (newPlaylist != null && mounted) {
+                if (newPlaylist != null && mounted && context.mounted) {
                   Navigator.pop(context, newPlaylist);
                 }
               },
@@ -502,7 +502,7 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                               Container(
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: CupertinoColors.systemBlue.withOpacity(0.1),
+                                  color: CupertinoColors.systemBlue.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Row(
@@ -584,7 +584,7 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                                 Container(
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
-                                    color: CupertinoColors.systemBlue.withOpacity(0.1),
+                                    color: CupertinoColors.systemBlue.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Row(
@@ -653,13 +653,15 @@ void _showCupertinoToastImpl(BuildContext context, String message) {
       barrierDismissible: true,
       builder: (context) {
         Future.delayed(const Duration(seconds: 2), () {
-          if (Navigator.canPop(context)) Navigator.pop(context);
+          if (context.mounted && Navigator.canPop(context)) {
+            Navigator.pop(context);
+          }
         });
         return Center(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: BoxDecoration(
-              color: CupertinoColors.black.withOpacity(0.7),
+              color: CupertinoColors.black.withValues(alpha: 0.7),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(

@@ -12,25 +12,25 @@ class MobileDailyRecommendCard extends StatelessWidget {
   final List<Map<String, dynamic>> tracks;
   final VoidCallback? onOpenDetail;
   const MobileDailyRecommendCard({super.key, required this.tracks, this.onOpenDetail});
-  
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final themeManager = ThemeManager();
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     // 获取前4首歌曲的封面
     final coverImages = tracks.take(4).map((s) {
       final al = (s['al'] ?? s['album'] ?? {}) as Map<String, dynamic>;
       return (al['picUrl'] ?? '').toString();
     }).where((url) => url.isNotEmpty).toList();
-    
+
     // iOS Cupertino 风格
     if (isCupertino) {
       return _buildCupertinoCard(context, coverImages, isDark);
     }
-    
+
     final cardContent = _buildMaterialCardContent(context, coverImages, cs);
 
     if (themeManager.isFluentFramework) {
@@ -42,7 +42,7 @@ class MobileDailyRecommendCard extends StatelessWidget {
         ),
       );
     }
-    
+
     // Android 16 Expressive Style Card
     return Container(
       decoration: BoxDecoration(
@@ -52,12 +52,12 @@ class MobileDailyRecommendCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             cs.surfaceContainerHigh,
-            cs.surfaceContainerHighest.withOpacity(0.8),
+            cs.surfaceContainerHighest.withValues(alpha: 0.8),
           ],
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -83,13 +83,13 @@ class MobileDailyRecommendCard extends StatelessWidget {
       ),
     );
   }
-  
+
   /// iOS 风格的卡片
   Widget _buildCupertinoCard(BuildContext context, List<String> coverImages, bool isDark) {
     final now = DateTime.now();
     final dayOfMonth = now.day;
     final weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][now.weekday % 7];
-    
+
     return GestureDetector(
       onTap: () {
         if (onOpenDetail != null) {
@@ -109,7 +109,7 @@ class MobileDailyRecommendCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: CupertinoColors.black.withOpacity(isDark ? 0.2 : 0.08),
+              color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.08),
               blurRadius: 10,
               offset: const Offset(0, 2),
             ),
@@ -146,8 +146,8 @@ class MobileDailyRecommendCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 14,
                               color: isDark
-                                  ? Colors.white.withOpacity(0.7)
-                                  : Colors.black.withOpacity(0.6),
+                                  ? Colors.white.withValues(alpha: 0.7)
+                                  : Colors.black.withValues(alpha: 0.6),
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -156,8 +156,8 @@ class MobileDailyRecommendCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 13,
                               color: isDark
-                                  ? Colors.white.withOpacity(0.5)
-                                  : Colors.black.withOpacity(0.45),
+                                  ? Colors.white.withValues(alpha: 0.5)
+                                  : Colors.black.withValues(alpha: 0.45),
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -175,7 +175,7 @@ class MobileDailyRecommendCard extends StatelessWidget {
       ),
     );
   }
-  
+
   /// 日期徽章
   Widget _buildDateBadge(BuildContext context, int day, String weekday, bool isDark) {
     return Container(
@@ -183,13 +183,13 @@ class MobileDailyRecommendCard extends StatelessWidget {
       height: 72,
       decoration: BoxDecoration(
         color: isDark
-            ? Colors.white.withOpacity(0.1)
-            : Colors.black.withOpacity(0.05),
+            ? Colors.white.withValues(alpha: 0.1)
+            : Colors.black.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark
-              ? Colors.white.withOpacity(0.15)
-              : Colors.black.withOpacity(0.08),
+              ? Colors.white.withValues(alpha: 0.15)
+              : Colors.black.withValues(alpha: 0.08),
           width: 1,
         ),
       ),
@@ -212,19 +212,19 @@ class MobileDailyRecommendCard extends StatelessWidget {
               fontSize: 12,
               fontWeight: FontWeight.w500,
               color: isDark
-                  ? Colors.white.withOpacity(0.6)
-                  : Colors.black.withOpacity(0.5),
+                  ? Colors.white.withValues(alpha: 0.6)
+                  : Colors.black.withValues(alpha: 0.5),
             ),
           ),
         ],
       ),
     );
   }
-  
+
   /// 封面缩略图
   Widget _buildCoverThumbnails(BuildContext context, List<String> coverImages, bool isDark) {
     final displayCovers = coverImages.take(4).toList();
-    
+
     return SizedBox(
       height: 36,
       child: Row(
@@ -239,13 +239,13 @@ class MobileDailyRecommendCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: isDark
-                        ? Colors.black.withOpacity(0.3)
+                        ? Colors.black.withValues(alpha: 0.3)
                         : Colors.white,
                     width: 2,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
+                      color: Colors.black.withValues(alpha: 0.15),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -269,8 +269,8 @@ class MobileDailyRecommendCard extends StatelessWidget {
                             CupertinoIcons.music_note,
                             size: 16,
                             color: isDark
-                                ? Colors.white.withOpacity(0.5)
-                                : Colors.black.withOpacity(0.3),
+                                ? Colors.white.withValues(alpha: 0.5)
+                                : Colors.black.withValues(alpha: 0.3),
                           ),
                         ),
                 ),
@@ -285,8 +285,8 @@ class MobileDailyRecommendCard extends StatelessWidget {
                 height: 36,
                 decoration: BoxDecoration(
                   color: isDark
-                      ? Colors.white.withOpacity(0.15)
-                      : Colors.black.withOpacity(0.08),
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.black.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Center(
@@ -296,8 +296,8 @@ class MobileDailyRecommendCard extends StatelessWidget {
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: isDark
-                          ? Colors.white.withOpacity(0.8)
-                          : Colors.black.withOpacity(0.6),
+                          ? Colors.white.withValues(alpha: 0.8)
+                          : Colors.black.withValues(alpha: 0.6),
                     ),
                   ),
                 ),
@@ -307,7 +307,7 @@ class MobileDailyRecommendCard extends StatelessWidget {
       ),
     );
   }
-  
+
   /// 播放按钮
   Widget _buildPlayButton(BuildContext context, bool isDark) {
     return Container(
@@ -325,7 +325,7 @@ class MobileDailyRecommendCard extends StatelessWidget {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: ThemeManager.iosBlue.withOpacity(0.4),
+            color: ThemeManager.iosBlue.withValues(alpha: 0.4),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -338,14 +338,14 @@ class MobileDailyRecommendCard extends StatelessWidget {
       ),
     );
   }
-  
+
   /// Material 风格卡片内容 - Android 16 Expressive Refactor
   Widget _buildMaterialCardContent(BuildContext context, List<String> coverImages, ColorScheme cs) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isNarrow = constraints.maxWidth < 480;
         final EdgeInsets contentPadding = const EdgeInsets.symmetric(horizontal: 20, vertical: 24);
-        
+
         if (isNarrow) {
           return Padding(
             padding: contentPadding,
@@ -394,7 +394,7 @@ class MobileDailyRecommendCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12,
-                          color: cs.onSurface.withOpacity(0.6),
+                          color: cs.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
                     ],
@@ -446,7 +446,7 @@ class MobileDailyRecommendCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
-                        color: cs.onSurface.withOpacity(0.7),
+                        color: cs.onSurface.withValues(alpha: 0.7),
                         height: 1.3,
                       ),
                     ),
@@ -454,7 +454,7 @@ class MobileDailyRecommendCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        color: cs.primary.withOpacity(0.1),
+                        color: cs.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Row(
@@ -488,7 +488,7 @@ class MobileDailyRecommendCard extends StatelessWidget {
       },
     );
   }
-  
+
   /// 构建倾斜堆叠封面 (Fluent UI Inspired)
   Widget _buildTiltedCovers(BuildContext context, List<String> coverImages, {bool isNarrow = false}) {
     final cs = Theme.of(context).colorScheme;
@@ -498,34 +498,34 @@ class MobileDailyRecommendCard extends StatelessWidget {
     }
 
     final double size = isNarrow ? 80 : 120;
-    
+
     return Stack(
       alignment: Alignment.center,
       children: [
         // 最底层封面 (向左倾斜)
         _buildSingleTiltedCover(
-          displayCovers[2], 
-          cs, 
-          size: size * 0.85, 
-          angle: -0.2, 
+          displayCovers[2],
+          cs,
+          size: size * 0.85,
+          angle: -0.2,
           offset: const Offset(-20, -10),
           opacity: 0.5,
         ),
         // 中间层封面 (向右倾斜)
         _buildSingleTiltedCover(
-          displayCovers[1], 
-          cs, 
-          size: size * 0.92, 
-          angle: 0.15, 
+          displayCovers[1],
+          cs,
+          size: size * 0.92,
+          angle: 0.15,
           offset: const Offset(15, 0),
           opacity: 0.8,
         ),
         // 最上层封面 (正面)
         _buildSingleTiltedCover(
-          displayCovers[0], 
-          cs, 
-          size: size, 
-          angle: 0, 
+          displayCovers[0],
+          cs,
+          size: size,
+          angle: 0,
           offset: Offset.zero,
           opacity: 1.0,
           hasShadow: true,
@@ -535,10 +535,10 @@ class MobileDailyRecommendCard extends StatelessWidget {
   }
 
   Widget _buildSingleTiltedCover(
-    String url, 
+    String url,
     ColorScheme cs, {
-    required double size, 
-    required double angle, 
+    required double size,
+    required double angle,
     required Offset offset,
     required double opacity,
     bool hasShadow = false,
@@ -556,7 +556,7 @@ class MobileDailyRecommendCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(isNarrow ? 12 : 16),
               boxShadow: hasShadow ? [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: Colors.black.withValues(alpha: 0.2),
                   blurRadius: 15,
                   offset: const Offset(0, 8),
                 ),
@@ -570,7 +570,7 @@ class MobileDailyRecommendCard extends StatelessWidget {
                       child: Icon(
                         Icons.music_note,
                         size: size * 0.4,
-                        color: cs.onSurface.withOpacity(0.3),
+                        color: cs.onSurface.withValues(alpha: 0.3),
                       ),
                     )
                   : CachedNetworkImage(
@@ -587,7 +587,7 @@ class MobileDailyRecommendCard extends StatelessWidget {
                         child: Icon(
                           Icons.music_note,
                           size: size * 0.4,
-                          color: cs.onSurface.withOpacity(0.3),
+                          color: cs.onSurface.withValues(alpha: 0.3),
                         ),
                       ),
                     ),

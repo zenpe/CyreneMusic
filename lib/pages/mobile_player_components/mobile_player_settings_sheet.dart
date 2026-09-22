@@ -83,7 +83,7 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
               end: Alignment.bottomCenter,
               colors: [
                 colorScheme.surfaceContainerHigh,
-                colorScheme.surfaceContainerHighest.withOpacity(
+                colorScheme.surfaceContainerHighest.withValues(alpha:
                   isDark ? 0.95 : 0.98,
                 ),
               ],
@@ -93,7 +93,7 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
             // 柔和阴影
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.4 : 0.15),
+                color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
                 blurRadius: 30,
                 offset: const Offset(0, -10),
               ),
@@ -115,9 +115,9 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        colorScheme.outlineVariant.withOpacity(0),
-                        colorScheme.outlineVariant.withOpacity(0.5),
-                        colorScheme.outlineVariant.withOpacity(0),
+                        colorScheme.outlineVariant.withValues(alpha: 0),
+                        colorScheme.outlineVariant.withValues(alpha: 0.5),
+                        colorScheme.outlineVariant.withValues(alpha: 0),
                       ],
                     ),
                   ),
@@ -136,6 +136,11 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
                   children: [
                     // 播放顺序
                     RepaintBoundary(child: PlaybackModeSection()),
+
+                    SizedBox(height: 24),
+
+                    // 音量调节
+                    RepaintBoundary(child: VolumeSection()),
 
                     SizedBox(height: 24),
 
@@ -197,7 +202,7 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
           width: 48,
           height: 5,
           decoration: BoxDecoration(
-            color: colorScheme.outline.withOpacity(0.4),
+            color: colorScheme.outline.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(3),
           ),
         ),
@@ -220,8 +225,8 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  colorScheme.primary.withOpacity(0.2),
-                  colorScheme.primary.withOpacity(0.1),
+                  colorScheme.primary.withValues(alpha: 0.2),
+                  colorScheme.primary.withValues(alpha: 0.1),
                 ],
               ),
               borderRadius: BorderRadius.circular(14),
@@ -251,7 +256,7 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
                 Text(
                   '自定义您的听歌体验',
                   style: TextStyle(
-                    color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                   ),

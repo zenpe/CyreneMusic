@@ -32,13 +32,13 @@ class MobilePlayerSongInfo extends StatelessWidget {
         final displayArtist = player.displayArtist;
         final displayAlbum = player.displayAlbum;
         final backgroundService = PlayerBackgroundService();
-        final isGradientMode = backgroundService.enableGradient && 
+        final isGradientMode = backgroundService.enableGradient &&
                               backgroundService.backgroundType == PlayerBackgroundType.adaptive;
-        
+
         return LayoutBuilder(
           builder: (context, constraints) {
             final screenHeight = constraints.maxHeight;
-            
+
             if (isGradientMode) {
               // 渐变模式：封面在背景中，歌曲信息居中
               return Column(
@@ -66,7 +66,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
                     _buildAlbumCover(song, track),
                     SizedBox(height: screenHeight * 0.04),
                   ],
-                  
+
                   // 歌曲信息
                   _buildSongInfo(
                     context,
@@ -89,29 +89,29 @@ class MobilePlayerSongInfo extends StatelessWidget {
   Widget _buildAlbumCover(SongDetail? song, Track? track) {
     final picUrl = _resolveCoverUrl(song, track);
     final provider = PlayerService().currentCoverImageProvider;
-    
+
     return LayoutBuilder(
       builder: (context, constraints) {
         // 根据屏幕宽度自适应调整封面大小
         final screenWidth = MediaQuery.of(context).size.width;
         final screenHeight = MediaQuery.of(context).size.height;
-        
+
         // 动态计算边距：屏幕宽度的 12%
         final horizontalMargin = screenWidth * 0.12;
-        
+
         // 优化封面大小计算：限制为屏幕高度的 28% 或宽度的 65%（取较小值）
         final maxCoverByHeight = screenHeight * 0.28;
         final maxCoverByWidth = screenWidth * 0.65;
         final maxCoverSize = maxCoverByHeight < maxCoverByWidth ? maxCoverByHeight : maxCoverByWidth;
-        
+
         // 计算封面大小，确保 min 不大于 max
         final calculatedSize = screenWidth - horizontalMargin * 2;
         final minCoverSize = 180.0;
         final baseCoverSize = calculatedSize.clamp(minCoverSize, maxCoverSize > minCoverSize ? maxCoverSize : calculatedSize);
-        
+
         // 缩小到原大小的 80%
         final coverSize = baseCoverSize * 0.8;
-        
+
         return Hero(
           tag: 'album_cover',
           child: Center(
@@ -123,7 +123,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                     blurRadius: 20,
                     spreadRadius: 3,
                   ),
@@ -239,18 +239,18 @@ class MobilePlayerSongInfo extends StatelessWidget {
 
     // 分割歌手（支持多种分隔符：/ , 、）
     final artists = _splitArtists(artistsStr);
-    
+
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         final titleColor = _getAdaptiveLyricColor(themeColor, true);
         final subtitleColor = _getAdaptiveLyricColor(themeColor, false);
-        
+
         return LayoutBuilder(
           builder: (context, constraints) {
             final screenWidth = MediaQuery.of(context).size.width;
             final titleFontSize = (screenWidth * 0.055).clamp(20.0, 26.0);
-            
+
             return Padding(
               padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
               child: Column(
@@ -269,10 +269,10 @@ class MobilePlayerSongInfo extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   SizedBox(height: screenWidth * 0.02),
-                  
+
                   // 艺术家（多个可点击）
                   _buildArtistsRow(context, artists, subtitleColor, screenWidth, song),
-                  
+
                   // 专辑（可点击）
                   if (album.isNotEmpty) ...[
                     SizedBox(height: screenWidth * 0.015),
@@ -287,14 +287,14 @@ class MobilePlayerSongInfo extends StatelessWidget {
                             Icon(
                               Icons.album_outlined,
                               size: 12,
-                              color: subtitleColor.withOpacity(0.6),
+                              color: subtitleColor.withValues(alpha: 0.6),
                             ),
                             const SizedBox(width: 4),
                             Flexible(
                               child: Text(
                                 album,
                                 style: TextStyle(
-                                  color: subtitleColor.withOpacity(0.6),
+                                  color: subtitleColor.withValues(alpha: 0.6),
                                   fontSize: (screenWidth * 0.032).clamp(12.0, 14.0),
                                   fontFamily: 'Microsoft YaHei', // 微软雅黑
                                 ),
@@ -320,7 +320,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
   /// 构建多个艺术家的可点击行
   Widget _buildArtistsRow(BuildContext context, List<String> artists, Color baseColor, double screenWidth, SongDetail? song) {
     final artistFontSize = (screenWidth * 0.04).clamp(14.0, 17.0);
-    
+
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: 0,
@@ -329,7 +329,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
         final index = entry.key;
         final artist = entry.value;
         final isLast = index == artists.length - 1;
-        
+
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -341,7 +341,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
                 child: Text(
                   artist,
                   style: TextStyle(
-                    color: baseColor.withOpacity(0.8),
+                    color: baseColor.withValues(alpha: 0.8),
                     fontSize: artistFontSize,
                     fontFamily: 'Microsoft YaHei', // 微软雅黑
                   ),
@@ -352,7 +352,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
               Text(
                 ' / ',
                 style: TextStyle(
-                  color: baseColor.withOpacity(0.6),
+                  color: baseColor.withValues(alpha: 0.6),
                   fontSize: artistFontSize,
                 ),
               ),
@@ -372,6 +372,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
     // 网易云：尝试解析歌手ID；失败则回退到搜索
     final id = await NeteaseArtistDetailService().resolveArtistIdByName(artistName);
     if (id == null) {
+      if (!context.mounted) return;
       _searchInDialog(context, artistName);
       return;
     }
@@ -405,7 +406,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
   List<String> _splitArtists(String artistsStr) {
     // 支持的分隔符：/ , 、
     final separators = ['/', ',', '、'];
-    
+
     for (final separator in separators) {
       if (artistsStr.contains(separator)) {
         return artistsStr
@@ -415,7 +416,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
             .toList();
       }
     }
-    
+
     return [artistsStr];
   }
 
@@ -441,7 +442,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
     // 计算颜色的相对亮度 (0.0 - 1.0)
     // 使用 W3C 推荐的计算公式
     final luminance = backgroundColor.computeLuminance();
-    
+
     // 如果亮度大于 0.5，认为是亮色背景，应该用深色文字
     return luminance > 0.5;
   }
@@ -450,17 +451,17 @@ class MobilePlayerSongInfo extends StatelessWidget {
   Color _getAdaptiveLyricColor(Color? themeColor, bool isCurrent) {
     final color = themeColor ?? Colors.grey[700]!;
     final useDarkText = _shouldUseDarkText(color);
-    
+
     if (useDarkText) {
       // 亮色背景，使用深色文字
-      return isCurrent 
-          ? Colors.black87 
+      return isCurrent
+          ? Colors.black87
           : Colors.black54;
     } else {
       // 暗色背景，使用浅色文字
-      return isCurrent 
-          ? Colors.white 
-          : Colors.white.withOpacity(0.45);
+      return isCurrent
+          ? Colors.white
+          : Colors.white.withValues(alpha: 0.45);
     }
   }
 }

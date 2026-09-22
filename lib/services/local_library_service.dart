@@ -70,14 +70,14 @@ class LocalLibraryService extends ChangeNotifier {
 
       final content = await file.readAsString();
       final data = json.decode(content) as Map<String, dynamic>;
-      
+
       // 加载曲目列表
       final tracksJson = data['tracks'] as List<dynamic>? ?? [];
       final lyricsJson = data['lyrics'] as Map<String, dynamic>? ?? {};
-      
+
       _tracks.clear();
       _pathToLyric.clear();
-      
+
       for (final trackJson in tracksJson) {
         try {
           final map = trackJson as Map<String, dynamic>;
@@ -90,9 +90,9 @@ class LocalLibraryService extends ChangeNotifier {
               orElse: () => MusicSource.local,
             );
           }
-          
+
           final track = Track.fromJson(map, source: source);
-          
+
           // 验证本地文件是否还存在（可选，启动时可跳过以加速）
           if (validateFiles && track.source == MusicSource.local && track.id is String) {
             final file = File(track.id as String);
@@ -101,18 +101,18 @@ class LocalLibraryService extends ChangeNotifier {
               continue;
             }
           }
-          
+
           _tracks.add(track);
         } catch (e) {
           debugPrint('📀 [LocalLibrary] 解析曲目失败: $e');
         }
       }
-      
+
       // 加载歌词映射
       for (final entry in lyricsJson.entries) {
         _pathToLyric[entry.key] = entry.value as String;
       }
-      
+
       debugPrint('📀 [LocalLibrary] 加载了 ${_tracks.length} 首本地歌曲');
       notifyListeners();
     } catch (e) {
@@ -124,14 +124,14 @@ class LocalLibraryService extends ChangeNotifier {
   Future<void> _saveLibrary() async {
     try {
       final file = await _getLibraryFile();
-      
+
       final data = {
         'version': 1,
         'updatedAt': DateTime.now().toIso8601String(),
         'tracks': _tracks.map((t) => t.toJson()).toList(),
         'lyrics': _pathToLyric,
       };
-      
+
       await file.writeAsString(json.encode(data));
       debugPrint('📀 [LocalLibrary] 保存了 ${_tracks.length} 首本地歌曲');
     } catch (e) {
@@ -180,7 +180,7 @@ class LocalLibraryService extends ChangeNotifier {
   /// 初始化封面缓存目录
   Future<Directory> _getCoverCacheDir() async {
     if (_coverCacheDir != null) return _coverCacheDir!;
-    
+
     final appDir = await getApplicationSupportDirectory();
     _coverCacheDir = Directory(p.join(appDir.path, 'local_covers'));
     if (!await _coverCacheDir!.exists()) {
@@ -229,21 +229,21 @@ class LocalLibraryService extends ChangeNotifier {
         type: FileType.custom,
         allowedExtensions: supportedAudioExts.toList(),
       );
-      
+
       if (result == null || result.files.isEmpty) {
         debugPrint('📀 [LocalLibrary] 用户取消了文件选择');
         return;
       }
 
       debugPrint('📀 [LocalLibrary] 选择了 ${result.files.length} 个文件');
-      
+
       final List<Future<void>> futures = [];
       for (final file in result.files) {
         if (file.path != null) {
           futures.add(_addAudioFile(file.path!));
         }
       }
-      
+
       if (futures.isNotEmpty) {
         await Future.wait(futures);
         await _saveLibrary();
@@ -289,7 +289,7 @@ class LocalLibraryService extends ChangeNotifier {
   (String, String?) _parseFilename(String filenameWithoutExt) {
     // 常见分隔符：" - ", " – ", " — ", "-"
     final separators = [' - ', ' – ', ' — ', ' _ '];
-    
+
     for (final sep in separators) {
       if (filenameWithoutExt.contains(sep)) {
         final parts = filenameWithoutExt.split(sep);
@@ -301,7 +301,7 @@ class LocalLibraryService extends ChangeNotifier {
         }
       }
     }
-    
+
     // 尝试用简单的 "-" 分隔（但要避免误判为歌名中的连字符）
     if (filenameWithoutExt.contains('-')) {
       final idx = filenameWithoutExt.indexOf('-');
@@ -314,7 +314,7 @@ class LocalLibraryService extends ChangeNotifier {
         }
       }
     }
-    
+
     return (filenameWithoutExt, null);
   }
 
@@ -322,10 +322,10 @@ class LocalLibraryService extends ChangeNotifier {
   Future<String?> _saveCoverImage(String audioPath, Uint8List imageData, String mimeType) async {
     try {
       final cacheDir = await _getCoverCacheDir();
-      
+
       // 使用音频文件路径的 MD5 作为封面文件名
       final hash = md5.convert(utf8.encode(audioPath)).toString();
-      
+
       // 根据 MIME 类型确定扩展名
       String ext = 'jpg';
       if (mimeType.contains('png')) {
@@ -335,14 +335,14 @@ class LocalLibraryService extends ChangeNotifier {
       } else if (mimeType.contains('gif')) {
         ext = 'gif';
       }
-      
+
       final coverFile = File(p.join(cacheDir.path, '$hash.$ext'));
-      
+
       // 如果封面已存在，直接返回路径
       if (await coverFile.exists()) {
         return coverFile.path;
       }
-      
+
       // 保存封面
       await coverFile.writeAsBytes(imageData);
       return coverFile.path;
@@ -399,35 +399,35 @@ class LocalLibraryService extends ChangeNotifier {
       // 尝试读取音频元数据
       try {
         final metadata = readMetadata(file, getImage: true);
-        
+
         // 读取标题
         if (metadata.title != null && metadata.title!.isNotEmpty) {
           trackName = metadata.title!;
         }
-        
+
         // 读取艺术家
         if (metadata.artist != null && metadata.artist!.isNotEmpty) {
           trackArtists = metadata.artist!;
         }
-        
+
         // 读取专辑
         if (metadata.album != null && metadata.album!.isNotEmpty) {
           trackAlbum = metadata.album!;
         }
-        
+
         // 读取封面图片
         if (metadata.pictures.isNotEmpty) {
           final picture = metadata.pictures.first;
           final coverPath = await _saveCoverImage(
             filePath,
             picture.bytes,
-            picture.mimetype ?? 'image/jpeg',
+            picture.mimetype,
           );
           if (coverPath != null) {
             trackPicUrl = coverPath;
           }
         }
-        
+
         debugPrint('📀 [LocalLibrary] 读取元数据成功: $trackName - $trackArtists');
       } catch (e) {
         // 元数据读取失败，尝试从文件名解析

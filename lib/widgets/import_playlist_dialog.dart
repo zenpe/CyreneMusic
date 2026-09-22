@@ -1,3 +1,4 @@
+import '../services/structured_log_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
@@ -16,7 +17,6 @@ part 'import_playlist_dialog_utils.dart';
 
 /// 从网易云/QQ音乐导入歌单对话框
 class ImportPlaylistDialog {
-
   // ==================== 公共辅助方法 ====================
 
   /// 显示统一的提示对话框（自动适配三平台 UI）
@@ -146,7 +146,7 @@ class ImportPlaylistDialog {
   /// 构建歌单封面 Widget（自动适配三平台 UI）
   static Widget _buildPlaylistCover(String? coverUrl, {double size = 48}) {
     final hasValidUrl = coverUrl != null && coverUrl.isNotEmpty;
-    
+
     if (ThemeManager().isFluentFramework) {
       if (hasValidUrl) {
         return ClipRRect(
@@ -187,7 +187,10 @@ class ImportPlaylistDialog {
               width: size,
               height: size,
               color: CupertinoColors.systemGrey5,
-              child: const Icon(Icons.music_note, color: CupertinoColors.systemGrey),
+              child: const Icon(
+                Icons.music_note,
+                color: CupertinoColors.systemGrey,
+              ),
             ),
           ),
         );
@@ -236,16 +239,15 @@ class ImportPlaylistDialog {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: CupertinoColors.systemOrange.withOpacity(0.1),
+        color: CupertinoColors.systemOrange.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: CupertinoColors.systemOrange.withOpacity(0.3)),
+        border: Border.all(
+          color: CupertinoColors.systemOrange.withValues(alpha: 0.3),
+        ),
       ),
       child: const Text(
         '收藏',
-        style: TextStyle(
-          fontSize: 10,
-          color: CupertinoColors.systemOrange,
-        ),
+        style: TextStyle(fontSize: 10, color: CupertinoColors.systemOrange),
       ),
     );
   }
@@ -255,32 +257,31 @@ class ImportPlaylistDialog {
   /// 解析网易云音乐歌单URL，提取歌单ID
   static String? _parseNeteasePlaylistId(String input) {
     final trimmedInput = input.trim();
-    
+
     // 如果输入的是纯数字ID，直接返回
     if (RegExp(r'^\d+$').hasMatch(trimmedInput)) {
       return trimmedInput;
     }
- 
-    
+
     // 尝试从URL中解析ID
     try {
       // 支持的URL格式：
       // https://music.163.com/#/playlist?id=2154199263&creatorId=1408148628
       // https://music.163.com/playlist?id=2154199263&creatorId=1408148628
       // http://music.163.com/#/playlist?id=2154199263
-      
+
       final uri = Uri.parse(trimmedInput);
-      
+
       // 检查是否是网易云音乐域名
       if (!uri.host.contains('music.163.com')) {
         return null;
       }
-      
+
       String? playlistId;
-      
+
       // 首先检查主URL的查询参数
       playlistId = uri.queryParameters['id'];
-      
+
       // 如果主URL没有，检查fragment中的查询参数
       if (playlistId == null && uri.fragment.isNotEmpty) {
         // fragment可能包含路径和查询参数，如：/playlist?id=2154199263&creatorId=1408148628
@@ -292,7 +293,7 @@ class ImportPlaylistDialog {
           playlistId = fragmentParams['id'];
         }
       }
-      
+
       // 也尝试直接用正则表达式从整个URL中匹配ID
       if (playlistId == null) {
         final idMatch = RegExp(r'[?&]id=(\d+)').firstMatch(trimmedInput);
@@ -300,12 +301,12 @@ class ImportPlaylistDialog {
           playlistId = idMatch.group(1);
         }
       }
-      
+
       // 验证ID是否为纯数字
       if (playlistId != null && RegExp(r'^\d+$').hasMatch(playlistId)) {
         return playlistId;
       }
-      
+
       return null;
     } catch (e) {
       // URL解析失败，尝试正则表达式兜底
@@ -328,27 +329,28 @@ class ImportPlaylistDialog {
   /// - PC端链接：https://www.kuwo.cn/playlist_detail/3567349593
   static String? _parseKuwoPlaylistId(String input) {
     final trimmedInput = input.trim();
-    
+
     // 如果输入的是纯数字ID，直接返回
     if (RegExp(r'^\d+$').hasMatch(trimmedInput)) {
       return trimmedInput;
     }
-    
+
     // 尝试从URL中解析ID
     try {
       final uri = Uri.parse(trimmedInput);
-      
+
       // 检查是否是酷我音乐域名
       if (!uri.host.contains('kuwo.cn')) {
         return null;
       }
-      
+
       String? playlistId;
-      
+
       // 从路径中提取 (形如 /playlist_detail/3567349593 或 /newh5app/playlist_detail/3567349593)
       final pathSegments = uri.pathSegments;
       for (int i = 0; i < pathSegments.length; i++) {
-        if (pathSegments[i] == 'playlist_detail' && i + 1 < pathSegments.length) {
+        if (pathSegments[i] == 'playlist_detail' &&
+            i + 1 < pathSegments.length) {
           final nextSegment = pathSegments[i + 1];
           if (RegExp(r'^\d+$').hasMatch(nextSegment)) {
             playlistId = nextSegment;
@@ -356,25 +358,29 @@ class ImportPlaylistDialog {
           }
         }
       }
-      
+
       // 正则表达式兜底
       if (playlistId == null) {
-        final idMatch = RegExp(r'playlist_detail[/](\d+)').firstMatch(trimmedInput);
+        final idMatch = RegExp(
+          r'playlist_detail[/](\d+)',
+        ).firstMatch(trimmedInput);
         if (idMatch != null) {
           playlistId = idMatch.group(1);
         }
       }
-      
+
       // 验证ID是否为纯数字
       if (playlistId != null && RegExp(r'^\d+$').hasMatch(playlistId)) {
         return playlistId;
       }
-      
+
       return null;
     } catch (e) {
       // URL解析失败，尝试正则表达式兜底
       try {
-        final idMatch = RegExp(r'playlist_detail[/](\d+)').firstMatch(trimmedInput);
+        final idMatch = RegExp(
+          r'playlist_detail[/](\d+)',
+        ).firstMatch(trimmedInput);
         if (idMatch != null) {
           return idMatch.group(1);
         }
@@ -391,23 +397,23 @@ class ImportPlaylistDialog {
   /// - 分享链接：https://music.apple.com/cn/playlist/%E5%95%8A%E8%BF%99/pl.u-55D6ZJ3iDyp2AD
   static String? _parseApplePlaylistId(String input) {
     final trimmedInput = input.trim();
-    
+
     // 如果输入的是歌单ID格式 (pl.u-xxx 或 pl.xxx)，直接返回
     if (RegExp(r'^pl\.[a-zA-Z0-9\-]+$').hasMatch(trimmedInput)) {
       return trimmedInput;
     }
-    
+
     // 尝试从URL中解析ID
     try {
       final uri = Uri.parse(trimmedInput);
-      
+
       // 检查是否是Apple Music域名
       if (!uri.host.contains('music.apple.com')) {
         return null;
       }
-      
+
       String? playlistId;
-      
+
       // 从路径中提取 (形如 /cn/playlist/xxx/pl.u-55D6ZJ3iDyp2AD)
       final pathSegments = uri.pathSegments;
       for (final segment in pathSegments) {
@@ -416,25 +422,30 @@ class ImportPlaylistDialog {
           break;
         }
       }
-      
+
       // 正则表达式兜底
       if (playlistId == null) {
-        final idMatch = RegExp(r'(pl\.[a-zA-Z0-9\-]+)').firstMatch(trimmedInput);
+        final idMatch = RegExp(
+          r'(pl\.[a-zA-Z0-9\-]+)',
+        ).firstMatch(trimmedInput);
         if (idMatch != null) {
           playlistId = idMatch.group(1);
         }
       }
-      
+
       // 验证ID格式
-      if (playlistId != null && RegExp(r'^pl\.[a-zA-Z0-9\-]+$').hasMatch(playlistId)) {
+      if (playlistId != null &&
+          RegExp(r'^pl\.[a-zA-Z0-9\-]+$').hasMatch(playlistId)) {
         return playlistId;
       }
-      
+
       return null;
     } catch (e) {
       // URL解析失败，尝试正则表达式兜底
       try {
-        final idMatch = RegExp(r'(pl\.[a-zA-Z0-9\-]+)').firstMatch(trimmedInput);
+        final idMatch = RegExp(
+          r'(pl\.[a-zA-Z0-9\-]+)',
+        ).firstMatch(trimmedInput);
         if (idMatch != null) {
           return idMatch.group(1);
         }
@@ -448,31 +459,31 @@ class ImportPlaylistDialog {
   /// 解析QQ音乐歌单URL，提取歌单ID (dissid)
   static String? _parseQQPlaylistId(String input) {
     final trimmedInput = input.trim();
-    
+
     // 如果输入的是纯数字ID，直接返回
     if (RegExp(r'^\d+$').hasMatch(trimmedInput)) {
       return trimmedInput;
     }
-    
+
     // 尝试从URL中解析ID
     try {
       // 支持的URL格式：
       // https://y.qq.com/n/ryqq/playlist/8522515502
       // https://y.qq.com/n/m/detail/taoge/index.html?id=8522515502
       // https://c.y.qq.com/base/fcgi-bin/u?__=8522515502
-      
+
       final uri = Uri.parse(trimmedInput);
-      
+
       // 检查是否是QQ音乐域名
       if (!uri.host.contains('qq.com')) {
         return null;
       }
-      
+
       String? playlistId;
-      
+
       // 从查询参数中提取
       playlistId = uri.queryParameters['id'];
-      
+
       // 从路径中提取 (形如 /n/ryqq/playlist/8522515502)
       if (playlistId == null) {
         final pathSegments = uri.pathSegments;
@@ -483,25 +494,29 @@ class ImportPlaylistDialog {
           }
         }
       }
-      
+
       // 正则表达式兜底
       if (playlistId == null) {
-        final idMatch = RegExp(r'[\?&/](?:id=|playlist/)(\d+)').firstMatch(trimmedInput);
+        final idMatch = RegExp(
+          r'[\?&/](?:id=|playlist/)(\d+)',
+        ).firstMatch(trimmedInput);
         if (idMatch != null) {
           playlistId = idMatch.group(1);
         }
       }
-      
+
       // 验证ID是否为纯数字
       if (playlistId != null && RegExp(r'^\d+$').hasMatch(playlistId)) {
         return playlistId;
       }
-      
+
       return null;
     } catch (e) {
       // URL解析失败，尝试正则表达式兜底
       try {
-        final idMatch = RegExp(r'[\?&/](?:id=|playlist/)(\d+)').firstMatch(trimmedInput);
+        final idMatch = RegExp(
+          r'[\?&/](?:id=|playlist/)(\d+)',
+        ).firstMatch(trimmedInput);
         if (idMatch != null) {
           return idMatch.group(1);
         }
@@ -535,7 +550,7 @@ class ImportPlaylistDialog {
     // 网易云导入方式: 'account' 从账号导入, 'url' 从URL/ID导入
     String neteaseImportMode = 'account';
     Map<String, dynamic>? result;
-    
+
     // Fluent 风格 (Windows 桌面优先检查)
     if (ThemeManager().isFluentFramework) {
       String? errorText;
@@ -548,10 +563,15 @@ class ImportPlaylistDialog {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('选择平台', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text(
+                  '选择平台',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 8),
                 fluent.DropDownButton(
-                  title: Text('${selectedPlatform.icon} ${selectedPlatform.name}'),
+                  title: Text(
+                    '${selectedPlatform.icon} ${selectedPlatform.name}',
+                  ),
                   items: MusicPlatform.values.map((platform) {
                     return fluent.MenuFlyoutItem(
                       text: Text('${platform.icon} ${platform.name}'),
@@ -575,7 +595,10 @@ class ImportPlaylistDialog {
                   ),
                 ] else if (selectedPlatform == MusicPlatform.netease) ...[
                   // 网易云音乐：支持两种导入方式
-                  const Text('导入方式', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text(
+                    '导入方式',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 8),
                   fluent.RadioGroup<String>(
                     groupValue: neteaseImportMode,
@@ -621,7 +644,10 @@ class ImportPlaylistDialog {
                     ),
                   ],
                 ] else ...[
-                  const Text('输入歌单信息', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text(
+                    '输入歌单信息',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     _getInputHintText(selectedPlatform),
@@ -636,7 +662,10 @@ class ImportPlaylistDialog {
                 ],
                 if (errorText != null) ...[
                   const SizedBox(height: 8),
-                  fluent.InfoBar(title: Text(errorText!), severity: fluent.InfoBarSeverity.warning),
+                  fluent.InfoBar(
+                    title: Text(errorText!),
+                    severity: fluent.InfoBarSeverity.warning,
+                  ),
                 ],
               ],
             ),
@@ -656,7 +685,8 @@ class ImportPlaylistDialog {
                     return;
                   }
                   // 网易云从账号导入
-                  if (selectedPlatform == MusicPlatform.netease && neteaseImportMode == 'account') {
+                  if (selectedPlatform == MusicPlatform.netease &&
+                      neteaseImportMode == 'account') {
                     Navigator.pop(context, {
                       'platform': selectedPlatform,
                       'isNeteaseAccount': true,
@@ -679,7 +709,9 @@ class ImportPlaylistDialog {
                     playlistId = _parseApplePlaylistId(input);
                   }
                   if (playlistId == null) {
-                    setState(() => errorText = '无效的${selectedPlatform.name}歌单ID或URL格式');
+                    setState(
+                      () => errorText = '无效的${selectedPlatform.name}歌单ID或URL格式',
+                    );
                     return;
                   }
                   Navigator.pop(context, {
@@ -696,7 +728,12 @@ class ImportPlaylistDialog {
     }
     // Cupertino 风格 (iOS/Android 移动端)
     else if (ThemeManager().isCupertinoFramework) {
-      result = await _showCupertinoImportDialogImpl(context, controller, selectedPlatform, neteaseImportMode);
+      result = await _showCupertinoImportDialogImpl(
+        context,
+        controller,
+        selectedPlatform,
+        neteaseImportMode,
+      );
     }
     // Material 风格 (默认)
     else {
@@ -716,7 +753,10 @@ class ImportPlaylistDialog {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('选择平台', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                const Text(
+                  '选择平台',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
@@ -755,34 +795,39 @@ class ImportPlaylistDialog {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline, color: Theme.of(context).colorScheme.primary),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text('点击"下一步"将显示您绑定的酷狗账号中的歌单'),
+                        Icon(
+                          Icons.info_outline,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
+                        const SizedBox(width: 12),
+                        const Expanded(child: Text('点击"下一步"将显示您绑定的酷狗账号中的歌单')),
                       ],
                     ),
                   ),
                 ] else if (selectedPlatform == MusicPlatform.netease) ...[
                   // 网易云音乐：支持两种导入方式
-                  const Text('导入方式', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  const Text(
+                    '导入方式',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      Radio<String>(
-                        value: 'account',
+                      RadioGroup<String>(
                         groupValue: neteaseImportMode,
                         onChanged: (v) => setState(() {
                           neteaseImportMode = v!;
                           controller.clear();
                         }),
+                        child: Radio<String>(value: 'account'),
                       ),
                       const Text('从绑定账号导入'),
                       const SizedBox(width: 16),
-                      Radio<String>(
-                        value: 'url',
+                      RadioGroup<String>(
                         groupValue: neteaseImportMode,
-                        onChanged: (v) => setState(() => neteaseImportMode = v!),
+                        onChanged: (v) =>
+                            setState(() => neteaseImportMode = v!),
+                        child: Radio<String>(value: 'url'),
                       ),
                       const Text('输入歌单ID/URL'),
                     ],
@@ -797,7 +842,10 @@ class ImportPlaylistDialog {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.info_outline, color: Theme.of(context).colorScheme.primary),
+                          Icon(
+                            Icons.info_outline,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                           const SizedBox(width: 12),
                           const Expanded(
                             child: Text('点击"下一步"将显示您绑定的网易云账号中的歌单'),
@@ -808,7 +856,10 @@ class ImportPlaylistDialog {
                   ] else ...[
                     Text(
                       _getInputHintText(selectedPlatform),
-                      style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     TextField(
@@ -824,11 +875,17 @@ class ImportPlaylistDialog {
                     ),
                   ],
                 ] else ...[
-                  const Text('输入歌单信息', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  const Text(
+                    '输入歌单信息',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     _getInputHintText(selectedPlatform),
-                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -861,7 +918,8 @@ class ImportPlaylistDialog {
                     return;
                   }
                   // 网易云从账号导入
-                  if (selectedPlatform == MusicPlatform.netease && neteaseImportMode == 'account') {
+                  if (selectedPlatform == MusicPlatform.netease &&
+                      neteaseImportMode == 'account') {
                     Navigator.pop(context, {
                       'platform': selectedPlatform,
                       'isNeteaseAccount': true,
@@ -870,7 +928,9 @@ class ImportPlaylistDialog {
                   }
                   final input = controller.text.trim();
                   if (input.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入歌单ID或URL')));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('请输入歌单ID或URL')),
+                    );
                     return;
                   }
                   String? playlistId;
@@ -885,7 +945,12 @@ class ImportPlaylistDialog {
                   }
                   if (playlistId == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('无效的${selectedPlatform.name}歌单ID或URL格式\n请检查输入是否正确'), duration: const Duration(seconds: 3)),
+                      SnackBar(
+                        content: Text(
+                          '无效的${selectedPlatform.name}歌单ID或URL格式\n请检查输入是否正确',
+                        ),
+                        duration: const Duration(seconds: 3),
+                      ),
                     );
                     return;
                   }
@@ -922,12 +987,13 @@ class ImportPlaylistDialog {
   /// 显示酷狗歌单选择对话框
   static Future<void> _showKugouPlaylistsDialog(BuildContext context) async {
     final kugouService = KugouLoginService();
-    
+
     // 先检查是否已绑定酷狗账号
     final isBound = await kugouService.isKugouBound();
     if (!isBound) {
       if (!context.mounted) return;
       if (ThemeManager().isFluentFramework) {
+        if (!context.mounted) return;
         await fluent.showDialog(
           context: context,
           builder: (context) => fluent.ContentDialog(
@@ -956,6 +1022,7 @@ class ImportPlaylistDialog {
           ),
         );
       } else {
+        if (!context.mounted) return;
         await showDialog(
           context: context,
           builder: (context) => AlertDialog(
@@ -998,9 +1065,8 @@ class ImportPlaylistDialog {
       showCupertinoDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CupertinoActivityIndicator(radius: 16),
-        ),
+        builder: (context) =>
+            const Center(child: CupertinoActivityIndicator(radius: 16)),
       );
     } else {
       showDialog(
@@ -1103,7 +1169,9 @@ class ImportPlaylistDialog {
                                 width: 48,
                                 height: 48,
                                 color: Colors.grey[300],
-                                child: const Icon(fluent.FluentIcons.music_in_collection),
+                                child: const Icon(
+                                  fluent.FluentIcons.music_in_collection,
+                                ),
                               ),
                             ),
                           )
@@ -1114,9 +1182,15 @@ class ImportPlaylistDialog {
                               color: Colors.grey[300],
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Icon(fluent.FluentIcons.music_in_collection),
+                            child: const Icon(
+                              fluent.FluentIcons.music_in_collection,
+                            ),
                           ),
-                    title: Text(playlist.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Text(
+                      playlist.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     subtitle: Text('${playlist.count} 首歌曲'),
                     onPressed: () => Navigator.pop(context, playlist),
                   );
@@ -1135,14 +1209,19 @@ class ImportPlaylistDialog {
         selectedPlaylist = await showCupertinoModalPopup<KugouPlaylistInfo>(
           context: context,
           builder: (context) {
-            final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
+            final isDark =
+                CupertinoTheme.brightnessOf(context) == Brightness.dark;
             return Material(
               type: MaterialType.transparency,
               child: Container(
                 height: MediaQuery.of(context).size.height * 0.7,
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  color: isDark
+                      ? const Color(0xFF1C1C1E)
+                      : CupertinoColors.systemBackground,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
+                  ),
                 ),
                 child: SafeArea(
                   top: false,
@@ -1160,7 +1239,10 @@ class ImportPlaylistDialog {
                       ),
                       // 标题栏
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -1174,7 +1256,9 @@ class ImportPlaylistDialog {
                               style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w600,
-                                color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                color: isDark
+                                    ? CupertinoColors.white
+                                    : CupertinoColors.black,
                               ),
                             ),
                             const SizedBox(width: 60), // 占位，保持标题居中
@@ -1194,7 +1278,10 @@ class ImportPlaylistDialog {
                               child: InkWell(
                                 onTap: () => Navigator.pop(context, playlist),
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
                                   child: Row(
                                     children: [
                                       ClipRRect(
@@ -1205,24 +1292,36 @@ class ImportPlaylistDialog {
                                                 width: 50,
                                                 height: 50,
                                                 fit: BoxFit.cover,
-                                                errorBuilder: (_, __, ___) => Container(
-                                                  width: 50,
-                                                  height: 50,
-                                                  color: CupertinoColors.systemGrey5,
-                                                  child: const Icon(Icons.music_note, color: CupertinoColors.systemGrey),
-                                                ),
+                                                errorBuilder: (_, __, ___) =>
+                                                    Container(
+                                                      width: 50,
+                                                      height: 50,
+                                                      color: CupertinoColors
+                                                          .systemGrey5,
+                                                      child: const Icon(
+                                                        Icons.music_note,
+                                                        color: CupertinoColors
+                                                            .systemGrey,
+                                                      ),
+                                                    ),
                                               )
                                             : Container(
                                                 width: 50,
                                                 height: 50,
-                                                color: CupertinoColors.systemGrey5,
-                                                child: const Icon(Icons.music_note, color: CupertinoColors.systemGrey),
+                                                color:
+                                                    CupertinoColors.systemGrey5,
+                                                child: const Icon(
+                                                  Icons.music_note,
+                                                  color: CupertinoColors
+                                                      .systemGrey,
+                                                ),
                                               ),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
                                               playlist.name,
@@ -1230,7 +1329,9 @@ class ImportPlaylistDialog {
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
                                                 fontSize: 16,
-                                                color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                                color: isDark
+                                                    ? CupertinoColors.white
+                                                    : CupertinoColors.black,
                                               ),
                                             ),
                                             const SizedBox(height: 4),
@@ -1238,13 +1339,18 @@ class ImportPlaylistDialog {
                                               '${playlist.count} 首歌曲',
                                               style: const TextStyle(
                                                 fontSize: 14,
-                                                color: CupertinoColors.systemGrey,
+                                                color:
+                                                    CupertinoColors.systemGrey,
                                               ),
                                             ),
                                           ],
                                         ),
                                       ),
-                                      const Icon(CupertinoIcons.chevron_right, color: CupertinoColors.systemGrey3, size: 20),
+                                      const Icon(
+                                        CupertinoIcons.chevron_right,
+                                        color: CupertinoColors.systemGrey3,
+                                        size: 20,
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -1299,7 +1405,11 @@ class ImportPlaylistDialog {
                             ),
                             child: const Icon(Icons.library_music),
                           ),
-                    title: Text(playlist.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Text(
+                      playlist.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     subtitle: Text('${playlist.count} 首歌曲'),
                     onTap: () => Navigator.pop(context, playlist),
                   );
@@ -1323,18 +1433,14 @@ class ImportPlaylistDialog {
       if (!context.mounted) return;
       Navigator.pop(context); // 关闭加载对话框
 
-      await _showAlertDialog(
-        context,
-        title: '获取歌单失败',
-        content: '$e',
-      );
+      await _showAlertDialog(context, title: '获取歌单失败', content: '$e');
     }
   }
 
   /// 显示网易云歌单选择对话框
   static Future<void> _showNeteasePlaylistsDialog(BuildContext context) async {
     final neteaseService = NeteaseLoginService();
-    
+
     // 先检查是否已绑定网易云账号
     final isBound = await neteaseService.isNeteaseBound();
     if (!isBound) {
@@ -1393,7 +1499,9 @@ class ImportPlaylistDialog {
                                 width: 48,
                                 height: 48,
                                 color: Colors.grey[300],
-                                child: const Icon(fluent.FluentIcons.music_in_collection),
+                                child: const Icon(
+                                  fluent.FluentIcons.music_in_collection,
+                                ),
                               ),
                             ),
                           )
@@ -1404,9 +1512,15 @@ class ImportPlaylistDialog {
                               color: Colors.grey[300],
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Icon(fluent.FluentIcons.music_in_collection),
+                            child: const Icon(
+                              fluent.FluentIcons.music_in_collection,
+                            ),
                           ),
-                    title: Text(playlist.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Text(
+                      playlist.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     subtitle: Text(
                       '${playlist.trackCount} 首歌曲${playlist.subscribed ? ' · 收藏' : ''}',
                       style: TextStyle(
@@ -1430,14 +1544,19 @@ class ImportPlaylistDialog {
         selectedPlaylist = await showCupertinoModalPopup<NeteasePlaylistInfo>(
           context: context,
           builder: (context) {
-            final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
+            final isDark =
+                CupertinoTheme.brightnessOf(context) == Brightness.dark;
             return Material(
               type: MaterialType.transparency,
               child: Container(
                 height: MediaQuery.of(context).size.height * 0.7,
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  color: isDark
+                      ? const Color(0xFF1C1C1E)
+                      : CupertinoColors.systemBackground,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
+                  ),
                 ),
                 child: SafeArea(
                   top: false,
@@ -1455,7 +1574,10 @@ class ImportPlaylistDialog {
                       ),
                       // 标题栏
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -1469,7 +1591,9 @@ class ImportPlaylistDialog {
                               style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w600,
-                                color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                color: isDark
+                                    ? CupertinoColors.white
+                                    : CupertinoColors.black,
                               ),
                             ),
                             const SizedBox(width: 60), // 占位
@@ -1489,14 +1613,21 @@ class ImportPlaylistDialog {
                               child: InkWell(
                                 onTap: () => Navigator.pop(context, playlist),
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
                                   child: Row(
                                     children: [
-                                      _buildPlaylistCover(playlist.coverImgUrl, size: 50),
+                                      _buildPlaylistCover(
+                                        playlist.coverImgUrl,
+                                        size: 50,
+                                      ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
                                               playlist.name,
@@ -1504,7 +1635,9 @@ class ImportPlaylistDialog {
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
                                                 fontSize: 16,
-                                                color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                                color: isDark
+                                                    ? CupertinoColors.white
+                                                    : CupertinoColors.black,
                                               ),
                                             ),
                                             const SizedBox(height: 4),
@@ -1514,7 +1647,8 @@ class ImportPlaylistDialog {
                                                   '${playlist.trackCount} 首歌曲',
                                                   style: const TextStyle(
                                                     fontSize: 14,
-                                                    color: CupertinoColors.systemGrey,
+                                                    color: CupertinoColors
+                                                        .systemGrey,
                                                   ),
                                                 ),
                                                 if (playlist.subscribed) ...[
@@ -1526,7 +1660,11 @@ class ImportPlaylistDialog {
                                           ],
                                         ),
                                       ),
-                                      const Icon(CupertinoIcons.chevron_right, color: CupertinoColors.systemGrey3, size: 20),
+                                      const Icon(
+                                        CupertinoIcons.chevron_right,
+                                        color: CupertinoColors.systemGrey3,
+                                        size: 20,
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -1581,7 +1719,11 @@ class ImportPlaylistDialog {
                             ),
                             child: const Icon(Icons.library_music),
                           ),
-                    title: Text(playlist.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Text(
+                      playlist.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     subtitle: Text(
                       '${playlist.trackCount} 首歌曲${playlist.subscribed ? ' · 收藏' : ''}',
                       style: TextStyle(
@@ -1605,7 +1747,11 @@ class ImportPlaylistDialog {
 
       if (selectedPlaylist != null && context.mounted) {
         // 使用现有的 _fetchAndImportPlaylist 方法，传入歌单ID
-        await _fetchAndImportPlaylist(context, MusicPlatform.netease, selectedPlaylist.id);
+        await _fetchAndImportPlaylist(
+          context,
+          MusicPlatform.netease,
+          selectedPlaylist.id,
+        );
       }
     } catch (e) {
       if (!context.mounted) return;
@@ -1654,14 +1800,17 @@ class ImportPlaylistDialog {
     _showLoadingDialog(context, '正在获取「${kugouPlaylist.name}」的歌曲...');
 
     try {
-      final tracks = await kugouService.fetchPlaylistTracks(kugouPlaylist.globalCollectionId, pagesize: 500);
+      final tracks = await kugouService.fetchPlaylistTracks(
+        kugouPlaylist.globalCollectionId,
+        pagesize: 500,
+      );
       if (!context.mounted) return;
       Navigator.pop(context); // 关闭加载对话框
 
       // 显示导入进度对话框（使用 StatefulBuilder 以便在对话框内更新进度）
       int currentProgress = 0;
       void Function(void Function())? dialogSetState;
-      
+
       if (context.mounted) {
         if (ThemeManager().isFluentFramework) {
           fluent.showDialog(
@@ -1700,7 +1849,9 @@ class ImportPlaylistDialog {
                     child: Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: CupertinoColors.systemBackground.resolveFrom(context),
+                        color: CupertinoColors.systemBackground.resolveFrom(
+                          context,
+                        ),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Column(
@@ -1777,13 +1928,16 @@ class ImportPlaylistDialog {
         try {
           // 构建搜索关键词：使用"歌曲名 歌手名"格式
           // 如果歌手名存在，使用"歌手名 歌曲名"；否则只使用歌曲名
-          final searchKeyword = track.artists.isNotEmpty 
+          final searchKeyword = track.artists.isNotEmpty
               ? '${track.artists} ${track.name}'
               : track.name;
-          
+
           // 搜索歌曲，只取前3个结果进行验证
-          final searchResults = await kugouService.searchKugou(searchKeyword, limit: 3);
-          
+          final searchResults = await kugouService.searchKugou(
+            searchKeyword,
+            limit: 3,
+          );
+
           if (searchResults.isNotEmpty) {
             // 如果原歌曲有歌手信息，验证第一个结果的歌手是否匹配
             if (track.artists.isNotEmpty) {
@@ -1794,14 +1948,17 @@ class ImportPlaylistDialog {
               } else {
                 // 歌手不匹配，尝试在结果中找匹配的
                 for (final result in searchResults) {
-                  if (_artistsMatch(track.artists, result.singer) && result.emixsongid.isNotEmpty) {
+                  if (_artistsMatch(track.artists, result.singer) &&
+                      result.emixsongid.isNotEmpty) {
                     emixsongid = result.emixsongid;
                     break;
                   }
                 }
                 // 如果都没匹配到，记录警告但不使用
                 if (emixsongid == null) {
-                  debugPrint('⚠️ [ImportPlaylistDialog] 未找到歌手匹配的结果: ${track.name} - ${track.artists}');
+                  debugPrint(
+                    '⚠️ [ImportPlaylistDialog] 未找到歌手匹配的结果: ${track.name} - ${track.artists}',
+                  );
                 }
               }
             } else {
@@ -1816,23 +1973,25 @@ class ImportPlaylistDialog {
 
         // 如果找到了emixsongid，使用它；否则使用hash作为备用
         final trackId = emixsongid ?? track.hash;
-        
+
         // 处理歌曲封面URL
         String trackPicUrl = track.img ?? '';
         if (trackPicUrl.isNotEmpty) {
           trackPicUrl = trackPicUrl
               .replaceAll('http://', 'https://')
-              .replaceAll('{size}', '400');  // 替换尺寸占位符
+              .replaceAll('{size}', '400'); // 替换尺寸占位符
         }
-        
-        universalTracks.add(Track(
-          id: trackId,
-          name: track.name,
-          artists: track.artists,
-          album: track.albumName,
-          picUrl: trackPicUrl,
-          source: MusicSource.kugou,
-        ));
+
+        universalTracks.add(
+          Track(
+            id: trackId,
+            name: track.name,
+            artists: track.artists,
+            album: track.albumName,
+            picUrl: trackPicUrl,
+            source: MusicSource.kugou,
+          ),
+        );
       }
 
       if (!context.mounted) return;
@@ -1840,17 +1999,17 @@ class ImportPlaylistDialog {
 
       // 处理封面图片URL
       String coverImgUrl = kugouPlaylist.pic;
-      
+
       // 如果歌单封面为空，尝试使用第一首歌曲的封面
       if (coverImgUrl.isEmpty && universalTracks.isNotEmpty) {
         coverImgUrl = universalTracks.first.picUrl;
       }
-      
+
       // 处理URL格式：替换http为https，处理占位符
       if (coverImgUrl.isNotEmpty) {
         coverImgUrl = coverImgUrl
             .replaceAll('http://', 'https://')
-            .replaceAll('{size}', '400');  // 替换尺寸占位符
+            .replaceAll('{size}', '400'); // 替换尺寸占位符
       }
 
       final universalPlaylist = UniversalPlaylist(
@@ -1918,14 +2077,17 @@ class ImportPlaylistDialog {
 
   /// 获取歌单并导入
   static Future<void> _fetchAndImportPlaylist(
-      BuildContext context, MusicPlatform platform, String playlistId) async {
+    BuildContext context,
+    MusicPlatform platform,
+    String playlistId,
+  ) async {
     // 显示加载对话框
     if (ThemeManager().isFluentFramework) {
       fluent.showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => WillPopScope(
-          onWillPop: () async => false,
+        builder: (context) => PopScope(
+          canPop: false,
           child: Center(
             child: fluent.Card(
               padding: const EdgeInsets.all(24),
@@ -1945,8 +2107,8 @@ class ImportPlaylistDialog {
       showCupertinoDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => WillPopScope(
-          onWillPop: () async => false,
+        builder: (context) => PopScope(
+          canPop: false,
           child: Center(
             child: Container(
               padding: const EdgeInsets.all(24),
@@ -2022,7 +2184,9 @@ class ImportPlaylistDialog {
         throw Exception('不支持的平台');
       }
 
-      debugPrint('[ImportPlaylistDialog] fetch playlist request: path=$path params=$queryParameters');
+      debugPrint(
+        '[ImportPlaylistDialog] fetch playlist request: path=$path params=$queryParameters',
+      );
 
       final result = await ApiClient().getJson(
         path,
@@ -2033,9 +2197,13 @@ class ImportPlaylistDialog {
       if (!context.mounted) return;
       closeLoadingIfOpen(); // 关闭加载对话框
 
-      debugPrint('[ImportPlaylistDialog] fetch playlist response status=${result.statusCode}');
+      debugPrint(
+        '[ImportPlaylistDialog] fetch playlist response status=${result.statusCode}',
+      );
       if (result.text?.isNotEmpty == true) {
-        debugPrint('[ImportPlaylistDialog] fetch playlist response body: ${result.text}');
+        debugPrint(
+          '[ImportPlaylistDialog] fetch playlist response body: ${result.text}',
+        );
       }
 
       if (result.ok) {
@@ -2052,7 +2220,9 @@ class ImportPlaylistDialog {
         } else if (platform == MusicPlatform.apple) {
           // Apple Music 返回格式
           if (data['status'] == 200 && data['data'] != null) {
-            final playlist = UniversalPlaylist.fromAppleJson(data['data']['playlist']);
+            final playlist = UniversalPlaylist.fromAppleJson(
+              data['data']['playlist'],
+            );
             await _showSelectTargetPlaylistDialog(context, playlist);
           } else {
             throw Exception(data['msg'] ?? '获取歌单失败');
@@ -2064,11 +2234,15 @@ class ImportPlaylistDialog {
           // 显示选择目标歌单对话框
           await _showSelectTargetPlaylistDialog(context, playlist);
         } else {
-          debugPrint('[ImportPlaylistDialog] fetch playlist failed: data=$data');
+          debugPrint(
+            '[ImportPlaylistDialog] fetch playlist failed: data=$data',
+          );
           throw Exception(data['msg'] ?? '获取歌单失败');
         }
       } else {
-        debugPrint('[ImportPlaylistDialog] fetch playlist failed: HTTP ${result.statusCode}');
+        debugPrint(
+          '[ImportPlaylistDialog] fetch playlist failed: HTTP ${result.statusCode}',
+        );
         throw Exception('HTTP ${result.statusCode}');
       }
     } catch (e) {
@@ -2124,7 +2298,9 @@ class ImportPlaylistDialog {
 
   /// 显示选择目标歌单对话框
   static Future<void> _showSelectTargetPlaylistDialog(
-      BuildContext context, UniversalPlaylist sourcePlaylist) async {
+    BuildContext context,
+    UniversalPlaylist sourcePlaylist,
+  ) async {
     final playlistService = PlaylistService();
 
     // 确保已加载歌单列表
@@ -2136,15 +2312,20 @@ class ImportPlaylistDialog {
 
     Playlist? targetPlaylist;
     if (ThemeManager().isFluentFramework) {
-      targetPlaylist = await _showFluentSelectTargetPlaylistDialog(context, sourcePlaylist);
+      targetPlaylist = await _showFluentSelectTargetPlaylistDialog(
+        context,
+        sourcePlaylist,
+      );
     } else if (ThemeManager().isCupertinoFramework) {
-      targetPlaylist = await _showCupertinoSelectTargetPlaylistDialog(context, sourcePlaylist);
+      targetPlaylist = await _showCupertinoSelectTargetPlaylistDialog(
+        context,
+        sourcePlaylist,
+      );
     } else {
       targetPlaylist = await showDialog<Playlist>(
         context: context,
-        builder: (context) => _SelectTargetPlaylistDialog(
-          sourcePlaylist: sourcePlaylist,
-        ),
+        builder: (context) =>
+            _SelectTargetPlaylistDialog(sourcePlaylist: sourcePlaylist),
       );
     }
 
@@ -2168,7 +2349,7 @@ class ImportPlaylistDialog {
       context: context,
       builder: (context) {
         final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
-        
+
         // 内部状态组件，用于处理新建歌单
         return StatefulBuilder(
           builder: (context, setState) {
@@ -2177,8 +2358,12 @@ class ImportPlaylistDialog {
               child: Container(
                 height: MediaQuery.of(context).size.height * 0.7,
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  color: isDark
+                      ? const Color(0xFF1C1C1E)
+                      : CupertinoColors.systemBackground,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
+                  ),
                 ),
                 child: SafeArea(
                   top: false,
@@ -2196,7 +2381,10 @@ class ImportPlaylistDialog {
                       ),
                       // 标题栏
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -2210,7 +2398,9 @@ class ImportPlaylistDialog {
                               style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w600,
-                                color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                color: isDark
+                                    ? CupertinoColors.white
+                                    : CupertinoColors.black,
                               ),
                             ),
                             const SizedBox(width: 60), // 占位
@@ -2228,7 +2418,9 @@ class ImportPlaylistDialog {
                               margin: const EdgeInsets.all(16),
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: CupertinoColors.systemGrey6.resolveFrom(context),
+                                color: CupertinoColors.systemGrey6.resolveFrom(
+                                  context,
+                                ),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Row(
@@ -2244,14 +2436,18 @@ class ImportPlaylistDialog {
                                         width: 60,
                                         height: 60,
                                         color: CupertinoColors.systemGrey5,
-                                        child: const Icon(Icons.music_note, color: CupertinoColors.systemGrey),
+                                        child: const Icon(
+                                          Icons.music_note,
+                                          color: CupertinoColors.systemGrey,
+                                        ),
                                       ),
                                     ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           '${sourcePlaylist.name}',
@@ -2260,7 +2456,9 @@ class ImportPlaylistDialog {
                                           style: TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w600,
-                                            color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                            color: isDark
+                                                ? CupertinoColors.white
+                                                : CupertinoColors.black,
                                           ),
                                         ),
                                         const SizedBox(height: 4),
@@ -2277,46 +2475,56 @@ class ImportPlaylistDialog {
                                 ],
                               ),
                             ),
-                            
+
                             // 新建歌单
                             Material(
                               color: Colors.transparent,
                               child: InkWell(
                                 onTap: () async {
-                                  final controller = TextEditingController(text: sourcePlaylist.name);
-                                  final name = await showCupertinoDialog<String>(
-                                    context: context,
-                                    builder: (context) => CupertinoAlertDialog(
-                                      title: const Text('新建歌单'),
-                                      content: Padding(
-                                        padding: const EdgeInsets.only(top: 16),
-                                        child: CupertinoTextField(
-                                          controller: controller,
-                                          placeholder: '歌单名称',
-                                          autofocus: true,
-                                        ),
-                                      ),
-                                      actions: [
-                                        CupertinoDialogAction(
-                                          onPressed: () => Navigator.pop(context),
-                                          child: const Text('取消'),
-                                        ),
-                                        CupertinoDialogAction(
-                                          onPressed: () {
-                                            final n = controller.text.trim();
-                                            if (n.isNotEmpty) {
-                                              Navigator.pop(context, n);
-                                            }
-                                          },
-                                          child: const Text('创建'),
-                                        ),
-                                      ],
-                                    ),
+                                  final controller = TextEditingController(
+                                    text: sourcePlaylist.name,
                                   );
-                                  
+                                  final name =
+                                      await showCupertinoDialog<String>(
+                                        context: context,
+                                        builder: (context) =>
+                                            CupertinoAlertDialog(
+                                              title: const Text('新建歌单'),
+                                              content: Padding(
+                                                padding: const EdgeInsets.only(
+                                                  top: 16,
+                                                ),
+                                                child: CupertinoTextField(
+                                                  controller: controller,
+                                                  placeholder: '歌单名称',
+                                                  autofocus: true,
+                                                ),
+                                              ),
+                                              actions: [
+                                                CupertinoDialogAction(
+                                                  onPressed: () =>
+                                                      Navigator.pop(context),
+                                                  child: const Text('取消'),
+                                                ),
+                                                CupertinoDialogAction(
+                                                  onPressed: () {
+                                                    final n = controller.text
+                                                        .trim();
+                                                    if (n.isNotEmpty) {
+                                                      Navigator.pop(context, n);
+                                                    }
+                                                  },
+                                                  child: const Text('创建'),
+                                                ),
+                                              ],
+                                            ),
+                                      );
+
                                   if (name != null) {
-                                    final newPlaylist = await playlistService.createPlaylist(name);
-                                    if (newPlaylist != null && context.mounted) {
+                                    final newPlaylist = await playlistService
+                                        .createPlaylist(name);
+                                    if (newPlaylist != null &&
+                                        context.mounted) {
                                       setState(() {}); // 刷新列表
                                       // 可选：直接选中并返回
                                       // Navigator.pop(context, newPlaylist);
@@ -2324,7 +2532,10 @@ class ImportPlaylistDialog {
                                   }
                                 },
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
                                   child: Row(
                                     children: [
                                       Container(
@@ -2332,20 +2543,29 @@ class ImportPlaylistDialog {
                                         height: 40,
                                         decoration: BoxDecoration(
                                           color: CupertinoColors.activeBlue,
-                                          borderRadius: BorderRadius.circular(20),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
                                         ),
-                                        child: const Icon(CupertinoIcons.add, color: CupertinoColors.white, size: 24),
+                                        child: const Icon(
+                                          CupertinoIcons.add,
+                                          color: CupertinoColors.white,
+                                          size: 24,
+                                        ),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
                                               '新建歌单',
                                               style: TextStyle(
                                                 fontSize: 16,
-                                                color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                                color: isDark
+                                                    ? CupertinoColors.white
+                                                    : CupertinoColors.black,
                                               ),
                                             ),
                                             const SizedBox(height: 2),
@@ -2353,21 +2573,29 @@ class ImportPlaylistDialog {
                                               '创建一个新歌单来导入',
                                               style: TextStyle(
                                                 fontSize: 13,
-                                                color: CupertinoColors.systemGrey,
+                                                color:
+                                                    CupertinoColors.systemGrey,
                                               ),
                                             ),
                                           ],
                                         ),
                                       ),
-                                      const Icon(CupertinoIcons.chevron_right, color: CupertinoColors.systemGrey3, size: 20),
+                                      const Icon(
+                                        CupertinoIcons.chevron_right,
+                                        color: CupertinoColors.systemGrey3,
+                                        size: 20,
+                                      ),
                                     ],
                                   ),
                                 ),
                               ),
                             ),
-                            
+
                             const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
                               child: Text(
                                 '现有歌单',
                                 style: TextStyle(
@@ -2377,7 +2605,7 @@ class ImportPlaylistDialog {
                                 ),
                               ),
                             ),
-                            
+
                             // 现有歌单列表
                             ...playlistService.playlists.map((p) {
                               return Material(
@@ -2385,26 +2613,39 @@ class ImportPlaylistDialog {
                                 child: InkWell(
                                   onTap: () => Navigator.pop(context, p),
                                   child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
                                     child: Row(
                                       children: [
                                         Container(
                                           width: 40,
                                           height: 40,
                                           decoration: BoxDecoration(
-                                            color: p.isDefault ? CupertinoColors.systemPink.withOpacity(0.1) : CupertinoColors.systemGrey5,
-                                            borderRadius: BorderRadius.circular(6),
+                                            color: p.isDefault
+                                                ? CupertinoColors.systemPink
+                                                      .withValues(alpha: 0.1)
+                                                : CupertinoColors.systemGrey5,
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
                                           ),
                                           child: Icon(
-                                            p.isDefault ? CupertinoIcons.heart_fill : CupertinoIcons.music_albums,
-                                            color: p.isDefault ? CupertinoColors.systemPink : CupertinoColors.systemGrey,
+                                            p.isDefault
+                                                ? CupertinoIcons.heart_fill
+                                                : CupertinoIcons.music_albums,
+                                            color: p.isDefault
+                                                ? CupertinoColors.systemPink
+                                                : CupertinoColors.systemGrey,
                                             size: 20,
                                           ),
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
                                           child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
                                               Text(
                                                 p.name,
@@ -2412,7 +2653,9 @@ class ImportPlaylistDialog {
                                                 overflow: TextOverflow.ellipsis,
                                                 style: TextStyle(
                                                   fontSize: 16,
-                                                  color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                                  color: isDark
+                                                      ? CupertinoColors.white
+                                                      : CupertinoColors.black,
                                                 ),
                                               ),
                                               const SizedBox(height: 2),
@@ -2420,7 +2663,8 @@ class ImportPlaylistDialog {
                                                 '${p.trackCount} 首歌曲',
                                                 style: const TextStyle(
                                                   fontSize: 13,
-                                                  color: CupertinoColors.systemGrey,
+                                                  color: CupertinoColors
+                                                      .systemGrey,
                                                 ),
                                               ),
                                             ],
@@ -2428,21 +2672,33 @@ class ImportPlaylistDialog {
                                         ),
                                         if (p.isDefault)
                                           Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            margin: const EdgeInsets.only(right: 8),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            margin: const EdgeInsets.only(
+                                              right: 8,
+                                            ),
                                             decoration: BoxDecoration(
-                                              color: CupertinoColors.systemPink.withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(4),
+                                              color: CupertinoColors.systemPink
+                                                  .withValues(alpha: 0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
                                             ),
                                             child: const Text(
                                               '默认',
                                               style: TextStyle(
                                                 fontSize: 10,
-                                                color: CupertinoColors.systemPink,
+                                                color:
+                                                    CupertinoColors.systemPink,
                                               ),
                                             ),
                                           ),
-                                        const Icon(CupertinoIcons.chevron_right, color: CupertinoColors.systemGrey3, size: 20),
+                                        const Icon(
+                                          CupertinoIcons.chevron_right,
+                                          color: CupertinoColors.systemGrey3,
+                                          size: 20,
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -2494,11 +2750,14 @@ class ImportPlaylistDialog {
                         width: 60,
                         height: 60,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => const SizedBox(
-                          width: 60,
-                          height: 60,
-                          child: Icon(fluent.FluentIcons.music_in_collection),
-                        ),
+                        errorBuilder: (context, error, stackTrace) =>
+                            const SizedBox(
+                              width: 60,
+                              height: 60,
+                              child: Icon(
+                                fluent.FluentIcons.music_in_collection,
+                              ),
+                            ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -2506,12 +2765,21 @@ class ImportPlaylistDialog {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('${sourcePlaylist.platform.icon} ${sourcePlaylist.name}',
-                              maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w600)),
+                          Text(
+                            '${sourcePlaylist.platform.icon} ${sourcePlaylist.name}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
                           const SizedBox(height: 2),
-                          Text('创建者: ${sourcePlaylist.creator}', style: const TextStyle(fontSize: 12)),
-                          Text('歌曲数量: ${sourcePlaylist.tracks.length} 首', style: const TextStyle(fontSize: 12)),
+                          Text(
+                            '创建者: ${sourcePlaylist.creator}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            '歌曲数量: ${sourcePlaylist.tracks.length} 首',
+                            style: const TextStyle(fontSize: 12),
+                          ),
                         ],
                       ),
                     ),
@@ -2528,43 +2796,56 @@ class ImportPlaylistDialog {
                   final name = await fluent.showDialog<String>(
                     context: context,
                     builder: (context) {
-                      final controller = TextEditingController(text: sourcePlaylist.name);
+                      final controller = TextEditingController(
+                        text: sourcePlaylist.name,
+                      );
                       String? err;
-                      return fluent.ContentDialog(
-                        title: const Text('新建歌单'),
-                        content: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            fluent.TextBox(controller: controller, placeholder: '歌单名称', autofocus: true),
-                            if (err != null) ...[
-                              const SizedBox(height: 8),
-                              fluent.InfoBar(title: Text(err!), severity: fluent.InfoBarSeverity.warning),
-                            ],
-                          ],
-                        ),
-                        actions: [
-                          fluent.Button(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('取消'),
-                          ),
-                          fluent.FilledButton(
-                            onPressed: () {
-                              final n = controller.text.trim();
-                              if (n.isEmpty) {
-                                err = '歌单名称不能为空';
-                                (context as Element).markNeedsBuild();
-                                return;
-                              }
-                              Navigator.pop(context, n);
-                            },
-                            child: const Text('创建'),
-                          ),
-                        ],
+                      return StatefulBuilder(
+                        builder: (context, setDialogState) =>
+                            fluent.ContentDialog(
+                              title: const Text('新建歌单'),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  fluent.TextBox(
+                                    controller: controller,
+                                    placeholder: '歌单名称',
+                                    autofocus: true,
+                                  ),
+                                  if (err != null) ...[
+                                    const SizedBox(height: 8),
+                                    fluent.InfoBar(
+                                      title: Text(err!),
+                                      severity: fluent.InfoBarSeverity.warning,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              actions: [
+                                fluent.Button(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('取消'),
+                                ),
+                                fluent.FilledButton(
+                                  onPressed: () {
+                                    final n = controller.text.trim();
+                                    if (n.isEmpty) {
+                                      setDialogState(() => err = '歌单名称不能为空');
+                                      return;
+                                    }
+                                    Navigator.pop(context, n);
+                                  },
+                                  child: const Text('创建'),
+                                ),
+                              ],
+                            ),
                       );
                     },
                   );
                   if (name != null) {
-                    final newPlaylist = await playlistService.createPlaylist(name);
+                    final newPlaylist = await playlistService.createPlaylist(
+                      name,
+                    );
                     if (newPlaylist != null && context.mounted) {
                       Navigator.pop(context, newPlaylist);
                     }
@@ -2579,7 +2860,11 @@ class ImportPlaylistDialog {
                   itemBuilder: (context, index) {
                     final p = playlistService.playlists[index];
                     return fluent.ListTile(
-                      leading: Icon(p.isDefault ? fluent.FluentIcons.heart : fluent.FluentIcons.music_in_collection),
+                      leading: Icon(
+                        p.isDefault
+                            ? fluent.FluentIcons.heart
+                            : fluent.FluentIcons.music_in_collection,
+                      ),
                       title: Text(p.name),
                       subtitle: Text('${p.trackCount} 首歌曲'),
                       onPressed: () => Navigator.pop(context, p),
@@ -2613,8 +2898,8 @@ class ImportPlaylistDialog {
       fluent.showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => WillPopScope(
-          onWillPop: () async => false,
+        builder: (context) => PopScope(
+          canPop: false,
           child: Center(
             child: fluent.Card(
               padding: const EdgeInsets.all(24),
@@ -2625,8 +2910,14 @@ class ImportPlaylistDialog {
                   const SizedBox(height: 16),
                   const Text('正在导入歌曲...'),
                   const SizedBox(height: 8),
-                  Text('从「${sourcePlaylist.name}」到「${targetPlaylist.name}」', style: const TextStyle(fontSize: 12)),
-                  Text('共 ${sourcePlaylist.tracks.length} 首歌曲', style: const TextStyle(fontSize: 12)),
+                  Text(
+                    '从「${sourcePlaylist.name}」到「${targetPlaylist.name}」',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  Text(
+                    '共 ${sourcePlaylist.tracks.length} 首歌曲',
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ],
               ),
             ),
@@ -2637,8 +2928,8 @@ class ImportPlaylistDialog {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => WillPopScope(
-          onWillPop: () async => false,
+        builder: (context) => PopScope(
+          canPop: false,
           child: _ImportProgressDialog(
             sourcePlaylist: sourcePlaylist,
             targetPlaylist: targetPlaylist,
@@ -2653,7 +2944,7 @@ class ImportPlaylistDialog {
         targetPlaylist.id,
         sourcePlaylist.tracks,
       );
-      
+
       final successCount = result['successCount'] ?? 0;
       final skipCount = result['skipCount'] ?? 0;
       final failCount = result['failCount'] ?? 0;
@@ -2661,13 +2952,13 @@ class ImportPlaylistDialog {
       if (!context.mounted) return;
       Navigator.pop(context); // 关闭进度对话框
 
-      final platformKey = sourcePlaylist.platform == MusicPlatform.netease 
-          ? 'netease' 
-          : sourcePlaylist.platform == MusicPlatform.qq 
-              ? 'qq' 
-              : sourcePlaylist.platform == MusicPlatform.kuwo
-                  ? 'kuwo'
-                  : 'kugou';
+      final platformKey = sourcePlaylist.platform == MusicPlatform.netease
+          ? 'netease'
+          : sourcePlaylist.platform == MusicPlatform.qq
+          ? 'qq'
+          : sourcePlaylist.platform == MusicPlatform.kuwo
+          ? 'kuwo'
+          : 'kugou';
       final playlistId = sourcePlaylist.id.toString();
       final bound = await playlistService.updateImportConfig(
         targetPlaylist.id,
@@ -2675,10 +2966,13 @@ class ImportPlaylistDialog {
         sourcePlaylistId: playlistId,
       );
       if (!bound) {
-        print('⚠️ [ImportPlaylistDialog] 更新导入配置失败 playlist=${targetPlaylist.id}');
+        StructuredLogService.log(
+          '⚠️ [ImportPlaylistDialog] 更新导入配置失败 playlist=${targetPlaylist.id}',
+        );
       }
 
       // 显示结果
+      if (!context.mounted) return;
       if (ThemeManager().isFluentFramework) {
         await fluent.showDialog(
           context: context,
@@ -2688,15 +2982,25 @@ class ImportPlaylistDialog {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('${sourcePlaylist.platform.icon} 来源: ${sourcePlaylist.platform.name}'),
+                Text(
+                  '${sourcePlaylist.platform.icon} 来源: ${sourcePlaylist.platform.name}',
+                ),
                 const SizedBox(height: 6),
                 Text('歌单名称: ${sourcePlaylist.name}'),
                 const SizedBox(height: 6),
                 Text('目标歌单: ${targetPlaylist.name}'),
                 const SizedBox(height: 6),
                 Text('成功导入: $successCount 首'),
-                if (skipCount > 0) Text('已存在跳过: $skipCount 首', style: TextStyle(color: Colors.orange[700])),
-                if (failCount > 0) Text('导入失败: $failCount 首', style: const TextStyle(color: Colors.red)),
+                if (skipCount > 0)
+                  Text(
+                    '已存在跳过: $skipCount 首',
+                    style: TextStyle(color: Colors.orange[700]),
+                  ),
+                if (failCount > 0)
+                  Text(
+                    '导入失败: $failCount 首',
+                    style: const TextStyle(color: Colors.red),
+                  ),
               ],
             ),
             actions: [
@@ -2726,7 +3030,9 @@ class ImportPlaylistDialog {
                   children: [
                     Text(sourcePlaylist.platform.icon),
                     const SizedBox(width: 4),
-                    Expanded(child: Text('来源: ${sourcePlaylist.platform.name}')),
+                    Expanded(
+                      child: Text('来源: ${sourcePlaylist.platform.name}'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -2735,8 +3041,16 @@ class ImportPlaylistDialog {
                 Text('目标歌单: ${targetPlaylist.name}'),
                 const SizedBox(height: 8),
                 Text('成功导入: $successCount 首'),
-                if (skipCount > 0) Text('已存在跳过: $skipCount 首', style: TextStyle(color: Colors.orange[700])),
-                if (failCount > 0) Text('导入失败: $failCount 首', style: const TextStyle(color: Colors.red)),
+                if (skipCount > 0)
+                  Text(
+                    '已存在跳过: $skipCount 首',
+                    style: TextStyle(color: Colors.orange[700]),
+                  ),
+                if (failCount > 0)
+                  Text(
+                    '导入失败: $failCount 首',
+                    style: const TextStyle(color: Colors.red),
+                  ),
               ],
             ),
             actions: [

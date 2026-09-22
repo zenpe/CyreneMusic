@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,15 +56,15 @@ class PlaybackModeService extends ChangeNotifier {
         // 保存迁移后的值
         await prefs.setInt(_modeKey, _currentMode.index);
         await prefs.setBool(_migratedKey, true);
-        print('[PlaybackModeService] 迁移旧播放模式: index=$modeIndex -> ${_currentMode.name}');
+        StructuredLogService.log('[PlaybackModeService] 迁移旧播放模式: index=$modeIndex -> ${_currentMode.name}');
       } else if (modeIndex != null && modeIndex < PlaybackMode.values.length) {
         _currentMode = PlaybackMode.values[modeIndex];
       } else {
         _currentMode = PlaybackMode.loopAll;
       }
-      print('[PlaybackModeService] 加载播放模式: ${_currentMode.name}');
+      StructuredLogService.log('[PlaybackModeService] 加载播放模式: ${_currentMode.name}');
     } catch (e) {
-      print('[PlaybackModeService] 加载播放模式失败: $e');
+      StructuredLogService.log('[PlaybackModeService] 加载播放模式失败: $e');
       _currentMode = PlaybackMode.loopAll;
     }
   }
@@ -78,7 +79,7 @@ class PlaybackModeService extends ChangeNotifier {
     await _saveMode();
     notifyListeners();
 
-    print('[PlaybackModeService] 切换播放模式: ${_currentMode.name}');
+    StructuredLogService.log('[PlaybackModeService] 切换播放模式: ${_currentMode.name}');
   }
 
   /// 设置播放模式
@@ -89,7 +90,7 @@ class PlaybackModeService extends ChangeNotifier {
     await _saveMode();
     notifyListeners();
 
-    print('[PlaybackModeService] 设置播放模式: ${_currentMode.name}');
+    StructuredLogService.log('[PlaybackModeService] 设置播放模式: ${_currentMode.name}');
   }
 
   /// 保存播放模式
@@ -98,7 +99,7 @@ class PlaybackModeService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_modeKey, _currentMode.index);
     } catch (e) {
-      print('[PlaybackModeService] 保存播放模式失败: $e');
+      StructuredLogService.log('[PlaybackModeService] 保存播放模式失败: $e');
     }
   }
 

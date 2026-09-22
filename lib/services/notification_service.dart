@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
@@ -68,16 +69,16 @@ class NotificationService {
       await _flutterLocalNotificationsPlugin.initialize(
         settings: initializationSettings,
         onDidReceiveNotificationResponse: (NotificationResponse details) async {
-          print('🔔 [NotificationService] Notification clicked: ${details.payload}');
-          print('🔔 [NotificationService] Action ID: ${details.actionId}');
-          
+          StructuredLogService.log('🔔 [NotificationService] Notification clicked: ${details.payload}');
+          StructuredLogService.log('🔔 [NotificationService] Action ID: ${details.actionId}');
+
           // 处理下载完成通知的操作
           final handled = await _handleDownloadNotificationAction(details);
-          print('🔔 [NotificationService] Download notification handled: $handled');
+          StructuredLogService.log('🔔 [NotificationService] Download notification handled: $handled');
           if (handled) {
             return; // 已处理，不继续传递
           }
-          
+
           // 如果有操作ID，触发回调
           if (details.actionId != null && _actionCallback != null) {
             _actionCallback!(details.actionId!, details.payload);
@@ -89,7 +90,7 @@ class NotificationService {
       );
       _isInitialized = true;
       DeveloperModeService().addLog('🔔 通知服务已初始化');
-      
+
       // 针对 Windows 平台请求权限（虽然不一定必须，但有助于诊断）
       if (Platform.isWindows) {
         /* Windows 实现通常不需要显式请求权限，但我们可以尝试检查 */
@@ -174,57 +175,57 @@ class NotificationService {
   Future<bool> _handleDownloadNotificationAction(NotificationResponse details) async {
     final payload = details.payload;
     final actionId = details.actionId;
-    
-    print('🔍 [NotificationService] 检查下载通知: payload=$payload, actionId=$actionId');
-    
+
+    StructuredLogService.log('🔍 [NotificationService] 检查下载通知: payload=$payload, actionId=$actionId');
+
     // 检查是否是下载完成通知（通过 payload）
     if (payload != null && payload.startsWith('download_complete:')) {
       final folderPath = payload.substring('download_complete:'.length);
-      
+
       if (actionId == 'open_folder' || actionId == null) {
         // 点击"打开文件夹"按钮或点击通知本身
-        print('📂 [NotificationService] 用户请求打开文件夹: $folderPath');
+        StructuredLogService.log('📂 [NotificationService] 用户请求打开文件夹: $folderPath');
         DeveloperModeService().addLog('📂 用户请求打开下载文件夹: $folderPath');
         await openFolder(folderPath);
         return true;
       } else if (actionId == 'dismiss') {
         // 用户选择忽略
-        print('🚫 [NotificationService] 用户忽略下载完成通知');
+        StructuredLogService.log('🚫 [NotificationService] 用户忽略下载完成通知');
         return true;
       }
     }
-    
+
     // 检查 Windows 平台的 arguments 格式（actionId 包含路径）
     if (actionId != null && actionId.startsWith('open_folder:')) {
       final folderPath = actionId.substring('open_folder:'.length);
-      print('📂 [NotificationService] Windows 用户请求打开文件夹: $folderPath');
+      StructuredLogService.log('📂 [NotificationService] Windows 用户请求打开文件夹: $folderPath');
       DeveloperModeService().addLog('📂 用户请求打开下载文件夹: $folderPath');
       await openFolder(folderPath);
       return true;
     }
-    
+
     // 检查 Windows 平台的 payload 格式（payload 也可能包含路径）
     if (payload != null && payload.startsWith('open_folder:')) {
       final folderPath = payload.substring('open_folder:'.length);
-      print('📂 [NotificationService] Windows 用户请求打开文件夹 (via payload): $folderPath');
+      StructuredLogService.log('📂 [NotificationService] Windows 用户请求打开文件夹 (via payload): $folderPath');
       DeveloperModeService().addLog('📂 用户请求打开下载文件夹: $folderPath');
       await openFolder(folderPath);
       return true;
     }
-    
+
     // 检查忽略操作
     if (actionId == 'dismiss' || payload == 'dismiss') {
-      print('🚫 [NotificationService] 用户忽略通知');
+      StructuredLogService.log('🚫 [NotificationService] 用户忽略通知');
       return true;
     }
-    
+
     return false;
   }
 
   /// 设置通知操作回调
   void setActionCallback(NotificationActionCallback callback) {
     _actionCallback = callback;
-    print('🔔 [NotificationService] 通知操作回调已设置');
+    StructuredLogService.log('🔔 [NotificationService] 通知操作回调已设置');
   }
 
   /// 显示带操作按钮的通知（用于恢复播放）
@@ -260,7 +261,7 @@ class NotificationService {
       ticker: 'Resume playback',
       subText: hasPlatformInfo ? platformInfo : null,
       // 添加大图标（专辑封面）- 圆形或方形小图标
-      largeIcon: largeIconPath != null 
+      largeIcon: largeIconPath != null
           ? FilePathAndroidBitmap(largeIconPath)
           : null,
       // 使用 BigPictureStyle 样式，显示长方形大图
@@ -293,7 +294,7 @@ class NotificationService {
         WindowsNotificationDetails(
       subtitle: windowsSubtitle,
       // Windows 使用 images 参数（复数），传入 WindowsImage 列表
-      images: largeIconPath != null 
+      images: largeIconPath != null
           ? <WindowsImage>[
               WindowsImage(
                 Uri.file(largeIconPath, windows: true),
@@ -326,7 +327,7 @@ class NotificationService {
       if (largeIconPath != null) {
         DeveloperModeService().addLog('🖼️ 封面图片: $largeIconPath');
       }
-      
+
       await _flutterLocalNotificationsPlugin.show(
         id: 100, // 使用固定ID，避免重复通知
         title: '从上次离开的位置继续？',
@@ -346,36 +347,36 @@ class NotificationService {
   /// 下载封面图片到本地
   Future<String?> _downloadCoverImage(String imageUrl) async {
     try {
-      print('🖼️ [NotificationService] 开始下载封面: $imageUrl');
-      
+      StructuredLogService.log('🖼️ [NotificationService] 开始下载封面: $imageUrl');
+
       // 获取临时目录
       final tempDir = await getTemporaryDirectory();
       final notificationDir = Directory(p.join(tempDir.path, 'notification_covers'));
-      
+
       // 创建目录（如果不存在）
       if (!await notificationDir.exists()) {
         await notificationDir.create(recursive: true);
       }
-      
+
       // 生成文件名（使用URL的hash）
       final fileName = 'cover_${imageUrl.hashCode.abs()}.jpg';
       final filePath = p.join(notificationDir.path, fileName);
       final file = File(filePath);
-      
+
       // 如果是 Windows，检查圆角版本是否存在
       if (Platform.isWindows) {
         final roundedPath = filePath.replaceAll('.jpg', '_rounded.png');
         final roundedFile = File(roundedPath);
         if (await roundedFile.exists()) {
-          print('✅ [NotificationService] 使用缓存的圆角封面: $roundedPath');
+          StructuredLogService.log('✅ [NotificationService] 使用缓存的圆角封面: $roundedPath');
           return roundedPath;
         }
       }
-      
+
       // 如果文件已存在，直接使用
       if (await file.exists()) {
-        print('✅ [NotificationService] 使用缓存的封面: $filePath');
-        
+        StructuredLogService.log('✅ [NotificationService] 使用缓存的封面: $filePath');
+
         // Windows 平台需要创建圆角版本
         if (Platform.isWindows) {
           final roundedPath = await _createRoundedImage(filePath);
@@ -383,35 +384,35 @@ class NotificationService {
             return roundedPath;
           }
         }
-        
+
         return filePath;
       }
-      
+
       // 下载图片
       final response = await http.get(Uri.parse(imageUrl)).timeout(
         const Duration(seconds: 5),
       );
-      
+
       if (response.statusCode == 200) {
         await file.writeAsBytes(response.bodyBytes);
-        
+
         // 如果是 Windows 平台，处理圆角
         if (Platform.isWindows) {
           final roundedPath = await _createRoundedImage(filePath);
           if (roundedPath != null) {
-            print('✅ [NotificationService] 圆角封面创建完成: $roundedPath');
+            StructuredLogService.log('✅ [NotificationService] 圆角封面创建完成: $roundedPath');
             return roundedPath;
           }
         }
-        
-        print('✅ [NotificationService] 封面下载完成: $filePath');
+
+        StructuredLogService.log('✅ [NotificationService] 封面下载完成: $filePath');
         return filePath;
       } else {
-        print('⚠️ [NotificationService] 封面下载失败: HTTP ${response.statusCode}');
+        StructuredLogService.log('⚠️ [NotificationService] 封面下载失败: HTTP ${response.statusCode}');
         return null;
       }
     } catch (e) {
-      print('❌ [NotificationService] 下载封面失败: $e');
+      StructuredLogService.log('❌ [NotificationService] 下载封面失败: $e');
       return null;
     }
   }
@@ -419,53 +420,53 @@ class NotificationService {
   /// 创建圆角图片（用于 Windows 通知）
   Future<String?> _createRoundedImage(String originalPath) async {
     try {
-      print('🎨 [NotificationService] 开始创建圆角图片...');
-      
+      StructuredLogService.log('🎨 [NotificationService] 开始创建圆角图片...');
+
       // 读取原始图片
       final originalFile = File(originalPath);
       final imageBytes = await originalFile.readAsBytes();
       final codec = await ui.instantiateImageCodec(imageBytes);
       final frame = await codec.getNextFrame();
       final image = frame.image;
-      
+
       // 创建画布
       final size = 200; // 通知图标大小
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
       final paint = Paint()..isAntiAlias = true;
-      
+
       // 绘制圆角矩形路径
       final radius = size * 0.15; // 圆角半径为边长的 15%
       final rect = Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble());
       final rrect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
-      
+
       // 裁剪为圆角矩形
       canvas.clipRRect(rrect);
-      
+
       // 绘制图片（缩放并居中）
       final srcRect = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
       final dstRect = Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble());
       canvas.drawImageRect(image, srcRect, dstRect, paint);
-      
+
       // 转换为图片
       final picture = recorder.endRecording();
       final img = await picture.toImage(size, size);
       final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
-      
+
       if (byteData == null) {
-        print('❌ [NotificationService] 无法生成圆角图片数据');
+        StructuredLogService.log('❌ [NotificationService] 无法生成圆角图片数据');
         return null;
       }
-      
+
       // 保存圆角图片
       final roundedPath = originalPath.replaceAll('.jpg', '_rounded.png');
       final roundedFile = File(roundedPath);
       await roundedFile.writeAsBytes(byteData.buffer.asUint8List());
-      
-      print('✅ [NotificationService] 圆角图片已保存: $roundedPath');
+
+      StructuredLogService.log('✅ [NotificationService] 圆角图片已保存: $roundedPath');
       return roundedPath;
     } catch (e) {
-      print('❌ [NotificationService] 创建圆角图片失败: $e');
+      StructuredLogService.log('❌ [NotificationService] 创建圆角图片失败: $e');
       return null; // 失败时返回 null，使用原始图片
     }
   }
@@ -475,14 +476,14 @@ class NotificationService {
     try {
       final tempDir = await getTemporaryDirectory();
       final notificationDir = Directory(p.join(tempDir.path, 'notification_covers'));
-      
+
       if (await notificationDir.exists()) {
         await notificationDir.delete(recursive: true);
-        print('🗑️ [NotificationService] 封面缓存已清理');
+        StructuredLogService.log('🗑️ [NotificationService] 封面缓存已清理');
         DeveloperModeService().addLog('🗑️ 通知封面缓存已清理');
       }
     } catch (e) {
-      print('❌ [NotificationService] 清理封面缓存失败: $e');
+      StructuredLogService.log('❌ [NotificationService] 清理封面缓存失败: $e');
     }
   }
 
@@ -490,9 +491,9 @@ class NotificationService {
   Future<void> cancelNotification(int id) async {
     try {
       await _flutterLocalNotificationsPlugin.cancel(id: id);
-      print('🔔 [NotificationService] 已取消通知 ID: $id');
+      StructuredLogService.log('🔔 [NotificationService] 已取消通知 ID: $id');
     } catch (e) {
-      print('❌ [NotificationService] 取消通知失败: $e');
+      StructuredLogService.log('❌ [NotificationService] 取消通知失败: $e');
     }
   }
 
@@ -500,9 +501,9 @@ class NotificationService {
   Future<void> cancelAll() async {
     try {
       await _flutterLocalNotificationsPlugin.cancelAll();
-      print('🔔 [NotificationService] 已取消所有通知');
+      StructuredLogService.log('🔔 [NotificationService] 已取消所有通知');
     } catch (e) {
-      print('❌ [NotificationService] 取消所有通知失败: $e');
+      StructuredLogService.log('❌ [NotificationService] 取消所有通知失败: $e');
     }
   }
 
@@ -535,7 +536,7 @@ class NotificationService {
       priority: Priority.high,
       ticker: 'Download complete',
       // 添加大图标（专辑封面）
-      largeIcon: largeIconPath != null 
+      largeIcon: largeIconPath != null
           ? FilePathAndroidBitmap(largeIconPath)
           : null,
       styleInformation: largeIconPath != null
@@ -566,7 +567,7 @@ class NotificationService {
         WindowsNotificationDetails(
       subtitle: '已保存到: $folderPath',
       // Windows 使用 images 参数
-      images: largeIconPath != null 
+      images: largeIconPath != null
           ? <WindowsImage>[
               WindowsImage(
                 Uri.file(largeIconPath, windows: true),
@@ -598,7 +599,7 @@ class NotificationService {
         DeveloperModeService().addLog('🖼️ 封面图片: $largeIconPath');
       }
       DeveloperModeService().addLog('📁 保存路径: $folderPath');
-      
+
       await _flutterLocalNotificationsPlugin.show(
         id: notificationId,
         title: '下载完成',
@@ -618,22 +619,22 @@ class NotificationService {
       if (Platform.isWindows) {
         // Windows: 使用 explorer 打开文件夹
         await Process.run('explorer', [folderPath]);
-        print('📂 [NotificationService] 已打开文件夹: $folderPath');
+        StructuredLogService.log('📂 [NotificationService] 已打开文件夹: $folderPath');
       } else if (Platform.isAndroid) {
         // Android: 使用 open_filex 或其他方式
         // 这里简单打印日志，实际可以使用 open_filex 包
-        print('📂 [NotificationService] Android 打开文件夹: $folderPath');
+        StructuredLogService.log('📂 [NotificationService] Android 打开文件夹: $folderPath');
       } else if (Platform.isMacOS) {
         // macOS: 使用 open 命令
         await Process.run('open', [folderPath]);
-        print('📂 [NotificationService] 已打开文件夹: $folderPath');
+        StructuredLogService.log('📂 [NotificationService] 已打开文件夹: $folderPath');
       } else if (Platform.isLinux) {
         // Linux: 使用 xdg-open
         await Process.run('xdg-open', [folderPath]);
-        print('📂 [NotificationService] 已打开文件夹: $folderPath');
+        StructuredLogService.log('📂 [NotificationService] 已打开文件夹: $folderPath');
       }
     } catch (e) {
-      print('❌ [NotificationService] 打开文件夹失败: $e');
+      StructuredLogService.log('❌ [NotificationService] 打开文件夹失败: $e');
     }
   }
 }

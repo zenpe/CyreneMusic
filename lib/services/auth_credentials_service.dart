@@ -113,7 +113,6 @@ class AuthCredentialsService extends ChangeNotifier {
     if (Platform.isAndroid) {
       return const FlutterSecureStorage(
         aOptions: AndroidOptions(
-          encryptedSharedPreferences: true,
         ),
       );
     }

@@ -7,7 +7,7 @@ import 'settings_page/audio_source_settings_page.dart';
 import 'auth/auth_page.dart';
 
 /// 移动端初始配置引导页
-/// 
+///
 /// 多步引导流程：主题选择 → 配置音源 → 登录 → 进入主应用
 class MobileSetupPage extends StatefulWidget {
   const MobileSetupPage({super.key});
@@ -26,7 +26,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
   /// 3 = 登录中
   /// 4 = 协议确认中
   int _currentStep = 0;
-  
+
   /// 主题是否已选择
   bool _themeSelected = false;
 
@@ -38,7 +38,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
     // 监听音源配置和登录状态变化
     _audioSourceFacade.addSetupStateListener(_onStateChanged);
   }
-  
+
   /// 检查主题是否已配置过（通过检查本地存储）
   void _checkThemeConfigured() {
     final hasThemeConfig = _audioSourceFacade.containsStorageKey(
@@ -67,7 +67,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
         }
         // 如果登录已完成且在登录步骤，自动进入协议页
         if (_currentStep == 3 && _audioSourceFacade.isLoggedIn) {
-          _currentStep = 4; 
+          _currentStep = 4;
         }
       });
     }
@@ -119,7 +119,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
           child: Column(
             children: [
               const Spacer(flex: 2),
-              
+
               // App Logo
               Container(
                 width: 120,
@@ -128,7 +128,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
+                      color: Colors.black.withValues(alpha: 0.15),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -141,9 +141,9 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 32),
-              
+
               // 标题
               Text(
                 '选择您的界面风格',
@@ -154,9 +154,9 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               // 副标题
               Text(
                 '您可以随时在设置中更改',
@@ -166,9 +166,9 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              
+
               const SizedBox(height: 48),
-              
+
               // Material Design 选项
               _buildThemeOptionCard(
                 context: context,
@@ -179,9 +179,9 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                 isDark: isDark,
                 onTap: () => _selectTheme(MobileThemeFramework.material),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Cupertino 选项
               _buildThemeOptionCard(
                 context: context,
@@ -192,7 +192,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                 isDark: isDark,
                 onTap: () => _selectTheme(MobileThemeFramework.cupertino),
               ),
-              
+
               const Spacer(flex: 3),
             ],
           ),
@@ -200,7 +200,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
       ),
     );
   }
-  
+
   /// 构建主题选项卡片
   Widget _buildThemeOptionCard({
     required BuildContext context,
@@ -217,14 +217,14 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withOpacity(0.08) : Colors.white,
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isDark ? Colors.white12 : Colors.black.withOpacity(0.08),
+            color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.08),
           ),
           boxShadow: isDark ? null : [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -236,7 +236,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
+                color: color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(
@@ -279,12 +279,12 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
       ),
     );
   }
-  
+
   /// 选择主题
   void _selectTheme(MobileThemeFramework framework) async {
     final themeManager = ThemeManager();
     themeManager.setMobileThemeFramework(framework);
-    
+
     // Material Design 启用 Material You 自适应主题色
     // Cupertino 使用固定的 iOS 蓝色，无需跟随系统
     if (framework == MobileThemeFramework.material) {
@@ -292,7 +292,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
     } else {
       await themeManager.setFollowSystemColor(false);
     }
-    
+
     setState(() {
       _themeSelected = true;
       _currentStep = 1; // 进入音源配置入口
@@ -342,7 +342,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
           child: Column(
             children: [
               const Spacer(flex: 2),
-              
+
               // App Logo
               Container(
                 width: 120,
@@ -351,7 +351,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
+                      color: Colors.black.withValues(alpha: 0.15),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -366,14 +366,14 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 32),
-              
+
               // 进度指示器
               _buildStepIndicator(_themeSelected, audioConfigured, isLoggedIn, isDark, colorScheme),
-              
+
               const SizedBox(height: 24),
-              
+
               // 标题
               Text(
                 title,
@@ -384,9 +384,9 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               // 副标题
               Text(
                 subtitle,
@@ -396,14 +396,14 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              
+
               const Spacer(flex: 2),
-              
+
               // 主按钮
               _buildMainButton(context, isCupertino, buttonText, onButtonPressed),
-              
+
               const SizedBox(height: 16),
-              
+
                 TextButton(
                   onPressed: () async {
                     await _enterLocalMode();
@@ -417,7 +417,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                     ),
                   ),
                 ),
-                
+
               const SizedBox(height: 8),
 
               // 跳过按钮
@@ -432,7 +432,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                     ),
                   ),
                 ),
-              
+
               const Spacer(flex: 1),
             ],
           ),
@@ -445,10 +445,10 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
   Widget _buildStepIndicator(bool themeSelected, bool audioConfigured, bool isLoggedIn, bool isDark, ColorScheme colorScheme) {
     // 当前步骤的高亮色：Material 使用主题色，Cupertino 使用 iOS 蓝
     final themeManager = ThemeManager();
-    final currentStepColor = themeManager.isCupertinoFramework 
-        ? ThemeManager.iosBlue 
+    final currentStepColor = themeManager.isCupertinoFramework
+        ? ThemeManager.iosBlue
         : colorScheme.primary;
-    
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -462,7 +462,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
         Container(
           width: 32,
           height: 2,
-          color: themeSelected 
+          color: themeSelected
               ? (isDark ? Colors.white54 : Colors.black38)
               : (isDark ? Colors.white24 : Colors.black12),
         ),
@@ -476,7 +476,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
         Container(
           width: 32,
           height: 2,
-          color: audioConfigured 
+          color: audioConfigured
               ? (isDark ? Colors.white54 : Colors.black38)
               : (isDark ? Colors.white24 : Colors.black12),
         ),
@@ -591,7 +591,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
   void _showSkipConfirmation(BuildContext context, bool isCupertino) {
     final audioConfigured = _audioSourceFacade.isAudioConfigured;
     String message;
-    
+
     if (!audioConfigured) {
       message = '不配置音源将无法播放在线音乐。您可以稍后在设置中配置。';
     } else {
@@ -690,7 +690,7 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                 margin: const EdgeInsets.symmetric(horizontal: 24),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+                  color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: isDark ? Colors.white12 : Colors.black12,
@@ -703,40 +703,40 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
                     children: [
                       _buildSectionTitle('CyreneMusic 使用协议'),
                       _buildSectionBody('词语约定：\n“本项目”指 CyreneMusic 应用及其相关开源代码；\n“使用者”指下载、安装、运行或以任何方式使用本项目的个人或组织；\n“音源”指由使用者自行导入或配置的第三方音频数据来源（包括但不限于 API、链接、本地文件路径等）；\n“版权数据”指包括但不限于音频、专辑封面、歌曲名、艺术家信息等受知识产权保护的内容。'),
-                      
+
                       _buildSectionTitle('一、数据来源与播放机制'),
                       _buildSectionBody('1.1 本项目 本身不具备获取音频流的能力。所有音频播放均依赖于使用者自行导入或配置的“音源”。本项目仅将用户输入的歌曲信息（如标题、艺术家等）传递给所选音源，并播放其返回的音频链接。'),
                       _buildSectionBody('1.2 本项目 不对音源返回内容的合法性、准确性、完整性或可用性作任何保证。若音源返回错误、无关、失效或侵权内容，由此产生的任何问题均由使用者及音源提供方承担，本项目开发者不承担任何责任。'),
                       _buildSectionBody('1.3 使用者应自行确保所导入音源的合法性，并对其使用行为负全部法律责任。'),
-                      
+
                       _buildSectionTitle('二、账号与数据同步'),
                       _buildSectionBody('2.1 本平台提供的账号系统 仅用于云端保存歌单、播放历史等用户偏好数据，不用于身份认证、商业推广、数据分析或其他用途。'),
                       _buildSectionBody('2.2 所有同步至云端的数据均由使用者主动上传，本项目不对这些数据的内容、合法性或安全性负责。'),
-                      
+
                       _buildSectionTitle('三、版权与知识产权'),
                       _buildSectionBody('3.1 本项目 不存储、不分发、不缓存任何音频文件或版权数据。所有版权数据均由使用者通过外部音源实时获取。'),
                       _buildSectionBody('3.2 使用者在使用本项目过程中接触到的任何版权内容（如歌曲、专辑图等），其权利归属于原著作权人。使用者应遵守所在国家/地区的版权法律法规。'),
                       _buildSectionBody('3.3 强烈建议使用者在24小时内清除本地缓存的版权数据（如有），以避免潜在侵权风险。本项目不主动缓存音频，但部分系统或浏览器可能自动缓存，使用者需自行管理。'),
-                      
+
                       _buildSectionTitle('四、开源与许可'),
                       _buildSectionBody('4.1 本项目为 完全开源软件，基于 Apache License 2.0 发布。使用者可自由使用、修改、分发本项目代码，但须遵守 Apache 2.0 许可证条款。'),
                       _buildSectionBody('4.2 本项目中使用的第三方资源（如图标、字体等）均注明来源。若存在未授权使用情况，请联系开发者及时移除。'),
-                      
+
                       _buildSectionTitle('五、免责声明'),
                       _buildSectionBody('5.1 使用者理解并同意：因使用本项目或依赖外部音源所导致的任何直接或间接损失（包括但不限于数据丢失、设备损坏、法律纠纷、隐私泄露等），均由使用者自行承担。'),
                       _buildSectionBody('5.2 本项目开发者 不对本项目的功能完整性、稳定性、安全性或适配性作任何明示或暗示的担保。'),
-                      
+
                       _buildSectionTitle('六、使用限制'),
                       _buildSectionBody('6.1 本项目 仅用于技术学习、个人非商业用途。禁止将本项目用于任何违反当地法律法规的行为（如盗版传播、侵犯版权、非法爬取等）。'),
                       _buildSectionBody('6.2 若使用者所在司法管辖区禁止使用此类工具，使用者应立即停止使用。因违规使用所引发的一切后果，由使用者自行承担。'),
-                      
+
                       _buildSectionTitle('七、尊重版权'),
                       _buildSectionBody('7.1 音乐创作不易，请尊重艺术家与版权方的劳动成果。支持正版音乐，优先使用合法授权的音源服务。'),
-                      
+
                       _buildSectionTitle('八、协议接受'),
                       _buildSectionBody('8.1 一旦您下载、安装、运行或以任何方式使用 CyreneMusic，即视为您已阅读、理解并无条件接受本协议全部条款。'),
                       _buildSectionBody('8.2 本协议可能随项目更新而修订，修订后将发布于项目仓库。继续使用即视为接受最新版本。'),
-                      
+
                       const SizedBox(height: 16),
                       const Align(
                         alignment: Alignment.centerRight,
@@ -758,9 +758,9 @@ class _MobileSetupPageState extends State<MobileSetupPage> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
               child: _buildMainButton(
-                context, 
-                isCupertino, 
-                '接受协议并进入', 
+                context,
+                isCupertino,
+                '接受协议并进入',
                 () async {
                   await _audioSourceFacade.acceptTermsAndEnterMain();
                 }

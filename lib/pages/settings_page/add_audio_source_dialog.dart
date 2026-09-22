@@ -449,7 +449,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                   onPressed: () async {
                     close();
                     if (!mounted) return;
-                    await onRetry!();
+                    await onRetry();
                   },
                   child: const Text('重试'),
                 ),
@@ -477,7 +477,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                   label: '重试',
                   onPressed: () async {
                     if (!mounted) return;
-                    await onRetry!();
+                    await onRetry();
                   },
                 ),
         ),
@@ -503,7 +503,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                 onPressed: () async {
                   Navigator.of(dialogContext).pop();
                   if (!mounted) return;
-                  await onRetry!();
+                  await onRetry();
                 },
                 child: const Text('重试'),
               ),
@@ -528,7 +528,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
               onPressed: () async {
                 Navigator.of(dialogContext).pop();
                 if (!mounted) return;
-                await onRetry!();
+                await onRetry();
               },
               child: const Text('重试'),
             ),
@@ -1076,7 +1076,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                     children: [
                       CupertinoButton(
                         padding: EdgeInsets.zero,
-                        minSize: 0,
+                        minimumSize: Size.zero,
                         child: Text(
                           '取消',
                           style: TextStyle(
@@ -1100,7 +1100,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                           ? const CupertinoActivityIndicator()
                           : CupertinoButton(
                               padding: EdgeInsets.zero,
-                              minSize: 0,
+                              minimumSize: Size.zero,
                               onPressed:
                                   _selectedType == AudioSourceType.lxmusic
                                   ? null
@@ -1193,7 +1193,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                                                 children: [
                                                   CupertinoButton(
                                                     padding: EdgeInsets.zero,
-                                                    minSize: 0,
+                                                    minimumSize: Size.zero,
                                                     child: const Text('取消'),
                                                     onPressed: () =>
                                                         Navigator.pop(ctx),
@@ -1209,7 +1209,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                                                   ),
                                                   CupertinoButton(
                                                     padding: EdgeInsets.zero,
-                                                    minSize: 0,
+                                                    minimumSize: Size.zero,
                                                     child: const Text(
                                                       '完成',
                                                       style: TextStyle(
@@ -1304,7 +1304,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                               return CupertinoButton(
                                 padding: EdgeInsets.zero,
                                 alignment: Alignment.centerLeft,
-                                minSize: 24,
+                                minimumSize: Size.square(24),
                                 onPressed: _isProcessing
                                     ? null
                                     : () => _applyLxQuickScriptUrl(url),
@@ -1559,7 +1559,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
             children: [
               // Type Selector
               DropdownButtonFormField<AudioSourceType>(
-                value: _selectedType,
+                initialValue: _selectedType,
                 decoration: InputDecoration(
                   labelText: '音源类型',
                   filled: true,

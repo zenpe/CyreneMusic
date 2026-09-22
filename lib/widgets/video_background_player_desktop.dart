@@ -1,3 +1,4 @@
+import '../services/structured_log_service.dart';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -10,7 +11,7 @@ class VideoBackgroundPlayerDesktop extends StatefulWidget {
   final String videoPath;
   final double blurAmount;
   final double opacity;
-  
+
   const VideoBackgroundPlayerDesktop({
     super.key,
     required this.videoPath,
@@ -47,7 +48,7 @@ class _VideoBackgroundPlayerDesktopState extends State<VideoBackgroundPlayerDesk
     try {
       final file = File(widget.videoPath);
       if (!await file.exists()) {
-        print('❌ [VideoBackground] 视频文件不存在: ${widget.videoPath}');
+        StructuredLogService.log('❌ [VideoBackground] 视频文件不存在: ${widget.videoPath}');
         setState(() {
           _hasError = true;
         });
@@ -62,23 +63,23 @@ class _VideoBackgroundPlayerDesktopState extends State<VideoBackgroundPlayerDesk
         ),
       );
       _controller = VideoController(_player!);
-      
+
       // 先设置静音和循环，再打开视频
       await _player!.setVolume(0.0);  // 静音
       await _player!.setPlaylistMode(PlaylistMode.loop);  // 循环播放
-      
+
       // 打开并播放视频
       await _player!.open(Media(widget.videoPath));
       await _player!.play();
-      
+
       setState(() {
         _isInitialized = true;
         _hasError = false;
       });
-      
-      print('✅ [VideoBackground] 视频已初始化 (media_kit, 静音模式): ${widget.videoPath}');
+
+      StructuredLogService.log('✅ [VideoBackground] 视频已初始化 (media_kit, 静音模式): ${widget.videoPath}');
     } catch (e) {
-      print('❌ [VideoBackground] 初始化视频失败: $e');
+      StructuredLogService.log('❌ [VideoBackground] 初始化视频失败: $e');
       setState(() {
         _hasError = true;
       });
@@ -139,7 +140,7 @@ class _VideoBackgroundPlayerDesktopState extends State<VideoBackgroundPlayerDesk
                 sigmaY: widget.blurAmount,
               ),
               child: Container(
-                color: Colors.black.withOpacity(1 - widget.opacity),
+                color: Colors.black.withValues(alpha: 1 - widget.opacity),
               ),
             ),
           ],

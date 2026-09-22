@@ -17,7 +17,7 @@ class PlayerImmersivePlaybackButton extends StatelessWidget {
         builder: (context, _) {
           return DecoratedBox(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
             child: IconButton(

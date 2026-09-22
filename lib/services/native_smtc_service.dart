@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
 
@@ -9,13 +10,13 @@ class NativeSmtcService {
   NativeSmtcService._internal();
 
   static const MethodChannel _channel = MethodChannel('com.cyrene.music/smtc');
-  
+
   // 按钮事件流控制器
-  final StreamController<SmtcButton> _buttonController = 
+  final StreamController<SmtcButton> _buttonController =
       StreamController<SmtcButton>.broadcast();
-  
+
   Stream<SmtcButton> get buttonPressStream => _buttonController.stream;
-  
+
   bool _initialized = false;
 
   /// 初始化SMTC
@@ -25,14 +26,14 @@ class NativeSmtcService {
     try {
       // 设置Method Channel回调处理器
       _channel.setMethodCallHandler(_handleMethodCall);
-      
+
       // 调用C++层初始化
       await _channel.invokeMethod('initialize');
-      
+
       _initialized = true;
-      print('✅ [NativeSmtc] 初始化成功');
+      StructuredLogService.log('✅ [NativeSmtc] 初始化成功');
     } catch (e) {
-      print('❌ [NativeSmtc] 初始化失败: $e');
+      StructuredLogService.log('❌ [NativeSmtc] 初始化失败: $e');
       rethrow;
     }
   }
@@ -41,9 +42,9 @@ class NativeSmtcService {
   Future<void> enable() async {
     try {
       await _channel.invokeMethod('enable');
-      print('✅ [NativeSmtc] 已启用');
+      StructuredLogService.log('✅ [NativeSmtc] 已启用');
     } catch (e) {
-      print('❌ [NativeSmtc] 启用失败: $e');
+      StructuredLogService.log('❌ [NativeSmtc] 启用失败: $e');
     }
   }
 
@@ -51,9 +52,9 @@ class NativeSmtcService {
   Future<void> disable() async {
     try {
       await _channel.invokeMethod('disable');
-      print('⏹️ [NativeSmtc] 已禁用');
+      StructuredLogService.log('⏹️ [NativeSmtc] 已禁用');
     } catch (e) {
-      print('❌ [NativeSmtc] 禁用失败: $e');
+      StructuredLogService.log('❌ [NativeSmtc] 禁用失败: $e');
     }
   }
 
@@ -71,9 +72,9 @@ class NativeSmtcService {
         'album': album,
         'thumbnail': thumbnail ?? '',
       });
-      print('✅ [NativeSmtc] 元数据已更新: $title - $artist');
+      StructuredLogService.log('✅ [NativeSmtc] 元数据已更新: $title - $artist');
     } catch (e) {
-      print('❌ [NativeSmtc] 更新元数据失败: $e');
+      StructuredLogService.log('❌ [NativeSmtc] 更新元数据失败: $e');
     }
   }
 
@@ -81,9 +82,9 @@ class NativeSmtcService {
   Future<void> updatePlaybackStatus(SmtcPlaybackStatus status) async {
     try {
       await _channel.invokeMethod('updatePlaybackStatus', status.value);
-      print('✅ [NativeSmtc] 状态已更新: ${status.value}');
+      StructuredLogService.log('✅ [NativeSmtc] 状态已更新: ${status.value}');
     } catch (e) {
-      print('❌ [NativeSmtc] 更新状态失败: $e');
+      StructuredLogService.log('❌ [NativeSmtc] 更新状态失败: $e');
     }
   }
 
@@ -104,7 +105,7 @@ class NativeSmtcService {
         'maxSeekTimeMs': maxSeekTimeMs,
       });
     } catch (e) {
-      print('❌ [NativeSmtc] 更新时间线失败: $e');
+      StructuredLogService.log('❌ [NativeSmtc] 更新时间线失败: $e');
     }
   }
 
@@ -113,7 +114,7 @@ class NativeSmtcService {
     if (call.method == 'onButtonPressed') {
       final args = call.arguments as Map;
       final buttonName = args['button'] as String;
-      
+
       final button = _parseButton(buttonName);
       if (button != null) {
         _buttonController.add(button);

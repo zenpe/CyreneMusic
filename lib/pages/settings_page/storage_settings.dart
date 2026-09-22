@@ -12,10 +12,11 @@ import '../../widgets/cupertino/cupertino_settings_widgets.dart';
 import '../../utils/theme_manager.dart';
 import '../../widgets/material/material_settings_widgets.dart';
 
-
 /// 存储设置组件
 class StorageSettings extends StatefulWidget {
-  const StorageSettings({super.key});
+  final bool cardWrapped;
+
+  const StorageSettings({super.key, this.cardWrapped = true});
 
   @override
   State<StorageSettings> createState() => _StorageSettingsState();
@@ -39,11 +40,7 @@ class _StorageSettingsState extends State<StorageSettings> {
   }
 
   String _formatCacheSizeLimitOption(int bytes) {
-    return formatFileSize(
-      bytes,
-      fractionDigits: 1,
-      trimTrailingZeros: true,
-    );
+    return formatFileSize(bytes, fractionDigits: 1, trimTrailingZeros: true);
   }
 
   Future<void> _applyCacheSizeLimit(int bytes) async {
@@ -61,9 +58,7 @@ class _StorageSettingsState extends State<StorageSettings> {
     if (messenger != null) {
       messenger.showSnackBar(
         SnackBar(
-          content: Text(
-            '缓存空间上限已更新为 ${_formatCacheSizeLimitOption(bytes)}',
-          ),
+          content: Text('缓存空间上限已更新为 ${_formatCacheSizeLimitOption(bytes)}'),
         ),
       );
     }
@@ -81,9 +76,7 @@ class _StorageSettingsState extends State<StorageSettings> {
           FluentSwitchTile(
             icon: Icons.cloud_download,
             title: '启用音频缓存',
-            subtitle: CacheService().cacheEnabled
-                ? '自动缓存播放过的歌曲'
-                : '缓存已禁用',
+            subtitle: CacheService().cacheEnabled ? '自动缓存播放过的歌曲' : '缓存已禁用',
             value: CacheService().cacheEnabled,
             onChanged: (value) async {
               await CacheService().setCacheEnabled(value);
@@ -128,14 +121,154 @@ class _StorageSettingsState extends State<StorageSettings> {
       return _buildCupertinoUI(context);
     }
 
+    if (!widget.cardWrapped) {
+      final colorScheme = Theme.of(context).colorScheme;
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+
+      Widget buildItem({
+        required IconData icon,
+        required Color iconColor,
+        required String title,
+        String? subtitle,
+        Widget? trailing,
+        VoidCallback? onTap,
+      }) {
+        return InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: iconColor.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: iconColor, size: 20),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                trailing ??
+                    Icon(
+                      Icons.chevron_right,
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.5,
+                      ),
+                      size: 20,
+                    ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      final items = <Widget>[
+        buildItem(
+          icon: Icons.cloud_download_outlined,
+          iconColor: const Color(0xFF009688),
+          title: '启用音频缓存',
+          subtitle: CacheService().cacheEnabled ? '自动缓存播放过的歌曲' : '缓存已禁用',
+          trailing: Switch(
+            value: CacheService().cacheEnabled,
+            onChanged: (value) async {
+              await CacheService().setCacheEnabled(value);
+              setState(() {});
+            },
+          ),
+          onTap: () async {
+            await CacheService().setCacheEnabled(!CacheService().cacheEnabled);
+            setState(() {});
+          },
+        ),
+        buildItem(
+          icon: Icons.sd_storage_outlined,
+          iconColor: const Color(0xFFFF5722),
+          title: '缓存空间限制',
+          subtitle: _getCacheSizeLimitSubtitle(),
+          onTap: () => _showCacheSizeLimitSettings(),
+        ),
+        if (Platform.isWindows)
+          buildItem(
+            icon: Icons.folder_outlined,
+            iconColor: const Color(0xFF795548),
+            title: '缓存目录',
+            subtitle: _getCacheDirSubtitle(),
+            onTap: () => _showCacheDirSettings(),
+          ),
+        buildItem(
+          icon: Icons.storage_outlined,
+          iconColor: const Color(0xFFE91E63),
+          title: '缓存管理',
+          subtitle: _getCacheSubtitle(),
+          onTap: () => _showCacheManagement(),
+        ),
+        if (Platform.isWindows)
+          buildItem(
+            icon: Icons.download_outlined,
+            iconColor: const Color(0xFF4CAF50),
+            title: '下载目录',
+            subtitle: _getDownloadDirSubtitle(),
+            onTap: () => _showDownloadDirSettings(),
+          ),
+      ];
+
+      final childrenWithDividers = <Widget>[];
+      for (int i = 0; i < items.length; i++) {
+        childrenWithDividers.add(items[i]);
+        if (i < items.length - 1) {
+          childrenWithDividers.add(
+            Padding(
+              padding: const EdgeInsets.only(left: 64),
+              child: Divider(
+                height: 1,
+                thickness: 0.5,
+                color: isDark
+                    ? Colors.white12
+                    : Colors.black.withValues(alpha: 0.06),
+              ),
+            ),
+          );
+        }
+      }
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: childrenWithDividers,
+      );
+    }
+
     return MD3SettingsSection(
       children: [
         MD3SwitchTile(
           leading: const Icon(Icons.cloud_download_outlined),
           title: '启用音频缓存',
-          subtitle: CacheService().cacheEnabled
-              ? '自动缓存播放过的歌曲'
-              : '缓存已禁用',
+          subtitle: CacheService().cacheEnabled ? '自动缓存播放过的歌曲' : '缓存已禁用',
           value: CacheService().cacheEnabled,
           onChanged: (value) async {
             await CacheService().setCacheEnabled(value);
@@ -185,9 +318,7 @@ class _StorageSettingsState extends State<StorageSettings> {
           icon: CupertinoIcons.cloud_download,
           iconColor: CupertinoColors.systemBlue,
           title: '启用音频缓存',
-          subtitle: CacheService().cacheEnabled
-              ? '自动缓存播放过的歌曲'
-              : '缓存已禁用',
+          subtitle: CacheService().cacheEnabled ? '自动缓存播放过的歌曲' : '缓存已禁用',
           value: CacheService().cacheEnabled,
           onChanged: (value) async {
             await CacheService().setCacheEnabled(value);
@@ -252,7 +383,7 @@ class _StorageSettingsState extends State<StorageSettings> {
   Future<void> _showCacheManagementCupertino() async {
     final stats = await _loadCombinedCacheStats();
     if (!mounted) return;
-    
+
     showCupertinoModalPopup<void>(
       context: context,
       builder: (context) => CupertinoActionSheet(
@@ -288,7 +419,7 @@ class _StorageSettingsState extends State<StorageSettings> {
   Future<void> _confirmClearCacheCupertino() async {
     final stats = await _loadCombinedCacheStats();
     if (!mounted) return;
-    
+
     showCupertinoDialog<void>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
@@ -321,18 +452,6 @@ class _StorageSettingsState extends State<StorageSettings> {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0, left: 4.0),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-      ),
-    );
-  }
 
   String _getCacheSubtitle() {
     if (!CacheService().isInitialized) {
@@ -375,11 +494,7 @@ class _StorageSettingsState extends State<StorageSettings> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Row(
-          children: [
-            Icon(Icons.storage),
-            SizedBox(width: 8),
-            Text('缓存管理'),
-          ],
+          children: [Icon(Icons.storage), SizedBox(width: 8), Text('缓存管理')],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -388,7 +503,9 @@ class _StorageSettingsState extends State<StorageSettings> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primaryContainer.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -406,17 +523,20 @@ class _StorageSettingsState extends State<StorageSettings> {
                       const SizedBox(height: 4),
                       Text(
                         stats.formattedSize,
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                       ),
                     ],
                   ),
                   Icon(
                     Icons.folder_outlined,
                     size: 48,
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.3),
                   ),
                 ],
               ),
@@ -512,9 +632,7 @@ class _StorageSettingsState extends State<StorageSettings> {
       if (mounted) {
         final messenger = ScaffoldMessenger.maybeOf(context);
         if (messenger != null) {
-          messenger.showSnackBar(
-            const SnackBar(content: Text('暂无缓存可清除')),
-          );
+          messenger.showSnackBar(const SnackBar(content: Text('暂无缓存可清除')));
         }
       }
       return;
@@ -540,9 +658,10 @@ class _StorageSettingsState extends State<StorageSettings> {
           FilledButton(
             onPressed: () async {
               Navigator.pop(context);
-              
-              if (mounted) {
-                final messenger = ScaffoldMessenger.maybeOf(context);
+
+              final clearContext = context;
+              if (mounted && clearContext.mounted) {
+                final messenger = ScaffoldMessenger.maybeOf(clearContext);
                 if (messenger != null) {
                   messenger.showSnackBar(
                     const SnackBar(
@@ -568,8 +687,9 @@ class _StorageSettingsState extends State<StorageSettings> {
 
               await _clearAllCaches();
 
-              if (mounted) {
-                final messenger = ScaffoldMessenger.maybeOf(context);
+              final pageContext = context;
+              if (mounted && pageContext.mounted) {
+                final messenger = ScaffoldMessenger.maybeOf(pageContext);
                 if (messenger != null) {
                   messenger.hideCurrentSnackBar();
                   messenger.showSnackBar(
@@ -665,20 +785,22 @@ class _StorageSettingsState extends State<StorageSettings> {
                   ),
                   const SizedBox(height: 12),
                   ..._cacheSizeLimitOptions.map(
-                    (option) => RadioListTile<int>(
-                      contentPadding: EdgeInsets.zero,
-                      value: option,
+                    (option) => RadioGroup<int>(
                       groupValue: selectedLimit,
-                      title: Text(_formatCacheSizeLimitOption(option)),
-                      subtitle: Text(
-                        option == currentLimit ? '当前设置' : '达到上限后自动清理旧缓存',
-                      ),
                       onChanged: (value) {
                         if (value == null) return;
                         setDialogState(() {
                           selectedLimit = value;
                         });
                       },
+                      child: RadioListTile<int>(
+                        contentPadding: EdgeInsets.zero,
+                        value: option,
+                        title: Text(_formatCacheSizeLimitOption(option)),
+                        subtitle: Text(
+                          option == currentLimit ? '当前设置' : '达到上限后自动清理旧缓存',
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -790,6 +912,7 @@ class _StorageSettingsState extends State<StorageSettings> {
             onPressed: () async {
               Navigator.pop(context);
               await _clearAllCaches();
+              if (!context.mounted) return;
               final messenger = ScaffoldMessenger.maybeOf(context);
               if (messenger != null) {
                 messenger.showSnackBar(
@@ -813,7 +936,7 @@ class _StorageSettingsState extends State<StorageSettings> {
     final currentCustomDir = CacheService().customCacheDir;
     final currentDir = CacheService().currentCacheDir;
     final defaultDir = await CacheService().getDefaultCacheDir();
-    
+
     final dirController = TextEditingController(text: currentCustomDir ?? '');
 
     if (!mounted) return;
@@ -823,11 +946,7 @@ class _StorageSettingsState extends State<StorageSettings> {
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           title: const Row(
-            children: [
-              Icon(Icons.folder),
-              SizedBox(width: 8),
-              Text('缓存目录设置'),
-            ],
+            children: [Icon(Icons.folder), SizedBox(width: 8), Text('缓存目录设置')],
           ),
           content: SingleChildScrollView(
             child: Column(
@@ -836,33 +955,33 @@ class _StorageSettingsState extends State<StorageSettings> {
               children: [
                 Text(
                   '当前目录：',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 SelectableText(
                   currentDir ?? '未知',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontFamily: 'monospace',
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
+                    fontFamily: 'monospace',
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 16),
                 Text(
                   '默认目录：',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 SelectableText(
                   defaultDir,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontFamily: 'monospace',
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -882,10 +1001,11 @@ class _StorageSettingsState extends State<StorageSettings> {
                     const SizedBox(width: 8),
                     IconButton.filledTonal(
                       onPressed: () async {
-                        String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
-                          dialogTitle: '选择缓存目录',
-                          lockParentWindow: true,
-                        );
+                        String? selectedDirectory = await FilePicker.platform
+                            .getDirectoryPath(
+                              dialogTitle: '选择缓存目录',
+                              lockParentWindow: true,
+                            );
 
                         if (selectedDirectory != null) {
                           setState(() {
@@ -902,7 +1022,9 @@ class _StorageSettingsState extends State<StorageSettings> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(
@@ -949,9 +1071,7 @@ class _StorageSettingsState extends State<StorageSettings> {
                     final messenger = ScaffoldMessenger.maybeOf(context);
                     if (messenger != null) {
                       messenger.showSnackBar(
-                        const SnackBar(
-                          content: Text('已恢复默认目录，请重启应用生效'),
-                        ),
+                        const SnackBar(content: Text('已恢复默认目录，请重启应用生效')),
                       );
                     }
                   }
@@ -966,14 +1086,14 @@ class _StorageSettingsState extends State<StorageSettings> {
             FilledButton(
               onPressed: () async {
                 final newDir = dirController.text.trim();
-                
+
                 if (newDir.isEmpty || newDir == currentCustomDir) {
                   Navigator.pop(context);
                   return;
                 }
 
                 final success = await CacheService().setCustomCacheDir(newDir);
-                
+
                 if (context.mounted) {
                   Navigator.pop(context);
                   if (success) {
@@ -1028,10 +1148,11 @@ class _StorageSettingsState extends State<StorageSettings> {
             const SizedBox(height: 8),
             fluent_ui.Button(
               onPressed: () async {
-                String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
-                  dialogTitle: '选择缓存目录',
-                  lockParentWindow: true,
-                );
+                String? selectedDirectory = await FilePicker.platform
+                    .getDirectoryPath(
+                      dialogTitle: '选择缓存目录',
+                      lockParentWindow: true,
+                    );
                 if (selectedDirectory != null) {
                   dirController.text = selectedDirectory;
                 }
@@ -1046,6 +1167,7 @@ class _StorageSettingsState extends State<StorageSettings> {
               onPressed: () async {
                 final success = await CacheService().setCustomCacheDir(null);
                 if (success) {
+                  if (!context.mounted) return;
                   Navigator.pop(context);
                   final messenger = ScaffoldMessenger.maybeOf(context);
                   if (messenger != null) {
@@ -1100,10 +1222,7 @@ class _StorageSettingsState extends State<StorageSettings> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '缓存目录已设置为：',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
+            Text('缓存目录已设置为：', style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 8),
             SelectableText(
               newDir,
@@ -1179,7 +1298,9 @@ class _StorageSettingsState extends State<StorageSettings> {
 
   Future<void> _showDownloadDirSettings() async {
     final currentDownloadPath = DownloadService().downloadPath;
-    final dirController = TextEditingController(text: currentDownloadPath ?? '');
+    final dirController = TextEditingController(
+      text: currentDownloadPath ?? '',
+    );
 
     if (!mounted) return;
 
@@ -1193,16 +1314,13 @@ class _StorageSettingsState extends State<StorageSettings> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '当前下载目录：',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+              Text('当前下载目录：', style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 8),
               Text(
                 currentDownloadPath ?? '未设置',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 24),
               TextField(
@@ -1220,9 +1338,8 @@ class _StorageSettingsState extends State<StorageSettings> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
-                        final result = await FilePicker.platform.getDirectoryPath(
-                          dialogTitle: '选择下载目录',
-                        );
+                        final result = await FilePicker.platform
+                            .getDirectoryPath(dialogTitle: '选择下载目录');
 
                         if (result != null) {
                           dirController.text = result;
@@ -1253,8 +1370,10 @@ class _StorageSettingsState extends State<StorageSettings> {
                       child: Text(
                         '下载的音乐文件将保存到指定目录',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSecondaryContainer,
-                            ),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSecondaryContainer,
+                        ),
                       ),
                     ),
                   ],
@@ -1309,7 +1428,9 @@ class _StorageSettingsState extends State<StorageSettings> {
 
   Future<void> _showDownloadDirSettingsFluent() async {
     final currentDownloadPath = DownloadService().downloadPath;
-    final dirController = TextEditingController(text: currentDownloadPath ?? '');
+    final dirController = TextEditingController(
+      text: currentDownloadPath ?? '',
+    );
     if (!mounted) return;
     fluent_ui.showDialog(
       context: context,
@@ -1365,9 +1486,7 @@ class _StorageSettingsState extends State<StorageSettings> {
                 final messenger = ScaffoldMessenger.maybeOf(context);
                 if (messenger != null) {
                   messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(success ? '下载目录已更新' : '设置下载目录失败'),
-                    ),
+                    SnackBar(content: Text(success ? '下载目录已更新' : '设置下载目录失败')),
                   );
                 }
               }
@@ -1379,4 +1498,3 @@ class _StorageSettingsState extends State<StorageSettings> {
     );
   }
 }
-

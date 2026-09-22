@@ -85,9 +85,9 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
   }
 
   void _onServiceChanged() {
-    if (!mounted) return;
+    if (!mounted || !context.mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
       setState(() {});
     });
   }
@@ -201,11 +201,11 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                         ? Theme.of(context)
                             .colorScheme
                             .errorContainer
-                            .withOpacity(0.5)
+                            .withValues(alpha: 0.5)
                         : Theme.of(context)
                             .colorScheme
                             .surfaceContainerHighest
-                            .withOpacity(0.5),
+                            .withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Column(
@@ -310,7 +310,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
             _autoUpdateService.statusMessage != '未开始');
 
     return ListView(
-      padding: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.fromLTRB(0, 20, 0, 120),
       children: [
         // 应用图标和名称头部
         Padding(
@@ -460,7 +460,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                         _autoUpdateService.progress < 1
                     ? _autoUpdateService.progress
                     : null,
-                backgroundColor: CupertinoColors.systemGrey.withOpacity(0.3),
+                backgroundColor: CupertinoColors.systemGrey.withValues(alpha: 0.3),
                 valueColor:
                     const AlwaysStoppedAnimation<Color>(CupertinoColors.systemBlue),
               ),
@@ -484,19 +484,6 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
 
   // ========== 对话框和操作方法 ==========
 
-  void _showAboutDialog(BuildContext context) {
-    showAboutDialog(
-      context: context,
-      applicationName: 'Cyrene Music',
-      applicationVersion: _versionService.currentVersion,
-      applicationIcon: const Icon(Icons.music_note, size: 48),
-      children: const [
-        Text('一个跨平台的音乐与视频聚合播放器'),
-        SizedBox(height: 16),
-        Text('支持网易云音乐、QQ音乐、酷狗音乐、Bilibili等平台'),
-      ],
-    );
-  }
 
   void _showLicensePage(BuildContext context) {
     showLicensePage(
@@ -555,7 +542,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
     try {
       final versionInfo = await _versionService.checkForUpdate(silent: false);
 
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
 
       Navigator.of(context).pop();
 
@@ -565,7 +552,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
         ToastUtils.show('当前已是最新版本');
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
 
       Navigator.of(context).pop();
 
@@ -583,7 +570,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
     try {
       final versionInfo = await _versionService.checkForUpdate(silent: false);
 
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
 
       Navigator.of(context).pop();
 
@@ -609,7 +596,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
         );
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
 
       Navigator.of(context).pop();
 
@@ -635,37 +622,10 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
 
   Future<void> _toggleAutoUpdate(BuildContext context, bool value) async {
     await _autoUpdateService.setEnabled(value);
-    if (!mounted) return;
+    if (!mounted || !context.mounted) return;
     ToastUtils.show(value ? '已开启自动更新' : '已关闭自动更新');
   }
 
-  Future<void> _triggerQuickUpdate(BuildContext context) async {
-    VersionInfo? versionInfo = _versionService.latestVersion;
-
-    if (versionInfo == null || !_versionService.hasUpdate) {
-      versionInfo = await _versionService.checkForUpdate(silent: false);
-      if (!mounted) return;
-
-      if (versionInfo == null || !_versionService.hasUpdate) {
-        ToastUtils.show('当前已是最新版本');
-        return;
-      }
-    }
-
-    if (!_autoUpdateService.isPlatformSupported) {
-      await _openDownloadLink(context, versionInfo.downloadUrl);
-      return;
-    }
-
-    await _autoUpdateService.startUpdate(
-      versionInfo: versionInfo,
-      autoTriggered: false,
-    );
-
-    if (!mounted) return;
-
-    ToastUtils.show('已开始下载更新，请稍候查看状态');
-  }
 
   void _showUpdateDialog(BuildContext context, VersionInfo versionInfo) {
     final isForceUpdate = versionInfo.forceUpdate;
@@ -700,7 +660,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                     color: Theme.of(context)
                         .colorScheme
                         .primaryContainer
-                        .withOpacity(0.5),
+                        .withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -839,7 +799,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
               TextButton(
                 onPressed: () async {
                   await _versionService.ignoreCurrentVersion(versionInfo.version);
-                  if (!mounted) return;
+                  if (!mounted || !context.mounted) return;
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -860,7 +820,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                       versionInfo: versionInfo,
                       autoTriggered: false,
                     );
-                    if (!mounted) return;
+                    if (!mounted || !context.mounted) return;
                     final messenger = ScaffoldMessenger.maybeOf(context);
                     if (messenger != null) {
                       messenger.showSnackBar(
@@ -941,7 +901,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                 isDestructiveAction: false,
                 onPressed: () async {
                   await _versionService.ignoreCurrentVersion(versionInfo.version);
-                  if (!mounted) return;
+                if (!mounted || !context.mounted) return;
                   Navigator.of(context).pop();
                 },
                 child: const Text('稍后提醒'),
@@ -977,7 +937,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
       }
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
       final messenger = ScaffoldMessenger.maybeOf(context);
       if (messenger != null) {
         messenger.showSnackBar(

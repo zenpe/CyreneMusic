@@ -28,7 +28,7 @@ class PlayerBackground extends StatelessWidget {
   Widget _buildBackground() {
     final backgroundService = PlayerBackgroundService();
     final greyColor = Colors.grey[900] ?? const Color(0xFF212121);
-    
+
     switch (backgroundService.backgroundType) {
       case PlayerBackgroundType.adaptive:
       case PlayerBackgroundType.dynamic:
@@ -39,15 +39,15 @@ class PlayerBackground extends StatelessWidget {
         } else {
           return _buildColorGradientBackground(greyColor);
         }
-        
+
       case PlayerBackgroundType.solidColor:
         // 纯色背景
         return _buildSolidColorBackground(backgroundService, greyColor);
-        
+
       case PlayerBackgroundType.image:
         // 图片背景
         return _buildImageBackground(backgroundService, greyColor);
-        
+
       case PlayerBackgroundType.video:
         // 视频背景
         return _buildVideoBackground(backgroundService, greyColor);
@@ -56,15 +56,13 @@ class PlayerBackground extends StatelessWidget {
 
   /// 构建封面渐变背景（新样式）
   Widget _buildCoverGradientBackground(Color greyColor) {
-    final song = PlayerService().currentSong;
-    final track = PlayerService().currentTrack;
     final imageUrl = PlayerService().currentCoverUrl ?? '';
-    
+
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         final color = themeColor ?? Colors.grey[700]!;
-        
+
         return RepaintBoundary(
           child: Stack(
             children: [
@@ -75,7 +73,7 @@ class PlayerBackground extends StatelessWidget {
                   color: color,
                 ),
               ),
-              
+
               // 专辑封面层 - 等比例放大至占满高度，位于左侧
               if (imageUrl.isNotEmpty)
                 Positioned(
@@ -111,8 +109,8 @@ class PlayerBackground extends StatelessWidget {
                                 colors: [
                                   Colors.transparent,  // 左侧和中间保持透明，显示封面
                                   Colors.transparent,
-                                  color.withOpacity(0.3),  // 右侧开始融合主题色
-                                  color.withOpacity(0.7),  // 最右侧更多主题色
+                                  color.withValues(alpha: 0.3),  // 右侧开始融合主题色
+                                  color.withValues(alpha: 0.7),  // 最右侧更多主题色
                                 ],
                                 stops: const [0.0, 0.6, 0.85, 1.0],
                               ),
@@ -123,7 +121,7 @@ class PlayerBackground extends StatelessWidget {
                     ),
                   ),
                 ),
-              
+
               // 渐变遮罩层 - 从封面到主题色的丝滑渐变
               Positioned.fill(
                 child: AnimatedContainer(
@@ -134,8 +132,8 @@ class PlayerBackground extends StatelessWidget {
                       end: Alignment.centerRight,
                       colors: [
                         Colors.transparent,        // 左侧完全透明，显示封面原貌
-                        color.withOpacity(0.5),    // 左中部开始融合主题色
-                        color.withOpacity(0.85),   // 中部主题色更明显
+                        color.withValues(alpha: 0.5),    // 左中部开始融合主题色
+                        color.withValues(alpha: 0.85),   // 中部主题色更明显
                         color,                      // 右侧完全不透明的主题色
                       ],
                       stops: const [0.0, 0.25, 0.5, 0.7],  // 更自然的渐变分布
@@ -156,8 +154,8 @@ class PlayerBackground extends StatelessWidget {
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         final color = themeColor ?? Colors.grey[700]!;
-        final topColor = color.withOpacity(0.8);
-        
+        final topColor = color.withValues(alpha: 0.8);
+
         return RepaintBoundary(
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 500), // 主题色变化时平滑过渡
@@ -185,7 +183,7 @@ class PlayerBackground extends StatelessWidget {
   /// 构建纯色背景
   Widget _buildSolidColorBackground(PlayerBackgroundService backgroundService, Color greyColor) {
     final topColor = backgroundService.solidColor;
-    
+
     return RepaintBoundary(
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 500),
@@ -238,7 +236,7 @@ class PlayerBackground extends StatelessWidget {
                       sigmaY: backgroundService.blurAmount,
                     ),
                     child: Container(
-                      color: Colors.black.withOpacity(0.3), // 添加半透明遮罩
+                      color: Colors.black.withValues(alpha: 0.3), // 添加半透明遮罩
                     ),
                   ),
                 )
@@ -246,7 +244,7 @@ class PlayerBackground extends StatelessWidget {
                 // 无模糊时也添加浅色遮罩以确保文字可读
                 Positioned.fill(
                   child: Container(
-                    color: Colors.black.withOpacity(0.2),
+                    color: Colors.black.withValues(alpha: 0.2),
                   ),
                 ),
             ],
@@ -254,7 +252,7 @@ class PlayerBackground extends StatelessWidget {
         );
       }
     }
-    
+
     // 如果没有设置图片，使用默认背景
     return RepaintBoundary(
       child: Container(
@@ -273,7 +271,7 @@ class PlayerBackground extends StatelessWidget {
       ),
     );
   }
-  
+
   /// 构建视频背景
   Widget _buildVideoBackground(PlayerBackgroundService backgroundService, Color greyColor) {
     if (backgroundService.mediaPath != null) {
@@ -293,14 +291,14 @@ class PlayerBackground extends StatelessWidget {
             if (backgroundService.blurAmount == 0)
               Positioned.fill(
                 child: Container(
-                  color: Colors.black.withOpacity(0.2),
+                  color: Colors.black.withValues(alpha: 0.2),
                 ),
               ),
           ],
         );
       }
     }
-    
+
     // 如果没有设置视频，使用默认背景
     return RepaintBoundary(
       child: Container(

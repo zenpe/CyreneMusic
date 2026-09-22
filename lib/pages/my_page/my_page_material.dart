@@ -11,7 +11,7 @@ extension MyPageMaterialUI on _MyPageState {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                colorScheme.primaryContainer.withOpacity(0.3),
+                colorScheme.primaryContainer.withValues(alpha: 0.3),
                 colorScheme.surface,
               ],
             ),
@@ -23,7 +23,7 @@ extension MyPageMaterialUI on _MyPageState {
                 Container(
                   padding: const EdgeInsets.all(32),
                   decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer.withOpacity(0.5),
+                    color: colorScheme.primaryContainer.withValues(alpha: 0.5),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(Icons.person_outline, size: 80, color: colorScheme.primary),
@@ -36,7 +36,7 @@ extension MyPageMaterialUI on _MyPageState {
                   child: Text(
                     '登录即可解锁个性化推荐、管理云端歌单并记录你的每一次聆听。',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7), fontSize: 16),
+                    style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.7), fontSize: 16),
                   ),
                 ),
                 const SizedBox(height: 48),
@@ -61,6 +61,7 @@ extension MyPageMaterialUI on _MyPageState {
     }
 
     final user = _authFacade.currentUser;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -138,27 +139,42 @@ extension MyPageMaterialUI on _MyPageState {
               physics: const BouncingScrollPhysics(),
               slivers: [
                 // 顶部安全区占位
-                const SliverToBoxAdapter(
-                  child: SafeArea(bottom: false, child: SizedBox(height: 12)),
-                ),
-
-                // 个人主页 Hero 头部
                 SliverToBoxAdapter(
-                  child: _buildMaterialProfileHero(user, colorScheme),
-                ),
-
-                // 核心统计磁贴
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    child: _buildMaterialStatsTiles(colorScheme),
+                  child: SizedBox(
+                    height: isLandscape
+                        ? (MediaQuery.of(context).padding.top > 0
+                            ? MediaQuery.of(context).padding.top + 8
+                            : 16.0)
+                        : (MediaQuery.of(context).padding.top > 0
+                            ? MediaQuery.of(context).padding.top + 4
+                            : 12.0),
                   ),
                 ),
+
+                // 个人主页 Hero 头部 (横屏下采用紧凑横向排版卡片，释放纵向空间)
+                if (isLandscape)
+                  SliverToBoxAdapter(
+                    child: _buildMaterialLandscapeProfileHero(user, colorScheme),
+                  )
+                else ...[
+                  // 个人主页 Hero 头部
+                  SliverToBoxAdapter(
+                    child: _buildMaterialProfileHero(user, colorScheme),
+                  ),
+
+                  // 核心统计磁贴
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      child: _buildMaterialStatsTiles(colorScheme),
+                    ),
+                  ),
+                ],
 
                 // 歌单标题与操作栏
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                    padding: EdgeInsets.fromLTRB(20, isLandscape ? 12 : 20, 20, 10),
                     child: _buildMaterialPlaylistHeader(colorScheme),
                   ),
                 ),
@@ -215,6 +231,243 @@ extension MyPageMaterialUI on _MyPageState {
                 const SliverToBoxAdapter(child: SizedBox(height: 100)),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 横屏一体化个人资料与听歌统计头部 (水平紧凑卡片，彻底避免高度浪费)
+  Widget _buildMaterialLandscapeProfileHero(User? user, ColorScheme colorScheme) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return ValueListenableBuilder<Color?>(
+      valueListenable: PlayerService().themeColorNotifier,
+      builder: (context, extractedColor, _) {
+        final dynamicAccent = DynamicColorUtils.resolveAccent(
+          extractedColor,
+          colorScheme,
+          isDark: isDark,
+        );
+
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: (isDark ? const Color(0xFF1B1B22) : Colors.white).withValues(alpha: isDark ? 0.55 : 0.8),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: (isDark ? Colors.white : Colors.black).withValues(alpha: isDark ? 0.08 : 0.06),
+              width: 0.8,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              // 头像
+              Container(
+                padding: const EdgeInsets.all(2.5),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [
+                      dynamicAccent.withValues(alpha: 0.55),
+                      dynamicAccent.withValues(alpha: 0.12),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: ClipOval(
+                  child: user?.avatarUrl != null && user!.avatarUrl!.contains('linux.do')
+                      ? LinuxDoAvatarMaterial(
+                          url: user.avatarUrl!,
+                          userId: user.id,
+                          size: 48,
+                        )
+                      : (user?.avatarUrl != null
+                          ? CachedNetworkImage(
+                              imageUrl: user!.avatarUrl!,
+                              width: 48,
+                              height: 48,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 150,
+                              memCacheHeight: 150,
+                              placeholder: (_, __) => Container(
+                                width: 48,
+                                height: 48,
+                                color: colorScheme.surfaceContainerHighest,
+                                child: Icon(Icons.person, size: 24, color: colorScheme.onSurfaceVariant),
+                              ),
+                              errorWidget: (_, __, ___) => Container(
+                                width: 48,
+                                height: 48,
+                                color: colorScheme.surfaceContainerHighest,
+                                child: Icon(Icons.person, size: 24, color: colorScheme.onSurfaceVariant),
+                              ),
+                            )
+                          : Container(
+                              width: 48,
+                              height: 48,
+                              color: colorScheme.primaryContainer,
+                              alignment: Alignment.center,
+                              child: Text(
+                                user?.username.isNotEmpty == true ? user!.username[0].toUpperCase() : '?',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            )),
+                ),
+              ),
+              const SizedBox(width: 14),
+              // 用户名 + 邮箱
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    user?.username ?? '未登录',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  if (user?.displayEmail != null) ...[
+                    const SizedBox(height: 3),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.45 : 0.7),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.4),
+                          width: 0.6,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.alternate_email_rounded,
+                            size: 11,
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            user!.displayEmail!,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const Spacer(),
+              // 听歌统计微型磁贴 (横向平铺)
+              if (_isLoadingStats)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              else if (_statsData != null) ...[
+                _buildLandscapeStatChip(
+                  icon: Icons.access_time_rounded,
+                  label: '累计聆听',
+                  value: ListeningStatsService.formatDuration(_statsData!.totalListeningTime),
+                  tintColor: dynamicAccent,
+                  colorScheme: colorScheme,
+                  isDark: isDark,
+                ),
+                const SizedBox(width: 10),
+                _buildLandscapeStatChip(
+                  icon: Icons.headphones_rounded,
+                  label: '累计播放',
+                  value: '${_statsData!.totalPlayCount} 次',
+                  tintColor: colorScheme.tertiary,
+                  colorScheme: colorScheme,
+                  isDark: isDark,
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLandscapeStatChip({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color tintColor,
+    required ColorScheme colorScheme,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.35 : 0.6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.2 : 0.35),
+          width: 0.7,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: tintColor.withValues(alpha: isDark ? 0.22 : 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 14, color: tintColor),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -614,6 +867,7 @@ extension MyPageMaterialUI on _MyPageState {
   Widget _buildMaterialPlaylistsSliver(ColorScheme colorScheme) {
     final playlists = _playlistService.playlists;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     if (playlists.isEmpty) {
       return SliverToBoxAdapter(
@@ -638,97 +892,119 @@ extension MyPageMaterialUI on _MyPageState {
       );
     }
 
-    return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, index) {
-          final playlist = playlists[index];
-          final canSync = _hasImportConfig(playlist);
+    Widget buildPlaylistItem(Playlist playlist) {
+      final canSync = _hasImportConfig(playlist);
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Material(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => _openPlaylistDetail(playlist),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  child: Row(
+      return Material(
+        color: isLandscape
+            ? colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.25 : 0.45)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _openPlaylistDetail(playlist),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: isLandscape ? 12 : 8,
+              vertical: isLandscape ? 8 : 6,
+            ),
+            child: Row(
+              children: [
+                // 精致封面 (48x48, 10px圆角)
+                _buildMaterialPlaylistCover(playlist, colorScheme, size: 48, radius: 10),
+                const SizedBox(width: 14),
+                // 歌单名与副信息
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // 精致封面 (48x48, 10px圆角)
-                      _buildMaterialPlaylistCover(playlist, colorScheme, size: 48, radius: 10),
-                      const SizedBox(width: 14),
-                      // 歌单名与副信息
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              playlist.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.2,
-                                color: colorScheme.onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Row(
-                              children: [
-                                Text(
-                                  '${playlist.trackCount} 首歌曲',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
-                                  ),
-                                ),
-                                if (canSync) ...[
-                                  Text(
-                                    '  •  ',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: colorScheme.outlineVariant,
-                                    ),
-                                  ),
-                                  Icon(Icons.sync_rounded, size: 12, color: colorScheme.primary),
-                                  const SizedBox(width: 2.5),
-                                  Text(
-                                    '已关联同步',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: colorScheme.primary,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ],
+                      Text(
+                        playlist.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                          color: colorScheme.onSurface,
                         ),
                       ),
-                      // 更多操作按钮
-                      IconButton(
-                        icon: Icon(
-                          Icons.more_horiz_rounded,
-                          size: 20,
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                        ),
-                        onPressed: () => _showPlaylistMoreOptions(playlist, colorScheme),
-                        tooltip: '更多选项',
-                        visualDensity: VisualDensity.compact,
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Text(
+                            '${playlist.trackCount} 首歌曲',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                            ),
+                          ),
+                          if (canSync) ...[
+                            Text(
+                              '  •  ',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: colorScheme.outlineVariant,
+                              ),
+                            ),
+                            Icon(Icons.sync_rounded, size: 12, color: colorScheme.primary),
+                            const SizedBox(width: 2.5),
+                            Text(
+                              '已关联同步',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
                 ),
-              ),
+                // 更多操作按钮
+                IconButton(
+                  icon: Icon(
+                    Icons.more_horiz_rounded,
+                    size: 20,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                  ),
+                  onPressed: () => _showPlaylistMoreOptions(playlist, colorScheme),
+                  tooltip: '更多选项',
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
             ),
-          );
-        },
+          ),
+        ),
+      );
+    }
+
+    if (isLandscape) {
+      return SliverGrid(
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 440,
+          mainAxisExtent: 66,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 8,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => buildPlaylistItem(playlists[index]),
+          childCount: playlists.length,
+        ),
+      );
+    }
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: buildPlaylistItem(playlists[index]),
+        ),
         childCount: playlists.length,
       ),
     );
@@ -737,7 +1013,7 @@ extension MyPageMaterialUI on _MyPageState {
   /// 显示歌单更多操作底板
   void _showPlaylistMoreOptions(Playlist playlist, ColorScheme colorScheme) {
     final canSync = _hasImportConfig(playlist);
-    
+
     showModalBottomSheet(
       context: context,
       useRootNavigator: true,
@@ -789,7 +1065,7 @@ extension MyPageMaterialUI on _MyPageState {
               },
             ),
             ListTile(
-              leading: Icon(Icons.sync, color: canSync ? colorScheme.primary : colorScheme.onSurfaceVariant.withOpacity(0.3)),
+              leading: Icon(Icons.sync, color: canSync ? colorScheme.primary : colorScheme.onSurfaceVariant.withValues(alpha: 0.3)),
               title: const Text('同步歌单'),
               subtitle: canSync ? null : const Text('请先设置导入来源', style: TextStyle(fontSize: 10)),
               onTap: canSync ? () {
@@ -817,182 +1093,196 @@ extension MyPageMaterialUI on _MyPageState {
     final topPlays = _statsData!.playCounts.take(10).toList();
     final player = PlayerService();
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
-    return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, index) {
-          final item = topPlays[index];
-          final rank = index + 1;
+    Widget buildTopPlayItem(int index) {
+      final item = topPlays[index];
+      final rank = index + 1;
 
-          Color rankColor;
-          if (rank == 1) {
-            rankColor = const Color(0xFFFFB300); // 冠军金
-          } else if (rank == 2) {
-            rankColor = const Color(0xFF94A3B8); // 亚军银
-          } else if (rank == 3) {
-            rankColor = const Color(0xFFD97706); // 季军铜
-          } else {
-            rankColor = colorScheme.onSurfaceVariant.withValues(alpha: 0.45);
-          }
+      Color rankColor;
+      if (rank == 1) {
+        rankColor = const Color(0xFFFFB300); // 冠军金
+      } else if (rank == 2) {
+        rankColor = const Color(0xFF94A3B8); // 亚军银
+      } else if (rank == 3) {
+        rankColor = const Color(0xFFD97706); // 季军铜
+      } else {
+        rankColor = colorScheme.onSurfaceVariant.withValues(alpha: 0.45);
+      }
 
-          return ValueListenableBuilder<Color?>(
-            valueListenable: player.themeColorNotifier,
-            builder: (context, extractedColor, _) {
-              final dynamicAccent = DynamicColorUtils.resolveAccent(
-                extractedColor,
-                colorScheme,
-                isDark: isDark,
-              );
+      return ValueListenableBuilder<Color?>(
+        valueListenable: player.themeColorNotifier,
+        builder: (context, extractedColor, _) {
+          final dynamicAccent = DynamicColorUtils.resolveAccent(
+            extractedColor,
+            colorScheme,
+            isDark: isDark,
+          );
 
-              return AnimatedBuilder(
-                animation: Listenable.merge([player, player.positionNotifier]),
-                builder: (context, _) {
-                  final currentTrack = player.currentTrack;
-                  final currentSong = player.currentSong;
-                  final displayTitle = player.displayTitle;
+          return AnimatedBuilder(
+            animation: Listenable.merge([player, player.positionNotifier]),
+            builder: (context, _) {
+              final currentTrack = player.currentTrack;
+              final currentSong = player.currentSong;
+              final displayTitle = player.displayTitle;
 
-                  final isCurrentPlaying = (displayTitle.isNotEmpty &&
-                          (displayTitle == item.trackName ||
-                              item.trackName.contains(displayTitle) ||
-                              displayTitle.contains(item.trackName))) ||
-                      (currentTrack != null && currentTrack.name == item.trackName) ||
-                      (currentSong != null && currentSong.name == item.trackName);
+              final isCurrentPlaying = (displayTitle.isNotEmpty &&
+                      (displayTitle == item.trackName ||
+                          item.trackName.contains(displayTitle) ||
+                          displayTitle.contains(item.trackName))) ||
+                  (currentTrack != null && currentTrack.name == item.trackName) ||
+                  (currentSong != null && currentSong.name == item.trackName);
 
-                  final Color itemBg = isCurrentPlaying
-                      ? dynamicAccent.withValues(alpha: isDark ? 0.18 : 0.08)
-                      : colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.25 : 0.45);
-
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    child: Material(
-                      color: isCurrentPlaying
-                          ? dynamicAccent.withValues(alpha: isDark ? 0.18 : 0.08)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(12),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => _playTrack(item),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-                          child: Row(
+              return Material(
+                color: isCurrentPlaying
+                    ? dynamicAccent.withValues(alpha: isDark ? 0.18 : 0.08)
+                    : (isLandscape
+                        ? colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.25 : 0.45)
+                        : Colors.transparent),
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => _playTrack(item),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                    child: Row(
+                      children: [
+                        // 排名编号 (播放中显示均衡器，与详情页一致)
+                        SizedBox(
+                          width: 28,
+                          child: isCurrentPlaying
+                              ? Icon(Icons.equalizer_rounded, color: dynamicAccent, size: 20)
+                              : Text(
+                                  rank.toString().padLeft(2, '0'),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: rank <= 3 ? FontWeight.w900 : FontWeight.w600,
+                                    color: rankColor,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                        ),
+                        const SizedBox(width: 8),
+                        // 歌曲封面 (44x44, 8px 圆角)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: CachedNetworkImage(
+                            imageUrl: item.picUrl,
+                            width: 44,
+                            height: 44,
+                            fit: BoxFit.cover,
+                            memCacheWidth: 128,
+                            memCacheHeight: 128,
+                            placeholder: (_, __) => Container(
+                              width: 44,
+                              height: 44,
+                              color: colorScheme.surfaceContainerHighest,
+                            ),
+                            errorWidget: (_, __, ___) => Container(
+                              width: 44,
+                              height: 44,
+                              color: colorScheme.surfaceContainerHighest,
+                              child: Icon(Icons.music_note, color: colorScheme.onSurfaceVariant, size: 20),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // 歌名与歌手
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              // 排名编号 (播放中显示均衡器，与详情页一致)
-                              SizedBox(
-                                width: 28,
-                                child: isCurrentPlaying
-                                    ? Icon(Icons.equalizer_rounded, color: dynamicAccent, size: 20)
-                                    : Text(
-                                        rank.toString().padLeft(2, '0'),
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: rank <= 3 ? FontWeight.w900 : FontWeight.w600,
-                                          color: rankColor,
-                                          letterSpacing: -0.5,
-                                        ),
-                                      ),
-                              ),
-                              const SizedBox(width: 8),
-                              // 歌曲封面 (44x44, 8px 圆角)
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: CachedNetworkImage(
-                                  imageUrl: item.picUrl,
-                                  width: 44,
-                                  height: 44,
-                                  fit: BoxFit.cover,
-                                  memCacheWidth: 128,
-                                  memCacheHeight: 128,
-                                  placeholder: (_, __) => Container(
-                                    width: 44,
-                                    height: 44,
-                                    color: colorScheme.surfaceContainerHighest,
-                                  ),
-                                  errorWidget: (_, __, ___) => Container(
-                                    width: 44,
-                                    height: 44,
-                                    color: colorScheme.surfaceContainerHighest,
-                                    child: Icon(Icons.music_note, color: colorScheme.onSurfaceVariant, size: 20),
-                                  ),
+                              Text(
+                                item.trackName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: isCurrentPlaying ? FontWeight.w700 : FontWeight.w600,
+                                  color: isCurrentPlaying ? dynamicAccent : colorScheme.onSurface,
+                                  letterSpacing: -0.2,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              // 歌名与歌手
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      item.trackName,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 14.5,
-                                        fontWeight: isCurrentPlaying ? FontWeight.w800 : FontWeight.w600,
-                                        letterSpacing: -0.2,
-                                        color: isCurrentPlaying ? dynamicAccent : colorScheme.onSurface,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      item.artists,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.normal,
-                                        color: isCurrentPlaying
-                                            ? dynamicAccent.withValues(alpha: 0.85)
-                                            : colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
-                                      ),
-                                    ),
-                                  ],
+                              const SizedBox(height: 3),
+                              Text(
+                                item.artists.isNotEmpty ? item.artists : '未知歌手',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                                 ),
-                              ),
-                              // 播放次数与来源
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    '${item.playCount}次',
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: isCurrentPlaying ? FontWeight.w700 : FontWeight.w600,
-                                      color: isCurrentPlaying
-                                          ? dynamicAccent
-                                          : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    item.toTrack().getSourceName(),
-                                    style: TextStyle(
-                                      fontSize: 9.5,
-                                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(width: 4),
-                              // 更多操作
-                              TrackMoreButton(
-                                track: item.toTrack(),
-                                onPlay: () => _playTrack(item),
-                                size: 30,
                               ),
                             ],
                           ),
                         ),
-                      ),
+                        // 播放次数与来源
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '${item.playCount}次',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: isCurrentPlaying ? FontWeight.w700 : FontWeight.w600,
+                                color: isCurrentPlaying
+                                    ? dynamicAccent
+                                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              item.toTrack().getSourceName(),
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 4),
+                        // 更多操作
+                        TrackMoreButton(
+                          track: item.toTrack(),
+                          onPlay: () => _playTrack(item),
+                          size: 30,
+                        ),
+                      ],
                     ),
-                  );
-                },
+                  ),
+                ),
               );
             },
           );
         },
+      );
+    }
+
+    if (isLandscape) {
+      return SliverGrid(
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 440,
+          mainAxisExtent: 64,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 8,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => buildTopPlayItem(index),
+          childCount: topPlays.length,
+        ),
+      );
+    }
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: buildTopPlayItem(index),
+        ),
         childCount: topPlays.length,
       ),
     );
@@ -1147,7 +1437,7 @@ extension MyPageMaterialUI on _MyPageState {
                     Icon(
                       Icons.search_off,
                       size: compact ? 52 : 64,
-                      color: colorScheme.onSurface.withOpacity(0.3),
+                      color: colorScheme.onSurface.withValues(alpha: 0.3),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -1155,7 +1445,7 @@ extension MyPageMaterialUI on _MyPageState {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 16,
-                        color: colorScheme.onSurface.withOpacity(0.6),
+                        color: colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1164,7 +1454,7 @@ extension MyPageMaterialUI on _MyPageState {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
-                        color: colorScheme.onSurface.withOpacity(0.5),
+                        color: colorScheme.onSurface.withValues(alpha: 0.5),
                       ),
                     ),
                   ],
@@ -1459,13 +1749,13 @@ extension MyPageMaterialUI on _MyPageState {
                     Container(
                       padding: EdgeInsets.all(compact ? 18 : 28),
                       decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(compact ? 24 : 32),
                       ),
                       child: Icon(
                         Icons.music_off_rounded,
                         size: compact ? 52 : 64,
-                        color: colorScheme.onSurface.withOpacity(0.4),
+                        color: colorScheme.onSurface.withValues(alpha: 0.4),
                       ),
                     ),
                     SizedBox(height: compact ? 14 : 24),
@@ -1475,7 +1765,7 @@ extension MyPageMaterialUI on _MyPageState {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
-                        color: colorScheme.onSurface.withOpacity(0.7),
+                        color: colorScheme.onSurface.withValues(alpha: 0.7),
                         letterSpacing: -0.3,
                       ),
                     ),
@@ -1486,7 +1776,7 @@ extension MyPageMaterialUI on _MyPageState {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
-                        color: colorScheme.onSurface.withOpacity(0.5),
+                        color: colorScheme.onSurface.withValues(alpha: 0.5),
                       ),
                     ),
                   ],
@@ -1525,7 +1815,7 @@ extension MyPageMaterialUI on _MyPageState {
             (currentSong != null && currentSong.name == item.name);
 
         final Color itemBg = isSelected && _isEditMode
-            ? colorScheme.primaryContainer.withOpacity(0.35)
+            ? colorScheme.primaryContainer.withValues(alpha: 0.35)
             : (isCurrentPlaying
                 ? dynamicAccent.withValues(alpha: isDark ? 0.18 : 0.08)
                 : Colors.transparent);
@@ -1561,7 +1851,7 @@ extension MyPageMaterialUI on _MyPageState {
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                                 ),
                               ),
                       ),
@@ -1612,7 +1902,7 @@ extension MyPageMaterialUI on _MyPageState {
                               fontSize: 12,
                               color: isCurrentPlaying
                                   ? dynamicAccent.withValues(alpha: 0.85)
-                                  : colorScheme.onSurfaceVariant.withOpacity(0.75),
+                                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
                               fontWeight: FontWeight.normal,
                             ),
                           ),
@@ -1685,7 +1975,7 @@ extension MyPageMaterialUI on _MyPageState {
                 children: [
                   Text(user.username, style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 4),
-                  Text(user.email, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colorScheme.onSurface.withOpacity(0.6))),
+                  Text(user.email, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colorScheme.onSurface.withValues(alpha: 0.6))),
                 ],
               ),
             ),

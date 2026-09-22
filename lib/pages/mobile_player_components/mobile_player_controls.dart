@@ -33,7 +33,7 @@ class MobilePlayerControls extends StatelessWidget {
         final horizontalPadding = (screenWidth * 0.05).clamp(16.0, 24.0);
         final verticalPadding = (screenHeight * 0.015).clamp(12.0, 16.0);
         final itemSpacing = (screenHeight * 0.015).clamp(12.0, 20.0);
-        
+
         return Container(
           padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
           child: Column(
@@ -41,14 +41,14 @@ class MobilePlayerControls extends StatelessWidget {
             children: [
               // 进度条
               _buildProgressBar(),
-              
+
               SizedBox(height: itemSpacing),
-              
+
               // 第一行：播放模式、上一首、播放/暂停、下一首、播放列表
               _buildMainControlRow(),
-              
+
               SizedBox(height: itemSpacing * 0.8),
-              
+
               // 第二行：添加到歌单、睡眠定时器、音量控制、下载
               _buildSecondaryControlRow(),
             ],
@@ -67,7 +67,7 @@ class MobilePlayerControls extends StatelessWidget {
         final player = PlayerService();
         final position = player.position;
         final duration = player.duration;
-        
+
         return Column(
           children: [
             Padding(
@@ -82,7 +82,7 @@ class MobilePlayerControls extends StatelessWidget {
                   player.seek(Duration(milliseconds: seekTo.toInt()));
                 },
                 activeColor: Colors.white,
-                inactiveColor: Colors.white.withOpacity(0.2),
+                inactiveColor: Colors.white.withValues(alpha: 0.2),
               ),
             ),
             Padding(
@@ -93,14 +93,14 @@ class MobilePlayerControls extends StatelessWidget {
                   Text(
                     _formatDuration(position),
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 12,
                     ),
                   ),
                   Text(
                     _formatDuration(duration),
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 12,
                     ),
                   ),
@@ -124,12 +124,12 @@ class MobilePlayerControls extends StatelessWidget {
         final skipIconSize = (availableWidth * 0.09).clamp(36.0, 48.0);
         final playButtonSize = (availableWidth * 0.15).clamp(56.0, 72.0);
         final playIconSize = (availableWidth * 0.08).clamp(32.0, 40.0);
-        
+
         return AnimatedBuilder(
           animation: PlayerService(),
           builder: (context, child) {
             final player = PlayerService();
-            
+
             return Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -153,7 +153,7 @@ class MobilePlayerControls extends StatelessWidget {
                         icon = Icons.shuffle_rounded;
                         break;
                     }
-                    
+
                     return IconButton(
                       icon: Icon(icon, color: Colors.white),
                       iconSize: sideIconSize,
@@ -170,9 +170,9 @@ class MobilePlayerControls extends StatelessWidget {
                     );
                   },
                 ),
-                
+
                 SizedBox(width: buttonSpacing),
-                
+
                 // 上一首
                 IconButton(
                   icon: Icon(
@@ -183,9 +183,9 @@ class MobilePlayerControls extends StatelessWidget {
                   onPressed: player.hasPrevious ? () => player.playPrevious() : null,
                   tooltip: '上一首',
                 ),
-                
+
                 SizedBox(width: buttonSpacing),
-                
+
                 // 播放/暂停
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
@@ -199,7 +199,7 @@ class MobilePlayerControls extends StatelessWidget {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.white.withOpacity(0.3),
+                        color: Colors.white.withValues(alpha: 0.3),
                         blurRadius: 12,
                         spreadRadius: 2,
                       ),
@@ -223,9 +223,9 @@ class MobilePlayerControls extends StatelessWidget {
                           tooltip: player.isPlaying ? '暂停' : '播放',
                         ),
                 ),
-                
+
                 SizedBox(width: buttonSpacing),
-                
+
                 // 下一首
                 IconButton(
                   icon: Icon(
@@ -236,9 +236,9 @@ class MobilePlayerControls extends StatelessWidget {
                   onPressed: player.hasNext ? () => player.playNext() : null,
                   tooltip: '下一首',
                 ),
-                
+
                 SizedBox(width: buttonSpacing),
-                
+
                 // 播放列表
                 IconButton(
                   icon: const Icon(Icons.queue_music_rounded, color: Colors.white),
@@ -262,11 +262,11 @@ class MobilePlayerControls extends StatelessWidget {
         final player = PlayerService();
         final track = player.currentTrack;
         final song = player.currentSong;
-        
+
         if (track == null) {
           return const SizedBox.shrink();
         }
-        
+
         return Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -277,16 +277,16 @@ class MobilePlayerControls extends StatelessWidget {
               onPressed: () => onAddToPlaylistPressed(track),
               tooltip: '添加到歌单',
             ),
-            
+
             const SizedBox(width: 32),
-            
+
             // 睡眠定时器
             AnimatedBuilder(
               animation: SleepTimerService(),
               builder: (context, child) {
                 final timer = SleepTimerService();
                 final isActive = timer.isActive;
-                
+
                 return IconButton(
                   icon: Icon(
                     isActive ? Icons.schedule : Icons.schedule_outlined,
@@ -298,14 +298,14 @@ class MobilePlayerControls extends StatelessWidget {
                 );
               },
             ),
-            
+
             const SizedBox(width: 32),
-            
+
             // 音量控制（控制中心）
             _buildVolumeButton(),
-            
+
             const SizedBox(width: 32),
-            
+
             // 下载
             if (song != null)
               AnimatedBuilder(
@@ -314,7 +314,7 @@ class MobilePlayerControls extends StatelessWidget {
                   final downloadService = DownloadService();
                   final trackId = '${track.source.name}_${track.id}';
                   final isDownloading = downloadService.downloadTasks.containsKey(trackId);
-                  
+
                   return IconButton(
                     icon: Icon(
                       isDownloading ? Icons.downloading_rounded : Icons.download_rounded,
@@ -337,7 +337,7 @@ class MobilePlayerControls extends StatelessWidget {
     try {
       // 检查是否已下载
       final isDownloaded = await DownloadService().isDownloaded(track);
-      
+
       if (isDownloaded) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -349,10 +349,10 @@ class MobilePlayerControls extends StatelessWidget {
         }
         return;
       }
-      
+
       // 开始下载
       final success = await DownloadService().downloadSong(track, song);
-      
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -380,13 +380,13 @@ class MobilePlayerControls extends StatelessWidget {
       builder: (context, child) {
         final player = PlayerService();
         final volume = player.volume;
-        
+
         return IconButton(
           icon: Icon(
-            volume == 0 
-                ? Icons.volume_off_rounded 
-                : volume < 0.5 
-                    ? Icons.volume_down_rounded 
+            volume == 0
+                ? Icons.volume_off_rounded
+                : volume < 0.5
+                    ? Icons.volume_down_rounded
                     : Icons.volume_up_rounded,
             color: Colors.white,
           ),

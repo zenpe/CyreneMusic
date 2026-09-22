@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
@@ -45,19 +46,19 @@ class _MiniPlayerState extends State<MiniPlayer> {
     final double playIconSize = compact ? 24 : 28;
     final EdgeInsets buttonPadding =
         compact ? const EdgeInsets.all(4) : const EdgeInsets.all(8);
-    
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (!hideSkip)
           CupertinoButton(
             padding: buttonPadding,
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: player.hasPrevious ? () => player.playPrevious() : null,
             child: Icon(
               CupertinoIcons.backward_fill,
               size: skipIconSize,
-              color: player.hasPrevious 
+              color: player.hasPrevious
                   ? (isDark ? CupertinoColors.white : CupertinoColors.black)
                   : CupertinoColors.systemGrey,
             ),
@@ -70,7 +71,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
         else
           CupertinoButton(
             padding: buttonPadding,
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: () => player.togglePlayPause(),
             child: Icon(
               player.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
@@ -85,12 +86,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
         if (!hideSkip)
           CupertinoButton(
             padding: buttonPadding,
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: player.hasNext ? () => player.playNext() : null,
             child: Icon(
               CupertinoIcons.forward_fill,
               size: skipIconSize,
-              color: player.hasNext 
+              color: player.hasNext
                   ? (isDark ? CupertinoColors.white : CupertinoColors.black)
                   : CupertinoColors.systemGrey,
             ),
@@ -136,52 +137,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
     );
   }
 
-  Widget _buildRightPanelFluent(PlayerService player, BuildContext context) {
-    final theme = fluent.FluentTheme.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ValueListenableBuilder<Duration>(
-          valueListenable: player.positionNotifier,
-          builder: (context, position, child) {
-            return Text(
-              _formatDuration(position),
-              style: TextStyle(
-                fontFamily: 'Microsoft YaHei',
-                fontSize: 12,
-                color: theme.resources.textFillColorSecondary,
-              ),
-            );
-          },
-        ),
-        Text(
-          ' / ',
-          style: TextStyle(
-            fontFamily: 'Microsoft YaHei',
-            fontSize: 12,
-            color: theme.resources.textFillColorSecondary,
-          ),
-        ),
-        Text(
-          _formatDuration(player.duration),
-          style: TextStyle(
-            fontFamily: 'Microsoft YaHei',
-            fontSize: 12,
-            color: theme.resources.textFillColorSecondary,
-          ),
-        ),
-        const SizedBox(width: 12),
-        fluent.IconButton(
-          icon: Icon(_volumeIcon(player.volume), color: theme.resources.textFillColorPrimary),
-          onPressed: () => _showVolumeDialog(context, player),
-        ),
-        fluent.IconButton(
-          icon: Icon(Icons.queue_music_rounded, color: theme.resources.textFillColorPrimary),
-          onPressed: () => _showQueueSheet(context),
-        ),
-      ],
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -495,6 +450,107 @@ class _MiniPlayerState extends State<MiniPlayer> {
       );
     }
 
+    final isMobile = Platform.isAndroid || Platform.isIOS;
+
+    if (isMobile || widget.transparent) {
+      return Container(
+        key: const ValueKey('mini_expanded_glass'),
+        margin: const EdgeInsets.fromLTRB(8, 0, 14, 8),
+        constraints: const BoxConstraints(minHeight: 68),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
+              blurRadius: 18,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                  child: const SizedBox.shrink(),
+                ),
+              ),
+              Positioned.fill(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeOutCubic,
+                  decoration: BoxDecoration(
+                    color: colorScheme.surface.withValues(alpha: isDark ? 0.82 : 0.88),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        colorScheme.surface.withValues(alpha: isDark ? 0.88 : 0.92),
+                        dynamicAmbient.withValues(alpha: isDark ? 0.16 : 0.08),
+                        dynamicAmbient.withValues(alpha: isDark ? 0.06 : 0.03),
+                        colorScheme.surface.withValues(alpha: isDark ? 0.84 : 0.88),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: dynamicAccent.withValues(alpha: isDark ? 0.30 : 0.38),
+                      width: 1.0,
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                child: Row(
+                  children: [
+                    _buildCover(song, track, colorScheme, size: 42),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSongInfo(context, singleLine: true),
+                          const SizedBox(height: 4),
+                          _buildAlignedProgressRow(player, colorScheme),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildAdaptiveControls(
+                          player,
+                          context,
+                          colorScheme,
+                          hideSkip: false,
+                          compact: true,
+                        ),
+                        const SizedBox(width: 4),
+                        _buildPlaybackModeButton(context, colorScheme, compact: true),
+                        const SizedBox(width: 2),
+                        _buildVolumeButton(
+                          context,
+                          colorScheme,
+                          player,
+                          compact: true,
+                        ),
+                        const SizedBox(width: 2),
+                        _buildQueueButton(context, colorScheme, compact: true),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Container(
       key: const ValueKey('mini_expanded'),
       margin: EdgeInsets.zero,
@@ -567,7 +623,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     if (_isCupertino) {
       return CupertinoButton(
         padding: compact ? const EdgeInsets.all(2) : const EdgeInsets.all(6),
-        minSize: 0,
+        minimumSize: Size.zero,
         onPressed: () => _showQueueSheet(context),
         child: Icon(
           CupertinoIcons.music_note_list,
@@ -624,7 +680,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
         if (_isCupertino) {
           return CupertinoButton(
             padding: compact ? const EdgeInsets.all(2) : const EdgeInsets.all(6),
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: () {
               modeService.toggleMode();
               ScaffoldMessenger.of(context).showSnackBar(
@@ -686,7 +742,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     if (_isCupertino) {
       return CupertinoButton(
         padding: compact ? const EdgeInsets.all(2) : const EdgeInsets.all(6),
-        minSize: 0,
+        minimumSize: Size.zero,
         onPressed: () => _showVolumeDialog(context, player),
         child: Icon(
           _volumeIconCupertino(player.volume),
@@ -720,8 +776,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
   ) async {
     final overlay = Overlay.of(context);
     final renderBox = context.findRenderObject() as RenderBox?;
-    final overlayBox = overlay?.context.findRenderObject() as RenderBox?;
-    if (overlay == null || renderBox == null || overlayBox == null) {
+    final overlayBox = overlay.context.findRenderObject() as RenderBox?;
+    if (renderBox == null || overlayBox == null) {
       await _showVolumeDialog(context, player);
       return;
     }
@@ -752,6 +808,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
         .clamp(padding, screen.width - cardWidth - padding);
 
     double appTemp = player.volume;
+    if (!context.mounted) return;
     await showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -775,7 +832,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
+                        color: Colors.black.withValues(alpha: 0.15),
                         blurRadius: 16,
                         offset: const Offset(0, 6),
                       ),
@@ -912,44 +969,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
   /// 构建进度条
   /// 使用 ValueListenableBuilder 监听 positionNotifier 以实时更新进度
-  Widget _buildProgressBar(PlayerService player, ColorScheme colorScheme) {
-    return _buildSeekableProgressBar(
-      player: player,
-      hitHeight: 24,
-      child: ValueListenableBuilder<Duration>(
-        valueListenable: player.positionNotifier,
-        builder: (context, position, child) {
-          final progress = _seekRatio ??
-              (player.duration.inMilliseconds > 0
-                  ? position.inMilliseconds / player.duration.inMilliseconds
-                  : 0.0);
-          if (ThemeManager().isFluentFramework) {
-            final fluentProgress = (progress * 100).clamp(0.0, 100.0).toDouble();
-            return fluent.ProgressBar(
-              value: fluentProgress,
-            );
-          }
-          if (_isCupertino) {
-            return Container(
-              height: 2,
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 2,
-                backgroundColor: CupertinoColors.systemGrey.withOpacity(0.2),
-                valueColor: const AlwaysStoppedAnimation<Color>(CupertinoColors.activeBlue),
-              ),
-            );
-          }
-          return LinearProgressIndicator(
-            value: progress,
-            minHeight: 2,
-            backgroundColor: colorScheme.surfaceContainerHighest,
-            valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
-          );
-        },
-      ),
-    );
-  }
 
   Widget _buildAlignedProgressRow(PlayerService player, ColorScheme colorScheme) {
     final timeStyle = TextStyle(
@@ -959,34 +978,33 @@ class _MiniPlayerState extends State<MiniPlayer> {
     return ValueListenableBuilder<Duration>(
       valueListenable: player.positionNotifier,
       builder: (context, position, child) {
+        final effectiveDuration = _getEffectiveDuration(player);
         final progress = _seekRatio ??
-            (player.duration.inMilliseconds > 0
-                ? position.inMilliseconds / player.duration.inMilliseconds
+            (effectiveDuration.inMilliseconds > 0
+                ? position.inMilliseconds / effectiveDuration.inMilliseconds
                 : 0.0);
         final displayPosition = _seekRatio != null
-            ? Duration(milliseconds: (player.duration.inMilliseconds * _seekRatio!).round())
+            ? Duration(milliseconds: (effectiveDuration.inMilliseconds * _seekRatio!).round())
             : position;
         final indicator = ThemeManager().isFluentFramework
-            ? SizedBox(
-                height: 4,
-                child: fluent.ProgressBar(
-                  value: (progress * 100).clamp(0.0, 100.0).toDouble(),
-                ),
+            ? fluent.ProgressBar(
+                value: (progress * 100).clamp(0.0, 100.0).toDouble(),
               )
-            : SizedBox(
-                height: 3,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 3,
-                    backgroundColor:
-                        colorScheme.onSurface.withOpacity(0.08),
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(colorScheme.primary),
-                  ),
+            : ClipRRect(
+                borderRadius: BorderRadius.circular(1.5),
+                child: LinearProgressIndicator(
+                  value: progress.clamp(0.0, 1.0),
+                  minHeight: 3,
+                  backgroundColor:
+                      colorScheme.onSurface.withValues(alpha: 0.08),
+                  valueColor:
+                      AlwaysStoppedAnimation<Color>(colorScheme.primary),
                 ),
               );
+
+        final totalDurationStr = effectiveDuration.inSeconds > 0
+            ? _formatDuration(effectiveDuration)
+            : '--:--';
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1003,7 +1021,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(_formatDuration(player.duration), style: timeStyle),
+              Text(totalDurationStr, style: timeStyle),
             ],
           ),
         );
@@ -1378,7 +1396,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
         IconButton(
           icon: Icon(
             Icons.skip_previous_rounded,
-            color: player.hasPrevious ? iconColor : iconColor.withOpacity(0.5),
+            color: player.hasPrevious ? iconColor : iconColor.withValues(alpha: 0.5),
             size: skipIconSize,
           ),
           padding: EdgeInsets.zero,
@@ -1407,7 +1425,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                shape: BoxShape.circle,
                boxShadow: [
                  BoxShadow(
-                   color: activeColor.withOpacity(0.3),
+                   color: activeColor.withValues(alpha: 0.3),
                    blurRadius: 8,
                    offset: const Offset(0, 2),
                  )
@@ -1432,7 +1450,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
         IconButton(
           icon: Icon(
             Icons.skip_next_rounded,
-            color: player.hasNext ? iconColor : iconColor.withOpacity(0.5),
+            color: player.hasNext ? iconColor : iconColor.withValues(alpha: 0.5),
             size: skipIconSize,
           ),
           padding: EdgeInsets.zero,
@@ -1446,71 +1464,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   /// 自适应右侧面板
-  Widget _buildAdaptiveRightPanel(PlayerService player, BuildContext context, ColorScheme colorScheme) {
-    if (ThemeManager().isFluentFramework) {
-      return _buildRightPanelFluent(player, context);
-    }
-    if (_isCupertino) {
-      return _buildRightPanelCupertino(player, context);
-    }
-    return _buildRightPanel(player, colorScheme, context);
-  }
 
   /// iOS Cupertino 风格右侧面板
-  Widget _buildRightPanelCupertino(PlayerService player, BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ValueListenableBuilder<Duration>(
-          valueListenable: player.positionNotifier,
-          builder: (context, position, child) {
-            return Text(
-              _formatDuration(position),
-              style: TextStyle(
-                fontSize: 12,
-                color: CupertinoColors.systemGrey,
-              ),
-            );
-          },
-        ),
-        Text(
-          ' / ',
-          style: TextStyle(
-            fontSize: 12,
-            color: CupertinoColors.systemGrey,
-          ),
-        ),
-        Text(
-          _formatDuration(player.duration),
-          style: TextStyle(
-            fontSize: 12,
-            color: CupertinoColors.systemGrey,
-          ),
-        ),
-        const SizedBox(width: 12),
-        CupertinoButton(
-          padding: const EdgeInsets.all(8),
-          minSize: 0,
-          onPressed: () => _showVolumeDialog(context, player),
-          child: Icon(
-            _volumeIconCupertino(player.volume),
-            color: CupertinoColors.activeBlue,
-            size: 22,
-          ),
-        ),
-        CupertinoButton(
-          padding: const EdgeInsets.all(8),
-          minSize: 0,
-          onPressed: () => _showQueueSheet(context),
-          child: Icon(
-            CupertinoIcons.music_note_list,
-            color: CupertinoColors.activeBlue,
-            size: 22,
-          ),
-        ),
-      ],
-    );
-  }
 
   IconData _volumeIconCupertino(double volume) {
     if (volume == 0) return CupertinoIcons.volume_off;
@@ -1519,47 +1474,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   /// 右侧面板（时长 + 音量 + 列表）- Material 风格
-  Widget _buildRightPanel(PlayerService player, ColorScheme colorScheme, BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 时长
-        ValueListenableBuilder<Duration>(
-          valueListenable: player.positionNotifier,
-          builder: (context, position, child) {
-            return Text(
-              _formatDuration(position),
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            );
-          },
-        ),
-        const Text(' / '),
-        Text(
-          _formatDuration(player.duration),
-          style: TextStyle(
-            fontSize: 12,
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(width: 12),
-        // 音量
-        IconButton(
-          icon: Icon(_volumeIcon(player.volume), color: colorScheme.onSurface),
-          tooltip: '音量',
-          onPressed: () => _showVolumeDialog(context, player),
-        ),
-        // 列表
-        IconButton(
-          icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
-          tooltip: '播放列表',
-          onPressed: () => _showQueueSheet(context),
-        ),
-      ],
-    );
-  }
 
   IconData _volumeIcon(double volume) {
     if (volume == 0) return Icons.volume_off_rounded;
@@ -1579,6 +1493,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     } catch (_) {}
     double appTemp = player.volume;
     if (ThemeManager().isFluentFramework) {
+      if (!context.mounted) return;
       await fluent.showDialog(
         context: context,
         builder: (context) {
@@ -1651,9 +1566,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
       );
       return;
     }
-    
+
     // iOS Cupertino 风格
     if (_isCupertino) {
+      if (!context.mounted) return;
       await showCupertinoModalPopup(
         context: context,
         builder: (context) {
@@ -1679,7 +1595,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                             width: 36,
                             height: 5,
                             decoration: BoxDecoration(
-                              color: CupertinoColors.systemGrey.withOpacity(0.3),
+                              color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
                               borderRadius: BorderRadius.circular(2.5),
                             ),
                           ),
@@ -1723,7 +1639,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           width: 36,
                           height: 5,
                           decoration: BoxDecoration(
-                            color: CupertinoColors.systemGrey.withOpacity(0.3),
+                            color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(2.5),
                           ),
                         ),
@@ -1796,7 +1712,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
       );
       return;
     }
-    
+
+    if (!context.mounted) return;
     await showDialog(
       context: context,
       builder: (context) {
@@ -1984,7 +1901,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
       );
       return;
     }
-    
+
     // iOS Cupertino 风格
     if (_isCupertino) {
       final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -2018,7 +1935,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               width: 36,
                               height: 5,
                               decoration: BoxDecoration(
-                                color: CupertinoColors.systemGrey.withOpacity(0.3),
+                                color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
                                 borderRadius: BorderRadius.circular(2.5),
                               ),
                             ),
@@ -2037,7 +1954,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                   const Spacer(),
                                   CupertinoButton(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    minSize: 0,
+                                    minimumSize: Size.zero,
                                     onPressed: hasQueueNow ? () => queueService.clear() : null,
                                     child: Text(
                                       '清空',
@@ -2073,7 +1990,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                               decoration: BoxDecoration(
                                                 color: isCurrent
-                                                    ? CupertinoColors.activeBlue.withOpacity(0.1)
+                                                    ? CupertinoColors.activeBlue.withValues(alpha: 0.1)
                                                     : null,
                                               ),
                                               child: Row(
@@ -2214,7 +2131,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                                 decoration: BoxDecoration(
                                                   color: isCurrent
-                                                      ? CupertinoColors.activeBlue.withOpacity(0.1)
+                                                      ? CupertinoColors.activeBlue.withValues(alpha: 0.1)
                                                       : null,
                                                 ),
                                                 child: Row(
@@ -2314,7 +2231,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
       );
       return;
     }
-    
+
     final media = MediaQuery.of(context);
     final isLandscape = media.orientation == Orientation.landscape;
     final sheetHeight = media.size.height * (isLandscape ? 0.78 : 0.6);
@@ -2552,6 +2469,23 @@ class _MiniPlayerState extends State<MiniPlayer> {
     );
   }
 
+  /// 获取有效时长，优先使用引擎时长，兜底使用歌词时间戳估算，并确保不低于当前播放进度
+  Duration _getEffectiveDuration(PlayerService player) {
+    Duration duration = player.duration;
+    if (duration.inSeconds <= 0 &&
+        player.lyricSnapshot != null &&
+        player.lyricSnapshot!.lines.isNotEmpty) {
+      final lastLine = player.lyricSnapshot!.lines.last;
+      duration = lastLine.startTime +
+          (lastLine.lineDuration ?? const Duration(seconds: 4));
+    }
+    final position = player.positionNotifier.value;
+    if (duration.inSeconds > 0 && position > duration) {
+      duration = position;
+    }
+    return duration;
+  }
+
   /// 格式化时长
   String _formatDuration(Duration duration) {
     final minutes = duration.inMinutes;
@@ -2559,4 +2493,3 @@ class _MiniPlayerState extends State<MiniPlayer> {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 }
-

@@ -448,7 +448,7 @@ class _PlayerPageState extends State<PlayerPage>
           // 背景遮罩
           GestureDetector(
             onTap: _togglePlaylist,
-            child: Container(color: Colors.black.withOpacity(0.3)),
+            child: Container(color: Colors.black.withValues(alpha: 0.3)),
           ),
           // 播放列表内容
           PlayerPlaylistPanel(

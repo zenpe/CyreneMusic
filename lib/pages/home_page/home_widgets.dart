@@ -1,3 +1,4 @@
+import '../../services/structured_log_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cyrene_music/models/toplist.dart';
 import 'package:cyrene_music/models/track.dart';
@@ -68,7 +69,7 @@ class HomeCapsuleTabs extends StatelessWidget {
                     borderRadius: BorderRadius.circular(radius - padding),
                     boxShadow: [
                       BoxShadow(
-                        color: pillColor.withOpacity(0.25),
+                        color: pillColor.withValues(alpha: 0.25),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -160,7 +161,7 @@ class TrackBannerCard extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
+                  colors: [Colors.transparent, Colors.black.withValues(alpha: 0.8)],
                 ),
               ),
             ),
@@ -182,7 +183,7 @@ class TrackBannerCard extends StatelessWidget {
                         Shadow(
                           offset: const Offset(0, 1),
                           blurRadius: 3.0,
-                          color: Colors.black.withOpacity(0.5),
+                          color: Colors.black.withValues(alpha: 0.5),
                         ),
                       ],
                     ),
@@ -194,12 +195,12 @@ class TrackBannerCard extends StatelessWidget {
                   Text(
                     track.artists,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       shadows: [
                         Shadow(
                           offset: const Offset(0, 1),
                           blurRadius: 3.0,
-                          color: Colors.black.withOpacity(0.5),
+                          color: Colors.black.withValues(alpha: 0.5),
                         ),
                       ],
                     ),
@@ -229,12 +230,12 @@ class TrackBannerCard extends StatelessWidget {
                           track.album,
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(
-                                color: Colors.white.withOpacity(0.8),
+                                color: Colors.white.withValues(alpha: 0.8),
                                 shadows: [
                                   Shadow(
                                     offset: const Offset(0, 1),
                                     blurRadius: 3.0,
-                                    color: Colors.black.withOpacity(0.5),
+                                    color: Colors.black.withValues(alpha: 0.5),
                                   ),
                                 ],
                               ),
@@ -257,7 +258,7 @@ class TrackBannerCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -371,7 +372,7 @@ class BannerSection extends StatelessWidget {
                             shape: BoxShape.circle,
                             color: currentBannerIndex == index
                                 ? Colors.white
-                                : Colors.white.withOpacity(0.5),
+                                : Colors.white.withValues(alpha: 0.5),
                           ),
                         ),
                       ),
@@ -406,7 +407,7 @@ class HistorySection extends StatelessWidget {
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.6),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
         child: Column(
           children: [
             // Header Area - View All
@@ -419,8 +420,8 @@ class HistorySection extends StatelessWidget {
                 child: Row(
                   children: [
                     Icon(
-                      Icons.history_rounded, 
-                      size: 20, 
+                      Icons.history_rounded,
+                      size: 20,
                       color: Theme.of(context).colorScheme.primary
                     ),
                     const SizedBox(width: 8),
@@ -459,7 +460,7 @@ class HistorySection extends StatelessWidget {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
+                              color: Colors.black.withValues(alpha: 0.1),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -508,8 +509,8 @@ class HistorySection extends StatelessWidget {
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 14,
-                                    color: index == 0 
-                                      ? Theme.of(context).colorScheme.primary 
+                                    color: index == 0
+                                      ? Theme.of(context).colorScheme.primary
                                       : Theme.of(context).colorScheme.onSurfaceVariant,
                                   ),
                                 ),
@@ -654,7 +655,7 @@ class GuessYouLikeSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeManager = ThemeManager();
-    
+
     // Material Design Expressive 风格实现
     if (!themeManager.isFluentFramework && !themeManager.isCupertinoFramework) {
        return Card(
@@ -662,21 +663,21 @@ class GuessYouLikeSection extends StatelessWidget {
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.6),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
         child: Column(
           children: [
             InkWell(
               onTap: () {
                 // TODO: 跳转到推荐页面
-                print('跳转到推荐页面');
+                StructuredLogService.log('跳转到推荐页面');
               },
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
                 child: Row(
                   children: [
                     Icon(
-                      Icons.auto_awesome_rounded, 
-                      size: 20, 
+                      Icons.auto_awesome_rounded,
+                      size: 20,
                       color: Theme.of(context).colorScheme.primary
                     ),
                     const SizedBox(width: 8),
@@ -716,7 +717,7 @@ class GuessYouLikeSection extends StatelessWidget {
       type: MaterialType.transparency,
       child: InkWell(
         onTap: () {
-          print('跳转到推荐页面');
+          StructuredLogService.log('跳转到推荐页面');
         },
         child: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -782,7 +783,7 @@ class GuessYouLikeSection extends StatelessWidget {
             InkWell(
               onTap: () {
                  // TODO: 跳转到推荐页面
-                 print('跳转到推荐页面');
+                 StructuredLogService.log('跳转到推荐页面');
               },
               borderRadius: BorderRadius.circular(16),
               child: Hero(
@@ -792,7 +793,7 @@ class GuessYouLikeSection extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -841,8 +842,8 @@ class GuessYouLikeSection extends StatelessWidget {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
-                              color: index == 0 
-                                ? Theme.of(context).colorScheme.primary 
+                              color: index == 0
+                                ? Theme.of(context).colorScheme.primary
                                 : Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
@@ -948,12 +949,12 @@ class GuessYouLikeSection extends StatelessWidget {
 
   Widget _buildGuessYouLikePlaceholder(BuildContext context, {bool isError = false, bool isLegacy = false}) {
     final message = isError ? '加载推荐失败' : '导入歌单查看更多';
-    
+
     // Legacy 风格
     if (isLegacy) {
       return InkWell(
         onTap: () {
-          print('引导用户导入歌单');
+          StructuredLogService.log('引导用户导入歌单');
         },
         child: Center(
           child: Padding(
@@ -973,7 +974,7 @@ class GuessYouLikeSection extends StatelessWidget {
     // Expressive 风格
     return InkWell(
       onTap: () {
-        print('引导用户导入歌单');
+        StructuredLogService.log('引导用户导入歌单');
       },
       child: Container(
         height: 88,
@@ -981,7 +982,7 @@ class GuessYouLikeSection extends StatelessWidget {
           color: Theme.of(context).colorScheme.surfaceContainer,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
           ),
         ),
         child: Center(
@@ -1197,12 +1198,12 @@ class ToplistsGrid extends StatelessWidget {
                                 opacity: isHovering ? 1.0 : 0.0,
                                 duration: const Duration(milliseconds: 150),
                                 child: Container(
-                                  color: Colors.black.withOpacity(0),
+                                  color: Colors.black.withValues(alpha: 0),
                                   child: Center(
                                     child: Icon(
                                       Icons.play_arrow,
                                       size: coverSize * 0.28,
-                                      color: Colors.white.withOpacity(0.95),
+                                      color: Colors.white.withValues(alpha: 0.95),
                                     ),
                                   ),
                                 ),

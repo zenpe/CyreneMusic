@@ -10,7 +10,7 @@ class MobilePlaylistGrid extends StatelessWidget {
   final List<Map<String, dynamic>> list;
   final void Function(int id)? onTap;
   const MobilePlaylistGrid({super.key, required this.list, this.onTap});
-  
+
   @override
   Widget build(BuildContext context) {
     if (list.isEmpty) return Text('暂无数据', style: Theme.of(context).textTheme.bodySmall);
@@ -64,7 +64,7 @@ class _MobileHoverPlaylistCardState extends State<MobileHoverPlaylistCard> {
     final themeManager = ThemeManager();
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
@@ -76,7 +76,7 @@ class _MobileHoverPlaylistCardState extends State<MobileHoverPlaylistCard> {
           boxShadow: _hovering
               ? [
                   BoxShadow(
-                    color: cs.shadow.withOpacity(0.06),
+                    color: cs.shadow.withValues(alpha: 0.06),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   )
@@ -146,8 +146,8 @@ class _MobileHoverPlaylistCardState extends State<MobileHoverPlaylistCard> {
                                         begin: Alignment.topCenter,
                                         end: Alignment.bottomCenter,
                                         colors: [
-                                          Colors.black.withOpacity(0.0),
-                                          Colors.black.withOpacity(0.65),
+                                          Colors.black.withValues(alpha: 0.0),
+                                          Colors.black.withValues(alpha: 0.65),
                                         ],
                                       ),
                                     ),
@@ -225,14 +225,14 @@ class _MobileHoverPlaylistCardState extends State<MobileHoverPlaylistCard> {
                                 color: cs.surfaceContainerHighest,
                                 child: Icon(
                                   Icons.music_note,
-                                  color: cs.onSurface.withOpacity(0.3),
+                                  color: cs.onSurface.withValues(alpha: 0.3),
                                 ),
                               ),
                               errorWidget: (context, url, error) => Container(
                                 color: cs.surfaceContainerHighest,
                                 child: Icon(
                                   Icons.broken_image,
-                                  color: cs.onSurface.withOpacity(0.3),
+                                  color: cs.onSurface.withValues(alpha: 0.3),
                                 ),
                               ),
                             ),
@@ -255,8 +255,8 @@ class _MobileHoverPlaylistCardState extends State<MobileHoverPlaylistCard> {
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                   colors: [
-                                    Colors.black.withOpacity(0.0),
-                                    Colors.black.withOpacity(0.65),
+                                    Colors.black.withValues(alpha: 0.0),
+                                    Colors.black.withValues(alpha: 0.65),
                                   ],
                                 ),
                               ),

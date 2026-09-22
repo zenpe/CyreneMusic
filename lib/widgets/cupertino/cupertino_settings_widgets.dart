@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 class CupertinoSettingsSection extends StatelessWidget {
   final String? header;
   final List<Widget> children;
-  
+
   const CupertinoSettingsSection({
     super.key,
     this.header,
@@ -15,7 +15,7 @@ class CupertinoSettingsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -45,11 +45,11 @@ class CupertinoSettingsSection extends StatelessWidget {
       ],
     );
   }
-  
+
   List<Widget> _buildChildrenWithDividers(BuildContext context, List<Widget> children) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final List<Widget> result = [];
-    
+
     for (int i = 0; i < children.length; i++) {
       result.add(children[i]);
       if (i < children.length - 1) {
@@ -58,15 +58,15 @@ class CupertinoSettingsSection extends StatelessWidget {
             padding: const EdgeInsets.only(left: 60),
             child: Container(
               height: 0.5,
-              color: isDark 
-                  ? CupertinoColors.systemGrey.withOpacity(0.3) 
-                  : CupertinoColors.systemGrey.withOpacity(0.3),
+              color: isDark
+                  ? CupertinoColors.systemGrey.withValues(alpha: 0.3)
+                  : CupertinoColors.systemGrey.withValues(alpha: 0.3),
             ),
           ),
         );
       }
     }
-    
+
     return result;
   }
 }
@@ -80,7 +80,7 @@ class CupertinoSettingsTile extends StatelessWidget {
   final Widget? trailing;
   final bool showChevron;
   final VoidCallback? onTap;
-  
+
   const CupertinoSettingsTile({
     super.key,
     required this.icon,
@@ -95,7 +95,7 @@ class CupertinoSettingsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: onTap,
@@ -163,7 +163,7 @@ class CupertinoSwitchTile extends StatelessWidget {
   final String? subtitle;
   final bool value;
   final ValueChanged<bool>? onChanged;
-  
+
   const CupertinoSwitchTile({
     super.key,
     required this.icon,
@@ -177,7 +177,7 @@ class CupertinoSwitchTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
@@ -237,7 +237,7 @@ class CupertinoSettingsCard extends StatelessWidget {
   final String title;
   final String? subtitle;
   final VoidCallback? onTap;
-  
+
   const CupertinoSettingsCard({
     super.key,
     required this.icon,
@@ -250,7 +250,7 @@ class CupertinoSettingsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
@@ -364,8 +364,8 @@ Future<void> showCupertinoColorPicker({
                 itemCount: colors.length,
                 itemBuilder: (context, index) {
                   final color = colors[index];
-                  final isSelected = currentColor.value == color.value;
-                  
+                  final isSelected = currentColor.toARGB32() == color.toARGB32();
+
                   return GestureDetector(
                     onTap: () {
                       onColorSelected(color);
@@ -375,18 +375,18 @@ Future<void> showCupertinoColorPicker({
                       decoration: BoxDecoration(
                         color: color,
                         shape: BoxShape.circle,
-                        border: isSelected 
+                        border: isSelected
                             ? Border.all(color: CupertinoColors.white, width: 3)
                             : null,
                         boxShadow: isSelected ? [
                           BoxShadow(
-                            color: color.withOpacity(0.5),
+                            color: color.withValues(alpha: 0.5),
                             blurRadius: 8,
                             spreadRadius: 2,
                           ),
                         ] : null,
                       ),
-                      child: isSelected 
+                      child: isSelected
                           ? const Icon(CupertinoIcons.checkmark, color: CupertinoColors.white, size: 24)
                           : null,
                     ),

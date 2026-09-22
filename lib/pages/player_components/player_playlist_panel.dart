@@ -41,7 +41,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
   @override
   Widget build(BuildContext context) {
     if (!widget.isVisible) return const SizedBox.shrink();
-    
+
     if (widget.slideAnimation != null) {
       return SlideTransition(
         position: widget.slideAnimation!,
@@ -51,7 +51,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
         ),
       );
     }
-    
+
     return Align(
       alignment: Alignment.centerRight,
       child: _buildPanel(context),
@@ -62,14 +62,14 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
     final queueService = PlaylistQueueService();
     final history = PlayHistoryService().history;
     final currentTrack = PlayerService().currentTrack;
-    
+
     // 优先使用播放队列，如果没有队列则使用播放历史
     final bool hasQueue = queueService.hasQueue;
-    final List<dynamic> fullList = hasQueue 
-        ? queueService.queue 
+    final List<dynamic> fullList = hasQueue
+        ? queueService.queue
         : history.map((h) => h.toTrack()).toList();
-    final String listTitle = hasQueue 
-        ? '播放队列 (${queueService.source.name})' 
+    final String listTitle = hasQueue
+        ? '播放队列 (${queueService.source.name})'
         : '播放历史';
 
     // 根据搜索关键词过滤列表
@@ -93,13 +93,13 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
           width: 400,
           height: double.infinity,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha: 0.1),
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(16),
               bottomLeft: Radius.circular(16),
             ),
             border: Border.all(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               width: 1,
             ),
           ),
@@ -133,7 +133,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                           ? '${fullList.length} 首'
                           : '${displayList.length}/${fullList.length}',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
+                        color: Colors.white.withValues(alpha: 0.6),
                         fontSize: 14,
                         fontFamily: 'Microsoft YaHei',
                       ),
@@ -144,7 +144,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                       IconButton(
                         icon: Icon(
                           Icons.delete_sweep_rounded,
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withValues(alpha: 0.8),
                           size: 20,
                         ),
                         onPressed: () {
@@ -156,7 +156,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                     IconButton(
                       icon: Icon(
                         _isSearchExpanded ? Icons.search_off : Icons.search,
-                        color: Colors.white.withOpacity(0.8),
+                        color: Colors.white.withValues(alpha: 0.8),
                       ),
                       onPressed: () {
                         setState(() {
@@ -253,10 +253,10 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
     return Container(
       height: 40,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -275,20 +275,20 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
         decoration: InputDecoration(
           hintText: '搜索歌曲或歌手...',
           hintStyle: TextStyle(
-            color: Colors.white.withOpacity(0.4),
+            color: Colors.white.withValues(alpha: 0.4),
             fontSize: 14,
             fontFamily: 'Microsoft YaHei',
           ),
           prefixIcon: Icon(
             Icons.search,
-            color: Colors.white.withOpacity(0.5),
+            color: Colors.white.withValues(alpha: 0.5),
             size: 20,
           ),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
                   icon: Icon(
                     Icons.clear,
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.white.withValues(alpha: 0.5),
                     size: 18,
                   ),
                   onPressed: () {
@@ -327,7 +327,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                     Icon(
                       isSearching ? Icons.search_off : Icons.music_off,
                       size: compact ? 52 : 64,
-                      color: Colors.white.withOpacity(0.3),
+                      color: Colors.white.withValues(alpha: 0.3),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -336,7 +336,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
+                        color: Colors.white.withValues(alpha: 0.6),
                         fontSize: 16,
                         fontFamily: 'Microsoft YaHei',
                       ),
@@ -353,7 +353,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                         child: Text(
                           '清除搜索',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
+                            color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 14,
                             fontFamily: 'Microsoft YaHei',
                           ),
@@ -388,7 +388,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
         child: Container(
           height: 74,
           color: isCurrentTrack
-              ? Colors.white.withOpacity(0.1)
+              ? Colors.white.withValues(alpha: 0.1)
               : Colors.transparent,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
@@ -405,7 +405,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                     : Text(
                         '${index + 1}',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
+                          color: Colors.white.withValues(alpha: 0.5),
                           fontSize: 14,
                           fontFamily: 'Microsoft YaHei',
                         ),
@@ -457,7 +457,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: isCurrentTrack ? Colors.white : Colors.white.withOpacity(0.9),
+                        color: isCurrentTrack ? Colors.white : Colors.white.withValues(alpha: 0.9),
                         fontSize: 15,
                         fontWeight: isCurrentTrack ? FontWeight.bold : FontWeight.normal,
                         fontFamily: 'Microsoft YaHei',
@@ -469,7 +469,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.white.withValues(alpha: 0.5),
                         fontSize: 13,
                         fontFamily: 'Microsoft YaHei',
                       ),
@@ -493,13 +493,13 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                 IconButton(
                   icon: Icon(
                     Icons.close_rounded,
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.white.withValues(alpha: 0.5),
                     size: 18,
                   ),
                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   padding: EdgeInsets.zero,
                   onPressed: () {
-                    PlaybackService().removeAt(queueIndex!);
+                    PlaybackService().removeAt(queueIndex);
                   },
                   tooltip: '移除',
                 ),
@@ -507,10 +507,10 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
               // 拖拽手柄（仅队列模式）
               if (hasQueue && queueIndex != null)
                 ReorderableDragStartListener(
-                  index: queueIndex!,
+                  index: queueIndex,
                   child: Icon(
                     Icons.drag_handle_rounded,
-                    color: Colors.white.withOpacity(0.4),
+                    color: Colors.white.withValues(alpha: 0.4),
                     size: 20,
                   ),
                 ),

@@ -53,8 +53,8 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
         border: Border(
           bottom: BorderSide(
             color: isDark
-                ? CupertinoColors.systemGrey.darkColor.withOpacity(0.3)
-                : CupertinoColors.systemGrey.withOpacity(0.2),
+                ? CupertinoColors.systemGrey.darkColor.withValues(alpha: 0.3)
+                : CupertinoColors.systemGrey.withValues(alpha: 0.2),
             width: 0.5,
           ),
         ),
@@ -64,7 +64,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
           // 返回按钮
           CupertinoButton(
             padding: const EdgeInsets.all(8),
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: widget.onClose,
             child: Icon(
               CupertinoIcons.back,
@@ -88,7 +88,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
           // 搜索按钮
           CupertinoButton(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: _performSearch,
             child: Text(
               '搜索',
@@ -400,7 +400,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                 padding: const EdgeInsets.only(left: 72),
                 child: Container(
                   height: 0.5,
-                  color: CupertinoColors.systemGrey.withOpacity(0.3),
+                  color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
                 ),
               ),
           ],
@@ -428,7 +428,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                 padding: const EdgeInsets.only(left: 72),
                 child: Container(
                   height: 0.5,
-                  color: CupertinoColors.systemGrey.withOpacity(0.3),
+                  color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
                 ),
               ),
           ],
@@ -663,7 +663,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                     padding: const EdgeInsets.only(left: 72),
                     child: Container(
                       height: 0.5,
-                      color: CupertinoColors.systemGrey.withOpacity(0.3),
+                      color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
                     ),
                   ),
               ],
@@ -679,7 +679,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
     return CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: () {
-        setState(() {
+        _refreshState(() {
           _secondaryArtistId = artist.id;
           _secondaryArtistName = artist.name;
         });
@@ -792,7 +792,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
             ),
             CupertinoButton(
               padding: EdgeInsets.zero,
-              minSize: 0,
+              minimumSize: Size.zero,
               onPressed: _confirmClearHistory,
               child: Text(
                 '清空',
@@ -820,7 +820,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                     padding: const EdgeInsets.only(left: 52),
                     child: Container(
                       height: 0.5,
-                      color: CupertinoColors.systemGrey.withOpacity(0.3),
+                      color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
                     ),
                   ),
               ],
@@ -834,7 +834,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
             '点击历史记录快速搜索',
             style: TextStyle(
               fontSize: 13,
-              color: CupertinoColors.systemGrey.withOpacity(0.7),
+              color: CupertinoColors.systemGrey.withValues(alpha: 0.7),
             ),
           ),
         ),
@@ -871,7 +871,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
             ),
             CupertinoButton(
               padding: EdgeInsets.zero,
-              minSize: 0,
+              minimumSize: Size.zero,
               onPressed: () => _searchService.removeSearchHistory(keyword),
               child: Icon(
                 CupertinoIcons.xmark_circle_fill,
@@ -893,8 +893,8 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
     required bool isDark,
   }) {
     final titleColor = isDark
-        ? CupertinoColors.white.withOpacity(0.8)
-        : CupertinoColors.black.withOpacity(0.8);
+        ? CupertinoColors.white.withValues(alpha: 0.8)
+        : CupertinoColors.black.withValues(alpha: 0.8);
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
@@ -912,7 +912,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                     Icon(
                       icon,
                       size: compact ? 52 : 64,
-                      color: CupertinoColors.systemGrey.withOpacity(0.4),
+                      color: CupertinoColors.systemGrey.withValues(alpha: 0.4),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(

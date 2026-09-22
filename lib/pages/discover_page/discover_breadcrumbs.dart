@@ -34,12 +34,12 @@ class FluentDiscoverBreadcrumbs extends StatelessWidget {
     final resources = theme.resources;
 
     final emphasizedStyle =
-        (typography?.subtitle ??
+        (typography.subtitle ??
                 const TextStyle(fontSize: 24, fontWeight: FontWeight.w600))
             .copyWith(color: resources.textFillColorPrimary);
 
     final baseStyle =
-        (typography?.body ??
+        (typography.body ??
                 const TextStyle(fontSize: 15, fontWeight: FontWeight.w500))
             .copyWith(color: resources.textFillColorSecondary);
 
@@ -107,5 +107,4 @@ class FluentDiscoverBreadcrumbs extends StatelessWidget {
     );
   }
 }
-
 

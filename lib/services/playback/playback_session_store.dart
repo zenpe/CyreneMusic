@@ -1,3 +1,4 @@
+import '../structured_log_service.dart';
 import 'dart:convert';
 
 import '../persistent_storage_service.dart';
@@ -42,7 +43,7 @@ class PlaybackSessionStore implements PlaybackSessionPersistence {
       }
       return snapshot;
     } catch (e) {
-      print('[PlaybackSessionStore] 读取播放会话失败: $e');
+      StructuredLogService.log('[PlaybackSessionStore] 读取播放会话失败: $e');
       await clear();
       return null;
     }

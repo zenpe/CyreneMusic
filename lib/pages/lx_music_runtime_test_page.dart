@@ -1,10 +1,11 @@
+import '../services/structured_log_service.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../services/lx_music_runtime_service.dart';
 
 /// 洛雪音源运行时测试页面
-/// 
+///
 /// 用于验证 WebView 沙箱执行洛雪音源脚本的可行性
 class LxMusicRuntimeTestPage extends StatefulWidget {
   const LxMusicRuntimeTestPage({super.key});
@@ -15,16 +16,16 @@ class LxMusicRuntimeTestPage extends StatefulWidget {
 
 class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
   final LxMusicRuntimeService _runtime = LxMusicRuntimeService();
-  
+
   bool _isInitializing = false;
   bool _isLoading = false;
   bool _isRequesting = false;
-  
+
   String _status = '未初始化';
   String _scriptInfo = '';
   String _result = '';
   List<String> _logs = [];
-  
+
   // 测试参数
   String _testSource = 'wy';
   String _testSongId = '2613671926';
@@ -43,23 +44,23 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
         _logs.removeAt(0);
       }
     });
-    print(message);
+    StructuredLogService.log(message);
   }
 
   /// 初始化运行时
   Future<void> _initializeRuntime() async {
     if (_isInitializing) return;
-    
+
     setState(() {
       _isInitializing = true;
       _status = '正在初始化...';
     });
-    
+
     try {
       _log('🚀 开始初始化 WebView 沙箱...');
       await _runtime.initialize();
       _log('✅ WebView 沙箱初始化成功');
-      
+
       setState(() {
         _status = '已初始化，等待加载脚本';
       });
@@ -81,9 +82,9 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
       _log('⚠️ 请先初始化运行时');
       return;
     }
-    
+
     if (_isLoading) return;
-    
+
     try {
       // 选择文件
       final result = await FilePicker.platform.pickFiles(
@@ -91,20 +92,20 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
         allowedExtensions: ['js'],
         allowMultiple: false,
       );
-      
+
       if (result == null || result.files.isEmpty) {
         _log('⚠️ 用户取消选择');
         return;
       }
-      
+
       setState(() {
         _isLoading = true;
         _status = '正在加载脚本...';
       });
-      
+
       final file = result.files.first;
       String scriptContent;
-      
+
       if (file.path != null) {
         scriptContent = await File(file.path!).readAsString();
         _log('📂 已选择文件: ${file.name}');
@@ -114,19 +115,19 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
       } else {
         throw Exception('无法读取文件内容');
       }
-      
+
       _log('📜 脚本大小: ${scriptContent.length} 字符');
-      
+
       // 加载脚本
       _log('⏳ 正在执行脚本...');
       final scriptInfo = await _runtime.loadScript(scriptContent);
-      
+
       if (scriptInfo != null) {
         _log('✅ 脚本加载成功!');
         _log('   名称: ${scriptInfo.name}');
         _log('   版本: ${scriptInfo.version}');
         _log('   作者: ${scriptInfo.author}');
-        
+
         setState(() {
           _status = '脚本已就绪';
           _scriptInfo = '''
@@ -160,26 +161,26 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
       _log('⚠️ 脚本未就绪');
       return;
     }
-    
+
     if (_isRequesting) return;
-    
+
     setState(() {
       _isRequesting = true;
       _result = '请求中...';
     });
-    
+
     try {
       _log('🎵 请求音乐 URL:');
       _log('   音源: $_testSource');
       _log('   歌曲ID: $_testSongId');
       _log('   音质: $_testQuality');
-      
+
       final url = await _runtime.getMusicUrl(
         source: _testSource,
         songId: _testSongId,
         quality: _testQuality,
       );
-      
+
       if (url != null) {
         _log('✅ 获取成功!');
         _log('   URL: $url');
@@ -256,9 +257,9 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // 操作按钮
             Wrap(
               spacing: 8,
@@ -303,9 +304,9 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // 测试参数
             Card(
               child: Padding(
@@ -325,7 +326,7 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: _testSource,
+                            initialValue: _testSource,
                             decoration: const InputDecoration(
                               labelText: '音源',
                               border: OutlineInputBorder(),
@@ -348,7 +349,7 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: _testQuality,
+                            initialValue: _testQuality,
                             decoration: const InputDecoration(
                               labelText: '音质',
                               border: OutlineInputBorder(),
@@ -386,15 +387,15 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // 结果显示
             if (_result.isNotEmpty)
               Card(
                 color: _result.startsWith('成功')
-                    ? Colors.green.withOpacity(0.1)
-                    : Colors.red.withOpacity(0.1),
+                    ? Colors.green.withValues(alpha: 0.1)
+                    : Colors.red.withValues(alpha: 0.1),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -422,9 +423,9 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
                   ),
                 ),
               ),
-            
+
             const SizedBox(height: 16),
-            
+
             // 日志区域
             Card(
               child: Padding(
@@ -474,7 +475,7 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
                           } else if (log.contains('🚀') || log.contains('🎵')) {
                             color = Colors.cyanAccent;
                           }
-                          
+
                           return Text(
                             log,
                             style: TextStyle(

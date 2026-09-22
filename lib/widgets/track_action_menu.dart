@@ -26,8 +26,8 @@ class TrackActionMenu {
     Offset? anchor,
   }) {
     final themeManager = ThemeManager();
-    final isExpressive = !themeManager.isCupertinoFramework && 
-                        !themeManager.isFluentFramework && 
+    final isExpressive = !themeManager.isCupertinoFramework &&
+                        !themeManager.isFluentFramework &&
                         (Platform.isAndroid || Platform.isIOS);
 
     if (themeManager.isCupertinoFramework) {
@@ -48,12 +48,12 @@ class TrackActionMenu {
     VoidCallback? onPlay,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     // 获取按钮位置
     final RenderBox? button = context.findRenderObject() as RenderBox?;
     final Offset buttonPosition = button?.localToGlobal(Offset.zero) ?? Offset.zero;
     final Size buttonSize = button?.size ?? const Size(40, 40);
-    
+
     // 计算菜单位置
     final menuPosition = RelativeRect.fromLTRB(
       buttonPosition.dx,
@@ -61,7 +61,7 @@ class TrackActionMenu {
       buttonPosition.dx + buttonSize.width,
       buttonPosition.dy,
     );
-    
+
     showMenu<String>(
       context: context,
       position: menuPosition,
@@ -257,7 +257,8 @@ class TrackActionMenu {
       ],
     ).then((value) {
       if (value == null) return;
-      
+      if (!context.mounted) return;
+
       switch (value) {
         case 'play':
           onPlay?.call();
@@ -306,13 +307,13 @@ class TrackActionMenu {
               end: Alignment.bottomCenter,
               colors: [
                 colorScheme.surfaceContainerHigh,
-                colorScheme.surfaceContainerHighest.withOpacity(isDark ? 0.95 : 0.98),
+                colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.95 : 0.98),
               ],
             ),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.4 : 0.15),
+                color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
                 blurRadius: 30,
                 offset: const Offset(0, -10),
               ),
@@ -327,7 +328,7 @@ class TrackActionMenu {
                   width: 48,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: colorScheme.outline.withOpacity(0.4),
+                    color: colorScheme.outline.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),
@@ -345,8 +346,8 @@ class TrackActionMenu {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            colorScheme.primary.withOpacity(0.2),
-                            colorScheme.primary.withOpacity(0.1),
+                            colorScheme.primary.withValues(alpha: 0.2),
+                            colorScheme.primary.withValues(alpha: 0.1),
                           ],
                         ),
                         borderRadius: BorderRadius.circular(16),
@@ -388,7 +389,7 @@ class TrackActionMenu {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                             ),
@@ -478,7 +479,7 @@ class TrackActionMenu {
                         isDestructive: true,
                         onTap: () {
                           Navigator.pop(context);
-                          onDelete?.call();
+                           onDelete();
                         },
                       ),
                   ],
@@ -504,9 +505,9 @@ class TrackActionMenu {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: isDestructive 
-            ? colorScheme.errorContainer.withOpacity(0.3)
-            : colorScheme.surfaceContainerHighest.withOpacity(0.4),
+        color: isDestructive
+            ? colorScheme.errorContainer.withValues(alpha: 0.3)
+            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: onTap,
@@ -528,7 +529,7 @@ class TrackActionMenu {
                 const Spacer(),
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: color.withOpacity(0.3),
+                  color: color.withValues(alpha: 0.3),
                   size: 20,
                 ),
               ],
@@ -547,7 +548,7 @@ class TrackActionMenu {
   ) {
     final isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
 
-    
+
     showCupertinoModalPopup(
       context: context,
       builder: (context) => CupertinoActionSheet(
@@ -576,8 +577,8 @@ class TrackActionMenu {
                     errorWidget: (context, url, error) => Container(
                       width: 48,
                       height: 48,
-                      color: isDark 
-                          ? const Color(0xFF2C2C2E) 
+                      color: isDark
+                          ? const Color(0xFF2C2C2E)
                           : CupertinoColors.systemGrey5,
                       child: const Icon(
                         CupertinoIcons.music_note,
@@ -598,8 +599,8 @@ class TrackActionMenu {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: isDark 
-                              ? CupertinoColors.white 
+                          color: isDark
+                              ? CupertinoColors.white
                               : CupertinoColors.black,
                         ),
                       ),
@@ -715,29 +716,29 @@ class TrackActionMenu {
 
   /// iOS 添加到歌单对话框
   static void _showCupertinoAddToPlaylistDialog(
-    BuildContext context, 
+    BuildContext context,
     Track track,
   ) {
     final playlistService = PlaylistService();
-    
+
     // 确保已加载歌单列表
     if (playlistService.playlists.isEmpty) {
       playlistService.loadPlaylists();
     }
 
     final isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
-    
+
     showCupertinoModalPopup(
       context: context,
       builder: (context) => AnimatedBuilder(
         animation: playlistService,
         builder: (context, child) {
           final playlists = playlistService.playlists;
-          
+
           return Container(
             decoration: BoxDecoration(
-              color: isDark 
-                  ? const Color(0xFF1C1C1E) 
+              color: isDark
+                  ? const Color(0xFF1C1C1E)
                   : CupertinoColors.systemBackground,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             ),
@@ -756,7 +757,7 @@ class TrackActionMenu {
                       borderRadius: BorderRadius.circular(2.5),
                     ),
                   ),
-                  
+
                   // 标题
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -767,8 +768,8 @@ class TrackActionMenu {
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
-                            color: isDark 
-                                ? CupertinoColors.white 
+                            color: isDark
+                                ? CupertinoColors.white
                                 : CupertinoColors.black,
                           ),
                         ),
@@ -781,7 +782,7 @@ class TrackActionMenu {
                       ],
                     ),
                   ),
-                  
+
                   // 歌单列表
                   if (playlists.isEmpty)
                     const Padding(
@@ -826,8 +827,8 @@ class TrackActionMenu {
                                     height: 44,
                                     decoration: BoxDecoration(
                                       color: playlist.isDefault
-                                          ? CupertinoColors.systemRed.withOpacity(0.15)
-                                          : CupertinoColors.systemBlue.withOpacity(0.15),
+                                          ? CupertinoColors.systemRed.withValues(alpha: 0.15)
+                                          : CupertinoColors.systemBlue.withValues(alpha: 0.15),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Icon(
@@ -849,8 +850,8 @@ class TrackActionMenu {
                                           playlist.name,
                                           style: TextStyle(
                                             fontSize: 16,
-                                            color: isDark 
-                                                ? CupertinoColors.white 
+                                            color: isDark
+                                                ? CupertinoColors.white
                                                 : CupertinoColors.black,
                                           ),
                                         ),
@@ -876,7 +877,7 @@ class TrackActionMenu {
                         },
                       ),
                     ),
-                  
+
                   const SizedBox(height: 16),
                 ],
               ),
@@ -896,22 +897,22 @@ class TrackActionMenu {
   ) {
     final fluentTheme = fluent.FluentTheme.of(context);
     final isDark = fluentTheme.brightness == Brightness.dark;
-    
+
     // 获取按钮位置
     final RenderBox? button = context.findRenderObject() as RenderBox?;
     final Offset buttonPosition = button?.localToGlobal(Offset.zero) ?? Offset.zero;
     final Size buttonSize = button?.size ?? const Size(40, 40);
-    
+
     // 获取屏幕尺寸
     final screenSize = MediaQuery.of(context).size;
-    
+
     // 计算菜单位置 - 在按钮下方显示，确保不超出屏幕
     double left = buttonPosition.dx;
     double top = buttonPosition.dy + buttonSize.height;
-    
+
     const menuWidth = 200.0;
     const menuHeight = 260.0; // 估算高度
-    
+
     // 如果超出右边界，向左调整
     if (left + menuWidth > screenSize.width) {
       left = screenSize.width - menuWidth - 8;
@@ -920,11 +921,11 @@ class TrackActionMenu {
     if (top + menuHeight > screenSize.height) {
       top = buttonPosition.dy - menuHeight;
     }
-    
+
     final menuPosition = anchor ?? Offset(left, top);
-    
+
     late OverlayEntry overlayEntry;
-    
+
     overlayEntry = OverlayEntry(
       builder: (overlayContext) {
         return Stack(
@@ -960,9 +961,9 @@ class TrackActionMenu {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                     side: BorderSide(
-                      color: isDark 
-                          ? Colors.white.withOpacity(0.08)
-                          : Colors.black.withOpacity(0.08),
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.08),
                       width: 1,
                     ),
                   ),
@@ -1020,8 +1021,8 @@ class TrackActionMenu {
                           child: Divider(
                             height: 1,
                             color: isDark
-                                ? Colors.white.withOpacity(0.1)
-                                : Colors.black.withOpacity(0.1),
+                                ? Colors.white.withValues(alpha: 0.1)
+                                : Colors.black.withValues(alpha: 0.1),
                           ),
                         ),
                         // 添加到歌单
@@ -1044,7 +1045,7 @@ class TrackActionMenu {
         );
       },
     );
-    
+
     Overlay.of(context).insert(overlayEntry);
   }
 
@@ -1062,9 +1063,9 @@ class TrackActionMenu {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: states.contains(WidgetState.hovered)
-                ? (isDark 
-                    ? Colors.white.withOpacity(0.06)
-                    : Colors.black.withOpacity(0.04))
+                ? (isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.black.withValues(alpha: 0.04))
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(4),
           ),
@@ -1096,14 +1097,14 @@ class TrackActionMenu {
   /// Fluent 添加到歌单对话框
   static void _showFluentAddToPlaylistDialog(BuildContext context, Track track) {
     final playlistService = PlaylistService();
-    
+
     // 确保已加载歌单列表
     if (playlistService.playlists.isEmpty) {
       playlistService.loadPlaylists();
     }
 
     final fluentTheme = fluent.FluentTheme.of(context);
-    
+
     fluent.showDialog(
       context: context,
       builder: (context) => fluent.ContentDialog(
@@ -1113,7 +1114,7 @@ class TrackActionMenu {
           animation: playlistService,
           builder: (context, child) {
             final playlists = playlistService.playlists;
-            
+
             if (playlists.isEmpty) {
               return const Center(
                 child: Padding(
@@ -1136,8 +1137,8 @@ class TrackActionMenu {
                       height: 40,
                       decoration: BoxDecoration(
                         color: playlist.isDefault
-                            ? Colors.red.withOpacity(0.15)
-                            : fluentTheme.accentColor.withOpacity(0.15),
+                            ? Colors.red.withValues(alpha: 0.15)
+                            : fluentTheme.accentColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(
@@ -1194,14 +1195,14 @@ class TrackActionMenu {
   /// Material 添加到歌单对话框
   static void _showAddToPlaylistDialog(BuildContext context, Track track) {
     final playlistService = PlaylistService();
-    
+
     // 确保已加载歌单列表
     if (playlistService.playlists.isEmpty) {
       playlistService.loadPlaylists();
     }
 
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     showModalBottomSheet(
       context: context,
       backgroundColor: colorScheme.surface,
@@ -1212,7 +1213,7 @@ class TrackActionMenu {
         animation: playlistService,
         builder: (context, child) {
           final playlists = playlistService.playlists;
-          
+
           return SafeArea(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1223,11 +1224,11 @@ class TrackActionMenu {
                   height: 4,
                   margin: const EdgeInsets.only(top: 12, bottom: 16),
                   decoration: BoxDecoration(
-                    color: colorScheme.outline.withOpacity(0.4),
+                    color: colorScheme.outline.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                
+
                 // 标题
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -1247,9 +1248,9 @@ class TrackActionMenu {
                     ],
                   ),
                 ),
-                
+
                 const Divider(height: 1),
-                
+
                 // 歌单列表
                 if (playlists.isEmpty)
                   const Padding(
@@ -1272,7 +1273,7 @@ class TrackActionMenu {
                             height: 44,
                             decoration: BoxDecoration(
                               color: playlist.isDefault
-                                  ? Colors.red.withOpacity(0.15)
+                                  ? Colors.red.withValues(alpha: 0.15)
                                   : colorScheme.primaryContainer,
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -1312,7 +1313,7 @@ class TrackActionMenu {
                       },
                     ),
                   ),
-                
+
                 const SizedBox(height: 8),
               ],
             ),
@@ -1400,12 +1401,12 @@ class TrackActionMenu {
             Navigator.of(context).maybePop();
           }
         });
-        
+
         return Container(
           margin: const EdgeInsets.only(bottom: 100),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.75),
+            color: Colors.black.withValues(alpha: 0.75),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Row(
@@ -1453,7 +1454,7 @@ class TrackMoreButton extends StatelessWidget {
   final VoidCallback? onPlay;
   final VoidCallback? onDelete;
   final double? size;
-  
+
   const TrackMoreButton({
     super.key,
     required this.track,
@@ -1465,11 +1466,11 @@ class TrackMoreButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeManager = ThemeManager();
-    
+
     if (themeManager.isCupertinoFramework) {
       return CupertinoButton(
         padding: EdgeInsets.zero,
-        minSize: size ?? 36,
+        minimumSize: Size.square((size ?? 36).toDouble()),
         onPressed: () => TrackActionMenu.show(
           context: context,
           track: track,
@@ -1518,4 +1519,3 @@ class TrackMoreButton extends StatelessWidget {
     }
   }
 }
-

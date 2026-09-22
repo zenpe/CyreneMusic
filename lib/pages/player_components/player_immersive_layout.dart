@@ -168,7 +168,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
             borderRadius: BorderRadius.circular(20 * uiScale),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
                 blurRadius: 40 * uiScale,
                 offset: Offset(0, 15 * uiScale),
               ),
@@ -227,7 +227,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
                 track?.artists ?? '未知歌手',
                 style: TextStyle(
                   fontSize: 24 * uiScale,
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                   fontWeight: FontWeight.w500,
                   fontFamily: 'Microsoft YaHei',
                 ),
@@ -261,7 +261,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
             // 上一首
             IconButton(
               icon: const Icon(CupertinoIcons.backward_fill),
-              color: Colors.white.withOpacity(0.9),
+              color: Colors.white.withValues(alpha: 0.9),
               iconSize: 32 * uiScale,
               onPressed: player.hasPrevious ? player.playPrevious : null,
             ),
@@ -271,7 +271,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
             // 下一首
             IconButton(
               icon: const Icon(CupertinoIcons.forward_fill),
-              color: Colors.white.withOpacity(0.9),
+              color: Colors.white.withValues(alpha: 0.9),
               iconSize: 32 * uiScale,
               onPressed: player.hasNext ? player.playNext : null,
             ),
@@ -288,7 +288,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
             // 音量按钮
             IconButton(
               icon: const Icon(CupertinoIcons.speaker_2_fill),
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha: 0.7),
               iconSize: 22 * uiScale,
               onPressed: onVolumeControlPressed,
               tooltip: '音量调节',
@@ -297,7 +297,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
             // 播放队列按钮
             IconButton(
               icon: const Icon(Icons.format_list_bulleted_rounded),
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha: 0.7),
               iconSize: 24 * uiScale,
               onPressed: onPlaylistPressed,
               tooltip: '播放队列',
@@ -333,7 +333,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
         }
         return IconButton(
           icon: Icon(icon),
-          color: Colors.white.withOpacity(0.7),
+          color: Colors.white.withValues(alpha: 0.7),
           iconSize: 24 * uiScale,
           onPressed: () => PlaybackModeService().toggleMode(),
           tooltip: PlaybackModeService().getModeName(),
@@ -362,9 +362,9 @@ class PlayerImmersiveLayout extends StatelessWidget {
               vertical: 8 * uiScale,
             ),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20 * uiScale),
-              border: Border.all(color: Colors.white.withOpacity(0.2)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -539,8 +539,8 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
         imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: Transform(
           transform: Matrix4.identity()
-            ..translate(0.0, offsetY)
-            ..scale(scale, scale),
+            ..translateByDouble(0.0, offsetY, 0.0, 1.0)
+            ..scaleByDouble(scale, scale, 1.0, 1.0),
           alignment: Alignment.center,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -599,8 +599,8 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
         imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: Transform(
           transform: Matrix4.identity()
-            ..translate(0.0, offsetY)
-            ..scale(scaleX, 1.0),
+            ..translateByDouble(0.0, offsetY, 0.0, 1.0)
+            ..scaleByDouble(scaleX, 1.0, 1.0, 1.0),
           alignment: Alignment.center,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -650,12 +650,12 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
     return TextStyle(
       fontSize: size,
       fontWeight: isTranslation ? FontWeight.w600 : FontWeight.w900,
-      color: isTranslation ? Colors.white.withOpacity(0.7) : Colors.white,
+      color: isTranslation ? Colors.white.withValues(alpha: 0.7) : Colors.white,
       fontFamily: fontFamily,
       letterSpacing: isTranslation ? 0 : -1,
       shadows: [
         Shadow(
-          color: Colors.black.withOpacity(0.5),
+          color: Colors.black.withValues(alpha: 0.5),
           blurRadius: 30 * widget.uiScale,
           offset: Offset(0, 8 * widget.uiScale),
         ),
@@ -750,7 +750,7 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
           child: Text(
             '已收藏到: ${_playlistNames.join(", ")}',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.6),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 12,
             ),
           ),
@@ -785,6 +785,7 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
       if (value == 'remove') {
         _removeFromPlaylists();
       } else if (value == 'add') {
+        if (!context.mounted) return;
         PlayerDialogs.showAddToPlaylist(context, widget.track);
         // 添加后刷新
         // 由于 dialog 是异步的，这里可能无法立即刷新，需要监听 PlaylistService 或回调
@@ -839,7 +840,7 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
             _isInPlaylist ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
             color: _isInPlaylist
                 ? Colors.redAccent
-                : Colors.white.withOpacity(0.9),
+                : Colors.white.withValues(alpha: 0.9),
             size: 32 * widget.uiScale,
           ),
         ),

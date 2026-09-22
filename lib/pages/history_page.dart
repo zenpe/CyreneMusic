@@ -63,8 +63,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
       return _buildCupertinoPage(context, history);
     }
 
-    final isExpressive = !ThemeManager().isFluentFramework && 
-                        !ThemeManager().isCupertinoFramework && 
+    final isExpressive = !ThemeManager().isFluentFramework &&
+                        !ThemeManager().isCupertinoFramework &&
                         (Platform.isAndroid || Platform.isIOS);
 
     return Scaffold(
@@ -230,7 +230,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
         backgroundColor: isDark ? const Color(0xFF000000) : CupertinoColors.systemGroupedBackground,
         navigationBar: CupertinoNavigationBar(
           middle: const Text('播放历史'),
-          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withOpacity(0.9),
+          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withValues(alpha: 0.9),
           border: null,
           trailing: history.isNotEmpty
               ? CupertinoButton(
@@ -472,7 +472,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                     Icon(
                       CupertinoIcons.time,
                       size: compact ? 56 : 80,
-                      color: CupertinoColors.systemGrey.withOpacity(0.5),
+                      color: CupertinoColors.systemGrey.withValues(alpha: 0.5),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -544,14 +544,14 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            colorScheme.primaryContainer.withOpacity(0.7),
-            colorScheme.primaryContainer.withOpacity(0.4),
+            colorScheme.primaryContainer.withValues(alpha: 0.7),
+            colorScheme.primaryContainer.withValues(alpha: 0.4),
           ],
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: colorScheme.primary.withOpacity(0.05),
+            color: colorScheme.primary.withValues(alpha: 0.05),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -573,7 +573,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: isExpressive ? colorScheme.primary.withOpacity(0.1) : null,
+                      color: isExpressive ? colorScheme.primary.withValues(alpha: 0.1) : null,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
@@ -623,7 +623,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
         Text(
           label,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                 fontWeight: isExpressive ? FontWeight.w600 : null,
               ),
         ),
@@ -642,7 +642,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.03),
+                color: Colors.black.withValues(alpha: 0.03),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -665,7 +665,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
+                                color: Colors.black.withValues(alpha: 0.1),
                                 blurRadius: 8,
                                 offset: const Offset(0, 4),
                               ),
@@ -735,7 +735,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 13,
-                              color: colorScheme.onSurfaceVariant.withOpacity(0.8),
+                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -751,7 +751,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                                 _formatTime(item.playedAt),
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: colorScheme.primary.withOpacity(0.7),
+                                  color: colorScheme.primary.withValues(alpha: 0.7),
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -871,7 +871,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                 Text(
                   _formatTime(item.playedAt),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                         fontSize: 11,
                       ),
                 ),
@@ -962,7 +962,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                     Icon(
                       Icons.history,
                       size: compact ? 56 : 80,
-                      color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -981,7 +981,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                       maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -1020,7 +1020,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
       ),
     );
   }
-  
+
   void _showFluentClearConfirmDialog() {
     fluent.showDialog(
       context: context,

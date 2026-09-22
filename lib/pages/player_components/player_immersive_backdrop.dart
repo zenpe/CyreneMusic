@@ -21,7 +21,7 @@ class PlayerImmersiveBackdrop extends StatelessWidget {
               sigmaX: reducedEffects ? 8 : 30,
               sigmaY: reducedEffects ? 8 : 30,
             ),
-            child: ColoredBox(color: Colors.black.withOpacity(0.3)),
+            child: ColoredBox(color: Colors.black.withValues(alpha: 0.3)),
           ),
         ],
       ),

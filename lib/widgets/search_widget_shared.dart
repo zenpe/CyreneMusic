@@ -30,7 +30,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                 : _isCupertino
                     ? CupertinoButton(
                         padding: const EdgeInsets.all(8),
-                        minSize: 0,
+                        minimumSize: Size.zero,
                         onPressed: _handleSecondaryBack,
                         child: Icon(
                           CupertinoIcons.back,
@@ -63,9 +63,9 @@ extension _SearchWidgetShared on _SearchWidgetState {
     );
 
     final dividerColor = _isFluent
-        ? fluent.FluentTheme.of(context).resources?.dividerStrokeColorDefault
+        ? fluent.FluentTheme.of(context).resources.dividerStrokeColorDefault
         : _isCupertino
-            ? CupertinoColors.systemGrey.withOpacity(0.3)
+            ? CupertinoColors.systemGrey.withValues(alpha: 0.3)
             : Theme.of(context).dividerColor;
 
     final content = Column(
@@ -80,7 +80,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
               : ArtistDetailContent(
                   artistId: _secondaryArtistId!,
                   onOpenAlbum: (albumId) {
-                    setState(() {
+                    _refreshState(() {
                       _secondaryAlbumId = albumId;
                       _secondaryAlbumName = null;
                     });
@@ -97,7 +97,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
   }
 
   void _handleSecondaryBack() {
-    setState(() {
+    _refreshState(() {
       if (_secondaryAlbumId != null) {
         _secondaryAlbumId = null;
       } else {
@@ -141,7 +141,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
       return tabs;
     } catch (e) {
       // 出现异常时返回默认 tabs
-      print('⚠️ [SearchWidget] _getPlatformTabs error: $e');
+      StructuredLogService.log('⚠️ [SearchWidget] _getPlatformTabs error: $e');
       return ['网易云', 'Apple', 'QQ音乐', '酷狗', '酷我', '歌手'];
     }
   }
@@ -166,7 +166,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
       return codes;
     } catch (e) {
       // 出现异常时返回默认平台列表
-      print('⚠️ [SearchWidget] _getSupportedPlatformCodes error: $e');
+      StructuredLogService.log('⚠️ [SearchWidget] _getSupportedPlatformCodes error: $e');
       return ['netease', 'apple', 'qq', 'kugou', 'kuwo'];
     }
   }
@@ -555,7 +555,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
+                      color: Colors.black.withValues(alpha: 0.08),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -577,7 +577,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     ),
                     errorWidget: (context, url, error) => Container(
                       color: cs.surfaceContainerHighest,
-                      child: Icon(Icons.music_note, color: cs.primary.withOpacity(0.5)),
+                      child: Icon(Icons.music_note, color: cs.primary.withValues(alpha: 0.5)),
                     ),
                   ),
                 ),
@@ -609,7 +609,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: cs.onSurfaceVariant.withOpacity(0.8),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8),
                     ),
                   ),
                 ],
@@ -763,7 +763,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -774,7 +774,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
               child: artist.picUrl.isEmpty
                   ? Container(
                       color: cs.surfaceContainerHighest,
-                      child: Icon(Icons.person, size: 32, color: cs.primary.withOpacity(0.5)),
+                      child: Icon(Icons.person, size: 32, color: cs.primary.withValues(alpha: 0.5)),
                     )
                   : CachedNetworkImage(
                       imageUrl: artist.picUrl,
@@ -795,7 +795,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
 
         return InkWell(
           onTap: () {
-            setState(() {
+            _refreshState(() {
               _secondaryArtistId = artist.id;
               _secondaryArtistName = artist.name;
             });
@@ -820,7 +820,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Icon(Icons.arrow_forward_ios, size: 16, color: cs.onSurfaceVariant.withOpacity(0.5)),
+                Icon(Icons.arrow_forward_ios, size: 16, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
               ],
             ),
           ),
@@ -1007,7 +1007,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
+                      color: Colors.black.withValues(alpha: 0.08),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -1029,7 +1029,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     ),
                     errorWidget: (context, url, error) => Container(
                       color: cs.surfaceContainerHighest,
-                      child: Icon(Icons.music_note, color: cs.primary.withOpacity(0.5)),
+                      child: Icon(Icons.music_note, color: cs.primary.withValues(alpha: 0.5)),
                     ),
                   ),
                 ),
@@ -1061,7 +1061,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: cs.onSurfaceVariant.withOpacity(0.8),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8),
                     ),
                   ),
                 ],
@@ -1263,7 +1263,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     child: fluent.IconButton(
                       icon: Icon(
                         fluent.FluentIcons.delete,
-                        color: fluentTheme?.resources?.textFillColorSecondary,
+                        color: fluentTheme?.resources.textFillColorSecondary,
                       ),
                       onPressed: _confirmClearHistory,
                     ),
@@ -1324,7 +1324,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
           child: Text(
             '点击历史记录快速搜索',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
             ),
           ),
         ),
@@ -1425,7 +1425,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     Icon(
                       icon,
                       size: compact ? 56 : 80,
-                      color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -1444,7 +1444,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
                       maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                       ),
                     ),
                   ],

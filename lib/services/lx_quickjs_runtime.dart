@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -42,12 +43,12 @@ class LxQuickJsRuntime implements LxRuntime {
 
   void _debug(String message) {
     if (kDebugMode) {
-      print(message);
+      StructuredLogService.log(message);
     }
   }
 
   void _error(String message) {
-    print(message);
+    StructuredLogService.log(message);
   }
 
   @override

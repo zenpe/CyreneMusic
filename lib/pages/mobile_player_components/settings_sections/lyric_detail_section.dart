@@ -11,21 +11,21 @@ class LyricDetailSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return AnimatedBuilder(
       animation: LyricStyleService(),
       builder: (context, _) {
         final styleService = LyricStyleService();
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withOpacity(isDark ? 0.6 : 0.8),
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: colorScheme.outlineVariant.withOpacity(0.3),
+                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -53,16 +53,16 @@ class LyricDetailSection extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 20),
-                
+
                 // 歌词字体选择
                 _buildFontSection(
                   context: context,
                   colorScheme: colorScheme,
                   isDark: isDark,
                 ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 // 字号调节
                 _buildSliderSection(
                   context: context,
@@ -78,9 +78,9 @@ class LyricDetailSection extends StatelessWidget {
                   colorScheme: colorScheme,
                   isDark: isDark,
                 ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 // 视觉模糊强度
                 _buildSliderSection(
                   context: context,
@@ -96,9 +96,9 @@ class LyricDetailSection extends StatelessWidget {
                   colorScheme: colorScheme,
                   isDark: isDark,
                 ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 // 行间距调节
                 _buildLineHeightSection(
                   context: context,
@@ -139,7 +139,7 @@ class LyricDetailSection extends StatelessWidget {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: accentColor.withOpacity(0.15),
+                color: accentColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: accentColor, size: 18),
@@ -161,13 +161,13 @@ class LyricDetailSection extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    accentColor.withOpacity(0.2),
-                    accentColor.withOpacity(0.1),
+                    accentColor.withValues(alpha: 0.2),
+                    accentColor.withValues(alpha: 0.1),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: accentColor.withOpacity(0.3),
+                  color: accentColor.withValues(alpha: 0.3),
                   width: 1,
                 ),
               ),
@@ -189,7 +189,7 @@ class LyricDetailSection extends StatelessWidget {
             activeTrackColor: accentColor,
             inactiveTrackColor: colorScheme.surfaceContainerHigh,
             thumbColor: accentColor,
-            overlayColor: accentColor.withOpacity(0.15),
+            overlayColor: accentColor.withValues(alpha: 0.15),
             trackHeight: 6,
             thumbShape: const RoundSliderThumbShape(
               enabledThumbRadius: 10,
@@ -218,7 +218,7 @@ class LyricDetailSection extends StatelessWidget {
   }) {
     final accentColor = colorScheme.tertiary;
     final isAuto = styleService.autoLineHeight;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -229,7 +229,7 @@ class LyricDetailSection extends StatelessWidget {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: accentColor.withOpacity(0.15),
+                color: accentColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -281,7 +281,7 @@ class LyricDetailSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        
+
         // 数值显示
         if (!isAuto)
           Padding(
@@ -293,13 +293,13 @@ class LyricDetailSection extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      accentColor.withOpacity(0.2),
-                      accentColor.withOpacity(0.1),
+                      accentColor.withValues(alpha: 0.2),
+                      accentColor.withValues(alpha: 0.1),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: accentColor.withOpacity(0.3),
+                    color: accentColor.withValues(alpha: 0.3),
                     width: 1,
                   ),
                 ),
@@ -314,26 +314,26 @@ class LyricDetailSection extends StatelessWidget {
               ),
             ),
           ),
-        
+
         // 滑块
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
             activeTrackColor: isAuto
-                ? colorScheme.outline.withOpacity(0.5)
+                ? colorScheme.outline.withValues(alpha: 0.5)
                 : accentColor,
             inactiveTrackColor: colorScheme.surfaceContainerHigh,
             thumbColor: isAuto
-                ? colorScheme.outline.withOpacity(0.5)
+                ? colorScheme.outline.withValues(alpha: 0.5)
                 : accentColor,
-            overlayColor: accentColor.withOpacity(0.15),
+            overlayColor: accentColor.withValues(alpha: 0.15),
             trackHeight: 6,
             thumbShape: const RoundSliderThumbShape(
               enabledThumbRadius: 10,
               elevation: 4,
             ),
-            disabledActiveTrackColor: colorScheme.outline.withOpacity(0.3),
+            disabledActiveTrackColor: colorScheme.outline.withValues(alpha: 0.3),
             disabledInactiveTrackColor: colorScheme.surfaceContainerHigh,
-            disabledThumbColor: colorScheme.outline.withOpacity(0.5),
+            disabledThumbColor: colorScheme.outline.withValues(alpha: 0.5),
           ),
           child: Slider(
             value: styleService.lineHeight,
@@ -361,7 +361,7 @@ class LyricDetailSection extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? accentColor.withOpacity(0.2) : Colors.transparent,
+          color: isSelected ? accentColor.withValues(alpha: 0.2) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -372,7 +372,7 @@ class LyricDetailSection extends StatelessWidget {
               size: 14,
               color: isSelected
                   ? accentColor
-                  : colorScheme.onSurfaceVariant.withOpacity(0.6),
+                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
             ),
             const SizedBox(width: 4),
             Text(
@@ -382,7 +382,7 @@ class LyricDetailSection extends StatelessWidget {
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 color: isSelected
                     ? accentColor
-                    : colorScheme.onSurfaceVariant.withOpacity(0.6),
+                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
               ),
             ),
           ],
@@ -399,7 +399,7 @@ class LyricDetailSection extends StatelessWidget {
   }) {
     final fontService = LyricFontService();
     final accentColor = colorScheme.primary;
-    
+
     return GestureDetector(
       onTap: () => _showFontPicker(context, colorScheme, isDark),
       child: Row(
@@ -408,7 +408,7 @@ class LyricDetailSection extends StatelessWidget {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: accentColor.withOpacity(0.15),
+              color: accentColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(Icons.font_download_rounded, color: accentColor, size: 18),
@@ -430,7 +430,7 @@ class LyricDetailSection extends StatelessWidget {
                 Text(
                   fontService.currentFontName,
                   style: TextStyle(
-                    color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                     fontSize: 12,
                   ),
                 ),
@@ -439,7 +439,7 @@ class LyricDetailSection extends StatelessWidget {
           ),
           Icon(
             Icons.chevron_right_rounded,
-            color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
             size: 22,
           ),
         ],
@@ -450,7 +450,7 @@ class LyricDetailSection extends StatelessWidget {
   /// 显示歌词字体选择器
   void _showFontPicker(BuildContext context, ColorScheme colorScheme, bool isDark) {
     final fontService = LyricFontService();
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -475,7 +475,7 @@ class LyricDetailSection extends StatelessWidget {
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: colorScheme.outline.withOpacity(0.4),
+                          color: colorScheme.outline.withValues(alpha: 0.4),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -512,7 +512,7 @@ class LyricDetailSection extends StatelessWidget {
                       ),
                       // 分隔线
                       Divider(
-                        color: colorScheme.outlineVariant.withOpacity(0.3),
+                        color: colorScheme.outlineVariant.withValues(alpha: 0.3),
                         height: 1,
                       ),
                       // 字体列表
@@ -526,7 +526,7 @@ class LyricDetailSection extends StatelessWidget {
                               fontService: fontService,
                               colorScheme: colorScheme,
                             ),
-                            
+
                             // 分隔线
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -534,7 +534,7 @@ class LyricDetailSection extends StatelessWidget {
                                 children: [
                                   Expanded(
                                     child: Divider(
-                                      color: colorScheme.outlineVariant.withOpacity(0.3),
+                                      color: colorScheme.outlineVariant.withValues(alpha: 0.3),
                                     ),
                                   ),
                                   Padding(
@@ -543,25 +543,25 @@ class LyricDetailSection extends StatelessWidget {
                                       '系统字体',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: colorScheme.onSurfaceVariant.withOpacity(0.6),
+                                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ),
                                   Expanded(
                                     child: Divider(
-                                      color: colorScheme.outlineVariant.withOpacity(0.3),
+                                      color: colorScheme.outlineVariant.withValues(alpha: 0.3),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            
+
                             // 预设字体列表
                             ...LyricFontService.platformFonts.map((font) {
-                              final isSelected = fontService.fontType == 'preset' && 
+                              final isSelected = fontService.fontType == 'preset' &&
                                                  fontService.presetFontId == font.id;
-                              
+
                               return ListTile(
                                 onTap: () {
                                   fontService.setPresetFont(font.id);
@@ -572,7 +572,7 @@ class LyricDetailSection extends StatelessWidget {
                                   height: 40,
                                   decoration: BoxDecoration(
                                     color: isSelected
-                                        ? colorScheme.primary.withOpacity(0.15)
+                                        ? colorScheme.primary.withValues(alpha: 0.15)
                                         : colorScheme.surfaceContainerHighest,
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -604,7 +604,7 @@ class LyricDetailSection extends StatelessWidget {
                                   font.description,
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                                   ),
                                 ),
                                 trailing: isSelected
@@ -637,7 +637,7 @@ class LyricDetailSection extends StatelessWidget {
   }) {
     final hasCustomFont = fontService.customFontPath != null;
     final isCustomSelected = fontService.fontType == 'custom';
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -663,7 +663,7 @@ class LyricDetailSection extends StatelessWidget {
             ],
           ),
         ),
-        
+
         // 已导入的自定义字体
         if (hasCustomFont) ...[
           ListTile(
@@ -678,7 +678,7 @@ class LyricDetailSection extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: isCustomSelected
-                      ? [colorScheme.tertiary.withOpacity(0.2), colorScheme.tertiary.withOpacity(0.1)]
+                      ? [colorScheme.tertiary.withValues(alpha: 0.2), colorScheme.tertiary.withValues(alpha: 0.1)]
                       : [colorScheme.surfaceContainerHighest, colorScheme.surfaceContainerHighest],
                 ),
                 borderRadius: BorderRadius.circular(12),
@@ -702,7 +702,7 @@ class LyricDetailSection extends StatelessWidget {
               '已导入的自定义字体',
               style: TextStyle(
                 fontSize: 12,
-                color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
               ),
             ),
             trailing: Row(
@@ -718,7 +718,7 @@ class LyricDetailSection extends StatelessWidget {
                 IconButton(
                   icon: Icon(
                     Icons.close_rounded,
-                    color: colorScheme.error.withOpacity(0.7),
+                    color: colorScheme.error.withValues(alpha: 0.7),
                     size: 20,
                   ),
                   onPressed: () {
@@ -730,7 +730,7 @@ class LyricDetailSection extends StatelessWidget {
             ),
           ),
         ],
-        
+
         // 导入字体按钮
         ListTile(
           onTap: () async {
@@ -751,10 +751,10 @@ class LyricDetailSection extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: colorScheme.primaryContainer.withOpacity(0.5),
+              color: colorScheme.primaryContainer.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: colorScheme.primary.withOpacity(0.3),
+                color: colorScheme.primary.withValues(alpha: 0.3),
                 width: 1.5,
                 strokeAlign: BorderSide.strokeAlignInside,
               ),
@@ -776,7 +776,7 @@ class LyricDetailSection extends StatelessWidget {
             '支持 TTF、OTF、TTC 格式',
             style: TextStyle(
               fontSize: 12,
-              color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
             ),
           ),
         ),

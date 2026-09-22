@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
@@ -6,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Android 悬浮歌词服务
-/// 
+///
 /// 提供 Android 系统级悬浮窗歌词功能，包括：
 /// - 创建/销毁悬浮窗
 /// - 显示/隐藏歌词
@@ -48,7 +49,7 @@ class AndroidFloatingLyricService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // 加载配置
       final enabled = prefs.getBool(_keyEnabled) ?? false;
       _fontSize = prefs.getInt(_keyFontSize) ?? 20;
@@ -70,22 +71,22 @@ class AndroidFloatingLyricService {
       if (enabled) {
         await show();
       }
-      
-      print('✅ [AndroidFloatingLyric] Android 悬浮歌词服务初始化成功');
+
+      StructuredLogService.log('✅ [AndroidFloatingLyric] Android 悬浮歌词服务初始化成功');
     } catch (e) {
-      print('⚠️ [AndroidFloatingLyric] 初始化失败: $e');
+      StructuredLogService.log('⚠️ [AndroidFloatingLyric] 初始化失败: $e');
     }
   }
 
   /// 检查悬浮窗权限
   Future<bool> checkPermission() async {
     if (!Platform.isAndroid) return false;
-    
+
     try {
       final result = await _channel.invokeMethod('checkPermission');
       return result == true;
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 检查权限失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 检查权限失败: $e');
       return false;
     }
   }
@@ -93,12 +94,12 @@ class AndroidFloatingLyricService {
   /// 请求悬浮窗权限（自动跳转到设置页面）
   Future<bool> requestPermission() async {
     if (!Platform.isAndroid) return false;
-    
+
     try {
       final result = await _channel.invokeMethod('requestPermission');
       return result == true;
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 请求权限失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 请求权限失败: $e');
       return false;
     }
   }
@@ -106,21 +107,21 @@ class AndroidFloatingLyricService {
   /// 请求权限并等待用户授权
   Future<bool> requestPermissionWithDialog(context) async {
     if (!Platform.isAndroid) return false;
-    
+
     // 先检查是否已有权限
     if (await checkPermission()) {
       return true;
     }
-    
+
     // 显示权限说明对话框
     final shouldRequest = await _showPermissionDialog(context);
     if (!shouldRequest) {
       return false;
     }
-    
+
     // 跳转到设置页面
     await requestPermission();
-    
+
     // 等待用户操作并检查权限状态
     return await _waitForPermissionResult(context);
   }
@@ -176,28 +177,28 @@ class AndroidFloatingLyricService {
     // 检查权限
     final hasPermission = await checkPermission();
     if (!hasPermission) {
-      print('⚠️ [AndroidFloatingLyric] 没有悬浮窗权限');
+      StructuredLogService.log('⚠️ [AndroidFloatingLyric] 没有悬浮窗权限');
       return;
     }
 
     try {
       final result = await _channel.invokeMethod('showFloatingWindow');
       _isVisible = result == true;
-      
+
       if (_isVisible) {
         // 设置当前歌词
         if (_currentLyric.isNotEmpty) {
           await setLyricText(_currentLyric);
         }
-        
+
         // 保存启用状态
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_keyEnabled, true);
-        
-        print('✅ [AndroidFloatingLyric] 悬浮窗已显示');
+
+        StructuredLogService.log('✅ [AndroidFloatingLyric] 悬浮窗已显示');
       }
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 显示悬浮窗失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 显示悬浮窗失败: $e');
     }
   }
 
@@ -208,14 +209,14 @@ class AndroidFloatingLyricService {
     try {
       await _channel.invokeMethod('hideFloatingWindow');
       _isVisible = false;
-      
+
       // 保存启用状态
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_keyEnabled, false);
-      
-      print('✅ [AndroidFloatingLyric] 悬浮窗已隐藏');
+
+      StructuredLogService.log('✅ [AndroidFloatingLyric] 悬浮窗已隐藏');
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 隐藏悬浮窗失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 隐藏悬浮窗失败: $e');
     }
   }
 
@@ -231,21 +232,21 @@ class AndroidFloatingLyricService {
   /// 设置歌词文本（旧方法，兼容性保留）
   Future<void> setLyricText(String text) async {
     if (!Platform.isAndroid) return;
-    
+
     _currentLyric = text;
-    
+
     // 如果悬浮窗不可见，只保存文本，不实际设置
     if (!_isVisible) return;
 
     try {
       await _channel.invokeMethod('updateLyric', {'text': text});
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 设置歌词失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 设置歌词失败: $e');
     }
   }
 
   /// 🔥 新增：设置完整歌词数据（关键方法）
-  /// 
+  ///
   /// 将完整的歌词数组发送到Android原生层，由原生层自行管理歌词更新
   /// 这样即使应用退到后台，歌词也能继续更新
   Future<void> setLyricsData(List<Map<String, dynamic>> lyrics) async {
@@ -262,9 +263,9 @@ class AndroidFloatingLyricService {
       final jsonString = jsonEncode(lyricsJson);
 
       await _channel.invokeMethod('setLyrics', {'lyrics': jsonString});
-      print('✅ [AndroidFloatingLyric] 歌词数据已发送到原生层: ${lyrics.length} 行');
+      StructuredLogService.log('✅ [AndroidFloatingLyric] 歌词数据已发送到原生层: ${lyrics.length} 行');
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 设置歌词数据失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 设置歌词数据失败: $e');
     }
   }
 
@@ -289,9 +290,9 @@ class AndroidFloatingLyricService {
       await _channel.invokeMethod('setPlayingState', {
         'playing': playing,
       });
-      print('✅ [AndroidFloatingLyric] 播放状态已更新: ${playing ? "播放中" : "已暂停"}');
+      StructuredLogService.log('✅ [AndroidFloatingLyric] 播放状态已更新: ${playing ? "播放中" : "已暂停"}');
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 设置播放状态失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 设置播放状态失败: $e');
     }
   }
 
@@ -301,13 +302,13 @@ class AndroidFloatingLyricService {
 
     try {
       await _channel.invokeMethod('setPosition', {'x': x, 'y': y});
-      
+
       // 保存位置
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_keyPositionX, x);
       await prefs.setInt(_keyPositionY, y);
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 设置位置失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 设置位置失败: $e');
     }
   }
 
@@ -321,13 +322,13 @@ class AndroidFloatingLyricService {
       if (_isVisible) {
         await _channel.invokeMethod('setFontSize', {'size': size});
       }
-      
+
       if (saveToPrefs) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt(_keyFontSize, size);
       }
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 设置字体大小失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 设置字体大小失败: $e');
     }
   }
 
@@ -341,13 +342,13 @@ class AndroidFloatingLyricService {
       if (_isVisible) {
         await _channel.invokeMethod('setTextColor', {'color': color});
       }
-      
+
       if (saveToPrefs) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt(_keyTextColor, color);
       }
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 设置文字颜色失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 设置文字颜色失败: $e');
     }
   }
 
@@ -361,13 +362,13 @@ class AndroidFloatingLyricService {
       if (_isVisible) {
         await _channel.invokeMethod('setStrokeColor', {'color': color});
       }
-      
+
       if (saveToPrefs) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt(_keyStrokeColor, color);
       }
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 设置描边颜色失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 设置描边颜色失败: $e');
     }
   }
 
@@ -381,13 +382,13 @@ class AndroidFloatingLyricService {
       if (_isVisible) {
         await _channel.invokeMethod('setStrokeWidth', {'width': width});
       }
-      
+
       if (saveToPrefs) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt(_keyStrokeWidth, width);
       }
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 设置描边宽度失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 设置描边宽度失败: $e');
     }
   }
 
@@ -401,13 +402,13 @@ class AndroidFloatingLyricService {
       if (_isVisible) {
         await _channel.invokeMethod('setDraggable', {'draggable': draggable});
       }
-      
+
       if (saveToPrefs) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_keyDraggable, draggable);
       }
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 设置拖动状态失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 设置拖动状态失败: $e');
     }
   }
 
@@ -421,13 +422,13 @@ class AndroidFloatingLyricService {
       if (_isVisible) {
         await _channel.invokeMethod('setAlpha', {'alpha': _alpha});
       }
-      
+
       if (saveToPrefs) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setDouble(_keyAlpha, _alpha);
       }
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 设置透明度失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 设置透明度失败: $e');
     }
   }
 
@@ -453,9 +454,9 @@ class AndroidFloatingLyricService {
 
     try {
       await hide();
-      print('✅ [AndroidFloatingLyric] 悬浮歌词服务已销毁');
+      StructuredLogService.log('✅ [AndroidFloatingLyric] 悬浮歌词服务已销毁');
     } catch (e) {
-      print('❌ [AndroidFloatingLyric] 销毁悬浮窗失败: $e');
+      StructuredLogService.log('❌ [AndroidFloatingLyric] 销毁悬浮窗失败: $e');
     }
   }
 }
@@ -486,7 +487,7 @@ class _PermissionWaitingDialogState extends State<_PermissionWaitingDialog> {
   void _startCheckingPermission() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       _countdown--;
-      
+
       if (_countdown <= 0) {
         // 超时
         _timer?.cancel();
@@ -497,9 +498,9 @@ class _PermissionWaitingDialogState extends State<_PermissionWaitingDialog> {
       }
 
       // 检查权限状态
-      final hasPermission = await AndroidFloatingLyricService().checkPermission();
-      if (hasPermission) {
-        _timer?.cancel();
+               final hasPermission = await AndroidFloatingLyricService().checkPermission();
+               if (hasPermission && context.mounted) {
+                 _timer?.cancel();
         if (mounted) {
           Navigator.pop(context, true);
         }
@@ -514,8 +515,7 @@ class _PermissionWaitingDialogState extends State<_PermissionWaitingDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async => false, // 禁止返回
+    return PopScope(canPop: false,
       child: AlertDialog(
         title: const Text('⏳ 等待权限授权'),
         content: Column(
@@ -527,7 +527,7 @@ class _PermissionWaitingDialogState extends State<_PermissionWaitingDialog> {
             const SizedBox(height: 8),
             Text('开启 "显示在其他应用上方" 权限'),
             const SizedBox(height: 16),
-            Text('将在 $_countdown 秒后自动关闭', 
+            Text('将在 $_countdown 秒后自动关闭',
                  style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
@@ -542,10 +542,11 @@ class _PermissionWaitingDialogState extends State<_PermissionWaitingDialog> {
           TextButton(
             onPressed: () async {
               // 手动检查权限
+              final navigator = Navigator.of(context);
               final hasPermission = await AndroidFloatingLyricService().checkPermission();
-              if (hasPermission) {
+              if (hasPermission && navigator.mounted) {
                 _timer?.cancel();
-                Navigator.pop(context, true);
+                navigator.pop(true);
               }
             },
             child: const Text('我已授权'),

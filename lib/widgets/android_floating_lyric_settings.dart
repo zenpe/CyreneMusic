@@ -58,14 +58,14 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
                 _hasPermission ? Icons.verified_user : Icons.gpp_maybe,
                 color: _hasPermission ? Colors.green : Colors.orange,
               ),
-              trailing: _hasPermission 
-                  ? null 
+              trailing: _hasPermission
+                  ? null
                   : TextButton(
                       onPressed: () async {
                         final granted = await _lyricService.requestPermissionWithDialog(context);
                         if (granted) {
                           await _checkPermission();
-                          if (mounted) {
+                          if (mounted && context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('✅ 权限已授予'),
@@ -98,7 +98,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
                   if (granted) {
                     await _lyricService.show();
                     await _checkPermission();
-                    if (mounted) {
+                    if (mounted && context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('✅ 悬浮歌词已启用'),
@@ -107,7 +107,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
                       );
                     }
                   } else {
-                    if (mounted) {
+                    if (mounted && context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('❌ 需要悬浮窗权限才能启用悬浮歌词'),
@@ -118,7 +118,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
                   }
                 } else {
                   await _lyricService.hide();
-                  if (mounted) {
+                  if (mounted && context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('悬浮歌词已关闭'),
@@ -232,7 +232,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
             },
           ),
         ),
-        
+
         // 启用悬浮歌词
         CupertinoSettingsTile(
           title: '启用悬浮歌词',
@@ -296,7 +296,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
             colors: ThemeColors.presets.map((e) => e.color).toList(),
             currentColor: Color(_lyricService.config['textColor']),
             onColorSelected: (color) async {
-              await _lyricService.setTextColor(color.value);
+              await _lyricService.setTextColor(color.toARGB32());
               setState(() {});
             },
           ),
@@ -321,7 +321,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
             colors: ThemeColors.presets.map((e) => e.color).toList(),
             currentColor: Color(_lyricService.config['strokeColor']),
             onColorSelected: (color) async {
-              await _lyricService.setStrokeColor(color.value);
+              await _lyricService.setStrokeColor(color.toARGB32());
               setState(() {});
             },
           ),
@@ -398,13 +398,13 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
     required ValueChanged<double> onChanged,
   }) async {
     double tempValue = value;
-    
+
     await showCupertinoModalPopup(
       context: context,
       builder: (context) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
         final textColor = isDark ? CupertinoColors.white : CupertinoColors.black;
-        
+
         return Container(
           height: 300,
           color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground,
@@ -481,7 +481,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
   /// 显示字体大小对话框
   void _showFontSizeDialog() {
     int currentSize = _lyricService.config['fontSize'];
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -514,6 +514,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
             TextButton(
               onPressed: () async {
                 await _lyricService.setFontSize(currentSize);
+                if (!context.mounted) return;
                 Navigator.pop(context);
                 this.setState(() {});
               },
@@ -528,7 +529,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
   /// 显示文字颜色选择器
   void _showTextColorPicker() {
     Color currentColor = Color(_lyricService.config['textColor']);
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -549,7 +550,8 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
           ),
           TextButton(
             onPressed: () async {
-              await _lyricService.setTextColor(currentColor.value);
+              await _lyricService.setTextColor(currentColor.toARGB32());
+              if (!context.mounted) return;
               Navigator.pop(context);
               setState(() {});
             },
@@ -563,7 +565,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
   /// 显示描边颜色选择器
   void _showStrokeColorPicker() {
     Color currentColor = Color(_lyricService.config['strokeColor']);
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -584,7 +586,8 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
           ),
           TextButton(
             onPressed: () async {
-              await _lyricService.setStrokeColor(currentColor.value);
+              await _lyricService.setStrokeColor(currentColor.toARGB32());
+              if (!context.mounted) return;
               Navigator.pop(context);
               setState(() {});
             },
@@ -598,7 +601,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
   /// 显示描边宽度对话框
   void _showStrokeWidthDialog() {
     int currentWidth = _lyricService.config['strokeWidth'];
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -631,6 +634,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
             TextButton(
               onPressed: () async {
                 await _lyricService.setStrokeWidth(currentWidth);
+                if (!context.mounted) return;
                 Navigator.pop(context);
                 this.setState(() {});
               },
@@ -645,7 +649,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
   /// 显示透明度对话框
   void _showAlphaDialog() {
     double currentAlpha = _lyricService.config['alpha'];
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -678,6 +682,7 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
             TextButton(
               onPressed: () async {
                 await _lyricService.setAlpha(currentAlpha);
+                if (!context.mounted) return;
                 Navigator.pop(context);
                 this.setState(() {});
               },

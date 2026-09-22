@@ -4,23 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/player_background_service.dart';
 import '../../services/player_service.dart';
-import '../../services/color_extraction_service.dart';
 import '../../utils/image_utils.dart';
 import '../../widgets/video_background_player.dart';
 import '../../widgets/flowing_light_background.dart';
-
-/// 动态背景颜色缓存管理器（全局单例）
-/// 现在使用 ColorExtractionService 的缓存，这里只保留接口兼容
-class _DynamicColorCache {
-  static final _DynamicColorCache _instance = _DynamicColorCache._internal();
-  factory _DynamicColorCache() => _instance;
-  _DynamicColorCache._internal();
-
-  List<Color>? getColors(String imageUrl) {
-    final result = ColorExtractionService().getCachedColors(imageUrl);
-    return result?.dynamicColors;
-  }
-}
 
 /// 流体云播放器专用背景组件
 ///
@@ -42,14 +28,11 @@ class PlayerFluidCloudBackground extends StatefulWidget {
 class _PlayerFluidCloudBackgroundState
     extends State<PlayerFluidCloudBackground> {
   // 动态背景颜色
-  String? _currentImageUrl;
   bool _isFirstBuild = true;
 
   // 防抖计时器
-  int _pendingExtractionId = 0;
 
   // 记录最后一次调度的图片URL，防止PlayerService频繁通知（如进度更新）导致防抖计时器不断重置
-  String? _lastScheduledImageUrl;
 
   @override
   void initState() {
@@ -90,75 +73,8 @@ class _PlayerFluidCloudBackgroundState
   }
 
   /// 延迟调度颜色提取（带防抖）
-  void _scheduleColorExtraction() {
-    final backgroundService = PlayerBackgroundService();
-    if (backgroundService.backgroundType != PlayerBackgroundType.dynamic) {
-      return;
-    }
-
-    final imageUrl = PlayerService().currentCoverUrl ?? '';
-
-    // 1. 如果没有图片，或者当前已经在显示这张图片的颜色，直接返回
-    if (imageUrl.isEmpty || imageUrl == _currentImageUrl) return;
-
-    // 2. 如果已经调度了这张图片的提取任务（正在防抖等待中），直接返回
-    // 这一步至关重要，因为PlayerService的进度更新频率很高（每秒多次）
-    // 如果不加这个检查，每次进度更新都会重置防抖计时器，导致永远无法触发提取
-    if (imageUrl == _lastScheduledImageUrl) return;
-
-    // 记录这次调度的URL
-    _lastScheduledImageUrl = imageUrl;
-
-    // 检查缓存 - 如果有缓存立即使用
-    final cachedColors = _DynamicColorCache().getColors(imageUrl);
-    if (cachedColors != null) {
-      _currentImageUrl = imageUrl;
-      if (mounted) {
-        setState(() {});
-      }
-      return;
-    }
-
-    // 防抖：取消之前的提取请求
-    _pendingExtractionId++;
-    final currentId = _pendingExtractionId;
-
-    // 延迟200ms后提取（使用 isolate 后可以更快触发）
-    Future.delayed(const Duration(milliseconds: 200), () {
-      // 如果ID不匹配，说明有新的请求，取消当前请求
-      if (currentId != _pendingExtractionId || !mounted) return;
-      _extractColorsFromImage(imageUrl);
-    });
-  }
 
   /// 从图片中提取颜色（使用 isolate，不阻塞主线程）
-  Future<void> _extractColorsFromImage(String imageUrl) async {
-    // 再次检查缓存（可能在等待期间已经被其他地方提取）
-    final cachedColors = _DynamicColorCache().getColors(imageUrl);
-    if (cachedColors != null) {
-      _currentImageUrl = imageUrl;
-      if (mounted) {}
-      return;
-    }
-
-    _currentImageUrl = imageUrl;
-
-    try {
-      // 使用 ColorExtractionService 在 isolate 中提取颜色
-      final result = await ColorExtractionService().extractColorsFromUrl(
-        imageUrl,
-        sampleSize: 64, // 增加采样尺寸以提升准确率
-        timeout: const Duration(seconds: 3),
-      );
-
-      if (result != null && mounted && _currentImageUrl == imageUrl) {
-        setState(() {});
-      }
-    } catch (e) {
-      // 静默失败，保持当前颜色
-      debugPrint('⚠️ [FluidCloudBackground] 颜色提取失败: $e');
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -215,8 +131,6 @@ class _PlayerFluidCloudBackgroundState
 
         // 如果没有 Provider，尝试从 URL 构建
         if (imageProvider == null) {
-          final song = player.currentSong;
-          final track = player.currentTrack;
           final imageUrl = player.currentCoverUrl;
 
           if (imageUrl != null && imageUrl.isNotEmpty) {
@@ -236,7 +150,7 @@ class _PlayerFluidCloudBackgroundState
             imageProvider: imageProvider,
             useDesktopProcessing: true,
             // 使用与移动端一致的半透明遮罩
-            child: Container(color: Colors.black.withOpacity(0.15)),
+            child: Container(color: Colors.black.withValues(alpha: 0.15)),
           ),
         );
       },
@@ -250,8 +164,6 @@ class _PlayerFluidCloudBackgroundState
     return ListenableBuilder(
       listenable: PlayerService(),
       builder: (context, _) {
-        final song = PlayerService().currentSong;
-        final track = PlayerService().currentTrack;
         final imageUrl = PlayerService().currentCoverUrl ?? '';
 
         return ValueListenableBuilder<Color?>(
@@ -293,8 +205,8 @@ class _PlayerFluidCloudBackgroundState
                                     colors: [
                                       Colors.transparent, // 左侧和中间保持透明，显示封面
                                       Colors.transparent,
-                                      color.withOpacity(0.3), // 右侧开始融合主题色
-                                      color.withOpacity(0.9), // 最右侧更多主题色
+                                      color.withValues(alpha: 0.3), // 右侧开始融合主题色
+                                      color.withValues(alpha: 0.9), // 最右侧更多主题色
                                     ],
                                     stops: const [
                                       0.0,
@@ -321,8 +233,8 @@ class _PlayerFluidCloudBackgroundState
                           end: Alignment.centerRight,
                           colors: [
                             Colors.transparent, // 左侧完全透明
-                            color.withOpacity(0.2), // 开始融合
-                            color.withOpacity(0.8), // 主题色更明显
+                            color.withValues(alpha: 0.2), // 开始融合
+                            color.withValues(alpha: 0.8), // 主题色更明显
                             color, // 右侧完全不透明的主题色
                           ],
                           stops: const [0.0, 0.4, 0.7, 0.9], // 调整渐变，让左侧更清晰
@@ -478,14 +390,14 @@ class _PlayerFluidCloudBackgroundState
                       sigmaY: backgroundService.blurAmount,
                     ),
                     child: Container(
-                      color: Colors.black.withOpacity(0.3), // 添加半透明遮罩
+                      color: Colors.black.withValues(alpha: 0.3), // 添加半透明遮罩
                     ),
                   ),
                 )
               else if (backgroundService.blurAmount == 0)
                 // 无模糊时也添加浅色遮罩以确保文字可读
                 Positioned.fill(
-                  child: Container(color: Colors.black.withOpacity(0.2)),
+                  child: Container(color: Colors.black.withValues(alpha: 0.2)),
                 ),
             ],
           ),
@@ -518,7 +430,7 @@ class _PlayerFluidCloudBackgroundState
             // 半透明遮罩确保文字可读
             if (backgroundService.blurAmount == 0)
               Positioned.fill(
-                child: Container(color: Colors.black.withOpacity(0.2)),
+                child: Container(color: Colors.black.withValues(alpha: 0.2)),
               ),
           ],
         );

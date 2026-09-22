@@ -33,7 +33,7 @@ class PlayerLyricsPanel extends StatelessWidget {
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
-        final textColor = _getAdaptiveLyricColor(themeColor, false).withOpacity(0.5);
+        final textColor = _getAdaptiveLyricColor(themeColor, false).withValues(alpha: 0.5);
         final message = lyricState.displayText;
         return Center(
           child: Text(
@@ -59,19 +59,19 @@ class PlayerLyricsPanel extends StatelessWidget {
             builder: (context, constraints) {
               const int totalVisibleLines = 8; // 总共显示8行
               const int currentLinePosition = 3; // 当前歌词在第4行（索引3）
-              
+
               // 根据容器高度计算每行的实际高度
               final itemHeight = constraints.maxHeight / totalVisibleLines;
-              
+
               // 计算显示范围
               int startIndex = currentLyricIndex - currentLinePosition;
-              
+
               // 生成要显示的歌词列表
               List<Widget> lyricWidgets = [];
-              
+
               for (int i = 0; i < totalVisibleLines; i++) {
                 int lyricIndex = startIndex + i;
-                
+
                 // 判断是否在有效范围内
                 if (lyricIndex < 0 || lyricIndex >= lyrics.length) {
                   // 空行占位
@@ -85,14 +85,14 @@ class PlayerLyricsPanel extends StatelessWidget {
                   // 显示歌词
                   final lyric = lyrics[lyricIndex];
                   final isCurrent = lyricIndex == currentLyricIndex;
-                  
+
                   // 获取自适应颜色
                   final lyricColor = _getAdaptiveLyricColor(themeColor, isCurrent);
                   final translationColor = _getAdaptiveLyricColor(
-                    themeColor, 
+                    themeColor,
                     false, // 翻译始终使用非当前行的颜色
-                  ).withOpacity(isCurrent ? 0.75 : 0.5);
-                  
+                  ).withValues(alpha: isCurrent ? 0.75 : 0.5);
+
                   lyricWidgets.add(
                     SizedBox(
                       height: itemHeight,
@@ -145,7 +145,7 @@ class PlayerLyricsPanel extends StatelessWidget {
                   );
                 }
               }
-        
+
               // 使用 AnimatedSwitcher 实现丝滑滚动效果
               return AnimatedSwitcher(
                 duration: const Duration(milliseconds: 400),
@@ -167,7 +167,7 @@ class PlayerLyricsPanel extends StatelessWidget {
                     parent: animation,
                     curve: Curves.easeOutCubic,
                   ));
-                  
+
                   return SlideTransition(
                     position: offsetAnimation,
                     child: child,
@@ -193,7 +193,7 @@ class PlayerLyricsPanel extends StatelessWidget {
     // 计算颜色的相对亮度 (0.0 - 1.0)
     // 使用 W3C 推荐的计算公式
     final luminance = backgroundColor.computeLuminance();
-    
+
     // 如果亮度大于 0.5，认为是亮色背景，应该用深色文字
     return luminance > 0.5;
   }
@@ -202,17 +202,17 @@ class PlayerLyricsPanel extends StatelessWidget {
   Color _getAdaptiveLyricColor(Color? themeColor, bool isCurrent) {
     final color = themeColor ?? Colors.grey[700]!;
     final useDarkText = _shouldUseDarkText(color);
-    
+
     if (useDarkText) {
       // 亮色背景，使用深色文字
-      return isCurrent 
-          ? Colors.black87 
+      return isCurrent
+          ? Colors.black87
           : Colors.black54;
     } else {
       // 暗色背景，使用浅色文字
-      return isCurrent 
-          ? Colors.white 
-          : Colors.white.withOpacity(0.45);
+      return isCurrent
+          ? Colors.white
+          : Colors.white.withValues(alpha: 0.45);
     }
   }
 }

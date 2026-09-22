@@ -87,7 +87,7 @@ class _TrackListTileState extends State<TrackListTile> {
     if (shouldLogin == true && mounted) {
       // 跳转到登录页面
       final result = await showAuthDialog(context);
-      
+
       // 返回登录是否成功
       return result == true && _authFacade.isLoggedIn;
     }
@@ -98,7 +98,7 @@ class _TrackListTileState extends State<TrackListTile> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: Row(
@@ -208,7 +208,7 @@ class _TrackListTileState extends State<TrackListTile> {
       onTap: widget.onTap ?? () async {
         // 检查登录状态
         final isLoggedIn = await _checkLoginStatus();
-        if (isLoggedIn && mounted) {
+        if (isLoggedIn && context.mounted) {
           // 预取封面 Provider，供播放器复用，避免再次请求
           ImageProvider? provider;
           if (widget.track.picUrl.isNotEmpty) {
@@ -229,4 +229,3 @@ class _TrackListTileState extends State<TrackListTile> {
     );
   }
 }
-

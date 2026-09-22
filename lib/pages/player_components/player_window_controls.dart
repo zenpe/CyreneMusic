@@ -127,10 +127,10 @@ class PlayerWindowControls extends StatelessWidget {
                     ),
                   // 迷你播放器按钮
                   _MiniPlayerButton(),
-                  
+
                   // 布局快捷切换按钮
                   _LayoutToggleButton(),
-                  
+
                   const SizedBox(width: 8),
 
                   // 歌曲百科按钮 (Apple Music 风格)
@@ -141,7 +141,7 @@ class PlayerWindowControls extends StatelessWidget {
                       onPressed: onWikiToggle!,
                       tooltip: '歌曲信息',
                     ),
-                  
+
                   // 待播清单按钮 (Apple Music 风格)
                   if (onQueueToggle != null)
                     _TopBarButton(
@@ -150,7 +150,7 @@ class PlayerWindowControls extends StatelessWidget {
                       onPressed: onQueueToggle!,
                       tooltip: '待播清单',
                     ),
-                    
+
                   // 歌词按钮 (Apple Music 风格)
                   if (onLyricsToggle != null)
                     _TopBarButton(
@@ -224,12 +224,12 @@ class PlayerWindowControls extends StatelessWidget {
                       song: currentSong!,
                     ),
                 ],
-                
+
                 const Spacer(),
-                
+
                 // 布局快捷切换按钮
                 _LayoutToggleButton(),
-                
+
                 // 歌曲百科按钮
                 if (onWikiToggle != null)
                   _TopBarButton(
@@ -238,7 +238,7 @@ class PlayerWindowControls extends StatelessWidget {
                     onPressed: onWikiToggle!,
                     tooltip: '歌曲信息',
                   ),
-                
+
                 // 待播清单按钮
                 if (onQueueToggle != null)
                   _TopBarButton(
@@ -247,7 +247,7 @@ class PlayerWindowControls extends StatelessWidget {
                     onPressed: onQueueToggle!,
                     tooltip: '待播清单',
                   ),
-                
+
                 // 歌词按钮
                 if (onLyricsToggle != null)
                   _TopBarButton(
@@ -259,7 +259,7 @@ class PlayerWindowControls extends StatelessWidget {
               ],
             ),
           ),
-          
+
           // 平板模式顶部拖动胶囊条
           if (isTabletMode)
             Positioned(
@@ -281,7 +281,7 @@ class PlayerWindowControls extends StatelessWidget {
                   height: 5, // 胶囊高度
                   padding: const EdgeInsets.symmetric(vertical: 10), // 增加垂直热区
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(100),
                   ),
                 ),
@@ -336,7 +336,7 @@ class PlayerWindowControls extends StatelessWidget {
         message: tooltip,
         child: InkWell(
           onTap: onPressed,
-          hoverColor: isClose ? Colors.red : Colors.white.withOpacity(0.1),
+          hoverColor: isClose ? Colors.red : Colors.white.withValues(alpha: 0.1),
           child: Container(
             width: 48,
             height: 56,
@@ -383,7 +383,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
 
   void _showMenu() {
     if (_overlayEntry != null) return;
-    
+
     _overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
         width: 260,  // 增加宽度
@@ -424,10 +424,10 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                       // 深灰色半透明遮罩，确保白色文字可读
                       // 无论背景是深色还是浅色，菜单始终使用深色毛玻璃效果 + 白色文字
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.45),
+                        color: Colors.black.withValues(alpha: 0.45),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.15),
+                          color: Colors.white.withValues(alpha: 0.15),
                           width: 1,
                         ),
                       ),
@@ -441,7 +441,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
         ),
       ),
     );
-    
+
     Overlay.of(context).insert(_overlayEntry!);
   }
 
@@ -453,7 +453,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
         final playbackMode = PlaybackModeService();
         final lyricStyle = LyricStyleService();
         final lyricFont = LyricFontService();
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(
@@ -473,14 +473,14 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                 ),
                 _buildSectionDivider(),
               ],
-              
+
               // ======= 外观设置分组 =======
               _buildSectionTitle('外观'),
-              
+
               // 播放器主题 (循环切换)
               _buildMenuItem(
-                icon: lyricStyle.currentStyle == LyricStyle.immersive 
-                    ? Icons.fullscreen_rounded 
+                icon: lyricStyle.currentStyle == LyricStyle.immersive
+                    ? Icons.fullscreen_rounded
                     : Icons.water_drop_rounded,
                 label: lyricStyle.currentStyle == LyricStyle.immersive
                     ? '沉浸主题'
@@ -492,7 +492,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                 trailing: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
@@ -502,14 +502,14 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                 ),
                 onTap: () {
                   // 循环切换样式：仅在流体云和沉浸模式间切换 (桌面端隐藏经典模式)
-                  LyricStyle nextStyle = lyricStyle.currentStyle == LyricStyle.immersive 
-                      ? LyricStyle.fluidCloud 
+                  LyricStyle nextStyle = lyricStyle.currentStyle == LyricStyle.immersive
+                      ? LyricStyle.fluidCloud
                       : LyricStyle.immersive;
                   lyricStyle.setStyle(nextStyle);
                   _overlayEntry?.markNeedsBuild();
                 },
               ),
-              
+
               // 播放器背景
               _buildMenuItem(
                 icon: Icons.photo_rounded,
@@ -526,7 +526,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                   _showBackgroundDialog(context);
                 },
               ),
-              
+
               // 歌词字体
               _buildMenuItem(
                 icon: Icons.text_fields_rounded,
@@ -546,21 +546,21 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
 
               // 歌词对齐 (新增)
               _buildMenuItem(
-                icon: lyricStyle.currentAlignment == LyricAlignment.center 
-                    ? Icons.format_align_center_rounded 
+                icon: lyricStyle.currentAlignment == LyricAlignment.center
+                    ? Icons.format_align_center_rounded
                     : Icons.vertical_align_top_rounded,
                 label: '歌词对齐',
-                subtitle: lyricStyle.currentAlignment == LyricAlignment.center 
-                    ? '居中对齐' 
+                subtitle: lyricStyle.currentAlignment == LyricAlignment.center
+                    ? '居中对齐'
                     : '顶部对齐',
                 iconColor: Colors.teal[300],
                 trailing: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Colors.teal.withOpacity(0.15),
+                    color: Colors.teal.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: Colors.teal.withOpacity(0.3),
+                      color: Colors.teal.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),
@@ -575,19 +575,19 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                   ),
                 ),
                 onTap: () {
-                  final newAlignment = lyricStyle.currentAlignment == LyricAlignment.center 
-                      ? LyricAlignment.top 
+                  final newAlignment = lyricStyle.currentAlignment == LyricAlignment.center
+                      ? LyricAlignment.top
                       : LyricAlignment.center;
                   lyricStyle.setAlignment(newAlignment);
                   _overlayEntry?.markNeedsBuild();
                 },
               ),
-              
+
               _buildSectionDivider(),
-              
+
               // ======= 播放控制分组 =======
               _buildSectionTitle('播放'),
-              
+
               // 播放模式
               _buildMenuItem(
                 icon: _getPlaybackModeIcon(playbackMode.currentMode),
@@ -600,20 +600,20 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                   _overlayEntry?.markNeedsBuild();
                 },
               ),
-              
+
               // 睡眠定时器
               _buildMenuItem(
                 icon: sleepTimer.isActive ? Icons.bedtime_rounded : Icons.bedtime_outlined,
                 label: '睡眠定时器',
-                subtitle: sleepTimer.isActive 
-                    ? '剩余 ${sleepTimer.remainingTimeString}' 
+                subtitle: sleepTimer.isActive
+                    ? '剩余 ${sleepTimer.remainingTimeString}'
                     : '设置定时关闭',
                 iconColor: sleepTimer.isActive ? Colors.amber[300] : Colors.grey[400],
-                trailing: sleepTimer.isActive 
+                trailing: sleepTimer.isActive
                     ? Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: Colors.amber.withOpacity(0.2),
+                          color: Colors.amber.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
@@ -695,20 +695,20 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
       },
     );
   }
-  
+
   /// 构建分组标题
   Widget _buildSectionTitle(String title) {
     return Builder(
       builder: (context) {
         final isDark = _isPlayerBackgroundDark();
         final textColor = isDark ? Colors.white : Colors.black;
-        
+
         return Padding(
           padding: const EdgeInsets.only(left: 16, right: 16, top: 4, bottom: 6),
           child: Text(
             title,
             style: TextStyle(
-              color: textColor.withOpacity(0.4),
+              color: textColor.withValues(alpha: 0.4),
               fontSize: 11,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.5,
@@ -719,7 +719,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
       },
     );
   }
-  
+
   /// 构建分隔线
   /// 构建分隔线
   Widget _buildSectionDivider() {
@@ -727,7 +727,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
       builder: (context) {
         final isDark = _isPlayerBackgroundDark();
         final lineColor = isDark ? Colors.white : Colors.black;
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Container(
@@ -736,8 +736,8 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
               gradient: LinearGradient(
                 colors: [
                   Colors.transparent,
-                  lineColor.withOpacity(isDark ? 0.15 : 0.1),
-                  lineColor.withOpacity(isDark ? 0.15 : 0.1),
+                  lineColor.withValues(alpha: isDark ? 0.15 : 0.1),
+                  lineColor.withValues(alpha: isDark ? 0.15 : 0.1),
                   Colors.transparent,
                 ],
                 stops: const [0.0, 0.2, 0.8, 1.0],
@@ -748,51 +748,10 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
       },
     );
   }
-  
+
   /// 构建切换指示器
   /// 构建切换指示器
-  Widget _buildSwitchIndicator(bool isOn) {
-    return Builder(
-      builder: (context) {
-        final isDark = _isPlayerBackgroundDark();
-        final baseColor = isDark ? Colors.white : Colors.black;
-        
-        return Container(
-          width: 40,
-          height: 22,
-          decoration: BoxDecoration(
-            color: isOn ? Colors.cyan.withOpacity(0.3) : baseColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(
-              color: isOn ? Colors.cyan.withOpacity(0.5) : baseColor.withOpacity(0.2),
-              width: 1,
-            ),
-          ),
-          child: AnimatedAlign(
-            alignment: isOn ? Alignment.centerRight : Alignment.centerLeft,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
-            child: Container(
-              width: 16,
-              height: 16,
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              decoration: BoxDecoration(
-                color: isOn ? Colors.cyan[300] : baseColor.withOpacity(0.6),
-                shape: BoxShape.circle,
-                boxShadow: isOn ? [
-                  BoxShadow(
-                    color: Colors.cyan.withOpacity(0.4),
-                    blurRadius: 4,
-                  ),
-                ] : null,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-  
+
   /// 构建播放模式指示器
   Widget _buildModeIndicator(PlaybackMode mode) {
     final labels = {
@@ -804,10 +763,10 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.green.withOpacity(0.15),
+        color: Colors.green.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: Colors.green.withOpacity(0.3),
+          color: Colors.green.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -822,7 +781,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
       ),
     );
   }
-  
+
   void _showBackgroundDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -833,7 +792,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
       ),
     );
   }
-  
+
   void _showFontPicker(BuildContext context) {
     showDialog(
       context: context,
@@ -882,7 +841,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
     return Builder(
       builder: (context) {
         final textColor = Colors.white;
-        
+
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -897,12 +856,12 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: (iconColor ?? textColor).withOpacity(0.12),
+                        color: (iconColor ?? textColor).withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Icon(
                         icon,
-                        color: iconColor ?? textColor.withOpacity(0.85),
+                        color: iconColor ?? textColor.withValues(alpha: 0.85),
                         size: 16,
                       ),
                     ),
@@ -925,7 +884,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                     Text(
                       value.toStringAsFixed(1),
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.white.withValues(alpha: 0.5),
                         fontSize: 11,
                         fontFamily: 'Consolas',
                       ),
@@ -938,8 +897,8 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                     trackHeight: 2,
                     thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                     overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                    activeTrackColor: (iconColor ?? Colors.white).withOpacity(0.8),
-                    inactiveTrackColor: Colors.white.withOpacity(0.1),
+                    activeTrackColor: (iconColor ?? Colors.white).withValues(alpha: 0.8),
+                    inactiveTrackColor: Colors.white.withValues(alpha: 0.1),
                     thumbColor: Colors.white,
                   ),
                   child: SizedBox(
@@ -973,9 +932,9 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
       builder: (context) {
         final isDark = _isPlayerBackgroundDark();
         final textColor = isDark ? Colors.white : Colors.black;
-        final hoverColor = textColor.withOpacity(0.08);
-        final splashColor = textColor.withOpacity(0.05);
-        
+        final hoverColor = textColor.withValues(alpha: 0.08);
+        final splashColor = textColor.withValues(alpha: 0.05);
+
         return Material(
           color: Colors.transparent,
           child: InkWell(
@@ -993,12 +952,12 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                     width: 32,
                     height: 32,
                     decoration: BoxDecoration(
-                      color: (iconColor ?? textColor).withOpacity(0.12),
+                      color: (iconColor ?? textColor).withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
                       icon,
-                      color: iconColor ?? textColor.withOpacity(0.85),
+                      color: iconColor ?? textColor.withValues(alpha: 0.85),
                       size: 18,
                     ),
                   ),
@@ -1025,7 +984,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                           Text(
                             subtitle,
                             style: TextStyle(
-                              color: textColor.withOpacity(0.45),
+                              color: textColor.withValues(alpha: 0.45),
                               fontSize: 11,
                               fontWeight: FontWeight.w400,
                               fontFamily: 'Microsoft YaHei',
@@ -1071,7 +1030,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: _isHovering ? Colors.white.withOpacity(0.1) : Colors.transparent,
+            color: _isHovering ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -1079,7 +1038,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
             children: [
               Icon(
                 Icons.more_horiz,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
                 size: 24,
               ),
             ],
@@ -1107,17 +1066,17 @@ class _TranslationButton extends StatelessWidget {
       child: InkWell(
         onTap: onToggle,
         borderRadius: BorderRadius.circular(8),
-        hoverColor: Colors.white.withOpacity(0.1),
+        hoverColor: Colors.white.withValues(alpha: 0.1),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Container(
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              color: showTranslation ? Colors.white.withOpacity(0.2) : Colors.transparent,
+              color: showTranslation ? Colors.white.withValues(alpha: 0.2) : Colors.transparent,
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -1157,18 +1116,18 @@ class _DownloadButton extends StatelessWidget {
         final isDownloading = downloadService.downloadTasks.containsKey(
           '${track.source.name}_${track.id}'
         );
-        
+
         return Tooltip(
           message: isDownloading ? '下载中...' : '下载',
           child: InkWell(
             onTap: isDownloading ? null : () => _handleDownload(context),
             borderRadius: BorderRadius.circular(8),
-            hoverColor: Colors.white.withOpacity(0.1),
+            hoverColor: Colors.white.withValues(alpha: 0.1),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Icon(
                 isDownloading ? Icons.downloading_rounded : Icons.download_rounded,
-                color: isDownloading ? Colors.white54 : Colors.white.withOpacity(0.8),
+                color: isDownloading ? Colors.white54 : Colors.white.withValues(alpha: 0.8),
                 size: 24,
               ),
             ),
@@ -1182,7 +1141,7 @@ class _DownloadButton extends StatelessWidget {
     try {
       // 检查是否已下载
       final isDownloaded = await DownloadService().isDownloaded(track);
-      
+
       if (isDownloaded) {
         // 已下载，通过通知告知用户
         await NotificationService().showNotification(
@@ -1217,7 +1176,7 @@ class _LyricFontPickerDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeManager = ThemeManager();
-    
+
     // 根据主题选择不同的对话框样式
     if (themeManager.isFluentFramework) {
       return _buildFluentDialog(context);
@@ -1226,11 +1185,11 @@ class _LyricFontPickerDialog extends StatelessWidget {
     }
     return _buildMaterialDialog(context);
   }
-  
+
   // ========== Fluent UI 对话框 ==========
   Widget _buildFluentDialog(BuildContext context) {
     final fluentTheme = fluent.FluentTheme.of(context);
-    
+
     return fluent.ContentDialog(
       title: const Row(
         children: [
@@ -1249,9 +1208,9 @@ class _LyricFontPickerDialog extends StatelessWidget {
             itemCount: LyricFontService.platformFonts.length,
             itemBuilder: (context, index) {
               final font = LyricFontService.platformFonts[index];
-              final isSelected = fontService.fontType == 'preset' && 
+              final isSelected = fontService.fontType == 'preset' &&
                   fontService.presetFontId == font.id;
-              
+
               return fluent.ListTile.selectable(
                 selected: isSelected,
                 onPressed: () async {
@@ -1272,8 +1231,8 @@ class _LyricFontPickerDialog extends StatelessWidget {
                   style: TextStyle(fontFamily: font.fontFamily),
                 ),
                 subtitle: Text(font.description),
-                trailing: isSelected 
-                    ? Icon(fluent.FluentIcons.check_mark, 
+                trailing: isSelected
+                    ? Icon(fluent.FluentIcons.check_mark,
                         color: fluentTheme.accentColor, size: 16)
                     : null,
               );
@@ -1303,7 +1262,7 @@ class _LyricFontPickerDialog extends StatelessWidget {
       ],
     );
   }
-  
+
   // ========== Cupertino 对话框 ==========
   Widget _buildCupertinoDialog(BuildContext context) {
     return Material(
@@ -1314,9 +1273,9 @@ class _LyricFontPickerDialog extends StatelessWidget {
         actions: [
           ...LyricFontService.platformFonts.map((font) {
             final fontService = LyricFontService();
-            final isSelected = fontService.fontType == 'preset' && 
+            final isSelected = fontService.fontType == 'preset' &&
                 fontService.presetFontId == font.id;
-            
+
             return CupertinoActionSheetAction(
               onPressed: () async {
                 await fontService.setPresetFont(font.id);
@@ -1328,7 +1287,7 @@ class _LyricFontPickerDialog extends StatelessWidget {
                   if (isSelected)
                     const Padding(
                       padding: EdgeInsets.only(right: 8),
-                      child: Icon(CupertinoIcons.checkmark_alt, 
+                      child: Icon(CupertinoIcons.checkmark_alt,
                           color: CupertinoColors.activeBlue, size: 18),
                     ),
                   Text(
@@ -1366,12 +1325,12 @@ class _LyricFontPickerDialog extends StatelessWidget {
       ),
     );
   }
-  
+
   // ========== Material 对话框 ==========
   Widget _buildMaterialDialog(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
       child: Container(
@@ -1385,7 +1344,7 @@ class _LyricFontPickerDialog extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
               child: Row(
                 children: [
-                  Icon(Icons.font_download_rounded, 
+                  Icon(Icons.font_download_rounded,
                       color: colorScheme.primary, size: 24),
                   const SizedBox(width: 12),
                   Text(
@@ -1397,9 +1356,9 @@ class _LyricFontPickerDialog extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             const Divider(height: 1),
-            
+
             // 字体列表
             Flexible(
               child: AnimatedBuilder(
@@ -1412,22 +1371,22 @@ class _LyricFontPickerDialog extends StatelessWidget {
                     itemCount: LyricFontService.platformFonts.length,
                     itemBuilder: (context, index) {
                       final font = LyricFontService.platformFonts[index];
-                      final isSelected = fontService.fontType == 'preset' && 
+                      final isSelected = fontService.fontType == 'preset' &&
                           fontService.presetFontId == font.id;
-                      
+
                       return ListTile(
                         selected: isSelected,
-                        selectedTileColor: colorScheme.primaryContainer.withOpacity(0.3),
+                        selectedTileColor: colorScheme.primaryContainer.withValues(alpha: 0.3),
                         leading: CircleAvatar(
-                          backgroundColor: isSelected 
-                              ? colorScheme.primary 
+                          backgroundColor: isSelected
+                              ? colorScheme.primary
                               : colorScheme.surfaceContainerHighest,
                           child: Text(
                             '字',
                             style: TextStyle(
                               fontFamily: font.fontFamily,
-                              color: isSelected 
-                                  ? colorScheme.onPrimary 
+                              color: isSelected
+                                  ? colorScheme.onPrimary
                                   : colorScheme.onSurfaceVariant,
                               fontWeight: FontWeight.bold,
                             ),
@@ -1441,7 +1400,7 @@ class _LyricFontPickerDialog extends StatelessWidget {
                           ),
                         ),
                         subtitle: Text(font.description),
-                        trailing: isSelected 
+                        trailing: isSelected
                             ? Icon(Icons.check_circle, color: colorScheme.primary)
                             : null,
                         onTap: () async {
@@ -1454,9 +1413,9 @@ class _LyricFontPickerDialog extends StatelessWidget {
                 },
               ),
             ),
-            
+
             const Divider(height: 1),
-            
+
             // 底部按钮
             Padding(
               padding: const EdgeInsets.all(16),
@@ -1493,7 +1452,7 @@ class _MiniPlayerButton extends StatelessWidget {
       message: '迷你播放器',
       child: IconButton(
         icon: const Icon(Icons.picture_in_picture_alt_rounded, size: 20),
-        color: Colors.white.withOpacity(0.9),
+        color: Colors.white.withValues(alpha: 0.9),
         onPressed: () {
           // 先关闭全屏播放器页面，然后切换到迷你模式
           Navigator.of(context).pop();
@@ -1526,7 +1485,7 @@ class _TopBarButton extends StatelessWidget {
         icon: Icon(icon, size: 20),
         color: isActive ? Colors.white : Colors.white24,
         style: IconButton.styleFrom(
-          backgroundColor: isActive ? Colors.white.withOpacity(0.15) : Colors.transparent,
+          backgroundColor: isActive ? Colors.white.withValues(alpha: 0.15) : Colors.transparent,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         ),
         onPressed: onPressed,
@@ -1547,12 +1506,12 @@ class _LayoutToggleButton extends StatelessWidget {
           message: '快速切换播放器样式',
           child: IconButton(
             icon: Icon(
-              currentStyle == LyricStyle.immersive 
-                  ? Icons.fullscreen_exit_rounded 
+              currentStyle == LyricStyle.immersive
+                  ? Icons.fullscreen_exit_rounded
                   : Icons.fullscreen_rounded,
               size: 24,
             ),
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withValues(alpha: 0.8),
             onPressed: () {
               LyricStyle nextStyle;
               if (currentStyle == LyricStyle.defaultStyle) {

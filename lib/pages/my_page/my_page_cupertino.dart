@@ -18,7 +18,7 @@ extension MyPageCupertinoUI on _MyPageState {
           children: [
             Container(
               width: 100, height: 100,
-              decoration: BoxDecoration(color: CupertinoColors.systemBlue.withOpacity(0.1), shape: BoxShape.circle),
+              decoration: BoxDecoration(color: CupertinoColors.systemBlue.withValues(alpha: 0.1), shape: BoxShape.circle),
               child: const Icon(CupertinoIcons.person_fill, size: 50, color: CupertinoColors.systemBlue),
             ),
             const SizedBox(height: 24),
@@ -97,7 +97,7 @@ extension MyPageCupertinoUI on _MyPageState {
         children: [
           Container(
             width: 60, height: 60,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: CupertinoColors.systemBlue.withOpacity(0.1)),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: CupertinoColors.systemBlue.withValues(alpha: 0.1)),
             child: user.avatarUrl != null
                 ? (user.avatarUrl!.contains('linux.do')
                     ? ClipOval(child: LinuxDoAvatarMaterial(url: user.avatarUrl!, userId: user.id, size: 60))
@@ -399,7 +399,7 @@ extension MyPageCupertinoUI on _MyPageState {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(color: isSelected && _isEditMode ? CupertinoColors.systemBlue.withOpacity(0.1) : (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white), borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(color: isSelected && _isEditMode ? CupertinoColors.systemBlue.withValues(alpha: 0.1) : (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white), borderRadius: BorderRadius.circular(10)),
       child: CupertinoButton(
         padding: EdgeInsets.zero,
         onPressed: _isEditMode ? () => _toggleTrackSelection(item) : () => _playDetailTrack(index),
@@ -640,7 +640,7 @@ extension MyPageCupertinoUI on _MyPageState {
 
               _showCupertinoToast('已删除 $deletedCount 首歌曲');
 
-              setState(() {
+              _refreshState(() {
                 _isEditMode = false;
                 _selectedTrackIds.clear();
               });

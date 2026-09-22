@@ -26,24 +26,24 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
   String? _lastTrackId;
   String? _lastLyricSignature;
   bool _isUserScrolling = false; // 用户是否正在手动滚动
-  
+
   @override
   void initState() {
     super.initState();
-    
+
     // 监听播放器状态
     PlayerService().addListener(_onPlayerStateChanged);
     PlayerService().positionNotifier.addListener(_onPositionChanged);
     LyricStyleService().addListener(_onLyricStyleChanged);
-    
+
     // 监听滚动
     _scrollController.addListener(_onScroll);
-    
+
     // 延迟加载歌词
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final currentTrack = PlayerService().currentTrack;
-      _lastTrackId = currentTrack != null 
-          ? '${currentTrack.source.name}_${currentTrack.id}' 
+      _lastTrackId = currentTrack != null
+          ? '${currentTrack.source.name}_${currentTrack.id}'
           : null;
       _syncLyricsFromSnapshot(force: true);
     });
@@ -81,12 +81,12 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
   /// 播放器状态变化回调
   void _onPlayerStateChanged() {
     if (!mounted) return;
-    
+
     final currentTrack = PlayerService().currentTrack;
-    final currentTrackId = currentTrack != null 
-        ? '${currentTrack.source.name}_${currentTrack.id}' 
+    final currentTrackId = currentTrack != null
+        ? '${currentTrack.source.name}_${currentTrack.id}'
         : null;
-    
+
     // 检测歌曲切换
     if (currentTrackId != _lastTrackId) {
       _lastTrackId = currentTrackId;
@@ -134,7 +134,7 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
   /// 更新当前歌词
   void _updateCurrentLyric({bool notify = true}) {
     if (_lyrics.isEmpty) return;
-    
+
     final newIndex = LyricParser.findCurrentLineIndex(
       _lyrics,
       PlayerService().position,
@@ -148,7 +148,7 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
       setState(() {
         _currentLyricIndex = newIndex;
       });
-      
+
       // 自动滚动到当前歌词（仅当用户未手动滚动时）
       if (!_isUserScrolling && _scrollController.hasClients) {
         _scrollToCurrentLyric();
@@ -161,14 +161,14 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
     if (_currentLyricIndex < 0 || _currentLyricIndex >= _lyrics.length) {
       return;
     }
-    
+
     // 计算目标位置（让当前歌词居中）
     final screenHeight = MediaQuery.of(context).size.height;
     // 根据屏幕大小和是否显示译文动态调整行高
     final baseHeight = _showTranslation ? 72.0 : 52.0;
     final itemHeight = (screenHeight * 0.08).clamp(baseHeight, baseHeight + 20.0);
     final targetOffset = _currentLyricIndex * itemHeight - screenHeight / 2 + itemHeight / 2;
-    
+
     _scrollController.animateTo(
       targetOffset.clamp(
         _scrollController.position.minScrollExtent,
@@ -182,32 +182,32 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
   /// 判断是否应该显示译文按钮
   bool _shouldShowTranslationButton() {
     if (_lyrics.isEmpty) return false;
-    
+
     // 检查是否有翻译
-    final hasTranslation = _lyrics.any((lyric) => 
+    final hasTranslation = _lyrics.any((lyric) =>
       lyric.translation != null && lyric.translation!.isNotEmpty
     );
-    
+
     if (!hasTranslation) return false;
-    
+
     // 检查原文是否为中文（检查前5行非空歌词）
     final sampleLyrics = _lyrics
         .where((lyric) => lyric.text.trim().isNotEmpty)
         .take(5)
         .map((lyric) => lyric.text)
         .join('');
-    
+
     if (sampleLyrics.isEmpty) return false;
-    
+
     // 计算中文字符占比
     final chineseCharCount = sampleLyrics.runes.where((rune) {
       return (rune >= 0x4E00 && rune <= 0x9FFF) || // CJK统一汉字
              (rune >= 0x3400 && rune <= 0x4DBF) || // CJK扩展A
              (rune >= 0x20000 && rune <= 0x2A6DF); // CJK扩展B
     }).length;
-    
+
     final chineseRatio = chineseCharCount / sampleLyrics.length;
-    
+
     // 如果中文字符占比小于30%，认为是非中文歌词
     return chineseRatio < 0.3;
   }
@@ -215,8 +215,6 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
   @override
   Widget build(BuildContext context) {
     final player = PlayerService();
-    final song = player.currentSong;
-    final track = player.currentTrack;
     final picUrl = player.currentCoverUrl ?? '';
 
     // 歌词页面始终使用深色背景，状态栏图标应为浅色
@@ -249,20 +247,20 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
                     child: Container(
-                      color: Colors.black.withOpacity(0.6),
+                      color: Colors.black.withValues(alpha: 0.6),
                     ),
                   ),
                 ),
               ),
             ),
-          
+
           // 歌词内容
           SafeArea(
             child: Column(
               children: [
                 // 顶部控制栏
                 _buildTopBar(context),
-                
+
                 // 歌词列表
                 Expanded(
                   child: _lyrics.isEmpty
@@ -293,7 +291,7 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
   /// 构建歌词列表（支持流体云切换）
   Widget _buildLyricList() {
     final style = LyricStyleService().currentStyle;
-    
+
     // 流体云样式
     if (style == LyricStyle.fluidCloud) {
       return MobilePlayerFluidCloudLyric(
@@ -346,8 +344,8 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
                     width: 30,
                     height: 30,
                     decoration: BoxDecoration(
-                      color: _showTranslation 
-                          ? Colors.white.withOpacity(0.2) 
+                      color: _showTranslation
+                          ? Colors.white.withValues(alpha: 0.2)
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(6),
                     ),
@@ -384,7 +382,7 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
   /// 构建歌词项
   Widget _buildLyricItem(LyricLine lyric, int index) {
     final isCurrent = index == _currentLyricIndex;
-    
+
     return LayoutBuilder(
       builder: (context, constraints) {
         // 根据屏幕宽度自适应字体大小
@@ -393,11 +391,11 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
         final normalFontSize = (screenWidth * 0.038).clamp(14.0, 16.0);
         final translationCurrentSize = (screenWidth * 0.035).clamp(13.0, 15.0);
         final translationNormalSize = (screenWidth * 0.032).clamp(12.0, 14.0);
-        
+
         return AnimatedDefaultTextStyle(
           duration: const Duration(milliseconds: 200),
           style: TextStyle(
-            color: isCurrent ? Colors.white : Colors.white.withOpacity(0.5),
+            color: isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.5),
             fontSize: isCurrent ? currentFontSize : normalFontSize,
             fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
             height: 1.6,
@@ -417,8 +415,8 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
                   textAlign: TextAlign.center,
                 ),
                 // 翻译歌词
-                if (_showTranslation && 
-                    lyric.translation != null && 
+                if (_showTranslation &&
+                    lyric.translation != null &&
                     lyric.translation!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -427,8 +425,8 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: isCurrent
-                            ? Colors.white.withOpacity(0.8)
-                            : Colors.white.withOpacity(0.4),
+                            ? Colors.white.withValues(alpha: 0.8)
+                            : Colors.white.withValues(alpha: 0.4),
                         fontSize: isCurrent ? translationCurrentSize : translationNormalSize,
                         fontFamily: 'Microsoft YaHei',
                       ),

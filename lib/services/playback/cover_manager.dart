@@ -1,3 +1,4 @@
+import '../structured_log_service.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -84,7 +85,7 @@ class CoverManager extends ChangeNotifier {
       setCover(provider, url: imageUrl, notify: notify);
       unawaited(
         _warmUpProvider(provider).catchError((error, stackTrace) {
-          print('[CoverManager] 后台预热封面失败: $error');
+          StructuredLogService.log('[CoverManager] 后台预热封面失败: $error');
           if (requestId == _coverRequestId &&
               _currentUrl == imageUrl &&
               identical(_currentCover, provider)) {
@@ -93,7 +94,7 @@ class CoverManager extends ChangeNotifier {
         }),
       );
     } catch (e) {
-      print('[CoverManager] 预加载封面失败: $e');
+      StructuredLogService.log('[CoverManager] 预加载封面失败: $e');
       if (requestId == _coverRequestId) {
         setCover(null, notify: notify);
       }
@@ -206,7 +207,7 @@ class CoverManager extends ChangeNotifier {
         _themeColorCache[imageUrl] = themeColor;
       }
     } catch (e) {
-      print('[CoverManager] 主题色提取失败: $e');
+      StructuredLogService.log('[CoverManager] 主题色提取失败: $e');
     }
   }
 
@@ -228,7 +229,7 @@ class CoverManager extends ChangeNotifier {
         _themeColorCache[imageUrl] = result!.themeColor!;
       }
     } catch (e) {
-      print('[CoverManager] 预加载主题色异常: $e');
+      StructuredLogService.log('[CoverManager] 预加载主题色异常: $e');
     }
   }
 
@@ -263,7 +264,7 @@ class CoverManager extends ChangeNotifier {
       );
       return result?.themeColor;
     } catch (e) {
-      print('[CoverManager] 从底部区域提取颜色失败: $e');
+      StructuredLogService.log('[CoverManager] 从底部区域提取颜色失败: $e');
       return null;
     }
   }

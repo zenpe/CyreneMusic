@@ -8,7 +8,7 @@ import '../../services/window_background_service.dart';
 /// 窗口背景设置对话框
 class WindowBackgroundDialog extends StatefulWidget {
   final VoidCallback onChanged;
-  
+
   const WindowBackgroundDialog({super.key, required this.onChanged});
 
   @override
@@ -47,7 +47,7 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 8),
             const Text(
               '为整个窗口设置背景图片或视频（独立于播放器背景）',
@@ -69,13 +69,13 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            service.isVideo 
-                                ? fluent_ui.FluentIcons.video 
-                                : fluent_ui.FluentIcons.photo_collection, 
+                            service.isVideo
+                                ? fluent_ui.FluentIcons.video
+                                : fluent_ui.FluentIcons.photo_collection,
                             size: 16
                           ),
                           const SizedBox(width: 8),
-                          Text(service.mediaPath != null 
+                          Text(service.mediaPath != null
                               ? (service.isVideo ? '更换视频' : '更换图片')
                               : '选择图片/视频'),
                         ],
@@ -160,7 +160,7 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
                   height: 120,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                    border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
@@ -198,7 +198,7 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
                                   sigmaY: service.blurAmount,
                                 ),
                                 child: Container(
-                                  color: Colors.black.withOpacity(1 - service.opacity),
+                                  color: Colors.black.withValues(alpha: 1 - service.opacity),
                                 ),
                               ),
                             ],
@@ -230,11 +230,11 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
     if (result != null && result.files.single.path != null) {
       final mediaPath = result.files.single.path!;
       final service = WindowBackgroundService();
-      
+
       await service.setMediaPath(mediaPath);
       setState(() {});
       widget.onChanged();
-      
+
       if (mounted) {
         final isVideo = service.isVideoFile(mediaPath);
         fluent_ui.displayInfoBar(

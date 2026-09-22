@@ -1,3 +1,4 @@
+import '../../services/structured_log_service.dart';
 import 'package:flutter/material.dart';
 import '../../services/player_service.dart';
 import '../../services/playback_mode_service.dart';
@@ -81,10 +82,10 @@ class PlayerControls extends StatelessWidget {
                         overlayRadius: 16,
                       ),
                       activeTrackColor: Colors.white,
-                      inactiveTrackColor: Colors.white.withOpacity(0.3),
-                      secondaryActiveTrackColor: Colors.white.withOpacity(0.55),
+                      inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
+                      secondaryActiveTrackColor: Colors.white.withValues(alpha: 0.55),
                       thumbColor: Colors.white,
-                      overlayColor: Colors.white.withOpacity(0.2),
+                      overlayColor: Colors.white.withValues(alpha: 0.2),
                     ),
                     child: Slider(
                       value: sliderValue.toDouble(),
@@ -108,14 +109,14 @@ class PlayerControls extends StatelessWidget {
                         Text(
                           _formatDuration(position),
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
+                            color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 13,
                           ),
                         ),
                         Text(
                           _formatDuration(player.duration),
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
+                            color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 13,
                           ),
                         ),
@@ -156,7 +157,7 @@ class PlayerControls extends StatelessWidget {
                     height: 30,
                     decoration: BoxDecoration(
                       color: showTranslation
-                          ? Colors.white.withOpacity(0.2)
+                          ? Colors.white.withValues(alpha: 0.2)
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(6),
                     ),
@@ -246,7 +247,7 @@ class PlayerControls extends StatelessWidget {
               PlayerSpeedSelector(
                 speed: player.playbackSpeed,
                 onSelected: (value) => player.setPlaybackSpeed(value),
-                menuColor: Colors.black.withOpacity(0.82),
+                menuColor: Colors.black.withValues(alpha: 0.82),
                 borderColor: Colors.white24,
                 textColor: Colors.white,
                 fontSize: 12,
@@ -298,7 +299,7 @@ class PlayerControls extends StatelessWidget {
                 color: Colors.white,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     blurRadius: 20,
                     offset: const Offset(0, 5),
                   ),
@@ -486,7 +487,7 @@ class PlayerControls extends StatelessWidget {
         );
       }
     } catch (e) {
-      print('❌ [PlayerControls] 下载失败: $e');
+      StructuredLogService.log('❌ [PlayerControls] 下载失败: $e');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

@@ -165,8 +165,9 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     final tracks = await _buildAlbumTracks(album);
     if (tracks.isEmpty) return;
     PlaylistQueueService().appendToQueue(tracks);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+    final pageContext = context;
+    if (pageContext.mounted) {
+      ScaffoldMessenger.of(pageContext).showSnackBar(
         const SnackBar(content: Text('已加入播放队列')),
       );
     }
@@ -956,7 +957,7 @@ class _RadioStationTile extends StatelessWidget {
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: NavidromeColors.radioOrange.withOpacity(0.15),
+              color: NavidromeColors.radioOrange.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(

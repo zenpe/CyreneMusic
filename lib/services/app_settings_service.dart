@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -50,7 +51,7 @@ class AppSettingsService extends ChangeNotifier {
           prefs.getBool(_keyUpdatePromptOnStartup) ?? true;
     } catch (e) {
       // 保持默认值
-      print('❌ [AppSettings] 读取设置失败: $e');
+      StructuredLogService.log('❌ [AppSettings] 读取设置失败: $e');
     } finally {
       _isInitialized = true;
       notifyListeners();
@@ -74,7 +75,7 @@ class AppSettingsService extends ChangeNotifier {
         _showUpdatePromptOnStartup,
       );
     } catch (e) {
-      print('❌ [AppSettings] 保存设置失败: $e');
+      StructuredLogService.log('❌ [AppSettings] 保存设置失败: $e');
     }
   }
 

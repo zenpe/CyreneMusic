@@ -5,16 +5,18 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'structured_log_service.dart';
 
 /// 持久化存储服务 - 解决 Windows 平台数据丢失问题
-/// 
+///
 /// 使用双重存储策略:
 /// 1. SharedPreferences (内存+注册表/文件)
 /// 2. 备份 JSON 文件（文件系统）
-/// 
+///
 /// 如果 SharedPreferences 数据丢失，会从备份文件恢复
 class PersistentStorageService extends ChangeNotifier {
-  static final PersistentStorageService _instance = PersistentStorageService._internal();
+  static final PersistentStorageService _instance =
+      PersistentStorageService._internal();
   factory PersistentStorageService() => _instance;
   PersistentStorageService._internal();
 
@@ -24,9 +26,24 @@ class PersistentStorageService extends ChangeNotifier {
 
   late SharedPreferences _prefs;
   File? _backupFile;
+  File? _legacyBackupFile;
   bool _isInitialized = false;
   Map<String, dynamic> _backupData = {};
   Timer? _backupDebounce;
+
+  void _log(String message, {Object? error}) {
+    final level = message.contains('❌')
+        ? LogLevel.error
+        : message.contains('⚠️')
+        ? LogLevel.warning
+        : LogLevel.debug;
+    StructuredLogService.event(
+      'persistent_storage.log',
+      level: level,
+      fields: {'message': message},
+      error: error,
+    );
+  }
 
   /// 延迟备份：多次写入合并为一次磁盘写入
   void _scheduleBackup() {
@@ -41,16 +58,16 @@ class PersistentStorageService extends ChangeNotifier {
   /// 初始化持久化存储服务（必须在 main 函数中最早调用）
   Future<void> initialize() async {
     if (_isInitialized) {
-      print('⚠️ [PersistentStorage] 已初始化，跳过');
+      _log('⚠️ [PersistentStorage] 已初始化，跳过');
       return;
     }
 
     try {
-      print('💾 [PersistentStorage] 初始化持久化存储服务...');
+      _log('💾 [PersistentStorage] 初始化持久化存储服务...');
 
       // 1. 初始化 SharedPreferences
       _prefs = await SharedPreferences.getInstance();
-      print('✅ [PersistentStorage] SharedPreferences 已初始化');
+      _log('✅ [PersistentStorage] SharedPreferences 已初始化');
 
       // 2. 初始化备份文件
       await _initBackupFile();
@@ -66,11 +83,11 @@ class PersistentStorageService extends ChangeNotifier {
       }
 
       _isInitialized = true;
-      print('✅ [PersistentStorage] 持久化存储服务初始化完成');
-      print('📊 [PersistentStorage] 当前存储键数量: ${_prefs.getKeys().length}');
+      _log('✅ [PersistentStorage] 持久化存储服务初始化完成');
+      _log('📊 [PersistentStorage] 当前存储键数量: ${_prefs.getKeys().length}');
     } catch (e, stackTrace) {
-      print('❌ [PersistentStorage] 初始化失败: $e');
-      print('❌ [PersistentStorage] 堆栈: $stackTrace');
+      _log('❌ [PersistentStorage] 初始化失败: $e', error: e);
+      _log('❌ [PersistentStorage] 堆栈: $stackTrace');
       _isInitialized = false;
       rethrow;
     }
@@ -82,10 +99,16 @@ class PersistentStorageService extends ChangeNotifier {
       String backupDir;
 
       if (Platform.isWindows) {
-        // Windows: 使用可执行文件目录
-        final executablePath = Platform.resolvedExecutable;
-        final executableDir = path.dirname(executablePath);
-        backupDir = path.join(executableDir, 'data');
+        // Windows: 使用应用支持目录，避免安装目录无写权限或被更新覆盖
+        final appDir = await getApplicationSupportDirectory();
+        backupDir = appDir.path;
+        _legacyBackupFile = File(
+          path.join(
+            path.dirname(Platform.resolvedExecutable),
+            'data',
+            'app_settings_backup.json',
+          ),
+        );
       } else if (Platform.isAndroid) {
         // Android: 使用应用文档目录
         final appDir = await getApplicationDocumentsDirectory();
@@ -100,35 +123,72 @@ class PersistentStorageService extends ChangeNotifier {
       final dir = Directory(backupDir);
       if (!await dir.exists()) {
         await dir.create(recursive: true);
-        print('📁 [PersistentStorage] 创建备份目录: $backupDir');
+        _log('📁 [PersistentStorage] 创建备份目录: $backupDir');
       }
 
       _backupFile = File(path.join(backupDir, 'app_settings_backup.json'));
-      print('📂 [PersistentStorage] 备份文件路径: ${_backupFile!.path}');
+      _log('📂 [PersistentStorage] 备份文件路径: ${_backupFile!.path}');
+
+      if (_legacyBackupFile != null &&
+          !await _backupFile!.exists() &&
+          await _legacyBackupFile!.exists()) {
+        try {
+          await _backupFile!.parent.create(recursive: true);
+          await _legacyBackupFile!.copy(_backupFile!.path);
+          _log('📦 [PersistentStorage] 已迁移旧版 Windows 设置备份');
+        } catch (e) {
+          _log('⚠️ [PersistentStorage] 迁移旧版设置备份失败: $e', error: e);
+        }
+      }
     } catch (e) {
-      print('❌ [PersistentStorage] 初始化备份文件失败: $e');
+      _log('❌ [PersistentStorage] 初始化备份文件失败: $e', error: e);
       rethrow;
     }
   }
 
   /// 从备份文件恢复数据
   Future<void> _restoreFromBackup() async {
-    if (_backupFile == null || !await _backupFile!.exists()) {
-      print('ℹ️ [PersistentStorage] 备份文件不存在，跳过恢复');
+    final candidates = <File>[];
+    if (_backupFile != null) candidates.add(_backupFile!);
+    if (_legacyBackupFile != null &&
+        _legacyBackupFile!.path != _backupFile?.path) {
+      candidates.add(_legacyBackupFile!);
+    }
+
+    Map<String, dynamic>? loadedData;
+    File? loadedFile;
+    for (final candidate in candidates) {
+      if (!await candidate.exists()) continue;
+      try {
+        final decoded = jsonDecode(await candidate.readAsString());
+        if (decoded is Map) {
+          loadedData = Map<String, dynamic>.from(decoded);
+          loadedFile = candidate;
+          break;
+        }
+      } catch (e) {
+        _log('⚠️ [PersistentStorage] 读取备份候选失败: ${candidate.path}', error: e);
+      }
+    }
+
+    if (loadedData == null) {
+      _log('ℹ️ [PersistentStorage] 备份文件不存在，跳过恢复');
       return;
     }
 
     try {
-      final jsonContent = await _backupFile!.readAsString();
-      _backupData = jsonDecode(jsonContent) as Map<String, dynamic>;
-      
-      print('📥 [PersistentStorage] 从备份加载 ${_backupData.length} 个键');
+      _backupData = loadedData;
+
+      _log(
+        '📥 [PersistentStorage] 从备份加载 ${_backupData.length} 个键: '
+        '${loadedFile?.path}',
+      );
 
       // 检查 SharedPreferences 是否为空或数据过少
       final currentKeys = _prefs.getKeys();
       if (currentKeys.isEmpty || currentKeys.length < _backupData.length / 2) {
-        print('⚠️ [PersistentStorage] 检测到数据丢失，从备份恢复...');
-        
+        _log('⚠️ [PersistentStorage] 检测到数据丢失，从备份恢复...');
+
         int restoredCount = 0;
         for (final entry in _backupData.entries) {
           final key = entry.key;
@@ -151,26 +211,26 @@ class PersistentStorageService extends ChangeNotifier {
           }
         }
 
-        print('✅ [PersistentStorage] 恢复了 $restoredCount 个键');
+        _log('✅ [PersistentStorage] 恢复了 $restoredCount 个键');
         notifyListeners();
       } else {
-        print('✅ [PersistentStorage] SharedPreferences 数据完整，无需恢复');
+        _log('✅ [PersistentStorage] SharedPreferences 数据完整，无需恢复');
       }
     } catch (e) {
-      print('❌ [PersistentStorage] 从备份恢复失败: $e');
+      _log('❌ [PersistentStorage] 从备份恢复失败: $e', error: e);
     }
   }
 
   /// 创建备份
   Future<void> _createBackup() async {
     if (_backupFile == null) {
-      print('⚠️ [PersistentStorage] 备份文件未初始化');
+      _log('⚠️ [PersistentStorage] 备份文件未初始化');
       return;
     }
 
     try {
       _backupData.clear();
-      
+
       // 将 SharedPreferences 的所有数据保存到备份
       for (final key in _prefs.getKeys()) {
         final value = _prefs.get(key);
@@ -182,10 +242,10 @@ class PersistentStorageService extends ChangeNotifier {
       // 写入文件
       final jsonContent = jsonEncode(_backupData);
       await _backupFile!.writeAsString(jsonContent);
-      
-      print('💾 [PersistentStorage] 创建备份: ${_backupData.length} 个键');
+
+      _log('💾 [PersistentStorage] 创建备份: ${_backupData.length} 个键');
     } catch (e) {
-      print('❌ [PersistentStorage] 创建备份失败: $e');
+      _log('❌ [PersistentStorage] 创建备份失败: $e', error: e);
     }
   }
 
@@ -194,7 +254,7 @@ class PersistentStorageService extends ChangeNotifier {
   /// 设置字符串值（自动备份）
   Future<bool> setString(String key, String value) async {
     if (!_isInitialized) {
-      print('⚠️ [PersistentStorage] 服务未初始化');
+      _log('⚠️ [PersistentStorage] 服务未初始化');
       return false;
     }
 
@@ -206,7 +266,7 @@ class PersistentStorageService extends ChangeNotifier {
       }
       return result;
     } catch (e) {
-      print('❌ [PersistentStorage] setString 失败: $e');
+      _log('❌ [PersistentStorage] setString 失败: $e', error: e);
       return false;
     }
   }
@@ -214,7 +274,7 @@ class PersistentStorageService extends ChangeNotifier {
   /// 设置整数值（自动备份）
   Future<bool> setInt(String key, int value) async {
     if (!_isInitialized) {
-      print('⚠️ [PersistentStorage] 服务未初始化');
+      _log('⚠️ [PersistentStorage] 服务未初始化');
       return false;
     }
 
@@ -226,7 +286,7 @@ class PersistentStorageService extends ChangeNotifier {
       }
       return result;
     } catch (e) {
-      print('❌ [PersistentStorage] setInt 失败: $e');
+      _log('❌ [PersistentStorage] setInt 失败: $e', error: e);
       return false;
     }
   }
@@ -234,7 +294,7 @@ class PersistentStorageService extends ChangeNotifier {
   /// 设置布尔值（自动备份）
   Future<bool> setBool(String key, bool value) async {
     if (!_isInitialized) {
-      print('⚠️ [PersistentStorage] 服务未初始化');
+      _log('⚠️ [PersistentStorage] 服务未初始化');
       return false;
     }
 
@@ -246,7 +306,7 @@ class PersistentStorageService extends ChangeNotifier {
       }
       return result;
     } catch (e) {
-      print('❌ [PersistentStorage] setBool 失败: $e');
+      _log('❌ [PersistentStorage] setBool 失败: $e', error: e);
       return false;
     }
   }
@@ -254,7 +314,7 @@ class PersistentStorageService extends ChangeNotifier {
   /// 设置双精度浮点值（自动备份）
   Future<bool> setDouble(String key, double value) async {
     if (!_isInitialized) {
-      print('⚠️ [PersistentStorage] 服务未初始化');
+      _log('⚠️ [PersistentStorage] 服务未初始化');
       return false;
     }
 
@@ -266,7 +326,7 @@ class PersistentStorageService extends ChangeNotifier {
       }
       return result;
     } catch (e) {
-      print('❌ [PersistentStorage] setDouble 失败: $e');
+      _log('❌ [PersistentStorage] setDouble 失败: $e', error: e);
       return false;
     }
   }
@@ -274,7 +334,7 @@ class PersistentStorageService extends ChangeNotifier {
   /// 设置字符串列表（自动备份）
   Future<bool> setStringList(String key, List<String> value) async {
     if (!_isInitialized) {
-      print('⚠️ [PersistentStorage] 服务未初始化');
+      _log('⚠️ [PersistentStorage] 服务未初始化');
       return false;
     }
 
@@ -286,7 +346,7 @@ class PersistentStorageService extends ChangeNotifier {
       }
       return result;
     } catch (e) {
-      print('❌ [PersistentStorage] setStringList 失败: $e');
+      _log('❌ [PersistentStorage] setStringList 失败: $e', error: e);
       return false;
     }
   }
@@ -294,7 +354,7 @@ class PersistentStorageService extends ChangeNotifier {
   /// 移除键（自动备份）
   Future<bool> remove(String key) async {
     if (!_isInitialized) {
-      print('⚠️ [PersistentStorage] 服务未初始化');
+      _log('⚠️ [PersistentStorage] 服务未初始化');
       return false;
     }
 
@@ -306,7 +366,7 @@ class PersistentStorageService extends ChangeNotifier {
       }
       return result;
     } catch (e) {
-      print('❌ [PersistentStorage] remove 失败: $e');
+      _log('❌ [PersistentStorage] remove 失败: $e', error: e);
       return false;
     }
   }
@@ -314,7 +374,7 @@ class PersistentStorageService extends ChangeNotifier {
   /// 清除所有数据（自动备份）
   Future<bool> clear() async {
     if (!_isInitialized) {
-      print('⚠️ [PersistentStorage] 服务未初始化');
+      _log('⚠️ [PersistentStorage] 服务未初始化');
       return false;
     }
 
@@ -326,7 +386,7 @@ class PersistentStorageService extends ChangeNotifier {
       }
       return result;
     } catch (e) {
-      print('❌ [PersistentStorage] clear 失败: $e');
+      _log('❌ [PersistentStorage] clear 失败: $e', error: e);
       return false;
     }
   }
@@ -381,7 +441,7 @@ class PersistentStorageService extends ChangeNotifier {
   /// 手动触发备份
   Future<void> forceBackup() async {
     await _createBackup();
-    print('💾 [PersistentStorage] 强制备份完成');
+    _log('💾 [PersistentStorage] 强制备份完成');
   }
 
   /// 获取备份文件路径（用于调试）
@@ -402,13 +462,15 @@ class PersistentStorageService extends ChangeNotifier {
   bool get termsAccepted => getBool(_keyTermsAccepted) ?? false;
 
   /// 设置用户协议确认状态
-  Future<void> setTermsAccepted(bool value) => setBool(_keyTermsAccepted, value);
+  Future<void> setTermsAccepted(bool value) =>
+      setBool(_keyTermsAccepted, value);
 
   /// 主题是否已完成初始化配置
   bool get themeConfigured => getBool(_keyThemeConfigured) ?? false;
 
   /// 设置主题初始化配置状态
-  Future<void> setThemeConfigured(bool value) => setBool(_keyThemeConfigured, value);
+  Future<void> setThemeConfigured(bool value) =>
+      setBool(_keyThemeConfigured, value);
 
   /// 是否启用本地模式
   bool get enableLocalMode => getBool(_keyEnableLocalMode) ?? false;
@@ -417,4 +479,3 @@ class PersistentStorageService extends ChangeNotifier {
   Future<void> setEnableLocalMode(bool value) =>
       setBool(_keyEnableLocalMode, value);
 }
-

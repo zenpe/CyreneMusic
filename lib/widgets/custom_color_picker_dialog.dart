@@ -23,7 +23,7 @@ class _CustomColorPickerDialogState extends State<CustomColorPickerDialog> {
   late double _value;
   late TextEditingController _hexController;
   bool _isInternalUpdating = false;
-  
+
   @override
   void initState() {
     super.initState();
@@ -43,7 +43,7 @@ class _CustomColorPickerDialogState extends State<CustomColorPickerDialog> {
 
   void _onHexChanged() {
     if (_isInternalUpdating) return;
-    
+
     final text = _hexController.text.replaceAll('#', '');
     if (text.length == 6) {
       try {
@@ -61,7 +61,7 @@ class _CustomColorPickerDialogState extends State<CustomColorPickerDialog> {
   }
 
   String _colorToHex(Color color) {
-    return color.value.toRadixString(16).substring(2).toUpperCase();
+    return color.toARGB32().toRadixString(16).substring(2).toUpperCase();
   }
 
   Color get _currentColor {
@@ -78,7 +78,7 @@ class _CustomColorPickerDialogState extends State<CustomColorPickerDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     final content = SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -104,7 +104,7 @@ class _CustomColorPickerDialogState extends State<CustomColorPickerDialog> {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: _currentColor.withOpacity(0.4),
+                          color: _currentColor.withValues(alpha: 0.4),
                           blurRadius: 16,
                           spreadRadius: 2,
                         ),
@@ -159,9 +159,9 @@ class _CustomColorPickerDialogState extends State<CustomColorPickerDialog> {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 32),
-          
+
           // 色相滑块
           _buildExpressiveSlider(
             label: '色相 (Hue)',
@@ -178,9 +178,9 @@ class _CustomColorPickerDialogState extends State<CustomColorPickerDialog> {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // 饱和度滑块
           _buildExpressiveSlider(
             label: '饱和度 (Saturation)',
@@ -197,9 +197,9 @@ class _CustomColorPickerDialogState extends State<CustomColorPickerDialog> {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // 亮度滑块
           _buildExpressiveSlider(
             label: '亮度 (Value)',
@@ -216,9 +216,9 @@ class _CustomColorPickerDialogState extends State<CustomColorPickerDialog> {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // 操作按钮 (针对 BottomSheet 模式的内容内部)
           if (widget.isBottomSheet)
             Padding(
@@ -396,10 +396,10 @@ class _ExpressiveSliderThumbShape extends SliderComponentShape {
     final fillPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.fill;
-    
+
     // 投影
     final shadowPaint = Paint()
-      ..color = Colors.black.withOpacity(0.2)
+      ..color = Colors.black.withValues(alpha: 0.2)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
 
     canvas.drawCircle(center, 12, shadowPaint);
@@ -409,15 +409,15 @@ class _ExpressiveSliderThumbShape extends SliderComponentShape {
     final colorPaint = Paint()
       ..color = color
       ..style = PaintingStyle.fill;
-    
+
     canvas.drawCircle(center, 8, colorPaint);
 
     // 描边
     final borderPaint = Paint()
-      ..color = Colors.black.withOpacity(0.1)
+      ..color = Colors.black.withValues(alpha: 0.1)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
-    
+
     canvas.drawCircle(center, 12, borderPaint);
   }
 }

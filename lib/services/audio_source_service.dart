@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
@@ -20,7 +21,7 @@ enum AudioSourceType {
 }
 
 /// 音源服务 - 管理音源配置（获取歌曲播放 URL）
-/// 
+///
 /// 支持多音源管理，用户可以添加多个音源并选择其中一个作为当前活动音源。
 class AudioSourceService extends ChangeNotifier {
   static final AudioSourceService _instance = AudioSourceService._internal();
@@ -109,7 +110,7 @@ class AudioSourceService extends ChangeNotifier {
     }
 
     _isInitialized = true;
-    print('✅ [AudioSourceService] 初始化完成');
+    StructuredLogService.log('✅ [AudioSourceService] 初始化完成');
   }
 
   /// 初始化洛雪运行时环境
@@ -134,29 +135,29 @@ class AudioSourceService extends ChangeNotifier {
       }
 
       try {
-        print('🚀 [AudioSourceService] 正在初始化洛雪运行时: $sourceId');
+        StructuredLogService.log('🚀 [AudioSourceService] 正在初始化洛雪运行时: $sourceId');
         String? scriptContent = source.scriptContent;
         if (scriptContent.isEmpty) {
           scriptContent = await _loadLxScriptContent();
         }
         if (scriptContent == null || scriptContent.isEmpty) {
-          print('⚠️ [AudioSourceService] 未找到洛雪脚本内容，无法初始化运行时');
+          StructuredLogService.log('⚠️ [AudioSourceService] 未找到洛雪脚本内容，无法初始化运行时');
           return;
         }
 
         final runtime = LxMusicRuntimeService();
         final loaded = await runtime.loadScript(scriptContent);
         if (loaded == null || !runtime.isScriptReady) {
-          print('⚠️ [AudioSourceService] 洛雪脚本加载失败: $sourceId');
+          StructuredLogService.log('⚠️ [AudioSourceService] 洛雪脚本加载失败: $sourceId');
           return;
         }
         if (generation == _lxRuntimeGeneration &&
             activeSource?.id == sourceId) {
           _lxRuntimeSourceId = sourceId;
-          print('✅ [AudioSourceService] 洛雪运行时初始化成功: $sourceId');
+          StructuredLogService.log('✅ [AudioSourceService] 洛雪运行时初始化成功: $sourceId');
         }
       } catch (e) {
-        print('❌ [AudioSourceService] 初始化洛雪运行时失败: $e');
+        StructuredLogService.log('❌ [AudioSourceService] 初始化洛雪运行时失败: $e');
       }
     });
     _lxRuntimeOperation = operation;
@@ -191,34 +192,34 @@ class AudioSourceService extends ChangeNotifier {
         await _migrateOldSettings(prefs);
       }
 
-      print('🔊 [AudioSourceService] 加载配置完成: ${_sources.length} 个音源');
+      StructuredLogService.log('🔊 [AudioSourceService] 加载配置完成: ${_sources.length} 个音源');
       if (activeSource != null) {
-        print('   当前活动音源: ${activeSource!.name} (${activeSource!.type.name})');
+        StructuredLogService.log('   当前活动音源: ${activeSource!.name} (${activeSource!.type.name})');
       } else {
-        print('   当前无活动音源');
+        StructuredLogService.log('   当前无活动音源');
       }
-      
+
       notifyListeners();
     } catch (e) {
-      print('❌ [AudioSourceService] 加载配置失败: $e');
+      StructuredLogService.log('❌ [AudioSourceService] 加载配置失败: $e');
     }
   }
 
   /// 迁移旧版配置
   Future<void> _migrateOldSettings(SharedPreferences prefs) async {
-    print('🔄 [AudioSourceService] 检测到旧版配置，开始迁移...');
+    StructuredLogService.log('🔄 [AudioSourceService] 检测到旧版配置，开始迁移...');
     try {
       final typeIndex = prefs.getInt(_keyOldSourceType) ?? 0;
       final type = AudioSourceType.values[typeIndex];
       final url = prefs.getString(_keyOldSourceUrl) ?? '';
-      
+
       if (url.isEmpty) return;
 
       final config = AudioSourceConfig(
         id: _generateId(),
         type: type,
-        name: type == AudioSourceType.lxmusic 
-            ? (prefs.getString(_keyOldLxSourceName) ?? '洛雪音源') 
+        name: type == AudioSourceType.lxmusic
+            ? (prefs.getString(_keyOldLxSourceName) ?? '洛雪音源')
             : (type == AudioSourceType.tunehub ? 'TuneHub 音源' : 'OmniParse 音源'),
         url: url,
         apiKey: prefs.getString(_keyOldLxApiKey) ?? '',
@@ -233,14 +234,14 @@ class AudioSourceService extends ChangeNotifier {
 
       _sources.add(config);
       _activeSourceId = config.id;
-      
+
       await _saveSources();
       await _saveActiveSourceId();
-      
+
       // 清理旧配置 (可选，这里暂时保留以防万一)
-      print('✅ [AudioSourceService] 迁移完成');
+      StructuredLogService.log('✅ [AudioSourceService] 迁移完成');
     } catch (e) {
-      print('❌ [AudioSourceService] 迁移失败: $e');
+      StructuredLogService.log('❌ [AudioSourceService] 迁移失败: $e');
     }
   }
 
@@ -251,7 +252,7 @@ class AudioSourceService extends ChangeNotifier {
       final jsonList = _sources.map((e) => e.toJson()).toList();
       await prefs.setString(_keySources, jsonEncode(jsonList));
     } catch (e) {
-      print('❌ [AudioSourceService] 保存音源列表失败: $e');
+      StructuredLogService.log('❌ [AudioSourceService] 保存音源列表失败: $e');
     }
   }
 
@@ -261,7 +262,7 @@ class AudioSourceService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_keyActiveSourceId, _activeSourceId);
     } catch (e) {
-      print('❌ [AudioSourceService] 保存活动音源 ID 失败: $e');
+      StructuredLogService.log('❌ [AudioSourceService] 保存活动音源 ID 失败: $e');
     }
   }
 
@@ -371,7 +372,7 @@ class AudioSourceService extends ChangeNotifier {
       }
 
       notifyListeners();
-      print('🔊 [AudioSourceService] 切换音源至: ${activeSource?.name}');
+      StructuredLogService.log('🔊 [AudioSourceService] 切换音源至: ${activeSource?.name}');
     }
   }
 
@@ -379,21 +380,21 @@ class AudioSourceService extends ChangeNotifier {
   // 保持现有 API 兼容，但基于 activeSource 返回数据
 
   AudioSourceType get sourceType => activeSource?.type ?? AudioSourceType.omniparse;
-  
+
   String get sourceUrl => activeSource?.url ?? '';
-  
+
   String get lxApiKey => activeSource?.apiKey ?? '';
-  
+
   String get lxSourceName => activeSource?.name ?? '';
-  
+
   String get lxSourceVersion => activeSource?.version ?? '';
-  
+
   String get lxSourceAuthor => activeSource?.author ?? '';
-  
+
   String get lxSourceDescription => activeSource?.description ?? '';
-  
+
   String get lxScriptSource => activeSource?.scriptSource ?? '';
-  
+
   bool get isConfigured {
     if (isNavidromeActive) {
       return NavidromeSessionService().isConfigured;
@@ -414,12 +415,12 @@ class AudioSourceService extends ChangeNotifier {
       // 无活动音源时返回所有平台
       return ['netease', 'apple', 'qq', 'kugou', 'kuwo'];
     }
-    
+
     // 优先使用音源配置中存储的支持平台
     if (source.supportedPlatforms.isNotEmpty) {
       return source.supportedPlatforms;
     }
-    
+
     // 如果是洛雪音源且运行时已加载脚本，从运行时获取
     if (source.type == AudioSourceType.lxmusic) {
       final runtime = LxMusicRuntimeService();
@@ -430,7 +431,7 @@ class AudioSourceService extends ChangeNotifier {
         }
       }
     }
-    
+
     // 回退到默认配置
     return defaultSupportedPlatforms[source.type] ?? ['netease', 'apple', 'qq', 'kugou', 'kuwo'];
   }
@@ -507,7 +508,7 @@ class AudioSourceService extends ChangeNotifier {
      // Compatibility implementation: Update active source or create new if none
      if (activeSource != null) {
        await updateSource(activeSource!.copyWith(
-         type: type.index != activeSource!.type.index ? null : activeSource!.type, 
+         type: type.index != activeSource!.type.index ? null : activeSource!.type,
          url: url,
          apiKey: lxApiKey
        ));
@@ -562,11 +563,11 @@ class AudioSourceService extends ChangeNotifier {
         return await file.readAsString();
       }
     } catch (e) {
-      print('❌ [AudioSourceService] 读取脚本内容失败: $e');
+      StructuredLogService.log('❌ [AudioSourceService] 读取脚本内容失败: $e');
     }
     return null;
   }
-  
+
   /// 清除当前配置
   Future<void> clear() {
     return _enqueueMutation(() async {
@@ -608,12 +609,12 @@ class AudioSourceService extends ChangeNotifier {
   String buildLxMusicUrl(MusicSource source, dynamic songId, AudioQuality quality) {
     final config = activeSource;
     if (config == null) return '';
-    
+
     final sourceCode = getLxSourceCode(source);
     if (sourceCode == null) throw UnsupportedError('洛雪音源不支持 ${source.name}');
-    
+
     final lxQuality = getLxQuality(quality);
-    
+
     if (config.urlPathTemplate.isNotEmpty) {
       final path = config.urlPathTemplate
           .replaceAll('{source}', sourceCode)
@@ -621,7 +622,7 @@ class AudioSourceService extends ChangeNotifier {
           .replaceAll('{quality}', lxQuality);
       return '${baseUrl}$path';
     }
-    
+
     return '${baseUrl}/url/$sourceCode/$songId/$lxQuality';
   }
 
@@ -692,20 +693,20 @@ class AudioSourceService extends ChangeNotifier {
     final config = activeSource;
     return {
       'Content-Type': 'application/json',
-      if (config?.apiKey.isNotEmpty == true) 
+      if (config?.apiKey.isNotEmpty == true)
         'X-API-Key': config!.apiKey,
     };
   }
 
   /// 构建 TuneHub v3 解析请求参数
   Map<String, dynamic> buildTuneHubV3ParseBody(
-    MusicSource source, 
-    dynamic songId, 
+    MusicSource source,
+    dynamic songId,
     AudioQuality quality,
   ) {
     final platform = getTuneHubSourceCode(source);
     if (platform == null) throw UnsupportedError('TuneHub 音源不支持 ${source.name}');
-    
+
     return {
       'platform': platform,
       'ids': songId.toString(),

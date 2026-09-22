@@ -1,3 +1,4 @@
+import '../services/structured_log_service.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -82,8 +83,8 @@ class ThemeManager extends ChangeNotifier {
   Color _seedColor = Colors.deepPurple;
   bool _followSystemColor = true; // 默认跟随系统主题色
   Color? _systemColor; // 系统主题色缓存
-  ThemeFramework _themeFramework = (Platform.isWindows || Platform.isMacOS || Platform.isLinux) 
-      ? ThemeFramework.fluent 
+  ThemeFramework _themeFramework = (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
+      ? ThemeFramework.fluent
       : ThemeFramework.material; // 桌面端默认使用 Fluent UI，移动端默认使用 Material 3
   MobileThemeFramework _mobileThemeFramework = MobileThemeFramework.cupertino; // 移动端默认使用 iOS 风格
   WindowEffect _windowEffect = WindowEffect.disabled; // 窗口材质效果
@@ -92,7 +93,7 @@ class ThemeManager extends ChangeNotifier {
 
   /// iOS 默认蓝色
   static const Color iosBlue = Color(0xFF007AFF);
-  
+
   ThemeMode get themeMode => _themeMode;
   Color get seedColor => _seedColor;
   bool get followSystemColor => _followSystemColor;
@@ -101,10 +102,10 @@ class ThemeManager extends ChangeNotifier {
   MobileThemeFramework get mobileThemeFramework => _mobileThemeFramework;
   bool get isMaterialFramework => _themeFramework == ThemeFramework.material;
   bool get isFluentFramework => _themeFramework == ThemeFramework.fluent;
-  
+
   /// 是否为桌面端平台（Windows/macOS/Linux）
   bool get isDesktop => Platform.isWindows || Platform.isMacOS || Platform.isLinux;
-  
+
   /// 是否使用桌面端 Fluent UI（所有桌面平台均支持）
   bool get isDesktopFluentUI => isDesktop && isFluentFramework;
 
@@ -126,7 +127,7 @@ class ThemeManager extends ChangeNotifier {
     return false;
   }
   WindowEffect get windowEffect => _windowEffect;
-  
+
   /// 获取有效的主题色（Cupertino 模式下固定返回 iOS 蓝色）
   Color get effectiveSeedColor {
     if ((Platform.isIOS || Platform.isAndroid) && isCupertinoFramework) {
@@ -163,15 +164,15 @@ class ThemeManager extends ChangeNotifier {
     final isLight = brightness == Brightness.light;
     // Cupertino 模式下固定使用 iOS 蓝色
     const primaryColor = iosBlue;
-    
+
     return CupertinoThemeData(
       brightness: brightness,
       primaryColor: primaryColor,
       primaryContrastingColor: isLight ? Colors.white : Colors.black,
-      barBackgroundColor: isLight 
+      barBackgroundColor: isLight
           ? CupertinoColors.systemGroupedBackground
           : const Color(0xFF1C1C1E),
-      scaffoldBackgroundColor: isLight 
+      scaffoldBackgroundColor: isLight
           ? CupertinoColors.systemGroupedBackground
           : CupertinoColors.black,
       textTheme: CupertinoTextThemeData(
@@ -233,12 +234,11 @@ class ThemeManager extends ChangeNotifier {
     final background = isLight ? const Color(0xFFF3F3F3) : const Color(0xFF121212);
     final onSurface = isLight ? const Color(0xFF1B1B1B) : Colors.white;
     final borderColor = isLight
-        ? Colors.black.withOpacity(0.06)
-        : Colors.white.withOpacity(0.08);
+        ? Colors.black.withValues(alpha: 0.06)
+        : Colors.white.withValues(alpha: 0.08);
 
     final colorScheme = baseScheme.copyWith(
       surface: surface,
-      background: background,
       onSurface: onSurface,
     );
 
@@ -249,7 +249,6 @@ class ThemeManager extends ChangeNotifier {
       scaffoldBackgroundColor: background,
       canvasColor: background,
       cardColor: surface,
-      dialogBackgroundColor: surface,
       dividerTheme: DividerThemeData(
         color: borderColor,
         thickness: 1,
@@ -268,14 +267,14 @@ class ThemeManager extends ChangeNotifier {
         indicatorShape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
         ),
-        indicatorColor: baseScheme.primary.withOpacity(0.18),
+        indicatorColor: baseScheme.primary.withValues(alpha: 0.18),
         selectedIconTheme: IconThemeData(color: baseScheme.primary),
         selectedLabelTextStyle: TextStyle(
           color: baseScheme.primary,
           fontWeight: FontWeight.w600,
         ),
         unselectedLabelTextStyle: TextStyle(
-          color: onSurface.withOpacity(0.7),
+          color: onSurface.withValues(alpha: 0.7),
         ),
       ),
       listTileTheme: ListTileThemeData(
@@ -306,17 +305,17 @@ class ThemeManager extends ChangeNotifier {
         ),
       ),
       radioTheme: RadioThemeData(
-        fillColor: MaterialStateProperty.all(baseScheme.primary),
+        fillColor: WidgetStateProperty.all(baseScheme.primary),
       ),
       switchTheme: SwitchThemeData(
-        thumbColor: MaterialStateProperty.resolveWith((states) {
-          if (states.contains(MaterialState.selected)) {
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
             return Colors.white;
           }
           return isLight ? const Color(0xFFE1E1E1) : const Color(0xFF2E2E2E);
         }),
-        trackColor: MaterialStateProperty.resolveWith((states) {
-          if (states.contains(MaterialState.selected)) {
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
             return baseScheme.primary;
           }
           return isLight ? const Color(0xFFC6C6C6) : const Color(0xFF3A3A3A);
@@ -336,8 +335,8 @@ class ThemeManager extends ChangeNotifier {
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(
           color: isLight
-              ? Colors.black.withOpacity(0.85)
-              : Colors.white.withOpacity(0.9),
+              ? Colors.black.withValues(alpha: 0.85)
+              : Colors.white.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(4),
         ),
         textStyle: TextStyle(
@@ -346,7 +345,7 @@ class ThemeManager extends ChangeNotifier {
       ),
       tabBarTheme: TabBarThemeData(
         labelColor: baseScheme.primary,
-        unselectedLabelColor: onSurface.withOpacity(0.7),
+        unselectedLabelColor: onSurface.withValues(alpha: 0.7),
         indicator: UnderlineTabIndicator(
           borderSide: BorderSide(color: baseScheme.primary, width: 2),
         ),
@@ -370,27 +369,27 @@ class ThemeManager extends ChangeNotifier {
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: surface,
         selectedItemColor: baseScheme.primary,
-        unselectedItemColor: onSurface.withOpacity(0.7),
+        unselectedItemColor: onSurface.withValues(alpha: 0.7),
         type: BottomNavigationBarType.fixed,
       ),
       textButtonTheme: TextButtonThemeData(
         style: ButtonStyle(
-          foregroundColor: MaterialStateProperty.all(baseScheme.primary),
-          shape: MaterialStateProperty.all(
+          foregroundColor: WidgetStateProperty.all(baseScheme.primary),
+          shape: WidgetStateProperty.all(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           ),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ButtonStyle(
-          shape: MaterialStateProperty.all(
+          shape: WidgetStateProperty.all(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: ButtonStyle(
-          shape: MaterialStateProperty.all(
+          shape: WidgetStateProperty.all(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           ),
         ),
@@ -398,7 +397,7 @@ class ThemeManager extends ChangeNotifier {
       sliderTheme: SliderThemeData(
         trackHeight: 4,
         activeTrackColor: baseScheme.primary,
-        inactiveTrackColor: onSurface.withOpacity(isLight ? 0.1 : 0.3),
+        inactiveTrackColor: onSurface.withValues(alpha: isLight ? 0.1 : 0.3),
         thumbColor: baseScheme.primary,
       ),
       appBarTheme: AppBarTheme(
@@ -420,17 +419,17 @@ class ThemeManager extends ChangeNotifier {
   Future<void> _loadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // 加载主题模式（默认为 light 亮色模式，避免首次启动跟随系统深色模式导致显示异常）
       final themeModeIndex =
           prefs.getInt(_keyThemeMode) ?? ThemeMode.light.index;
       _themeMode = ThemeMode.values[themeModeIndex];
-      
+
       // 加载跟随系统主题色设置（默认为 true）
       _followSystemColor = prefs.getBool(_keyFollowSystemColor) ?? true;
-      
+
       // 加载主题色
-      final colorValue = prefs.getInt(_keySeedColor) ?? Colors.deepPurple.value;
+      final colorValue = prefs.getInt(_keySeedColor) ?? Colors.deepPurple.toARGB32();
       _seedColor = Color(colorValue);
 
         // 加载桌面主题框架（桌面端默认为 Fluent UI，移动端默认为 Material）
@@ -439,8 +438,8 @@ class ThemeManager extends ChangeNotifier {
           _themeFramework = ThemeFramework.values[savedFrameworkIndex];
         } else {
           // 用户未设置过，使用平台默认值
-          _themeFramework = (Platform.isWindows || Platform.isMacOS || Platform.isLinux) 
-              ? ThemeFramework.fluent 
+          _themeFramework = (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
+              ? ThemeFramework.fluent
               : ThemeFramework.material;
         }
 
@@ -455,7 +454,7 @@ class ThemeManager extends ChangeNotifier {
       // 检测 Windows 版本
       if (Platform.isWindows) {
         _isWindows11OrLater = await _checkIsWindows11OrLater();
-        print('🖥️ [ThemeManager] Windows 11 或更高版本: $_isWindows11OrLater');
+        StructuredLogService.log('🖥️ [ThemeManager] Windows 11 或更高版本: $_isWindows11OrLater');
       }
 
       // 加载窗口材质（默认：Windows 11 设为 Mica，Win10 及以下设为 Disabled）
@@ -464,7 +463,7 @@ class ThemeManager extends ChangeNotifier {
         _windowEffect = WindowEffect.values[windowEffectIndex];
         // 如果用户之前设置了 Mica 但当前系统不支持，自动回退到 disabled
         if (_windowEffect == WindowEffect.mica && !_isWindows11OrLater) {
-          print('⚠️ [ThemeManager] 当前系统不支持 Mica，自动回退到 disabled');
+          StructuredLogService.log('⚠️ [ThemeManager] 当前系统不支持 Mica，自动回退到 disabled');
           _windowEffect = WindowEffect.disabled;
           await prefs.setInt(_keyWindowEffect, _windowEffect.index);
         }
@@ -476,19 +475,19 @@ class ThemeManager extends ChangeNotifier {
           _windowEffect = WindowEffect.disabled;
         }
       }
-      
-      print('🎨 [ThemeManager] 从本地加载主题: ${_themeMode.name}');
-      print('🎨 [ThemeManager] 跟随系统主题色: $_followSystemColor');
-      print('🎨 [ThemeManager] 主题色: 0x${_seedColor.value.toRadixString(16)}');
-      print('🎨 [ThemeManager] 桌面主题框架: ${_themeFramework.name}');
-      print('🎨 [ThemeManager] 移动端主题框架: ${_mobileThemeFramework.name}');
+
+      StructuredLogService.log('🎨 [ThemeManager] 从本地加载主题: ${_themeMode.name}');
+      StructuredLogService.log('🎨 [ThemeManager] 跟随系统主题色: $_followSystemColor');
+      StructuredLogService.log('🎨 [ThemeManager] 主题色: 0x${_seedColor.toARGB32().toRadixString(16)}');
+      StructuredLogService.log('🎨 [ThemeManager] 桌面主题框架: ${_themeFramework.name}');
+      StructuredLogService.log('🎨 [ThemeManager] 移动端主题框架: ${_mobileThemeFramework.name}');
       // 应用一次窗口材质并在帧后通知，避免在布局阶段触发重建
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await _applyWindowEffectInternal();
         notifyListeners();
       });
     } catch (e) {
-      print('❌ [ThemeManager] 加载主题设置失败: $e');
+      StructuredLogService.log('❌ [ThemeManager] 加载主题设置失败: $e');
     }
   }
 
@@ -497,9 +496,9 @@ class ThemeManager extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_keyThemeMode, _themeMode.index);
-      print('💾 [ThemeManager] 主题模式已保存: ${_themeMode.name}');
+      StructuredLogService.log('💾 [ThemeManager] 主题模式已保存: ${_themeMode.name}');
     } catch (e) {
-      print('❌ [ThemeManager] 保存主题模式失败: $e');
+      StructuredLogService.log('❌ [ThemeManager] 保存主题模式失败: $e');
     }
   }
 
@@ -507,10 +506,10 @@ class ThemeManager extends ChangeNotifier {
   Future<void> _saveSeedColor() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_keySeedColor, _seedColor.value);
-      print('💾 [ThemeManager] 主题色已保存: 0x${_seedColor.value.toRadixString(16)}');
+      await prefs.setInt(_keySeedColor, _seedColor.toARGB32());
+      StructuredLogService.log('💾 [ThemeManager] 主题色已保存: 0x${_seedColor.toARGB32().toRadixString(16)}');
     } catch (e) {
-      print('❌ [ThemeManager] 保存主题色失败: $e');
+      StructuredLogService.log('❌ [ThemeManager] 保存主题色失败: $e');
     }
   }
 
@@ -519,9 +518,9 @@ class ThemeManager extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_keyFollowSystemColor, _followSystemColor);
-      print('💾 [ThemeManager] 跟随系统主题色设置已保存: $_followSystemColor');
+      StructuredLogService.log('💾 [ThemeManager] 跟随系统主题色设置已保存: $_followSystemColor');
     } catch (e) {
-      print('❌ [ThemeManager] 保存跟随系统主题色设置失败: $e');
+      StructuredLogService.log('❌ [ThemeManager] 保存跟随系统主题色设置失败: $e');
     }
   }
 
@@ -530,9 +529,9 @@ class ThemeManager extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_keyThemeFramework, _themeFramework.index);
-      print('💾 [ThemeManager] 桌面主题框架已保存: ${_themeFramework.name}');
+      StructuredLogService.log('💾 [ThemeManager] 桌面主题框架已保存: ${_themeFramework.name}');
     } catch (e) {
-      print('❌ [ThemeManager] 保存桌面主题框架失败: $e');
+      StructuredLogService.log('❌ [ThemeManager] 保存桌面主题框架失败: $e');
     }
   }
 
@@ -541,9 +540,9 @@ class ThemeManager extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(keyMobileThemeFramework, _mobileThemeFramework.index);
-      print('💾 [ThemeManager] 移动端主题框架已保存: ${_mobileThemeFramework.name}');
+      StructuredLogService.log('💾 [ThemeManager] 移动端主题框架已保存: ${_mobileThemeFramework.name}');
     } catch (e) {
-      print('❌ [ThemeManager] 保存移动端主题框架失败: $e');
+      StructuredLogService.log('❌ [ThemeManager] 保存移动端主题框架失败: $e');
     }
   }
 
@@ -575,14 +574,14 @@ class ThemeManager extends ChangeNotifier {
     if (_seedColor != color) {
       _seedColor = color;
       _saveSeedColor();
-      
+
       // 手动设置主题色时，自动关闭跟随系统主题色
       if (_followSystemColor) {
         _followSystemColor = false;
         _saveFollowSystemColor();
-        print('ℹ️ [ThemeManager] 手动设置主题色，已自动关闭跟随系统主题色');
+        StructuredLogService.log('ℹ️ [ThemeManager] 手动设置主题色，已自动关闭跟随系统主题色');
       }
-      
+
       notifyListeners();
     }
   }
@@ -592,12 +591,13 @@ class ThemeManager extends ChangeNotifier {
     if (_followSystemColor != follow) {
       _followSystemColor = follow;
       await _saveFollowSystemColor();
-      
-      if (follow && context != null) {
+
+      final themeContext = context;
+      if (follow && themeContext != null && themeContext.mounted) {
         // 如果启用跟随系统主题色，立即尝试获取并应用系统颜色
-        await fetchAndApplySystemColor(context);
+        await fetchAndApplySystemColor(themeContext);
       }
-      
+
       notifyListeners();
     }
   }
@@ -607,17 +607,17 @@ class ThemeManager extends ChangeNotifier {
     if (_themeFramework != framework) {
       _themeFramework = framework;
       _saveThemeFramework();
-      
+
       // 切换到 Fluent UI 时，自动重置为桌面布局模式
       // 因为 Fluent UI 主要用于桌面体验，目前布局调整逻辑主要支持 Windows
       if (framework == ThemeFramework.fluent && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
         final layoutService = LayoutPreferenceService();
         if (layoutService.isMobileLayout) {
           layoutService.setLayoutMode(LayoutMode.desktop);
-          print('🖥️ [ThemeManager] 切换到 Fluent UI，自动重置为桌面布局模式');
+          StructuredLogService.log('🖥️ [ThemeManager] 切换到 Fluent UI，自动重置为桌面布局模式');
         }
       }
-      
+
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await _applyWindowEffectInternal();
         notifyListeners();
@@ -639,9 +639,9 @@ class ThemeManager extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_keyWindowEffect, _windowEffect.index);
-      print('💾 [ThemeManager] 窗口材质已保存: ${_windowEffect.name}');
+      StructuredLogService.log('💾 [ThemeManager] 窗口材质已保存: ${_windowEffect.name}');
     } catch (e) {
-      print('❌ [ThemeManager] 保存窗口材质失败: $e');
+      StructuredLogService.log('❌ [ThemeManager] 保存窗口材质失败: $e');
     }
   }
 
@@ -650,10 +650,10 @@ class ThemeManager extends ChangeNotifier {
     // 如果用户尝试在不支持的系统上设置 Mica，自动回退到 disabled
     var effectToApply = effect;
     if (effect == WindowEffect.mica && !_isWindows11OrLater) {
-      print('⚠️ [ThemeManager] 当前系统不支持 Mica，将使用 disabled');
+      StructuredLogService.log('⚠️ [ThemeManager] 当前系统不支持 Mica，将使用 disabled');
       effectToApply = WindowEffect.disabled;
     }
-    
+
     if (_windowEffect != effectToApply) {
       _windowEffect = effectToApply;
       await _saveWindowEffect();
@@ -664,7 +664,7 @@ class ThemeManager extends ChangeNotifier {
       });
     }
   }
-  
+
   /// 检查当前系统是否支持 Mica 效果
   bool get isMicaSupported => _isWindows11OrLater;
 
@@ -696,9 +696,9 @@ class ThemeManager extends ChangeNotifier {
       // 隐藏系统窗口默认控制区域，避免与自定义标题栏按钮重叠
       await Window.hideWindowControls();
       await Window.hideTitle();
-      print('✨ [ThemeManager] 已应用窗口材质: ${_windowEffect.name} (dark=$isDarkMode)');
+      StructuredLogService.log('✨ [ThemeManager] 已应用窗口材质: ${_windowEffect.name} (dark=$isDarkMode)');
     } catch (e) {
-      print('⚠️ [ThemeManager] 应用窗口材质失败，将回退到默认: $e');
+      StructuredLogService.log('⚠️ [ThemeManager] 应用窗口材质失败，将回退到默认: $e');
       try {
         await Window.setEffect(effect: WindowEffect.disabled);
       } catch (_) {}
@@ -711,7 +711,7 @@ class ThemeManager extends ChangeNotifier {
   /// Windows 11 的内部版本号从 22000 开始
   Future<bool> _checkIsWindows11OrLater() async {
     if (!Platform.isWindows) return false;
-    
+
     try {
       // 使用 Platform.operatingSystemVersion 获取版本信息
       // 格式可能是:
@@ -719,17 +719,17 @@ class ThemeManager extends ChangeNotifier {
       // - "Windows 11 Version 23H2 (OS Build 22631.0)"
       // - "10.0.26200" (简化格式)
       final version = Platform.operatingSystemVersion;
-      print('🖥️ [ThemeManager] 操作系统版本字符串: $version');
-      
+      StructuredLogService.log('🖥️ [ThemeManager] 操作系统版本字符串: $version');
+
       // 尝试多种格式提取版本号
       int? buildNumber;
-      
+
       // 格式1: "OS Build XXXXX" 或 "Build XXXXX"
       var match = RegExp(r'Build\s+(\d+)', caseSensitive: false).firstMatch(version);
       if (match != null) {
         buildNumber = int.tryParse(match.group(1) ?? '0');
       }
-      
+
       // 格式2: "10.0.XXXXX"
       if (buildNumber == null) {
         match = RegExp(r'10\.0\.(\d+)').firstMatch(version);
@@ -737,7 +737,7 @@ class ThemeManager extends ChangeNotifier {
           buildNumber = int.tryParse(match.group(1) ?? '0');
         }
       }
-      
+
       // 格式3: 直接查找5位数字（可能是版本号）
       if (buildNumber == null) {
         match = RegExp(r'\b(\d{5})\b').firstMatch(version);
@@ -745,24 +745,24 @@ class ThemeManager extends ChangeNotifier {
           buildNumber = int.tryParse(match.group(1) ?? '0');
         }
       }
-      
+
       if (buildNumber != null && buildNumber > 0) {
         // Windows 11 的内部版本号从 22000 开始
         final isWin11 = buildNumber >= 22000;
-        print('🖥️ [ThemeManager] Windows 内部版本号: $buildNumber, 是否为 Win11+: $isWin11');
+        StructuredLogService.log('🖥️ [ThemeManager] Windows 内部版本号: $buildNumber, 是否为 Win11+: $isWin11');
         return isWin11;
       }
-      
+
       // 如果无法解析版本号，检查是否包含 "Windows 11"
       if (version.contains('Windows 11')) {
-        print('🖥️ [ThemeManager] 检测到 Windows 11 字符串');
+        StructuredLogService.log('🖥️ [ThemeManager] 检测到 Windows 11 字符串');
         return true;
       }
-      
-      print('⚠️ [ThemeManager] 无法解析 Windows 版本号，默认为非 Win11');
+
+      StructuredLogService.log('⚠️ [ThemeManager] 无法解析 Windows 版本号，默认为非 Win11');
       return false;
     } catch (e) {
-      print('⚠️ [ThemeManager] 检测 Windows 版本失败: $e');
+      StructuredLogService.log('⚠️ [ThemeManager] 检测 Windows 版本失败: $e');
       return false;
     }
   }
@@ -770,42 +770,42 @@ class ThemeManager extends ChangeNotifier {
   /// 获取并应用系统主题色
   Future<void> fetchAndApplySystemColor(BuildContext context) async {
     if (!_followSystemColor) {
-      print('ℹ️ [ThemeManager] 跟随系统主题色已关闭，跳过');
+      StructuredLogService.log('ℹ️ [ThemeManager] 跟随系统主题色已关闭，跳过');
       return;
     }
 
     try {
-      print('🎨 [ThemeManager] 开始获取系统主题色...');
+      StructuredLogService.log('🎨 [ThemeManager] 开始获取系统主题色...');
       final systemColor = await SystemThemeColorService().getSystemThemeColor(context);
-      
+
       if (systemColor != null) {
         _systemColor = systemColor;
         _seedColor = systemColor;
         await _saveSeedColor();
-        print('✅ [ThemeManager] 已应用系统主题色: 0x${systemColor.value.toRadixString(16)}');
+        StructuredLogService.log('✅ [ThemeManager] 已应用系统主题色: 0x${systemColor.toARGB32().toRadixString(16)}');
         notifyListeners();
       } else {
-        print('⚠️ [ThemeManager] 无法获取系统主题色，保持当前颜色');
+        StructuredLogService.log('⚠️ [ThemeManager] 无法获取系统主题色，保持当前颜色');
       }
     } catch (e) {
-      print('❌ [ThemeManager] 获取系统主题色失败: $e');
+      StructuredLogService.log('❌ [ThemeManager] 获取系统主题色失败: $e');
     }
   }
 
   /// 初始化系统主题色（应在应用启动时调用）
   Future<void> initializeSystemColor(BuildContext context) async {
     if (_followSystemColor) {
-      print('🎨 [ThemeManager] 初始化：跟随系统主题色已启用');
+      StructuredLogService.log('🎨 [ThemeManager] 初始化：跟随系统主题色已启用');
       await fetchAndApplySystemColor(context);
     } else {
-      print('🎨 [ThemeManager] 初始化：使用自定义主题色');
+      StructuredLogService.log('🎨 [ThemeManager] 初始化：使用自定义主题色');
     }
   }
 
   /// 获取当前主题色在预设列表中的索引，如果不在预设列表中（自定义颜色）则返回 -1
   int getCurrentColorIndex() {
     for (int i = 0; i < ThemeColors.presets.length; i++) {
-      if (ThemeColors.presets[i].color.value == _seedColor.value) {
+      if (ThemeColors.presets[i].color.toARGB32() == _seedColor.toARGB32()) {
         return i;
       }
     }

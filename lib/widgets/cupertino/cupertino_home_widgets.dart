@@ -27,7 +27,7 @@ class CupertinoHomeSegmentedControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(tabs.length, (index) {
@@ -42,7 +42,7 @@ class CupertinoHomeSegmentedControl extends StatelessWidget {
             margin: EdgeInsets.only(right: index < tabs.length - 1 ? 4 : 0),
             decoration: BoxDecoration(
               color: isSelected
-                  ? (isDark 
+                  ? (isDark
                       ? CupertinoColors.systemGrey5.darkColor
                       : CupertinoColors.systemGrey5)
                   : Colors.transparent,
@@ -90,17 +90,17 @@ class CupertinoHomeStickyHeader extends StatelessWidget {
     final progress = (shrinkOffset / maxExtent).clamp(0.0, 1.0);
     // 背景透明度随滚动增加
     final bgOpacity = 0.0 + progress * 0.95;
-    
+
     return Container(
       height: maxExtent,
       decoration: BoxDecoration(
         color: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground)
-            .withOpacity(bgOpacity),
+            .withValues(alpha: bgOpacity),
         border: progress > 0.5
             ? Border(
                 bottom: BorderSide(
                   color: isDark
-                      ? CupertinoColors.systemGrey.darkColor.withOpacity(0.3)
+                      ? CupertinoColors.systemGrey.darkColor.withValues(alpha: 0.3)
                       : CupertinoColors.systemGrey4,
                   width: 0.5,
                 ),
@@ -180,7 +180,7 @@ class CupertinoTrackBannerCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: CupertinoColors.black.withOpacity(isDark ? 0.3 : 0.15),
+              color: CupertinoColors.black.withValues(alpha: isDark ? 0.3 : 0.15),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -225,7 +225,7 @@ class CupertinoTrackBannerCard extends StatelessWidget {
                     end: Alignment.bottomCenter,
                     colors: [
                       Colors.transparent,
-                      CupertinoColors.black.withOpacity(0.7),
+                      CupertinoColors.black.withValues(alpha: 0.7),
                     ],
                   ),
                 ),
@@ -259,7 +259,7 @@ class CupertinoTrackBannerCard extends StatelessWidget {
                     Text(
                       track.artists,
                       style: TextStyle(
-                        color: CupertinoColors.white.withOpacity(0.9),
+                        color: CupertinoColors.white.withValues(alpha: 0.9),
                         fontSize: 14,
                         shadows: const [
                           Shadow(
@@ -287,7 +287,7 @@ class CupertinoTrackBannerCard extends StatelessWidget {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: CupertinoColors.black.withOpacity(0.3),
+                        color: CupertinoColors.black.withValues(alpha: 0.3),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -384,7 +384,7 @@ class CupertinoBannerSection extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: currentBannerIndex == index
                                 ? CupertinoColors.white
-                                : CupertinoColors.white.withOpacity(0.5),
+                                : CupertinoColors.white.withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(3),
                           ),
                         ),
@@ -420,7 +420,7 @@ class CupertinoHistorySection extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: CupertinoColors.black.withOpacity(isDark ? 0.2 : 0.08),
+            color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.08),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -541,7 +541,7 @@ class CupertinoGuessYouLikeSection extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: CupertinoColors.black.withOpacity(isDark ? 0.2 : 0.08),
+            color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.08),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -793,7 +793,7 @@ class CupertinoToplistsGrid extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: CupertinoColors.black.withOpacity(isDark ? 0.2 : 0.08),
+                color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.08),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               ),

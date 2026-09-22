@@ -46,17 +46,22 @@ class _MyPageState extends State<MyPage> {
   Playlist? _selectedPlaylist;
   bool _isEditMode = false;
   final Set<String> _selectedTrackIds = {};
-  
+
   bool _isSearchMode = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   bool _reverseTransition = false; // 用于控制滑动动画方向
 
+  void _refreshState(VoidCallback action) {
+    if (!mounted) return;
+    setState(action);
+  }
+
   @override
   void initState() {
     super.initState();
     _playlistService.addListener(_onPlaylistsChanged);
-    
+
     if (_authFacade.isLoggedIn) {
       _playlistService.loadPlaylists();
       _loadStats();
@@ -295,15 +300,6 @@ class _MyPageState extends State<MyPage> {
     });
   }
 
-  String _getSourceIcon(source) {
-    switch (source.toString()) {
-      case 'MusicSource.netease': return '🎵';
-      case 'MusicSource.qq': return '🎶';
-      case 'MusicSource.kugou': return '🎼';
-      case 'MusicSource.navidrome': return '🎧';
-      default: return '🎵';
-    }
-  }
 
   Future<void> _playTrack(PlayCountItem item) async {
     try {
@@ -834,13 +830,15 @@ class _MyPageState extends State<MyPage> {
       barrierDismissible: true,
       builder: (context) {
         Future.delayed(const Duration(seconds: 2), () {
-          if (Navigator.canPop(context)) Navigator.pop(context);
+          if (context.mounted && Navigator.canPop(context)) {
+            Navigator.pop(context);
+          }
         });
         return Center(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: BoxDecoration(
-              color: CupertinoColors.black.withOpacity(0.7),
+              color: CupertinoColors.black.withValues(alpha: 0.7),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -853,133 +851,12 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  Future<void> _confirmDeletePlaylistCupertino(Playlist playlist) async {
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('删除歌单'),
-        content: Padding(
-          padding: const EdgeInsets.only(top: 16),
-          child: Column(
-            children: [
-              Text('确定要删除歌单「${playlist.name}」吗？'),
-              if (playlist.trackCount > 0) ...[
-                const SizedBox(height: 8),
-                Text(
-                  '该歌单包含 ${playlist.trackCount} 首歌曲，删除后将无法恢复。',
-                  style: const TextStyle(fontSize: 13, color: CupertinoColors.systemGrey),
-                ),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
 
-    if (confirmed != true) return;
 
-    final success = await _playlistService.deletePlaylist(playlist.id);
-    if (!mounted) return;
-
-    _showCupertinoToast(success ? '歌单「${playlist.name}」已删除' : '删除失败');
-
-    if (success && _selectedPlaylist?.id == playlist.id) {
-      _backToList();
-    }
-  }
-
-  Future<void> _confirmRemoveTrackCupertino(PlaylistTrack track) async {
-    if (_selectedPlaylist == null) return;
-
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('移除歌曲'),
-        content: Padding(
-          padding: const EdgeInsets.only(top: 16),
-          child: Text('确定要从歌单中移除「${track.name}」吗？'),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('移除'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    final success = await _playlistService.removePlaylistTrack(_selectedPlaylist!.id, track);
-    _showCupertinoToast(success ? '已从歌单移除' : '移除失败');
-  }
-
-  Future<void> _batchRemoveTracksCupertino() async {
-    if (_selectedPlaylist == null || _selectedTrackIds.isEmpty) return;
-
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('批量删除'),
-        content: Padding(
-          padding: const EdgeInsets.only(top: 16),
-          child: Text('确定要删除选中的 ${_selectedTrackIds.length} 首歌曲吗？'),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    final tracksToDelete = _playlistService.currentTracks
-        .where((track) => _selectedTrackIds.contains(_getTrackKey(track)))
-        .toList();
-
-    final deletedCount = await _playlistService.removeTracksFromPlaylist(
-      _selectedPlaylist!.id,
-      tracksToDelete,
-    );
-
-    if (!mounted) return;
-
-    _showCupertinoToast('已删除 $deletedCount 首歌曲');
-
-    setState(() {
-      _isEditMode = false;
-      _selectedTrackIds.clear();
-    });
-    _syncGlobalBackHandler();
-  }
 }
 
 /// Linux Do 头像组件 - Material 版本
-/// 
+///
 /// 使用 WebView 服务获取头像，绕过 Cloudflare 保护
 class LinuxDoAvatarMaterial extends StatefulWidget {
   final String url;
@@ -1052,7 +929,7 @@ class _LinuxDoAvatarMaterialState extends State<LinuxDoAvatarMaterial> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return widget.placeholder ?? 
+      return widget.placeholder ??
         SizedBox(
           width: widget.size,
           height: widget.size,
@@ -1061,7 +938,7 @@ class _LinuxDoAvatarMaterialState extends State<LinuxDoAvatarMaterial> {
     }
 
     if (_hasFailed || _avatarData == null) {
-      return widget.errorWidget ?? 
+      return widget.errorWidget ??
         Container(
           width: widget.size,
           height: widget.size,
@@ -1076,7 +953,7 @@ class _LinuxDoAvatarMaterialState extends State<LinuxDoAvatarMaterial> {
       height: widget.size,
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) {
-        return widget.errorWidget ?? 
+        return widget.errorWidget ??
           Container(
             width: widget.size,
             height: widget.size,

@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -17,36 +18,36 @@ class PermissionService {
 
     try {
       final status = await Permission.notification.status;
-      
+
       if (status.isGranted) {
-        print('✅ [PermissionService] 通知权限已授予');
+        StructuredLogService.log('✅ [PermissionService] 通知权限已授予');
         return true;
       }
 
       if (status.isDenied) {
-        print('🔔 [PermissionService] 请求通知权限...');
+        StructuredLogService.log('🔔 [PermissionService] 请求通知权限...');
         final result = await Permission.notification.request();
-        
+
         if (result.isGranted) {
-          print('✅ [PermissionService] 用户授予了通知权限');
+          StructuredLogService.log('✅ [PermissionService] 用户授予了通知权限');
           return true;
         } else if (result.isPermanentlyDenied) {
-          print('❌ [PermissionService] 用户永久拒绝了通知权限');
+          StructuredLogService.log('❌ [PermissionService] 用户永久拒绝了通知权限');
           return false;
         } else {
-          print('⚠️ [PermissionService] 用户拒绝了通知权限');
+          StructuredLogService.log('⚠️ [PermissionService] 用户拒绝了通知权限');
           return false;
         }
       }
 
       if (status.isPermanentlyDenied) {
-        print('❌ [PermissionService] 通知权限被永久拒绝，需要打开设置');
+        StructuredLogService.log('❌ [PermissionService] 通知权限被永久拒绝，需要打开设置');
         return false;
       }
 
       return false;
     } catch (e) {
-      print('❌ [PermissionService] 请求通知权限失败: $e');
+      StructuredLogService.log('❌ [PermissionService] 请求通知权限失败: $e');
       return false;
     }
   }
@@ -59,23 +60,23 @@ class PermissionService {
     try {
       final status = await Permission.ignoreBatteryOptimizations.status;
       if (status.isGranted) {
-        print('✅ [PermissionService] 电池优化已忽略');
+        StructuredLogService.log('✅ [PermissionService] 电池优化已忽略');
         return true;
       }
 
-      print('🔋 [PermissionService] 尝试请求忽略电池优化...');
+      StructuredLogService.log('🔋 [PermissionService] 尝试请求忽略电池优化...');
       // 弹出请求对话框
       final result = await Permission.ignoreBatteryOptimizations.request();
-      
+
       if (result.isGranted) {
-        print('✅ [PermissionService] 用户授予了忽略电池优化权限');
+        StructuredLogService.log('✅ [PermissionService] 用户授予了忽略电池优化权限');
         return true;
       } else {
-        print('⚠️ [PermissionService] 用户未授予忽略电池优化权限');
+        StructuredLogService.log('⚠️ [PermissionService] 用户未授予忽略电池优化权限');
         return false;
       }
     } catch (e) {
-      print('❌ [PermissionService] 请求电池优化异常: $e');
+      StructuredLogService.log('❌ [PermissionService] 请求电池优化异常: $e');
       return false;
     }
   }
@@ -117,7 +118,7 @@ class PermissionService {
     }
 
     final hasNotificationPermission = await requestNotificationPermission();
-    
+
     if (!hasNotificationPermission) {
       // 显示说明对话框
       if (context.mounted) {

@@ -69,7 +69,7 @@ class _MixedPlaylistCardState extends State<MixedPlaylistCard> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(widget.isLarge ? 16 : 12),
                   boxShadow: _hovering ? [
-                    BoxShadow(color: cs.shadow.withOpacity(0.15), blurRadius: 12, offset: const Offset(0, 4)),
+                    BoxShadow(color: cs.shadow.withValues(alpha: 0.15), blurRadius: 12, offset: const Offset(0, 4)),
                   ] : [],
                 ),
                 child: ClipRRect(
@@ -92,12 +92,12 @@ class _MixedPlaylistCardState extends State<MixedPlaylistCard> {
                         opacity: _hovering ? 1.0 : 0.0,
                         duration: const Duration(milliseconds: 200),
                         child: Container(
-                          color: Colors.black.withOpacity(0.3),
+                          color: Colors.black.withValues(alpha: 0.3),
                           child: Center(
                             child: Container(
                               width: 40, height: 40,
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.9),
+                                color: Colors.white.withValues(alpha: 0.9),
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(Icons.play_arrow_rounded, color: cs.primary, size: 24),

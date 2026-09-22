@@ -23,17 +23,9 @@ Future<bool?> showNeteaseQrDialog(BuildContext context, int userId) async {
   if (!context.mounted) return null;
 
   final bool isFluent = fluent_ui.FluentTheme.maybeOf(context) != null;
-  final success = isFluent
-      ? await fluent_ui.showDialog<bool>(
-          context: context,
-          barrierDismissible: true,
-          builder: (context) => NeteaseQrDialog(
-            userId: userId,
-            qrUrl: created!.qrUrl,
-            qrKey: created.key,
-          ),
-        )
-      : await showDialog<bool>(
+  final bool? success;
+  if (isFluent) {
+    success = await fluent_ui.showDialog<bool>(
           context: context,
           barrierDismissible: true,
           builder: (context) => NeteaseQrDialog(
@@ -42,6 +34,17 @@ Future<bool?> showNeteaseQrDialog(BuildContext context, int userId) async {
             qrKey: created.key,
           ),
         );
+  } else {
+    success = await showDialog<bool>(
+          context: context,
+          barrierDismissible: true,
+          builder: (context) => NeteaseQrDialog(
+            userId: userId,
+            qrUrl: created!.qrUrl,
+            qrKey: created.key,
+          ),
+        );
+  }
 
   if (success == true && context.mounted) {
     final messenger = ScaffoldMessenger.maybeOf(context);
@@ -60,7 +63,7 @@ class NeteaseQrDialog extends StatefulWidget {
   final int userId;
   final String qrUrl;
   final String qrKey;
-  
+
   const NeteaseQrDialog({
     super.key,
     required this.userId,
@@ -226,4 +229,3 @@ class _NeteaseQrDialogState extends State<NeteaseQrDialog> {
     );
   }
 }
-

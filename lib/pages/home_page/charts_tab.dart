@@ -29,7 +29,7 @@ class ChartsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = Platform.isIOS || Platform.isAndroid;
-    
+
     if (MusicService().isLoading) {
       // 移动端使用移动端专用骨架屏
       if (isMobile) {
@@ -75,7 +75,7 @@ class ChartsTab extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 800;
-        
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -115,7 +115,7 @@ class ChartsTab extends StatelessWidget {
                 ),
               );
             }),
-            
+
              SizedBox(height: MediaQuery.of(context).padding.bottom + 100),
           ],
         );
@@ -128,10 +128,10 @@ class ChartsTab extends StatelessWidget {
 
     // 如果宽度足够，使用 Bento Grid 布局
     final isDesktop = constraints.maxWidth > 900;
-    
+
     if (isDesktop && cachedRandomTracks.length >= 3) {
       final height = 320.0;
-      
+
       return SizedBox(
         height: height,
         child: Row(
@@ -169,8 +169,8 @@ class ChartsTab extends StatelessWidget {
           ],
         ),
       );
-    } 
-    
+    }
+
     // 窄屏/移动端布局：使用平滑 Peek 轮播图，避免封面被压缩变形
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -294,7 +294,7 @@ class _MobileFeaturedCarouselState extends State<_MobileFeaturedCarousel> {
                 decoration: BoxDecoration(
                   color: isSelected
                       ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.onSurface.withOpacity(0.18),
+                      : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(3),
                 ),
               );
@@ -344,7 +344,7 @@ class _FeaturedCardState extends State<_FeaturedCard> {
             boxShadow: _isHovering
                 ? [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withValues(alpha: 0.2),
                       blurRadius: 16,
                       offset: const Offset(0, 8),
                     )
@@ -388,8 +388,8 @@ class _FeaturedCardState extends State<_FeaturedCard> {
                       end: Alignment.bottomCenter,
                       colors: [
                         Colors.transparent,
-                        Colors.black.withOpacity(0.35),
-                        Colors.black.withOpacity(0.85),
+                        Colors.black.withValues(alpha: 0.35),
+                        Colors.black.withValues(alpha: 0.85),
                       ],
                       stops: const [0.4, 0.7, 1.0],
                     ),
@@ -436,7 +436,7 @@ class _FeaturedCardState extends State<_FeaturedCard> {
                         Text(
                           '${widget.track.artists} • ${widget.track.album}',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.85),
+                            color: Colors.white.withValues(alpha: 0.85),
                             fontSize: widget.isLarge ? 16 : 14,
                           ),
                           maxLines: 1,
@@ -515,7 +515,7 @@ class _ToplistSection extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             if (ThemeManager().isFluentFramework)
               fluent.HyperlinkButton(
                 onPressed: () => showToplistDetail(context, toplist),
@@ -537,7 +537,7 @@ class _ToplistSection extends StatelessWidget {
             separatorBuilder: (c, i) => const SizedBox(width: 16),
             itemBuilder: (context, index) {
               return _ToplistTrackCard(
-                track: toplist.tracks[index], 
+                track: toplist.tracks[index],
                 rank: index,
                 checkLoginStatus: checkLoginStatus,
               );
@@ -623,16 +623,16 @@ class _ToplistTrackCardState extends State<_ToplistTrackCard> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.7),
+                          color: Colors.black.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(12),
-                          border: widget.rank < 3 
-                              ? Border.all(color: theme.colorScheme.primary.withOpacity(0.5), width: 1.5)
+                          border: widget.rank < 3
+                              ? Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.5), width: 1.5)
                               : Border.all(color: Colors.white10, width: 1),
                         ),
                         child: Text(
                           '#${widget.rank + 1}',
                           style: TextStyle(
-                            color: widget.rank < 3 ? theme.colorScheme.primary : Colors.white.withOpacity(0.9),
+                            color: widget.rank < 3 ? theme.colorScheme.primary : Colors.white.withValues(alpha: 0.9),
                             fontSize: 14,
                             fontWeight: FontWeight.w900,
                             letterSpacing: -0.5,
@@ -645,7 +645,7 @@ class _ToplistTrackCardState extends State<_ToplistTrackCard> {
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withValues(alpha: 0.9),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
@@ -678,7 +678,7 @@ class _ToplistTrackCardState extends State<_ToplistTrackCard> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+                    color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
                     fontWeight: FontWeight.w500,
                   ),
                 ),

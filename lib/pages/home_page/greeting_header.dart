@@ -9,20 +9,20 @@ class SectionTitle extends StatelessWidget {
   final String title;
   final VoidCallback? onViewAll;
   const SectionTitle({super.key, required this.title, this.onViewAll});
-  
+
   @override
   Widget build(BuildContext context) {
     final themeManager = ThemeManager();
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
     final cs = Theme.of(context).colorScheme;
-    
+
     return Padding(
       padding: EdgeInsets.only(bottom: isCupertino ? 12.0 : 16.0),
       child: Row(
         children: [
           Expanded(
             child: Text(
-              title, 
+              title,
               style: isCupertino
                   ? const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: -0.5)
                   : Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.5),
@@ -82,7 +82,7 @@ class GreetingHeader extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-            isCupertino ? CupertinoIcons.sun_max_fill : Icons.wb_twilight_rounded, 
+            isCupertino ? CupertinoIcons.sun_max_fill : Icons.wb_twilight_rounded,
             color: isCupertino ? ThemeManager.iosBlue : cs.primary,
             size: isCupertino ? 24 : 28,
           ),
@@ -93,17 +93,17 @@ class GreetingHeader extends StatelessWidget {
               children: [
                 Text(
                   _greetText(now),
-                  style: isCupertino 
+                  style: isCupertino
                       ? const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: -0.5)
                       : Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -1.0),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   _subGreeting(now),
-                  style: isCupertino 
+                  style: isCupertino
                       ? TextStyle(fontSize: 14, color: CupertinoColors.systemGrey)
                       : Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: cs.onSurfaceVariant.withOpacity(0.8),
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.8),
                           fontWeight: FontWeight.w500,
                         ),
                 ),
@@ -119,7 +119,7 @@ class GreetingHeader extends StatelessWidget {
               return Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(isCupertino ? CupertinoIcons.sun_max : Icons.wb_sunny_rounded, 
+                  Icon(isCupertino ? CupertinoIcons.sun_max : Icons.wb_sunny_rounded,
                     size: 16, color: isCupertino ? CupertinoColors.systemGrey : cs.onSurfaceVariant),
                   const SizedBox(width: 6),
                   ConstrainedBox(

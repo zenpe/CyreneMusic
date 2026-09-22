@@ -25,10 +25,10 @@ class PlaybackModeSection extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withOpacity(isDark ? 0.6 : 0.8),
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: colorScheme.outlineVariant.withOpacity(0.3),
+                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -82,7 +82,7 @@ class PlaybackModeSection extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(2),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: colorScheme.primary.withOpacity(0.4),
+                                    color: colorScheme.primary.withValues(alpha: 0.4),
                                     blurRadius: 8,
                                     offset: const Offset(0, 2),
                                   ),
@@ -186,7 +186,7 @@ class PlaybackModeSection extends StatelessWidget {
                           end: Alignment.bottomRight,
                           colors: [
                             colorScheme.primaryContainer,
-                            colorScheme.primaryContainer.withOpacity(0.7),
+                            colorScheme.primaryContainer.withValues(alpha: 0.7),
                           ],
                         )
                       : null,
@@ -195,7 +195,7 @@ class PlaybackModeSection extends StatelessWidget {
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color: colorScheme.primary.withOpacity(0.2),
+                            color: colorScheme.primary.withValues(alpha: 0.2),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -206,7 +206,7 @@ class PlaybackModeSection extends StatelessWidget {
                   icon,
                   color: isSelected
                       ? colorScheme.onPrimaryContainer
-                      : colorScheme.onSurfaceVariant.withOpacity(0.7),
+                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   size: 24,
                 ),
               ),
@@ -218,7 +218,7 @@ class PlaybackModeSection extends StatelessWidget {
                 style: TextStyle(
                   color: isSelected
                       ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant.withOpacity(0.7),
+                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   fontSize: isSelected ? 13 : 12,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 ),

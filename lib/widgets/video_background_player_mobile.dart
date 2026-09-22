@@ -1,3 +1,4 @@
+import '../services/structured_log_service.dart';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -9,7 +10,7 @@ class VideoBackgroundPlayerMobile extends StatefulWidget {
   final String videoPath;
   final double blurAmount;
   final double opacity;
-  
+
   const VideoBackgroundPlayerMobile({
     super.key,
     required this.videoPath,
@@ -21,7 +22,7 @@ class VideoBackgroundPlayerMobile extends StatefulWidget {
   State<VideoBackgroundPlayerMobile> createState() => _VideoBackgroundPlayerMobileState();
 }
 
-class _VideoBackgroundPlayerMobileState extends State<VideoBackgroundPlayerMobile> 
+class _VideoBackgroundPlayerMobileState extends State<VideoBackgroundPlayerMobile>
     with WidgetsBindingObserver {
   VideoPlayerController? _controller;
   bool _isInitialized = false;
@@ -33,7 +34,7 @@ class _VideoBackgroundPlayerMobileState extends State<VideoBackgroundPlayerMobil
     WidgetsBinding.instance.addObserver(this);
     _initializeVideo();
   }
-  
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // 当应用恢复前台时，确保视频继续播放
@@ -57,7 +58,7 @@ class _VideoBackgroundPlayerMobileState extends State<VideoBackgroundPlayerMobil
     try {
       final file = File(widget.videoPath);
       if (!await file.exists()) {
-        print('❌ [VideoBackground] 视频文件不存在: ${widget.videoPath}');
+        StructuredLogService.log('❌ [VideoBackground] 视频文件不存在: ${widget.videoPath}');
         setState(() {
           _hasError = true;
         });
@@ -72,24 +73,24 @@ class _VideoBackgroundPlayerMobileState extends State<VideoBackgroundPlayerMobil
           allowBackgroundPlayback: false,  // 不需要后台播放
         ),
       );
-      
+
       await _controller!.initialize();
-      
+
       // 设置循环播放和静音
       await _controller!.setLooping(true);
       await _controller!.setVolume(0.0);  // 静音
-      
+
       // 开始播放
       await _controller!.play();
-      
+
       setState(() {
         _isInitialized = true;
         _hasError = false;
       });
-      
-      print('✅ [VideoBackground] 视频已初始化 (video_player, 混音模式): ${widget.videoPath}');
+
+      StructuredLogService.log('✅ [VideoBackground] 视频已初始化 (video_player, 混音模式): ${widget.videoPath}');
     } catch (e) {
-      print('❌ [VideoBackground] 初始化视频失败: $e');
+      StructuredLogService.log('❌ [VideoBackground] 初始化视频失败: $e');
       setState(() {
         _hasError = true;
       });
@@ -153,7 +154,7 @@ class _VideoBackgroundPlayerMobileState extends State<VideoBackgroundPlayerMobil
               sigmaY: widget.blurAmount,
             ),
             child: Container(
-              color: Colors.black.withOpacity(1 - widget.opacity),
+              color: Colors.black.withValues(alpha: 1 - widget.opacity),
             ),
           ),
         ],

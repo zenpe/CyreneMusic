@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -26,10 +27,10 @@ class AndroidMediaNotificationService {
       await _channel.invokeMethod('start');
       _started = true;
       // ignore: avoid_print
-      print('✅ [AndroidMediaNotification] 已请求启动自定义媒体通知服务');
+      StructuredLogService.log('✅ [AndroidMediaNotification] 已请求启动自定义媒体通知服务');
     } catch (e) {
       // ignore: avoid_print
-      print('❌ [AndroidMediaNotification] 启动失败: $e');
+      StructuredLogService.log('❌ [AndroidMediaNotification] 启动失败: $e');
     }
   }
 
@@ -42,10 +43,10 @@ class AndroidMediaNotificationService {
       await _channel.invokeMethod('stop');
       _started = false;
       // ignore: avoid_print
-      print('✅ [AndroidMediaNotification] 已请求停止自定义媒体通知服务');
+      StructuredLogService.log('✅ [AndroidMediaNotification] 已请求停止自定义媒体通知服务');
     } catch (e) {
       // ignore: avoid_print
-      print('❌ [AndroidMediaNotification] 停止失败: $e');
+      StructuredLogService.log('❌ [AndroidMediaNotification] 停止失败: $e');
     }
   }
 }

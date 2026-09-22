@@ -26,7 +26,7 @@ class _FavoritesPageState extends State<FavoritesPage>
   void initState() {
     super.initState();
     _favoriteService.addListener(_onFavoritesChanged);
-    
+
     // 加载收藏列表
     if (_authFacade.isLoggedIn) {
       _favoriteService.loadFavorites();
@@ -307,7 +307,7 @@ class _FavoritesPageState extends State<FavoritesPage>
 
     // 将收藏列表转换为 Track 列表
     final trackList = favorites.map((f) => f.toTrack()).toList();
-    
+
     // 设置播放队列
     PlaylistQueueService().setQueue(
       trackList,
@@ -361,7 +361,7 @@ class _FavoritesPageState extends State<FavoritesPage>
                     Icon(
                       Icons.favorite_border,
                       size: compact ? 56 : 80,
-                      color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -380,7 +380,7 @@ class _FavoritesPageState extends State<FavoritesPage>
                       maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -413,7 +413,7 @@ class _FavoritesPageState extends State<FavoritesPage>
                     Icon(
                       Icons.login,
                       size: compact ? 56 : 80,
-                      color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -432,7 +432,7 @@ class _FavoritesPageState extends State<FavoritesPage>
                       maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                       ),
                     ),
                   ],

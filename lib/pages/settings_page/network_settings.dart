@@ -15,7 +15,7 @@ import '../../widgets/material/material_settings_widgets.dart';
 class NetworkSettings extends StatefulWidget {
   /// 点击音源设置时的回调，用于在设置页面中打开子页面
   final VoidCallback? onAudioSourceTap;
-  
+
   const NetworkSettings({super.key, this.onAudioSourceTap});
 
   @override
@@ -99,9 +99,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
           FluentSettingsTile(
             icon: Icons.wifi_tethering,
             title: '测试连接',
-            subtitle: _errorMessage != null
-                ? '无法连接后端服务器'
-                : '自动检测与后端服务器的连接',
+            subtitle: _errorMessage != null ? '无法连接后端服务器' : '自动检测与后端服务器的连接',
             trailing: _buildLatencyIndicator(context),
           ),
         ],
@@ -131,9 +129,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
         MD3SettingsTile(
           leading: const Icon(Icons.wifi_tethering_outlined),
           title: '测试连接',
-          subtitle: _errorMessage != null
-              ? '无法连接后端服务器'
-              : '自动检测与后端服务器的连接',
+          subtitle: _errorMessage != null ? '无法连接后端服务器' : '自动检测与后端服务器的连接',
           trailing: _buildLatencyIndicator(context),
         ),
       ],
@@ -166,9 +162,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
           icon: CupertinoIcons.wifi,
           iconColor: CupertinoColors.systemGreen,
           title: '测试连接',
-          subtitle: _errorMessage != null
-              ? '无法连接后端服务器'
-              : '自动检测与后端服务器的连接',
+          subtitle: _errorMessage != null ? '无法连接后端服务器' : '自动检测与后端服务器的连接',
           trailing: _buildLatencyIndicatorCupertino(context),
         ),
       ],
@@ -194,10 +188,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
 
       return Text(
         '${latency} ms',
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          color: displayColor,
-        ),
+        style: TextStyle(fontWeight: FontWeight.bold, color: displayColor),
       );
     }
 
@@ -220,18 +211,6 @@ class _NetworkSettingsState extends State<NetworkSettings> {
     );
   }
 
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0, left: 4.0),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-      ),
-    );
-  }
 
   void _showCustomUrlDialogFluent(BuildContext context) {
     final controller = TextEditingController(text: UrlService().customBaseUrl);
@@ -373,36 +352,40 @@ class _NetworkSettingsState extends State<NetworkSettings> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            RadioListTile<BackendSourceType>(
-              title: const Text('官方源'),
-              subtitle: Text(
-                UrlService.officialBaseUrl,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              value: BackendSourceType.official,
+            RadioGroup<BackendSourceType>(
               groupValue: UrlService().sourceType,
               onChanged: (value) {
                 UrlService().useOfficialSource();
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已切换到官方源')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('已切换到官方源')));
               },
-            ),
-            RadioListTile<BackendSourceType>(
-              title: const Text('自定义源'),
-              subtitle: Text(
-                UrlService().customBaseUrl.isNotEmpty
-                    ? UrlService().customBaseUrl
-                    : '点击设置自定义地址',
-                style: Theme.of(context).textTheme.bodySmall,
+              child: RadioListTile<BackendSourceType>(
+                title: const Text('官方源'),
+                subtitle: Text(
+                  UrlService.officialBaseUrl,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                value: BackendSourceType.official,
               ),
-              value: BackendSourceType.custom,
+            ),
+            RadioGroup<BackendSourceType>(
               groupValue: UrlService().sourceType,
               onChanged: (value) {
                 Navigator.pop(context);
                 _showCustomUrlDialog(context);
               },
+              child: RadioListTile<BackendSourceType>(
+                title: const Text('自定义源'),
+                subtitle: Text(
+                  UrlService().customBaseUrl.isNotEmpty
+                      ? UrlService().customBaseUrl
+                      : '点击设置自定义地址',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                value: BackendSourceType.custom,
+              ),
             ),
           ],
         ),
@@ -416,9 +399,9 @@ class _NetworkSettingsState extends State<NetworkSettings> {
     );
   }
 
-void _showCustomUrlDialog(BuildContext context) {
+  void _showCustomUrlDialog(BuildContext context) {
     final controller = TextEditingController(text: UrlService().customBaseUrl);
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -430,7 +413,9 @@ void _showCustomUrlDialog(BuildContext context) {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primaryContainer.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -572,7 +557,7 @@ void _showCustomUrlDialog(BuildContext context) {
   /// 显示 Cupertino 风格的自定义 URL 对话框
   void _showCustomUrlDialogCupertino(BuildContext context) {
     final controller = TextEditingController(text: UrlService().customBaseUrl);
-    
+
     showCupertinoDialog<void>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
@@ -648,10 +633,7 @@ void _showCustomUrlDialog(BuildContext context) {
 
       return Text(
         '${latency} ms',
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          color: displayColor,
-        ),
+        style: TextStyle(fontWeight: FontWeight.bold, color: displayColor),
       );
     }
 
@@ -670,10 +652,7 @@ void _showCustomUrlDialog(BuildContext context) {
 
     return Text(
       '--',
-      style: TextStyle(
-        color: colorScheme.outline,
-        fontWeight: FontWeight.bold,
-      ),
+      style: TextStyle(color: colorScheme.outline, fontWeight: FontWeight.bold),
     );
   }
 
@@ -733,4 +712,3 @@ void _showCustomUrlDialog(BuildContext context) {
     }
   }
 }
-

@@ -8,7 +8,7 @@ class CupertinoBottomNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
   final List<BottomNavigationBarItem> items;
-  
+
   const CupertinoBottomNavBar({
     super.key,
     required this.currentIndex,
@@ -19,14 +19,14 @@ class CupertinoBottomNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(
-            color: isDark 
-                ? CupertinoColors.systemGrey.withOpacity(0.3)
-                : CupertinoColors.systemGrey.withOpacity(0.2),
+            color: isDark
+                ? CupertinoColors.systemGrey.withValues(alpha: 0.3)
+                : CupertinoColors.systemGrey.withValues(alpha: 0.2),
             width: 0.5,
           ),
         ),
@@ -40,9 +40,9 @@ class CupertinoBottomNavBar extends StatelessWidget {
             items: items,
             activeColor: ThemeManager.iosBlue,
             inactiveColor: CupertinoColors.systemGrey,
-            backgroundColor: isDark 
-                ? CupertinoColors.black.withOpacity(0.7)
-                : CupertinoColors.white.withOpacity(0.7),
+            backgroundColor: isDark
+                ? CupertinoColors.black.withValues(alpha: 0.7)
+                : CupertinoColors.white.withValues(alpha: 0.7),
           ),
         ),
       ),

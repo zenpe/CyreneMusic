@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
@@ -103,11 +104,11 @@ class AuthService extends ChangeNotifier {
         _currentUser = User.fromJson(userData);
         _authToken = savedToken;
         _isLoggedIn = _authToken != null && _authToken!.isNotEmpty;
-        print('👤 [AuthService] 从本地存储加载用户: ${_currentUser?.username}');
+        StructuredLogService.log('👤 [AuthService] 从本地存储加载用户: ${_currentUser?.username}');
         notifyListeners();
       }
     } catch (e) {
-      print('❌ [AuthService] 加载用户信息失败: $e');
+      StructuredLogService.log('❌ [AuthService] 加载用户信息失败: $e');
     }
   }
 
@@ -116,9 +117,9 @@ class AuthService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('current_user', jsonEncode(user.toJson()));
-      print('💾 [AuthService] 用户信息已保存到本地');
+      StructuredLogService.log('💾 [AuthService] 用户信息已保存到本地');
     } catch (e) {
-      print('❌ [AuthService] 保存用户信息失败: $e');
+      StructuredLogService.log('❌ [AuthService] 保存用户信息失败: $e');
     }
   }
 
@@ -135,9 +136,9 @@ class AuthService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('current_user');
-      print('🗑️ [AuthService] 已清除本地用户信息');
+      StructuredLogService.log('🗑️ [AuthService] 已清除本地用户信息');
     } catch (e) {
-      print('❌ [AuthService] 清除用户信息失败: $e');
+      StructuredLogService.log('❌ [AuthService] 清除用户信息失败: $e');
     }
   }
 
@@ -361,12 +362,12 @@ class AuthService extends ChangeNotifier {
     const authUrl = 'https://connect.linux.do/oauth2/authorize?response_type=code&client_id=$clientId&redirect_uri=$redirectUri&state=login';
 
     try {
-      print('🚀 [AuthService] 准备启动本地服务器...');
+      StructuredLogService.log('🚀 [AuthService] 准备启动本地服务器...');
       DeveloperModeService().addLog('🚀 [AuthService] 准备启动本地服务器...');
 
       // 先关闭可能存在的旧服务器（用户多次点击登录时）
       if (_oauthServer != null) {
-        print('🔄 [AuthService] 检测到旧服务器，正在关闭...');
+        StructuredLogService.log('🔄 [AuthService] 检测到旧服务器，正在关闭...');
         DeveloperModeService().addLog('🔄 [AuthService] 关闭旧的 OAuth 服务器...');
         try {
           await _oauthServer!.close(force: true);
@@ -386,18 +387,18 @@ class AuthService extends ChangeNotifier {
         40555,
         shared: true, // 允许共享端口，解决多次绑定问题
       );
-      print('🌐 [AuthService] 本地监听器运行中: http://127.0.0.1:40555');
+      StructuredLogService.log('🌐 [AuthService] 本地监听器运行中: http://127.0.0.1:40555');
       DeveloperModeService().addLog('🌐 [AuthService] 本地监听器运行中: http://127.0.0.1:40555');
 
       _oauthServer!.listen((HttpRequest request) async {
         final path = request.uri.path;
         final params = request.uri.queryParameters;
-        print('📩 [AuthService] 收到 HTTP 请求: $path, 参数: $params');
+        StructuredLogService.log('📩 [AuthService] 收到 HTTP 请求: $path, 参数: $params');
         DeveloperModeService().addLog('📩 [AuthService] 收到本地 HTTP 请求: $path, 参数: $params');
 
         if (path == '/oauth/callback' || path == 'oauth/callback') {
           final code = params['code'];
-          print('✅ [AuthService] 识别到授权码: ${code?.substring(0, 5)}...');
+          StructuredLogService.log('✅ [AuthService] 识别到授权码: ${code?.substring(0, 5)}...');
           DeveloperModeService().addLog('✅ [AuthService] 识别到回调! code: ${code?.substring(0, 5)}...');
 
           request.response
@@ -497,22 +498,22 @@ class AuthService extends ChangeNotifier {
 ''');
 
           await request.response.close();
-          print('📤 [AuthService] 已发送响应给浏览器');
+          StructuredLogService.log('📤 [AuthService] 已发送响应给浏览器');
 
           // 桌面端：收到回调后自动激活并置顶窗口
           if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
             try {
               await windowManager.show();
               await windowManager.focus();
-              print('🪟 [AuthService] 已尝试激活并置顶桌面端窗口');
+              StructuredLogService.log('🪟 [AuthService] 已尝试激活并置顶桌面端窗口');
             } catch (e) {
-              print('⚠️ [AuthService] 激活窗口失败: $e');
+              StructuredLogService.log('⚠️ [AuthService] 激活窗口失败: $e');
             }
           }
 
           if (!_oauthCompleter!.isCompleted) {
             _oauthCompleter!.complete(code);
-            print('🔔 [AuthService] Completer 已触发完结');
+            StructuredLogService.log('🔔 [AuthService] Completer 已触发完结');
           }
         } else {
           request.response
@@ -521,12 +522,12 @@ class AuthService extends ChangeNotifier {
           await request.response.close();
         }
       }, onError: (e) {
-        print('❌ [AuthService] HttpServer 监听出错: $e');
+        StructuredLogService.log('❌ [AuthService] HttpServer 监听出错: $e');
       });
 
       // 直接尝试启动浏览器，不依赖 canLaunchUrl 的预检查
       // 原因: canLaunchUrl 在 Android 11+ 和某些 Windows 设备上可能误报 false
-      print('🔗 [AuthService] 正在打开浏览器...');
+      StructuredLogService.log('🔗 [AuthService] 正在打开浏览器...');
       DeveloperModeService().addLog('🔗 [AuthService] 正在打开浏览器: $authUrl');
 
       try {
@@ -535,22 +536,22 @@ class AuthService extends ChangeNotifier {
           mode: LaunchMode.externalApplication,
         );
         if (!launched) {
-          print('❌ [AuthService] launchUrl 返回 false');
+          StructuredLogService.log('❌ [AuthService] launchUrl 返回 false');
           DeveloperModeService().addLog('❌ [AuthService] launchUrl 返回 false，浏览器可能未正确启动');
           // 不立即抛出异常，给用户一个机会手动打开链接
           // 某些设备上 launchUrl 返回 false 但浏览器实际上已经打开
         }
       } catch (launchError) {
-        print('❌ [AuthService] 启动浏览器失败: $launchError');
+        StructuredLogService.log('❌ [AuthService] 启动浏览器失败: $launchError');
         DeveloperModeService().addLog('❌ [AuthService] 启动浏览器失败: $launchError');
         throw '无法启动浏览器: $launchError';
       }
 
-      print('⏳ [AuthService] 等待授权码返回...');
+      StructuredLogService.log('⏳ [AuthService] 等待授权码返回...');
       final code = await _oauthCompleter!.future.timeout(
         const Duration(minutes: 5),
         onTimeout: () {
-          print('⏰ [AuthService] 登录超时');
+          StructuredLogService.log('⏰ [AuthService] 登录超时');
           return null;
         },
       );
@@ -559,7 +560,7 @@ class AuthService extends ChangeNotifier {
         return {'success': false, 'message': '登录超时'};
       }
 
-      print('🔑 [AuthService] 获得授权码，开始请求后端登录...');
+      StructuredLogService.log('🔑 [AuthService] 获得授权码，开始请求后端登录...');
       final result = await ApiClient().postJson(
         '/auth/linuxdo/login',
         data: {'code': code},
@@ -568,8 +569,8 @@ class AuthService extends ChangeNotifier {
 
       if (result.ok) {
         final data = result.data as Map<String, dynamic>;
-        print('🔍 [AuthService] 后端返回数据: ${jsonEncode(data['data'])}');
-        print('🖼️ [AuthService] 头像URL: ${data['data']?['avatarUrl']}');
+        StructuredLogService.log('🔍 [AuthService] 后端返回数据: ${jsonEncode(data['data'])}');
+        StructuredLogService.log('🖼️ [AuthService] 头像URL: ${data['data']?['avatarUrl']}');
         DeveloperModeService().addLog('🖼️ [Auth] Linux Do 头像 URL: ${data['data']?['avatarUrl']}');
 
         _currentUser = User.fromJson(data['data']);
@@ -582,18 +583,18 @@ class AuthService extends ChangeNotifier {
         }
 
         notifyListeners();
-        print('🎉 [AuthService] Linux Do 最终登录成功: ${_currentUser?.username}');
+        StructuredLogService.log('🎉 [AuthService] Linux Do 最终登录成功: ${_currentUser?.username}');
         return {'success': true, 'message': '登录成功'};
       } else {
         final data = result.data as Map<String, dynamic>?;
-        print('❌ [AuthService] 后端通过授权码登录失败: ${data?['message']}');
+        StructuredLogService.log('❌ [AuthService] 后端通过授权码登录失败: ${data?['message']}');
         return {'success': false, 'message': data?['message'] ?? '验证失败'};
       }
     } catch (e) {
-      print('💥 [AuthService] 异常: $e');
+      StructuredLogService.log('💥 [AuthService] 异常: $e');
       return {'success': false, 'message': '登录异常: $e'};
     } finally {
-      print('🏁 [AuthService] 关闭本地监听服务器');
+      StructuredLogService.log('🏁 [AuthService] 关闭本地监听服务器');
       try {
         await _oauthServer?.close(force: true);
       } catch (_) {}
@@ -606,7 +607,7 @@ class AuthService extends ChangeNotifier {
   /// 当通过 WebView 获取到授权码后，调用此方法完成登录
   Future<Map<String, dynamic>> loginWithLinuxDoCode(String code) async {
     try {
-      print('🔑 [AuthService] 使用授权码登录 Linux Do...');
+      StructuredLogService.log('🔑 [AuthService] 使用授权码登录 Linux Do...');
       DeveloperModeService().addLog('🔑 [AuthService] 使用授权码登录...');
 
       final result = await ApiClient().postJson(
@@ -617,8 +618,8 @@ class AuthService extends ChangeNotifier {
 
       if (result.ok) {
         final data = result.data as Map<String, dynamic>;
-        print('🔍 [AuthService] 后端返回数据: ${jsonEncode(data['data'])}');
-        print('🖼️ [AuthService] 头像URL: ${data['data']?['avatarUrl']}');
+        StructuredLogService.log('🔍 [AuthService] 后端返回数据: ${jsonEncode(data['data'])}');
+        StructuredLogService.log('🖼️ [AuthService] 头像URL: ${data['data']?['avatarUrl']}');
         DeveloperModeService().addLog('🖼️ [Auth] Linux Do 头像 URL: ${data['data']?['avatarUrl']}');
 
         _currentUser = User.fromJson(data['data']);
@@ -631,17 +632,17 @@ class AuthService extends ChangeNotifier {
         }
 
         notifyListeners();
-        print('🎉 [AuthService] Linux Do 授权码登录成功: ${_currentUser?.username}');
+        StructuredLogService.log('🎉 [AuthService] Linux Do 授权码登录成功: ${_currentUser?.username}');
         DeveloperModeService().addLog('🎉 [AuthService] Linux Do 授权码登录成功');
         return {'success': true, 'message': '登录成功'};
       } else {
         final data = result.data as Map<String, dynamic>?;
-        print('❌ [AuthService] 后端通过授权码登录失败: ${data?['message']}');
+        StructuredLogService.log('❌ [AuthService] 后端通过授权码登录失败: ${data?['message']}');
         DeveloperModeService().addLog('❌ [AuthService] 授权码登录失败: ${data?['message']}');
         return {'success': false, 'message': data?['message'] ?? '验证失败'};
       }
     } catch (e) {
-      print('💥 [AuthService] 授权码登录异常: $e');
+      StructuredLogService.log('💥 [AuthService] 授权码登录异常: $e');
       DeveloperModeService().addLog('💥 [AuthService] 授权码登录异常: $e');
       return {'success': false, 'message': '登录异常: $e'};
     }

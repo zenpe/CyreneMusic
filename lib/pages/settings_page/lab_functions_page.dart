@@ -60,7 +60,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
     final eqAvailable = PlayerService().isEqualizerAvailable;
 
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 120),
       children: [
         _buildMaterialHeader(context, colorScheme),
         const SizedBox(height: 16),
@@ -104,8 +104,8 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            colorScheme.primary.withOpacity(0.1),
-            colorScheme.primary.withOpacity(0.05),
+            colorScheme.primary.withValues(alpha: 0.1),
+            colorScheme.primary.withValues(alpha: 0.05),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,

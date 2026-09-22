@@ -10,7 +10,7 @@ import 'settings_page/audio_source_settings_page.dart';
 import 'auth/fluent_auth_page.dart';
 
 /// 桌面端初始配置引导页
-/// 
+///
 /// 多步引导流程：主题设置 → 配置音源 → 登录 → 确认协议 → 进入主应用
 class DesktopSetupPage extends StatefulWidget {
   const DesktopSetupPage({super.key});
@@ -29,7 +29,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
   /// 3 = 登录中
   /// 4 = 协议确认中
   int _currentStep = 0;
-  
+
   /// 窗口状态
   bool _isWindowMaximized = false;
 
@@ -38,7 +38,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
     super.initState();
     // 监听音源配置和登录状态变化
     _audioSourceFacade.addSetupStateListener(_onStateChanged);
-    
+
     // Windows 平台初始化窗口监听
     if (Platform.isWindows) {
       windowManager.addListener(this);
@@ -60,7 +60,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
     }
     super.dispose();
   }
-  
+
   @override
   void onWindowMaximize() {
     if (!mounted) return;
@@ -91,7 +91,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
       });
     }
   }
-  
+
   // 窗口控制方法
   void _handleCaptionMinimize() {
     if (!Platform.isWindows) return;
@@ -123,7 +123,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
   Widget _buildTitleBar(BuildContext context, fluent.FluentThemeData theme) {
     final brightness = theme.brightness;
     final typography = theme.typography;
-    
+
     return SizedBox(
       height: 50,
       child: Stack(
@@ -150,7 +150,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                   const SizedBox(width: 8),
                   Text(
                     'Cyrene Music',
-                    style: (typography.subtitle ?? typography.bodyLarge)?.copyWith(fontSize: 12) 
+                    style: (typography.subtitle ?? typography.bodyLarge)?.copyWith(fontSize: 12)
                         ?? const TextStyle(fontSize: 12),
                   ),
                 ],
@@ -194,16 +194,16 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
     final isDark = theme.brightness == Brightness.dark;
     final isLoggedIn = _audioSourceFacade.isLoggedIn;
     final effectiveStep = (_currentStep == 3 && isLoggedIn) ? 4 : _currentStep;
-    
+
     // 判断是否使用透明背景（窗口效果启用时）
     final useWindowEffect = Platform.isWindows && ThemeManager().windowEffect != WindowEffect.disabled;
-    final backgroundColor = useWindowEffect 
-        ? Colors.transparent 
+    final backgroundColor = useWindowEffect
+        ? Colors.transparent
         : (isDark ? const Color(0xFF1F1F1F) : const Color(0xFFF3F3F3));
 
     // 构建页面内容
     Widget pageContent;
-    
+
     if (effectiveStep == 1) {
       pageContent = _buildThemeSettingsPage(context, theme, isDark);
     } else if (effectiveStep == 2) {
@@ -277,13 +277,13 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Spacer(flex: 2),
-              
+
               // App Logo
               Container(
                 width: 120,
                 height: 120,
                 decoration: BoxDecoration(
-                  color: theme.accentColor.withOpacity(0.1),
+                  color: theme.accentColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(28),
                 ),
                 child: Center(
@@ -297,14 +297,14 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 32),
-              
+
               // 进度指示器
               _buildStepIndicator(themeConfigured, audioConfigured, isLoggedIn, isDark, theme),
-              
+
               const SizedBox(height: 24),
-              
+
               // 标题
               Text(
                 title,
@@ -313,9 +313,9 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                 ),
                 textAlign: TextAlign.center,
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               // 副标题
               Text(
                 subtitle,
@@ -324,9 +324,9 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                 ),
                 textAlign: TextAlign.center,
               ),
-              
+
               const Spacer(flex: 2),
-              
+
               // 主按钮
               SizedBox(
                 width: double.infinity,
@@ -344,9 +344,9 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
                 fluent.HyperlinkButton(
                   onPressed: () async {
                     await _enterLocalMode();
@@ -359,9 +359,9 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                     ),
                   ),
                 ),
-                
+
               const SizedBox(height: 8),
-              
+
               // 跳过按钮
               if (showSkip)
                 fluent.HyperlinkButton(
@@ -373,7 +373,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                     ),
                   ),
                 ),
-              
+
               const Spacer(flex: 1),
             ],
           ),
@@ -385,7 +385,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
   /// 构建步骤指示器
   Widget _buildStepIndicator(bool themeConfigured, bool audioConfigured, bool isLoggedIn, bool isDark, fluent.FluentThemeData theme) {
     final accentColor = theme.accentColor;
-    
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -399,7 +399,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
         Container(
           width: 24,
           height: 2,
-          color: themeConfigured 
+          color: themeConfigured
               ? (isDark ? Colors.white54 : Colors.black38)
               : (isDark ? Colors.white24 : Colors.black12),
         ),
@@ -413,7 +413,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
         Container(
           width: 24,
           height: 2,
-          color: audioConfigured 
+          color: audioConfigured
               ? (isDark ? Colors.white54 : Colors.black38)
               : (isDark ? Colors.white24 : Colors.black12),
         ),
@@ -427,7 +427,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
         Container(
           width: 24,
           height: 2,
-          color: isLoggedIn 
+          color: isLoggedIn
               ? (isDark ? Colors.white54 : Colors.black38)
               : (isDark ? Colors.white24 : Colors.black12),
         ),
@@ -502,11 +502,11 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                   // 主题色设置
                   _buildThemeColorSection(theme, isDark),
                   const SizedBox(height: 24),
-                  
+
                   // 窗口效果设置
                   _buildWindowEffectSection(theme, isDark),
                   const SizedBox(height: 32),
-                  
+
                   // 完成按钮
                   SizedBox(
                     width: double.infinity,
@@ -550,7 +550,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
             style: theme.typography.bodyStrong,
           ),
           const SizedBox(height: 16),
-          
+
           // 跟随系统选项
           Row(
             children: [
@@ -569,7 +569,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
               ),
             ],
           ),
-          
+
           // 自定义主题色
           if (!ThemeManager().followSystemColor) ...[
             const SizedBox(height: 16),
@@ -596,20 +596,20 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                       decoration: BoxDecoration(
                         color: colorScheme.color,
                         shape: BoxShape.circle,
-                        border: ThemeManager().seedColor.value == colorScheme.color.value
+                        border: ThemeManager().seedColor.toARGB32() == colorScheme.color.toARGB32()
                             ? Border.all(color: Colors.white, width: 3)
                             : null,
-                        boxShadow: ThemeManager().seedColor.value == colorScheme.color.value
+                        boxShadow: ThemeManager().seedColor.toARGB32() == colorScheme.color.toARGB32()
                             ? [
                                 BoxShadow(
-                                  color: colorScheme.color.withOpacity(0.5),
+                                  color: colorScheme.color.withValues(alpha: 0.5),
                                   blurRadius: 8,
                                   spreadRadius: 2,
                                 ),
                               ]
                             : null,
                       ),
-                      child: ThemeManager().seedColor.value == colorScheme.color.value
+                      child: ThemeManager().seedColor.toARGB32() == colorScheme.color.toARGB32()
                           ? const Icon(fluent.FluentIcons.check_mark, size: 16, color: Colors.white)
                           : null,
                     ),
@@ -654,7 +654,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
             style: theme.typography.bodyStrong,
           ),
           const SizedBox(height: 8),
-          
+
           // 警告提示
           fluent.InfoBar(
             title: const Text('兼容性提示'),
@@ -663,7 +663,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
             isLong: true,
           ),
           const SizedBox(height: 16),
-          
+
           // 窗口效果选择
           _buildWindowEffectOption(
             theme: theme,
@@ -708,7 +708,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
     bool enabled = true,
   }) {
     final isSelected = ThemeManager().windowEffect == effect;
-    
+
     return fluent.HoverButton(
       onPressed: enabled
           ? () async {
@@ -721,9 +721,9 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: isSelected
-                ? theme.accentColor.withOpacity(0.15)
+                ? theme.accentColor.withValues(alpha: 0.15)
                 : (states.contains(WidgetState.hovered) && enabled
-                    ? (isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03))
+                    ? (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03))
                     : Colors.transparent),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
@@ -800,7 +800,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
   /// 显示自定义颜色选择器对话框
   void _showCustomColorPickerDialog(fluent.FluentThemeData theme, bool isDark) {
     Color tempColor = ThemeManager().seedColor;
-    
+
     fluent.showDialog(
       context: context,
       builder: (context) => fluent.ContentDialog(
@@ -949,40 +949,40 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
                       children: [
                       _buildSectionTitle('CyreneMusic 使用协议'),
                       _buildSectionBody('词语约定：\n“本项目”指 CyreneMusic 应用及其相关开源代码；\n“使用者”指下载、安装、运行或以任何方式使用本项目的个人或组织；\n“音源”指由使用者自行导入或配置的第三方音频数据来源（包括但不限于 API、链接、本地文件路径等）；\n“版权数据”指包括但不限于音频、专辑封面、歌曲名、艺术家信息等受知识产权保护的内容。'),
-                      
+
                       _buildSectionTitle('一、数据来源与播放机制'),
                       _buildSectionBody('1.1 本项目 本身不具备获取音频流的能力。所有音频播放均依赖于使用者自行导入或配置的“音源”。本项目仅将用户输入的歌曲信息（如标题、艺术家等）传递给所选音源，并播放其返回的音频链接。'),
                       _buildSectionBody('1.2 本项目 不对音源返回内容的合法性、准确性、完整性或可用性作任何保证。若音源返回错误、无关、失效或侵权内容，由此产生的任何问题均由使用者及音源提供方承担，本项目开发者不承担任何责任。'),
                       _buildSectionBody('1.3 使用者应自行确保所导入音源的合法性，并对其使用行为负全部法律责任。'),
-                      
+
                       _buildSectionTitle('二、账号与数据同步'),
                       _buildSectionBody('2.1 本平台提供的账号系统 仅用于云端保存歌单、播放历史等用户偏好数据，不用于身份认证、商业推广、数据分析或其他用途。'),
                       _buildSectionBody('2.2 所有同步至云端的数据均由使用者主动上传，本项目不对这些数据的内容、合法性或安全性负责。'),
-                      
+
                       _buildSectionTitle('三、版权与知识产权'),
                       _buildSectionBody('3.1 本项目 不存储、不分发、不缓存任何音频文件或版权数据。所有版权数据均由使用者通过外部音源实时获取。'),
                       _buildSectionBody('3.2 使用者在使用本项目过程中接触到的任何版权内容（如歌曲、专辑图等），其权利归属于原著作权人。使用者应遵守所在国家/地区的版权法律法规。'),
                       _buildSectionBody('3.3 强烈建议使用者在24小时内清除本地缓存的版权数据（如有），以避免潜在侵权风险。本项目不主动缓存音频，但部分系统或浏览器可能自动缓存，使用者需自行管理。'),
-                      
+
                       _buildSectionTitle('四、开源与许可'),
                       _buildSectionBody('4.1 本项目为 完全开源软件，基于 Apache License 2.0 发布。使用者可自由使用、修改、分发本项目代码，但须遵守 Apache 2.0 许可证条款。'),
                       _buildSectionBody('4.2 本项目中使用的第三方资源（如图标、字体等）均注明来源。若存在未授权使用情况，请联系开发者及时移除。'),
-                      
+
                       _buildSectionTitle('五、免责声明'),
                       _buildSectionBody('5.1 使用者理解并同意：因使用本项目或依赖外部音源所导致的任何直接或间接损失（包括但不限于数据丢失、设备损坏、法律纠纷、隐私泄露等），均由使用者自行承担。'),
                       _buildSectionBody('5.2 本项目开发者 不对本项目的功能完整性、稳定性、安全性或适配性作任何明示或暗示的担保。'),
-                      
+
                       _buildSectionTitle('六、使用限制'),
                       _buildSectionBody('6.1 本项目 仅用于技术学习、个人非商业用途。禁止将本项目用于任何违反当地法律法规的行为（如盗版传播、侵犯版权、非法爬取等）。'),
                       _buildSectionBody('6.2 若使用者所在司法管辖区禁止使用此类工具，使用者应立即停止使用。因违规使用所引发的一切后果，由使用者自行承担。'),
-                      
+
                       _buildSectionTitle('七、尊重版权'),
                       _buildSectionBody('7.1 音乐创作不易，请尊重艺术家与版权方的劳动成果。支持正版音乐，优先使用合法授权的音源服务。'),
-                      
+
                       _buildSectionTitle('八、协议接受'),
                       _buildSectionBody('8.1 一旦您下载、安装、运行或以任何方式使用 CyreneMusic，即视为您已阅读、理解并无条件接受本协议全部条款。'),
                       _buildSectionBody('8.2 本协议可能随项目更新而修订，修订后将发布于项目仓库。继续使用即视为接受最新版本。'),
-                      
+
                       const SizedBox(height: 16),
                       const Align(
                         alignment: Alignment.centerRight,
@@ -1060,7 +1060,7 @@ class _DesktopSetupPageState extends State<DesktopSetupPage> with WindowListener
   void _showSkipConfirmation(BuildContext context) {
     final audioConfigured = _audioSourceFacade.isAudioConfigured;
     String message;
-    
+
     if (!audioConfigured) {
       message = '不配置音源将无法播放在线音乐。您可以稍后在设置中配置。';
     } else {

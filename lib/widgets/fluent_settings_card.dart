@@ -15,7 +15,7 @@ class FluentSettingsGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -29,7 +29,7 @@ class FluentSettingsGroup extends StatelessWidget {
             ),
           ),
         ),
-        
+
         // 每个选项都是独立的卡片，使用 2px 间距
         ...children.map((child) => Padding(
           padding: const EdgeInsets.only(bottom: 2.0),
@@ -41,7 +41,7 @@ class FluentSettingsGroup extends StatelessWidget {
 }
 
 /// Windows 11 风格的独立设置卡片（横向长条）
-/// 
+///
 /// 特点：
 /// - 圆角卡片（4px 圆角）
 /// - 悬停时有微妙的背景色变化
@@ -77,7 +77,7 @@ class _FluentSettingsTileState extends State<FluentSettingsTile> {
   Widget build(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
+
     // Windows 11 设置页面的卡片背景色（更微妙的效果）
     final baseColor = theme.resources.cardBackgroundFillColorDefault;
     Color backgroundColor;
@@ -85,12 +85,12 @@ class _FluentSettingsTileState extends State<FluentSettingsTile> {
       backgroundColor = baseColor;
     } else if (_isPressed) {
       // 按下时稍微变暗/变亮
-      backgroundColor = isDark 
+      backgroundColor = isDark
           ? Color.lerp(baseColor, Colors.white, 0.02)!
           : Color.lerp(baseColor, Colors.black, 0.02)!;
     } else if (_isHovered) {
       // 悬停时非常轻微的变化
-      backgroundColor = isDark 
+      backgroundColor = isDark
           ? Color.lerp(baseColor, Colors.white, 0.03)!
           : Color.lerp(baseColor, Colors.black, 0.015)!;
     } else {
@@ -100,8 +100,8 @@ class _FluentSettingsTileState extends State<FluentSettingsTile> {
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      cursor: widget.enabled && widget.onTap != null 
-          ? SystemMouseCursors.click 
+      cursor: widget.enabled && widget.onTap != null
+          ? SystemMouseCursors.click
           : SystemMouseCursors.basic,
       child: GestureDetector(
         onTapDown: (_) => setState(() => _isPressed = true),
@@ -115,7 +115,7 @@ class _FluentSettingsTileState extends State<FluentSettingsTile> {
             color: backgroundColor,
             borderRadius: BorderRadius.circular(4),
             border: Border.all(
-              color: theme.resources.cardStrokeColorDefault.withOpacity(0.1),
+              color: theme.resources.cardStrokeColorDefault.withValues(alpha: 0.1),
               width: 1,
             ),
           ),
@@ -124,14 +124,14 @@ class _FluentSettingsTileState extends State<FluentSettingsTile> {
             children: [
               // 图标
               Icon(
-                widget.icon, 
+                widget.icon,
                 size: 20,
-                color: widget.enabled 
+                color: widget.enabled
                     ? theme.resources.textFillColorPrimary
                     : theme.resources.textFillColorDisabled,
               ),
               const SizedBox(width: 16),
-              
+
               // 标题和副标题
               Expanded(
                 child: Column(
@@ -141,7 +141,7 @@ class _FluentSettingsTileState extends State<FluentSettingsTile> {
                     Text(
                       widget.title,
                       style: theme.typography.body?.copyWith(
-                        color: widget.enabled 
+                        color: widget.enabled
                             ? theme.resources.textFillColorPrimary
                             : theme.resources.textFillColorDisabled,
                       ),
@@ -158,7 +158,7 @@ class _FluentSettingsTileState extends State<FluentSettingsTile> {
                   ],
                 ),
               ),
-              
+
               // 右侧控件
               if (widget.trailing != null) ...[
                 const SizedBox(width: 12),
@@ -200,12 +200,12 @@ class _FluentSwitchTileState extends State<FluentSwitchTile> {
   Widget build(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
+
     // Windows 11 设置页面的卡片背景色（更微妙的效果）
     final baseColor = theme.resources.cardBackgroundFillColorDefault;
     Color backgroundColor;
     if (_isHovered) {
-      backgroundColor = isDark 
+      backgroundColor = isDark
           ? Color.lerp(baseColor, Colors.white, 0.03)!
           : Color.lerp(baseColor, Colors.black, 0.015)!;
     } else {
@@ -222,7 +222,7 @@ class _FluentSwitchTileState extends State<FluentSwitchTile> {
           color: backgroundColor,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(
-            color: theme.resources.cardStrokeColorDefault.withOpacity(0.1),
+            color: theme.resources.cardStrokeColorDefault.withValues(alpha: 0.1),
             width: 1,
           ),
         ),
@@ -231,12 +231,12 @@ class _FluentSwitchTileState extends State<FluentSwitchTile> {
           children: [
             // 图标
             Icon(
-              widget.icon, 
+              widget.icon,
               size: 20,
               color: theme.resources.textFillColorPrimary,
             ),
             const SizedBox(width: 16),
-            
+
             // 标题和副标题
             Expanded(
               child: Column(
@@ -261,7 +261,7 @@ class _FluentSwitchTileState extends State<FluentSwitchTile> {
                 ],
               ),
             ),
-            
+
             // 开关
             const SizedBox(width: 12),
             fluent_ui.ToggleSwitch(
@@ -311,12 +311,12 @@ class _FluentSliderTileState extends State<FluentSliderTile> {
   Widget build(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
+
     // Windows 11 设置页面的卡片背景色（更微妙的效果）
     final baseColor = theme.resources.cardBackgroundFillColorDefault;
     Color backgroundColor;
     if (_isHovered) {
-      backgroundColor = isDark 
+      backgroundColor = isDark
           ? Color.lerp(baseColor, Colors.white, 0.03)!
           : Color.lerp(baseColor, Colors.black, 0.015)!;
     } else {
@@ -333,7 +333,7 @@ class _FluentSliderTileState extends State<FluentSliderTile> {
           color: backgroundColor,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(
-            color: theme.resources.cardStrokeColorDefault.withOpacity(0.1),
+            color: theme.resources.cardStrokeColorDefault.withValues(alpha: 0.1),
             width: 1,
           ),
         ),
@@ -345,7 +345,7 @@ class _FluentSliderTileState extends State<FluentSliderTile> {
             Row(
               children: [
                 Icon(
-                  widget.icon, 
+                  widget.icon,
                   size: 20,
                   color: theme.resources.textFillColorPrimary,
                 ),

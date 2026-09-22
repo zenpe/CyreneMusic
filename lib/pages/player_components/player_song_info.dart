@@ -40,16 +40,16 @@ class PlayerSongInfo extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const SizedBox(height: 20),
-                  
+
                   // 封面（开启渐变效果时不显示，因为封面已在背景中）
-                  if (!backgroundService.enableGradient || 
+                  if (!backgroundService.enableGradient ||
                       backgroundService.backgroundType != PlayerBackgroundType.adaptive)
                     _buildCover(imageUrl),
-                  
-                  if (!backgroundService.enableGradient || 
+
+                  if (!backgroundService.enableGradient ||
                       backgroundService.backgroundType != PlayerBackgroundType.adaptive)
                     const SizedBox(height: 40),
-                  
+
                   // 歌曲信息
                   _buildSongInfo(
                     context,
@@ -77,7 +77,7 @@ class PlayerSongInfo extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.6),
+            color: Colors.black.withValues(alpha: 0.6),
             blurRadius: 40,
             offset: const Offset(0, 15),
           ),
@@ -165,7 +165,7 @@ class PlayerSongInfo extends StatelessWidget {
       builder: (context, themeColor, child) {
         final titleColor = _getAdaptiveLyricColor(themeColor, true);
         final subtitleColor = _getAdaptiveLyricColor(themeColor, false);
-        
+
         return Column(
           children: [
             // 歌曲名称
@@ -182,10 +182,10 @@ class PlayerSongInfo extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 12),
-            
+
             // 艺术家（多个可点击）
             _buildArtistsRow(context, artists, subtitleColor, song),
-            
+
             // 专辑（可点击）
             if (album.isNotEmpty) ...[
               const SizedBox(height: 6),
@@ -200,14 +200,14 @@ class PlayerSongInfo extends StatelessWidget {
                       Icon(
                         Icons.album_outlined,
                         size: 14,
-                        color: subtitleColor.withOpacity(0.6),
+                        color: subtitleColor.withValues(alpha: 0.6),
                       ),
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
                           album,
                           style: TextStyle(
-                            color: subtitleColor.withOpacity(0.6),
+                            color: subtitleColor.withValues(alpha: 0.6),
                             fontSize: 14,
                             fontFamily: 'Microsoft YaHei', // 微软雅黑
                           ),
@@ -237,7 +237,7 @@ class PlayerSongInfo extends StatelessWidget {
         final index = entry.key;
         final artist = entry.value;
         final isLast = index == artists.length - 1;
-        
+
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -249,7 +249,7 @@ class PlayerSongInfo extends StatelessWidget {
                 child: Text(
                   artist,
                   style: TextStyle(
-                    color: baseColor.withOpacity(0.8),
+                    color: baseColor.withValues(alpha: 0.8),
                     fontSize: 18,
                     fontFamily: 'Microsoft YaHei', // 微软雅黑
                   ),
@@ -260,7 +260,7 @@ class PlayerSongInfo extends StatelessWidget {
               Text(
                 ' / ',
                 style: TextStyle(
-                  color: baseColor.withOpacity(0.6),
+                  color: baseColor.withValues(alpha: 0.6),
                   fontSize: 18,
                 ),
               ),
@@ -279,19 +279,19 @@ class PlayerSongInfo extends StatelessWidget {
     // 解析歌手ID（后端无返回ID时，通过搜索解析）
     final id = await NeteaseArtistDetailService().resolveArtistIdByName(artistName);
     if (id == null) {
+      if (!context.mounted) return;
       _searchInDialog(context, artistName);
       return;
     }
     if (!context.mounted) return;
-    
+
     final isFluent = ThemeManager().isFluentFramework;
-    
+
     if (isFluent) {
       // Fluent UI 样式对话框
       final fluentTheme = fluent.FluentTheme.of(context);
-      final backgroundColor = fluentTheme.micaBackgroundColor ?? 
-          fluentTheme.scaffoldBackgroundColor;
-      
+      final backgroundColor = fluentTheme.micaBackgroundColor;
+
       fluent.showDialog(
         context: context,
         barrierDismissible: true,
@@ -349,7 +349,7 @@ class PlayerSongInfo extends StatelessWidget {
   List<String> _splitArtists(String artistsStr) {
     // 支持的分隔符：/ , 、
     final separators = ['/', ',', '、'];
-    
+
     for (final separator in separators) {
       if (artistsStr.contains(separator)) {
         return artistsStr
@@ -359,20 +359,19 @@ class PlayerSongInfo extends StatelessWidget {
             .toList();
       }
     }
-    
+
     return [artistsStr];
   }
 
   /// 在对话框中打开搜索
   void _searchInDialog(BuildContext context, String keyword) {
     final isFluent = ThemeManager().isFluentFramework;
-    
+
     if (isFluent) {
       // Fluent UI 样式对话框
       final fluentTheme = fluent.FluentTheme.of(context);
-      final backgroundColor = fluentTheme.micaBackgroundColor ?? 
-          fluentTheme.scaffoldBackgroundColor;
-      
+      final backgroundColor = fluentTheme.micaBackgroundColor;
+
       fluent.showDialog(
         context: context,
         barrierDismissible: true,
@@ -441,7 +440,7 @@ class PlayerSongInfo extends StatelessWidget {
     // 计算颜色的相对亮度 (0.0 - 1.0)
     // 使用 W3C 推荐的计算公式
     final luminance = backgroundColor.computeLuminance();
-    
+
     // 如果亮度大于 0.5，认为是亮色背景，应该用深色文字
     return luminance > 0.5;
   }
@@ -450,17 +449,17 @@ class PlayerSongInfo extends StatelessWidget {
   Color _getAdaptiveLyricColor(Color? themeColor, bool isCurrent) {
     final color = themeColor ?? Colors.grey[700]!;
     final useDarkText = _shouldUseDarkText(color);
-    
+
     if (useDarkText) {
       // 亮色背景，使用深色文字
-      return isCurrent 
-          ? Colors.black87 
+      return isCurrent
+          ? Colors.black87
           : Colors.black54;
     } else {
       // 暗色背景，使用浅色文字
-      return isCurrent 
-          ? Colors.white 
-          : Colors.white.withOpacity(0.45);
+      return isCurrent
+          ? Colors.white
+          : Colors.white.withValues(alpha: 0.45);
     }
   }
 }
