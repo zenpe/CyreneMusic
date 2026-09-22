@@ -1158,7 +1158,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
     String artistsStr,
     SongDetail? song, {
     bool enabled = true,
-  ) {
+  }) {
     final artists = _splitArtists(artistsStr);
 
     return LayoutBuilder(
