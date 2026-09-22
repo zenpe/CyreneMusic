@@ -35,13 +35,7 @@ class LyricRepository {
 
   static const int _memoryCapacity = 64;
   static const Duration _readyTtl = Duration(days: 7);
-  static const Duration _emptyTtl = Duration(hours: 12);
-  static const List<Duration> _failureBackoffSteps = <Duration>[
-    Duration(seconds: 30),
-    Duration(minutes: 5),
-    Duration(minutes: 15),
-    Duration(minutes: 30),
-  ];
+  static const Duration _confirmedEmptyTtl = Duration(hours: 24);
 
   final LinkedHashMap<String, LyricCacheEntry> _memory =
       LinkedHashMap<String, LyricCacheEntry>();
@@ -80,6 +74,9 @@ class LyricRepository {
       log('[LyricService] memory hit: $cacheKey', toDeveloperPanel: true);
       return memoryHit;
     }
+    if (memoryEntry != null) {
+      _memory.remove(memoryHitKey);
+    }
 
     var diskHitKey = cacheKey;
     var diskEntry = await LyricCacheService().readEntry(cacheKey);
@@ -102,47 +99,10 @@ class LyricRepository {
       log('[LyricService] disk hit: $cacheKey', toDeveloperPanel: true);
       return diskHit;
     }
-
-    final metadata = CacheService().getCachedMetadata(track, quality: quality);
-    if (metadata != null && _metadataHasPayload(metadata)) {
-      final entry = LyricCacheEntry(
-        trackKey: _trackKey(track),
-        quality: quality,
-        source: track.source.name,
-        title: metadata.songName.isNotEmpty ? metadata.songName : track.name,
-        artist: metadata.artists.isNotEmpty ? metadata.artists : track.artists,
-        lyric: metadata.lyric,
-        tlyric: metadata.tlyric,
-        yrc: metadata.yrc,
-        ytlrc: metadata.ytlrc,
-        qrc: metadata.qrc,
-        qrcTrans: metadata.qrcTrans,
-        hasContent: true,
-        completeness: _completenessFromPayload(
-          lyric: metadata.lyric,
-          tlyric: metadata.tlyric,
-          yrc: metadata.yrc,
-          ytlrc: metadata.ytlrc,
-          qrc: metadata.qrc,
-          qrcTrans: metadata.qrcTrans,
-        ),
-        state: LyricCacheState.ready,
-        fetchedAt: DateTime.now(),
-        expiresAt: DateTime.now().add(_readyTtl),
-      );
-      _remember(cacheKey, entry);
-      log(
-        '[LyricService] cache-metadata hit: $cacheKey',
-        toDeveloperPanel: true,
-      );
-      unawaited(_persistEntry(track, quality, cacheKey, entry, log));
-      return LyricLookupResult(
-        state: LyricLoadState.ready,
-        song: _buildSongFromEntry(track, quality, currentSong, entry),
-        source: 'cache-metadata',
-        category: 'audio_cache_metadata_hit',
-        skipRemote: true,
-      );
+    if (diskEntry != null) {
+      try {
+        await LyricCacheService().deleteEntry(diskHitKey);
+      } catch (_) {}
     }
 
     return null;
@@ -170,14 +130,15 @@ class LyricRepository {
       qrcTrans: song.qrcTrans,
       hasContent: hasPayload,
       completeness: _completenessFromSong(song),
-      state: hasPayload ? LyricCacheState.ready : LyricCacheState.empty,
+      state: LyricCacheState.ready,
+      authoritativeEmpty: false,
       fetchedAt: DateTime.now(),
-      expiresAt: DateTime.now().add(hasPayload ? _readyTtl : _emptyTtl),
+      expiresAt: DateTime.now().add(_readyTtl),
     );
     await _persistEntry(track, quality, cacheKey, entry, log);
   }
 
-  Future<void> storeEmpty({
+  Future<void> storeConfirmedEmpty({
     required Track track,
     required String quality,
     required SongDetail? currentSong,
@@ -203,58 +164,9 @@ class LyricRepository {
       hasContent: false,
       completeness: 'empty',
       state: LyricCacheState.empty,
+      authoritativeEmpty: true,
       fetchedAt: DateTime.now(),
-      expiresAt: DateTime.now().add(_emptyTtl),
-    );
-    await _persistEntry(track, quality, cacheKey, entry, log);
-  }
-
-  Future<void> storeFailure({
-    required Track track,
-    required String quality,
-    required SongDetail? currentSong,
-    required Object error,
-    required LyricRepositoryLogFn log,
-  }) async {
-    final cacheKey = _cacheKey(track);
-    final legacyCacheKey = _legacyCacheKey(track, quality);
-    final previous =
-        _takeMemory(cacheKey) ??
-        (legacyCacheKey != cacheKey ? _takeMemory(legacyCacheKey) : null) ??
-        await LyricCacheService().readEntry(cacheKey) ??
-        (legacyCacheKey != cacheKey
-            ? await LyricCacheService().readEntry(legacyCacheKey)
-            : null);
-    final failureCount = ((previous?.failureCount ?? 0) + 1).clamp(
-      1,
-      _failureBackoffSteps.length,
-    );
-    final retryAfter = DateTime.now().add(
-      _failureBackoffSteps[failureCount - 1],
-    );
-    final entry = LyricCacheEntry(
-      trackKey: _trackKey(track),
-      quality: quality,
-      source: track.source.name,
-      title: currentSong?.name.isNotEmpty == true
-          ? currentSong!.name
-          : track.name,
-      artist: currentSong?.arName.isNotEmpty == true
-          ? currentSong!.arName
-          : track.artists,
-      lyric: '',
-      tlyric: '',
-      yrc: '',
-      ytlrc: '',
-      qrc: '',
-      qrcTrans: '',
-      hasContent: false,
-      completeness: 'failed',
-      state: LyricCacheState.failed,
-      fetchedAt: DateTime.now(),
-      failureCount: failureCount,
-      retryAfter: retryAfter,
-      error: error.toString(),
+      expiresAt: DateTime.now().add(_confirmedEmptyTtl),
     );
     await _persistEntry(track, quality, cacheKey, entry, log);
   }
@@ -303,7 +215,7 @@ class LyricRepository {
           skipRemote: true,
         );
       case LyricCacheState.empty:
-        if (entry.isExpired) return null;
+        if (!entry.authoritativeEmpty || entry.isExpired) return null;
         if (currentSong != null && _hasPayload(currentSong)) {
           return LyricLookupResult(
             state: LyricLoadState.ready,
@@ -321,24 +233,7 @@ class LyricRepository {
           skipRemote: true,
         );
       case LyricCacheState.failed:
-        if (!entry.isFailureBackoffActive) return null;
-        if (currentSong != null && _hasPayload(currentSong)) {
-          return LyricLookupResult(
-            state: LyricLoadState.ready,
-            song: currentSong,
-            source: source,
-            category: source == 'memory' ? 'memory_hit' : 'disk_hit',
-            skipRemote: true,
-          );
-        }
-        return LyricLookupResult(
-          state: LyricLoadState.failed,
-          song: currentSong,
-          source: source,
-          category: 'failed_backoff_skip',
-          skipRemote: true,
-          error: entry.error,
-        );
+        return null;
     }
   }
 
@@ -382,15 +277,6 @@ class LyricRepository {
         song.ytlrc.isNotEmpty ||
         song.qrc.isNotEmpty ||
         song.qrcTrans.isNotEmpty;
-  }
-
-  bool _metadataHasPayload(CacheMetadata metadata) {
-    return metadata.lyric.isNotEmpty ||
-        metadata.tlyric.isNotEmpty ||
-        metadata.yrc.isNotEmpty ||
-        metadata.ytlrc.isNotEmpty ||
-        metadata.qrc.isNotEmpty ||
-        metadata.qrcTrans.isNotEmpty;
   }
 
   String _completenessFromSong(SongDetail song) {

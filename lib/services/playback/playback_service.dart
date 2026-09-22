@@ -40,7 +40,6 @@ import 'audio_engine.dart';
 import 'engine_host.dart';
 import 'engine_event.dart';
 import 'cover_manager.dart';
-import 'cyrene_stream_source.dart';
 import 'playback_session_snapshot.dart';
 import 'playback_session_manager.dart';
 import 'playback_problem.dart';
@@ -50,6 +49,7 @@ import 'playback_transaction.dart';
 import 'playback_history_recorder.dart';
 import 'playback_request_router.dart';
 import 'playback_session.dart';
+import 'playback_performance_metrics.dart';
 import 'playback_resolver_registry.dart';
 import 'queue_controller.dart';
 import 'playable_source.dart';
@@ -79,7 +79,15 @@ class TrackSwitchTiming {
   int planPrepareMs = 0;
   int softFadeOutMs = 0;
   int engineStartupMs = 0;
+  int engineEnsurePlayerMs = 0;
+  int engineMuteMs = 0;
+  int engineStopMs = 0;
+  int engineSetSourceMs = 0;
+  int enginePlayToReadyMs = 0;
+  int remoteResolutionAttempts = 0;
+  bool audioCacheHit = false;
   bool prefetched = false;
+  bool l1MemoryCached = false;
 }
 
 class TrackSwitchTransaction {
@@ -114,7 +122,7 @@ class TrackSwitchTransaction {
 
 class _ResolvedTrackSwitchSong {
   final SongDetail songDetail;
-  final CyreneFileInfo? cacheInfo;
+  final CachedAudioFileInfo? cacheInfo;
   final bool isCached;
   final bool shouldRefreshCachedMetadata;
   final bool shouldRefreshExistingCacheMetadata;
@@ -130,7 +138,7 @@ class _ResolvedTrackSwitchSong {
 
 class _TrackSwitchPlaybackPlan {
   final _ResolvedTrackSwitchSong resolvedSong;
-  final bool usesCachedStream;
+  final bool usesCachedFile;
   final PlayableSource source;
   final String? retainedTempFilePath;
   final String? coverRefreshUrl;
@@ -141,7 +149,7 @@ class _TrackSwitchPlaybackPlan {
 
   const _TrackSwitchPlaybackPlan({
     required this.resolvedSong,
-    required this.usesCachedStream,
+    required this.usesCachedFile,
     required this.source,
     required this.retainedTempFilePath,
     required this.coverRefreshUrl,
@@ -201,7 +209,18 @@ class PlaybackService extends ChangeNotifier {
   Duration _bufferedPosition = Duration.zero;
   String? _errorMessage;
   String? _currentTempFilePath;
-  CyreneFileInfo? _currentCachedStreamInfo;
+  CachedAudioFileInfo? _currentCachedFileInfo;
+
+  void _setCurrentCachedFileInfo(CachedAudioFileInfo? next) {
+    final previous = _currentCachedFileInfo;
+    if (identical(previous, next)) return;
+    if (next != null) CacheService().pinCachedFile(next);
+    _currentCachedFileInfo = next;
+    if (previous != null && previous.cacheKey != next?.cacheKey) {
+      CacheService().unpinCachedFile(previous);
+    }
+  }
+
   final Set<String> _cacheBypassKeys = <String>{};
   final PlaybackProblemStore _problemStore = PlaybackProblemStore();
   final PlaybackFailurePolicy _failurePolicy = const PlaybackFailurePolicy();
@@ -210,6 +229,8 @@ class PlaybackService extends ChangeNotifier {
   late final PlaybackSessionManager _sessionManager;
   final SourceHealthTracker _sourceHealthTracker = SourceHealthTracker();
   final TrackResolver _trackResolver = TrackResolver();
+  final PlaybackPerformanceMetrics _performanceMetrics =
+      PlaybackPerformanceMetrics();
 
   /// 播放稳定性判定：playing 持续满阈值且进度前进才算播放成功。
   /// 门控失败计数清零、历史记录、预载等成功副作用，避免"播 1s 失败
@@ -232,11 +253,9 @@ class PlaybackService extends ChangeNotifier {
   Timer? _autoSkipTimer;
   bool _preloadDependencyListenersBound = false;
 
-  static const int _switchFadeSteps = 4;
-  static const Duration _switchFadeStepDelay = Duration(milliseconds: 15);
   static const Duration _resolutionRetryDelay = Duration(milliseconds: 300);
   static const Duration _trackSwitchSettleDelay = Duration(milliseconds: 80);
-  static const Duration _preloadTriggerDelay = Duration(seconds: 3);
+  static const Duration _preloadTriggerDelay = Duration(milliseconds: 600);
   static const Duration _prefetchedSongDetailTtl = Duration(minutes: 5);
   static const Duration _playSongDetailTimeout = Duration(seconds: 12);
   static const Duration _preloadSongDetailTimeout = Duration(seconds: 8);
@@ -289,6 +308,7 @@ class PlaybackService extends ChangeNotifier {
   bool get isPlaying => _state == PBState.playing;
   bool get isPaused => _state == PBState.paused;
   bool get isLoading => _state == PBState.loading;
+  bool get isTrackSwitchPending => isLoading && _pendingTrack != null;
   PBState get state => _state;
   LyricLoadState get lyricLoadState => LyricService().currentState;
   LyricSnapshot? get lyricSnapshot => LyricService().currentSnapshot;
@@ -318,9 +338,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   String get displayAlbum {
-    if (isLoading &&
-        _pendingTrack != null &&
-        _pendingTrack!.album.isNotEmpty) {
+    if (isLoading && _pendingTrack != null && _pendingTrack!.album.isNotEmpty) {
       return _pendingTrack!.album;
     }
     final songAlbum = _activeSong?.alName;
@@ -395,6 +413,12 @@ class PlaybackService extends ChangeNotifier {
   }
 
   SourceHealthSnapshot? get sourceHealth => sourceHealthNotifier.value;
+  PlaybackPerformanceSnapshot get performanceSnapshot =>
+      _performanceMetrics.snapshot;
+
+  /// Clears only the diagnostic counters. Playback state and caches are kept.
+  void resetPerformanceMetrics() => _performanceMetrics.reset();
+
   int get _playGeneration => _transactionGuard.currentToken;
   double get volume => _volume;
   double get playbackSpeed => _playbackSpeed;
@@ -438,7 +462,7 @@ class PlaybackService extends ChangeNotifier {
     // 所有引擎事件统一从带 epoch 的协议进入协调器；不再分别订阅裸的
     // position/state/error stream，避免其中一条漏掉会话归属校验。
     _engineSubs.add(_engine.events.listen(_onEngineEvent));
-    AudioSourceService().addListener(_syncActiveSourceHealth);
+    AudioSourceService().addListener(_onAudioSourceConfigChanged);
     _syncActiveSourceHealth();
   }
 
@@ -717,13 +741,14 @@ class PlaybackService extends ChangeNotifier {
       StructuredLogService.log('[PlaybackService] 丢弃旧纪元引擎错误: $error');
       return;
     }
+    _performanceMetrics.recordEngineFailure();
     _updateSessionPhase(PlaybackPhase.failed);
     final track = _pendingTrack ?? currentTrack;
     if (track == null || _state == PBState.error) return;
     final failureIntent = _pendingIntent ?? _activeIntent;
 
     final trackKey = _buildTrackIdentity(track);
-    final cacheQuality = _currentCachedStreamInfo?.metadata.quality;
+    final cacheQuality = _currentCachedFileInfo?.metadata.quality;
     final shouldRetryWithoutCache =
         cacheQuality != null && _retriedTrackKey != trackKey;
     final canRetry =
@@ -731,6 +756,7 @@ class PlaybackService extends ChangeNotifier {
         (_canRetryOnError(error) && _retriedTrackKey != trackKey);
 
     if (canRetry) {
+      _performanceMetrics.recordEngineRetry();
       _retriedTrackKey = trackKey;
       final requestEpoch = _requestRouter.begin();
       if (cacheQuality != null) {
@@ -745,7 +771,7 @@ class PlaybackService extends ChangeNotifier {
           _cachePlaybackKey(current, cacheQuality),
           reason: 'engine-retry',
         );
-        _currentCachedStreamInfo = null;
+        _setCurrentCachedFileInfo(null);
       }
       // 强制远端重解析：预取/缓存的 URL 已被证明失败（常见为 CDN
       // 直链过期），复用只会再次失败。forceRemoteResolution 同时
@@ -895,6 +921,11 @@ class PlaybackService extends ChangeNotifier {
       source.supportedPlatforms.join(','),
     ].join('\u0000');
     return '${source.id}:${requestConfig.hashCode}';
+  }
+
+  void _onAudioSourceConfigChanged() {
+    _syncActiveSourceHealth();
+    _trackResolver.clear();
   }
 
   void _syncActiveSourceHealth() {
@@ -1585,13 +1616,12 @@ class PlaybackService extends ChangeNotifier {
     bool Function() isStale,
   ) async {
     final track = tx.track;
-    _currentCachedStreamInfo = null;
+    _setCurrentCachedFileInfo(null);
     final cachePlaybackKey = _cachePlaybackKey(track, tx.qualityStr);
     final lookupSw = Stopwatch()..start();
     final lookup = await _trackResolver.lookupLocalOrCache(
       track: track,
       quality: tx.qualityStr,
-      resolverFingerprint: _resolverFingerprintFor(track),
       skipCache:
           tx.forceRemoteResolution ||
           _cacheBypassKeys.contains(cachePlaybackKey),
@@ -1632,6 +1662,7 @@ class PlaybackService extends ChangeNotifier {
     }
 
     final lxSourceFingerprint = _activeLxSourceFingerprint();
+    final resolverFingerprint = _resolverFingerprintFor(track);
     final sourceRequestAllowed =
         lxSourceFingerprint == null ||
         _sourceHealthTracker.allowRequest(lxSourceFingerprint);
@@ -1657,8 +1688,9 @@ class PlaybackService extends ChangeNotifier {
     }
 
     TrackResolutionResult? resolution;
-    final maxResolutionAttempts =
-        _retriedTrackKey == _buildTrackIdentity(track) ? 1 : 2;
+    final maxResolutionAttempts = _retriedTrackKey == _buildTrackIdentity(track)
+        ? 1
+        : 2;
     var isSameLxSource =
         lxSourceFingerprint != null &&
         _activeLxSourceFingerprint() == lxSourceFingerprint;
@@ -1674,7 +1706,16 @@ class PlaybackService extends ChangeNotifier {
         if (!retryAllowed) break;
       }
 
+      if (tx.forceRemoteResolution) {
+        _trackResolver.invalidateTrack(
+          track,
+          quality: tx.selectedQuality,
+          resolverFingerprint: resolverFingerprint,
+        );
+      }
+
       final remoteSw = Stopwatch()..start();
+      tx.timing.remoteResolutionAttempts++;
       resolution = await _trackResolver.resolve(
         songId: track.id,
         quality: tx.selectedQuality,
@@ -1683,8 +1724,13 @@ class PlaybackService extends ChangeNotifier {
         artist: track.artists,
         timeout: _playSongDetailTimeout,
         fetchLyrics: false,
+        resolverFingerprint: resolverFingerprint,
+        skipMemoryCache: attempt > 0 || tx.forceRemoteResolution,
       );
       tx.timing.remoteResolveMs += remoteSw.elapsedMilliseconds;
+      if (resolution.isL1CacheHit) {
+        tx.timing.l1MemoryCached = true;
+      }
       if (isStale()) {
         if (lxSourceFingerprint != null) {
           _sourceHealthTracker.cancelRequest(lxSourceFingerprint);
@@ -1720,6 +1766,11 @@ class PlaybackService extends ChangeNotifier {
 
       if (attempt + 1 < maxResolutionAttempts &&
           _shouldRetryResolutionFailure(resolution.lxFailure)) {
+        _trackResolver.invalidateTrack(
+          track,
+          quality: tx.selectedQuality,
+          resolverFingerprint: resolverFingerprint,
+        );
         _state = PBState.loading;
         _errorMessage = '播放地址无效，正在重新获取...';
         _logPlaybackDebug(
@@ -1789,58 +1840,19 @@ class PlaybackService extends ChangeNotifier {
     final cacheInfo = resolvedSong.cacheInfo;
 
     if (cacheInfo != null && cacheInfo.metadata.quality == tx.qualityStr) {
-      if (Platform.isAndroid || Platform.isIOS) {
-        final playableSource = CachedCyrenePlayableSource.stream(
-          cacheInfo: cacheInfo,
-          playbackAudioSource: CyreneStreamSource(
-            filePath: cacheInfo.filePath,
-            payloadOffset: cacheInfo.payloadOffset,
-            audioLength: cacheInfo.audioLength,
-            contentType: cacheInfo.contentType,
-          ),
-        );
-        return _TrackSwitchPlaybackPlan(
-          resolvedSong: resolvedSong,
-          usesCachedStream: true,
-          source: playableSource,
-          retainedTempFilePath: null,
-          coverRefreshUrl: cacheInfo.metadata.picUrl,
-          themeImageUrl: cacheInfo.metadata.picUrl,
-          themeReason: 'cache-hit',
-          shouldWriteBackgroundCache: false,
-          cacheMetadataRefreshReason: null,
-        );
-      }
-
-      final proxyReady = await _ensureLocalProxyRunning('cache');
-      if (isStale()) return null;
-      if (proxyReady) {
-        final playableSource = CachedCyrenePlayableSource.proxy(
-          cacheInfo: cacheInfo,
-          playbackUrl: ProxyService().getCyreneStreamUrl(cacheInfo),
-        );
-        return _TrackSwitchPlaybackPlan(
-          resolvedSong: resolvedSong,
-          usesCachedStream: true,
-          source: playableSource,
-          retainedTempFilePath: null,
-          coverRefreshUrl: cacheInfo.metadata.picUrl,
-          themeImageUrl: cacheInfo.metadata.picUrl,
-          themeReason: 'cache-hit',
-          shouldWriteBackgroundCache: false,
-          cacheMetadataRefreshReason: null,
-        );
-      }
-
-      _markCachePlaybackBypassed(
-        track,
-        tx.qualityStr,
-        reason: 'proxy-unavailable',
-      );
-      _logPlaybackDebug(
-        '[PlaybackService] 桌面缓存命中回退网络链路: '
-        '${_buildTrackIdentity(track)} quality=${tx.qualityStr}',
-        toDeveloperPanel: true,
+      return _TrackSwitchPlaybackPlan(
+        resolvedSong: resolvedSong,
+        usesCachedFile: true,
+        source: LocalFilePlayableSource(
+          cacheInfo.filePath,
+          originalUrl: cacheInfo.metadata.originalUrl,
+        ),
+        retainedTempFilePath: null,
+        coverRefreshUrl: cacheInfo.metadata.picUrl,
+        themeImageUrl: cacheInfo.metadata.picUrl,
+        themeReason: 'cache-hit',
+        shouldWriteBackgroundCache: false,
+        cacheMetadataRefreshReason: null,
       );
     }
 
@@ -1848,7 +1860,7 @@ class PlaybackService extends ChangeNotifier {
       final filePath = songDetail.url;
       return _TrackSwitchPlaybackPlan(
         resolvedSong: resolvedSong,
-        usesCachedStream: false,
+        usesCachedFile: false,
         source: LocalFilePlayableSource(filePath),
         retainedTempFilePath: null,
         coverRefreshUrl: null,
@@ -1869,7 +1881,7 @@ class PlaybackService extends ChangeNotifier {
       }
       return _TrackSwitchPlaybackPlan(
         resolvedSong: resolvedSong,
-        usesCachedStream: false,
+        usesCachedFile: false,
         source: DirectHttpPlayableSource(songDetail.url),
         retainedTempFilePath: null,
         coverRefreshUrl: songDetail.pic,
@@ -1911,7 +1923,7 @@ class PlaybackService extends ChangeNotifier {
 
       return _TrackSwitchPlaybackPlan(
         resolvedSong: resolvedSong,
-        usesCachedStream: false,
+        usesCachedFile: false,
         source: source,
         retainedTempFilePath: retainedTempFilePath,
         coverRefreshUrl: songDetail.pic,
@@ -1932,7 +1944,7 @@ class PlaybackService extends ChangeNotifier {
 
     return _TrackSwitchPlaybackPlan(
       resolvedSong: resolvedSong,
-      usesCachedStream: false,
+      usesCachedFile: false,
       source: DirectHttpPlayableSource(songDetail.url),
       retainedTempFilePath: null,
       coverRefreshUrl: songDetail.pic,
@@ -1958,10 +1970,9 @@ class PlaybackService extends ChangeNotifier {
     bool preload = true,
   }) async {
     var committedPlan = plan;
-    if (plan.usesCachedStream && plan.source is CachedCyrenePlayableSource) {
-      final cachedSource = plan.source as CachedCyrenePlayableSource;
-      final playedFromStream = await _playCachedStreamSource(
-        cachedSource.cacheInfo,
+    if (plan.usesCachedFile && plan.resolvedSong.cacheInfo != null) {
+      final playedFromStream = await _playCachedFileSource(
+        plan.resolvedSong.cacheInfo!,
         autoPlay: autoPlay,
         initialPosition: initialPosition,
         preload: preload,
@@ -1996,7 +2007,7 @@ class PlaybackService extends ChangeNotifier {
       );
     }
     if (isStale()) {
-      _currentCachedStreamInfo = null;
+      _setCurrentCachedFileInfo(null);
       final retainedTempFilePath = committedPlan.retainedTempFilePath;
       await _deleteTempFilePath(retainedTempFilePath);
       return null;
@@ -2027,17 +2038,39 @@ class PlaybackService extends ChangeNotifier {
       intent: tx.intent,
     );
     final timing = tx.timing;
+    timing.audioCacheHit = plan.usesCachedFile;
+    _performanceMetrics.recordSwitch(
+      PlaybackTimingSample(
+        totalMs: timing.totalSw.elapsedMilliseconds,
+        settleMs: timing.settleMs,
+        lookupMs: timing.lookupMs,
+        remoteResolveMs: timing.remoteResolveMs,
+        planPrepareMs: timing.planPrepareMs,
+        softFadeOutMs: timing.softFadeOutMs,
+        engineStartupMs: timing.engineStartupMs,
+        engineSetSourceMs: timing.engineSetSourceMs,
+        enginePlayToReadyMs: timing.enginePlayToReadyMs,
+        prefetched: timing.prefetched,
+        l1MemoryCached: timing.l1MemoryCached,
+        audioCacheHit: timing.audioCacheHit,
+        remoteResolutionAttempts: timing.remoteResolutionAttempts,
+      ),
+    );
     debugPrint('''
 🎵 [切歌耗时剖析] ========================================
 歌曲: 《${track.name}》 - ${track.artists} (源: ${track.source.name}, 音质: ${tx.qualityStr})
-模式: ${plan.usesCachedStream ? "⚡ 缓存命中" : "🌐 远程网络"} | 预取计划: ${timing.prefetched ? "命中" : "未命中"}
+模式: ${plan.usesCachedFile ? "⚡ 缓存命中" : "🌐 远程网络"} | 预取计划: ${timing.prefetched ? "命中" : "未命中"}
 阶段细分:
   ├─ 0. 切歌防抖等待(Settle):     ${timing.settleMs} ms
   ├─ 1. 本地缓存/文件检索(含校验): ${timing.lookupMs} ms
-  ├─ 2. 远程音源接口解析(网络):   ${timing.remoteResolveMs} ms
+  ├─ 2. 远程音源接口解析(网络):   ${timing.remoteResolveMs} ms${timing.l1MemoryCached ? ' (⚡ L1内存池命中)' : ''}
   ├─ 3. 播放源计划准备:           ${timing.planPrepareMs} ms
-  ├─ 4. 音量软淡出(4步防爆音):     ${timing.softFadeOutMs} ms
+  ├─ 4. 引擎单次静音:              ${timing.softFadeOutMs} ms
   └─ 5. 引擎装载与缓冲出声:       ${timing.engineStartupMs} ms
+      ├─ 初始化播放器:             ${timing.engineEnsurePlayerMs} ms
+      ├─ 停止旧源:                 ${timing.engineStopMs} ms
+      ├─ 装载新源:                 ${timing.engineSetSourceMs} ms
+      └─ Play 到 Ready:            ${timing.enginePlayToReadyMs} ms
 ================================ 🏁 真实总耗时: ${timing.totalSw.elapsedMilliseconds} ms
 ''');
     _stableCacheTrack = null;
@@ -2090,8 +2123,7 @@ class PlaybackService extends ChangeNotifier {
       );
     }
 
-    if (plan.usesCachedStream &&
-        plan.resolvedSong.shouldRefreshCachedMetadata) {
+    if (plan.usesCachedFile && plan.resolvedSong.shouldRefreshCachedMetadata) {
       if (!isPresentationStale()) {
         requestLyricsForPresentation();
       }
@@ -2211,7 +2243,6 @@ class PlaybackService extends ChangeNotifier {
         a.qrcTrans == b.qrcTrans;
   }
 
-
   bool _hasAnyLyricPayload(SongDetail song) {
     return song.lyric.isNotEmpty ||
         song.tlyric.isNotEmpty ||
@@ -2231,6 +2262,7 @@ class PlaybackService extends ChangeNotifier {
         useLyricOnlyFetch: _shouldUseLyricOnlySupplementalFetch(track),
         allowFullDetailFallback:
             _shouldAllowFullDetailFallbackForLyricOnlyFetch(track),
+        emptyResultIsAuthoritative: false,
         fetchLyricOnlyDetail: () {
           return MusicService()
               .fetchLyricOnlySongDetail(
@@ -2432,14 +2464,9 @@ class PlaybackService extends ChangeNotifier {
     _TrackSwitchPlaybackPlan plan,
     String qualityStr,
   ) {
-    final lyricRefreshKey = _lyricRefreshKey(track);
-    final refreshAlreadySettled = LyricService().isRefreshSettled(
-      lyricRefreshKey,
-    );
-    return !refreshAlreadySettled &&
-        ((plan.usesCachedStream &&
-                plan.resolvedSong.shouldRefreshCachedMetadata) ||
-            _shouldScheduleDeferredSupplementalRefresh(songDetail));
+    return (plan.usesCachedFile &&
+            plan.resolvedSong.shouldRefreshCachedMetadata) ||
+        _shouldScheduleDeferredSupplementalRefresh(songDetail);
   }
 
   void _rememberCacheBypassKey(String cacheKey, {required String reason}) {
@@ -2475,26 +2502,18 @@ class PlaybackService extends ChangeNotifier {
     required String reason,
   }) {
     final refreshKey = _lyricRefreshKey(track);
-    if (LyricService().isRefreshSettled(refreshKey)) {
-      return;
-    }
     _logPlaybackDebug(
       '[PlaybackService] 回写缓存元数据($reason): $refreshKey',
       toDeveloperPanel: true,
     );
     unawaited(
-      _cacheSongInBackground(track, detail, quality)
-          .then((cached) {
-            if (cached) {
-              LyricService().markRefreshSettled(refreshKey);
-            }
-          })
-          .catchError((Object e) {
-            _logPlaybackDebug(
-              '[PlaybackService] 回写缓存元数据失败($reason): $refreshKey, $e',
-              toDeveloperPanel: true,
-            );
-          }),
+      _cacheSongInBackground(track, detail, quality).catchError((Object e) {
+        _logPlaybackDebug(
+          '[PlaybackService] 回写缓存元数据失败($reason): $refreshKey, $e',
+          toDeveloperPanel: true,
+        );
+        return false;
+      }),
     );
   }
 
@@ -2527,7 +2546,9 @@ class PlaybackService extends ChangeNotifier {
       );
       coverManager.updateCoverNonBlocking(imageUrl, notify: true, force: true);
     } catch (e) {
-      StructuredLogService.log('[PlaybackService] 调度封面补全失败($reason): ${_trackLogKey(track)}, $e');
+      StructuredLogService.log(
+        '[PlaybackService] 调度封面补全失败($reason): ${_trackLogKey(track)}, $e',
+      );
     }
   }
 
@@ -2538,10 +2559,14 @@ class PlaybackService extends ChangeNotifier {
   }) {
     if (imageUrl.isEmpty) return;
     try {
-      StructuredLogService.log('[PlaybackService] 调度主题色提取($reason): ${_trackLogKey(track)}');
+      StructuredLogService.log(
+        '[PlaybackService] 调度主题色提取($reason): ${_trackLogKey(track)}',
+      );
       coverManager.extractThemeColorNonBlocking(imageUrl);
     } catch (e) {
-      StructuredLogService.log('[PlaybackService] 调度主题色提取失败($reason): ${_trackLogKey(track)}, $e');
+      StructuredLogService.log(
+        '[PlaybackService] 调度主题色提取失败($reason): ${_trackLogKey(track)}, $e',
+      );
     }
   }
 
@@ -2662,7 +2687,7 @@ class PlaybackService extends ChangeNotifier {
         trace.mark(
           'prefetch_hit',
           fields: {
-            'cache': prefetchedPlan.usesCachedStream ? 'hit' : 'miss',
+            'cache': prefetchedPlan.usesCachedFile ? 'hit' : 'miss',
             'playable_source': _describePlayableSource(prefetchedPlan.source),
           },
         );
@@ -2712,7 +2737,7 @@ class PlaybackService extends ChangeNotifier {
       trace.mark(
         'source_ready',
         fields: {
-          'cache': playbackPlan.usesCachedStream ? 'hit' : 'miss',
+          'cache': playbackPlan.usesCachedFile ? 'hit' : 'miss',
           'playable_source': _describePlayableSource(playbackPlan.source),
           'background_cache': playbackPlan.shouldWriteBackgroundCache,
         },
@@ -3221,6 +3246,7 @@ class PlaybackService extends ChangeNotifier {
       artist: artist,
       timeout: timeout,
       fetchLyrics: fetchLyrics,
+      resolverFingerprint: PlaybackResolverRegistry().fingerprintFor(source),
     );
     if (result.timedOut) {
       StructuredLogService.log('[PlaybackService] 获取歌曲详情超时($purpose)');
@@ -3233,12 +3259,6 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
     await Future.delayed(_trackSwitchSettleDelay);
-  }
-
-  Future<void> _safeSetEngineVolume(double volume) async {
-    try {
-      await _engine.setVolume(volume);
-    } catch (_) {}
   }
 
   Future<void> _playWithSoftSwitch(
@@ -3260,7 +3280,6 @@ class PlaybackService extends ChangeNotifier {
         initialPosition: initialPosition,
         preload: preload,
       ),
-      allowFadeIn: autoPlay,
       transaction: transaction,
     );
   }
@@ -3280,23 +3299,18 @@ class PlaybackService extends ChangeNotifier {
         initialPosition: initialPosition,
         preload: preload,
       ),
-      allowFadeIn: autoPlay,
       transaction: transaction,
     );
   }
 
   Future<void> _performSoftSwitch(
     Future<void> Function(int generation) startPlayback, {
-    bool allowFadeIn = true,
     TrackSwitchTransaction? transaction,
   }) async {
     // 源头纪元捕获：必须在任何 await 之前读取。当前事务已在
     // _prepareTrackSwitchTransaction 中 begin()，此处的 _playGeneration
     // 即本次装载的目标纪元；引擎据此将装载期事件与旧歌隔离。
     final generation = _playGeneration;
-    final targetVolume = _volume.clamp(0.0, 1.0);
-    final canFade = allowFadeIn && _engine.isPlaying && targetVolume > 0;
-    final fadeGeneration = generation;
     _updateSessionPhase(PlaybackPhase.arming);
 
     // 绑定当前软切换关联的切歌事务，避免快速切歌时旧事务晚完成污染新事务的统计对象
@@ -3304,50 +3318,26 @@ class PlaybackService extends ChangeNotifier {
         ? transaction
         : (_currentSwitchTx?.token == generation ? _currentSwitchTx : null);
 
-    if (!canFade) {
-      if (!_canStartPlayback(generation)) return;
-      final engineSw = Stopwatch()..start();
-      await startPlayback(generation);
-      if (_canStartPlayback(generation)) {
-        targetTx?.timing.engineStartupMs = engineSw.elapsedMilliseconds;
-      }
-      return;
-    }
-
-    final fadeSw = Stopwatch()..start();
-    final stepVolume = targetVolume / _switchFadeSteps;
-    for (int i = _switchFadeSteps; i > 0; i--) {
-      if (!_canStartPlayback(generation)) return;
-      await _safeSetEngineVolume(stepVolume * (i - 1));
-      await Future.delayed(_switchFadeStepDelay);
-    }
-    if (_canStartPlayback(generation)) {
-      targetTx?.timing.softFadeOutMs = fadeSw.elapsedMilliseconds;
-    }
-
-    // stop()/new request may have invalidated the transaction while the fade
-    // was awaiting native volume writes or timers. EngineHost serializes
-    // writes but cannot infer whether a queued generation is obsolete.
     if (!_canStartPlayback(generation)) return;
-    try {
-      final engineSw = Stopwatch()..start();
-      await startPlayback(generation);
-      if (_canStartPlayback(generation)) {
-        targetTx?.timing.engineStartupMs = engineSw.elapsedMilliseconds;
+    final engineSw = Stopwatch()..start();
+    await startPlayback(generation);
+    if (_canStartPlayback(generation)) {
+      if (_state == PBState.loading && _engine.isPlaying) {
+        _onEngineStateChanged(EngineState.playing);
       }
-    } catch (e) {
-      await _safeSetEngineVolume(targetVolume);
-      rethrow;
-    }
-
-    unawaited(_fadeInAfterSwitch(stepVolume, fadeGeneration));
-  }
-
-  Future<void> _fadeInAfterSwitch(double stepVolume, int fadeGeneration) async {
-    for (int i = 1; i <= _switchFadeSteps; i++) {
-      if (fadeGeneration != _playGeneration) return;
-      await _safeSetEngineVolume(stepVolume * i);
-      await Future.delayed(_switchFadeStepDelay);
+      final timing = targetTx?.timing;
+      if (timing != null) {
+        timing.engineStartupMs = engineSw.elapsedMilliseconds;
+        final engineTiming = _engine.lastStartupTiming;
+        if (engineTiming != null) {
+          timing.engineEnsurePlayerMs = engineTiming.ensurePlayerMs;
+          timing.engineMuteMs = engineTiming.muteMs;
+          timing.softFadeOutMs = engineTiming.muteMs;
+          timing.engineStopMs = engineTiming.stopMs;
+          timing.engineSetSourceMs = engineTiming.setSourceMs;
+          timing.enginePlayToReadyMs = engineTiming.playToReadyMs;
+        }
+      }
     }
   }
 
@@ -3368,51 +3358,83 @@ class PlaybackService extends ChangeNotifier {
           _buildTrackIdentity(playingTrack) != scheduledTrackKey) {
         return;
       }
-      unawaited(_preloadNextTrack());
+      unawaited(_preloadAdjacentTracks());
     });
   }
 
-  Future<void> _preloadNextTrack() async {
+  Future<void> _preloadAdjacentTracks() async {
     if (_preloadingNext) return;
-    final nextTrack = peekNext(PlaybackModeService().currentMode);
     final current = currentTrack;
-    if (nextTrack == null || current == null) return;
+    if (current == null) return;
 
+    final mode = PlaybackModeService().currentMode;
+    final nextTrack = peekNext(mode);
+    final prevTrack = peekPrevious(mode);
     final selectedQuality = AudioQualityService().currentQuality;
-    final nextIdentity = _buildTrackIdentity(nextTrack);
-    final nextKey = _buildPrefetchCacheKey(nextTrack, selectedQuality);
     final currentIdentity = _buildTrackIdentity(current);
-    if (nextTrack.source != MusicSource.local) {
-      unawaited(
-        LyricService().prefetchLyrics(
-          track: nextTrack,
-          quality: selectedQuality.value,
-          refreshKey: _lyricRefreshKey(nextTrack),
-          adapter: _buildLyricPrefetchAdapter(
-            nextTrack,
-            qualityStr: selectedQuality.value,
-          ),
-        ),
-      );
-    }
-
-    if (nextIdentity == currentIdentity || nextKey == _lastPreloadedTargetKey) {
-      return;
-    }
-    if (nextTrack.source != MusicSource.local &&
-        !AudioSourceService().isConfigured) {
-      return;
-    }
 
     _preloadingNext = true;
     final op = ++_preloadOp;
     try {
-      await _preloadTrackSource(nextTrack, selectedQuality, op);
-      if (op == _preloadOp) {
-        _lastPreloadedTargetKey = nextKey;
+      // 1. 优先预加载下一首 (Next)
+      if (nextTrack != null) {
+        final nextIdentity = _buildTrackIdentity(nextTrack);
+        final nextKey = _buildPrefetchCacheKey(nextTrack, selectedQuality);
+        if (nextTrack.source != MusicSource.local) {
+          unawaited(
+            LyricService().prefetchLyrics(
+              track: nextTrack,
+              quality: selectedQuality.value,
+              refreshKey: _lyricRefreshKey(nextTrack),
+              adapter: _buildLyricPrefetchAdapter(
+                nextTrack,
+                qualityStr: selectedQuality.value,
+              ),
+            ),
+          );
+        }
+
+        if (nextIdentity != currentIdentity &&
+            nextKey != _lastPreloadedTargetKey &&
+            (nextTrack.source == MusicSource.local ||
+                AudioSourceService().isConfigured)) {
+          await _preloadTrackSource(nextTrack, selectedQuality, op);
+          if (op == _preloadOp) {
+            _lastPreloadedTargetKey = nextKey;
+          }
+        }
+      }
+
+      if (op != _preloadOp) return;
+
+      // 2. 双向补充预解析上一首 (Previous)
+      if (prevTrack != null) {
+        final prevIdentity = _buildTrackIdentity(prevTrack);
+        final nextIdentity = nextTrack != null
+            ? _buildTrackIdentity(nextTrack)
+            : null;
+        if (prevIdentity != currentIdentity && prevIdentity != nextIdentity) {
+          if (prevTrack.source != MusicSource.local) {
+            unawaited(
+              LyricService().prefetchLyrics(
+                track: prevTrack,
+                quality: selectedQuality.value,
+                refreshKey: _lyricRefreshKey(prevTrack),
+                adapter: _buildLyricPrefetchAdapter(
+                  prevTrack,
+                  qualityStr: selectedQuality.value,
+                ),
+              ),
+            );
+          }
+          if (prevTrack.source == MusicSource.local ||
+              AudioSourceService().isConfigured) {
+            await _preloadTrackSource(prevTrack, selectedQuality, op);
+          }
+        }
       }
     } catch (e) {
-      StructuredLogService.log('[PlaybackService] 预加载下一首失败: $e');
+      StructuredLogService.log('[PlaybackService] 预加载邻近曲目失败: $e');
     } finally {
       _preloadingNext = false;
     }
@@ -3423,9 +3445,9 @@ class PlaybackService extends ChangeNotifier {
     final song = _activeSong;
     if (track == null || song == null || song.url.isEmpty) return false;
 
-    final cachedStreamInfo = _currentCachedStreamInfo;
-    if (cachedStreamInfo != null) {
-      final replayedFromCache = await _playCachedStreamSource(cachedStreamInfo);
+    final cachedFileInfo = _currentCachedFileInfo;
+    if (cachedFileInfo != null) {
+      final replayedFromCache = await _playCachedFileSource(cachedFileInfo);
       if (replayedFromCache) {
         return true;
       }
@@ -3448,52 +3470,28 @@ class PlaybackService extends ChangeNotifier {
       // 已由 _onEngineError 处理重试/跳过策略。
       return true;
     } catch (e) {
-      StructuredLogService.log('[PlaybackService] repeatOne 复用当前音源失败，回退重新拉流: $e');
+      StructuredLogService.log(
+        '[PlaybackService] repeatOne 复用当前音源失败，回退重新拉流: $e',
+      );
       return false;
     }
   }
 
-  Future<bool> _playCachedStreamSource(
-    CyreneFileInfo cacheInfo, {
+  Future<bool> _playCachedFileSource(
+    CachedAudioFileInfo cacheInfo, {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
     TrackSwitchTransaction? transaction,
   }) async {
+    CacheService().pinCachedFile(cacheInfo);
     try {
       final track = _pendingTrack ?? currentTrack;
       final sw = Stopwatch()..start();
-      late final PlayableSource source;
-      if (Platform.isAndroid || Platform.isIOS) {
-        source = CachedCyrenePlayableSource.stream(
-          cacheInfo: cacheInfo,
-          playbackAudioSource: CyreneStreamSource(
-            filePath: cacheInfo.filePath,
-            payloadOffset: cacheInfo.payloadOffset,
-            audioLength: cacheInfo.audioLength,
-            contentType: cacheInfo.contentType,
-          ),
-        );
-      } else {
-        final proxyReady = await _ensureLocalProxyRunning('cache');
-        if (!proxyReady) {
-          _markCachePlaybackBypassed(
-            track,
-            cacheInfo.metadata.quality,
-            reason: 'proxy-unavailable',
-          );
-          StructuredLogService.log(
-            '[PlaybackService] 缓存流式播放跳过: 本地缓存代理不可用 '
-            'track=${track != null ? _buildTrackIdentity(track) : '<unknown>'} '
-            'quality=${cacheInfo.metadata.quality}',
-          );
-          return false;
-        }
-        source = CachedCyrenePlayableSource.proxy(
-          cacheInfo: cacheInfo,
-          playbackUrl: ProxyService().getCyreneStreamUrl(cacheInfo),
-        );
-      }
+      final source = LocalFilePlayableSource(
+        cacheInfo.filePath,
+        originalUrl: cacheInfo.metadata.originalUrl,
+      );
 
       await _playPlayableSourceWithSoftSwitch(
         source,
@@ -3503,11 +3501,11 @@ class PlaybackService extends ChangeNotifier {
         transaction: transaction,
       );
       StructuredLogService.log(
-        '[PlaybackService] 缓存流式播放已提交 ${sw.elapsedMilliseconds}ms '
+        '[PlaybackService] 本地缓存播放已提交 ${sw.elapsedMilliseconds}ms '
         'source=${_describePlayableSource(source)}',
       );
 
-      _currentCachedStreamInfo = cacheInfo;
+      _setCurrentCachedFileInfo(cacheInfo);
       if (track != null) {
         _cacheBypassKeys.remove(
           _cachePlaybackKey(track, cacheInfo.metadata.quality),
@@ -3516,13 +3514,16 @@ class PlaybackService extends ChangeNotifier {
       await _replaceCurrentTempFilePath(null);
       return true;
     } catch (e) {
-      StructuredLogService.log('[PlaybackService] 缓存流式播放失败，回退网络链路: $e');
+      StructuredLogService.log('[PlaybackService] 本地缓存播放失败，回退网络链路: $e');
       _markCachePlaybackBypassed(
         _pendingTrack ?? currentTrack,
         cacheInfo.metadata.quality,
-        reason: 'stream-start-failed',
+        reason: 'file-start-failed',
       );
-      _currentCachedStreamInfo = null;
+      if (_currentCachedFileInfo?.cacheKey != cacheInfo.cacheKey) {
+        CacheService().unpinCachedFile(cacheInfo);
+      }
+      _setCurrentCachedFileInfo(null);
       return false;
     }
   }
@@ -3535,10 +3536,9 @@ class PlaybackService extends ChangeNotifier {
     final cacheInfo =
         _cacheBypassKeys.contains(_cachePlaybackKey(track, qualityStr))
         ? null
-        : await CacheService().getCyreneFileInfo(
+        : await CacheService().getCachedAudioFileInfo(
             track,
             quality: qualityStr,
-            resolverFingerprint: _resolverFingerprintFor(track),
           );
 
     if (cacheInfo != null && cacheInfo.metadata.quality == qualityStr) {
@@ -3549,32 +3549,10 @@ class PlaybackService extends ChangeNotifier {
             ? cacheInfo.metadata.originalUrl
             : cacheInfo.filePath,
       );
-      final CachedCyrenePlayableSource? cachedSource;
-      if (Platform.isAndroid || Platform.isIOS) {
-        cachedSource = CachedCyrenePlayableSource.stream(
-          cacheInfo: cacheInfo,
-          playbackAudioSource: CyreneStreamSource(
-            filePath: cacheInfo.filePath,
-            payloadOffset: cacheInfo.payloadOffset,
-            audioLength: cacheInfo.audioLength,
-            contentType: cacheInfo.contentType,
-          ),
-        );
-      } else {
-        final proxyReady = await _ensureLocalProxyRunning('cache');
-        if (!proxyReady) {
-          _logPlaybackDebug(
-            '[PlaybackService] 跳过缓存预取: 本地缓存代理不可用 '
-            'track=${_buildTrackIdentity(track)} quality=$qualityStr',
-            toDeveloperPanel: true,
-          );
-          return null;
-        }
-        cachedSource = CachedCyrenePlayableSource.proxy(
-          cacheInfo: cacheInfo,
-          playbackUrl: ProxyService().getCyreneStreamUrl(cacheInfo),
-        );
-      }
+      final cachedSource = LocalFilePlayableSource(
+        cacheInfo.filePath,
+        originalUrl: cacheInfo.metadata.originalUrl,
+      );
       return _TrackSwitchPlaybackPlan(
         resolvedSong: _ResolvedTrackSwitchSong(
           songDetail: cachedSong,
@@ -3585,7 +3563,7 @@ class PlaybackService extends ChangeNotifier {
           ),
           shouldRefreshExistingCacheMetadata: false,
         ),
-        usesCachedStream: true,
+        usesCachedFile: true,
         source: cachedSource,
         retainedTempFilePath: null,
         coverRefreshUrl: cacheInfo.metadata.picUrl,
@@ -3625,7 +3603,7 @@ class PlaybackService extends ChangeNotifier {
     if (track.source == MusicSource.apple) {
       return _TrackSwitchPlaybackPlan(
         resolvedSong: resolvedSong,
-        usesCachedStream: false,
+        usesCachedFile: false,
         source: DirectHttpPlayableSource(detail.url),
         retainedTempFilePath: null,
         coverRefreshUrl: detail.pic,
@@ -3645,7 +3623,7 @@ class PlaybackService extends ChangeNotifier {
       if (Platform.isAndroid || Platform.isIOS) {
         return _TrackSwitchPlaybackPlan(
           resolvedSong: resolvedSong,
-          usesCachedStream: false,
+          usesCachedFile: false,
           source: DirectHttpPlayableSource(
             detail.url,
             requestHeaders: _buildPlaybackHeaders(track.source),
@@ -3669,7 +3647,7 @@ class PlaybackService extends ChangeNotifier {
       if (!proxyReady) return null;
       return _TrackSwitchPlaybackPlan(
         resolvedSong: resolvedSong,
-        usesCachedStream: false,
+        usesCachedFile: false,
         source: ProxyHttpPlayableSource(
           ProxyService().getProxyUrl(detail.url, platform),
           originalUrl: detail.url,
@@ -3690,7 +3668,7 @@ class PlaybackService extends ChangeNotifier {
 
     return _TrackSwitchPlaybackPlan(
       resolvedSong: resolvedSong,
-      usesCachedStream: false,
+      usesCachedFile: false,
       source: DirectHttpPlayableSource(detail.url),
       retainedTempFilePath: null,
       coverRefreshUrl: detail.pic,
@@ -3718,7 +3696,6 @@ class PlaybackService extends ChangeNotifier {
   Map<String, String> _buildPlaybackHeaders(MusicSource source) {
     return buildAudioRequestHeaders(source);
   }
-
 
   Future<bool> _ensureLocalProxyRunning(String platform) async {
     if (ProxyService().isRunning) return true;
@@ -3771,12 +3748,7 @@ class PlaybackService extends ChangeNotifier {
         'source=${track.source.name}',
         toDeveloperPanel: true,
       );
-      final cached = await CacheService().cacheSong(
-        track,
-        detail,
-        quality,
-        resolverFingerprint: _resolverFingerprintFor(track) ?? '',
-      );
+      final cached = await CacheService().cacheSong(track, detail, quality);
       if (!cached) {
         _logPlaybackDebug(
           '[PlaybackService] 后台缓存未写入: $key',
@@ -3799,7 +3771,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> _cleanupCurrentTempFile() async {
-    _currentCachedStreamInfo = null;
+    _setCurrentCachedFileInfo(null);
     if (_currentTempFilePath != null) {
       try {
         final f = File(_currentTempFilePath!);
@@ -3826,7 +3798,9 @@ class PlaybackService extends ChangeNotifier {
       queueLength: _queue.length,
     );
     if (decision.reachedFailureLimit) {
-      StructuredLogService.log('[PlaybackService] 连续 $_consecutiveErrors 首播放失败，停止自动跳过');
+      StructuredLogService.log(
+        '[PlaybackService] 连续 $_consecutiveErrors 首播放失败，停止自动跳过',
+      );
       return;
     }
     if (!decision.shouldAutoSkip) return;
@@ -4024,7 +3998,7 @@ class PlaybackService extends ChangeNotifier {
     _duration = Duration.zero;
     _bufferedPosition = Duration.zero;
     _errorMessage = null;
-    _currentCachedStreamInfo = null;
+    _setCurrentCachedFileInfo(null);
     _cacheBypassKeys.clear();
     _trackResolver.clear();
     LyricService().clearAll(notify: false);
@@ -4061,7 +4035,7 @@ class PlaybackService extends ChangeNotifier {
       _position = Duration.zero;
       _duration = Duration.zero;
       _bufferedPosition = Duration.zero;
-      _currentCachedStreamInfo = null;
+      _setCurrentCachedFileInfo(null);
       _cacheBypassKeys.clear();
       _trackResolver.clear();
       LyricService().clearAll(notify: false);
@@ -4079,7 +4053,7 @@ class PlaybackService extends ChangeNotifier {
     _resetPreloadState();
     _unbindPreloadDependencyListeners();
     _stabilityTracker.dispose();
-    AudioSourceService().removeListener(_syncActiveSourceHealth);
+    AudioSourceService().removeListener(_onAudioSourceConfigChanged);
     for (final sub in _engineSubs) {
       sub.cancel();
     }

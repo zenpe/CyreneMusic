@@ -28,6 +28,7 @@ class LyricCacheEntry {
   final bool hasContent;
   final String completeness;
   final LyricCacheState state;
+  final bool authoritativeEmpty;
   final DateTime fetchedAt;
   final DateTime? expiresAt;
   final int failureCount;
@@ -49,6 +50,7 @@ class LyricCacheEntry {
     required this.hasContent,
     required this.completeness,
     required this.state,
+    this.authoritativeEmpty = false,
     required this.fetchedAt,
     this.expiresAt,
     this.failureCount = 0,
@@ -85,6 +87,7 @@ class LyricCacheEntry {
       hasContent: json['hasContent'] as bool? ?? false,
       completeness: json['completeness'] as String? ?? 'empty',
       state: _stateFromName(json['state'] as String?),
+      authoritativeEmpty: json['authoritativeEmpty'] as bool? ?? false,
       fetchedAt:
           DateTime.tryParse(json['fetchedAt'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
@@ -115,6 +118,7 @@ class LyricCacheEntry {
       'hasContent': hasContent,
       'completeness': completeness,
       'state': state.name,
+      'authoritativeEmpty': authoritativeEmpty,
       'fetchedAt': fetchedAt.toIso8601String(),
       'expiresAt': expiresAt?.toIso8601String(),
       'failureCount': failureCount,

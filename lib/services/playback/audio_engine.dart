@@ -16,6 +16,22 @@ enum EngineState { idle, playing, paused }
 
 const _engineStartupTimeout = Duration(seconds: 8);
 
+class EngineStartupTiming {
+  final int ensurePlayerMs;
+  final int muteMs;
+  final int stopMs;
+  final int setSourceMs;
+  final int playToReadyMs;
+
+  const EngineStartupTiming({
+    this.ensurePlayerMs = 0,
+    this.muteMs = 0,
+    this.stopMs = 0,
+    this.setSourceMs = 0,
+    this.playToReadyMs = 0,
+  });
+}
+
 /// 引擎错误类型
 enum EngineErrorType {
   networkTimeout,
@@ -146,6 +162,7 @@ abstract class AudioEngine {
   Duration get bufferedPosition;
   bool get isPlaying;
   double get playbackSpeed;
+  EngineStartupTiming? get lastStartupTiming;
 }
 
 /// 根据平台选择引擎
@@ -160,6 +177,17 @@ AudioEngine createEngine() {
 // JustAudio 实现（Android / iOS）
 // ─────────────────────────────────────────────────────────
 class JustAudioEngine implements AudioEngine, EqualizerCapable {
+  static const ja.AudioLoadConfiguration _audioLoadConfiguration =
+      ja.AudioLoadConfiguration(
+        androidLoadControl: ja.AndroidLoadControl(
+          minBufferDuration: Duration(milliseconds: 1500),
+          maxBufferDuration: Duration(seconds: 30),
+          bufferForPlaybackDuration: Duration(milliseconds: 500),
+          bufferForPlaybackAfterRebufferDuration: Duration(milliseconds: 1200),
+          prioritizeTimeOverSizeThresholds: true,
+        ),
+      );
+
   JustAudioEngine() {
     EqualizerService().setBackend(this);
   }
@@ -168,6 +196,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   double _currentVolume = 1.0;
   double _playbackSpeed = 1.0;
   bool _hasSource = false;
+  EngineStartupTiming? _lastStartupTiming;
   int? _androidAudioSessionId;
   bool _androidEqualizerDirty = true;
   bool _needsDeferredVolumeRestore = false;
@@ -223,6 +252,9 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   double get playbackSpeed => _playbackSpeed;
 
   @override
+  EngineStartupTiming? get lastStartupTiming => _lastStartupTiming;
+
+  @override
   Stream<Duration> get positionStream => _positionController.stream;
 
   @override
@@ -247,7 +279,9 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     // 移动端不使用 MediaKit 均衡器实现，避免 native EQ 路径影响播放稳定性。
     EqualizerService().setBackend(this);
 
-    final player = ja.AudioPlayer();
+    final player = ja.AudioPlayer(
+      audioLoadConfiguration: _audioLoadConfiguration,
+    );
     _player = player;
 
     final savedVolume = PersistentStorageService().getDouble('player_volume');
@@ -521,7 +555,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
     if (!_isCurrentPlayTicket(player, playTicket)) return;
     _needsDeferredVolumeRestore = false;
-    await _fadePlayerVolume(player, _currentVolume, playTicket: playTicket);
+    await player.setVolume(_currentVolume);
   }
 
   Future<void> _waitForAndroidAudioSessionReady({
@@ -727,23 +761,33 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     Duration? initialPosition,
     bool preload = true,
   }) async {
+    _lastStartupTiming = null;
+    var ensurePlayerMs = 0;
+    var muteMs = 0;
+    var setSourceMs = 0;
+    var playToReadyMs = 0;
     // 必须在第一个 await 之前打开 arm 窗口，避免 ensurePlayer/setVolume
     // 期间旧源的迟到事件被错误地送入新会话。
     _epochGate.beginArm(generation);
     _dispatchEpoch = generation;
+    final ensurePlayerSw = Stopwatch()..start();
     await _ensurePlayer();
+    ensurePlayerMs = ensurePlayerSw.elapsedMilliseconds;
     final player = _player!;
+    final muteSw = Stopwatch()..start();
     await player.setVolume(0);
+    muteMs = muteSw.elapsedMilliseconds;
 
-    // 打开切换窗口：从此刻起，原生流的错误/状态/完成/进度事件全部
-    // 归属旧纪元并被抑制；同步异常按新代次上报。
+    // setAudioSource 会在同一个 AudioPlayer 内替换旧源。显式 stop 会让
+    // ExoPlayer 额外经历一次 idle/decoder 重建，缓存切歌尤其明显。
+    // 仍然先打开 stop 窗口，使替换期间旧源事件继续由纪元闸门抑制。
     if (_isPlaying || _hasSource) {
       _epochGate.beginStop();
-      await player.stop();
     }
     _hasSource = false;
 
     try {
+      final setSourceSw = Stopwatch()..start();
       await player
           .setAudioSource(
             source,
@@ -751,6 +795,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
             preload: preload,
           )
           .timeout(const Duration(seconds: 15));
+      setSourceMs = setSourceSw.elapsedMilliseconds;
       _hasSource = true;
     } on TimeoutException catch (e) {
       final mapped = _mapJustAudioError(
@@ -784,9 +829,17 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     _needsDeferredVolumeRestore = !autoPlay;
     await player.setSpeed(_playbackSpeed);
     if (autoPlay) {
+      final playReadySw = Stopwatch()..start();
       _fireAndForgetPlay();
       await _waitForStartup(player);
+      playToReadyMs = playReadySw.elapsedMilliseconds;
     }
+    _lastStartupTiming = EngineStartupTiming(
+      ensurePlayerMs: ensurePlayerMs,
+      muteMs: muteMs,
+      setSourceMs: setSourceMs,
+      playToReadyMs: playToReadyMs,
+    );
   }
 
   Future<void> _waitForStartup(ja.AudioPlayer player) async {
@@ -796,7 +849,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     // current player snapshot so a fast source is not reported as a timeout.
     var playing = player.playing;
     var progressed =
-        player.bufferedPosition > Duration.zero || player.position > Duration.zero;
+        player.bufferedPosition > Duration.zero ||
+        player.position > Duration.zero;
     late final StreamSubscription<ja.PlayerState> stateSub;
     late final StreamSubscription<Duration> bufferSub;
     late final StreamSubscription<Duration> positionSub;
@@ -971,6 +1025,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   double _currentVolume = 70; // MediaKit 音量 0-100
   double _playbackSpeed = 1.0;
   bool _hasMedia = false;
+  EngineStartupTiming? _lastStartupTiming;
 
   /// 纪元闸门：与 JustAudioEngine 相同的源头捕获模式。
   final EngineEpochGate _epochGate = EngineEpochGate();
@@ -1010,6 +1065,9 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
 
   @override
   double get playbackSpeed => _playbackSpeed;
+
+  @override
+  EngineStartupTiming? get lastStartupTiming => _lastStartupTiming;
 
   @override
   Stream<Duration> get positionStream => _positionController.stream;
@@ -1224,19 +1282,33 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     Duration? initialPosition,
     bool preload = true,
   }) async {
+    _lastStartupTiming = null;
+    var ensurePlayerMs = 0;
+    var muteMs = 0;
+    var stopMs = 0;
+    var setSourceMs = 0;
+    var playToReadyMs = 0;
     // 源头捕获必须早于初始化/打开媒体的异步边界。
     _epochGate.beginArm(generation);
     _dispatchEpoch = generation;
+    final ensurePlayerSw = Stopwatch()..start();
     await _ensurePlayer();
+    ensurePlayerMs = ensurePlayerSw.elapsedMilliseconds;
     final player = _player!;
 
     if (_isPlaying || _hasMedia) {
       _epochGate.beginStop();
+      final muteSw = Stopwatch()..start();
       await player.setVolume(0);
+      muteMs = muteSw.elapsedMilliseconds;
+      final stopSw = Stopwatch()..start();
       await player.stop();
+      stopMs = stopSw.elapsedMilliseconds;
     }
     try {
+      final setSourceSw = Stopwatch()..start();
       await player.open(mk.Media(url, httpHeaders: headers), play: false);
+      setSourceMs = setSourceSw.elapsedMilliseconds;
       _hasMedia = true;
     } catch (e) {
       final mapped = EngineError(
@@ -1274,9 +1346,18 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     await player.setVolume(_currentVolume);
     await player.setRate(_playbackSpeed);
     if (autoPlay) {
+      final playReadySw = Stopwatch()..start();
       await player.play();
       await _waitForStartup(player);
+      playToReadyMs = playReadySw.elapsedMilliseconds;
     }
+    _lastStartupTiming = EngineStartupTiming(
+      ensurePlayerMs: ensurePlayerMs,
+      muteMs: muteMs,
+      stopMs: stopMs,
+      setSourceMs: setSourceMs,
+      playToReadyMs: playToReadyMs,
+    );
   }
 
   Future<void> _waitForStartup(mk.Player player) async {
@@ -1285,7 +1366,8 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     // cover the same subscribe-after-play race as just_audio.
     var playing = player.state.playing;
     var progressed =
-        player.state.buffer > Duration.zero || player.state.position > Duration.zero;
+        player.state.buffer > Duration.zero ||
+        player.state.position > Duration.zero;
     late final StreamSubscription<bool> playingSub;
     late final StreamSubscription<Duration> bufferSub;
     late final StreamSubscription<Duration> positionSub;

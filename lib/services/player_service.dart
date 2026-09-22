@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 export 'lyric/lyric_snapshot.dart';
 export 'playback/playback_problem.dart';
 export 'playback/source_health_tracker.dart';
+export 'playback/playback_performance_metrics.dart';
 import '../models/song_detail.dart';
 import '../models/track.dart';
 import 'equalizer_service.dart';
 import 'lyric/lyric_snapshot.dart';
 import 'lyric/lyric_service.dart';
 import 'playback/playback_service.dart';
+import 'playback/playback_performance_metrics.dart';
 import 'playback/playback_problem.dart';
 import 'playback/source_health_tracker.dart';
 import 'playlist_queue_service.dart';
@@ -94,6 +96,7 @@ class PlayerService extends ChangeNotifier {
   bool get isPlaying => _pb.isPlaying;
   bool get isPaused => _pb.isPaused;
   bool get isLoading => _pb.isLoading;
+  bool get isTrackSwitchPending => _pb.isTrackSwitchPending;
   double get volume => _pb.volume;
   double get playbackSpeed => _pb.playbackSpeed;
   bool get isAudioSourceNotConfigured => _pb.isAudioSourceNotConfigured;
@@ -116,6 +119,9 @@ class PlayerService extends ChangeNotifier {
   ValueNotifier<SourceHealthSnapshot?> get sourceHealthNotifier =>
       _pb.sourceHealthNotifier;
   SourceHealthSnapshot? get sourceHealth => _pb.sourceHealth;
+  PlaybackPerformanceSnapshot get performanceSnapshot =>
+      _pb.performanceSnapshot;
+  void resetPerformanceMetrics() => _pb.resetPerformanceMetrics();
 
   // 均衡器
   static List<int> get kEqualizerFrequencies =>

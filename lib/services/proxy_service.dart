@@ -5,8 +5,6 @@ import 'dart:convert';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as path;
-import 'cache_service.dart';
 import 'developer_mode_service.dart';
 
 /// 本地 HTTP 代理服务
@@ -45,8 +43,12 @@ class ProxyService {
           );
           _port = port;
           _isRunning = true;
-          StructuredLogService.log('✅ [ProxyService] 代理服务器已启动: http://localhost:$_port');
-          DeveloperModeService().addLog('✅ [ProxyService] 代理服务器已启动: http://localhost:$_port');
+          StructuredLogService.log(
+            '✅ [ProxyService] 代理服务器已启动: http://localhost:$_port',
+          );
+          DeveloperModeService().addLog(
+            '✅ [ProxyService] 代理服务器已启动: http://localhost:$_port',
+          );
           return true;
         } catch (e) {
           StructuredLogService.log('⚠️ [ProxyService] 端口 $port 启动失败: $e');
@@ -62,7 +64,9 @@ class ProxyService {
       StructuredLogService.log('❌ [ProxyService] 启动代理服务器失败: $e');
       StructuredLogService.log('Stack trace: $stackTrace');
       DeveloperModeService().addLog('❌ [ProxyService] 启动代理服务器失败: $e');
-      DeveloperModeService().addLog('📜 [ProxyService] 堆栈: ${stackTrace.toString().split('\n').take(5).join(' | ')}');
+      DeveloperModeService().addLog(
+        '📜 [ProxyService] 堆栈: ${stackTrace.toString().split('\n').take(5).join(' | ')}',
+      );
       _isRunning = false;
       return false;
     }
@@ -87,10 +91,6 @@ class ProxyService {
         return shelf.Response(405, body: 'Method Not Allowed');
       }
 
-      if (request.url.path == 'cyrene') {
-        return _handleCyreneRequest(request, method);
-      }
-
       // 获取原始 URL
       var targetUrl = request.url.queryParameters['url'];
       if (targetUrl == null || targetUrl.isEmpty) {
@@ -108,7 +108,9 @@ class ProxyService {
           ? ' range=$rangeHeader'
           : '';
 
-      StructuredLogService.log('🌐 [ProxyService] 代理请求: $method $targetUrl$rangeText');
+      StructuredLogService.log(
+        '🌐 [ProxyService] 代理请求: $method $targetUrl$rangeText',
+      );
       DeveloperModeService().addLog(
         '🌐 [ProxyService] 代理请求: $method ${targetUrl.length > 100 ? '${targetUrl.substring(0, 100)}...' : targetUrl}$rangeText',
       );
@@ -122,7 +124,8 @@ class ProxyService {
             lowerKey != 'connection' &&
             lowerKey != 'user-agent' &&
             lowerKey != 'referer' &&
-            lowerKey != 'accept-encoding') { // 移除 accept-encoding，防止上游返回压缩数据
+            lowerKey != 'accept-encoding') {
+          // 移除 accept-encoding，防止上游返回压缩数据
           targetHeaders[key] = value;
         }
       });
@@ -133,29 +136,34 @@ class ProxyService {
       if (platform == 'qq') {
         // QQ 音乐对 Headers 检查非常严格，尤其是 Origin 和 Referer
         // 模拟洛雪音乐桌面端使用的 UA，包含 lx-music-desktop 标识
-        targetHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 lx-music-desktop/2.12.0';
+        targetHeaders['User-Agent'] =
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 lx-music-desktop/2.12.0';
         targetHeaders['Referer'] = 'https://y.qq.com';
         targetHeaders['Origin'] = 'https://y.qq.com';
         targetHeaders['Accept'] = 'audio/*,*/*;q=0.9';
         targetHeaders['Accept-Language'] = 'zh-CN,zh;q=0.9';
         // 移除 Sec-Fetch-* 等现代浏览器安全头，回归更传统的伪装
       } else if (platform == 'kugou') {
-        targetHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
+        targetHeaders['User-Agent'] =
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
         targetHeaders['Referer'] = 'https://www.kugou.com';
         targetHeaders['Accept'] = '*/*';
       } else if (platform == 'apple') {
-        targetHeaders['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15';
+        targetHeaders['User-Agent'] =
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15';
         targetHeaders['Referer'] = 'https://music.apple.com';
         targetHeaders['Origin'] = 'https://music.apple.com';
         targetHeaders['Accept'] = 'audio/*,*/*;q=0.9';
-        targetHeaders['Accept-Language'] = request.headers['accept-language'] ??
+        targetHeaders['Accept-Language'] =
+            request.headers['accept-language'] ??
             'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6';
         targetHeaders['Connection'] = 'keep-alive';
         targetHeaders['Cache-Control'] = 'no-cache';
         targetHeaders['Pragma'] = 'no-cache';
       } else {
         // 默认使用一个通用的 PC User-Agent
-        targetHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
+        targetHeaders['User-Agent'] =
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
         targetHeaders['Accept'] = '*/*';
       }
 
@@ -173,7 +181,9 @@ class ProxyService {
       }
 
       final isMaybeM3u8 = targetUri.path.toLowerCase().endsWith('.m3u8');
-      StructuredLogService.log('🔍 [ProxyService] isMaybeM3u8: $isMaybeM3u8, path: ${targetUri.path}');
+      StructuredLogService.log(
+        '🔍 [ProxyService] isMaybeM3u8: $isMaybeM3u8, path: ${targetUri.path}',
+      );
 
       // 发起请求（使用流式传输）
       http.StreamedResponse streamedResponse;
@@ -198,9 +208,12 @@ class ProxyService {
       final upstreamContentType =
           (streamedResponse.headers['content-type'] ?? '').toLowerCase();
 
-      StructuredLogService.log('🔍 [ProxyService] Content-Type: $upstreamContentType');
+      StructuredLogService.log(
+        '🔍 [ProxyService] Content-Type: $upstreamContentType',
+      );
 
-      final isM3u8 = isMaybeM3u8 ||
+      final isM3u8 =
+          isMaybeM3u8 ||
           upstreamContentType.contains('mpegurl') ||
           upstreamContentType.contains('application/vnd.apple.mpegurl') ||
           upstreamContentType.contains('application/x-mpegurl');
@@ -231,68 +244,71 @@ class ProxyService {
         final playlistText = utf8.decode(bodyBytes);
         final lines = playlistText.split(RegExp(r'\r?\n'));
 
-        final rewritten = lines.map((line) {
-          final trimmed = line.trim();
-          if (trimmed.isEmpty) return line;
-          if (trimmed.startsWith('#')) {
-            final uriAttrRegex = RegExp(r'URI="([^"]+)"');
-            if (!uriAttrRegex.hasMatch(line)) return line;
+        final rewritten = lines
+            .map((line) {
+              final trimmed = line.trim();
+              if (trimmed.isEmpty) return line;
+              if (trimmed.startsWith('#')) {
+                final uriAttrRegex = RegExp(r'URI="([^"]+)"');
+                if (!uriAttrRegex.hasMatch(line)) return line;
 
-            return line.replaceAllMapped(uriAttrRegex, (m) {
-              final raw = m.group(1);
-              if (raw == null || raw.isEmpty) return m.group(0) ?? '';
-              if (raw.startsWith('skd://')) return m.group(0) ?? '';
+                return line.replaceAllMapped(uriAttrRegex, (m) {
+                  final raw = m.group(1);
+                  if (raw == null || raw.isEmpty) return m.group(0) ?? '';
+                  if (raw.startsWith('skd://')) return m.group(0) ?? '';
+
+                  Uri resolved;
+                  try {
+                    if (raw.startsWith('http://') ||
+                        raw.startsWith('https://')) {
+                      resolved = Uri.parse(raw);
+                    } else if (raw.startsWith('//')) {
+                      resolved = Uri.parse('${targetUri.scheme}:$raw');
+                    } else {
+                      resolved = targetUri.resolve(raw);
+                    }
+                  } catch (_) {
+                    return m.group(0) ?? '';
+                  }
+
+                  final proxied = getProxyUrl(resolved.toString(), platform);
+                  return 'URI="$proxied"';
+                });
+              }
 
               Uri resolved;
               try {
-                if (raw.startsWith('http://') || raw.startsWith('https://')) {
-                  resolved = Uri.parse(raw);
-                } else if (raw.startsWith('//')) {
-                  resolved = Uri.parse('${targetUri.scheme}:$raw');
+                if (trimmed.startsWith('http://') ||
+                    trimmed.startsWith('https://')) {
+                  resolved = Uri.parse(trimmed);
+                } else if (trimmed.startsWith('//')) {
+                  resolved = Uri.parse('${targetUri.scheme}:$trimmed');
                 } else {
-                  resolved = targetUri.resolve(raw);
+                  resolved = targetUri.resolve(trimmed);
                 }
               } catch (_) {
-                return m.group(0) ?? '';
+                return line;
               }
 
-              final proxied = getProxyUrl(resolved.toString(), platform);
-              return 'URI="$proxied"';
-            });
-          }
-
-          Uri resolved;
-          try {
-            if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-              resolved = Uri.parse(trimmed);
-            } else if (trimmed.startsWith('//')) {
-              resolved = Uri.parse('${targetUri.scheme}:$trimmed');
-            } else {
-              resolved = targetUri.resolve(trimmed);
-            }
-          } catch (_) {
-            return line;
-          }
-
-          return getProxyUrl(resolved.toString(), platform);
-        }).join('\n');
+              return getProxyUrl(resolved.toString(), platform);
+            })
+            .join('\n');
 
         final responseHeaders = <String, String>{
           'Content-Type':
-              streamedResponse.headers['content-type'] ?? 'application/vnd.apple.mpegurl',
+              streamedResponse.headers['content-type'] ??
+              'application/vnd.apple.mpegurl',
           'Cache-Control': 'no-cache',
         };
 
-        return shelf.Response.ok(
-          rewritten,
-          headers: responseHeaders,
-        );
+        return shelf.Response.ok(rewritten, headers: responseHeaders);
       }
 
       if (upstreamStatus == 200 || upstreamStatus == 206) {
         // 设置响应头
         final responseHeaders = <String, String>{
-          'Content-Type': streamedResponse.headers['content-type'] ?? 'audio/mpeg',
+          'Content-Type':
+              streamedResponse.headers['content-type'] ?? 'audio/mpeg',
           'Accept-Ranges': 'bytes',
           'Cache-Control': 'no-cache',
         };
@@ -301,7 +317,8 @@ class ProxyService {
           responseHeaders['Content-Length'] =
               streamedResponse.headers['content-length']!;
         }
-        if (upstreamStatus == 206 && streamedResponse.headers['content-range'] != null) {
+        if (upstreamStatus == 206 &&
+            streamedResponse.headers['content-range'] != null) {
           responseHeaders['Content-Range'] =
               streamedResponse.headers['content-range']!;
         }
@@ -341,186 +358,23 @@ class ProxyService {
         );
       }
 
-        StructuredLogService.log('❌ [ProxyService] 上游服务器返回: $upstreamStatus');
-        DeveloperModeService().addLog('❌ [ProxyService] 上游服务器返回: $upstreamStatus');
-        client.close();
-        return shelf.Response(
-          upstreamStatus,
-          body: 'Upstream server error: $upstreamStatus',
-        );
+      StructuredLogService.log('❌ [ProxyService] 上游服务器返回: $upstreamStatus');
+      DeveloperModeService().addLog(
+        '❌ [ProxyService] 上游服务器返回: $upstreamStatus',
+      );
+      client.close();
+      return shelf.Response(
+        upstreamStatus,
+        body: 'Upstream server error: $upstreamStatus',
+      );
     } catch (e, stackTrace) {
       StructuredLogService.log('❌ [ProxyService] 处理请求失败: $e');
       StructuredLogService.log('Stack trace: $stackTrace');
       DeveloperModeService().addLog('❌ [ProxyService] 处理请求失败: $e');
-      DeveloperModeService().addLog('📜 [ProxyService] 堆栈: ${stackTrace.toString().split('\n').take(3).join(' | ')}');
-      return shelf.Response.internalServerError(
-        body: 'Proxy error: $e',
-      );
-    }
-  }
-
-  Future<shelf.Response> _handleCyreneRequest(
-    shelf.Request request,
-    String method,
-  ) async {
-    final filePath = request.url.queryParameters['path'];
-    final payloadOffset = int.tryParse(
-      request.url.queryParameters['payloadOffset'] ?? '',
-    );
-    final audioLength = int.tryParse(
-      request.url.queryParameters['audioLength'] ?? '',
-    );
-    final contentType =
-        request.url.queryParameters['contentType'] ?? 'audio/mpeg';
-
-    if (filePath == null ||
-        filePath.isEmpty ||
-        payloadOffset == null ||
-        audioLength == null ||
-        payloadOffset < 0 ||
-        audioLength < 0) {
-      return shelf.Response.badRequest(
-        body: 'Missing or invalid cyrene stream parameters',
-      );
-    }
-
-    if (!filePath.toLowerCase().endsWith('.cyrene')) {
-      return shelf.Response.badRequest(body: 'Invalid cyrene cache file');
-    }
-
-    final cacheDir = CacheService().currentCacheDir;
-    if (cacheDir == null || cacheDir.isEmpty) {
-      return shelf.Response.internalServerError(
-        body: 'Cache directory is unavailable',
-      );
-    }
-
-    final normalizedCacheDir = path.canonicalize(path.absolute(cacheDir));
-    final normalizedFilePath = path.canonicalize(path.absolute(filePath));
-    if (!path.isWithin(normalizedCacheDir, normalizedFilePath)) {
       DeveloperModeService().addLog(
-        '🚫 [ProxyService] 拒绝越权缓存访问: $normalizedFilePath',
+        '📜 [ProxyService] 堆栈: ${stackTrace.toString().split('\n').take(3).join(' | ')}',
       );
-      return shelf.Response.forbidden('Invalid cyrene cache path');
-    }
-
-    final file = File(normalizedFilePath);
-    if (!await file.exists()) {
-      return shelf.Response.notFound('Cyrene cache file not found');
-    }
-
-    final rangeHeader = request.headers['range'];
-    final range = _parseRange(rangeHeader, audioLength);
-    if (rangeHeader != null && range == null) {
-      return shelf.Response(
-        416,
-        headers: <String, String>{
-          'Content-Type': contentType,
-          'Accept-Ranges': 'bytes',
-          'Cache-Control': 'no-cache',
-          'Content-Range': 'bytes */$audioLength',
-          'Content-Length': '0',
-        },
-      );
-    }
-    final start = range?.start ?? 0;
-    final endExclusive = range?.endExclusive ?? audioLength;
-    final contentLength = endExclusive - start;
-    final statusCode = range != null ? 206 : 200;
-
-    final headers = <String, String>{
-      'Content-Type': contentType,
-      'Accept-Ranges': 'bytes',
-      'Cache-Control': 'no-cache',
-      'Content-Length': contentLength.toString(),
-    };
-    if (range != null) {
-      headers['Content-Range'] =
-          'bytes $start-${endExclusive - 1}/$audioLength';
-    }
-
-    if (method == 'HEAD') {
-      return shelf.Response(statusCode, headers: headers);
-    }
-
-    final stream = _openCyreneDecryptedStream(
-      file: file,
-      fileStart: payloadOffset + start,
-      fileEnd: payloadOffset + endExclusive,
-      audioOffsetStart: start,
-    );
-    return shelf.Response(
-      statusCode,
-      body: stream,
-      headers: headers,
-    );
-  }
-
-  _ByteRange? _parseRange(String? header, int sourceLength) {
-    if (header == null || header.isEmpty) return null;
-    final match = RegExp(r'^bytes=(\d*)-(\d*)$').firstMatch(header.trim());
-    if (match == null) return null;
-
-    final startGroup = match.group(1);
-    final endGroup = match.group(2);
-    if ((startGroup == null || startGroup.isEmpty) &&
-        (endGroup == null || endGroup.isEmpty)) {
-      return null;
-    }
-
-    int start;
-    int endInclusive;
-
-    if (startGroup != null && startGroup.isNotEmpty) {
-      start = int.tryParse(startGroup) ?? 0;
-      if (start < 0) start = 0;
-      if (start >= sourceLength) {
-        return null;
-      }
-
-      if (endGroup != null && endGroup.isNotEmpty) {
-        endInclusive = int.tryParse(endGroup) ?? (sourceLength - 1);
-      } else {
-        endInclusive = sourceLength - 1;
-      }
-    } else {
-      final suffixLength = int.tryParse(endGroup ?? '') ?? 0;
-      if (suffixLength <= 0) return null;
-      if (suffixLength >= sourceLength) {
-        start = 0;
-      } else {
-        start = sourceLength - suffixLength;
-      }
-      endInclusive = sourceLength - 1;
-    }
-
-    if (endInclusive < start) return null;
-    if (endInclusive >= sourceLength) {
-      endInclusive = sourceLength - 1;
-    }
-
-    final endExclusive = endInclusive + 1;
-    return _ByteRange(start: start, endExclusive: endExclusive);
-  }
-
-  Stream<List<int>> _openCyreneDecryptedStream({
-    required File file,
-    required int fileStart,
-    required int fileEnd,
-    required int audioOffsetStart,
-  }) async* {
-    if (fileEnd <= fileStart) {
-      return;
-    }
-
-    var audioOffset = audioOffsetStart;
-    await for (final chunk in file.openRead(fileStart, fileEnd)) {
-      final decrypted = CacheService.decryptAudioBytes(
-        chunk,
-        startOffset: audioOffset,
-      );
-      audioOffset += chunk.length;
-      yield decrypted;
+      return shelf.Response.internalServerError(body: 'Proxy error: $e');
     }
   }
 
@@ -533,30 +387,14 @@ class ProxyService {
     }
 
     final encodedUrl = Uri.encodeComponent(originalUrl);
-    final proxyUrl = 'http://localhost:$_port/proxy?url=$encodedUrl&platform=$platform';
+    final proxyUrl =
+        'http://localhost:$_port/proxy?url=$encodedUrl&platform=$platform';
 
     StructuredLogService.log('🔗 [ProxyService] 生成代理 URL: $proxyUrl');
-    DeveloperModeService().addLog('🔗 [ProxyService] 生成代理 URL (端口: $_port, 平台: $platform)');
+    DeveloperModeService().addLog(
+      '🔗 [ProxyService] 生成代理 URL (端口: $_port, 平台: $platform)',
+    );
     return proxyUrl;
-  }
-
-  String getCyreneStreamUrl(CyreneFileInfo fileInfo) {
-    if (!_isRunning) {
-      throw StateError('ProxyService is not running');
-    }
-
-    return Uri(
-      scheme: 'http',
-      host: 'localhost',
-      port: _port,
-      path: '/cyrene',
-      queryParameters: {
-        'path': fileInfo.filePath,
-        'payloadOffset': fileInfo.payloadOffset.toString(),
-        'audioLength': fileInfo.audioLength.toString(),
-        'contentType': fileInfo.contentType,
-      },
-    ).toString();
   }
 
   /// 清理资源
@@ -564,14 +402,3 @@ class ProxyService {
     await stop();
   }
 }
-
-class _ByteRange {
-  final int start;
-  final int endExclusive;
-
-  const _ByteRange({
-    required this.start,
-    required this.endExclusive,
-  });
-}
-

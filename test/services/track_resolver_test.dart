@@ -143,6 +143,412 @@ void main() {
     expect((await first).lxFailure?.kind, LxRuntimeFailureKind.scriptRejected);
     expect((await second).lxFailure?.kind, LxRuntimeFailureKind.timeout);
   });
+
+  test(
+    'caches resolved playable URL and serves subsequent requests from L1 pool',
+    () async {
+      var calls = 0;
+      final resolver = TrackResolver(
+        fetcher:
+            ({
+              required songId,
+              required quality,
+              required source,
+              required title,
+              required artist,
+              required fetchLyrics,
+              onLxFailure,
+            }) async {
+              calls++;
+              return _detail(songId as int);
+            },
+      );
+
+      final first = await resolver.resolve(
+        songId: 101,
+        quality: AudioQuality.exhigh,
+        source: MusicSource.netease,
+        title: 'Track 101',
+        artist: 'Artist',
+        timeout: const Duration(seconds: 1),
+      );
+
+      expect(calls, 1);
+      expect(first.isPlayable, isTrue);
+      expect(first.isL1CacheHit, isFalse);
+
+      // Second call should hit L1 memory pool without calling fetcher
+      final second = await resolver.resolve(
+        songId: 101,
+        quality: AudioQuality.exhigh,
+        source: MusicSource.netease,
+        title: 'Track 101',
+        artist: 'Artist',
+        timeout: const Duration(seconds: 1),
+      );
+
+      expect(calls, 1);
+      expect(second.isPlayable, isTrue);
+      expect(second.isL1CacheHit, isTrue);
+      expect(second.detail?.url, first.detail?.url);
+
+      // skipMemoryCache bypasses L1 cache
+      final third = await resolver.resolve(
+        songId: 101,
+        quality: AudioQuality.exhigh,
+        source: MusicSource.netease,
+        title: 'Track 101',
+        artist: 'Artist',
+        timeout: const Duration(seconds: 1),
+        skipMemoryCache: true,
+      );
+
+      expect(calls, 2);
+      expect(third.isL1CacheHit, isFalse);
+    },
+  );
+
+  test('invalidates cached tracks correctly', () async {
+    var calls = 0;
+    final resolver = TrackResolver(
+      fetcher:
+          ({
+            required songId,
+            required quality,
+            required source,
+            required title,
+            required artist,
+            required fetchLyrics,
+            onLxFailure,
+          }) async {
+            calls++;
+            return _detail(songId as int);
+          },
+    );
+
+    await resolver.resolve(
+      songId: 202,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: 'Track 202',
+      artist: 'Artist',
+      timeout: const Duration(seconds: 1),
+    );
+    expect(calls, 1);
+
+    // Invalidate the song
+    resolver.invalidateSong(202, MusicSource.netease);
+
+    // Next resolve should re-fetch
+    await resolver.resolve(
+      songId: 202,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: 'Track 202',
+      artist: 'Artist',
+      timeout: const Duration(seconds: 1),
+    );
+    expect(calls, 2);
+  });
+
+  test('isolates cache by resolver fingerprint', () async {
+    var calls = 0;
+    final resolver = TrackResolver(
+      fetcher:
+          ({
+            required songId,
+            required quality,
+            required source,
+            required title,
+            required artist,
+            required fetchLyrics,
+            onLxFailure,
+          }) async {
+            calls++;
+            return _detail(songId as int);
+          },
+    );
+
+    await resolver.resolve(
+      songId: 303,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: 'Track 303',
+      artist: 'Artist',
+      timeout: const Duration(seconds: 1),
+      resolverFingerprint: 'script_v1',
+    );
+    expect(calls, 1);
+
+    // Same song with different script fingerprint should not hit cache
+    await resolver.resolve(
+      songId: 303,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: 'Track 303',
+      artist: 'Artist',
+      timeout: const Duration(seconds: 1),
+      resolverFingerprint: 'script_v2',
+    );
+    expect(calls, 2);
+  });
+
+  test('LRU eviction respects maxResolvedCacheEntries limit', () async {
+    var calls = 0;
+    final resolver = TrackResolver(
+      maxResolvedCacheEntries: 2,
+      fetcher:
+          ({
+            required songId,
+            required quality,
+            required source,
+            required title,
+            required artist,
+            required fetchLyrics,
+            onLxFailure,
+          }) async {
+            calls++;
+            return _detail(songId as int);
+          },
+    );
+
+    // Cache song 1
+    await resolver.resolve(
+      songId: 1,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: '1',
+      artist: 'A',
+      timeout: const Duration(seconds: 1),
+    );
+    // Cache song 2
+    await resolver.resolve(
+      songId: 2,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: '2',
+      artist: 'A',
+      timeout: const Duration(seconds: 1),
+    );
+    expect(calls, 2);
+    expect(resolver.resolvedCacheSize, 2);
+
+    // Cache song 3 -> song 1 should be evicted
+    await resolver.resolve(
+      songId: 3,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: '3',
+      artist: 'A',
+      timeout: const Duration(seconds: 1),
+    );
+    expect(calls, 3);
+    expect(resolver.resolvedCacheSize, 2);
+
+    // Song 2 should hit cache
+    final res2 = await resolver.resolve(
+      songId: 2,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: '2',
+      artist: 'A',
+      timeout: const Duration(seconds: 1),
+    );
+    expect(calls, 3);
+    expect(res2.isL1CacheHit, isTrue);
+
+    // Song 1 was evicted, should re-fetch
+    final res1 = await resolver.resolve(
+      songId: 1,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: '1',
+      artist: 'A',
+      timeout: const Duration(seconds: 1),
+    );
+    expect(calls, 4);
+    expect(res1.isL1CacheHit, isFalse);
+  });
+
+  test('expires entries after TTL', () async {
+    var calls = 0;
+    final resolver = TrackResolver(
+      resolvedCacheTtl: const Duration(milliseconds: 50),
+      fetcher:
+          ({
+            required songId,
+            required quality,
+            required source,
+            required title,
+            required artist,
+            required fetchLyrics,
+            onLxFailure,
+          }) async {
+            calls++;
+            return _detail(songId as int);
+          },
+    );
+
+    await resolver.resolve(
+      songId: 505,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: '505',
+      artist: 'A',
+      timeout: const Duration(seconds: 1),
+    );
+    expect(calls, 1);
+
+    // Wait past TTL
+    await Future.delayed(const Duration(milliseconds: 60));
+
+    final res = await resolver.resolve(
+      songId: 505,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: '505',
+      artist: 'A',
+      timeout: const Duration(seconds: 1),
+    );
+    expect(calls, 2);
+    expect(res.isL1CacheHit, isFalse);
+  });
+
+  test('clear() empties resolved cache pool', () async {
+    final resolver = TrackResolver(
+      fetcher:
+          ({
+            required songId,
+            required quality,
+            required source,
+            required title,
+            required artist,
+            required fetchLyrics,
+            onLxFailure,
+          }) async => _detail(songId as int),
+    );
+
+    await resolver.resolve(
+      songId: 606,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: '606',
+      artist: 'A',
+      timeout: const Duration(seconds: 1),
+    );
+    expect(resolver.resolvedCacheSize, 1);
+
+    resolver.clear();
+    expect(resolver.resolvedCacheSize, 0);
+  });
+
+  test(
+    'does not repopulate cache when an in-flight request is cleared',
+    () async {
+      final completer = Completer<SongDetail?>();
+      final resolver = TrackResolver(
+        fetcher:
+            ({
+              required songId,
+              required quality,
+              required source,
+              required title,
+              required artist,
+              required fetchLyrics,
+              onLxFailure,
+            }) => completer.future,
+      );
+
+      final request = resolver.resolve(
+        songId: 707,
+        quality: AudioQuality.exhigh,
+        source: MusicSource.netease,
+        title: '707',
+        artist: 'A',
+        timeout: const Duration(seconds: 1),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      resolver.clear();
+      completer.complete(_detail(707));
+      await request;
+
+      expect(resolver.resolvedCacheSize, 0);
+    },
+  );
+
+  test('forced refresh replaces an older in-flight request', () async {
+    var calls = 0;
+    final oldRequest = Completer<SongDetail?>();
+    final resolver = TrackResolver(
+      fetcher:
+          ({
+            required songId,
+            required quality,
+            required source,
+            required title,
+            required artist,
+            required fetchLyrics,
+            onLxFailure,
+          }) {
+            calls++;
+            return calls == 1 ? oldRequest.future : Future.value(_detail(808));
+          },
+    );
+
+    final first = resolver.resolve(
+      songId: 808,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: '808',
+      artist: 'A',
+      timeout: const Duration(seconds: 1),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    final refreshed = await resolver.resolve(
+      songId: 808,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: '808',
+      artist: 'A',
+      timeout: const Duration(seconds: 1),
+      skipMemoryCache: true,
+    );
+    oldRequest.complete(_detail(808));
+    await first;
+
+    expect(calls, 2);
+    expect(refreshed.isPlayable, isTrue);
+    expect(resolver.resolvedCacheSize, 1);
+  });
+
+  test('zero cache capacity disables L1 storage without throwing', () async {
+    final resolver = TrackResolver(
+      maxResolvedCacheEntries: 0,
+      fetcher:
+          ({
+            required songId,
+            required quality,
+            required source,
+            required title,
+            required artist,
+            required fetchLyrics,
+            onLxFailure,
+          }) async => _detail(songId as int),
+    );
+
+    await resolver.resolve(
+      songId: 909,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: '909',
+      artist: 'A',
+      timeout: const Duration(seconds: 1),
+    );
+
+    expect(resolver.resolvedCacheSize, 0);
+  });
 }
 
 SongDetail _detail(int id) => SongDetail(

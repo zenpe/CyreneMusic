@@ -1,6 +1,7 @@
 import 'package:cyrene_music/models/song_detail.dart';
 import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/services/lyric/lyric_service.dart';
+import 'package:cyrene_music/services/lyric/lyric_cache_service.dart';
 import 'package:cyrene_music/services/lyric/lyric_snapshot.dart';
 import 'package:cyrene_music/utils/lyric_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -224,6 +225,127 @@ void main() {
       expect(service.currentSnapshot?.lines.first.text, 'Foreground success');
     });
 
+    test('transient empty result is retried by the next playback', () async {
+      final track = buildTrack();
+      var currentSong = buildSongDetail(track);
+      var fetchCount = 0;
+
+      Future<void> request(int playbackToken) async {
+        service.bindCurrentTrack(
+          track: track,
+          playbackToken: playbackToken,
+          song: currentSong,
+          state: LyricLoadState.idle,
+          notify: false,
+        );
+        await service.requestLyrics(
+          track: track,
+          playbackToken: playbackToken,
+          quality: 'standard',
+          refreshKey: 'transient_empty_${track.id}',
+          adapter: _buildRequestAdapter(
+            currentSong: () => currentSong,
+            applyResolvedSongDetail: (detail) => currentSong = detail,
+            fetchFullDetail: () async {
+              fetchCount += 1;
+              return buildSongDetail(track);
+            },
+          ),
+        );
+      }
+
+      await request(10);
+      expect(service.currentState, LyricLoadState.transientMiss);
+      expect(service.currentSnapshot?.state.displayText, '暂未获取到歌词');
+
+      await request(11);
+      expect(fetchCount, 2);
+      expect(service.currentState, LyricLoadState.transientMiss);
+    });
+
+    test('failed lyric request is retried by the next playback', () async {
+      final track = buildTrack();
+      var currentSong = buildSongDetail(track);
+      var fetchCount = 0;
+
+      Future<void> request(int playbackToken) async {
+        service.bindCurrentTrack(
+          track: track,
+          playbackToken: playbackToken,
+          song: currentSong,
+          state: LyricLoadState.idle,
+          notify: false,
+        );
+        await service.requestLyrics(
+          track: track,
+          playbackToken: playbackToken,
+          quality: 'standard',
+          refreshKey: 'failed_${track.id}',
+          adapter: _buildRequestAdapter(
+            currentSong: () => currentSong,
+            applyResolvedSongDetail: (detail) => currentSong = detail,
+            fetchFullDetail: () async {
+              fetchCount += 1;
+              throw StateError('temporary failure');
+            },
+          ),
+        );
+      }
+
+      await request(20);
+      expect(service.currentState, LyricLoadState.failed);
+      await request(21);
+      expect(fetchCount, 2);
+      expect(service.currentState, LyricLoadState.failed);
+    });
+
+    test('authoritative empty result is cached', () async {
+      final track = buildTrack();
+      var currentSong = buildSongDetail(track);
+      var fetchCount = 0;
+
+      Future<void> request(int playbackToken) async {
+        service.bindCurrentTrack(
+          track: track,
+          playbackToken: playbackToken,
+          song: currentSong,
+          state: LyricLoadState.idle,
+          notify: false,
+        );
+        await service.requestLyrics(
+          track: track,
+          playbackToken: playbackToken,
+          quality: 'standard',
+          refreshKey: 'authoritative_empty_${track.id}',
+          adapter: _buildRequestAdapter(
+            currentSong: () => currentSong,
+            applyResolvedSongDetail: (detail) => currentSong = detail,
+            fetchFullDetail: () async {
+              fetchCount += 1;
+              return buildSongDetail(track);
+            },
+            emptyResultIsAuthoritative: true,
+          ),
+        );
+      }
+
+      await request(30);
+      expect(service.currentState, LyricLoadState.empty);
+      await request(31);
+      expect(fetchCount, 1);
+      expect(service.currentState, LyricLoadState.empty);
+    });
+
+    test('legacy empty cache entry is not authoritative', () {
+      final entry = LyricCacheEntry.fromJson(<String, dynamic>{
+        'trackKey': 'netease_legacy',
+        'state': 'empty',
+        'fetchedAt': DateTime.now().toIso8601String(),
+      });
+
+      expect(entry.authoritativeEmpty, isFalse);
+    });
+
     test('plain-text fallback lines receive staggered timestamps', () {
       final track = buildTrack(source: MusicSource.qq);
       final song = buildSongDetail(
@@ -255,7 +377,7 @@ void main() {
       );
     });
 
-    test('unparseable payload normalizes ready state to empty', () {
+    test('unparseable payload normalizes ready state to transient miss', () {
       final track = buildTrack(source: MusicSource.qq);
       final song = buildSongDetail(
         track,
@@ -270,9 +392,9 @@ void main() {
         notify: false,
       );
 
-      expect(service.currentState, LyricLoadState.empty);
+      expect(service.currentState, LyricLoadState.transientMiss);
       expect(service.currentSnapshot?.lines, isEmpty);
-      expect(service.currentSnapshot?.state.displayText, '暂无歌词');
+      expect(service.currentSnapshot?.state.displayText, '暂未获取到歌词');
     });
   });
 }
@@ -281,10 +403,12 @@ LyricRequestAdapter _buildRequestAdapter({
   required SongDetail? Function() currentSong,
   required void Function(SongDetail detail) applyResolvedSongDetail,
   required Future<SongDetail?> Function() fetchFullDetail,
+  bool emptyResultIsAuthoritative = false,
 }) {
   return LyricRequestAdapter(
     fetch: LyricRequestFetchAdapter(
       useLyricOnlyFetch: false,
+      emptyResultIsAuthoritative: emptyResultIsAuthoritative,
       fetchLyricOnlyDetail: () async => null,
       fetchFullDetail: fetchFullDetail,
       normalizeSongDetail: (detail) => detail,

@@ -1,7 +1,5 @@
 import 'package:just_audio/just_audio.dart' as ja;
 
-import '../cache_service.dart';
-
 abstract class PlayableSource {
   const PlayableSource();
 
@@ -16,10 +14,7 @@ class DirectHttpPlayableSource extends PlayableSource {
   final String url;
   final Map<String, String>? requestHeaders;
 
-  const DirectHttpPlayableSource(
-    this.url, {
-    this.requestHeaders,
-  });
+  const DirectHttpPlayableSource(this.url, {this.requestHeaders});
 
   @override
   String get playbackPathOrUrl => url;
@@ -38,10 +33,7 @@ class ProxyHttpPlayableSource extends PlayableSource {
   final String url;
   final String? originalUrl;
 
-  const ProxyHttpPlayableSource(
-    this.url, {
-    this.originalUrl,
-  });
+  const ProxyHttpPlayableSource(this.url, {this.originalUrl});
 
   @override
   String get playbackPathOrUrl => url;
@@ -57,10 +49,7 @@ class LocalFilePlayableSource extends PlayableSource {
   final String filePath;
   final String? originalUrl;
 
-  const LocalFilePlayableSource(
-    this.filePath, {
-    this.originalUrl,
-  });
+  const LocalFilePlayableSource(this.filePath, {this.originalUrl});
 
   @override
   String get playbackPathOrUrl => filePath;
@@ -70,32 +59,4 @@ class LocalFilePlayableSource extends PlayableSource {
 
   @override
   bool get isLocal => true;
-}
-
-class CachedCyrenePlayableSource extends PlayableSource {
-  final CyreneFileInfo cacheInfo;
-  final String? playbackUrl;
-  final ja.AudioSource? playbackAudioSource;
-
-  const CachedCyrenePlayableSource.proxy({
-    required this.cacheInfo,
-    required this.playbackUrl,
-  }) : playbackAudioSource = null;
-
-  const CachedCyrenePlayableSource.stream({
-    required this.cacheInfo,
-    required this.playbackAudioSource,
-  }) : playbackUrl = null;
-
-  @override
-  String? get playbackPathOrUrl => playbackUrl;
-
-  @override
-  String get sourceUrl => cacheInfo.metadata.originalUrl;
-
-  @override
-  bool get isLocal => playbackUrl == null;
-
-  @override
-  ja.AudioSource? get audioSource => playbackAudioSource;
 }

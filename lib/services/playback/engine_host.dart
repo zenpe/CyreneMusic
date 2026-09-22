@@ -32,6 +32,8 @@ class EngineHost implements AudioEngine {
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   Duration _bufferedPosition = Duration.zero;
+  int _latestRequestedGeneration = 0;
+  int _volumeRevision = 0;
 
   EngineHost({AudioEngine Function()? engineFactory})
     : _engineFactory = engineFactory ?? createEngine {
@@ -52,6 +54,9 @@ class EngineHost implements AudioEngine {
 
   @override
   double get playbackSpeed => _active?.playbackSpeed ?? 1.0;
+
+  @override
+  EngineStartupTiming? get lastStartupTiming => _active?.lastStartupTiming;
 
   @override
   Stream<Duration> get positionStream => _positionController.stream;
@@ -179,18 +184,22 @@ class EngineHost implements AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
-  }) => _write(() async {
-    _beginEpoch(generation);
-    await _active!.play(
-      url,
-      generation: generation,
-      isLocal: isLocal,
-      headers: headers,
-      autoPlay: autoPlay,
-      initialPosition: initialPosition,
-      preload: preload,
-    );
-  });
+  }) {
+    _latestRequestedGeneration = generation;
+    return _write(() async {
+      if (generation != _latestRequestedGeneration) return;
+      _beginEpoch(generation);
+      await _active!.play(
+        url,
+        generation: generation,
+        isLocal: isLocal,
+        headers: headers,
+        autoPlay: autoPlay,
+        initialPosition: initialPosition,
+        preload: preload,
+      );
+    });
+  }
 
   @override
   Future<void> playSource(
@@ -199,16 +208,20 @@ class EngineHost implements AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
-  }) => _write(() async {
-    _beginEpoch(generation);
-    await _active!.playSource(
-      source,
-      generation: generation,
-      autoPlay: autoPlay,
-      initialPosition: initialPosition,
-      preload: preload,
-    );
-  });
+  }) {
+    _latestRequestedGeneration = generation;
+    return _write(() async {
+      if (generation != _latestRequestedGeneration) return;
+      _beginEpoch(generation);
+      await _active!.playSource(
+        source,
+        generation: generation,
+        autoPlay: autoPlay,
+        initialPosition: initialPosition,
+        preload: preload,
+      );
+    });
+  }
 
   @override
   Future<void> playAudioSource(
@@ -218,17 +231,21 @@ class EngineHost implements AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
-  }) => _write(() async {
-    _beginEpoch(generation);
-    await _active!.playAudioSource(
-      source,
-      generation: generation,
-      sourceUrl: sourceUrl,
-      autoPlay: autoPlay,
-      initialPosition: initialPosition,
-      preload: preload,
-    );
-  });
+  }) {
+    _latestRequestedGeneration = generation;
+    return _write(() async {
+      if (generation != _latestRequestedGeneration) return;
+      _beginEpoch(generation);
+      await _active!.playAudioSource(
+        source,
+        generation: generation,
+        sourceUrl: sourceUrl,
+        autoPlay: autoPlay,
+        initialPosition: initialPosition,
+        preload: preload,
+      );
+    });
+  }
 
   @override
   Future<void> pause() => _write(() => _active?.pause() ?? Future.value());
@@ -249,10 +266,14 @@ class EngineHost implements AudioEngine {
   });
 
   @override
-  Future<void> setVolume(double volume) => _write(() async {
+  Future<void> setVolume(double volume) {
     _volume = volume.clamp(0.0, 1.0);
-    await _active?.setVolume(_volume);
-  });
+    final revision = ++_volumeRevision;
+    return _write(() async {
+      if (revision != _volumeRevision) return;
+      await _active?.setVolume(_volume);
+    });
+  }
 
   @override
   Future<void> setPlaybackSpeed(double speed) => _write(() async {

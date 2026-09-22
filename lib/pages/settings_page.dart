@@ -358,6 +358,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
           body: SafeArea(
+            left: !isLandscape,
             top: isLandscape && _currentSubPage == SettingsSubPage.none,
             bottom: false,
             child: Stack(

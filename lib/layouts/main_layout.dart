@@ -317,7 +317,10 @@ class _MainLayoutState extends State<MainLayout>
                 children: [
                   _buildLandscapeSideNavigation(context),
                   Expanded(
-                    child: Stack(
+                    child: MediaQuery.removePadding(
+                      context: context,
+                      removeLeft: true,
+                      child: Stack(
                       children: [
                         // 主内容层 - 使用 RepaintBoundary 隔离，防止 BackdropFilter 导致滚动残影
                         RepaintBoundary(
@@ -349,6 +352,7 @@ class _MainLayoutState extends State<MainLayout>
                       ],
                     ),
                   ),
+                ),
                 ],
               )
             : Stack(

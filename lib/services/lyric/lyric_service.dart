@@ -13,6 +13,7 @@ typedef LyricLogFn = void Function(String message, {bool toDeveloperPanel});
 class LyricRequestFetchAdapter {
   final bool useLyricOnlyFetch;
   final bool allowFullDetailFallback;
+  final bool emptyResultIsAuthoritative;
   final Future<SongDetail?> Function() fetchLyricOnlyDetail;
   final Future<SongDetail?> Function() fetchFullDetail;
   final SongDetail Function(SongDetail detail) normalizeSongDetail;
@@ -20,6 +21,7 @@ class LyricRequestFetchAdapter {
   const LyricRequestFetchAdapter({
     required this.useLyricOnlyFetch,
     this.allowFullDetailFallback = true,
+    this.emptyResultIsAuthoritative = false,
     required this.fetchLyricOnlyDetail,
     required this.fetchFullDetail,
     required this.normalizeSongDetail,
@@ -98,7 +100,6 @@ class LyricService extends ChangeNotifier {
   LyricService._internal();
 
   final Set<String> _pendingRefreshKeys = <String>{};
-  final Set<String> _settledRefreshKeys = <String>{};
 
   LyricSnapshot? _currentSnapshot;
   LyricLoadState _currentState = LyricLoadState.idle;
@@ -109,13 +110,6 @@ class LyricService extends ChangeNotifier {
 
   LyricSnapshot? get currentSnapshot => _currentSnapshot;
   LyricLoadState get currentState => _currentState;
-
-  bool isRefreshSettled(String refreshKey) =>
-      _settledRefreshKeys.contains(refreshKey);
-
-  void markRefreshSettled(String refreshKey) {
-    _settledRefreshKeys.add(refreshKey);
-  }
 
   void bindCurrentTrack({
     required Track track,
@@ -165,14 +159,12 @@ class LyricService extends ChangeNotifier {
 
   void clearAll({bool notify = true}) {
     _pendingRefreshKeys.clear();
-    _settledRefreshKeys.clear();
     _repository.clearMemory();
     clearCurrent(notify: notify);
   }
 
   Future<void> clearCachedLyrics() async {
     _pendingRefreshKeys.clear();
-    _settledRefreshKeys.clear();
     _repository.clearMemory();
     await LyricCacheService().clearAllCache();
   }
@@ -236,10 +228,6 @@ class LyricService extends ChangeNotifier {
       }
     }
 
-    if (isRefreshSettled(refreshKey)) {
-      adapter.log('[LyricService] 跳过已收敛歌词补全: $refreshKey');
-      return;
-    }
     if (_pendingRefreshKeys.contains(refreshKey)) {
       adapter.log('[LyricService] 跳过重复歌词补全: $refreshKey');
       return;
@@ -330,7 +318,10 @@ class LyricService extends ChangeNotifier {
 
       final currentSong = presentation.currentSong();
       if (detail == null || currentSong == null) {
-        final currentState = _resolvedLyricState(currentSong);
+        final currentState = _resolvedLyricState(
+          currentSong,
+          emptyResultIsAuthoritative: fetch.emptyResultIsAuthoritative,
+        );
         adapter.log(
           '[LyricService] 歌词补全未命中任何新增信息: $refreshKey',
           toDeveloperPanel: true,
@@ -339,6 +330,7 @@ class LyricService extends ChangeNotifier {
           track: track,
           quality: quality,
           song: currentSong,
+          persistEmpty: fetch.emptyResultIsAuthoritative,
           log: adapter.log,
         );
         finalize(currentState, song: currentSong);
@@ -356,7 +348,10 @@ class LyricService extends ChangeNotifier {
       );
 
       if (presentation.isSamePresentation(currentSong, mergedSong)) {
-        final currentState = _resolvedLyricState(currentSong);
+        final currentState = _resolvedLyricState(
+          currentSong,
+          emptyResultIsAuthoritative: fetch.emptyResultIsAuthoritative,
+        );
         adapter.log(
           '[LyricService] 歌词补全未命中任何新增信息: $refreshKey',
           toDeveloperPanel: true,
@@ -366,16 +361,17 @@ class LyricService extends ChangeNotifier {
           track: track,
           quality: quality,
           song: currentSong,
+          persistEmpty: fetch.emptyResultIsAuthoritative,
           log: adapter.log,
         );
-        final cached = await cache.cacheSongInBackground(cacheRefreshSong);
-        if (cached) {
-          _settledRefreshKeys.add(refreshKey);
-        }
+        await cache.cacheSongInBackground(cacheRefreshSong);
         return;
       }
 
-      final mergedState = _resolvedLyricState(mergedSong);
+      final mergedState = _resolvedLyricState(
+        mergedSong,
+        emptyResultIsAuthoritative: fetch.emptyResultIsAuthoritative,
+      );
       adapter.log(
         mergedState == LyricLoadState.ready
             ? '[LyricService] 歌词补全成功: $refreshKey'
@@ -388,24 +384,15 @@ class LyricService extends ChangeNotifier {
         track: track,
         quality: quality,
         song: mergedSong,
+        persistEmpty: fetch.emptyResultIsAuthoritative,
         log: adapter.log,
       );
-      final cached = await cache.cacheSongInBackground(cacheRefreshSong);
-      if (cached) {
-        _settledRefreshKeys.add(refreshKey);
-      }
+      await cache.cacheSongInBackground(cacheRefreshSong);
       presentation.refreshFloatingLyrics();
     } catch (e) {
       adapter.log(
         '[LyricService] 歌词补全失败: $refreshKey, $e',
         toDeveloperPanel: true,
-      );
-      await _repository.storeFailure(
-        track: track,
-        quality: quality,
-        currentSong: presentation.currentSong(),
-        error: e,
-        log: adapter.log,
       );
       finalize(LyricLoadState.failed, error: e.toString());
     } finally {
@@ -527,19 +514,23 @@ class LyricService extends ChangeNotifier {
     return song != null && _hasDisplayableLyrics(song);
   }
 
-  LyricLoadState _resolvedLyricState(SongDetail? song) {
-    if (song == null) {
-      return LyricLoadState.empty;
+  LyricLoadState _resolvedLyricState(
+    SongDetail? song, {
+    bool emptyResultIsAuthoritative = false,
+  }) {
+    if (song != null && _hasDisplayableLyrics(song)) {
+      return LyricLoadState.ready;
     }
-    return _hasDisplayableLyrics(song)
-        ? LyricLoadState.ready
-        : LyricLoadState.empty;
+    return emptyResultIsAuthoritative
+        ? LyricLoadState.empty
+        : LyricLoadState.transientMiss;
   }
 
   Future<void> _storeResolvedLyricState({
     required Track track,
     required String quality,
     required SongDetail? song,
+    required bool persistEmpty,
     required LyricRepositoryLogFn log,
   }) async {
     if (song != null && _hasDisplayableLyrics(song)) {
@@ -551,7 +542,8 @@ class LyricService extends ChangeNotifier {
       );
       return;
     }
-    await _repository.storeEmpty(
+    if (!persistEmpty) return;
+    await _repository.storeConfirmedEmpty(
       track: track,
       quality: quality,
       currentSong: song,
@@ -711,14 +703,17 @@ class LyricService extends ChangeNotifier {
       case LyricLoadState.loading:
       case LyricLoadState.failed:
       case LyricLoadState.empty:
+      case LyricLoadState.transientMiss:
         return state;
       case LyricLoadState.ready:
         if (lines.isNotEmpty) return LyricLoadState.ready;
-        return LyricLoadState.empty;
+        return LyricLoadState.transientMiss;
       case LyricLoadState.idle:
         if (song == null) return LyricLoadState.idle;
         if (lines.isNotEmpty) return LyricLoadState.ready;
-        return _hasPayload(song) ? LyricLoadState.empty : LyricLoadState.idle;
+        return _hasPayload(song)
+            ? LyricLoadState.transientMiss
+            : LyricLoadState.idle;
     }
   }
 

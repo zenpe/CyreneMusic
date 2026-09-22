@@ -51,6 +51,42 @@ void main() {
     await subscription.cancel();
     await host.dispose();
   });
+
+  test('排队中的切歌只执行最新 generation', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+
+    final first = host.play('a', generation: 1);
+    await Future<void>.delayed(Duration.zero);
+    final second = host.play('b', generation: 2);
+    final third = host.play('c', generation: 3);
+
+    gate.complete();
+    await Future.wait([first, second, third]);
+
+    expect(engine.playedUrls, ['a', 'c']);
+    await host.dispose();
+  });
+
+  test('排队中的音量写入会合并为最后一个值', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+
+    final play = host.play('a', generation: 1);
+    await Future<void>.delayed(Duration.zero);
+    final firstVolume = host.setVolume(0.2);
+    final lastVolume = host.setVolume(0.8);
+
+    gate.complete();
+    await Future.wait([play, firstVolume, lastVolume]);
+
+    expect(engine.volumeWrites, [0.8]);
+    await host.dispose();
+  });
 }
 
 class FakeEngine implements AudioEngine {
@@ -60,6 +96,9 @@ class FakeEngine implements AudioEngine {
   final _state = StreamController<EngineState>.broadcast();
   final _completion = StreamController<bool>.broadcast();
   final _errors = StreamController<EngineError>.broadcast();
+  final List<String> playedUrls = <String>[];
+  final List<double> volumeWrites = <double>[];
+  Completer<void>? playGate;
 
   @override
   Duration duration = Duration.zero;
@@ -75,6 +114,9 @@ class FakeEngine implements AudioEngine {
 
   @override
   double playbackSpeed = 1.0;
+
+  @override
+  EngineStartupTiming? get lastStartupTiming => null;
 
   @override
   Stream<Duration> get positionStream => _position.stream;
@@ -103,7 +145,12 @@ class FakeEngine implements AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
-  }) async {}
+  }) async {
+    playedUrls.add(url);
+    final gate = playGate;
+    playGate = null;
+    await gate?.future;
+  }
 
   @override
   Future<void> playAudioSource(
@@ -137,7 +184,9 @@ class FakeEngine implements AudioEngine {
   Future<void> stop() async {}
 
   @override
-  Future<void> setVolume(double volume) async {}
+  Future<void> setVolume(double volume) async {
+    volumeWrites.add(volume);
+  }
 
   @override
   Future<void> setPlaybackSpeed(double speed) async {

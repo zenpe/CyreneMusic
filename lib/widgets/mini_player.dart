@@ -26,11 +26,11 @@ class MiniPlayer extends StatefulWidget {
 }
 
 class _MiniPlayerState extends State<MiniPlayer> {
-  bool _isSeeking = false;   // 拖拽 seek 中，屏蔽外层 onTap 跳全屏
-  double? _seekRatio;         // 拖拽时的临时进度比例
+  bool _isSeeking = false; // 拖拽 seek 中，屏蔽外层 onTap 跳全屏
+  double? _seekRatio; // 拖拽时的临时进度比例
   DateTime? _lastSeekGestureAt;
   int? _activeSeekPointer;
-  static bool _showRemainingTime = true; // 默认显示剩余时间（可点击切换总时长/剩余时间）
+  static bool _showRemainingTime = false; // 默认显示已播时间/总时长（可点击切换总时长/剩余时间）
 
   bool get _isCupertino => ThemeManager().isCupertinoFramework;
 
@@ -44,8 +44,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final double skipIconSize = compact ? 20 : 24;
     final double playIconSize = compact ? 24 : 28;
-    final EdgeInsets buttonPadding =
-        compact ? const EdgeInsets.all(4) : const EdgeInsets.all(8);
+    final EdgeInsets buttonPadding = compact
+        ? const EdgeInsets.all(4)
+        : const EdgeInsets.all(8);
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -63,7 +64,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   : CupertinoColors.systemGrey,
             ),
           ),
-        if (player.isLoading)
+        if (player.isTrackSwitchPending)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 8.0),
             child: CupertinoActivityIndicator(radius: 14),
@@ -74,7 +75,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
             minimumSize: Size.zero,
             onPressed: () => player.togglePlayPause(),
             child: Icon(
-              player.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+              player.isPlaying
+                  ? CupertinoIcons.pause_fill
+                  : CupertinoIcons.play_fill,
               size: playIconSize,
               color: DynamicColorUtils.resolveAccent(
                 player.themeColorNotifier.value,
@@ -114,29 +117,43 @@ class _MiniPlayerState extends State<MiniPlayer> {
       children: [
         if (!hideSkip)
           fluent.IconButton(
-            icon: Icon(Icons.skip_previous_rounded, size: skipIconSize, color: theme.resources.textFillColorPrimary),
+            icon: Icon(
+              Icons.skip_previous_rounded,
+              size: skipIconSize,
+              color: theme.resources.textFillColorPrimary,
+            ),
             onPressed: player.hasPrevious ? () => player.playPrevious() : null,
           ),
-        if (player.isLoading)
+        if (player.isTrackSwitchPending)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 8.0),
-            child: SizedBox(width: 22, height: 22, child: fluent.ProgressRing(strokeWidth: 3)),
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: fluent.ProgressRing(strokeWidth: 3),
+            ),
           )
         else
           fluent.IconButton(
-            icon: Icon(player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                size: playIconSize, color: theme.accentColor.defaultBrushFor(theme.brightness)),
+            icon: Icon(
+              player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              size: playIconSize,
+              color: theme.accentColor.defaultBrushFor(theme.brightness),
+            ),
             onPressed: () => player.togglePlayPause(),
           ),
         if (!hideSkip)
           fluent.IconButton(
-            icon: Icon(Icons.skip_next_rounded, size: skipIconSize, color: theme.resources.textFillColorPrimary),
+            icon: Icon(
+              Icons.skip_next_rounded,
+              size: skipIconSize,
+              color: theme.resources.textFillColorPrimary,
+            ),
             onPressed: player.hasNext ? () => player.playNext() : null,
           ),
       ],
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +161,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
       animation: PlayerService(),
       builder: (context, child) {
         final player = PlayerService();
-        final isPending = player.isLoading && player.pendingTrack != null;
+        final isPending = player.isTrackSwitchPending;
         final track = player.displayTrack;
         final song = isPending ? null : player.currentSong;
 
@@ -185,19 +202,20 @@ class _MiniPlayerState extends State<MiniPlayer> {
         opaque: false,
         barrierColor: Colors.transparent,
         maintainState: true,
-        pageBuilder: (context, animation, secondaryAnimation) => const PlayerPage(),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const PlayerPage(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           const begin = Offset(0.0, 1.0);
           const end = Offset.zero;
           const curve = Curves.easeOutCubic;
 
-          final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          final tween = Tween(
+            begin: begin,
+            end: end,
+          ).chain(CurveTween(curve: curve));
           final offsetAnimation = animation.drive(tween);
 
-          return SlideTransition(
-            position: offsetAnimation,
-            child: child,
-          );
+          return SlideTransition(position: offsetAnimation, child: child);
         },
         transitionDuration: const Duration(milliseconds: 300),
         reverseTransitionDuration: const Duration(milliseconds: 250),
@@ -313,7 +331,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
       final decoration = widget.transparent
           ? const BoxDecoration(color: Colors.transparent)
           : BoxDecoration(
-              color: colorScheme.surface.withValues(alpha: isDark ? 0.88 : 0.96),
+              color: colorScheme.surface.withValues(
+                alpha: isDark ? 0.88 : 0.96,
+              ),
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
@@ -323,7 +343,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   colorScheme.surface.withValues(alpha: isDark ? 0.88 : 0.94),
                 ],
               ),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.08),
@@ -354,9 +376,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   children: [
                     _buildCover(song, track, colorScheme, size: 40),
                     const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildSongInfo(context),
-                    ),
+                    Expanded(child: _buildSongInfo(context)),
                     _buildAdaptiveControls(
                       player,
                       context,
@@ -367,12 +387,19 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     IconButton(
                       icon: Icon(
                         Icons.skip_next_rounded,
-                        color: player.hasNext ? colorScheme.onSurface : colorScheme.onSurface.withValues(alpha: 0.4),
+                        color: player.hasNext
+                            ? colorScheme.onSurface
+                            : colorScheme.onSurface.withValues(alpha: 0.4),
                         size: 24,
                       ),
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints.tightFor(width: 34, height: 34),
-                      onPressed: player.hasNext ? () => player.playNext() : null,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 34,
+                        height: 34,
+                      ),
+                      onPressed: player.hasNext
+                          ? () => player.playNext()
+                          : null,
                       tooltip: '下一首',
                     ),
                     const SizedBox(width: 2),
@@ -383,28 +410,51 @@ class _MiniPlayerState extends State<MiniPlayer> {
             ),
             // Middle divider progress line with total duration on the far right
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 3),
               child: AnimatedBuilder(
                 animation: Listenable.merge([player.positionNotifier, player]),
                 builder: (context, _) {
                   final position = player.positionNotifier.value;
                   // Authoritative duration, with fallback to lyric timestamps
                   Duration duration = player.duration;
-                  if (duration.inSeconds <= 0 && player.lyricSnapshot != null && player.lyricSnapshot!.lines.isNotEmpty) {
+                  if (duration.inSeconds <= 0 &&
+                      player.lyricSnapshot != null &&
+                      player.lyricSnapshot!.lines.isNotEmpty) {
                     final lastLine = player.lyricSnapshot!.lines.last;
-                    duration = lastLine.startTime + (lastLine.lineDuration ?? const Duration(seconds: 4));
+                    duration =
+                        lastLine.startTime +
+                        (lastLine.lineDuration ?? const Duration(seconds: 4));
                   }
-                  final progress = _seekRatio ??
+                  final progress =
+                      _seekRatio ??
                       (duration.inMilliseconds > 0
-                          ? (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0)
+                          ? (position.inMilliseconds / duration.inMilliseconds)
+                                .clamp(0.0, 1.0)
                           : 0.0);
-                  // 计算剩余时间与总时长（默认显示倒计时剩余时间，点击可在剩余时间与总时长间切换）
-                  final remaining = duration > position ? duration - position : Duration.zero;
-                  final String durationStr = duration.inSeconds > 0
-                      ? (_showRemainingTime ? '-${_formatDuration(remaining)}' : _formatDuration(duration))
+                  final displayPosition = _seekRatio != null
+                      ? Duration(
+                          milliseconds: (duration.inMilliseconds * _seekRatio!)
+                              .round(),
+                        )
+                      : position;
+                  final currentStr = _formatDuration(displayPosition);
+                  final remaining = duration > displayPosition
+                      ? duration - displayPosition
+                      : Duration.zero;
+                  final String totalOrRemainingStr = duration.inSeconds > 0
+                      ? (_showRemainingTime
+                            ? '-${_formatDuration(remaining)}'
+                            : _formatDuration(duration))
                       : '--:--';
+                  final timeStyle = TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: dynamicAccent,
+                  );
                   return Row(
                     children: [
+                      Text(currentStr, style: timeStyle),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: _buildSeekableProgressBar(
                           player: player,
@@ -414,7 +464,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                             child: LinearProgressIndicator(
                               value: progress,
                               minHeight: 2.5,
-                              backgroundColor: colorScheme.onSurface.withValues(alpha: 0.08),
+                              backgroundColor: colorScheme.onSurface.withValues(
+                                alpha: 0.08,
+                              ),
                               valueColor: AlwaysStoppedAnimation<Color>(
                                 progressBarActiveColor,
                               ),
@@ -422,6 +474,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           ),
                         ),
                       ),
+                      const SizedBox(width: 6),
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () {
@@ -430,15 +483,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           });
                         },
                         child: Padding(
-                          padding: const EdgeInsets.only(left: 10),
-                          child: Text(
-                            durationStr,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
-                              color: dynamicAccent,
-                            ),
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: Text(totalOrRemainingStr, style: timeStyle),
                         ),
                       ),
                     ],
@@ -483,27 +529,38 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   duration: const Duration(milliseconds: 400),
                   curve: Curves.easeOutCubic,
                   decoration: BoxDecoration(
-                    color: colorScheme.surface.withValues(alpha: isDark ? 0.82 : 0.88),
+                    color: colorScheme.surface.withValues(
+                      alpha: isDark ? 0.82 : 0.88,
+                    ),
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        colorScheme.surface.withValues(alpha: isDark ? 0.88 : 0.92),
+                        colorScheme.surface.withValues(
+                          alpha: isDark ? 0.88 : 0.92,
+                        ),
                         dynamicAmbient.withValues(alpha: isDark ? 0.16 : 0.08),
                         dynamicAmbient.withValues(alpha: isDark ? 0.06 : 0.03),
-                        colorScheme.surface.withValues(alpha: isDark ? 0.84 : 0.88),
+                        colorScheme.surface.withValues(
+                          alpha: isDark ? 0.84 : 0.88,
+                        ),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: dynamicAccent.withValues(alpha: isDark ? 0.30 : 0.38),
+                      color: dynamicAccent.withValues(
+                        alpha: isDark ? 0.30 : 0.38,
+                      ),
                       width: 1.0,
                     ),
                   ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 4,
+                ),
                 child: Row(
                   children: [
                     _buildCover(song, track, colorScheme, size: 42),
@@ -531,7 +588,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           compact: true,
                         ),
                         const SizedBox(width: 4),
-                        _buildPlaybackModeButton(context, colorScheme, compact: true),
+                        _buildPlaybackModeButton(
+                          context,
+                          colorScheme,
+                          compact: true,
+                        ),
                         const SizedBox(width: 2),
                         _buildVolumeButton(
                           context,
@@ -589,12 +650,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 const SizedBox(width: 6),
                 _buildPlaybackModeButton(context, colorScheme, compact: true),
                 const SizedBox(width: 4),
-                _buildVolumeButton(
-                  context,
-                  colorScheme,
-                  player,
-                  compact: true,
-                ),
+                _buildVolumeButton(context, colorScheme, player, compact: true),
                 const SizedBox(width: 4),
                 _buildQueueButton(context, colorScheme, compact: true),
               ],
@@ -680,7 +736,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
         }
         if (_isCupertino) {
           return CupertinoButton(
-            padding: compact ? const EdgeInsets.all(2) : const EdgeInsets.all(6),
+            padding: compact
+                ? const EdgeInsets.all(2)
+                : const EdgeInsets.all(6),
             minimumSize: Size.zero,
             onPressed: () {
               modeService.toggleMode();
@@ -805,8 +863,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
     final double top = preferredTop >= 0
         ? preferredTop
         : target.dy + size.height + padding;
-    final double left = (target.dx + size.width / 2 - cardWidth / 2)
-        .clamp(padding, screen.width - cardWidth - padding);
+    final double left = (target.dx + size.width / 2 - cardWidth / 2).clamp(
+      padding,
+      screen.width - cardWidth - padding,
+    );
 
     double appTemp = player.volume;
     if (!context.mounted) return;
@@ -826,8 +886,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 color: Colors.transparent,
                 child: Container(
                   width: cardWidth,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: colorScheme.surface,
                     borderRadius: BorderRadius.circular(12),
@@ -971,7 +1033,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
   /// 构建进度条
   /// 使用 ValueListenableBuilder 监听 positionNotifier 以实时更新进度
 
-  Widget _buildAlignedProgressRow(PlayerService player, ColorScheme colorScheme) {
+  Widget _buildAlignedProgressRow(
+    PlayerService player,
+    ColorScheme colorScheme,
+  ) {
     final timeStyle = TextStyle(
       fontSize: 11,
       color: colorScheme.onSurfaceVariant,
@@ -980,12 +1045,16 @@ class _MiniPlayerState extends State<MiniPlayer> {
       valueListenable: player.positionNotifier,
       builder: (context, position, child) {
         final effectiveDuration = _getEffectiveDuration(player);
-        final progress = _seekRatio ??
+        final progress =
+            _seekRatio ??
             (effectiveDuration.inMilliseconds > 0
                 ? position.inMilliseconds / effectiveDuration.inMilliseconds
                 : 0.0);
         final displayPosition = _seekRatio != null
-            ? Duration(milliseconds: (effectiveDuration.inMilliseconds * _seekRatio!).round())
+            ? Duration(
+                milliseconds: (effectiveDuration.inMilliseconds * _seekRatio!)
+                    .round(),
+              )
             : position;
         final indicator = ThemeManager().isFluentFramework
             ? fluent.ProgressBar(
@@ -996,15 +1065,22 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 child: LinearProgressIndicator(
                   value: progress.clamp(0.0, 1.0),
                   minHeight: 3,
-                  backgroundColor:
-                      colorScheme.onSurface.withValues(alpha: 0.08),
-                  valueColor:
-                      AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                  backgroundColor: colorScheme.onSurface.withValues(
+                    alpha: 0.08,
+                  ),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    colorScheme.primary,
+                  ),
                 ),
               );
 
-        final totalDurationStr = effectiveDuration.inSeconds > 0
-            ? _formatDuration(effectiveDuration)
+        final remaining = effectiveDuration > displayPosition
+            ? effectiveDuration - displayPosition
+            : Duration.zero;
+        final totalOrRemainingStr = effectiveDuration.inSeconds > 0
+            ? (_showRemainingTime
+                  ? '-${_formatDuration(remaining)}'
+                  : _formatDuration(effectiveDuration))
             : '--:--';
 
         return Padding(
@@ -1021,8 +1097,22 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   child: indicator,
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(totalDurationStr, style: timeStyle),
+              const SizedBox(width: 4),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  setState(() {
+                    _showRemainingTime = !_showRemainingTime;
+                  });
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 4,
+                  ),
+                  child: Text(totalOrRemainingStr, style: timeStyle),
+                ),
+              ),
             ],
           ),
         );
@@ -1031,43 +1121,38 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   /// 构建封面
-  Widget _buildCover(dynamic song, dynamic track, ColorScheme colorScheme, {double size = 48}) {
+  Widget _buildCover(
+    dynamic song,
+    dynamic track,
+    ColorScheme colorScheme, {
+    double size = 48,
+  }) {
     final player = PlayerService();
-    final isPending = player.isLoading && player.pendingTrack != null;
+    final isPending = player.isTrackSwitchPending;
     final imageUrl = _resolveCoverUrl(song, track);
     final provider = isPending ? null : player.currentCoverImageProvider;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: provider != null
-          ? Image(
-              image: provider,
+          ? Image(image: provider, width: size, height: size, fit: BoxFit.cover)
+          : imageUrl.isNotEmpty
+          ? _optimizedCover(imageUrl, size, colorScheme, provider: provider)
+          : Container(
               width: size,
               height: size,
-              fit: BoxFit.cover,
-            )
-          : imageUrl.isNotEmpty
-              ? _optimizedCover(
-                  imageUrl,
-                  size,
-                  colorScheme,
-                  provider: provider,
-                )
-              : Container(
-                  width: size,
-                  height: size,
-                  color: colorScheme.surfaceContainerHighest,
-                  child: Icon(
-                    Icons.music_note,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
+              color: colorScheme.surfaceContainerHighest,
+              child: Icon(
+                Icons.music_note,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
     );
   }
 
   String _resolveCoverUrl(dynamic song, dynamic track) {
     final player = PlayerService();
-    if (player.isLoading &&
+    if (player.isTrackSwitchPending &&
         player.pendingTrack != null &&
         player.pendingTrack!.picUrl.isNotEmpty) {
       return player.pendingTrack!.picUrl;
@@ -1100,7 +1185,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
       );
     }
     // 检查是否为网络图片
-    final isNetwork = imageUrl.startsWith('http') || imageUrl.startsWith('https');
+    final isNetwork =
+        imageUrl.startsWith('http') || imageUrl.startsWith('https');
 
     if (!isNetwork) {
       // 本地文件
@@ -1113,10 +1199,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
           width: size,
           height: size,
           color: colorScheme.surfaceContainerHighest,
-          child: Icon(
-            Icons.music_note,
-            color: colorScheme.onSurfaceVariant,
-          ),
+          child: Icon(Icons.music_note, color: colorScheme.onSurfaceVariant),
         ),
       );
     }
@@ -1145,22 +1228,18 @@ class _MiniPlayerState extends State<MiniPlayer> {
         width: 48,
         height: 48,
         color: colorScheme.surfaceContainerHighest,
-        child: Icon(
-          Icons.music_note,
-          color: colorScheme.onSurfaceVariant,
-        ),
+        child: Icon(Icons.music_note, color: colorScheme.onSurfaceVariant),
       ),
     );
   }
 
   /// 构建歌曲信息
-  Widget _buildSongInfo(
-    BuildContext context, {
-    bool singleLine = false,
-  }) {
+  Widget _buildSongInfo(BuildContext context, {bool singleLine = false}) {
     final player = PlayerService();
     final name = player.displayTitle.isNotEmpty ? player.displayTitle : '未知歌曲';
-    final artist = player.displayArtist.isNotEmpty ? player.displayArtist : '未知艺术家';
+    final artist = player.displayArtist.isNotEmpty
+        ? player.displayArtist
+        : '未知艺术家';
     final bool isFluent = ThemeManager().isFluentFramework;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -1289,10 +1368,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
           const SizedBox(height: 2),
           Text(
             artist,
-            style: TextStyle(
-              fontSize: 13,
-              color: CupertinoColors.systemGrey,
-            ),
+            style: TextStyle(fontSize: 13, color: CupertinoColors.systemGrey),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -1319,13 +1395,20 @@ class _MiniPlayerState extends State<MiniPlayer> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 0.5),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 3.5,
+                vertical: 0.5,
+              ),
               margin: const EdgeInsets.only(right: 5),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(3),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.28),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.28),
                   width: 0.6,
                 ),
               ),
@@ -1411,19 +1494,23 @@ class _MiniPlayerState extends State<MiniPlayer> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (!hideSkip)
-        IconButton(
-          icon: Icon(
-            Icons.skip_previous_rounded,
-            color: player.hasPrevious ? iconColor : iconColor.withValues(alpha: 0.5),
-            size: skipIconSize,
+          IconButton(
+            icon: Icon(
+              Icons.skip_previous_rounded,
+              color: player.hasPrevious
+                  ? iconColor
+                  : iconColor.withValues(alpha: 0.5),
+              size: skipIconSize,
+            ),
+            padding: EdgeInsets.zero,
+            constraints: BoxConstraints.tightFor(
+              width: skipButtonSize,
+              height: skipButtonSize,
+            ),
+            onPressed: player.hasPrevious ? () => player.playPrevious() : null,
+            tooltip: '上一首',
           ),
-          padding: EdgeInsets.zero,
-          constraints:
-              BoxConstraints.tightFor(width: skipButtonSize, height: skipButtonSize),
-          onPressed: player.hasPrevious ? () => player.playPrevious() : null,
-          tooltip: '上一首',
-        ),
-        if (player.isLoading)
+        if (player.isTrackSwitchPending)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: SizedBox(
@@ -1437,46 +1524,56 @@ class _MiniPlayerState extends State<MiniPlayer> {
           )
         else
           Container(
-             margin: EdgeInsets.symmetric(horizontal: compact ? 6 : 8),
-             decoration: BoxDecoration(
-               color: activeColor,
-               shape: BoxShape.circle,
-               boxShadow: [
-                 BoxShadow(
-                   color: activeColor.withValues(alpha: 0.3),
-                   blurRadius: 8,
-                   offset: const Offset(0, 2),
-                 )
-               ]
-             ),
-             child: IconButton(
-                 icon: Icon(player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
-                 color: ThemeData.estimateBrightnessForColor(activeColor) == Brightness.dark
-                     ? Colors.white
-                     : const Color(0xFF0F172A),
-                iconSize: playIconSize,
-                padding: EdgeInsets.zero,
-                constraints: BoxConstraints.tightFor(
-                  width: playButtonSize,
-                  height: playButtonSize,
+            margin: EdgeInsets.symmetric(horizontal: compact ? 6 : 8),
+            decoration: BoxDecoration(
+              color: activeColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: activeColor.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
-                onPressed: () => player.togglePlayPause(),
-                tooltip: player.isPlaying ? '暂停' : '播放',
-             ),
-           ),
-        if (!hideSkip)
-        IconButton(
-          icon: Icon(
-            Icons.skip_next_rounded,
-            color: player.hasNext ? iconColor : iconColor.withValues(alpha: 0.5),
-            size: skipIconSize,
+              ],
+            ),
+            child: IconButton(
+              icon: Icon(
+                player.isPlaying
+                    ? Icons.pause_rounded
+                    : Icons.play_arrow_rounded,
+              ),
+              color:
+                  ThemeData.estimateBrightnessForColor(activeColor) ==
+                      Brightness.dark
+                  ? Colors.white
+                  : const Color(0xFF0F172A),
+              iconSize: playIconSize,
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints.tightFor(
+                width: playButtonSize,
+                height: playButtonSize,
+              ),
+              onPressed: () => player.togglePlayPause(),
+              tooltip: player.isPlaying ? '暂停' : '播放',
+            ),
           ),
-          padding: EdgeInsets.zero,
-          constraints:
-              BoxConstraints.tightFor(width: skipButtonSize, height: skipButtonSize),
-          onPressed: player.hasNext ? () => player.playNext() : null,
-          tooltip: '下一首',
-        ),
+        if (!hideSkip)
+          IconButton(
+            icon: Icon(
+              Icons.skip_next_rounded,
+              color: player.hasNext
+                  ? iconColor
+                  : iconColor.withValues(alpha: 0.5),
+              size: skipIconSize,
+            ),
+            padding: EdgeInsets.zero,
+            constraints: BoxConstraints.tightFor(
+              width: skipButtonSize,
+              height: skipButtonSize,
+            ),
+            onPressed: player.hasNext ? () => player.playNext() : null,
+            tooltip: '下一首',
+          ),
       ],
     );
   }
@@ -1499,7 +1596,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
     return Icons.volume_up_rounded;
   }
 
-  Future<void> _showVolumeDialog(BuildContext context, PlayerService player) async {
+  Future<void> _showVolumeDialog(
+    BuildContext context,
+    PlayerService player,
+  ) async {
     final systemService = SystemVolumeService();
     bool systemSupported = false;
     double systemTemp = 0.0;
@@ -1599,7 +1699,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 color: Theme.of(context).brightness == Brightness.dark
                     ? const Color(0xFF1C1C1E)
                     : CupertinoColors.white,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(12),
+                ),
               ),
               child: SafeArea(
                 top: false,
@@ -1613,7 +1715,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                             width: 36,
                             height: 5,
                             decoration: BoxDecoration(
-                              color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
+                              color: CupertinoColors.systemGrey.withValues(
+                                alpha: 0.3,
+                              ),
                               borderRadius: BorderRadius.circular(2.5),
                             ),
                           ),
@@ -1657,7 +1761,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           width: 36,
                           height: 5,
                           decoration: BoxDecoration(
-                            color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
+                            color: CupertinoColors.systemGrey.withValues(
+                              alpha: 0.3,
+                            ),
                             borderRadius: BorderRadius.circular(2.5),
                           ),
                         ),
@@ -1812,14 +1918,17 @@ class _MiniPlayerState extends State<MiniPlayer> {
     bool isHighlightedTrack(Track track) {
       final activeTrack = PlayerService().activeTrack;
       final pendingTrack = PlayerService().pendingTrack;
-      final isActive = activeTrack != null &&
+      final isActive =
+          activeTrack != null &&
           track.id.toString() == activeTrack.id.toString() &&
           track.source == activeTrack.source;
-      final isPending = pendingTrack != null &&
+      final isPending =
+          pendingTrack != null &&
           track.id.toString() == pendingTrack.id.toString() &&
           track.source == pendingTrack.source;
       return isActive || isPending;
     }
+
     if (ThemeManager().isFluentFramework) {
       await fluent.showDialog(
         context: context,
@@ -1828,8 +1937,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
             animation: queueService,
             builder: (context, _) {
               final hasQueueNow = queueService.hasQueue;
-              final List<dynamic> displayListNow =
-                  hasQueueNow ? queueService.queue : historyTracks;
+              final List<dynamic> displayListNow = hasQueueNow
+                  ? queueService.queue
+                  : historyTracks;
               return fluent.ContentDialog(
                 title: Text(hasQueueNow ? '播放队列' : '播放历史'),
                 content: SizedBox(
@@ -1839,66 +1949,111 @@ class _MiniPlayerState extends State<MiniPlayer> {
                       ? const Center(child: Text('播放列表为空'))
                       : ListView.separated(
                           itemCount: displayListNow.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             final Track t = displayListNow[i] as Track;
                             final isCurrent = isHighlightedTrack(t);
                             return fluent.Card(
                               padding: const EdgeInsets.all(8),
                               child: fluent.ListTile(
-                                title: Text(t.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                subtitle: Text(t.artists, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                title: Text(
+                                  t.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  t.artists,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                                 leading: ClipRRect(
                                   borderRadius: BorderRadius.circular(4),
-                                  child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
+                                  child:
+                                      (t.picUrl.startsWith('http') ||
+                                          t.picUrl.startsWith('https'))
                                       ? CachedNetworkImage(
                                           imageUrl: t.picUrl,
-                                          httpHeaders: getImageHeaders(t.picUrl),
+                                          httpHeaders: getImageHeaders(
+                                            t.picUrl,
+                                          ),
                                           memCacheWidth: 128,
                                           memCacheHeight: 128,
-                                          imageBuilder: (context, imageProvider) {
-                                            PlaylistQueueService().updateCoverProvider(t, imageProvider);
-                                            return Image(image: imageProvider, width: 44, height: 44, fit: BoxFit.cover);
-                                          },
-                                          placeholder: (context, url) => Container(width: 44, height: 44, color: fluent.Colors.grey[20]),
-                                          errorWidget: (context, url, error) => Container(
-                                            width: 44,
-                                            height: 44,
-                                            color: fluent.Colors.grey[20],
-                                            child: const Icon(Icons.music_note),
-                                          ),
+                                          imageBuilder:
+                                              (context, imageProvider) {
+                                                PlaylistQueueService()
+                                                    .updateCoverProvider(
+                                                      t,
+                                                      imageProvider,
+                                                    );
+                                                return Image(
+                                                  image: imageProvider,
+                                                  width: 44,
+                                                  height: 44,
+                                                  fit: BoxFit.cover,
+                                                );
+                                              },
+                                          placeholder: (context, url) =>
+                                              Container(
+                                                width: 44,
+                                                height: 44,
+                                                color: fluent.Colors.grey[20],
+                                              ),
+                                          errorWidget: (context, url, error) =>
+                                              Container(
+                                                width: 44,
+                                                height: 44,
+                                                color: fluent.Colors.grey[20],
+                                                child: const Icon(
+                                                  Icons.music_note,
+                                                ),
+                                              ),
                                         )
                                       : Image.file(
                                           File(t.picUrl),
                                           width: 44,
                                           height: 44,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) => Container(
-                                            width: 44,
-                                            height: 44,
-                                            color: fluent.Colors.grey[20],
-                                            child: const Icon(Icons.music_note),
-                                          ),
+                                          errorBuilder:
+                                              (context, error, stackTrace) =>
+                                                  Container(
+                                                    width: 44,
+                                                    height: 44,
+                                                    color:
+                                                        fluent.Colors.grey[20],
+                                                    child: const Icon(
+                                                      Icons.music_note,
+                                                    ),
+                                                  ),
                                         ),
                                 ),
                                 tileColor: isCurrent
                                     ? WidgetStateColor.resolveWith(
-                                        (_) =>
-                                        fluent.FluentTheme.of(context).resources.controlFillColorSecondary,
+                                        (_) => fluent.FluentTheme.of(
+                                          context,
+                                        ).resources.controlFillColorSecondary,
                                       )
                                     : null,
                                 trailing: TrackMoreButton(
                                   track: t,
                                   onPlay: () {
-                                    final coverProvider = PlaylistQueueService().getCoverProvider(t);
-                                    PlayerService().playTrack(t, coverProvider: coverProvider);
+                                    final coverProvider = PlaylistQueueService()
+                                        .getCoverProvider(t);
+                                    PlayerService().playTrack(
+                                      t,
+                                      coverProvider: coverProvider,
+                                    );
                                     Navigator.pop(context);
                                   },
                                   size: 28,
                                 ),
                                 onPressed: () {
-                                  final coverProvider = PlaylistQueueService().getCoverProvider(t);
-                                  PlayerService().playTrack(t, coverProvider: coverProvider);
+                                  final coverProvider = PlaylistQueueService()
+                                      .getCoverProvider(t);
+                                  PlayerService().playTrack(
+                                    t,
+                                    coverProvider: coverProvider,
+                                  );
                                   Navigator.pop(context);
                                 },
                               ),
@@ -1937,12 +2092,18 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   animation: queueService,
                   builder: (context, _) {
                     final hasQueueNow = queueService.hasQueue;
-                    final List<Track> list = hasQueueNow ? queueService.queue : historyTracks;
+                    final List<Track> list = hasQueueNow
+                        ? queueService.queue
+                        : historyTracks;
                     return Container(
                       height: sheetHeight,
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                        color: isDark
+                            ? const Color(0xFF1C1C1E)
+                            : CupertinoColors.white,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(12),
+                        ),
                       ),
                       child: SafeArea(
                         top: false,
@@ -1953,7 +2114,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               width: 36,
                               height: 5,
                               decoration: BoxDecoration(
-                                color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
+                                color: CupertinoColors.systemGrey.withValues(
+                                  alpha: 0.3,
+                                ),
                                 borderRadius: BorderRadius.circular(2.5),
                               ),
                             ),
@@ -1966,19 +2129,28 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                     style: TextStyle(
                                       fontSize: 17,
                                       fontWeight: FontWeight.w600,
-                                      color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                      color: isDark
+                                          ? CupertinoColors.white
+                                          : CupertinoColors.black,
                                     ),
                                   ),
                                   const Spacer(),
                                   CupertinoButton(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
                                     minimumSize: Size.zero,
-                                    onPressed: hasQueueNow ? () => queueService.clear() : null,
+                                    onPressed: hasQueueNow
+                                        ? () => queueService.clear()
+                                        : null,
                                     child: Text(
                                       '清空',
                                       style: TextStyle(
                                         fontSize: 13,
-                                        color: hasQueueNow ? CupertinoColors.systemRed : CupertinoColors.systemGrey,
+                                        color: hasQueueNow
+                                            ? CupertinoColors.systemRed
+                                            : CupertinoColors.systemGrey,
                                       ),
                                     ),
                                   ),
@@ -1990,193 +2162,118 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                   ? Center(
                                       child: Text(
                                         '播放列表为空',
-                                        style: TextStyle(color: CupertinoColors.systemGrey),
+                                        style: TextStyle(
+                                          color: CupertinoColors.systemGrey,
+                                        ),
                                       ),
                                     )
                                   : (hasQueueNow
-                                      ? ReorderableListView.builder(
-                                          buildDefaultDragHandles: false,
-                                          onReorder: (oldIndex, newIndex) {
-                                            if (newIndex > oldIndex) newIndex -= 1;
-                                            queueService.move(oldIndex, newIndex);
-                                          },
-                                          itemCount: list.length,
-                                          itemBuilder: (context, i) {
-                                            final Track t = list[i];
-                                            final isCurrent = isHighlightedTrack(t);
-                                            final content = Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                              decoration: BoxDecoration(
-                                                color: isCurrent
-                                                    ? CupertinoColors.activeBlue.withValues(alpha: 0.1)
-                                                    : null,
-                                              ),
-                                              child: Row(
-                                                children: [
-                                                  ClipRRect(
-                                                    borderRadius: BorderRadius.circular(6),
-                                                    child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
-                                                        ? CachedNetworkImage(
-                                                            imageUrl: t.picUrl,
-                                                            httpHeaders: getImageHeaders(t.picUrl),
-                                                            memCacheWidth: 128,
-                                                            memCacheHeight: 128,
-                                                            imageBuilder: (context, imageProvider) {
-                                                              PlaylistQueueService().updateCoverProvider(t, imageProvider);
-                                                              return Image(image: imageProvider, width: 44, height: 44, fit: BoxFit.cover);
-                                                            },
-                                                            placeholder: (context, url) => Container(
-                                                              width: 44,
-                                                              height: 44,
-                                                              color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5,
-                                                              child: const CupertinoActivityIndicator(radius: 10),
-                                                            ),
-                                                            errorWidget: (context, url, error) => Container(
-                                                              width: 44,
-                                                              height: 44,
-                                                              color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5,
-                                                              child: Icon(CupertinoIcons.music_note, color: CupertinoColors.systemGrey),
-                                                            ),
-                                                          )
-                                                        : Image.file(
-                                                            File(t.picUrl),
-                                                            width: 44,
-                                                            height: 44,
-                                                            fit: BoxFit.cover,
-                                                            errorBuilder: (context, error, stackTrace) => Container(
-                                                              width: 44,
-                                                              height: 44,
-                                                              color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5,
-                                                              child: Icon(CupertinoIcons.music_note, color: CupertinoColors.systemGrey),
-                                                            ),
-                                                          ),
-                                                  ),
-                                                  const SizedBox(width: 12),
-                                                  Expanded(
-                                                    child: Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        Text(
-                                                          t.name,
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
-                                                          style: TextStyle(
-                                                            fontSize: 16,
-                                                            color: isCurrent
-                                                                ? CupertinoColors.activeBlue
-                                                                : (isDark ? CupertinoColors.white : CupertinoColors.black),
-                                                          ),
-                                                        ),
-                                                        Text(
-                                                          t.artists,
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
-                                                          style: TextStyle(
-                                                            fontSize: 13,
-                                                            color: CupertinoColors.systemGrey,
-                                                          ),
-                                                        ),
-                                                      ],
+                                        ? ReorderableListView.builder(
+                                            buildDefaultDragHandles: false,
+                                            onReorder: (oldIndex, newIndex) {
+                                              if (newIndex > oldIndex)
+                                                newIndex -= 1;
+                                              queueService.move(
+                                                oldIndex,
+                                                newIndex,
+                                              );
+                                            },
+                                            itemCount: list.length,
+                                            itemBuilder: (context, i) {
+                                              final Track t = list[i];
+                                              final isCurrent =
+                                                  isHighlightedTrack(t);
+                                              final content = Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 8,
                                                     ),
-                                                  ),
-                                                  if (isCurrent)
-                                                    Icon(
-                                                      CupertinoIcons.play_fill,
-                                                      color: CupertinoColors.activeBlue,
-                                                      size: 18,
-                                                    ),
-                                                  TrackMoreButton(
-                                                    track: t,
-                                                    onPlay: () {
-                                                      final coverProvider = PlaylistQueueService().getCoverProvider(t);
-                                                      PlayerService().playTrack(t, coverProvider: coverProvider);
-                                                      Navigator.pop(context);
-                                                    },
-                                                    size: 28,
-                                                  ),
-                                                  const SizedBox(width: 4),
-                                                  ReorderableDelayedDragStartListener(
-                                                    index: i,
-                                                    child: Icon(
-                                                      CupertinoIcons.line_horizontal_3,
-                                                      color: CupertinoColors.systemGrey,
-                                                      size: 18,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                            return Dismissible(
-                                              key: ObjectKey(t),
-                                              direction: DismissDirection.endToStart,
-                                              background: Container(
-                                                alignment: Alignment.centerRight,
-                                                padding: const EdgeInsets.only(right: 16),
-                                                color: CupertinoColors.systemRed,
-                                                child: const Icon(CupertinoIcons.delete, color: CupertinoColors.white),
-                                              ),
-                                              onDismissed: (_) {
-                                                queueService.removeAt(i);
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text('已移除'), duration: Duration(seconds: 1)),
-                                                );
-                                              },
-                                              child: GestureDetector(
-                                                behavior: HitTestBehavior.opaque,
-                                                onTap: () {
-                                                  final coverProvider = PlaylistQueueService().getCoverProvider(t);
-                                                  PlayerService().playTrack(t, coverProvider: coverProvider);
-                                                  Navigator.pop(context);
-                                                },
-                                                child: content,
-                                              ),
-                                            );
-                                          },
-                                        )
-                                      : ListView.builder(
-                                          itemCount: list.length,
-                                          itemBuilder: (context, i) {
-                                            final Track t = list[i];
-                                            final isCurrent = isHighlightedTrack(t);
-                                            return GestureDetector(
-                                              behavior: HitTestBehavior.opaque,
-                                              onTap: () {
-                                                final coverProvider = PlaylistQueueService().getCoverProvider(t);
-                                                PlayerService().playTrack(t, coverProvider: coverProvider);
-                                                Navigator.pop(context);
-                                              },
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                                 decoration: BoxDecoration(
                                                   color: isCurrent
-                                                      ? CupertinoColors.activeBlue.withValues(alpha: 0.1)
+                                                      ? CupertinoColors
+                                                            .activeBlue
+                                                            .withValues(
+                                                              alpha: 0.1,
+                                                            )
                                                       : null,
                                                 ),
                                                 child: Row(
                                                   children: [
                                                     ClipRRect(
-                                                      borderRadius: BorderRadius.circular(6),
-                                                      child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            6,
+                                                          ),
+                                                      child:
+                                                          (t.picUrl.startsWith(
+                                                                'http',
+                                                              ) ||
+                                                              t.picUrl
+                                                                  .startsWith(
+                                                                    'https',
+                                                                  ))
                                                           ? CachedNetworkImage(
-                                                              imageUrl: t.picUrl,
-                                                              httpHeaders: getImageHeaders(t.picUrl),
-                                                              memCacheWidth: 128,
-                                                              memCacheHeight: 128,
-                                                              imageBuilder: (context, imageProvider) {
-                                                                PlaylistQueueService().updateCoverProvider(t, imageProvider);
-                                                                return Image(image: imageProvider, width: 44, height: 44, fit: BoxFit.cover);
-                                                              },
+                                                              imageUrl:
+                                                                  t.picUrl,
+                                                              httpHeaders:
+                                                                  getImageHeaders(
+                                                                    t.picUrl,
+                                                                  ),
+                                                              memCacheWidth:
+                                                                  128,
+                                                              memCacheHeight:
+                                                                  128,
+                                                              imageBuilder:
+                                                                  (
+                                                                    context,
+                                                                    imageProvider,
+                                                                  ) {
+                                                                    PlaylistQueueService()
+                                                                        .updateCoverProvider(
+                                                                          t,
+                                                                          imageProvider,
+                                                                        );
+                                                                    return Image(
+                                                                      image:
+                                                                          imageProvider,
+                                                                      width: 44,
+                                                                      height:
+                                                                          44,
+                                                                      fit: BoxFit
+                                                                          .cover,
+                                                                    );
+                                                                  },
                                                               placeholder: (context, url) => Container(
                                                                 width: 44,
                                                                 height: 44,
-                                                                color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5,
-                                                                child: const CupertinoActivityIndicator(radius: 10),
+                                                                color: isDark
+                                                                    ? const Color(
+                                                                        0xFF2C2C2E,
+                                                                      )
+                                                                    : CupertinoColors
+                                                                          .systemGrey5,
+                                                                child:
+                                                                    const CupertinoActivityIndicator(
+                                                                      radius:
+                                                                          10,
+                                                                    ),
                                                               ),
                                                               errorWidget: (context, url, error) => Container(
                                                                 width: 44,
                                                                 height: 44,
-                                                                color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5,
-                                                                child: Icon(CupertinoIcons.music_note, color: CupertinoColors.systemGrey),
+                                                                color: isDark
+                                                                    ? const Color(
+                                                                        0xFF2C2C2E,
+                                                                      )
+                                                                    : CupertinoColors
+                                                                          .systemGrey5,
+                                                                child: Icon(
+                                                                  CupertinoIcons
+                                                                      .music_note,
+                                                                  color: CupertinoColors
+                                                                      .systemGrey,
+                                                                ),
                                                               ),
                                                             )
                                                           : Image.file(
@@ -2184,57 +2281,379 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                               width: 44,
                                                               height: 44,
                                                               fit: BoxFit.cover,
-                                                              errorBuilder: (context, error, stackTrace) => Container(
-                                                                width: 44,
-                                                                height: 44,
-                                                                color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5,
-                                                                child: Icon(CupertinoIcons.music_note, color: CupertinoColors.systemGrey),
-                                                              ),
+                                                              errorBuilder:
+                                                                  (
+                                                                    context,
+                                                                    error,
+                                                                    stackTrace,
+                                                                  ) => Container(
+                                                                    width: 44,
+                                                                    height: 44,
+                                                                    color:
+                                                                        isDark
+                                                                        ? const Color(
+                                                                            0xFF2C2C2E,
+                                                                          )
+                                                                        : CupertinoColors
+                                                                              .systemGrey5,
+                                                                    child: Icon(
+                                                                      CupertinoIcons
+                                                                          .music_note,
+                                                                      color: CupertinoColors
+                                                                          .systemGrey,
+                                                                    ),
+                                                                  ),
                                                             ),
                                                     ),
                                                     const SizedBox(width: 12),
                                                     Expanded(
                                                       child: Column(
-                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
                                                         children: [
                                                           Text(
                                                             t.name,
                                                             maxLines: 1,
-                                                            overflow: TextOverflow.ellipsis,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
                                                             style: TextStyle(
                                                               fontSize: 16,
                                                               color: isCurrent
-                                                                  ? CupertinoColors.activeBlue
-                                                                  : (isDark ? CupertinoColors.white : CupertinoColors.black),
+                                                                  ? CupertinoColors
+                                                                        .activeBlue
+                                                                  : (isDark
+                                                                        ? CupertinoColors
+                                                                              .white
+                                                                        : CupertinoColors
+                                                                              .black),
                                                             ),
                                                           ),
                                                           Text(
                                                             t.artists,
                                                             maxLines: 1,
-                                                            overflow: TextOverflow.ellipsis,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
                                                             style: TextStyle(
                                                               fontSize: 13,
-                                                              color: CupertinoColors.systemGrey,
+                                                              color:
+                                                                  CupertinoColors
+                                                                      .systemGrey,
                                                             ),
                                                           ),
                                                         ],
                                                       ),
                                                     ),
+                                                    if (isCurrent)
+                                                      Icon(
+                                                        CupertinoIcons
+                                                            .play_fill,
+                                                        color: CupertinoColors
+                                                            .activeBlue,
+                                                        size: 18,
+                                                      ),
                                                     TrackMoreButton(
                                                       track: t,
                                                       onPlay: () {
-                                                        final coverProvider = PlaylistQueueService().getCoverProvider(t);
-                                                        PlayerService().playTrack(t, coverProvider: coverProvider);
+                                                        final coverProvider =
+                                                            PlaylistQueueService()
+                                                                .getCoverProvider(
+                                                                  t,
+                                                                );
+                                                        PlayerService()
+                                                            .playTrack(
+                                                              t,
+                                                              coverProvider:
+                                                                  coverProvider,
+                                                            );
                                                         Navigator.pop(context);
                                                       },
                                                       size: 28,
                                                     ),
+                                                    const SizedBox(width: 4),
+                                                    ReorderableDelayedDragStartListener(
+                                                      index: i,
+                                                      child: Icon(
+                                                        CupertinoIcons
+                                                            .line_horizontal_3,
+                                                        color: CupertinoColors
+                                                            .systemGrey,
+                                                        size: 18,
+                                                      ),
+                                                    ),
                                                   ],
                                                 ),
-                                              ),
-                                            );
-                                          },
-                                        )),
+                                              );
+                                              return Dismissible(
+                                                key: ObjectKey(t),
+                                                direction:
+                                                    DismissDirection.endToStart,
+                                                background: Container(
+                                                  alignment:
+                                                      Alignment.centerRight,
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        right: 16,
+                                                      ),
+                                                  color:
+                                                      CupertinoColors.systemRed,
+                                                  child: const Icon(
+                                                    CupertinoIcons.delete,
+                                                    color:
+                                                        CupertinoColors.white,
+                                                  ),
+                                                ),
+                                                onDismissed: (_) {
+                                                  queueService.removeAt(i);
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text('已移除'),
+                                                      duration: Duration(
+                                                        seconds: 1,
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                                child: GestureDetector(
+                                                  behavior:
+                                                      HitTestBehavior.opaque,
+                                                  onTap: () {
+                                                    final coverProvider =
+                                                        PlaylistQueueService()
+                                                            .getCoverProvider(
+                                                              t,
+                                                            );
+                                                    PlayerService().playTrack(
+                                                      t,
+                                                      coverProvider:
+                                                          coverProvider,
+                                                    );
+                                                    Navigator.pop(context);
+                                                  },
+                                                  child: content,
+                                                ),
+                                              );
+                                            },
+                                          )
+                                        : ListView.builder(
+                                            itemCount: list.length,
+                                            itemBuilder: (context, i) {
+                                              final Track t = list[i];
+                                              final isCurrent =
+                                                  isHighlightedTrack(t);
+                                              return GestureDetector(
+                                                behavior:
+                                                    HitTestBehavior.opaque,
+                                                onTap: () {
+                                                  final coverProvider =
+                                                      PlaylistQueueService()
+                                                          .getCoverProvider(t);
+                                                  PlayerService().playTrack(
+                                                    t,
+                                                    coverProvider:
+                                                        coverProvider,
+                                                  );
+                                                  Navigator.pop(context);
+                                                },
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 16,
+                                                        vertical: 8,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: isCurrent
+                                                        ? CupertinoColors
+                                                              .activeBlue
+                                                              .withValues(
+                                                                alpha: 0.1,
+                                                              )
+                                                        : null,
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      ClipRRect(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              6,
+                                                            ),
+                                                        child:
+                                                            (t.picUrl
+                                                                    .startsWith(
+                                                                      'http',
+                                                                    ) ||
+                                                                t.picUrl
+                                                                    .startsWith(
+                                                                      'https',
+                                                                    ))
+                                                            ? CachedNetworkImage(
+                                                                imageUrl:
+                                                                    t.picUrl,
+                                                                httpHeaders:
+                                                                    getImageHeaders(
+                                                                      t.picUrl,
+                                                                    ),
+                                                                memCacheWidth:
+                                                                    128,
+                                                                memCacheHeight:
+                                                                    128,
+                                                                imageBuilder:
+                                                                    (
+                                                                      context,
+                                                                      imageProvider,
+                                                                    ) {
+                                                                      PlaylistQueueService()
+                                                                          .updateCoverProvider(
+                                                                            t,
+                                                                            imageProvider,
+                                                                          );
+                                                                      return Image(
+                                                                        image:
+                                                                            imageProvider,
+                                                                        width:
+                                                                            44,
+                                                                        height:
+                                                                            44,
+                                                                        fit: BoxFit
+                                                                            .cover,
+                                                                      );
+                                                                    },
+                                                                placeholder: (context, url) => Container(
+                                                                  width: 44,
+                                                                  height: 44,
+                                                                  color: isDark
+                                                                      ? const Color(
+                                                                          0xFF2C2C2E,
+                                                                        )
+                                                                      : CupertinoColors
+                                                                            .systemGrey5,
+                                                                  child:
+                                                                      const CupertinoActivityIndicator(
+                                                                        radius:
+                                                                            10,
+                                                                      ),
+                                                                ),
+                                                                errorWidget:
+                                                                    (
+                                                                      context,
+                                                                      url,
+                                                                      error,
+                                                                    ) => Container(
+                                                                      width: 44,
+                                                                      height:
+                                                                          44,
+                                                                      color:
+                                                                          isDark
+                                                                          ? const Color(
+                                                                              0xFF2C2C2E,
+                                                                            )
+                                                                          : CupertinoColors.systemGrey5,
+                                                                      child: Icon(
+                                                                        CupertinoIcons
+                                                                            .music_note,
+                                                                        color: CupertinoColors
+                                                                            .systemGrey,
+                                                                      ),
+                                                                    ),
+                                                              )
+                                                            : Image.file(
+                                                                File(t.picUrl),
+                                                                width: 44,
+                                                                height: 44,
+                                                                fit: BoxFit
+                                                                    .cover,
+                                                                errorBuilder:
+                                                                    (
+                                                                      context,
+                                                                      error,
+                                                                      stackTrace,
+                                                                    ) => Container(
+                                                                      width: 44,
+                                                                      height:
+                                                                          44,
+                                                                      color:
+                                                                          isDark
+                                                                          ? const Color(
+                                                                              0xFF2C2C2E,
+                                                                            )
+                                                                          : CupertinoColors.systemGrey5,
+                                                                      child: Icon(
+                                                                        CupertinoIcons
+                                                                            .music_note,
+                                                                        color: CupertinoColors
+                                                                            .systemGrey,
+                                                                      ),
+                                                                    ),
+                                                              ),
+                                                      ),
+                                                      const SizedBox(width: 12),
+                                                      Expanded(
+                                                        child: Column(
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .start,
+                                                          children: [
+                                                            Text(
+                                                              t.name,
+                                                              maxLines: 1,
+                                                              overflow:
+                                                                  TextOverflow
+                                                                      .ellipsis,
+                                                              style: TextStyle(
+                                                                fontSize: 16,
+                                                                color: isCurrent
+                                                                    ? CupertinoColors
+                                                                          .activeBlue
+                                                                    : (isDark
+                                                                          ? CupertinoColors.white
+                                                                          : CupertinoColors.black),
+                                                              ),
+                                                            ),
+                                                            Text(
+                                                              t.artists,
+                                                              maxLines: 1,
+                                                              overflow:
+                                                                  TextOverflow
+                                                                      .ellipsis,
+                                                              style: TextStyle(
+                                                                fontSize: 13,
+                                                                color: CupertinoColors
+                                                                    .systemGrey,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      TrackMoreButton(
+                                                        track: t,
+                                                        onPlay: () {
+                                                          final coverProvider =
+                                                              PlaylistQueueService()
+                                                                  .getCoverProvider(
+                                                                    t,
+                                                                  );
+                                                          PlayerService()
+                                                              .playTrack(
+                                                                t,
+                                                                coverProvider:
+                                                                    coverProvider,
+                                                              );
+                                                          Navigator.pop(
+                                                            context,
+                                                          );
+                                                        },
+                                                        size: 28,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          )),
                             ),
                           ],
                         ),
@@ -2264,7 +2683,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
               animation: queueService,
               builder: (context, _) {
                 final hasQueueNow = queueService.hasQueue;
-                final List<Track> list = hasQueueNow ? queueService.queue : historyTracks;
+                final List<Track> list = hasQueueNow
+                    ? queueService.queue
+                    : historyTracks;
                 final colorScheme = Theme.of(context).colorScheme;
 
                 return SafeArea(
@@ -2282,7 +2703,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               ),
                               const Spacer(),
                               TextButton(
-                                onPressed: hasQueueNow ? () => queueService.clear() : null,
+                                onPressed: hasQueueNow
+                                    ? () => queueService.clear()
+                                    : null,
                                 child: const Text('清空'),
                               ),
                             ],
@@ -2293,187 +2716,368 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               ? Center(
                                   child: Padding(
                                     padding: const EdgeInsets.all(24.0),
-                                    child: Text('播放列表为空', style: Theme.of(context).textTheme.bodyMedium),
+                                    child: Text(
+                                      '播放列表为空',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodyMedium,
+                                    ),
                                   ),
                                 )
                               : (hasQueueNow
-                                  ? ReorderableListView.builder(
-                                      buildDefaultDragHandles: false,
-                                      onReorder: (oldIndex, newIndex) {
-                                        if (newIndex > oldIndex) newIndex -= 1;
-                                        queueService.move(oldIndex, newIndex);
-                                      },
-                                      itemCount: list.length,
-                                      itemBuilder: (context, i) {
-                                        final Track t = list[i];
-                                        final isCurrent = isHighlightedTrack(t);
+                                    ? ReorderableListView.builder(
+                                        buildDefaultDragHandles: false,
+                                        onReorder: (oldIndex, newIndex) {
+                                          if (newIndex > oldIndex)
+                                            newIndex -= 1;
+                                          queueService.move(oldIndex, newIndex);
+                                        },
+                                        itemCount: list.length,
+                                        itemBuilder: (context, i) {
+                                          final Track t = list[i];
+                                          final isCurrent = isHighlightedTrack(
+                                            t,
+                                          );
 
-                                        final tile = ListTile(
-                                          tileColor: isCurrent ? colorScheme.surfaceContainerHigh : null,
-                                          leading: ClipRRect(
-                                            borderRadius: BorderRadius.circular(4),
-                                            child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
-                                              ? CachedNetworkImage(
-                                                  imageUrl: t.picUrl,
-                                                  httpHeaders: getImageHeaders(t.picUrl),
-                                                  memCacheWidth: 128,
-                                                  memCacheHeight: 128,
-                                                  imageBuilder: (context, imageProvider) {
-                                                    PlaylistQueueService().updateCoverProvider(t, imageProvider);
-                                                    return Image(
-                                                      image: imageProvider,
+                                          final tile = ListTile(
+                                            tileColor: isCurrent
+                                                ? colorScheme
+                                                      .surfaceContainerHigh
+                                                : null,
+                                            leading: ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                              child:
+                                                  (t.picUrl.startsWith(
+                                                        'http',
+                                                      ) ||
+                                                      t.picUrl.startsWith(
+                                                        'https',
+                                                      ))
+                                                  ? CachedNetworkImage(
+                                                      imageUrl: t.picUrl,
+                                                      httpHeaders:
+                                                          getImageHeaders(
+                                                            t.picUrl,
+                                                          ),
+                                                      memCacheWidth: 128,
+                                                      memCacheHeight: 128,
+                                                      imageBuilder:
+                                                          (
+                                                            context,
+                                                            imageProvider,
+                                                          ) {
+                                                            PlaylistQueueService()
+                                                                .updateCoverProvider(
+                                                                  t,
+                                                                  imageProvider,
+                                                                );
+                                                            return Image(
+                                                              image:
+                                                                  imageProvider,
+                                                              width: 44,
+                                                              height: 44,
+                                                              fit: BoxFit.cover,
+                                                            );
+                                                          },
+                                                      placeholder:
+                                                          (context, url) =>
+                                                              Container(
+                                                                width: 44,
+                                                                height: 44,
+                                                                color: Colors
+                                                                    .black12,
+                                                              ),
+                                                      errorWidget:
+                                                          (
+                                                            context,
+                                                            url,
+                                                            error,
+                                                          ) => Container(
+                                                            width: 44,
+                                                            height: 44,
+                                                            color:
+                                                                Colors.black12,
+                                                            child: Icon(
+                                                              Icons.music_note,
+                                                              color: colorScheme
+                                                                  .onSurfaceVariant,
+                                                            ),
+                                                          ),
+                                                    )
+                                                  : Image.file(
+                                                      File(t.picUrl),
                                                       width: 44,
                                                       height: 44,
                                                       fit: BoxFit.cover,
+                                                      errorBuilder:
+                                                          (
+                                                            context,
+                                                            error,
+                                                            stackTrace,
+                                                          ) => Container(
+                                                            width: 44,
+                                                            height: 44,
+                                                            color:
+                                                                Colors.black12,
+                                                            child: Icon(
+                                                              Icons.music_note,
+                                                              color: colorScheme
+                                                                  .onSurfaceVariant,
+                                                            ),
+                                                          ),
+                                                    ),
+                                            ),
+                                            title: Text(
+                                              t.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            subtitle: Text(
+                                              t.artists,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            trailing: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                TrackMoreButton(
+                                                  track: t,
+                                                  onPlay: () {
+                                                    final coverProvider =
+                                                        PlaylistQueueService()
+                                                            .getCoverProvider(
+                                                              t,
+                                                            );
+                                                    PlayerService().playTrack(
+                                                      t,
+                                                      coverProvider:
+                                                          coverProvider,
+                                                    );
+                                                    Navigator.pop(context);
+                                                  },
+                                                  size: 32,
+                                                ),
+                                                IconButton(
+                                                  icon: Icon(
+                                                    Icons.close_rounded,
+                                                    color: colorScheme
+                                                        .onSurfaceVariant,
+                                                    size: 18,
+                                                  ),
+                                                  constraints:
+                                                      const BoxConstraints(
+                                                        minWidth: 32,
+                                                        minHeight: 32,
+                                                      ),
+                                                  padding: EdgeInsets.zero,
+                                                  onPressed: () {
+                                                    queueService.removeAt(i);
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text('已移除'),
+                                                        duration: Duration(
+                                                          seconds: 1,
+                                                        ),
+                                                      ),
                                                     );
                                                   },
-                                                  placeholder: (context, url) => Container(width: 44, height: 44, color: Colors.black12),
-                                                  errorWidget: (context, url, error) => Container(
-                                                    width: 44,
-                                                    height: 44,
-                                                    color: Colors.black12,
-                                                    child: Icon(Icons.music_note, color: colorScheme.onSurfaceVariant),
-                                                  ),
-                                                )
-                                              : Image.file(
-                                                  File(t.picUrl),
-                                                  width: 44,
-                                                  height: 44,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (context, error, stackTrace) => Container(
-                                                    width: 44,
-                                                    height: 44,
-                                                    color: Colors.black12,
-                                                    child: Icon(Icons.music_note, color: colorScheme.onSurfaceVariant),
+                                                  tooltip: '移除',
+                                                ),
+                                                ReorderableDelayedDragStartListener(
+                                                  index: i,
+                                                  child: Icon(
+                                                    Icons.drag_handle_rounded,
+                                                    color: colorScheme
+                                                        .onSurfaceVariant,
                                                   ),
                                                 ),
-                                          ),
-                                          title: Text(t.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                          subtitle: Text(t.artists, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                          trailing: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              TrackMoreButton(
-                                                track: t,
-                                                onPlay: () {
-                                                  final coverProvider = PlaylistQueueService().getCoverProvider(t);
-                                                  PlayerService().playTrack(t, coverProvider: coverProvider);
-                                                  Navigator.pop(context);
-                                                },
-                                                size: 32,
-                                              ),
-                                              IconButton(
-                                                icon: Icon(Icons.close_rounded, color: colorScheme.onSurfaceVariant, size: 18),
-                                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                                padding: EdgeInsets.zero,
-                                                onPressed: () {
-                                                  queueService.removeAt(i);
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(content: Text('已移除'), duration: Duration(seconds: 1)),
-                                                  );
-                                                },
-                                                tooltip: '移除',
-                                              ),
-                                              ReorderableDelayedDragStartListener(
-                                                index: i,
-                                                child: Icon(Icons.drag_handle_rounded, color: colorScheme.onSurfaceVariant),
-                                              ),
-                                            ],
-                                          ),
-                                          onTap: () {
-                                            final coverProvider = PlaylistQueueService().getCoverProvider(t);
-                                            PlayerService().playTrack(t, coverProvider: coverProvider);
-                                            Navigator.pop(context);
-                                            // snackbar removed
-                                          },
-                                        );
-
-                                        return Dismissible(
-                                          key: ObjectKey(t),
-                                          direction: DismissDirection.endToStart,
-                                          background: Container(
-                                            alignment: Alignment.centerRight,
-                                            padding: const EdgeInsets.only(right: 16),
-                                            color: colorScheme.error,
-                                            child: const Icon(Icons.delete, color: Colors.white),
-                                          ),
-                                          onDismissed: (_) {
-                                            queueService.removeAt(i);
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('已移除'), duration: Duration(seconds: 1)),
-                                            );
-                                          },
-                                          child: tile,
-                                        );
-                                      },
-                                    )
-                                  : ListView.separated(
-                                      itemCount: list.length,
-                                      separatorBuilder: (_, __) => const Divider(height: 1),
-                                      itemBuilder: (context, i) {
-                                        final Track t = list[i];
-                                        final isCurrent = isHighlightedTrack(t);
-
-                                        return ListTile(
-                                          tileColor: isCurrent ? colorScheme.surfaceContainerHigh : null,
-                                          leading: ClipRRect(
-                                            borderRadius: BorderRadius.circular(4),
-                                            child: (t.picUrl.startsWith('http') || t.picUrl.startsWith('https'))
-                                              ? CachedNetworkImage(
-                                                  imageUrl: t.picUrl,
-                                                  httpHeaders: getImageHeaders(t.picUrl),
-                                                  memCacheWidth: 128,
-                                                  memCacheHeight: 128,
-                                                  imageBuilder: (context, imageProvider) {
-                                                    PlaylistQueueService().updateCoverProvider(t, imageProvider);
-                                                    return Image(
-                                                      image: imageProvider,
-                                                      width: 44,
-                                                      height: 44,
-                                                      fit: BoxFit.cover,
-                                                    );
-                                                  },
-                                                  placeholder: (context, url) => Container(width: 44, height: 44, color: Colors.black12),
-                                                  errorWidget: (context, url, error) => Container(
-                                                    width: 44,
-                                                    height: 44,
-                                                    color: Colors.black12,
-                                                    child: Icon(Icons.music_note, color: colorScheme.onSurfaceVariant),
-                                                  ),
-                                                )
-                                              : Image.file(
-                                                  File(t.picUrl),
-                                                  width: 44,
-                                                  height: 44,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (context, error, stackTrace) => Container(
-                                                    width: 44,
-                                                    height: 44,
-                                                    color: Colors.black12,
-                                                    child: Icon(Icons.music_note, color: colorScheme.onSurfaceVariant),
-                                                  ),
-                                                ),
-                                          ),
-                                          title: Text(t.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                          subtitle: Text(t.artists, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                          trailing: TrackMoreButton(
-                                            track: t,
-                                            onPlay: () {
-                                              final coverProvider = PlaylistQueueService().getCoverProvider(t);
-                                              PlayerService().playTrack(t, coverProvider: coverProvider);
+                                              ],
+                                            ),
+                                            onTap: () {
+                                              final coverProvider =
+                                                  PlaylistQueueService()
+                                                      .getCoverProvider(t);
+                                              PlayerService().playTrack(
+                                                t,
+                                                coverProvider: coverProvider,
+                                              );
                                               Navigator.pop(context);
+                                              // snackbar removed
                                             },
-                                            size: 32,
-                                          ),
-                                          onTap: () {
-                                            final coverProvider = PlaylistQueueService().getCoverProvider(t);
-                                            PlayerService().playTrack(t, coverProvider: coverProvider);
-                                            Navigator.pop(context);
-                                            // snackbar removed
-                                          },
-                                        );
-                                      },
-                                    )),
+                                          );
+
+                                          return Dismissible(
+                                            key: ObjectKey(t),
+                                            direction:
+                                                DismissDirection.endToStart,
+                                            background: Container(
+                                              alignment: Alignment.centerRight,
+                                              padding: const EdgeInsets.only(
+                                                right: 16,
+                                              ),
+                                              color: colorScheme.error,
+                                              child: const Icon(
+                                                Icons.delete,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            onDismissed: (_) {
+                                              queueService.removeAt(i);
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('已移除'),
+                                                  duration: Duration(
+                                                    seconds: 1,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                            child: tile,
+                                          );
+                                        },
+                                      )
+                                    : ListView.separated(
+                                        itemCount: list.length,
+                                        separatorBuilder: (_, __) =>
+                                            const Divider(height: 1),
+                                        itemBuilder: (context, i) {
+                                          final Track t = list[i];
+                                          final isCurrent = isHighlightedTrack(
+                                            t,
+                                          );
+
+                                          return ListTile(
+                                            tileColor: isCurrent
+                                                ? colorScheme
+                                                      .surfaceContainerHigh
+                                                : null,
+                                            leading: ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                              child:
+                                                  (t.picUrl.startsWith(
+                                                        'http',
+                                                      ) ||
+                                                      t.picUrl.startsWith(
+                                                        'https',
+                                                      ))
+                                                  ? CachedNetworkImage(
+                                                      imageUrl: t.picUrl,
+                                                      httpHeaders:
+                                                          getImageHeaders(
+                                                            t.picUrl,
+                                                          ),
+                                                      memCacheWidth: 128,
+                                                      memCacheHeight: 128,
+                                                      imageBuilder:
+                                                          (
+                                                            context,
+                                                            imageProvider,
+                                                          ) {
+                                                            PlaylistQueueService()
+                                                                .updateCoverProvider(
+                                                                  t,
+                                                                  imageProvider,
+                                                                );
+                                                            return Image(
+                                                              image:
+                                                                  imageProvider,
+                                                              width: 44,
+                                                              height: 44,
+                                                              fit: BoxFit.cover,
+                                                            );
+                                                          },
+                                                      placeholder:
+                                                          (context, url) =>
+                                                              Container(
+                                                                width: 44,
+                                                                height: 44,
+                                                                color: Colors
+                                                                    .black12,
+                                                              ),
+                                                      errorWidget:
+                                                          (
+                                                            context,
+                                                            url,
+                                                            error,
+                                                          ) => Container(
+                                                            width: 44,
+                                                            height: 44,
+                                                            color:
+                                                                Colors.black12,
+                                                            child: Icon(
+                                                              Icons.music_note,
+                                                              color: colorScheme
+                                                                  .onSurfaceVariant,
+                                                            ),
+                                                          ),
+                                                    )
+                                                  : Image.file(
+                                                      File(t.picUrl),
+                                                      width: 44,
+                                                      height: 44,
+                                                      fit: BoxFit.cover,
+                                                      errorBuilder:
+                                                          (
+                                                            context,
+                                                            error,
+                                                            stackTrace,
+                                                          ) => Container(
+                                                            width: 44,
+                                                            height: 44,
+                                                            color:
+                                                                Colors.black12,
+                                                            child: Icon(
+                                                              Icons.music_note,
+                                                              color: colorScheme
+                                                                  .onSurfaceVariant,
+                                                            ),
+                                                          ),
+                                                    ),
+                                            ),
+                                            title: Text(
+                                              t.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            subtitle: Text(
+                                              t.artists,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            trailing: TrackMoreButton(
+                                              track: t,
+                                              onPlay: () {
+                                                final coverProvider =
+                                                    PlaylistQueueService()
+                                                        .getCoverProvider(t);
+                                                PlayerService().playTrack(
+                                                  t,
+                                                  coverProvider: coverProvider,
+                                                );
+                                                Navigator.pop(context);
+                                              },
+                                              size: 32,
+                                            ),
+                                            onTap: () {
+                                              final coverProvider =
+                                                  PlaylistQueueService()
+                                                      .getCoverProvider(t);
+                                              PlayerService().playTrack(
+                                                t,
+                                                coverProvider: coverProvider,
+                                              );
+                                              Navigator.pop(context);
+                                              // snackbar removed
+                                            },
+                                          );
+                                        },
+                                      )),
                         ),
                       ],
                     ),
@@ -2494,7 +3098,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
         player.lyricSnapshot != null &&
         player.lyricSnapshot!.lines.isNotEmpty) {
       final lastLine = player.lyricSnapshot!.lines.last;
-      duration = lastLine.startTime +
+      duration =
+          lastLine.startTime +
           (lastLine.lineDuration ?? const Duration(seconds: 4));
     }
     final position = player.positionNotifier.value;
@@ -2506,6 +3111,15 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
   /// 格式化时长
   String _formatDuration(Duration duration) {
+    if (duration.isNegative) {
+      return '00:00';
+    }
+    if (duration.inHours > 0) {
+      final hours = duration.inHours;
+      final minutes = duration.inMinutes % 60;
+      final seconds = duration.inSeconds % 60;
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 
 import '../../models/song_detail.dart';
@@ -14,19 +15,42 @@ class TrackResolutionResult {
   final SongDetail? detail;
   final LxRuntimeFailure? lxFailure;
   final bool timedOut;
+  final bool isL1CacheHit;
 
   const TrackResolutionResult({
     required this.detail,
     this.lxFailure,
     this.timedOut = false,
+    this.isL1CacheHit = false,
   });
 
   bool get isPlayable => detail != null && detail!.url.isNotEmpty;
+
+  TrackResolutionResult copyWith({
+    SongDetail? detail,
+    LxRuntimeFailure? lxFailure,
+    bool? timedOut,
+    bool? isL1CacheHit,
+  }) => TrackResolutionResult(
+    detail: detail ?? this.detail,
+    lxFailure: lxFailure ?? this.lxFailure,
+    timedOut: timedOut ?? this.timedOut,
+    isL1CacheHit: isL1CacheHit ?? this.isL1CacheHit,
+  );
+}
+
+class _ResolvedCacheEntry {
+  final TrackResolutionResult result;
+  final DateTime expiresAt;
+
+  _ResolvedCacheEntry({required this.result, required this.expiresAt});
+
+  bool get isExpired => DateTime.now().isAfter(expiresAt);
 }
 
 class TrackLookupResult {
   final SongDetail? resolvedDetail;
-  final CyreneFileInfo? cacheInfo;
+  final CachedAudioFileInfo? cacheInfo;
   final bool isCached;
   final bool localFileMissing;
   final bool shouldRefreshCachedMetadata;
@@ -68,11 +92,44 @@ class TrackResolver {
   TrackResolver({
     SongDetailFetcher? fetcher,
     this.hardTimeout = const Duration(seconds: 18),
+    this.maxResolvedCacheEntries = defaultMaxResolvedCacheEntries,
+    this.resolvedCacheTtl = defaultResolvedCacheTtl,
   }) : _fetcher = fetcher ?? MusicService().fetchSongDetail;
+
+  static const int defaultMaxResolvedCacheEntries = 30;
+  static const Duration defaultResolvedCacheTtl = Duration(minutes: 5);
 
   final SongDetailFetcher _fetcher;
   final Duration hardTimeout;
+  final int maxResolvedCacheEntries;
+  final Duration resolvedCacheTtl;
   final Map<String, _RequestEntry> _pending = {};
+  int _cacheEpoch = 0;
+  final LinkedHashMap<String, _ResolvedCacheEntry> _resolvedCache =
+      LinkedHashMap<String, _ResolvedCacheEntry>();
+
+  int get resolvedCacheSize => _resolvedCache.length;
+
+  TrackResolutionResult? _getResolvedCache(String key) {
+    final entry = _resolvedCache.remove(key);
+    if (entry == null) return null;
+    if (entry.isExpired) return null;
+    _resolvedCache[key] = entry;
+    return entry.result.copyWith(isL1CacheHit: true);
+  }
+
+  void _putResolvedCache(String key, TrackResolutionResult result) {
+    if (!result.isPlayable) return;
+    if (maxResolvedCacheEntries <= 0) return;
+    _resolvedCache.remove(key);
+    while (_resolvedCache.length >= maxResolvedCacheEntries) {
+      _resolvedCache.remove(_resolvedCache.keys.first);
+    }
+    _resolvedCache[key] = _ResolvedCacheEntry(
+      result: result.copyWith(isL1CacheHit: false),
+      expiresAt: DateTime.now().add(resolvedCacheTtl),
+    );
+  }
 
   Future<TrackLookupResult> lookupLocalOrCache({
     required Track track,
@@ -82,11 +139,7 @@ class TrackResolver {
   }) async {
     final cacheInfo = skipCache
         ? null
-        : await CacheService().getCyreneFileInfo(
-            track,
-            quality: quality,
-            resolverFingerprint: resolverFingerprint,
-          );
+        : await CacheService().getCachedAudioFileInfo(track, quality: quality);
     final shouldRefresh =
         cacheInfo != null && needsCachedMetadataRefresh(cacheInfo.metadata);
 
@@ -160,7 +213,41 @@ class TrackResolver {
     required String artist,
     required Duration timeout,
     bool fetchLyrics = true,
+    String? resolverFingerprint,
+    bool skipMemoryCache = false,
   }) async {
+    if (skipMemoryCache) {
+      // A forced refresh must supersede any older in-flight request for the
+      // same key, otherwise that request can repopulate the cache later.
+      _cacheEpoch++;
+    }
+
+    final key = _requestKey(
+      songId,
+      source,
+      quality,
+      fetchLyrics,
+      resolverFingerprint: resolverFingerprint,
+    );
+
+    if (!skipMemoryCache) {
+      var cached = _getResolvedCache(key);
+      if (cached == null && !fetchLyrics) {
+        // 若当前不需要歌词，已缓存的带歌词解析结果同样有效
+        final keyWithLyrics = _requestKey(
+          songId,
+          source,
+          quality,
+          true,
+          resolverFingerprint: resolverFingerprint,
+        );
+        cached = _getResolvedCache(keyWithLyrics);
+      }
+      if (cached != null) {
+        return cached;
+      }
+    }
+
     final trace = OperationTrace(
       'playback.resolve',
       context: {
@@ -168,9 +255,10 @@ class TrackResolver {
         'source': source.name,
         'quality': quality.value,
         'lyrics': fetchLyrics,
+        'resolver_fp': resolverFingerprint,
       },
     );
-    final key = _requestKey(songId, source, quality, fetchLyrics);
+    final cacheEpoch = _cacheEpoch;
     final request = _acquire(
       key: key,
       songId: songId,
@@ -179,6 +267,7 @@ class TrackResolver {
       title: title,
       artist: artist,
       fetchLyrics: fetchLyrics,
+      forceNew: skipMemoryCache,
     );
     try {
       final result = await request.timeout(
@@ -203,6 +292,11 @@ class TrackResolver {
           'failure_kind': result.lxFailure?.kind.name,
         },
       );
+      if (result.isPlayable) {
+        if (cacheEpoch == _cacheEpoch) {
+          _putResolvedCache(key, result);
+        }
+      }
       return result;
     } on AudioSourceNotConfiguredException {
       trace.mark('source_not_configured', level: LogLevel.warning);
@@ -224,9 +318,12 @@ class TrackResolver {
     required String title,
     required String artist,
     required bool fetchLyrics,
+    bool forceNew = false,
   }) {
     final existing = _pending[key];
-    if (existing?.isReusable ?? false) return existing!.future;
+    if (!forceNew && (existing?.isReusable ?? false)) {
+      return existing!.future;
+    }
     if (existing != null) {
       existing.state = _RequestState.expired;
       _pending.remove(key);
@@ -245,14 +342,16 @@ class TrackResolver {
       var hardTimedOut = false;
       try {
         final detail =
-            await _fetcher(
-              songId: songId,
-              quality: quality,
-              source: source,
-              title: title,
-              artist: artist,
-              fetchLyrics: fetchLyrics,
-              onLxFailure: (failure) => requestFailure = failure,
+            await Future<SongDetail?>.value(
+              _fetcher(
+                songId: songId,
+                quality: quality,
+                source: source,
+                title: title,
+                artist: artist,
+                fetchLyrics: fetchLyrics,
+                onLxFailure: (failure) => requestFailure = failure,
+              ),
             ).timeout(
               hardTimeout,
               onTimeout: () {
@@ -302,10 +401,67 @@ class TrackResolver {
     dynamic songId,
     MusicSource source,
     AudioQuality quality,
-    bool fetchLyrics,
-  ) => '${source.name}:$songId:${quality.value}:lyrics=$fetchLyrics';
+    bool fetchLyrics, {
+    String? resolverFingerprint,
+  }) {
+    final base = '${source.name}:$songId:${quality.value}:lyrics=$fetchLyrics';
+    return resolverFingerprint != null && resolverFingerprint.isNotEmpty
+        ? '$base:rf=$resolverFingerprint'
+        : base;
+  }
 
-  void clear() => _pending.clear();
+  void invalidateSong(
+    dynamic songId,
+    MusicSource source, {
+    AudioQuality? quality,
+    String? resolverFingerprint,
+  }) {
+    _cacheEpoch++;
+    if (quality != null) {
+      if (resolverFingerprint == null || resolverFingerprint.isEmpty) {
+        final qualityPrefix = '${source.name}:$songId:${quality.value}:';
+        _resolvedCache.removeWhere((key, _) => key.startsWith(qualityPrefix));
+        return;
+      }
+      for (final fetchLyrics in [false, true]) {
+        final key = _requestKey(
+          songId,
+          source,
+          quality,
+          fetchLyrics,
+          resolverFingerprint: resolverFingerprint,
+        );
+        _resolvedCache.remove(key);
+      }
+    } else {
+      final prefix = '${source.name}:$songId:';
+      _resolvedCache.removeWhere((k, _) => k.startsWith(prefix));
+    }
+  }
+
+  void invalidateTrack(
+    Track track, {
+    AudioQuality? quality,
+    String? resolverFingerprint,
+  }) {
+    invalidateSong(
+      track.id,
+      track.source,
+      quality: quality,
+      resolverFingerprint: resolverFingerprint,
+    );
+  }
+
+  void invalidateKey(String key) {
+    _cacheEpoch++;
+    _resolvedCache.remove(key);
+  }
+
+  void clear() {
+    _cacheEpoch++;
+    _pending.clear();
+    _resolvedCache.clear();
+  }
 }
 
 SongDetail buildCachedSongDetail(
@@ -321,12 +477,8 @@ SongDetail buildCachedSongDetail(
   alName: metadata.album,
   level: metadata.quality,
   size: metadata.fileSize.toString(),
-  lyric: metadata.lyric,
-  tlyric: metadata.tlyric,
-  yrc: metadata.yrc,
-  ytlrc: metadata.ytlrc,
-  qrc: metadata.qrc,
-  qrcTrans: metadata.qrcTrans,
+  lyric: '',
+  tlyric: '',
   source: track.source,
 );
 
@@ -335,5 +487,4 @@ bool needsCachedMetadataRefresh(CacheMetadata metadata) =>
     metadata.artists.isEmpty ||
     metadata.album.isEmpty ||
     metadata.picUrl.isEmpty ||
-    metadata.originalUrl.isEmpty ||
-    (metadata.lyric.isEmpty && metadata.yrc.isEmpty && metadata.qrc.isEmpty);
+    metadata.originalUrl.isEmpty;

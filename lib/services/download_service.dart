@@ -44,9 +44,6 @@ class DownloadService extends ChangeNotifier {
     _loadDownloadPath();
   }
 
-  // 加密密钥（与 CacheService 保持一致）
-  static const String _encryptionKey = 'CyreneMusicCacheKey2025';
-
   String? _downloadPath;
   final Map<String, DownloadTask> _downloadTasks = {};
 
@@ -82,18 +79,24 @@ class DownloadService extends ChangeNotifier {
 
         if (!await appDownloadDir.exists()) {
           await appDownloadDir.create(recursive: true);
-          StructuredLogService.log('✅ [DownloadService] 创建 Android 下载目录: ${appDownloadDir.path}');
+          StructuredLogService.log(
+            '✅ [DownloadService] 创建 Android 下载目录: ${appDownloadDir.path}',
+          );
         }
 
         _downloadPath = appDownloadDir.path;
       } else if (Platform.isWindows) {
         // Windows: 用户文档/Music/Cyrene_Music
         final documentsDir = await getApplicationDocumentsDirectory();
-        final musicDir = Directory('${documentsDir.parent.path}\\Music\\Cyrene_Music');
+        final musicDir = Directory(
+          '${documentsDir.parent.path}\\Music\\Cyrene_Music',
+        );
 
         if (!await musicDir.exists()) {
           await musicDir.create(recursive: true);
-          StructuredLogService.log('✅ [DownloadService] 创建 Windows 下载目录: ${musicDir.path}');
+          StructuredLogService.log(
+            '✅ [DownloadService] 创建 Windows 下载目录: ${musicDir.path}',
+          );
         }
 
         _downloadPath = musicDir.path;
@@ -147,18 +150,6 @@ class DownloadService extends ChangeNotifier {
     }
   }
 
-  /// 解密缓存数据
-  Uint8List _decryptData(Uint8List encryptedData) {
-    final keyBytes = utf8.encode(_encryptionKey);
-    final decrypted = Uint8List(encryptedData.length);
-
-    for (int i = 0; i < encryptedData.length; i++) {
-      decrypted[i] = encryptedData[i] ^ keyBytes[i % keyBytes.length];
-    }
-
-    return decrypted;
-  }
-
   /// 生成安全的文件名
   String _generateSafeFileName(Track track, [String? level]) {
     // 移除不安全的字符
@@ -184,7 +175,7 @@ class DownloadService extends ChangeNotifier {
     return AudioQuality.standard.value;
   }
 
-  /// 从缓存下载（解密缓存文件）
+  /// 从标准音频缓存复制到下载目录
   Future<bool> _downloadFromCache(
     Track track,
     String outputPath, {
@@ -195,7 +186,7 @@ class DownloadService extends ChangeNotifier {
 
       final cacheService = CacheService();
       final cacheQuality = _resolveCacheQualityKey(quality);
-      final cacheFilePath = cacheService.getCachedContainerFilePath(
+      final cacheFilePath = cacheService.getCachedAudioFilePath(
         track,
         quality: cacheQuality,
       );
@@ -210,35 +201,7 @@ class DownloadService extends ChangeNotifier {
         return false;
       }
 
-      // 读取 .cyrene 文件
-      final fileData = await cacheFile.readAsBytes();
-
-      // 读取元数据长度（前4字节）
-      if (fileData.length < 4) {
-        throw Exception('缓存文件格式错误');
-      }
-
-      final metadataLength = (fileData[0] << 24) |
-          (fileData[1] << 16) |
-          (fileData[2] << 8) |
-          fileData[3];
-
-      if (fileData.length < 4 + metadataLength) {
-        throw Exception('缓存文件格式错误');
-      }
-
-      // 跳过元数据，读取加密的音频数据
-      final encryptedAudioData = Uint8List.sublistView(
-        fileData,
-        (4 + metadataLength).toInt(),
-      );
-
-      // 解密音频数据
-      final decryptedData = _decryptData(encryptedAudioData);
-
-      // 保存到目标路径
-      final outputFile = File(outputPath);
-      await outputFile.writeAsBytes(decryptedData);
+      await cacheFile.copy(outputPath);
 
       StructuredLogService.log('✅ [DownloadService] 从缓存下载成功: $outputPath');
       return true;
@@ -335,15 +298,13 @@ class DownloadService extends ChangeNotifier {
       // 如果缓存下载失败或没有缓存，从网络下载
       if (!success) {
         StructuredLogService.log('🌐 [DownloadService] 从网络下载');
-        success = await _downloadFromUrl(
-          songDetail.url,
-          outputPath,
-          (progress) {
-            task.progress = progress;
-            notifyListeners();
-            onProgress?.call(progress);
-          },
-        );
+        success = await _downloadFromUrl(songDetail.url, outputPath, (
+          progress,
+        ) {
+          task.progress = progress;
+          notifyListeners();
+          onProgress?.call(progress);
+        });
       }
 
       // 更新任务状态
@@ -353,7 +314,9 @@ class DownloadService extends ChangeNotifier {
         StructuredLogService.log('✅ [DownloadService] 下载完成: $fileName');
 
         // 启动元数据嵌入服务 (封面 & 歌词)
-        final coverUrl = songDetail.pic.isNotEmpty ? songDetail.pic : track.picUrl;
+        final coverUrl = songDetail.pic.isNotEmpty
+            ? songDetail.pic
+            : track.picUrl;
         await _embedMetadata(
           outputPath,
           coverUrl: coverUrl,
@@ -370,7 +333,6 @@ class DownloadService extends ChangeNotifier {
           filePath: outputPath,
           coverUrl: coverUrl,
         );
-
       } else {
         task.isFailed = true;
         task.errorMessage = '下载失败';
@@ -438,11 +400,15 @@ class DownloadService extends ChangeNotifier {
 
       if (!isMp3 && !isFlac) return;
 
-      StructuredLogService.log('🖼️ [DownloadService] 正在为 ${isMp3 ? "MP3" : "FLAC"} 注入元数据...');
+      StructuredLogService.log(
+        '🖼️ [DownloadService] 正在为 ${isMp3 ? "MP3" : "FLAC"} 注入元数据...',
+      );
 
       Uint8List? coverData;
       if (coverUrl != null && coverUrl.isNotEmpty) {
-        final resp = await http.get(Uri.parse(coverUrl)).timeout(const Duration(seconds: 10));
+        final resp = await http
+            .get(Uri.parse(coverUrl))
+            .timeout(const Duration(seconds: 10));
         if (resp.statusCode == 200) coverData = resp.bodyBytes;
       }
 
@@ -450,9 +416,25 @@ class DownloadService extends ChangeNotifier {
       final originalData = await audioFile.readAsBytes();
 
       if (isMp3) {
-        await _embedMp3Metadata(filePath, originalData, coverData, lyrics, title, artist, album);
+        await _embedMp3Metadata(
+          filePath,
+          originalData,
+          coverData,
+          lyrics,
+          title,
+          artist,
+          album,
+        );
       } else if (isFlac) {
-        await _embedFlacMetadata(filePath, originalData, coverData, lyrics, title, artist, album);
+        await _embedFlacMetadata(
+          filePath,
+          originalData,
+          coverData,
+          lyrics,
+          title,
+          artist,
+          album,
+        );
       }
     } catch (e) {
       StructuredLogService.log('❌ [DownloadService] 元数据嵌入失败: $e');
@@ -460,14 +442,35 @@ class DownloadService extends ChangeNotifier {
   }
 
   /// 内部方法：嵌入 MP3 元数据
-  Future<void> _embedMp3Metadata(String filePath, Uint8List originalData, Uint8List? coverData, String? lyrics, String title, String artist, String? album) async {
+  Future<void> _embedMp3Metadata(
+    String filePath,
+    Uint8List originalData,
+    Uint8List? coverData,
+    String? lyrics,
+    String title,
+    String artist,
+    String? album,
+  ) async {
     int audioDataStart = 0;
-    if (originalData.length >= 10 && originalData[0] == 0x49 && originalData[1] == 0x44 && originalData[2] == 0x33) {
-      final size = ((originalData[6] & 0x7F) << 21) | ((originalData[7] & 0x7F) << 14) | ((originalData[8] & 0x7F) << 7) | (originalData[9] & 0x7F);
+    if (originalData.length >= 10 &&
+        originalData[0] == 0x49 &&
+        originalData[1] == 0x44 &&
+        originalData[2] == 0x33) {
+      final size =
+          ((originalData[6] & 0x7F) << 21) |
+          ((originalData[7] & 0x7F) << 14) |
+          ((originalData[8] & 0x7F) << 7) |
+          (originalData[9] & 0x7F);
       audioDataStart = 10 + size;
     }
     final audioData = Uint8List.sublistView(originalData, audioDataStart);
-    final id3Tag = _buildId3v2Tag(title: title, artist: artist, album: album ?? '', coverData: coverData, lyrics: lyrics);
+    final id3Tag = _buildId3v2Tag(
+      title: title,
+      artist: artist,
+      album: album ?? '',
+      coverData: coverData,
+      lyrics: lyrics,
+    );
     final newFileData = Uint8List(id3Tag.length + audioData.length);
     newFileData.setRange(0, id3Tag.length, id3Tag);
     newFileData.setRange(id3Tag.length, newFileData.length, audioData);
@@ -475,8 +478,17 @@ class DownloadService extends ChangeNotifier {
   }
 
   /// 内部方法：嵌入 FLAC 元数据
-  Future<void> _embedFlacMetadata(String filePath, Uint8List fileData, Uint8List? coverData, String? lyrics, String title, String artist, String? album) async {
-    if (fileData.length < 4 || utf8.decode(fileData.sublist(0, 4)) != 'fLaC') throw Exception('无效 FLAC');
+  Future<void> _embedFlacMetadata(
+    String filePath,
+    Uint8List fileData,
+    Uint8List? coverData,
+    String? lyrics,
+    String title,
+    String artist,
+    String? album,
+  ) async {
+    if (fileData.length < 4 || utf8.decode(fileData.sublist(0, 4)) != 'fLaC')
+      throw Exception('无效 FLAC');
 
     final builder = BytesBuilder();
     builder.add(fileData.sublist(0, 4));
@@ -489,13 +501,27 @@ class DownloadService extends ChangeNotifier {
       final header = fileData[offset];
       final isLastBlock = (header & 0x80) != 0;
       final blockType = header & 0x7F;
-      final blockLength = (fileData[offset + 1] << 16) | (fileData[offset + 2] << 8) | fileData[offset + 3];
+      final blockLength =
+          (fileData[offset + 1] << 16) |
+          (fileData[offset + 2] << 8) |
+          fileData[offset + 3];
 
-      if (blockType == 6 || blockType == 4) { // 跳过旧的图片块(6)和注块块(4)
+      if (blockType == 6 || blockType == 4) {
+        // 跳过旧的图片块(6)和注块块(4)
         offset += 4 + blockLength;
         if (isLastBlock) {
-          if (!commentAdded) builder.add(_buildVorbisCommentBlock(lyrics, title: title, artist: artist, album: album, isLast: !pictureAdded && coverData == null));
-          if (coverData != null && !pictureAdded) builder.add(_buildFlacPictureBlock(coverData, isLast: true));
+          if (!commentAdded)
+            builder.add(
+              _buildVorbisCommentBlock(
+                lyrics,
+                title: title,
+                artist: artist,
+                album: album,
+                isLast: !pictureAdded && coverData == null,
+              ),
+            );
+          if (coverData != null && !pictureAdded)
+            builder.add(_buildFlacPictureBlock(coverData, isLast: true));
           break;
         }
         continue;
@@ -504,8 +530,17 @@ class DownloadService extends ChangeNotifier {
       if (isLastBlock) {
         builder.addByte(header & 0x7F); // 清除最后标志
         builder.add(fileData.sublist(offset + 1, offset + 4 + blockLength));
-        builder.add(_buildVorbisCommentBlock(lyrics, title: title, artist: artist, album: album, isLast: coverData == null));
-        if (coverData != null) builder.add(_buildFlacPictureBlock(coverData, isLast: true));
+        builder.add(
+          _buildVorbisCommentBlock(
+            lyrics,
+            title: title,
+            artist: artist,
+            album: album,
+            isLast: coverData == null,
+          ),
+        );
+        if (coverData != null)
+          builder.add(_buildFlacPictureBlock(coverData, isLast: true));
         offset += 4 + blockLength;
         break;
       }
@@ -519,11 +554,20 @@ class DownloadService extends ChangeNotifier {
   }
 
   /// 构建 Vorbis Comment 块 (Type 4) 用于存放 FLAC 歌词和基本信息
-  Uint8List _buildVorbisCommentBlock(String? lyrics, {required String title, required String artist, String? album, bool isLast = false}) {
+  Uint8List _buildVorbisCommentBlock(
+    String? lyrics, {
+    required String title,
+    required String artist,
+    String? album,
+    bool isLast = false,
+  }) {
     final content = BytesBuilder();
     // Vendor string length (4 bytes) + Vendor string ("CyreneMusic")
     final vendor = utf8.encode('CyreneMusic');
-    content.addByte(vendor.length & 0xFF); content.addByte(0); content.addByte(0); content.addByte(0);
+    content.addByte(vendor.length & 0xFF);
+    content.addByte(0);
+    content.addByte(0);
+    content.addByte(0);
     content.add(vendor);
 
     // User comment list length (4 bytes)
@@ -537,9 +581,15 @@ class DownloadService extends ChangeNotifier {
       comments.add(utf8.encode('LYRICS=$lyrics'));
     }
 
-    content.addByte(comments.length & 0xFF); content.addByte(0); content.addByte(0); content.addByte(0);
+    content.addByte(comments.length & 0xFF);
+    content.addByte(0);
+    content.addByte(0);
+    content.addByte(0);
     for (final c in comments) {
-      content.addByte(c.length & 0xFF); content.addByte((c.length >> 8) & 0xFF); content.addByte((c.length >> 16) & 0xFF); content.addByte((c.length >> 24) & 0xFF);
+      content.addByte(c.length & 0xFF);
+      content.addByte((c.length >> 8) & 0xFF);
+      content.addByte((c.length >> 16) & 0xFF);
+      content.addByte((c.length >> 24) & 0xFF);
       content.add(c);
     }
 
@@ -558,16 +608,27 @@ class DownloadService extends ChangeNotifier {
     final blockContent = BytesBuilder();
 
     // 1. Picture type (4 bytes): 3 = Front Cover
-    blockContent.addByte(0); blockContent.addByte(0); blockContent.addByte(0); blockContent.addByte(3);
+    blockContent.addByte(0);
+    blockContent.addByte(0);
+    blockContent.addByte(0);
+    blockContent.addByte(3);
 
     // 2. MIME type
-    final mimeType = imageData.length >= 8 && imageData[0] == 0x89 ? 'image/png' : 'image/jpeg';
+    final mimeType = imageData.length >= 8 && imageData[0] == 0x89
+        ? 'image/png'
+        : 'image/jpeg';
     final mimeBytes = utf8.encode(mimeType);
-    blockContent.addByte(0); blockContent.addByte(0); blockContent.addByte(0); blockContent.addByte(mimeBytes.length);
+    blockContent.addByte(0);
+    blockContent.addByte(0);
+    blockContent.addByte(0);
+    blockContent.addByte(mimeBytes.length);
     blockContent.add(mimeBytes);
 
     // 3. Description (Empty)
-    blockContent.addByte(0); blockContent.addByte(0); blockContent.addByte(0); blockContent.addByte(0);
+    blockContent.addByte(0);
+    blockContent.addByte(0);
+    blockContent.addByte(0);
+    blockContent.addByte(0);
 
     // 4. Width, Height, Depth, Colors (All 0 for simple embedding, player will auto-detect)
     for (int i = 0; i < 16; i++) blockContent.addByte(0);
@@ -713,7 +774,8 @@ class DownloadService extends ChangeNotifier {
     // - 描述 + 0x00 终止符
     // - 图片数据
 
-    final frameContentSize = 1 + mimeBytes.length + 1 + 1 + 1 + imageData.length;
+    final frameContentSize =
+        1 + mimeBytes.length + 1 + 1 + 1 + imageData.length;
     final frame = Uint8List(10 + frameContentSize);
 
     // 帧 ID
@@ -763,7 +825,10 @@ class DownloadService extends ChangeNotifier {
     final frameContentSize = 1 + 3 + 1 + lyricsBytes.length;
     final frame = Uint8List(10 + frameContentSize);
 
-    frame[0] = 0x55; frame[1] = 0x53; frame[2] = 0x4C; frame[3] = 0x54; // 'USLT'
+    frame[0] = 0x55;
+    frame[1] = 0x53;
+    frame[2] = 0x4C;
+    frame[3] = 0x54; // 'USLT'
     frame[4] = (frameContentSize >> 24) & 0xFF;
     frame[5] = (frameContentSize >> 16) & 0xFF;
     frame[6] = (frameContentSize >> 8) & 0xFF;
@@ -771,7 +836,8 @@ class DownloadService extends ChangeNotifier {
 
     int offset = 10;
     frame[offset++] = 0x03; // UTF-8
-    frame.setRange(offset, offset + 3, lang); offset += 3;
+    frame.setRange(offset, offset + 3, lang);
+    offset += 3;
     frame[offset++] = 0x00; // 描述结束符
     frame.setRange(offset, offset + lyricsBytes.length, lyricsBytes);
 
@@ -802,4 +868,3 @@ class DownloadService extends ChangeNotifier {
     }
   }
 }
-
