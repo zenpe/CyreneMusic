@@ -154,8 +154,10 @@ class PlayerImmersiveLayout extends StatelessWidget {
 
   Widget _buildSongInfo(BuildContext context, Track? track) {
     final player = PlayerService();
-    final imageUrl = player.currentCoverUrl ?? '';
-    final coverProvider = player.currentCoverImageProvider;
+    final isPending = player.isLoading && player.pendingTrack != null;
+    final effectiveTrack = player.displayTrack ?? track;
+    final imageUrl = player.displayCoverUrl ?? '';
+    final coverProvider = isPending ? null : player.currentCoverImageProvider;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -169,39 +171,41 @@ class PlayerImmersiveLayout extends StatelessWidget {
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 40 * uiScale,
+                blurRadius: 30 * uiScale,
                 offset: Offset(0, 15 * uiScale),
               ),
             ],
           ),
-          clipBehavior: Clip.antiAlias,
-          child: AnimatedSwitcher(
-            duration: reducedEffects
-                ? Duration.zero
-                : const Duration(milliseconds: 600),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            transitionBuilder: (Widget child, Animation<double> animation) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            child: imageUrl.isNotEmpty
-                ? Image(
-                    key: ValueKey(imageUrl),
-                    image:
-                        coverProvider ??
-                        NetworkImage(imageUrl) as ImageProvider,
-                    fit: BoxFit.cover,
-                    width: 200 * uiScale,
-                    height: 200 * uiScale,
-                  )
-                : Container(
-                    color: Colors.grey[900],
-                    child: Icon(
-                      Icons.music_note,
-                      color: Colors.white54,
-                      size: 80 * uiScale,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20 * uiScale),
+            child: AnimatedSwitcher(
+              duration: reducedEffects
+                  ? Duration.zero
+                  : const Duration(milliseconds: 600),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+              child: imageUrl.isNotEmpty
+                  ? Image(
+                      key: ValueKey(imageUrl),
+                      image:
+                          coverProvider ??
+                          NetworkImage(imageUrl) as ImageProvider,
+                      fit: BoxFit.cover,
+                      width: 200 * uiScale,
+                      height: 200 * uiScale,
+                    )
+                  : Container(
+                      color: Colors.grey[900],
+                      child: Icon(
+                        Icons.music_note,
+                        color: Colors.white54,
+                        size: 80 * uiScale,
+                      ),
                     ),
-                  ),
+            ),
           ),
         ),
         SizedBox(width: 32 * uiScale),
@@ -213,7 +217,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                track?.name ?? '未知歌曲',
+                effectiveTrack?.name ?? '未知歌曲',
                 style: TextStyle(
                   fontSize: 40 * uiScale,
                   fontWeight: FontWeight.bold,
@@ -224,7 +228,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
               ),
               SizedBox(height: 8 * uiScale),
               Text(
-                track?.artists ?? '未知歌手',
+                effectiveTrack?.artists ?? '未知歌手',
                 style: TextStyle(
                   fontSize: 24 * uiScale,
                   color: Colors.white.withValues(alpha: 0.8),

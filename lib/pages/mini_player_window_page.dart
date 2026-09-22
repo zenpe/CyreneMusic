@@ -281,7 +281,7 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
         );
 
         // 获取封面URL
-        final coverUrl = PlayerService().currentCoverUrl ?? '';
+        final coverUrl = PlayerService().displayCoverUrl ?? '';
 
         return ValueListenableBuilder<Color?>(
           valueListenable: PlayerService().themeColorNotifier,

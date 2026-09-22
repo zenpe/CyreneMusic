@@ -209,9 +209,11 @@ class _MobilePlayerFluidCloudLayoutState
   @override
   Widget build(BuildContext context) {
     final player = PlayerService();
-    final song = player.currentSong;
-    final track = player.currentTrack;
-    final imageUrl = player.currentCoverUrl ?? '';
+    final isPending = player.isLoading && player.pendingTrack != null;
+    final displayTrack = player.displayTrack;
+    final song = isPending ? null : player.currentSong;
+    final track = displayTrack;
+    final imageUrl = player.displayCoverUrl ?? '';
 
     // 检测屏幕方向
     final orientation = MediaQuery.of(context).orientation;

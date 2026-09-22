@@ -113,7 +113,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
     final backgroundService = PlayerBackgroundService();
     if (backgroundService.backgroundType != PlayerBackgroundType.dynamic) return;
 
-    final imageUrl = PlayerService().currentCoverUrl ?? '';
+    final imageUrl = PlayerService().displayCoverUrl ?? '';
 
     if (imageUrl.isEmpty || imageUrl == _currentImageUrl) return;
     if (imageUrl == _lastScheduledImageUrl) return;
@@ -142,7 +142,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
     final backgroundService = PlayerBackgroundService();
     if (backgroundService.backgroundType != PlayerBackgroundType.adaptive) return;
 
-    final imageUrl = PlayerService().currentCoverUrl ?? '';
+    final imageUrl = PlayerService().displayCoverUrl ?? '';
 
     if (imageUrl.isEmpty || imageUrl == _currentThemeColorImageUrl) return;
     if (imageUrl == _lastScheduledThemeColorImageUrl) return;
@@ -246,8 +246,9 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
   Widget _buildBackground() {
     final backgroundService = PlayerBackgroundService();
     final player = PlayerService();
-    final song = player.currentSong;
-    final track = player.currentTrack;
+    final isPending = player.isLoading && player.pendingTrack != null;
+    final song = isPending ? null : player.currentSong;
+    final track = player.displayTrack;
 
     // 检查是否为流体云样式
     final isFluidCloud = LyricStyleService().currentStyle == LyricStyle.fluidCloud;
@@ -293,12 +294,13 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
       builder: (context, _) {
          // 获取当前封面图片的 Provider
         final player = PlayerService();
-        // 优先使用缓存的 Provider
-        ImageProvider? imageProvider = player.currentCoverImageProvider;
+        final isPending = player.isLoading && player.pendingTrack != null;
+        // 优先使用缓存的 Provider（在 pending 状态下不复用旧歌 Provider，避免背景闪现旧封面）
+        ImageProvider? imageProvider = isPending ? null : player.currentCoverImageProvider;
 
         // 如果没有 Provider，尝试从 URL 构建
         if (imageProvider == null) {
-            final imageUrl = player.currentCoverUrl ?? '';
+            final imageUrl = player.displayCoverUrl ?? '';
 
              if (imageUrl.isNotEmpty) {
                 if (imageUrl.startsWith('http')) {
@@ -329,7 +331,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
     return ListenableBuilder(
       listenable: PlayerService(),
       builder: (context, _) {
-        final imageUrl = PlayerService().currentCoverUrl ?? '';
+        final imageUrl = PlayerService().displayCoverUrl ?? '';
 
         // 如果图片URL变化，触发主题色提取
         if (imageUrl.isNotEmpty && imageUrl != _currentThemeColorImageUrl) {
@@ -420,7 +422,7 @@ class _MobilePlayerBackgroundState extends State<MobilePlayerBackground> {
     return ListenableBuilder(
       listenable: PlayerService(),
       builder: (context, _) {
-        final imageUrl = PlayerService().currentCoverUrl ?? '';
+        final imageUrl = PlayerService().displayCoverUrl ?? '';
 
         // 如果图片URL变化，触发主题色提取
         if (imageUrl.isNotEmpty && imageUrl != _currentThemeColorImageUrl) {

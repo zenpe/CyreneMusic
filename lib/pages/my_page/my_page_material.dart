@@ -1124,12 +1124,12 @@ extension MyPageMaterialUI on _MyPageState {
             builder: (context, _) {
               final currentTrack = player.currentTrack;
               final currentSong = player.currentSong;
-              final displayTitle = player.displayTitle;
+              final activeTitle = currentSong?.name ?? currentTrack?.name ?? '';
 
-              final isCurrentPlaying = (displayTitle.isNotEmpty &&
-                      (displayTitle == item.trackName ||
-                          item.trackName.contains(displayTitle) ||
-                          displayTitle.contains(item.trackName))) ||
+              final isCurrentPlaying = (activeTitle.isNotEmpty &&
+                      (activeTitle == item.trackName ||
+                          item.trackName.contains(activeTitle) ||
+                          activeTitle.contains(item.trackName))) ||
                   (currentTrack != null && currentTrack.name == item.trackName) ||
                   (currentSong != null && currentSong.name == item.trackName);
 
@@ -1805,12 +1805,12 @@ extension MyPageMaterialUI on _MyPageState {
       builder: (context, _) {
         final currentTrack = player.currentTrack;
         final currentSong = player.currentSong;
-        final displayTitle = player.displayTitle;
+        final activeTitle = currentSong?.name ?? currentTrack?.name ?? '';
 
-        final isCurrentPlaying = (displayTitle.isNotEmpty &&
-                (displayTitle == item.name ||
-                    item.name.contains(displayTitle) ||
-                    displayTitle.contains(item.name))) ||
+        final isCurrentPlaying = (activeTitle.isNotEmpty &&
+                (activeTitle == item.name ||
+                    item.name.contains(activeTitle) ||
+                    activeTitle.contains(item.name))) ||
             (currentTrack != null && currentTrack.name == item.name) ||
             (currentSong != null && currentSong.name == item.name);
 

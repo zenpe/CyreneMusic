@@ -284,7 +284,7 @@ class CacheService extends ChangeNotifier {
 
   // 加密密钥（用于简单的异或加密）
   static const String _encryptionKey = 'CyreneMusicCacheKey2025';
-  static const int _defaultMaxCacheSizeBytes = 2 * 1024 * 1024 * 1024;
+  static const int _defaultMaxCacheSizeBytes = 512 * 1024 * 1024;
   static const Duration _maintenanceDebounce = Duration(seconds: 2);
   static const Duration _cacheDownloadTimeout = Duration(seconds: 30);
   static const String _maxCacheSizePrefsKey = 'max_cache_size_bytes_v2';
@@ -294,7 +294,7 @@ class CacheService extends ChangeNotifier {
   Map<String, CacheMetadata> _cacheIndex = {};
   final Map<String, Future<bool>> _pendingCacheWrites = {};
   bool _isInitialized = false;
-  bool _cacheEnabled = false; // 缓存开关，默认关闭
+  bool _cacheEnabled = false; // 缓存开关，默认关闭（由用户显式开启，避免移动网络隐式整曲下载）
   String? _customCacheDir; // 自定义缓存目录
   int _maxCacheSizeBytes = _defaultMaxCacheSizeBytes;
   Timer? _indexSaveDebounce;
@@ -1799,7 +1799,7 @@ class CacheService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // 加载缓存开关状态（默认关闭）
+      // 加载缓存开关状态（默认关闭，保持用户显式开启，避免隐式消耗流量）
       _cacheEnabled = prefs.getBool('cache_enabled') ?? false;
 
       // 加载自定义缓存目录
@@ -1814,7 +1814,7 @@ class CacheService extends ChangeNotifier {
       );
     } catch (e) {
       _logCacheDebug('❌ [CacheService] 加载设置失败: $e');
-      _cacheEnabled = false; // 加载失败时默认关闭
+      _cacheEnabled = false; // 加载失败时保守关闭，防止异常导致意外消耗流量
       _customCacheDir = null;
       _maxCacheSizeBytes = _defaultMaxCacheSizeBytes;
     }

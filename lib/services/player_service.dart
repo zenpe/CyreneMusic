@@ -71,6 +71,7 @@ class PlayerService extends ChangeNotifier {
 
   SongDetail? get currentSong => _pb.currentSong;
   Track? get currentTrack => _pb.currentTrack;
+  Track? get displayTrack => _pb.displayTrack;
   SongDetail? get activeSong => _pb.activeSong;
   Track? get activeTrack => _pb.activeTrack;
   int get activePlaybackToken => _pb.activePlaybackToken;
@@ -100,7 +101,9 @@ class PlayerService extends ChangeNotifier {
   bool get hasPrevious => _pb.hasPrevious;
 
   ImageProvider? get currentCoverImageProvider => _pb.coverManager.currentCover;
-  String? get currentCoverUrl => _pb.displayCoverUrl;
+  String? get currentCoverUrl => _pb.currentCoverUrl;
+  String? get displayCoverUrl => _pb.displayCoverUrl;
+  String? get pendingCoverUrl => _pb.pendingCoverUrl;
   ValueNotifier<Color?> get themeColorNotifier =>
       _pb.coverManager.themeColorNotifier;
   ValueNotifier<Duration> get positionNotifier => _pb.positionNotifier;

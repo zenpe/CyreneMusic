@@ -56,7 +56,7 @@ class PlayerBackground extends StatelessWidget {
 
   /// 构建封面渐变背景（新样式）
   Widget _buildCoverGradientBackground(Color greyColor) {
-    final imageUrl = PlayerService().currentCoverUrl ?? '';
+    final imageUrl = PlayerService().displayCoverUrl ?? '';
 
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,

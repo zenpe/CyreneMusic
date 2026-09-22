@@ -151,7 +151,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
 
   Widget _buildAlbumCover(PlayerService player) {
     // 复用现有逻辑获取封面URL
-    final picUrl = player.currentCoverUrl;
+    final picUrl = player.displayCoverUrl;
 
     if (picUrl == null || picUrl.isEmpty) {
       return Container(
@@ -180,10 +180,15 @@ class MobilePlayerClassicLayout extends StatelessWidget {
   }
 
   Widget _buildSongInfo(BuildContext context, PlayerService player) {
-    final song = player.currentSong;
-    final track = player.currentTrack;
-    final title = song?.name ?? track?.name ?? '未知歌曲';
-    final artist = song?.arName ?? track?.artists ?? '未知艺术家';
+    final isPending = player.isLoading && player.pendingTrack != null;
+    final song = isPending ? null : player.currentSong;
+    final track = player.displayTrack;
+    final title = player.displayTitle.isNotEmpty
+        ? player.displayTitle
+        : (song?.name ?? track?.name ?? '未知歌曲');
+    final artist = player.displayArtist.isNotEmpty
+        ? player.displayArtist
+        : (song?.arName ?? track?.artists ?? '未知艺术家');
 
     return Row(
       children: [

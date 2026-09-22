@@ -71,6 +71,17 @@ class _PrefetchedPlayablePlanEntry {
   bool get isExpired => DateTime.now().isAfter(expiresAt);
 }
 
+class TrackSwitchTiming {
+  final Stopwatch totalSw = Stopwatch()..start();
+  int settleMs = 0;
+  int lookupMs = 0;
+  int remoteResolveMs = 0;
+  int planPrepareMs = 0;
+  int softFadeOutMs = 0;
+  int engineStartupMs = 0;
+  bool prefetched = false;
+}
+
 class TrackSwitchTransaction {
   final int token;
   final int pendingToken;
@@ -83,8 +94,9 @@ class TrackSwitchTransaction {
   final String qualityStr;
   final PlaybackRequestIntent intent;
   final bool forceRemoteResolution;
+  final TrackSwitchTiming timing;
 
-  const TrackSwitchTransaction({
+  TrackSwitchTransaction({
     required this.token,
     required this.pendingToken,
     this.requestEpoch = 0,
@@ -96,7 +108,8 @@ class TrackSwitchTransaction {
     required this.qualityStr,
     required this.intent,
     this.forceRemoteResolution = false,
-  });
+    TrackSwitchTiming? timing,
+  }) : timing = timing ?? TrackSwitchTiming();
 }
 
 class _ResolvedTrackSwitchSong {
@@ -203,6 +216,7 @@ class PlaybackService extends ChangeNotifier {
   /// 但计数被清零"的连跳循环。
   late final PlaybackStabilityTracker _stabilityTracker;
   PlaybackSession? _currentSession;
+  TrackSwitchTransaction? _currentSwitchTx;
   Track? _stableCacheTrack;
   SongDetail? _stableCacheSong;
   String? _stableCacheQuality;
@@ -218,7 +232,7 @@ class PlaybackService extends ChangeNotifier {
   Timer? _autoSkipTimer;
   bool _preloadDependencyListenersBound = false;
 
-  static const int _switchFadeSteps = 8;
+  static const int _switchFadeSteps = 4;
   static const Duration _switchFadeStepDelay = Duration(milliseconds: 15);
   static const Duration _resolutionRetryDelay = Duration(milliseconds: 300);
   static const Duration _trackSwitchSettleDelay = Duration(milliseconds: 80);
@@ -265,6 +279,8 @@ class PlaybackService extends ChangeNotifier {
   String? get pendingReason => _pendingReason;
 
   Track? get currentTrack => _activeTrack;
+  Track? get displayTrack =>
+      (isLoading && _pendingTrack != null) ? _pendingTrack : _activeTrack;
 
   List<Track> get queue => _queueController.tracks;
   int get currentIndex => _queueController.currentIndex;
@@ -278,6 +294,9 @@ class PlaybackService extends ChangeNotifier {
   LyricSnapshot? get lyricSnapshot => LyricService().currentSnapshot;
   SongDetail? get currentSong => _activeSong;
   String get displayTitle {
+    if (isLoading && _pendingTrack != null && _pendingTrack!.name.isNotEmpty) {
+      return _pendingTrack!.name;
+    }
     final songName = _activeSong?.name;
     if (songName != null && songName.isNotEmpty) return songName;
     final trackName = _activeTrack?.name;
@@ -286,6 +305,11 @@ class PlaybackService extends ChangeNotifier {
   }
 
   String get displayArtist {
+    if (isLoading &&
+        _pendingTrack != null &&
+        _pendingTrack!.artists.isNotEmpty) {
+      return _pendingTrack!.artists;
+    }
     final songArtist = _activeSong?.arName;
     if (songArtist != null && songArtist.isNotEmpty) return songArtist;
     final trackArtist = _activeTrack?.artists;
@@ -294,6 +318,11 @@ class PlaybackService extends ChangeNotifier {
   }
 
   String get displayAlbum {
+    if (isLoading &&
+        _pendingTrack != null &&
+        _pendingTrack!.album.isNotEmpty) {
+      return _pendingTrack!.album;
+    }
     final songAlbum = _activeSong?.alName;
     if (songAlbum != null && songAlbum.isNotEmpty) return songAlbum;
     final trackAlbum = _activeTrack?.album;
@@ -301,13 +330,31 @@ class PlaybackService extends ChangeNotifier {
     return '';
   }
 
-  String? get displayCoverUrl {
+  String? get currentCoverUrl {
     final coverUrl = coverManager.currentUrl;
     if (coverUrl != null && coverUrl.isNotEmpty) return coverUrl;
     final songPic = _activeSong?.pic;
     if (songPic != null && songPic.isNotEmpty) return songPic;
     final trackPic = _activeTrack?.picUrl;
     if (trackPic != null && trackPic.isNotEmpty) return trackPic;
+    return null;
+  }
+
+  String? get displayCoverUrl {
+    if (isLoading &&
+        _pendingTrack != null &&
+        _pendingTrack!.picUrl.isNotEmpty) {
+      return _pendingTrack!.picUrl;
+    }
+    return currentCoverUrl;
+  }
+
+  String? get pendingCoverUrl {
+    if (isLoading &&
+        _pendingTrack != null &&
+        _pendingTrack!.picUrl.isNotEmpty) {
+      return _pendingTrack!.picUrl;
+    }
     return null;
   }
 
@@ -1443,6 +1490,7 @@ class PlaybackService extends ChangeNotifier {
       forceRemoteResolution: forceRemoteResolution,
     );
     _currentSession = tx.session;
+    _currentSwitchTx = tx;
 
     _state = PBState.loading;
     _errorMessage = null;
@@ -1539,6 +1587,7 @@ class PlaybackService extends ChangeNotifier {
     final track = tx.track;
     _currentCachedStreamInfo = null;
     final cachePlaybackKey = _cachePlaybackKey(track, tx.qualityStr);
+    final lookupSw = Stopwatch()..start();
     final lookup = await _trackResolver.lookupLocalOrCache(
       track: track,
       quality: tx.qualityStr,
@@ -1547,6 +1596,7 @@ class PlaybackService extends ChangeNotifier {
           tx.forceRemoteResolution ||
           _cacheBypassKeys.contains(cachePlaybackKey),
     );
+    tx.timing.lookupMs = lookupSw.elapsedMilliseconds;
     if (isStale()) return null;
 
     final cacheInfo = lookup.cacheInfo;
@@ -1624,6 +1674,7 @@ class PlaybackService extends ChangeNotifier {
         if (!retryAllowed) break;
       }
 
+      final remoteSw = Stopwatch()..start();
       resolution = await _trackResolver.resolve(
         songId: track.id,
         quality: tx.selectedQuality,
@@ -1633,6 +1684,7 @@ class PlaybackService extends ChangeNotifier {
         timeout: _playSongDetailTimeout,
         fetchLyrics: false,
       );
+      tx.timing.remoteResolveMs += remoteSw.elapsedMilliseconds;
       if (isStale()) {
         if (lxSourceFingerprint != null) {
           _sourceHealthTracker.cancelRequest(lxSourceFingerprint);
@@ -1913,6 +1965,7 @@ class PlaybackService extends ChangeNotifier {
         autoPlay: autoPlay,
         initialPosition: initialPosition,
         preload: preload,
+        transaction: tx,
       );
       if (!playedFromStream) {
         if (isStale()) return null;
@@ -1930,6 +1983,7 @@ class PlaybackService extends ChangeNotifier {
           autoPlay: autoPlay,
           initialPosition: initialPosition,
           preload: preload,
+          transaction: tx,
         );
       }
     } else {
@@ -1938,6 +1992,7 @@ class PlaybackService extends ChangeNotifier {
         autoPlay: autoPlay,
         initialPosition: initialPosition,
         preload: preload,
+        transaction: tx,
       );
     }
     if (isStale()) {
@@ -1971,6 +2026,20 @@ class PlaybackService extends ChangeNotifier {
       playbackToken: tx.token,
       intent: tx.intent,
     );
+    final timing = tx.timing;
+    debugPrint('''
+🎵 [切歌耗时剖析] ========================================
+歌曲: 《${track.name}》 - ${track.artists} (源: ${track.source.name}, 音质: ${tx.qualityStr})
+模式: ${plan.usesCachedStream ? "⚡ 缓存命中" : "🌐 远程网络"} | 预取计划: ${timing.prefetched ? "命中" : "未命中"}
+阶段细分:
+  ├─ 0. 切歌防抖等待(Settle):     ${timing.settleMs} ms
+  ├─ 1. 本地缓存/文件检索(含校验): ${timing.lookupMs} ms
+  ├─ 2. 远程音源接口解析(网络):   ${timing.remoteResolveMs} ms
+  ├─ 3. 播放源计划准备:           ${timing.planPrepareMs} ms
+  ├─ 4. 音量软淡出(4步防爆音):     ${timing.softFadeOutMs} ms
+  └─ 5. 引擎装载与缓冲出声:       ${timing.engineStartupMs} ms
+================================ 🏁 真实总耗时: ${timing.totalSw.elapsedMilliseconds} ms
+''');
     _stableCacheTrack = null;
     _stableCacheSong = null;
     _stableCacheQuality = null;
@@ -2526,7 +2595,9 @@ class PlaybackService extends ChangeNotifier {
     final effectiveRequestEpoch = requestEpoch ?? _requestRouter.begin();
     final seq = ++_detachedSwitchSeq;
     unawaited(() async {
+      final settleSw = Stopwatch()..start();
       await _waitForTrackSwitchSettle();
+      final settleMs = settleSw.elapsedMilliseconds;
       if (seq != _detachedSwitchSeq) {
         _logPlaybackDebug('[PlaybackService] 切歌请求已被更新的请求取代，取消: $reason');
         return;
@@ -2536,6 +2607,7 @@ class PlaybackService extends ChangeNotifier {
         reason: reason,
         intent: intent,
         requestEpoch: effectiveRequestEpoch,
+        settleMs: settleMs,
       );
     }());
   }
@@ -2548,6 +2620,7 @@ class PlaybackService extends ChangeNotifier {
     Duration? initialPosition,
     bool preload = true,
     bool forceRemoteResolution = false,
+    int settleMs = 0,
   }) async {
     // 1. prepareTarget
     final tx = _prepareTrackSwitchTransaction(
@@ -2557,6 +2630,7 @@ class PlaybackService extends ChangeNotifier {
       forceRemoteResolution: forceRemoteResolution,
     );
     if (tx == null) return;
+    tx.timing.settleMs = settleMs;
     final trace = OperationTrace(
       'playback.switch',
       context: {
@@ -2584,6 +2658,7 @@ class PlaybackService extends ChangeNotifier {
           ? null
           : _takePrefetchedPlayablePlan(tx.track, tx.selectedQuality);
       if (prefetchedPlan != null) {
+        tx.timing.prefetched = true;
         trace.mark(
           'prefetch_hit',
           fields: {
@@ -2626,11 +2701,13 @@ class PlaybackService extends ChangeNotifier {
       );
 
       // 3. resolvePlayableSource
+      final prepSw = Stopwatch()..start();
       final playbackPlan = await _resolvePlayableSourceStage(
         tx,
         resolvedSong,
         isStale,
       );
+      tx.timing.planPrepareMs = prepSw.elapsedMilliseconds;
       if (playbackPlan == null || isStale()) return;
       trace.mark(
         'source_ready',
@@ -3171,6 +3248,7 @@ class PlaybackService extends ChangeNotifier {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    TrackSwitchTransaction? transaction,
   }) async {
     await _performSoftSwitch(
       (generation) => _engine.play(
@@ -3183,6 +3261,7 @@ class PlaybackService extends ChangeNotifier {
         preload: preload,
       ),
       allowFadeIn: autoPlay,
+      transaction: transaction,
     );
   }
 
@@ -3191,6 +3270,7 @@ class PlaybackService extends ChangeNotifier {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    TrackSwitchTransaction? transaction,
   }) async {
     await _performSoftSwitch(
       (generation) => _engine.playSource(
@@ -3201,12 +3281,14 @@ class PlaybackService extends ChangeNotifier {
         preload: preload,
       ),
       allowFadeIn: autoPlay,
+      transaction: transaction,
     );
   }
 
   Future<void> _performSoftSwitch(
     Future<void> Function(int generation) startPlayback, {
     bool allowFadeIn = true,
+    TrackSwitchTransaction? transaction,
   }) async {
     // 源头纪元捕获：必须在任何 await 之前读取。当前事务已在
     // _prepareTrackSwitchTransaction 中 begin()，此处的 _playGeneration
@@ -3217,17 +3299,30 @@ class PlaybackService extends ChangeNotifier {
     final fadeGeneration = generation;
     _updateSessionPhase(PlaybackPhase.arming);
 
+    // 绑定当前软切换关联的切歌事务，避免快速切歌时旧事务晚完成污染新事务的统计对象
+    final targetTx = (transaction != null && transaction.token == generation)
+        ? transaction
+        : (_currentSwitchTx?.token == generation ? _currentSwitchTx : null);
+
     if (!canFade) {
       if (!_canStartPlayback(generation)) return;
+      final engineSw = Stopwatch()..start();
       await startPlayback(generation);
+      if (_canStartPlayback(generation)) {
+        targetTx?.timing.engineStartupMs = engineSw.elapsedMilliseconds;
+      }
       return;
     }
 
+    final fadeSw = Stopwatch()..start();
     final stepVolume = targetVolume / _switchFadeSteps;
     for (int i = _switchFadeSteps; i > 0; i--) {
       if (!_canStartPlayback(generation)) return;
       await _safeSetEngineVolume(stepVolume * (i - 1));
       await Future.delayed(_switchFadeStepDelay);
+    }
+    if (_canStartPlayback(generation)) {
+      targetTx?.timing.softFadeOutMs = fadeSw.elapsedMilliseconds;
     }
 
     // stop()/new request may have invalidated the transaction while the fade
@@ -3235,7 +3330,11 @@ class PlaybackService extends ChangeNotifier {
     // writes but cannot infer whether a queued generation is obsolete.
     if (!_canStartPlayback(generation)) return;
     try {
+      final engineSw = Stopwatch()..start();
       await startPlayback(generation);
+      if (_canStartPlayback(generation)) {
+        targetTx?.timing.engineStartupMs = engineSw.elapsedMilliseconds;
+      }
     } catch (e) {
       await _safeSetEngineVolume(targetVolume);
       rethrow;
@@ -3359,6 +3458,7 @@ class PlaybackService extends ChangeNotifier {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    TrackSwitchTransaction? transaction,
   }) async {
     try {
       final track = _pendingTrack ?? currentTrack;
@@ -3400,6 +3500,7 @@ class PlaybackService extends ChangeNotifier {
         autoPlay: autoPlay,
         initialPosition: initialPosition,
         preload: preload,
+        transaction: transaction,
       );
       StructuredLogService.log(
         '[PlaybackService] 缓存流式播放已提交 ${sw.elapsedMilliseconds}ms '

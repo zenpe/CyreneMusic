@@ -215,7 +215,7 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
   @override
   Widget build(BuildContext context) {
     final player = PlayerService();
-    final picUrl = player.currentCoverUrl ?? '';
+    final picUrl = player.displayCoverUrl ?? '';
 
     // 歌词页面始终使用深色背景，状态栏图标应为浅色
     const lyricOverlayStyle = SystemUiOverlayStyle(

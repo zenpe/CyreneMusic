@@ -26,8 +26,9 @@ class MobilePlayerSongInfo extends StatelessWidget {
       animation: PlayerService(),
       builder: (context, child) {
         final player = PlayerService();
-        final song = player.currentSong;
-        final track = player.currentTrack;
+        final isPending = player.isLoading && player.pendingTrack != null;
+        final track = player.displayTrack;
+        final song = isPending ? null : player.currentSong;
         final displayTitle = player.displayTitle;
         final displayArtist = player.displayArtist;
         final displayAlbum = player.displayAlbum;
@@ -52,6 +53,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
                     displayTitle: displayTitle,
                     displayArtist: displayArtist,
                     displayAlbum: displayAlbum,
+                    artistsEnabled: !isPending,
                   ),
                   const Spacer(),
                 ],
@@ -75,6 +77,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
                     displayTitle: displayTitle,
                     displayArtist: displayArtist,
                     displayAlbum: displayAlbum,
+                    artistsEnabled: !isPending,
                   ),
                 ],
               );
@@ -87,8 +90,10 @@ class MobilePlayerSongInfo extends StatelessWidget {
 
   /// 构建专辑封面
   Widget _buildAlbumCover(SongDetail? song, Track? track) {
+    final player = PlayerService();
+    final isPending = player.isLoading && player.pendingTrack != null;
     final picUrl = _resolveCoverUrl(song, track);
-    final provider = PlayerService().currentCoverImageProvider;
+    final provider = isPending ? null : player.currentCoverImageProvider;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -137,7 +142,11 @@ class MobilePlayerSongInfo extends StatelessWidget {
                         fit: BoxFit.cover,
                       )
                     : picUrl.isNotEmpty
-                        ? _buildOptimizedCover(picUrl, coverSize)
+                        ? _buildOptimizedCover(
+                            picUrl,
+                            coverSize,
+                            provider: provider,
+                          )
                         : Container(
                             color: Colors.grey[900],
                             child: Icon(
@@ -155,6 +164,12 @@ class MobilePlayerSongInfo extends StatelessWidget {
   }
 
   String _resolveCoverUrl(SongDetail? song, Track? track) {
+    final player = PlayerService();
+    if (player.isLoading &&
+        player.pendingTrack != null &&
+        player.pendingTrack!.picUrl.isNotEmpty) {
+      return player.pendingTrack!.picUrl;
+    }
     final songPic = song?.pic;
     if (songPic != null && songPic.isNotEmpty) {
       return songPic;
@@ -169,9 +184,11 @@ class MobilePlayerSongInfo extends StatelessWidget {
   }
 
   /// 构建优化的封面图片，优先使用预取的 Provider 避免重复加载
-  Widget _buildOptimizedCover(String imageUrl, double coverSize) {
-    // 优先使用播放前由列表项传入并已预取的 Provider，避免再次网络请求
-    final provider = PlayerService().currentCoverImageProvider;
+  Widget _buildOptimizedCover(
+    String imageUrl,
+    double coverSize, {
+    ImageProvider? provider,
+  }) {
     if (provider != null) {
       return Image(
         image: provider,
@@ -232,6 +249,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
     required String displayTitle,
     required String displayArtist,
     required String displayAlbum,
+    required bool artistsEnabled,
   }) {
     final name = displayTitle.isNotEmpty ? displayTitle : '未知歌曲';
     final artistsStr = displayArtist.isNotEmpty ? displayArtist : '未知艺术家';
@@ -271,7 +289,14 @@ class MobilePlayerSongInfo extends StatelessWidget {
                   SizedBox(height: screenWidth * 0.02),
 
                   // 艺术家（多个可点击）
-                  _buildArtistsRow(context, artists, subtitleColor, screenWidth, song),
+                  _buildArtistsRow(
+                    context,
+                    artists,
+                    subtitleColor,
+                    screenWidth,
+                    song,
+                    enabled: artistsEnabled,
+                  ),
 
                   // 专辑（可点击）
                   if (album.isNotEmpty) ...[
@@ -318,7 +343,14 @@ class MobilePlayerSongInfo extends StatelessWidget {
   }
 
   /// 构建多个艺术家的可点击行
-  Widget _buildArtistsRow(BuildContext context, List<String> artists, Color baseColor, double screenWidth, SongDetail? song) {
+  Widget _buildArtistsRow(
+    BuildContext context,
+    List<String> artists,
+    Color baseColor,
+    double screenWidth,
+    SongDetail? song, {
+    bool enabled = true,
+  }) {
     final artistFontSize = (screenWidth * 0.04).clamp(14.0, 17.0);
 
     return Wrap(
@@ -334,7 +366,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             InkWell(
-              onTap: () => _onArtistTap(context, artist, song),
+              onTap: enabled ? () => _onArtistTap(context, artist, song) : null,
               borderRadius: BorderRadius.circular(4),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),

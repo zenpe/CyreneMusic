@@ -25,8 +25,10 @@ class PlayerSongInfo extends StatelessWidget {
       animation: PlayerService(),
       builder: (context, child) {
         final player = PlayerService();
-        final song = player.currentSong;
-        final imageUrl = player.currentCoverUrl ?? '';
+        final isPending = player.isLoading && player.pendingTrack != null;
+        final song = isPending ? null : player.currentSong;
+        final imageUrl = player.displayCoverUrl ?? '';
+        final provider = isPending ? null : player.currentCoverImageProvider;
         final displayTitle = player.displayTitle;
         final displayArtist = player.displayArtist;
         final displayAlbum = player.displayAlbum;
@@ -44,7 +46,7 @@ class PlayerSongInfo extends StatelessWidget {
                   // 封面（开启渐变效果时不显示，因为封面已在背景中）
                   if (!backgroundService.enableGradient ||
                       backgroundService.backgroundType != PlayerBackgroundType.adaptive)
-                    _buildCover(imageUrl),
+                    _buildCover(imageUrl, provider: provider),
 
                   if (!backgroundService.enableGradient ||
                       backgroundService.backgroundType != PlayerBackgroundType.adaptive)
@@ -57,6 +59,7 @@ class PlayerSongInfo extends StatelessWidget {
                     displayTitle: displayTitle,
                     displayArtist: displayArtist,
                     displayAlbum: displayAlbum,
+                    artistsEnabled: !isPending,
                   ),
                   const SizedBox(height: 20),
                 ],
@@ -69,7 +72,7 @@ class PlayerSongInfo extends StatelessWidget {
   }
 
   /// 构建封面
-  Widget _buildCover(String imageUrl) {
+  Widget _buildCover(String imageUrl, {ImageProvider? provider}) {
     return Container(
       width: 320,
       height: 320,
@@ -86,7 +89,7 @@ class PlayerSongInfo extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: imageUrl.isNotEmpty
-            ? _buildOptimizedCover(imageUrl)
+            ? _buildOptimizedCover(imageUrl, provider: provider)
             : Container(
                 color: Colors.grey[800],
                 child: const Icon(Icons.music_note, size: 100, color: Colors.white54),
@@ -95,9 +98,7 @@ class PlayerSongInfo extends StatelessWidget {
     );
   }
 
-  Widget _buildOptimizedCover(String imageUrl) {
-    // 优先使用播放前由列表项传入并已预取的 Provider，避免再次网络请求
-    final provider = PlayerService().currentCoverImageProvider;
+  Widget _buildOptimizedCover(String imageUrl, {ImageProvider? provider}) {
     if (provider != null) {
       return Image(
         image: provider,
@@ -152,6 +153,7 @@ class PlayerSongInfo extends StatelessWidget {
     required String displayTitle,
     required String displayArtist,
     required String displayAlbum,
+    required bool artistsEnabled,
   }) {
     final name = displayTitle.isNotEmpty ? displayTitle : '未知歌曲';
     final artistsStr = displayArtist.isNotEmpty ? displayArtist : '未知艺术家';
@@ -184,7 +186,13 @@ class PlayerSongInfo extends StatelessWidget {
             const SizedBox(height: 12),
 
             // 艺术家（多个可点击）
-            _buildArtistsRow(context, artists, subtitleColor, song),
+            _buildArtistsRow(
+              context,
+              artists,
+              subtitleColor,
+              song,
+              enabled: artistsEnabled,
+            ),
 
             // 专辑（可点击）
             if (album.isNotEmpty) ...[
@@ -228,7 +236,13 @@ class PlayerSongInfo extends StatelessWidget {
   }
 
   /// 构建多个艺术家的可点击行
-  Widget _buildArtistsRow(BuildContext context, List<String> artists, Color baseColor, SongDetail? song) {
+  Widget _buildArtistsRow(
+    BuildContext context,
+    List<String> artists,
+    Color baseColor,
+    SongDetail? song, {
+    bool enabled = true,
+  }) {
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: 0,
@@ -242,7 +256,7 @@ class PlayerSongInfo extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             InkWell(
-              onTap: () => _onArtistTap(context, artist, song),
+              onTap: enabled ? () => _onArtistTap(context, artist, song) : null,
               borderRadius: BorderRadius.circular(4),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),

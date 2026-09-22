@@ -144,8 +144,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
       animation: PlayerService(),
       builder: (context, child) {
         final player = PlayerService();
-        final track = player.currentTrack;
-        final song = player.currentSong;
+        final isPending = player.isLoading && player.pendingTrack != null;
+        final track = player.displayTrack;
+        final song = isPending ? null : player.currentSong;
 
         final mediaQuery = MediaQuery.of(context);
         final bool isCompactWidth = mediaQuery.size.width < 600;
@@ -1031,8 +1032,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
   /// 构建封面
   Widget _buildCover(dynamic song, dynamic track, ColorScheme colorScheme, {double size = 48}) {
+    final player = PlayerService();
+    final isPending = player.isLoading && player.pendingTrack != null;
     final imageUrl = _resolveCoverUrl(song, track);
-    final provider = PlayerService().currentCoverImageProvider;
+    final provider = isPending ? null : player.currentCoverImageProvider;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
@@ -1044,7 +1047,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
               fit: BoxFit.cover,
             )
           : imageUrl.isNotEmpty
-              ? _optimizedCover(imageUrl, size, colorScheme)
+              ? _optimizedCover(
+                  imageUrl,
+                  size,
+                  colorScheme,
+                  provider: provider,
+                )
               : Container(
                   width: size,
                   height: size,
@@ -1058,6 +1066,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   String _resolveCoverUrl(dynamic song, dynamic track) {
+    final player = PlayerService();
+    if (player.isLoading &&
+        player.pendingTrack != null &&
+        player.pendingTrack!.picUrl.isNotEmpty) {
+      return player.pendingTrack!.picUrl;
+    }
     final songPic = song?.pic;
     if (songPic is String && songPic.isNotEmpty) {
       return songPic;
@@ -1071,8 +1085,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
     return '';
   }
 
-  Widget _optimizedCover(String imageUrl, double size, ColorScheme colorScheme) {
-    final provider = PlayerService().currentCoverImageProvider;
+  Widget _optimizedCover(
+    String imageUrl,
+    double size,
+    ColorScheme colorScheme, {
+    ImageProvider? provider,
+  }) {
     if (provider != null) {
       return Image(
         image: provider,

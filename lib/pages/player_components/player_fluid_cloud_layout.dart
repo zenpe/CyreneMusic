@@ -141,7 +141,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   void _onPlayerChanged() {
     // 检查封面 URL 是否变化
     final player = PlayerService();
-    final newImageUrl = player.currentCoverUrl ?? '';
+    final newImageUrl = player.displayCoverUrl ?? '';
 
     if (_currentImageUrl != newImageUrl) {
       setState(() {
@@ -156,7 +156,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   }
 
   void _updateCurrentImageUrl() {
-    _currentImageUrl = PlayerService().currentCoverUrl ?? '';
+    _currentImageUrl = PlayerService().displayCoverUrl ?? '';
   }
 
   /// 处理胶囊拖动更新
@@ -452,10 +452,11 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   /// 构建左侧面板
   Widget _buildLeftPanel(BuildContext context) {
     final player = PlayerService();
-    final track = player.currentTrack;
+    final isPending = player.isLoading && player.pendingTrack != null;
+    final track = player.displayTrack;
     // ✅ 关键修复：使用 PlayerService 的封面 URL 和 Provider，避免详情加载导致重新请求
-    final imageUrl = player.currentCoverUrl ?? '';
-    final coverProvider = player.currentCoverImageProvider;
+    final imageUrl = player.displayCoverUrl ?? '';
+    final coverProvider = isPending ? null : player.currentCoverImageProvider;
 
     // 获取折叠动画值
     final animValue = _collapseAnimationValue;
@@ -575,6 +576,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                           context,
                           track?.artists ?? '未知歌手',
                           player.currentSong,
+                          enabled: !isPending,
                         ),
                         const SizedBox(height: 30),
                         AnimatedBuilder(
@@ -801,6 +803,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                 context,
                 track?.artists ?? '未知歌手',
                 player.currentSong,
+                enabled: !isPending,
               ),
 
               const SizedBox(height: 24), // 缩小间距 (30 -> 24)
@@ -1153,7 +1156,8 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   Widget _buildArtistsRow(
     BuildContext context,
     String artistsStr,
-    SongDetail? song,
+    SongDetail? song, {
+    bool enabled = true,
   ) {
     final artists = _splitArtists(artistsStr);
 
@@ -1168,7 +1172,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
           final artist = artists[index];
           children.add(
             GestureDetector(
-              onTap: () => _onArtistTap(context, artist, song),
+              onTap: enabled ? () => _onArtistTap(context, artist, song) : null,
               child: MouseRegion(
                 cursor: SystemMouseCursors.click,
                 child: ConstrainedBox(

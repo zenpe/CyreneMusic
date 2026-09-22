@@ -126,12 +126,12 @@ class _PlayerFluidCloudBackgroundState
       builder: (context, _) {
         // 获取当前封面图片的 Provider
         final player = PlayerService();
-        // 优先使用缓存的 Provider
-        ImageProvider? imageProvider = player.currentCoverImageProvider;
+        final isPending = player.isLoading && player.pendingTrack != null;
+        ImageProvider? imageProvider = isPending ? null : player.currentCoverImageProvider;
 
         // 如果没有 Provider，尝试从 URL 构建
         if (imageProvider == null) {
-          final imageUrl = player.currentCoverUrl;
+          final imageUrl = player.displayCoverUrl;
 
           if (imageUrl != null && imageUrl.isNotEmpty) {
             if (imageUrl.startsWith('http')) {
@@ -164,7 +164,7 @@ class _PlayerFluidCloudBackgroundState
     return ListenableBuilder(
       listenable: PlayerService(),
       builder: (context, _) {
-        final imageUrl = PlayerService().currentCoverUrl ?? '';
+        final imageUrl = PlayerService().displayCoverUrl ?? '';
 
         return ValueListenableBuilder<Color?>(
           valueListenable: PlayerService().themeColorNotifier,
@@ -278,7 +278,8 @@ class _PlayerFluidCloudBackgroundState
   }) {
     // 性能优化：优先使用 PlayerService 已经稳定的 Provider
     final player = PlayerService();
-    if (player.currentCoverUrl == imageUrl &&
+    if (!player.isLoading &&
+        player.currentCoverUrl == imageUrl &&
         player.currentCoverImageProvider != null) {
       return Image(
         image: player.currentCoverImageProvider!,
