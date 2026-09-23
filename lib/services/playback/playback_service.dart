@@ -99,6 +99,7 @@ class TrackSwitchTransaction {
   final int requestEpoch;
   final PlaybackSession session;
   final Track track;
+  final int? queueEntryId;
   final String reason;
   final String requestedKey;
   final AudioQuality selectedQuality;
@@ -114,6 +115,7 @@ class TrackSwitchTransaction {
     this.requestEpoch = 0,
     required this.session,
     required this.track,
+    required this.queueEntryId,
     required this.reason,
     required this.requestedKey,
     required this.selectedQuality,
@@ -200,10 +202,13 @@ class PlaybackService extends ChangeNotifier {
   // ══════════════════════════════════════════════════════
   PBState _state = PBState.idle;
   Track? _activeTrack;
+  int? _activeQueueEntryId;
+  PlayableSource? _activePlayableSource;
   SongDetail? _activeSong;
   SongDetail? _pendingSong;
   int _activePlaybackToken = 0;
   Track? _pendingTrack;
+  int? _pendingQueueEntryId;
   PlaybackRequestIntent? _pendingIntent;
   PlaybackRequestIntent _activeIntent = PlaybackRequestIntent.manual;
   int _pendingSwitchToken = 0;
@@ -213,6 +218,8 @@ class PlaybackService extends ChangeNotifier {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   Duration _bufferedPosition = Duration.zero;
+  Duration _presentationDuration = Duration.zero;
+  Duration _presentationBufferedPosition = Duration.zero;
   bool _pendingTimelineReady = false;
   bool _desiredPlaying = false;
   String? _errorMessage;
@@ -257,11 +264,15 @@ class PlaybackService extends ChangeNotifier {
   bool _preloadingNext = false;
   int _preloadOp = 0;
   final Map<String, _PrefetchedPlayablePlanEntry> _prefetchedPlayablePlans = {};
+  final Map<String, _TrackSwitchPlaybackPlan> _nativePreparedPlans = {};
+  int _nextNativePlaybackToken = -1;
   Timer? _preloadTriggerTimer;
   Timer? _autoSkipTimer;
   bool _preloadDependencyListenersBound = false;
   bool _autoNextInFlight = false;
   int _autoNextFlightId = 0;
+  PlaybackRequestIntent _nativeActivationIntent =
+      PlaybackRequestIntent.automatic;
 
   static const Duration _resolutionRetryDelay = Duration(milliseconds: 300);
   static const Duration _trackSwitchSettleDelay = Duration(milliseconds: 80);
@@ -302,6 +313,7 @@ class PlaybackService extends ChangeNotifier {
   // 派生属性
   // ══════════════════════════════════════════════════════
   Track? get activeTrack => _activeTrack;
+  int? get activeQueueEntryId => _activeQueueEntryId;
   SongDetail? get activeSong => _activeSong;
   int get activePlaybackToken => _activePlaybackToken;
   PlaybackSession? get currentSession => _currentSession;
@@ -311,7 +323,7 @@ class PlaybackService extends ChangeNotifier {
   String? get pendingReason => _pendingReason;
 
   Track? get currentTrack => _activeTrack;
-  Track? get displayTrack => _pendingTrack ?? _activeTrack;
+  Track? get displayTrack => _activeTrack ?? _pendingTrack;
 
   List<Track> get queue => _queueController.tracks;
   int get currentIndex => _queueController.currentIndex;
@@ -326,35 +338,32 @@ class PlaybackService extends ChangeNotifier {
   LyricSnapshot? get lyricSnapshot => LyricService().currentSnapshot;
   SongDetail? get currentSong => _activeSong;
   String get displayTitle {
-    if (_pendingTrack != null && _pendingTrack!.name.isNotEmpty) {
-      return _pendingTrack!.name;
-    }
-    final songName = _activeSong?.name;
-    if (songName != null && songName.isNotEmpty) return songName;
     final trackName = _activeTrack?.name;
     if (trackName != null && trackName.isNotEmpty) return trackName;
+    final songName = _activeSong?.name;
+    if (songName != null && songName.isNotEmpty) return songName;
+    final pendingName = _pendingTrack?.name;
+    if (pendingName != null && pendingName.isNotEmpty) return pendingName;
     return '';
   }
 
   String get displayArtist {
-    if (_pendingTrack != null && _pendingTrack!.artists.isNotEmpty) {
-      return _pendingTrack!.artists;
-    }
-    final songArtist = _activeSong?.arName;
-    if (songArtist != null && songArtist.isNotEmpty) return songArtist;
     final trackArtist = _activeTrack?.artists;
     if (trackArtist != null && trackArtist.isNotEmpty) return trackArtist;
+    final songArtist = _activeSong?.arName;
+    if (songArtist != null && songArtist.isNotEmpty) return songArtist;
+    final pendingArtist = _pendingTrack?.artists;
+    if (pendingArtist != null && pendingArtist.isNotEmpty) return pendingArtist;
     return '';
   }
 
   String get displayAlbum {
-    if (_pendingTrack != null && _pendingTrack!.album.isNotEmpty) {
-      return _pendingTrack!.album;
-    }
-    final songAlbum = _activeSong?.alName;
-    if (songAlbum != null && songAlbum.isNotEmpty) return songAlbum;
     final trackAlbum = _activeTrack?.album;
     if (trackAlbum != null && trackAlbum.isNotEmpty) return trackAlbum;
+    final songAlbum = _activeSong?.alName;
+    if (songAlbum != null && songAlbum.isNotEmpty) return songAlbum;
+    final pendingAlbum = _pendingTrack?.album;
+    if (pendingAlbum != null && pendingAlbum.isNotEmpty) return pendingAlbum;
     return '';
   }
 
@@ -369,7 +378,9 @@ class PlaybackService extends ChangeNotifier {
   }
 
   String? get displayCoverUrl {
-    if (_pendingTrack != null && _pendingTrack!.picUrl.isNotEmpty) {
+    if (_activeTrack == null &&
+        _pendingTrack != null &&
+        _pendingTrack!.picUrl.isNotEmpty) {
       return _pendingTrack!.picUrl;
     }
     return currentCoverUrl;
@@ -406,15 +417,15 @@ class PlaybackService extends ChangeNotifier {
     return null;
   }
 
-  Duration get duration => _duration;
-  Duration get position => _position;
-  Duration get bufferedPosition => _bufferedPosition;
+  Duration get duration => _presentationDuration;
+  Duration get position => presentationPositionNotifier.value;
+  Duration get bufferedPosition => _presentationBufferedPosition;
   PlaybackViewState get viewState {
-    final pending = _pendingTrack;
-    final switching = pending != null;
-    final timelineReady = !switching || _pendingTimelineReady;
-    final track = pending ?? _activeTrack;
-    final generation = switching ? _playGeneration : _activePlaybackToken;
+    final switching = _pendingTrack != null;
+    final track = _activeTrack ?? _pendingTrack;
+    final generation = _activeTrack != null
+        ? _activePlaybackToken
+        : _playGeneration;
     final currentSnapshot = LyricService().currentSnapshot;
     final expectedTrackKey = track == null
         ? null
@@ -428,13 +439,15 @@ class PlaybackService extends ChangeNotifier {
     return PlaybackViewState(
       generation: generation,
       track: track,
-      song: switching ? _pendingSong : _activeSong,
+      song: _activeSong ?? (_activeTrack == null ? _pendingSong : null),
       switchPhase: _viewSwitchPhase,
       desiredPlaying: _desiredPlaying,
       enginePlaying: _engine.isPlaying,
-      position: timelineReady ? _position : Duration.zero,
-      duration: timelineReady && _duration > Duration.zero ? _duration : null,
-      bufferedPosition: timelineReady ? _bufferedPosition : Duration.zero,
+      position: presentationPositionNotifier.value,
+      duration: _presentationDuration > Duration.zero
+          ? _presentationDuration
+          : null,
+      bufferedPosition: _presentationBufferedPosition,
       lyricState:
           snapshot?.state ??
           (switching ? LyricLoadState.loading : LyricLoadState.idle),
@@ -539,6 +552,8 @@ class PlaybackService extends ChangeNotifier {
         _onDurationChanged(duration);
       case EngineBufferedPositionEvent(:final position):
         _onBufferedPositionChanged(position);
+      case EngineSourceCommittedEvent(:final key):
+        _onNativeSourceCommitted(key);
       case EngineCompletedEvent():
         _onCompletion(true);
       case EngineFailureEvent(:final error):
@@ -614,8 +629,14 @@ class PlaybackService extends ChangeNotifier {
         : (_activeTrack != null ? [_activeTrack!] : const <Track>[]);
     if (sessionQueue.isEmpty) return null;
 
+    final activeIndex = _activeQueueEntryId == null
+        ? -1
+        : _queueController.indexOfEntryId(_activeQueueEntryId!);
     final currentIndex = _queue.isNotEmpty
-        ? _currentIndex.clamp(0, sessionQueue.length - 1)
+        ? (activeIndex >= 0 ? activeIndex : _currentIndex).clamp(
+            0,
+            sessionQueue.length - 1,
+          )
         : 0;
     final state = switch (_state) {
       PBState.playing => PlaybackSessionState.playing,
@@ -629,7 +650,7 @@ class PlaybackService extends ChangeNotifier {
       queue: sessionQueue,
       currentIndex: currentIndex,
       source: _queue.isNotEmpty ? _source : QueueSource.none,
-      position: _position,
+      position: presentationPositionNotifier.value,
       state: state,
       playbackMode: PlaybackModeService().currentMode,
     );
@@ -682,6 +703,7 @@ class PlaybackService extends ChangeNotifier {
     );
     _state = PBState.idle;
     _activeTrack = _trackAtQueuePointer();
+    _activeQueueEntryId = _queueController.currentEntryId;
     _activeSong = null;
     _clearPendingTrack();
     _setLyricLoadState(LyricLoadState.idle, track: _activeTrack, notify: false);
@@ -690,7 +712,10 @@ class PlaybackService extends ChangeNotifier {
     _duration = Duration.zero;
     _bufferedPosition = Duration.zero;
     _position = snapshot.position;
+    _presentationDuration = Duration.zero;
+    _presentationBufferedPosition = Duration.zero;
     positionNotifier.value = snapshot.position;
+    presentationPositionNotifier.value = snapshot.position;
     bufferedPositionNotifier.value = Duration.zero;
     if (_activeTrack != null) {
       coverManager.updateCoverNonBlocking(
@@ -724,7 +749,7 @@ class PlaybackService extends ChangeNotifier {
         if (Platform.isAndroid)
           AndroidFloatingLyricService().setPlayingState(true);
         _scheduleSessionPersist();
-        _stabilityTracker.onPlaybackStarted(_playGeneration);
+        _stabilityTracker.onPlaybackStarted(_activePlaybackToken);
         _schedulePreloadNextTrack();
         break;
       case EngineState.paused:
@@ -776,7 +801,7 @@ class PlaybackService extends ChangeNotifier {
   void _onPositionChanged(Duration pos) {
     _position = pos;
     positionNotifier.value = pos;
-    if (_pendingTrack == null || _pendingTimelineReady) {
+    if (_pendingTrack == null) {
       presentationPositionNotifier.value = pos;
     }
     _updateFloatingLyric();
@@ -787,9 +812,8 @@ class PlaybackService extends ChangeNotifier {
     _duration = dur;
     if (_pendingTrack != null) {
       _pendingTimelineReady = dur > Duration.zero;
-      if (_pendingTimelineReady) {
-        presentationPositionNotifier.value = _position;
-      }
+    } else {
+      _presentationDuration = dur;
     }
     notifyListeners();
   }
@@ -797,6 +821,9 @@ class PlaybackService extends ChangeNotifier {
   void _onBufferedPositionChanged(Duration buffered) {
     _bufferedPosition = buffered;
     bufferedPositionNotifier.value = buffered;
+    if (_pendingTrack == null) {
+      _presentationBufferedPosition = buffered;
+    }
   }
 
   void _onEngineError(EngineError error) {
@@ -1108,6 +1135,101 @@ class PlaybackService extends ChangeNotifier {
     unawaited(_runAutoNextFlight(flightId));
   }
 
+  void _onNativeSourceCommitted(String? key) {
+    final entryId = _queueEntryIdFromNativeKey(key);
+    if (entryId == null || entryId == _activeQueueEntryId) return;
+    final queueIndex = _queueController.indexOfEntryId(entryId);
+    if (queueIndex < 0) {
+      StructuredLogService.log('[PlaybackService] 原生播放源未映射到业务队列: $key');
+      return;
+    }
+
+    final pendingEntryId = _pendingQueueEntryId;
+    if (pendingEntryId != null && pendingEntryId != entryId) {
+      StructuredLogService.event(
+        'playback.stale_native_source_ignored',
+        level: LogLevel.warning,
+        fields: {
+          'native_entry_id': entryId,
+          'pending_entry_id': pendingEntryId,
+          'generation': _playGeneration,
+        },
+      );
+      return;
+    }
+
+    final track = _queue[queueIndex];
+    final quality = AudioQualityService().currentQuality;
+    final plan =
+        _nativePreparedPlans.remove(key) ??
+        _takePrefetchedPlayablePlan(track, quality);
+    if (plan == null) {
+      StructuredLogService.log('[PlaybackService] 原生播放源缺少预取计划，忽略切歌事件: $key');
+      return;
+    }
+
+    _autoNextFlightId++;
+    _autoNextInFlight = false;
+    _resetPreloadState(clearPrefetchedDetails: false);
+    _queueController.jumpTo(queueIndex);
+    final activationIntent = _nativeActivationIntent;
+    _nativeActivationIntent = PlaybackRequestIntent.automatic;
+    final matchingTx = _currentSwitchTx;
+    final playbackToken =
+        matchingTx != null &&
+            matchingTx.queueEntryId == entryId &&
+            _transactionGuard.isCurrent(matchingTx.token)
+        ? matchingTx.token
+        : _nextNativePlaybackToken--;
+    _activePlayableSource = plan.source;
+    _setCurrentCachedFileInfo(plan.resolvedSong.cacheInfo);
+    unawaited(_replaceCurrentTempFilePath(plan.retainedTempFilePath));
+    _stableCacheTrack = null;
+    _stableCacheSong = null;
+    _stableCacheQuality = null;
+    if (plan.shouldWriteBackgroundCache) {
+      _stableCacheTrack = track;
+      _stableCacheSong = plan.resolvedSong.songDetail;
+      _stableCacheQuality = quality.value;
+    }
+    _commitActivePresentation(
+      track,
+      queueEntryId: entryId,
+      songDetail: plan.resolvedSong.songDetail,
+      playbackToken: playbackToken,
+      intent: activationIntent,
+    );
+    _scheduleCoverRefreshIfNeeded(track, plan);
+    _scheduleThemeRefreshIfNeeded(track, plan);
+    _loadLyricsForFloatingDisplay();
+    _schedulePreloadNextTrack();
+    _scheduleSessionPersist();
+    notifyListeners();
+  }
+
+  void _scheduleCoverRefreshIfNeeded(
+    Track track,
+    _TrackSwitchPlaybackPlan plan,
+  ) {
+    final url = plan.coverRefreshUrl;
+    if (url != null && url.isNotEmpty) {
+      _scheduleCoverRefresh(track, url, reason: plan.themeReason);
+    }
+  }
+
+  void _scheduleThemeRefreshIfNeeded(
+    Track track,
+    _TrackSwitchPlaybackPlan plan,
+  ) {
+    if (plan.themeImageUrl.isNotEmpty) {
+      _scheduleThemeColorRefresh(
+        track,
+        plan.themeImageUrl,
+        reason: plan.themeReason,
+      );
+    }
+  }
+
   Future<void> _runAutoNextFlight(int flightId) async {
     try {
       await _playNextAuto();
@@ -1229,11 +1351,14 @@ class PlaybackService extends ChangeNotifier {
         await _engine.stop();
         _state = PBState.idle;
         _activeTrack = null;
+        _activeQueueEntryId = null;
         _activeSong = null;
         _clearPendingTrack();
         _duration = Duration.zero;
         _position = Duration.zero;
         _bufferedPosition = Duration.zero;
+        _presentationDuration = Duration.zero;
+        _presentationBufferedPosition = Duration.zero;
         positionNotifier.value = Duration.zero;
         bufferedPositionNotifier.value = Duration.zero;
         coverManager.setCoverImmediate(null, notify: false);
@@ -1272,11 +1397,14 @@ class PlaybackService extends ChangeNotifier {
       await _engine.stop();
       _state = PBState.idle;
       _activeTrack = null;
+      _activeQueueEntryId = null;
       _activeSong = null;
       _clearPendingTrack();
       _duration = Duration.zero;
       _position = Duration.zero;
       _bufferedPosition = Duration.zero;
+      _presentationDuration = Duration.zero;
+      _presentationBufferedPosition = Duration.zero;
       positionNotifier.value = Duration.zero;
       bufferedPositionNotifier.value = Duration.zero;
       coverManager.setCoverImmediate(null, notify: false);
@@ -1306,14 +1434,17 @@ class PlaybackService extends ChangeNotifier {
         await _playCurrentTrack(
           reason: 'resume',
           requestEpoch: requestEpoch,
-          autoPlay: restorePosition == null,
+          autoPlay: true,
           initialPosition: restorePosition,
         );
+        _desiredPlaying = true;
         if (restorePosition != null && _requestRouter.isCurrent(requestEpoch)) {
           _position = restorePosition;
           positionNotifier.value = restorePosition;
           presentationPositionNotifier.value = restorePosition;
-          await _engine.resume();
+          if (!_engine.isPlaying) {
+            await _engine.resume();
+          }
         }
       } else if (_preloadedTrack != null) {
         await playNow([_preloadedTrack!], 0, QueueSource.none);
@@ -1381,6 +1512,8 @@ class PlaybackService extends ChangeNotifier {
     _duration = Duration.zero;
     _position = Duration.zero;
     _bufferedPosition = Duration.zero;
+    _presentationDuration = Duration.zero;
+    _presentationBufferedPosition = Duration.zero;
     positionNotifier.value = Duration.zero;
     presentationPositionNotifier.value = Duration.zero;
     bufferedPositionNotifier.value = Duration.zero;
@@ -1456,12 +1589,15 @@ class PlaybackService extends ChangeNotifier {
     if (currentTrack != null) return;
     _preloadedTrack = track;
     _activeTrack = track;
+    _activeQueueEntryId = null;
     _activeSong = null;
     _activePlaybackToken++;
     _clearPendingTrack();
     _state = PBState.idle;
     _duration = Duration.zero;
     _position = Duration.zero;
+    _presentationDuration = Duration.zero;
+    _presentationBufferedPosition = Duration.zero;
     _setLyricLoadState(LyricLoadState.idle, track: track, notify: false);
 
     if (coverProvider != null) {
@@ -1512,13 +1648,19 @@ class PlaybackService extends ChangeNotifier {
 
       _stagePendingTrack(
         radioTrack,
+        queueEntryId: _queueController.currentEntryId,
         reason: 'radio',
         intent: PlaybackRequestIntent.manual,
       );
       notifyListeners();
       await _playWithSoftSwitch(streamUrl);
       if (!_canStartPlayback(gen)) return;
-      _commitActivePresentation(radioTrack, playbackToken: gen, notify: false);
+      _commitActivePresentation(
+        radioTrack,
+        queueEntryId: _queueController.currentEntryId,
+        playbackToken: gen,
+        notify: false,
+      );
       _state = PBState.playing;
       _startListeningTimeTracking();
       notifyListeners();
@@ -1566,26 +1708,33 @@ class PlaybackService extends ChangeNotifier {
 
   void _stagePendingTrack(
     Track track, {
+    required int? queueEntryId,
     required String reason,
     required PlaybackRequestIntent intent,
     Duration initialPosition = Duration.zero,
   }) {
     _pendingTrack = track;
+    _pendingQueueEntryId = queueEntryId;
     _pendingReason = reason;
     _pendingIntent = intent;
     _pendingSong = null;
     _pendingTimelineReady = false;
-    _position = initialPosition;
-    _duration = Duration.zero;
-    _bufferedPosition = Duration.zero;
-    positionNotifier.value = initialPosition;
-    bufferedPositionNotifier.value = Duration.zero;
-    presentationPositionNotifier.value = initialPosition;
+    if (_activeTrack == null) {
+      _position = initialPosition;
+      _duration = Duration.zero;
+      _bufferedPosition = Duration.zero;
+      _presentationDuration = Duration.zero;
+      _presentationBufferedPosition = Duration.zero;
+      positionNotifier.value = initialPosition;
+      bufferedPositionNotifier.value = Duration.zero;
+      presentationPositionNotifier.value = initialPosition;
+    }
     _pendingSwitchToken++;
   }
 
   void _clearPendingTrack() {
     _pendingTrack = null;
+    _pendingQueueEntryId = null;
     _pendingSong = null;
     _pendingTimelineReady = false;
     _pendingReason = null;
@@ -1594,19 +1743,26 @@ class PlaybackService extends ChangeNotifier {
 
   void _commitActivePresentation(
     Track track, {
+    required int? queueEntryId,
     SongDetail? songDetail,
     required int playbackToken,
     PlaybackRequestIntent intent = PlaybackRequestIntent.manual,
     bool notify = true,
   }) {
     _activeTrack = track;
+    _activeQueueEntryId = queueEntryId;
     _activeSong = songDetail;
     _activePlaybackToken = playbackToken;
     _activeIntent = intent;
     _clearPendingTrack();
+    _presentationDuration = _duration;
+    _presentationBufferedPosition = _bufferedPosition;
     presentationPositionNotifier.value = _position;
     _preloadedTrack = null;
     _primeDisplayStateForTrack(track);
+    if (_state == PBState.playing) {
+      _stabilityTracker.onPlaybackStarted(playbackToken);
+    }
     if (notify) {
       notifyListeners();
     }
@@ -1628,12 +1784,16 @@ class PlaybackService extends ChangeNotifier {
   }) {
     final track = _trackAtQueuePointer() ?? _activeTrack;
     if (track == null) return null;
+    final queueEntryId = _trackAtQueuePointer() == null
+        ? _activeQueueEntryId
+        : _queueController.currentEntryId;
 
     _resetPreloadState(clearPrefetchedDetails: false);
     _preloadedTrack = null;
     _cancelAutoSkipTimer();
     _stagePendingTrack(
       track,
+      queueEntryId: queueEntryId,
       reason: reason,
       intent: intent,
       initialPosition: initialPosition ?? Duration.zero,
@@ -1658,6 +1818,7 @@ class PlaybackService extends ChangeNotifier {
         phase: PlaybackPhase.resolving,
       ),
       track: track,
+      queueEntryId: queueEntryId,
       reason: reason,
       requestedKey: _buildTrackIdentity(track),
       selectedQuality: selectedQuality,
@@ -1715,13 +1876,13 @@ class PlaybackService extends ChangeNotifier {
   }
 
   bool _isTrackSwitchTransactionStale(TrackSwitchTransaction tx) {
-    final pending = _pendingTrack;
     if (!_transactionGuard.isCurrent(tx.token)) return true;
     if (tx.requestEpoch != 0 && !_requestRouter.isCurrent(tx.requestEpoch)) {
       return true;
     }
     if (tx.pendingToken != _pendingSwitchToken) return true;
-    return !_matchesTrackIdentity(pending, tx.requestedKey);
+    return _pendingQueueEntryId != tx.queueEntryId ||
+        !_matchesTrackIdentity(_pendingTrack, tx.requestedKey);
   }
 
   bool _canStartPlayback(int generation) {
@@ -2173,8 +2334,10 @@ class PlaybackService extends ChangeNotifier {
 
     final track = tx.track;
     final songDetail = _pendingSong ?? plan.resolvedSong.songDetail;
+    _activePlayableSource = plan.source;
     _commitActivePresentation(
       track,
+      queueEntryId: tx.queueEntryId,
       songDetail: songDetail,
       playbackToken: tx.token,
       intent: tx.intent,
@@ -2639,8 +2802,10 @@ class PlaybackService extends ChangeNotifier {
     bool autoPlay,
   ) async {
     if (isStale()) return;
-    if (_desiredPlaying && !autoPlay) {
-      if (!_engine.isPlaying) {
+    if (_desiredPlaying) {
+      // autoPlay=true 已经由装载阶段启动；autoPlay=false 则在这里补一次
+      // resume。两种情况都不能暂停当前引擎。
+      if (!autoPlay && !_engine.isPlaying) {
         await _engine.resume();
       }
     } else if (_engine.isPlaying) {
@@ -2771,6 +2936,8 @@ class PlaybackService extends ChangeNotifier {
         ? PlaybackMode.repeatOne
         : modeStr.contains('shuffle')
         ? PlaybackMode.shuffle
+        : modeStr.contains('sequential')
+        ? PlaybackMode.sequential
         : PlaybackMode.loopAll;
     return _queueController.peekNext(resolvedMode);
   }
@@ -2998,6 +3165,45 @@ class PlaybackService extends ChangeNotifier {
   // 自动播放 / 切歌
   // ══════════════════════════════════════════════════════
 
+  Future<bool> _tryActivatePreparedTrack(
+    Track track,
+    int? requestEpoch,
+    PlaybackRequestIntent intent,
+  ) async {
+    if (requestEpoch != null && !_requestRouter.isCurrent(requestEpoch)) {
+      return false;
+    }
+    final quality = AudioQualityService().currentQuality;
+    final plan = _peekPrefetchedPlayablePlan(track, quality);
+    if (plan == null) return false;
+    final entryId = _queueController.currentEntryId;
+    if (entryId == null) return false;
+    final nativeKey = _nativeSourceKeyForEntry(entryId);
+    if (!_nativePreparedPlans.containsKey(nativeKey)) return false;
+
+    final tx = _prepareTrackSwitchTransaction(
+      reason: 'prepared-activate',
+      intent: intent,
+      requestEpoch: requestEpoch,
+    );
+    if (tx == null || tx.queueEntryId != entryId) return false;
+
+    _desiredPlaying = true;
+    _nativeActivationIntent = intent;
+    final activated = await _engine.activatePreparedSlot(
+      nativeKey,
+      generation: tx.token,
+      queueRevision: _queueController.structureRevision,
+      autoPlay: true,
+    );
+    if (!activated) {
+      _nativePreparedPlans.remove(nativeKey);
+      _nativeActivationIntent = PlaybackRequestIntent.automatic;
+      return false;
+    }
+    return requestEpoch == null || _requestRouter.isCurrent(requestEpoch);
+  }
+
   Future<void> _playNextAuto() async {
     final requestEpoch = _requestRouter.begin();
     final mode = PlaybackModeService().currentMode;
@@ -3090,7 +3296,11 @@ class PlaybackService extends ChangeNotifier {
       }
       if (_queue.isNotEmpty) {
         final wrapped = _currentIndex + 1 >= _queue.length;
-        _queueController.advanceNext(shuffle: false);
+        final track = _queueController.advanceNext(shuffle: false);
+        if (track != null &&
+            await _tryActivatePreparedTrack(track, requestEpoch, intent)) {
+          return;
+        }
         // latest-wins：解析/装载脱离命令队列，连点时旧流程被序号取代
         _startDetachedTrackSwitch(
           wrapped ? 'manual-next-loop' : 'manual-next',
@@ -3118,7 +3328,15 @@ class PlaybackService extends ChangeNotifier {
     }
     if (_queue.isNotEmpty) {
       final wrapped = _currentIndex - 1 < 0;
-      _queueController.advancePrevious(shuffle: false);
+      final track = _queueController.advancePrevious(shuffle: false);
+      if (track != null &&
+          await _tryActivatePreparedTrack(
+            track,
+            requestEpoch,
+            PlaybackRequestIntent.manual,
+          )) {
+        return;
+      }
       return _playCurrentTrack(
         reason: wrapped ? 'manual-previous-loop' : 'manual-previous',
         requestEpoch: requestEpoch,
@@ -3165,7 +3383,11 @@ class PlaybackService extends ChangeNotifier {
       }
       return;
     }
-    _queueController.advanceRandom();
+    final track = _queueController.advanceRandom();
+    if (track != null &&
+        await _tryActivatePreparedTrack(track, requestEpoch, intent)) {
+      return;
+    }
     // latest-wins：解析/装载脱离命令队列，连点时旧流程被序号取代
     _startDetachedTrackSwitch(
       'shuffle-next',
@@ -3178,7 +3400,15 @@ class PlaybackService extends ChangeNotifier {
     if (requestEpoch != null && !_requestRouter.isCurrent(requestEpoch)) {
       return;
     }
-    if (_queueController.advanceRandomPrevious() == null) return;
+    final track = _queueController.advanceRandomPrevious();
+    if (track == null) return;
+    if (await _tryActivatePreparedTrack(
+      track,
+      requestEpoch,
+      PlaybackRequestIntent.manual,
+    )) {
+      return;
+    }
     return _playCurrentTrack(
       reason: 'shuffle-previous',
       requestEpoch: requestEpoch,
@@ -3305,6 +3535,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _invalidatePreparedWindow({bool reschedule = false}) {
+    _nativePreparedPlans.clear();
     unawaited(_engine.invalidatePreparedSlots());
     if (reschedule && _state == PBState.playing) {
       _schedulePreloadNextTrack();
@@ -3339,6 +3570,13 @@ class PlaybackService extends ChangeNotifier {
     return _buildTrackIdentityFromParts(track.source, track.id);
   }
 
+  String _nativeSourceKeyForEntry(int entryId) => 'queue-entry:$entryId';
+
+  int? _queueEntryIdFromNativeKey(String? key) {
+    if (key == null || !key.startsWith('queue-entry:')) return null;
+    return int.tryParse(key.substring('queue-entry:'.length));
+  }
+
   bool _matchesTrackIdentity(Track? track, String trackKey) {
     return track != null && _buildTrackIdentity(track) == trackKey;
   }
@@ -3362,6 +3600,15 @@ class PlaybackService extends ChangeNotifier {
       return null;
     }
     return entry.plan;
+  }
+
+  _TrackSwitchPlaybackPlan? _peekPrefetchedPlayablePlan(
+    Track track,
+    AudioQuality quality,
+  ) {
+    _pruneExpiredPrefetchedPlayablePlans();
+    return _prefetchedPlayablePlans[_buildPrefetchCacheKey(track, quality)]
+        ?.plan;
   }
 
   void _discardPrefetchedPlayablePlan(Track track, AudioQuality quality) {
@@ -3556,7 +3803,8 @@ class PlaybackService extends ChangeNotifier {
     final current = currentTrack;
     if (current == null) return;
 
-    final scheduledTrackKey = _buildTrackIdentity(current);
+    final scheduledEntryId = _activeQueueEntryId;
+    if (scheduledEntryId == null) return;
     final scheduledOp = _preloadOp;
     _cancelScheduledPreload();
     _preloadTriggerTimer = Timer(_preloadTriggerDelay, () {
@@ -3565,7 +3813,7 @@ class PlaybackService extends ChangeNotifier {
       if (scheduledOp != _preloadOp ||
           _state != PBState.playing ||
           playingTrack == null ||
-          _buildTrackIdentity(playingTrack) != scheduledTrackKey) {
+          _activeQueueEntryId != scheduledEntryId) {
         return;
       }
       unawaited(_preloadAdjacentTracks());
@@ -3578,8 +3826,15 @@ class PlaybackService extends ChangeNotifier {
     if (current == null) return;
 
     final mode = PlaybackModeService().currentMode;
-    final nextTrack = peekNext(mode);
-    final prevTrack = peekPrevious(mode);
+    final currentEntryId = _activeQueueEntryId;
+    if (currentEntryId == null) return;
+    final currentQueueIndex = _queueController.indexOfEntryId(currentEntryId);
+    if (currentQueueIndex < 0 || currentQueueIndex != _currentIndex) return;
+    final nextIndex = _queueController.peekNextIndex(mode);
+    final nextTrack = nextIndex == null ? null : _queue[nextIndex];
+    final nextEntryId = nextIndex == null
+        ? null
+        : _queueController.entryIdAt(nextIndex);
     final selectedQuality = AudioQualityService().currentQuality;
     final currentIdentity = _buildTrackIdentity(current);
     final queueRevision = _queueController.structureRevision;
@@ -3589,7 +3844,6 @@ class PlaybackService extends ChangeNotifier {
     try {
       // 1. 优先预加载下一首 (Next)
       if (nextTrack != null) {
-        final nextIdentity = _buildTrackIdentity(nextTrack);
         final nextKey = _buildPrefetchCacheKey(nextTrack, selectedQuality);
         if (nextTrack.source != MusicSource.local) {
           unawaited(
@@ -3605,7 +3859,7 @@ class PlaybackService extends ChangeNotifier {
           );
         }
 
-        if (nextIdentity != currentIdentity &&
+        if (nextEntryId != currentEntryId &&
             nextKey != _lastPreloadedTargetKey &&
             (nextTrack.source == MusicSource.local ||
                 AudioSourceService().isConfigured)) {
@@ -3618,9 +3872,8 @@ class PlaybackService extends ChangeNotifier {
 
       if (op != _preloadOp) return;
 
-      // 只预解析并缓存播放计划，不把下一首动态插入 just_audio 的原生
-      // playlist。当前播放链路由单个 AudioSource 负责，避免 Dart 队列和
-      // 原生 currentIndex 在自动切歌边界发生竞争。
+      // URL plan ready is only the first half of preloading. The native
+      // rolling window is prepared below and owns the actual source switch.
       if (nextTrack != null &&
           queueRevision == _queueController.structureRevision &&
           _matchesTrackIdentity(currentTrack, currentIdentity)) {
@@ -3632,7 +3885,7 @@ class PlaybackService extends ChangeNotifier {
             'has_next_plan': _prefetchedPlayablePlans.containsKey(
               _buildPrefetchCacheKey(nextTrack, selectedQuality),
             ),
-            'native_playlist_preload': false,
+            'native_playlist_preload': true,
           },
         );
       }
@@ -3642,37 +3895,72 @@ class PlaybackService extends ChangeNotifier {
         return;
       }
 
-      // 2. 双向补充预解析上一首 (Previous)
-      if (prevTrack != null) {
-        final prevIdentity = _buildTrackIdentity(prevTrack);
-        final nextIdentity = nextTrack != null
-            ? _buildTrackIdentity(nextTrack)
-            : null;
-        if (prevIdentity != currentIdentity && prevIdentity != nextIdentity) {
-          if (prevTrack.source != MusicSource.local) {
-            unawaited(
-              LyricService().prefetchLyrics(
-                track: prevTrack,
-                quality: selectedQuality.value,
-                refreshKey: _lyricRefreshKey(prevTrack),
-                adapter: _buildLyricPrefetchAdapter(
-                  prevTrack,
-                  qualityStr: selectedQuality.value,
-                ),
-              ),
-            );
-          }
-          if (prevTrack.source == MusicSource.local ||
-              AudioSourceService().isConfigured) {
-            await _preloadTrackSource(prevTrack, selectedQuality, op);
-          }
-        }
+      if (op != _preloadOp ||
+          queueRevision != _queueController.structureRevision ||
+          _activeQueueEntryId != currentEntryId) {
+        return;
       }
+      await _prepareNativePlaybackWindow(
+        next: nextTrack,
+        currentEntryId: currentEntryId,
+        nextEntryId: nextEntryId,
+        quality: selectedQuality,
+        queueRevision: queueRevision,
+      );
     } catch (e) {
       StructuredLogService.log('[PlaybackService] 预加载邻近曲目失败: $e');
     } finally {
       _preloadingNext = false;
     }
+  }
+
+  Future<void> _prepareNativePlaybackWindow({
+    required Track? next,
+    required int currentEntryId,
+    required int? nextEntryId,
+    required AudioQuality quality,
+    required int queueRevision,
+  }) async {
+    final activeSource = _activePlayableSource;
+    if (activeSource == null) return;
+
+    PreparedPlaybackSlot slotFor(int entryId, _TrackSwitchPlaybackPlan plan) {
+      return PreparedPlaybackSlot(
+        key: _nativeSourceKeyForEntry(entryId),
+        source: plan.source,
+        expiresAt: DateTime.now().add(_prefetchedSongDetailTtl),
+        queueRevision: queueRevision,
+      );
+    }
+
+    final currentSlot = PreparedPlaybackSlot(
+      key: _nativeSourceKeyForEntry(currentEntryId),
+      source: activeSource,
+      expiresAt: DateTime.now().add(_prefetchedSongDetailTtl),
+      queueRevision: queueRevision,
+    );
+    final nextPlan = next == null
+        ? null
+        : _peekPrefetchedPlayablePlan(next, quality);
+    if (nextPlan != null &&
+        nextEntryId != null &&
+        nextEntryId != currentEntryId) {
+      _nativePreparedPlans[_nativeSourceKeyForEntry(nextEntryId)] = nextPlan;
+    }
+
+    await _engine.bindCurrentPreparedSlot(currentSlot);
+    await _engine.preparePlaybackWindow(
+      PreparedPlaybackWindow(
+        current: currentSlot,
+        next:
+            nextPlan == null ||
+                next == null ||
+                nextEntryId == null ||
+                nextEntryId == currentEntryId
+            ? null
+            : slotFor(nextEntryId, nextPlan),
+      ),
+    );
   }
 
   Future<bool> _replayCurrentSourceForRepeatOne() async {
@@ -4227,6 +4515,7 @@ class PlaybackService extends ChangeNotifier {
     await _engine.stop();
     _state = PBState.idle;
     _activeTrack = null;
+    _activeQueueEntryId = null;
     _activeSong = null;
     _queueController.clear();
     _preloadedTrack = null;
@@ -4234,6 +4523,8 @@ class PlaybackService extends ChangeNotifier {
     _position = Duration.zero;
     _duration = Duration.zero;
     _bufferedPosition = Duration.zero;
+    _presentationDuration = Duration.zero;
+    _presentationBufferedPosition = Duration.zero;
     _errorMessage = null;
     _setCurrentCachedFileInfo(null);
     _cacheBypassKeys.clear();
@@ -4268,12 +4559,15 @@ class PlaybackService extends ChangeNotifier {
       _state = PBState.idle;
       _desiredPlaying = false;
       _activeTrack = null;
+      _activeQueueEntryId = null;
       _activeSong = null;
       _preloadedTrack = null;
       _clearPendingTrack();
       _position = Duration.zero;
       _duration = Duration.zero;
       _bufferedPosition = Duration.zero;
+      _presentationDuration = Duration.zero;
+      _presentationBufferedPosition = Duration.zero;
       presentationPositionNotifier.value = Duration.zero;
       _setCurrentCachedFileInfo(null);
       _cacheBypassKeys.clear();

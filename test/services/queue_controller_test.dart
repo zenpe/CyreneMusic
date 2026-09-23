@@ -52,6 +52,13 @@ void main() {
     expect(queue.peekNext(PlaybackMode.shuffle)?.id, 1);
   });
 
+  test('sequential mode does not wrap the preload lookahead at the end', () {
+    final queue = QueueController();
+    queue.replace([track(1), track(2)], 1, QueueSource.playlist);
+
+    expect(queue.peekNext(PlaybackMode.sequential), isNull);
+  });
+
   test('clear resets source and pointer', () {
     final queue = QueueController();
     queue.replace([track(1)], 0, QueueSource.history);
@@ -78,5 +85,34 @@ void main() {
 
     queue.append(track(3));
     expect(queue.structureRevision, greaterThan(replacedRevision));
+  });
+
+  test('duplicate tracks receive distinct stable queue entry ids', () {
+    final queue = QueueController();
+    queue.replace([track(1), track(1), track(2)], 0, QueueSource.playlist);
+
+    final first = queue.entryIdAt(0);
+    final duplicate = queue.entryIdAt(1);
+    expect(first, isNotNull);
+    expect(duplicate, isNotNull);
+    expect(duplicate, isNot(first));
+
+    queue.jumpTo(1);
+    expect(queue.currentEntryId, duplicate);
+    expect(queue.indexOfEntryId(duplicate!), 1);
+  });
+
+  test('queue entry id follows its track through reorder and removal', () {
+    final queue = QueueController();
+    queue.replace([track(1), track(2), track(3)], 1, QueueSource.playlist);
+    final selectedId = queue.currentEntryId;
+
+    expect(queue.reorder(1, 3), isTrue);
+    expect(queue.currentEntryId, selectedId);
+    expect(queue.indexOfEntryId(selectedId!), 2);
+
+    queue.removeAt(0);
+    expect(queue.currentEntryId, selectedId);
+    expect(queue.indexOfEntryId(selectedId), 1);
   });
 }

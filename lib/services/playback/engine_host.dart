@@ -77,6 +77,10 @@ class EngineHost implements AudioEngine {
   @override
   Stream<EngineError> get errorStream => _errorController.stream;
 
+  @override
+  Stream<String?> get currentSourceKeyStream =>
+      _active?.currentSourceKeyStream ?? Stream<String?>.empty();
+
   Stream<EngineEvent> get events => _eventController.stream;
 
   void _installInitialHandle() {
@@ -110,6 +114,12 @@ class EngineHost implements AudioEngine {
         _bufferedPosition = value;
         _bufferedPositionController.add(value);
         _eventController.add(EngineBufferedPositionEvent(_activeEpoch, value));
+      }),
+    );
+    _subscriptions.add(
+      engine.currentSourceKeyStream.listen((key) {
+        if (!current()) return;
+        _eventController.add(EngineSourceCommittedEvent(_activeEpoch, key));
       }),
     );
     _subscriptions.add(
@@ -266,6 +276,8 @@ class EngineHost implements AudioEngine {
     _latestRequestedGeneration = generation;
     return _write(() async {
       if (generation != _latestRequestedGeneration) return false;
+      final previousEpoch = _activeEpoch;
+      _activeEpoch = generation;
       final activated =
           await _active?.activatePreparedSlot(
             key,
@@ -276,9 +288,9 @@ class EngineHost implements AudioEngine {
           ) ??
           false;
       if (!activated || generation != _latestRequestedGeneration) {
+        if (_activeEpoch == generation) _activeEpoch = previousEpoch;
         return activated;
       }
-      _activeEpoch = generation;
       _isPlaying = _active?.isPlaying ?? false;
       _position = _active?.position ?? Duration.zero;
       _duration = _active?.duration ?? Duration.zero;

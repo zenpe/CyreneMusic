@@ -40,18 +40,21 @@ class QueueController {
 
   final Random _random;
   final List<Track> _tracks = [];
+  final List<int> _entryIds = [];
   late final List<Track> _readOnlyTracks = UnmodifiableListView(_tracks);
   final Map<String, ImageProvider> _coverProviders = {};
   List<int> _shuffledIndices = [];
   int _shufflePosition = -1;
   int _currentIndex = -1;
   int _structureRevision = 0;
+  int _nextEntryId = 0;
   QueueSource _source = QueueSource.none;
 
   List<Track> get tracks => _readOnlyTracks;
   int get currentIndex => _currentIndex;
   QueueSource get source => _source;
   int get structureRevision => _structureRevision;
+  int? get currentEntryId => entryIdAt(_currentIndex);
 
   void clearCoverProviders() => _coverProviders.clear();
   bool get isEmpty => _tracks.isEmpty;
@@ -63,6 +66,13 @@ class QueueController {
       ? _tracks[_currentIndex]
       : null;
 
+  int? entryIdAt(int index) =>
+      index >= 0 && index < _entryIds.length ? _entryIds[index] : null;
+
+  int indexOfEntryId(int entryId) => _entryIds.indexOf(entryId);
+
+  int _allocateEntryId() => ++_nextEntryId;
+
   void replace(
     Iterable<Track> tracks,
     int index,
@@ -72,6 +82,9 @@ class QueueController {
     _tracks
       ..clear()
       ..addAll(tracks);
+    _entryIds
+      ..clear()
+      ..addAll(List<int>.generate(_tracks.length, (_) => _allocateEntryId()));
     _currentIndex = _tracks.isEmpty ? -1 : index.clamp(0, _tracks.length - 1);
     _source = _tracks.isEmpty ? QueueSource.none : source;
     _structureRevision++;
@@ -86,6 +99,7 @@ class QueueController {
       _structureRevision++;
     }
     _tracks.clear();
+    _entryIds.clear();
     _currentIndex = -1;
     _source = QueueSource.none;
     _coverProviders.clear();
@@ -94,6 +108,7 @@ class QueueController {
 
   void append(Track track) {
     _tracks.add(track);
+    _entryIds.add(_allocateEntryId());
     _structureRevision++;
     resetShuffle();
   }
@@ -102,6 +117,9 @@ class QueueController {
     final additions = tracks.toList(growable: false);
     if (additions.isEmpty) return;
     _tracks.addAll(additions);
+    _entryIds.addAll(
+      List<int>.generate(additions.length, (_) => _allocateEntryId()),
+    );
     _structureRevision++;
     resetShuffle();
   }
@@ -110,6 +128,7 @@ class QueueController {
     removeDuplicate(track);
     final insertAt = (_currentIndex + 1).clamp(0, _tracks.length);
     _tracks.insert(insertAt, track);
+    _entryIds.insert(insertAt, _allocateEntryId());
     _structureRevision++;
     resetShuffle();
   }
@@ -124,6 +143,7 @@ class QueueController {
     if (index < 0 || index >= length) return QueueRemovalResult.notRemoved;
     final removedCurrent = index == _currentIndex;
     _tracks.removeAt(index);
+    _entryIds.removeAt(index);
     _structureRevision++;
     if (_tracks.isEmpty) {
       clear();
@@ -150,8 +170,10 @@ class QueueController {
     if (oldIndex < 0 || oldIndex >= length) return false;
     if (newIndex < 0 || newIndex > length) return false;
     final track = _tracks.removeAt(oldIndex);
+    final entryId = _entryIds.removeAt(oldIndex);
     final targetIndex = newIndex.clamp(0, _tracks.length);
     _tracks.insert(targetIndex, track);
+    _entryIds.insert(targetIndex, entryId);
     _structureRevision++;
     if (oldIndex == _currentIndex) {
       _currentIndex = targetIndex;
@@ -174,6 +196,7 @@ class QueueController {
     final existing = indexOf(track);
     if (existing < 0) return;
     _tracks.removeAt(existing);
+    _entryIds.removeAt(existing);
     _structureRevision++;
     if (existing <= _currentIndex) {
       _currentIndex = (_currentIndex - 1).clamp(-1, _tracks.length);
@@ -181,29 +204,39 @@ class QueueController {
   }
 
   Track? peekNext(PlaybackMode mode) {
+    final index = peekNextIndex(mode);
+    return index == null ? null : _tracks[index];
+  }
+
+  int? peekNextIndex(PlaybackMode mode) {
     if (isEmpty) return null;
-    if (mode == PlaybackMode.repeatOne) return currentTrack;
+    if (mode == PlaybackMode.repeatOne) return _currentIndex;
     if (mode == PlaybackMode.shuffle) {
       if (_shuffledIndices.isEmpty) return null;
       final nextPosition = _shufflePosition + 1;
-      final index = nextPosition < _shuffledIndices.length
+      return nextPosition < _shuffledIndices.length
           ? _shuffledIndices[nextPosition]
           : _shuffledIndices.first;
-      return _tracks[index];
     }
     final nextIndex = _currentIndex + 1;
-    return _tracks[nextIndex < length ? nextIndex : 0];
+    if (mode == PlaybackMode.sequential && nextIndex >= length) return null;
+    return nextIndex < length ? nextIndex : 0;
   }
 
   Track? peekPrevious(PlaybackMode mode) {
+    final index = peekPreviousIndex(mode);
+    return index == null ? null : _tracks[index];
+  }
+
+  int? peekPreviousIndex(PlaybackMode mode) {
     if (isEmpty) return null;
-    if (mode == PlaybackMode.repeatOne) return currentTrack;
+    if (mode == PlaybackMode.repeatOne) return _currentIndex;
     if (mode == PlaybackMode.shuffle) {
       if (_shuffledIndices.isEmpty || _shufflePosition <= 0) return null;
-      return _tracks[_shuffledIndices[_shufflePosition - 1]];
+      return _shuffledIndices[_shufflePosition - 1];
     }
     final previousIndex = _currentIndex - 1;
-    return _tracks[previousIndex >= 0 ? previousIndex : length - 1];
+    return previousIndex >= 0 ? previousIndex : length - 1;
   }
 
   Track? advanceNext({required bool shuffle}) {

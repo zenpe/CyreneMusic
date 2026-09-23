@@ -34,6 +34,16 @@ final class EngineBufferedPositionEvent extends EngineEvent {
   const EngineBufferedPositionEvent(super.epoch, this.position);
 }
 
+/// The native player selected and prepared a source for playback.
+///
+/// This is intentionally stronger than a raw currentIndex notification:
+/// consumers may update now-playing presentation only after this event.
+final class EngineSourceCommittedEvent extends EngineEvent {
+  final String? key;
+
+  const EngineSourceCommittedEvent(super.epoch, this.key);
+}
+
 final class EngineCompletedEvent extends EngineEvent {
   const EngineCompletedEvent(super.epoch);
 }

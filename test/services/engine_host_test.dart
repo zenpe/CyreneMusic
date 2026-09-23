@@ -108,6 +108,27 @@ void main() {
     await host.dispose();
   });
 
+  test('原生当前 source 变化通过 EngineHost 保留 active epoch', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+
+    await host.play('a', generation: 7);
+    engine.emitCurrentSourceKey('next');
+    await Future<void>.delayed(Duration.zero);
+
+    final sourceChanges = events
+        .whereType<EngineSourceCommittedEvent>()
+        .toList();
+    expect(sourceChanges, hasLength(1));
+    expect(sourceChanges.single.epoch, 7);
+    expect(sourceChanges.single.key, 'next');
+
+    await subscription.cancel();
+    await host.dispose();
+  });
+
   test('排队中的 prepared 激活只执行最新 generation', () async {
     final engine = FakeEngine();
     final host = EngineHost(engineFactory: () => engine);
@@ -132,6 +153,67 @@ void main() {
     expect(engine.activatedKeys, ['c']);
     await host.dispose();
   });
+
+  test('prepared 激活期间提交的 source 使用新 generation', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+
+    await host.play('a', generation: 1);
+    engine.sourceKeyOnActivation = 'b';
+
+    expect(
+      await host.activatePreparedSlot(
+        'b',
+        generation: 2,
+        queueRevision: 1,
+      ),
+      isTrue,
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    final sourceChanges = events
+        .whereType<EngineSourceCommittedEvent>()
+        .toList();
+    expect(sourceChanges, hasLength(1));
+    expect(sourceChanges.single.epoch, 2);
+    expect(sourceChanges.single.key, 'b');
+
+    await subscription.cancel();
+    await host.dispose();
+  });
+
+  test('prepared 激活失败后恢复原 active epoch', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+
+    await host.play('a', generation: 4);
+    engine.activationResult = false;
+
+    expect(
+      await host.activatePreparedSlot(
+        'b',
+        generation: 5,
+        queueRevision: 1,
+      ),
+      isFalse,
+    );
+    engine.emitCurrentSourceKey('a');
+    await Future<void>.delayed(Duration.zero);
+
+    final sourceChanges = events
+        .whereType<EngineSourceCommittedEvent>()
+        .toList();
+    expect(sourceChanges, hasLength(1));
+    expect(sourceChanges.single.epoch, 4);
+    expect(sourceChanges.single.key, 'a');
+
+    await subscription.cancel();
+    await host.dispose();
+  });
 }
 
 PreparedPlaybackSlot _slot(String key, int queueRevision) =>
@@ -143,18 +225,23 @@ PreparedPlaybackSlot _slot(String key, int queueRevision) =>
     );
 
 class FakeEngine implements AudioEngine {
+  @override
+  Stream<String?> get currentSourceKeyStream => _sourceKeys.stream;
   final _position = StreamController<Duration>.broadcast();
   final _duration = StreamController<Duration>.broadcast();
   final _bufferedPosition = StreamController<Duration>.broadcast();
   final _state = StreamController<EngineState>.broadcast();
   final _completion = StreamController<bool>.broadcast();
   final _errors = StreamController<EngineError>.broadcast();
+  final _sourceKeys = StreamController<String?>.broadcast();
   final List<String> playedUrls = <String>[];
   final List<double> volumeWrites = <double>[];
   final List<PreparedPlaybackWindow> preparedWindows =
       <PreparedPlaybackWindow>[];
   final List<String> activatedKeys = <String>[];
   Completer<void>? playGate;
+  bool activationResult = true;
+  String? sourceKeyOnActivation;
 
   @override
   Duration duration = Duration.zero;
@@ -241,7 +328,9 @@ class FakeEngine implements AudioEngine {
     Duration? initialPosition,
   }) async {
     activatedKeys.add(key);
-    return true;
+    final sourceKey = sourceKeyOnActivation;
+    if (sourceKey != null) _sourceKeys.add(sourceKey);
+    return activationResult;
   }
 
   @override
@@ -274,6 +363,8 @@ class FakeEngine implements AudioEngine {
 
   void emitError(EngineError error) => _errors.add(error);
 
+  void emitCurrentSourceKey(String key) => _sourceKeys.add(key);
+
   @override
   Future<void> dispose() async {
     // Intentionally leave the error controller open: a native callback can
@@ -283,5 +374,6 @@ class FakeEngine implements AudioEngine {
     await _bufferedPosition.close();
     await _state.close();
     await _completion.close();
+    await _sourceKeys.close();
   }
 }

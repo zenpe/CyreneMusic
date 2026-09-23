@@ -81,6 +81,7 @@ class PlayerService extends ChangeNotifier {
   Track? get displayTrack => viewState.track;
   SongDetail? get activeSong => _pb.activeSong;
   Track? get activeTrack => _pb.activeTrack;
+  int? get activeQueueEntryId => _pb.activeQueueEntryId;
   int get activePlaybackToken => _pb.activePlaybackToken;
   Track? get pendingTrack => _pb.pendingTrack;
   int? get pendingSwitchToken => _pb.pendingSwitchToken;
