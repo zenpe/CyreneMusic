@@ -620,51 +620,56 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
 
   /// 构建进度条行
   Widget _buildProgressRow(PlayerService player) {
-    final progress = player.duration.inMilliseconds > 0
-        ? player.position.inMilliseconds / player.duration.inMilliseconds
-        : 0.0;
+    return ValueListenableBuilder<Duration>(
+      valueListenable: player.positionNotifier,
+      builder: (context, position, _) {
+        final progress = player.duration.inMilliseconds > 0
+            ? position.inMilliseconds / player.duration.inMilliseconds
+            : 0.0;
 
-    return Row(
-      children: [
-        // 当前时间
-        Text(
-          _formatDuration(player.position),
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.6),
-            fontSize: 11,
-          ),
-        ),
+        return Row(
+          children: [
+            // 当前时间
+            Text(
+              _formatDuration(position),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 11,
+              ),
+            ),
 
-        const SizedBox(width: 8),
+            const SizedBox(width: 8),
 
-        // 进度条
-        Expanded(
-          child: SizedBox(
-            height: 4,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(
-                value: progress.clamp(0.0, 1.0),
-                backgroundColor: Colors.white.withValues(alpha: 0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  Colors.white.withValues(alpha: 0.7),
+            // 进度条
+            Expanded(
+              child: SizedBox(
+                height: 4,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: progress.clamp(0.0, 1.0),
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Colors.white.withValues(alpha: 0.7),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
 
-        const SizedBox(width: 8),
+            const SizedBox(width: 8),
 
-        // 总时长
-        Text(
-          _formatDuration(player.duration),
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.6),
-            fontSize: 11,
-          ),
-        ),
-      ],
+            // 总时长
+            Text(
+              _formatDuration(player.duration),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 11,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

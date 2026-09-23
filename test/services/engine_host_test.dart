@@ -87,7 +87,60 @@ void main() {
     expect(engine.volumeWrites, [0.8]);
     await host.dispose();
   });
+
+  test('预备窗口通过 EngineHost 写队列串行执行', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+    final slot = _slot('current', 1);
+
+    final play = host.play('a', generation: 1);
+    await Future<void>.delayed(Duration.zero);
+    final prepare = host.preparePlaybackWindow(
+      PreparedPlaybackWindow(current: slot, next: _slot('next', 1)),
+    );
+
+    expect(engine.preparedWindows, isEmpty);
+    gate.complete();
+    await Future.wait([play, prepare]);
+    expect(engine.preparedWindows, hasLength(1));
+    await host.dispose();
+  });
+
+  test('排队中的 prepared 激活只执行最新 generation', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+
+    final play = host.play('a', generation: 1);
+    await Future<void>.delayed(Duration.zero);
+    final stale = host.activatePreparedSlot(
+      'b',
+      generation: 2,
+      queueRevision: 1,
+    );
+    final latest = host.activatePreparedSlot(
+      'c',
+      generation: 3,
+      queueRevision: 1,
+    );
+
+    gate.complete();
+    await Future.wait([play, stale, latest]);
+    expect(engine.activatedKeys, ['c']);
+    await host.dispose();
+  });
 }
+
+PreparedPlaybackSlot _slot(String key, int queueRevision) =>
+    PreparedPlaybackSlot(
+      key: key,
+      source: LocalFilePlayableSource('$key.mp3'),
+      expiresAt: DateTime.now().add(const Duration(minutes: 1)),
+      queueRevision: queueRevision,
+    );
 
 class FakeEngine implements AudioEngine {
   final _position = StreamController<Duration>.broadcast();
@@ -98,6 +151,9 @@ class FakeEngine implements AudioEngine {
   final _errors = StreamController<EngineError>.broadcast();
   final List<String> playedUrls = <String>[];
   final List<double> volumeWrites = <double>[];
+  final List<PreparedPlaybackWindow> preparedWindows =
+      <PreparedPlaybackWindow>[];
+  final List<String> activatedKeys = <String>[];
   Completer<void>? playGate;
 
   @override
@@ -170,6 +226,29 @@ class FakeEngine implements AudioEngine {
     Duration? initialPosition,
     bool preload = true,
   }) async {}
+
+  @override
+  Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) async {
+    preparedWindows.add(window);
+  }
+
+  @override
+  Future<bool> activatePreparedSlot(
+    String key, {
+    required int generation,
+    required int queueRevision,
+    bool autoPlay = true,
+    Duration? initialPosition,
+  }) async {
+    activatedKeys.add(key);
+    return true;
+  }
+
+  @override
+  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) async {}
+
+  @override
+  Future<void> invalidatePreparedSlots() async {}
 
   @override
   Future<void> pause() async {}

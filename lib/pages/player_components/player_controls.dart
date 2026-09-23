@@ -9,6 +9,7 @@ import '../../models/song_detail.dart';
 import '../../models/lyric_line.dart';
 import '../../widgets/player_error_banner.dart';
 import '../../widgets/player_speed_selector.dart';
+import '../../widgets/playback_switch_ring.dart';
 
 /// 播放器控制面板
 /// 包含进度条和所有播放控制按钮
@@ -83,20 +84,25 @@ class PlayerControls extends StatelessWidget {
                       ),
                       activeTrackColor: Colors.white,
                       inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
-                      secondaryActiveTrackColor: Colors.white.withValues(alpha: 0.55),
+                      secondaryActiveTrackColor: Colors.white.withValues(
+                        alpha: 0.55,
+                      ),
                       thumbColor: Colors.white,
                       overlayColor: Colors.white.withValues(alpha: 0.2),
                     ),
                     child: Slider(
                       value: sliderValue.toDouble(),
                       secondaryTrackValue: bufferedValue.toDouble(),
-                      onChanged: (value) {
-                        final nextPosition = Duration(
-                          milliseconds: (value * player.duration.inMilliseconds)
-                              .round(),
-                        );
-                        player.seek(nextPosition);
-                      },
+                      onChanged: player.viewState.canSeek
+                          ? (value) {
+                              final nextPosition = Duration(
+                                milliseconds:
+                                    (value * player.duration.inMilliseconds)
+                                        .round(),
+                              );
+                              player.seek(nextPosition);
+                            }
+                          : null,
                     ),
                   ),
 
@@ -114,7 +120,9 @@ class PlayerControls extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          _formatDuration(player.duration),
+                          player.viewState.timelineReady
+                              ? _formatDuration(player.duration)
+                              : '--:--',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 13,
@@ -140,6 +148,7 @@ class PlayerControls extends StatelessWidget {
   /// 构建控制按钮
   Widget _buildControlButtons(BuildContext context) {
     final currentTrack = player.currentTrack;
+    final showInitialLoading = currentTrack == null && player.isLoading;
     const double buttonSpacing = 12.0; // 统一的按钮间距
 
     return Row(
@@ -291,35 +300,44 @@ class PlayerControls extends StatelessWidget {
             const SizedBox(width: buttonSpacing),
 
             // 播放/暂停
-            Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 20,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: player.isLoading
-                  ? const Padding(
-                      padding: EdgeInsets.all(20.0),
-                      child: CircularProgressIndicator(strokeWidth: 3),
-                    )
-                  : IconButton(
-                      icon: Icon(
-                        player.isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                        color: Colors.black87,
-                      ),
-                      iconSize: 40,
-                      onPressed: player.togglePlayPause,
+            PlaybackSwitchRing(
+              isVisible: !showInitialLoading && player.viewState.isSwitching,
+              color: Colors.black54,
+              strokeWidth: 2,
+              inset: 2,
+              child: Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 5),
                     ),
+                  ],
+                ),
+                child: showInitialLoading
+                    ? const Padding(
+                        padding: EdgeInsets.all(20),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: Colors.black87,
+                        ),
+                      )
+                    : IconButton(
+                        icon: Icon(
+                          player.isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          color: Colors.black87,
+                        ),
+                        iconSize: 40,
+                        onPressed: player.togglePlayPause,
+                      ),
+              ),
             ),
 
             const SizedBox(width: buttonSpacing),

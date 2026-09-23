@@ -22,6 +22,7 @@ class EngineStartupTiming {
   final int stopMs;
   final int setSourceMs;
   final int playToReadyMs;
+  final bool preparedActivation;
 
   const EngineStartupTiming({
     this.ensurePlayerMs = 0,
@@ -29,6 +30,7 @@ class EngineStartupTiming {
     this.stopMs = 0,
     this.setSourceMs = 0,
     this.playToReadyMs = 0,
+    this.preparedActivation = false,
   });
 }
 
@@ -142,6 +144,20 @@ abstract class AudioEngine {
     );
   }
 
+  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) async {}
+
+  Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) async {}
+
+  Future<bool> activatePreparedSlot(
+    String key, {
+    required int generation,
+    required int queueRevision,
+    bool autoPlay = true,
+    Duration? initialPosition,
+  }) async => false;
+
+  Future<void> invalidatePreparedSlots() async {}
+
   Future<void> pause();
   Future<void> resume();
   Future<void> seek(Duration position);
@@ -173,6 +189,13 @@ AudioEngine createEngine() {
   return JustAudioEngine();
 }
 
+class _PreparedEngineSlot {
+  PreparedPlaybackSlot descriptor;
+  final ja.AudioSource audioSource;
+
+  _PreparedEngineSlot(this.descriptor, this.audioSource);
+}
+
 // ─────────────────────────────────────────────────────────
 // JustAudio 实现（Android / iOS）
 // ─────────────────────────────────────────────────────────
@@ -200,6 +223,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   int? _androidAudioSessionId;
   bool _androidEqualizerDirty = true;
   bool _needsDeferredVolumeRestore = false;
+  ja.AudioSource? _loadedAudioSource;
+  final List<_PreparedEngineSlot> _preparedSlots = <_PreparedEngineSlot>[];
 
   /// 纪元闸门：arm 窗口内流事件归旧纪元，提交后归新纪元（源头捕获）。
   final EngineEpochGate _epochGate = EngineEpochGate();
@@ -281,6 +306,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
     final player = ja.AudioPlayer(
       audioLoadConfiguration: _audioLoadConfiguration,
+      useLazyPreparation: false,
     );
     _player = player;
 
@@ -681,6 +707,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     }
 
     _hasSource = false;
+    _loadedAudioSource = null;
+    _preparedSlots.clear();
     _isPlaying = false;
     _position = Duration.zero;
     _duration = Duration.zero;
@@ -703,9 +731,11 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     Duration? initialPosition,
     bool preload = true,
   }) async {
-    final source = isLocal
-        ? ja.AudioSource.file(url)
-        : ja.AudioSource.uri(Uri.parse(url), headers: headers);
+    final source = _buildAudioSource(
+      isLocal
+          ? LocalFilePlayableSource(url)
+          : DirectHttpPlayableSource(url, requestHeaders: headers),
+    );
     await playAudioSource(
       source,
       generation: generation,
@@ -724,32 +754,26 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     Duration? initialPosition,
     bool preload = true,
   }) async {
-    final customSource = source.audioSource;
-    if (customSource != null) {
-      await playAudioSource(
-        customSource,
-        generation: generation,
-        sourceUrl: source.sourceUrl,
-        autoPlay: autoPlay,
-        initialPosition: initialPosition,
-        preload: preload,
-      );
-      return;
-    }
-
-    final pathOrUrl = source.playbackPathOrUrl;
-    if (pathOrUrl == null || pathOrUrl.isEmpty) {
-      throw StateError('PlayableSource has no playable path or url');
-    }
-    await play(
-      pathOrUrl,
+    await playAudioSource(
+      _buildAudioSource(source),
       generation: generation,
-      isLocal: source.isLocal,
-      headers: source.headers,
+      sourceUrl: source.sourceUrl,
       autoPlay: autoPlay,
       initialPosition: initialPosition,
       preload: preload,
     );
+  }
+
+  ja.AudioSource _buildAudioSource(PlayableSource source) {
+    final customSource = source.audioSource;
+    if (customSource != null) return customSource;
+    final pathOrUrl = source.playbackPathOrUrl;
+    if (pathOrUrl == null || pathOrUrl.isEmpty) {
+      throw StateError('PlayableSource has no playable path or url');
+    }
+    return source.isLocal
+        ? ja.AudioSource.file(pathOrUrl)
+        : ja.AudioSource.uri(Uri.parse(pathOrUrl), headers: source.headers);
   }
 
   @override
@@ -785,6 +809,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       _epochGate.beginStop();
     }
     _hasSource = false;
+    _loadedAudioSource = null;
+    _preparedSlots.clear();
 
     try {
       final setSourceSw = Stopwatch()..start();
@@ -797,6 +823,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
           .timeout(const Duration(seconds: 15));
       setSourceMs = setSourceSw.elapsedMilliseconds;
       _hasSource = true;
+      _loadedAudioSource = source;
     } on TimeoutException catch (e) {
       final mapped = _mapJustAudioError(
         e,
@@ -832,6 +859,12 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       final playReadySw = Stopwatch()..start();
       _fireAndForgetPlay();
       await _waitForStartup(player);
+      // The deferred output task is intentionally best-effort because it also
+      // coordinates Android EQ. Once playback is confirmed, restore the
+      // volume synchronously so a stale play ticket cannot leave the source
+      // permanently muted.
+      await player.setVolume(_currentVolume);
+      _needsDeferredVolumeRestore = false;
       playToReadyMs = playReadySw.elapsedMilliseconds;
     }
     _lastStartupTiming = EngineStartupTiming(
@@ -840,6 +873,279 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       setSourceMs: setSourceMs,
       playToReadyMs: playToReadyMs,
     );
+  }
+
+  @override
+  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) async {
+    if (slot.isExpired || !_hasSource || _loadedAudioSource == null) return;
+    final player = _player;
+    if (player == null) return;
+
+    final existingIndex = _preparedSlots.indexWhere(
+      (entry) => entry.descriptor.key == slot.key,
+    );
+    if (existingIndex >= 0 && player.currentIndex == existingIndex) {
+      _preparedSlots[existingIndex].descriptor = slot;
+      return;
+    }
+
+    if (_preparedSlots.isEmpty && player.sequence.length == 1) {
+      _preparedSlots.add(_PreparedEngineSlot(slot, _loadedAudioSource!));
+    }
+  }
+
+  @override
+  Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) async {
+    final player = _player;
+    if (player == null || !_hasSource || window.current.isExpired) return;
+    final currentIndex = player.currentIndex;
+    if (currentIndex == null ||
+        currentIndex < 0 ||
+        currentIndex >= _preparedSlots.length ||
+        _preparedSlots[currentIndex].descriptor.key != window.current.key) {
+      return;
+    }
+
+    final prepareSw = Stopwatch()..start();
+    _preparedSlots[currentIndex].descriptor = window.current;
+    final desiredPrevious = window.previous;
+    final desiredNext = window.next;
+    final desiredKeys = <String>{
+      window.current.key,
+      if (desiredPrevious != null && !desiredPrevious.isExpired)
+        desiredPrevious.key,
+      if (desiredNext != null && !desiredNext.isExpired) desiredNext.key,
+    };
+
+    try {
+      for (var index = _preparedSlots.length - 1; index >= 0; index--) {
+        final entry = _preparedSlots[index];
+        if (entry.descriptor.key == window.current.key) continue;
+        if (!desiredKeys.contains(entry.descriptor.key) ||
+            entry.descriptor.isExpired) {
+          await player.removeAudioSourceAt(index);
+          _preparedSlots.removeAt(index);
+        }
+      }
+
+      final previousIndex = desiredPrevious == null
+          ? -1
+          : _preparedSlots.indexWhere(
+              (entry) => entry.descriptor.key == desiredPrevious.key,
+            );
+      if (previousIndex >= 0) {
+        _preparedSlots[previousIndex].descriptor = desiredPrevious!;
+        await _movePreparedSlot(player, previousIndex, 0);
+      }
+
+      if (desiredNext != null &&
+          !desiredNext.isExpired &&
+          desiredNext.key != window.current.key) {
+        var nextIndex = _preparedSlots.indexWhere(
+          (entry) => entry.descriptor.key == desiredNext.key,
+        );
+        if (nextIndex < 0) {
+          final source = _buildAudioSource(desiredNext.source);
+          final currentSlotIndex = _preparedSlots.indexWhere(
+            (entry) => entry.descriptor.key == window.current.key,
+          );
+          await player.insertAudioSource(currentSlotIndex, source);
+          _preparedSlots.insert(
+            currentSlotIndex,
+            _PreparedEngineSlot(desiredNext, source),
+          );
+        } else {
+          _preparedSlots[nextIndex].descriptor = desiredNext;
+          final currentSlotIndex = _preparedSlots.indexWhere(
+            (entry) => entry.descriptor.key == window.current.key,
+          );
+          nextIndex = _preparedSlots.indexWhere(
+            (entry) => entry.descriptor.key == desiredNext.key,
+          );
+          await _movePreparedSlot(
+            player,
+            nextIndex,
+            currentSlotIndex - (nextIndex < currentSlotIndex ? 1 : 0),
+          );
+        }
+      }
+
+      final refreshedCurrentIndex = _preparedSlots.indexWhere(
+        (entry) => entry.descriptor.key == window.current.key,
+      );
+      if (refreshedCurrentIndex >= 0 &&
+          refreshedCurrentIndex != _preparedSlots.length - 1) {
+        await _movePreparedSlot(
+          player,
+          refreshedCurrentIndex,
+          _preparedSlots.length - 1,
+        );
+      }
+      while (_preparedSlots.length > 3) {
+        await player.removeAudioSourceAt(0);
+        _preparedSlots.removeAt(0);
+      }
+      StructuredLogService.event(
+        'audio_engine.prepared_window_ready',
+        fields: {
+          'engine': 'just_audio',
+          'prepare_ms': prepareSw.elapsedMilliseconds,
+          'slot_count': _preparedSlots.length,
+          'has_next': desiredNext != null,
+          'queue_revision': window.current.queueRevision,
+        },
+      );
+    } catch (error) {
+      StructuredLogService.event(
+        'audio_engine.prepare_window_failed',
+        level: LogLevel.warning,
+        fields: {
+          'engine': 'just_audio',
+          'prepare_ms': prepareSw.elapsedMilliseconds,
+          'queue_revision': window.current.queueRevision,
+        },
+        error: error,
+      );
+    }
+  }
+
+  Future<void> _movePreparedSlot(
+    ja.AudioPlayer player,
+    int from,
+    int to,
+  ) async {
+    if (from < 0 || to < 0 || from == to) return;
+    await player.moveAudioSource(from, to);
+    final entry = _preparedSlots.removeAt(from);
+    _preparedSlots.insert(to, entry);
+  }
+
+  @override
+  Future<bool> activatePreparedSlot(
+    String key, {
+    required int generation,
+    required int queueRevision,
+    bool autoPlay = true,
+    Duration? initialPosition,
+  }) async {
+    final player = _player;
+    final targetIndex = _preparedSlots.indexWhere(
+      (entry) =>
+          entry.descriptor.key == key &&
+          entry.descriptor.queueRevision == queueRevision &&
+          !entry.descriptor.isExpired,
+    );
+    if (player == null || targetIndex < 0 || !_hasSource) return false;
+
+    final previousCurrentIndex = player.currentIndex;
+    final previousCurrent =
+        previousCurrentIndex != null &&
+            previousCurrentIndex >= 0 &&
+            previousCurrentIndex < _preparedSlots.length
+        ? _preparedSlots[previousCurrentIndex]
+        : null;
+    final target = _preparedSlots[targetIndex];
+    final sw = Stopwatch()..start();
+    _epochGate.beginArm(generation);
+    _dispatchEpoch = generation;
+    try {
+      await player.setVolume(0);
+      await player.seek(initialPosition ?? Duration.zero, index: targetIndex);
+      await player.playerStateStream
+          .firstWhere(
+            (state) =>
+                player.currentIndex == targetIndex &&
+                state.processingState == ja.ProcessingState.ready,
+          )
+          .timeout(_engineStartupTimeout);
+
+      for (var index = _preparedSlots.length - 1; index >= 0; index--) {
+        final entry = _preparedSlots[index];
+        final keep =
+            identical(entry, target) ||
+            (previousCurrent != null && identical(entry, previousCurrent));
+        if (!keep) {
+          await player.removeAudioSourceAt(index);
+          _preparedSlots.removeAt(index);
+        }
+      }
+      if (previousCurrent != null && !identical(previousCurrent, target)) {
+        final oldCurrentIndex = _preparedSlots.indexOf(previousCurrent);
+        await _movePreparedSlot(player, oldCurrentIndex, 0);
+      }
+      final selectedIndex = _preparedSlots.indexOf(target);
+      if (selectedIndex != _preparedSlots.length - 1) {
+        await _movePreparedSlot(
+          player,
+          selectedIndex,
+          _preparedSlots.length - 1,
+        );
+      }
+
+      _loadedAudioSource = target.audioSource;
+      _hasSource = true;
+      _epochGate.commitArm(generation);
+      _duration = player.duration ?? Duration.zero;
+      _position = initialPosition ?? Duration.zero;
+      _bufferedPosition = player.bufferedPosition;
+      _durationController.add(_duration);
+      _positionController.add(_position);
+      _bufferedPositionController.add(_bufferedPosition);
+      _androidEqualizerDirty = Platform.isAndroid;
+      _needsDeferredVolumeRestore = !autoPlay;
+      await player.setSpeed(_playbackSpeed);
+      var playToReadyMs = 0;
+      if (autoPlay) {
+        final playSw = Stopwatch()..start();
+        _fireAndForgetPlay();
+        await _waitForStartup(player);
+        await player.setVolume(_currentVolume);
+        _needsDeferredVolumeRestore = false;
+        playToReadyMs = playSw.elapsedMilliseconds;
+      }
+      _lastStartupTiming = EngineStartupTiming(
+        muteMs: 0,
+        setSourceMs: 0,
+        playToReadyMs: playToReadyMs,
+        preparedActivation: true,
+      );
+      StructuredLogService.event(
+        'audio_engine.prepared_slot_activated',
+        fields: {
+          'engine': 'just_audio',
+          'activation_ms': sw.elapsedMilliseconds,
+          'queue_revision': queueRevision,
+        },
+      );
+      return true;
+    } catch (error) {
+      _epochGate.abandonArm(generation);
+      try {
+        await player.setVolume(_currentVolume);
+      } catch (_) {}
+      StructuredLogService.event(
+        'audio_engine.prepared_slot_failed',
+        level: LogLevel.warning,
+        fields: {'engine': 'just_audio', 'queue_revision': queueRevision},
+        error: error,
+      );
+      return false;
+    }
+  }
+
+  @override
+  Future<void> invalidatePreparedSlots() async {
+    final player = _player;
+    final currentIndex = player?.currentIndex;
+    if (player == null || currentIndex == null || _preparedSlots.isEmpty) {
+      _preparedSlots.clear();
+      return;
+    }
+    for (var index = _preparedSlots.length - 1; index >= 0; index--) {
+      if (index == currentIndex) continue;
+      await player.removeAudioSourceAt(index);
+      _preparedSlots.removeAt(index);
+    }
   }
 
   Future<void> _waitForStartup(ja.AudioPlayer player) async {
@@ -960,6 +1266,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     _epochGate.beginStop();
     await _player?.stop();
     _hasSource = false;
+    _loadedAudioSource = null;
+    _preparedSlots.clear();
     _isPlaying = false;
     if (!_stateController.isClosed) {
       _stateController.add(EngineState.idle);
@@ -1049,6 +1357,24 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   Duration _bufferedPosition = Duration.zero;
+
+  @override
+  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) async {}
+
+  @override
+  Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) async {}
+
+  @override
+  Future<bool> activatePreparedSlot(
+    String key, {
+    required int generation,
+    required int queueRevision,
+    bool autoPlay = true,
+    Duration? initialPosition,
+  }) async => false;
+
+  @override
+  Future<void> invalidatePreparedSlots() async {}
   bool _isPlaying = false;
 
   @override

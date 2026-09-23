@@ -55,6 +55,12 @@ class PersistentStorageService extends ChangeNotifier {
 
   bool get isInitialized => _isInitialized;
 
+  /// 通知依赖入口路由的 UI 重新读取持久化状态。
+  ///
+  /// 写入方法负责保存数据，入口状态变更由业务门面在一次事务完成后
+  /// 统一通知，避免 UI 在连续写入中间态时重复重建。
+  void refresh() => notifyListeners();
+
   /// 初始化持久化存储服务（必须在 main 函数中最早调用）
   Future<void> initialize() async {
     if (_isInitialized) {

@@ -14,7 +14,9 @@ class PlaybackTimingSample {
   final int engineStartupMs;
   final int engineSetSourceMs;
   final int enginePlayToReadyMs;
+  final int preparedActivationMs;
   final bool prefetched;
+  final bool preparedEngineHit;
   final bool l1MemoryCached;
   final bool audioCacheHit;
   final int remoteResolutionAttempts;
@@ -29,7 +31,9 @@ class PlaybackTimingSample {
     required this.engineStartupMs,
     required this.engineSetSourceMs,
     required this.enginePlayToReadyMs,
+    required this.preparedActivationMs,
     required this.prefetched,
+    required this.preparedEngineHit,
     required this.l1MemoryCached,
     required this.audioCacheHit,
     required this.remoteResolutionAttempts,
@@ -74,6 +78,7 @@ class PlaybackTimingSummary {
 class PlaybackPerformanceSnapshot {
   final int completedSwitches;
   final int prefetchedSwitches;
+  final int preparedEngineHits;
   final int l1MemoryCacheHits;
   final int audioCacheHits;
   final int remoteResolutionAttempts;
@@ -88,10 +93,12 @@ class PlaybackPerformanceSnapshot {
   final PlaybackTimingSummary engineStartup;
   final PlaybackTimingSummary engineSetSource;
   final PlaybackTimingSummary enginePlayToReady;
+  final PlaybackTimingSummary preparedActivation;
 
   const PlaybackPerformanceSnapshot({
     required this.completedSwitches,
     required this.prefetchedSwitches,
+    required this.preparedEngineHits,
     required this.l1MemoryCacheHits,
     required this.audioCacheHits,
     required this.remoteResolutionAttempts,
@@ -106,11 +113,13 @@ class PlaybackPerformanceSnapshot {
     required this.engineStartup,
     required this.engineSetSource,
     required this.enginePlayToReady,
+    required this.preparedActivation,
   });
 
   const PlaybackPerformanceSnapshot.empty()
     : completedSwitches = 0,
       prefetchedSwitches = 0,
+      preparedEngineHits = 0,
       l1MemoryCacheHits = 0,
       audioCacheHits = 0,
       remoteResolutionAttempts = 0,
@@ -124,7 +133,8 @@ class PlaybackPerformanceSnapshot {
       softFadeOut = const PlaybackTimingSummary.empty(),
       engineStartup = const PlaybackTimingSummary.empty(),
       engineSetSource = const PlaybackTimingSummary.empty(),
-      enginePlayToReady = const PlaybackTimingSummary.empty();
+      enginePlayToReady = const PlaybackTimingSummary.empty(),
+      preparedActivation = const PlaybackTimingSummary.empty();
 }
 
 class PlaybackPerformanceMetrics {
@@ -140,9 +150,11 @@ class PlaybackPerformanceMetrics {
   final List<int> _engineStartupSamples = <int>[];
   final List<int> _engineSetSourceSamples = <int>[];
   final List<int> _enginePlayToReadySamples = <int>[];
+  final List<int> _preparedActivationSamples = <int>[];
 
   int _completedSwitches = 0;
   int _prefetchedSwitches = 0;
+  int _preparedEngineHits = 0;
   int _l1MemoryCacheHits = 0;
   int _audioCacheHits = 0;
   int _remoteResolutionAttempts = 0;
@@ -152,6 +164,7 @@ class PlaybackPerformanceMetrics {
   void recordSwitch(PlaybackTimingSample sample) {
     _completedSwitches++;
     if (sample.prefetched) _prefetchedSwitches++;
+    if (sample.preparedEngineHit) _preparedEngineHits++;
     if (sample.l1MemoryCached) _l1MemoryCacheHits++;
     if (sample.audioCacheHit) _audioCacheHits++;
     _remoteResolutionAttempts += sample.remoteResolutionAttempts;
@@ -165,6 +178,9 @@ class PlaybackPerformanceMetrics {
     _append(_engineStartupSamples, sample.engineStartupMs);
     _append(_engineSetSourceSamples, sample.engineSetSourceMs);
     _append(_enginePlayToReadySamples, sample.enginePlayToReadyMs);
+    if (sample.preparedEngineHit) {
+      _append(_preparedActivationSamples, sample.preparedActivationMs);
+    }
   }
 
   void recordEngineFailure() => _engineFailures++;
@@ -174,6 +190,7 @@ class PlaybackPerformanceMetrics {
   PlaybackPerformanceSnapshot get snapshot => PlaybackPerformanceSnapshot(
     completedSwitches: _completedSwitches,
     prefetchedSwitches: _prefetchedSwitches,
+    preparedEngineHits: _preparedEngineHits,
     l1MemoryCacheHits: _l1MemoryCacheHits,
     audioCacheHits: _audioCacheHits,
     remoteResolutionAttempts: _remoteResolutionAttempts,
@@ -188,11 +205,13 @@ class PlaybackPerformanceMetrics {
     engineStartup: _summary(_engineStartupSamples),
     engineSetSource: _summary(_engineSetSourceSamples),
     enginePlayToReady: _summary(_enginePlayToReadySamples),
+    preparedActivation: _summary(_preparedActivationSamples),
   );
 
   void reset() {
     _completedSwitches = 0;
     _prefetchedSwitches = 0;
+    _preparedEngineHits = 0;
     _l1MemoryCacheHits = 0;
     _audioCacheHits = 0;
     _remoteResolutionAttempts = 0;
@@ -207,6 +226,7 @@ class PlaybackPerformanceMetrics {
     _engineStartupSamples.clear();
     _engineSetSourceSamples.clear();
     _enginePlayToReadySamples.clear();
+    _preparedActivationSamples.clear();
   }
 
   void _append(List<int> samples, int value) {

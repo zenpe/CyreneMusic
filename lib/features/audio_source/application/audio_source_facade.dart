@@ -9,12 +9,7 @@ import 'audio_source_controller.dart';
 import 'audio_source_read_controller.dart';
 
 /// 应用入口路由（UI 层专用）。
-enum AppGateRoute {
-  navidromeMain,
-  navidromeSetup,
-  regularMain,
-  regularSetup,
-}
+enum AppGateRoute { navidromeMain, navidromeSetup, regularMain, regularSetup }
 
 /// 音源门面。
 ///
@@ -30,11 +25,11 @@ class AudioSourceFacade {
     required PersistentStorageService storageService,
     required AuthService authService,
     required NavidromeSessionService navidromeSessionService,
-  })  : _readController = readController,
-        _writeController = writeController,
-        _storageService = storageService,
-        _authService = authService,
-        _navidromeSessionService = navidromeSessionService;
+  }) : _readController = readController,
+       _writeController = writeController,
+       _storageService = storageService,
+       _authService = authService,
+       _navidromeSessionService = navidromeSessionService;
 
   AudioSourceFacade._internal({
     AudioSourceReadController? readController,
@@ -42,12 +37,12 @@ class AudioSourceFacade {
     PersistentStorageService? storageService,
     AuthService? authService,
     NavidromeSessionService? navidromeSessionService,
-  })  : _readController = readController ?? AudioSourceReadController(),
-        _writeController = writeController ?? AudioSourceController(),
-        _storageService = storageService ?? PersistentStorageService(),
-        _authService = authService ?? AuthService(),
-        _navidromeSessionService =
-            navidromeSessionService ?? NavidromeSessionService();
+  }) : _readController = readController ?? AudioSourceReadController(),
+       _writeController = writeController ?? AudioSourceController(),
+       _storageService = storageService ?? PersistentStorageService(),
+       _authService = authService ?? AuthService(),
+       _navidromeSessionService =
+           navidromeSessionService ?? NavidromeSessionService();
 
   final AudioSourceReadController _readController;
   final AudioSourceController _writeController;
@@ -88,11 +83,13 @@ class AudioSourceFacade {
   void addEntryStateListener(VoidCallback listener) {
     _readController.addListener(listener);
     _navidromeSessionService.addListener(listener);
+    _storageService.addListener(listener);
   }
 
   void removeEntryStateListener(VoidCallback listener) {
     _readController.removeListener(listener);
     _navidromeSessionService.removeListener(listener);
+    _storageService.removeListener(listener);
   }
 
   void addSetupStateListener(VoidCallback listener) {
@@ -165,6 +162,7 @@ class AudioSourceFacade {
 
   void _notifyEntryStateChanged() {
     _readController.refresh();
+    _storageService.refresh();
     _authService.refresh();
   }
 }

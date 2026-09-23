@@ -25,8 +25,8 @@ class PlayerSongInfo extends StatelessWidget {
       animation: PlayerService(),
       builder: (context, child) {
         final player = PlayerService();
-        final isPending = player.isLoading && player.pendingTrack != null;
-        final song = isPending ? null : player.currentSong;
+        final isPending = player.isTrackSwitchPending;
+        final song = player.currentSong;
         final imageUrl = player.displayCoverUrl ?? '';
         final provider = isPending ? null : player.currentCoverImageProvider;
         final displayTitle = player.displayTitle;
@@ -45,11 +45,13 @@ class PlayerSongInfo extends StatelessWidget {
 
                   // 封面（开启渐变效果时不显示，因为封面已在背景中）
                   if (!backgroundService.enableGradient ||
-                      backgroundService.backgroundType != PlayerBackgroundType.adaptive)
+                      backgroundService.backgroundType !=
+                          PlayerBackgroundType.adaptive)
                     _buildCover(imageUrl, provider: provider),
 
                   if (!backgroundService.enableGradient ||
-                      backgroundService.backgroundType != PlayerBackgroundType.adaptive)
+                      backgroundService.backgroundType !=
+                          PlayerBackgroundType.adaptive)
                     const SizedBox(height: 40),
 
                   // 歌曲信息
@@ -92,7 +94,11 @@ class PlayerSongInfo extends StatelessWidget {
             ? _buildOptimizedCover(imageUrl, provider: provider)
             : Container(
                 color: Colors.grey[800],
-                child: const Icon(Icons.music_note, size: 100, color: Colors.white54),
+                child: const Icon(
+                  Icons.music_note,
+                  size: 100,
+                  color: Colors.white54,
+                ),
               ),
       ),
     );
@@ -100,13 +106,11 @@ class PlayerSongInfo extends StatelessWidget {
 
   Widget _buildOptimizedCover(String imageUrl, {ImageProvider? provider}) {
     if (provider != null) {
-      return Image(
-        image: provider,
-        fit: BoxFit.cover,
-      );
+      return Image(image: provider, fit: BoxFit.cover);
     }
     // 检查是否为网络图片
-    final isNetwork = imageUrl.startsWith('http') || imageUrl.startsWith('https');
+    final isNetwork =
+        imageUrl.startsWith('http') || imageUrl.startsWith('https');
 
     if (!isNetwork) {
       // 本地文件
@@ -201,7 +205,10 @@ class PlayerSongInfo extends StatelessWidget {
                 onTap: () => _searchInDialog(context, album),
                 borderRadius: BorderRadius.circular(12),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -284,14 +291,20 @@ class PlayerSongInfo extends StatelessWidget {
     );
   }
 
-  Future<void> _onArtistTap(BuildContext context, String artistName, SongDetail? song) async {
+  Future<void> _onArtistTap(
+    BuildContext context,
+    String artistName,
+    SongDetail? song,
+  ) async {
     // 仅在网易云音乐来源时跳转歌手详情，否则沿用搜索
     if (song?.source != MusicSource.netease) {
       _searchInDialog(context, artistName);
       return;
     }
     // 解析歌手ID（后端无返回ID时，通过搜索解析）
-    final id = await NeteaseArtistDetailService().resolveArtistIdByName(artistName);
+    final id = await NeteaseArtistDetailService().resolveArtistIdByName(
+      artistName,
+    );
     if (id == null) {
       if (!context.mounted) return;
       _searchInDialog(context, artistName);
@@ -427,10 +440,7 @@ class PlayerSongInfo extends StatelessWidget {
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.all(16),
           child: Container(
-            constraints: const BoxConstraints(
-              maxWidth: 800,
-              maxHeight: 700,
-            ),
+            constraints: const BoxConstraints(maxWidth: 800, maxHeight: 700),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(28),
@@ -466,14 +476,10 @@ class PlayerSongInfo extends StatelessWidget {
 
     if (useDarkText) {
       // 亮色背景，使用深色文字
-      return isCurrent
-          ? Colors.black87
-          : Colors.black54;
+      return isCurrent ? Colors.black87 : Colors.black54;
     } else {
       // 暗色背景，使用浅色文字
-      return isCurrent
-          ? Colors.white
-          : Colors.white.withValues(alpha: 0.45);
+      return isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.45);
     }
   }
 }

@@ -126,8 +126,10 @@ class _PlayerFluidCloudBackgroundState
       builder: (context, _) {
         // 获取当前封面图片的 Provider
         final player = PlayerService();
-        final isPending = player.isLoading && player.pendingTrack != null;
-        ImageProvider? imageProvider = isPending ? null : player.currentCoverImageProvider;
+        final isPending = player.isTrackSwitchPending;
+        ImageProvider? imageProvider = isPending
+            ? null
+            : player.currentCoverImageProvider;
 
         // 如果没有 Provider，尝试从 URL 构建
         if (imageProvider == null) {

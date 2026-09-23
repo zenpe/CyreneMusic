@@ -248,6 +248,56 @@ class EngineHost implements AudioEngine {
   }
 
   @override
+  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) =>
+      _write(() => _active?.bindCurrentPreparedSlot(slot) ?? Future.value());
+
+  @override
+  Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) =>
+      _write(() => _active?.preparePlaybackWindow(window) ?? Future.value());
+
+  @override
+  Future<bool> activatePreparedSlot(
+    String key, {
+    required int generation,
+    required int queueRevision,
+    bool autoPlay = true,
+    Duration? initialPosition,
+  }) {
+    _latestRequestedGeneration = generation;
+    return _write(() async {
+      if (generation != _latestRequestedGeneration) return false;
+      final activated =
+          await _active?.activatePreparedSlot(
+            key,
+            generation: generation,
+            queueRevision: queueRevision,
+            autoPlay: autoPlay,
+            initialPosition: initialPosition,
+          ) ??
+          false;
+      if (!activated || generation != _latestRequestedGeneration) {
+        return activated;
+      }
+      _activeEpoch = generation;
+      _isPlaying = _active?.isPlaying ?? false;
+      _position = _active?.position ?? Duration.zero;
+      _duration = _active?.duration ?? Duration.zero;
+      _bufferedPosition = _active?.bufferedPosition ?? Duration.zero;
+      _positionController.add(_position);
+      _durationController.add(_duration);
+      _bufferedPositionController.add(_bufferedPosition);
+      _stateController.add(
+        _isPlaying ? EngineState.playing : EngineState.paused,
+      );
+      return true;
+    });
+  }
+
+  @override
+  Future<void> invalidatePreparedSlots() =>
+      _write(() => _active?.invalidatePreparedSlots() ?? Future.value());
+
+  @override
   Future<void> pause() => _write(() => _active?.pause() ?? Future.value());
 
   @override

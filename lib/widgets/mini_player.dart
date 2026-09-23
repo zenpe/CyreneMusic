@@ -14,6 +14,7 @@ import '../models/track.dart';
 import '../utils/theme_manager.dart';
 import '../utils/image_utils.dart';
 import '../utils/dynamic_color_utils.dart';
+import 'playback_switch_ring.dart';
 import 'track_action_menu.dart';
 
 /// 迷你播放器组件（底部播放栏）
@@ -64,13 +65,16 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   : CupertinoColors.systemGrey,
             ),
           ),
-        if (player.isTrackSwitchPending)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8.0),
-            child: CupertinoActivityIndicator(radius: 14),
-          )
-        else
-          CupertinoButton(
+        PlaybackSwitchRing(
+          isVisible: player.isTrackSwitchPending,
+          color: DynamicColorUtils.resolveAccent(
+            player.themeColorNotifier.value,
+            Theme.of(context).colorScheme,
+            isDark: isDark,
+          ),
+          strokeWidth: 1.8,
+          inset: 1.5,
+          child: CupertinoButton(
             padding: buttonPadding,
             minimumSize: Size.zero,
             onPressed: () => player.togglePlayPause(),
@@ -86,6 +90,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
               ),
             ),
           ),
+        ),
         if (!hideSkip)
           CupertinoButton(
             padding: buttonPadding,
@@ -124,17 +129,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
             ),
             onPressed: player.hasPrevious ? () => player.playPrevious() : null,
           ),
-        if (player.isTrackSwitchPending)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8.0),
-            child: SizedBox(
-              width: 22,
-              height: 22,
-              child: fluent.ProgressRing(strokeWidth: 3),
-            ),
-          )
-        else
-          fluent.IconButton(
+        PlaybackSwitchRing(
+          isVisible: player.isTrackSwitchPending,
+          color: theme.accentColor.defaultBrushFor(theme.brightness),
+          strokeWidth: 1.8,
+          inset: 1.5,
+          child: fluent.IconButton(
             icon: Icon(
               player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
               size: playIconSize,
@@ -142,6 +142,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
             ),
             onPressed: () => player.togglePlayPause(),
           ),
+        ),
         if (!hideSkip)
           fluent.IconButton(
             icon: Icon(
@@ -161,9 +162,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
       animation: PlayerService(),
       builder: (context, child) {
         final player = PlayerService();
-        final isPending = player.isTrackSwitchPending;
         final track = player.displayTrack;
-        final song = isPending ? null : player.currentSong;
+        final song = player.currentSong;
 
         final mediaQuery = MediaQuery.of(context);
         final bool isCompactWidth = mediaQuery.size.width < 600;
@@ -234,7 +234,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   void _onSeekStart(PlayerService player, double width, double dx) {
-    if (width <= 0 || player.duration.inMilliseconds <= 0) return;
+    if (!player.viewState.canSeek ||
+        width <= 0 ||
+        player.duration.inMilliseconds <= 0) {
+      return;
+    }
     _markSeekGesture();
     setState(() {
       _isSeeking = true;
@@ -243,7 +247,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   void _onSeekUpdate(PlayerService player, double width, double dx) {
-    if (width <= 0 || player.duration.inMilliseconds <= 0) return;
+    if (!player.viewState.canSeek ||
+        width <= 0 ||
+        player.duration.inMilliseconds <= 0) {
+      return;
+    }
     _markSeekGesture();
     setState(() {
       _seekRatio = (dx / width).clamp(0.0, 1.0);
@@ -415,16 +423,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 animation: Listenable.merge([player.positionNotifier, player]),
                 builder: (context, _) {
                   final position = player.positionNotifier.value;
-                  // Authoritative duration, with fallback to lyric timestamps
                   Duration duration = player.duration;
-                  if (duration.inSeconds <= 0 &&
-                      player.lyricSnapshot != null &&
-                      player.lyricSnapshot!.lines.isNotEmpty) {
-                    final lastLine = player.lyricSnapshot!.lines.last;
-                    duration =
-                        lastLine.startTime +
-                        (lastLine.lineDuration ?? const Duration(seconds: 4));
-                  }
                   final progress =
                       _seekRatio ??
                       (duration.inMilliseconds > 0
@@ -1510,20 +1509,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
             onPressed: player.hasPrevious ? () => player.playPrevious() : null,
             tooltip: '上一首',
           ),
-        if (player.isTrackSwitchPending)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: SizedBox(
-              width: playButtonSize,
-              height: playButtonSize,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: activeColor,
-              ),
-            ),
-          )
-        else
-          Container(
+        PlaybackSwitchRing(
+          isVisible: player.isTrackSwitchPending,
+          color: activeColor,
+          strokeWidth: 2,
+          inset: compact ? 1.5 : 2,
+          child: Container(
             margin: EdgeInsets.symmetric(horizontal: compact ? 6 : 8),
             decoration: BoxDecoration(
               color: activeColor,
@@ -1557,6 +1548,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
               tooltip: player.isPlaying ? '暂停' : '播放',
             ),
           ),
+        ),
         if (!hideSkip)
           IconButton(
             icon: Icon(
@@ -3091,17 +3083,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
     );
   }
 
-  /// 获取有效时长，优先使用引擎时长，兜底使用歌词时间戳估算，并确保不低于当前播放进度
+  /// 歌曲总时长只接受音频引擎数据，歌词末行不是媒体时长。
   Duration _getEffectiveDuration(PlayerService player) {
     Duration duration = player.duration;
-    if (duration.inSeconds <= 0 &&
-        player.lyricSnapshot != null &&
-        player.lyricSnapshot!.lines.isNotEmpty) {
-      final lastLine = player.lyricSnapshot!.lines.last;
-      duration =
-          lastLine.startTime +
-          (lastLine.lineDuration ?? const Duration(seconds: 4));
-    }
     final position = player.positionNotifier.value;
     if (duration.inSeconds > 0 && position > duration) {
       duration = position;

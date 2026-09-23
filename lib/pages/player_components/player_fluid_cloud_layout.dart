@@ -452,7 +452,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   /// 构建左侧面板
   Widget _buildLeftPanel(BuildContext context) {
     final player = PlayerService();
-    final isPending = player.isLoading && player.pendingTrack != null;
+    final isPending = player.isTrackSwitchPending;
     final track = player.displayTrack;
     // ✅ 关键修复：使用 PlayerService 的封面 URL 和 Provider，避免详情加载导致重新请求
     final imageUrl = player.displayCoverUrl ?? '';

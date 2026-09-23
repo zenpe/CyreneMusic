@@ -4,6 +4,7 @@ export 'lyric/lyric_snapshot.dart';
 export 'playback/playback_problem.dart';
 export 'playback/source_health_tracker.dart';
 export 'playback/playback_performance_metrics.dart';
+export 'playback/playback_view_state.dart';
 import '../models/song_detail.dart';
 import '../models/track.dart';
 import 'equalizer_service.dart';
@@ -12,6 +13,7 @@ import 'lyric/lyric_service.dart';
 import 'playback/playback_service.dart';
 import 'playback/playback_performance_metrics.dart';
 import 'playback/playback_problem.dart';
+import 'playback/playback_view_state.dart';
 import 'playback/source_health_tracker.dart';
 import 'playlist_queue_service.dart';
 
@@ -71,9 +73,12 @@ class PlayerService extends ChangeNotifier {
     }
   }
 
-  SongDetail? get currentSong => _pb.currentSong;
-  Track? get currentTrack => _pb.currentTrack;
-  Track? get displayTrack => _pb.displayTrack;
+  PlaybackViewState get viewState => _pb.viewState;
+  PlaybackSwitchPhase get switchPhase => viewState.switchPhase;
+  bool get desiredPlaying => viewState.desiredPlaying;
+  SongDetail? get currentSong => viewState.song;
+  Track? get currentTrack => viewState.track;
+  Track? get displayTrack => viewState.track;
   SongDetail? get activeSong => _pb.activeSong;
   Track? get activeTrack => _pb.activeTrack;
   int get activePlaybackToken => _pb.activePlaybackToken;
@@ -87,14 +92,14 @@ class PlayerService extends ChangeNotifier {
   String get pendingDisplayArtist => _pb.pendingDisplayArtist;
   String get pendingDisplayAlbum => _pb.pendingDisplayAlbum;
   String? get pendingDisplayCoverUrl => _pb.pendingDisplayCoverUrl;
-  LyricLoadState get lyricState => _pb.lyricLoadState;
-  LyricSnapshot? get lyricSnapshot => _pb.lyricSnapshot;
-  Duration get duration => _pb.duration;
-  Duration get position => _pb.position;
-  Duration get bufferedPosition => _pb.bufferedPosition;
+  LyricLoadState get lyricState => viewState.lyricState;
+  LyricSnapshot? get lyricSnapshot => viewState.lyricSnapshot;
+  Duration get duration => viewState.duration ?? Duration.zero;
+  Duration get position => viewState.position;
+  Duration get bufferedPosition => viewState.bufferedPosition;
   String? get errorMessage => _pb.errorMessage;
-  bool get isPlaying => _pb.isPlaying;
-  bool get isPaused => _pb.isPaused;
+  bool get isPlaying => viewState.desiredPlaying;
+  bool get isPaused => !viewState.desiredPlaying;
   bool get isLoading => _pb.isLoading;
   bool get isTrackSwitchPending => _pb.isTrackSwitchPending;
   double get volume => _pb.volume;
@@ -109,7 +114,8 @@ class PlayerService extends ChangeNotifier {
   String? get pendingCoverUrl => _pb.pendingCoverUrl;
   ValueNotifier<Color?> get themeColorNotifier =>
       _pb.coverManager.themeColorNotifier;
-  ValueNotifier<Duration> get positionNotifier => _pb.positionNotifier;
+  ValueNotifier<Duration> get positionNotifier =>
+      _pb.presentationPositionNotifier;
   ValueNotifier<Duration> get bufferedPositionNotifier =>
       _pb.bufferedPositionNotifier;
   ValueNotifier<PlaybackProblem?> get problemNotifier => _pb.problemNotifier;

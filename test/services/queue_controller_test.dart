@@ -62,4 +62,21 @@ void main() {
     expect(queue.currentIndex, -1);
     expect(queue.source, QueueSource.none);
   });
+
+  test('structure revision changes only for structural mutations', () {
+    final queue = QueueController();
+    final initialRevision = queue.structureRevision;
+
+    queue.replace([track(1), track(2)], 0, QueueSource.playlist);
+    final replacedRevision = queue.structureRevision;
+    expect(replacedRevision, greaterThan(initialRevision));
+
+    queue.jumpTo(1);
+    queue.advanceNext(shuffle: false);
+    queue.advancePrevious(shuffle: false);
+    expect(queue.structureRevision, replacedRevision);
+
+    queue.append(track(3));
+    expect(queue.structureRevision, greaterThan(replacedRevision));
+  });
 }

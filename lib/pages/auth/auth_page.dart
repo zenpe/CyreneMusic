@@ -71,6 +71,7 @@ Future<bool?> showAuthDialog(BuildContext context, {int initialTab = 0}) {
 /// 统一的认证页面 - Material Expressive 设计
 class AuthPage extends StatefulWidget {
   final int initialTab;
+
   /// 嵌入模式：作为子 widget 嵌入父页面时为 true，登录成功后不执行路由操作，
   /// 由父级监听 AuthService 状态变化自行处理导航。
   final bool embedded;
@@ -81,7 +82,8 @@ class AuthPage extends StatefulWidget {
   State<AuthPage> createState() => _AuthPageState();
 }
 
-class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin {
+class _AuthPageState extends State<AuthPage>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _selectedSegment = 0;
 
@@ -90,7 +92,11 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this, initialIndex: widget.initialTab);
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: widget.initialTab,
+    );
     _selectedSegment = widget.initialTab;
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
@@ -120,7 +126,9 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
         systemNavigationBarColor: colorScheme.surface,
-        systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        systemNavigationBarIconBrightness: isDark
+            ? Brightness.light
+            : Brightness.dark,
       ),
       child: Scaffold(
         backgroundColor: colorScheme.surface,
@@ -173,7 +181,9 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
                     ),
                     const SizedBox(height: 8),
                     // 桌面覆盖层下的返回按钮（避免依赖系统返回）
-                    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+                    if (Platform.isWindows ||
+                        Platform.isLinux ||
+                        Platform.isMacOS)
                       Align(
                         alignment: Alignment.center,
                         child: TextButton.icon(
@@ -203,15 +213,23 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
   }
 
   /// iOS Cupertino 风格页面
-  Widget _buildCupertinoPage(BuildContext context, ColorScheme colorScheme, bool isDark) {
+  Widget _buildCupertinoPage(
+    BuildContext context,
+    ColorScheme colorScheme,
+    bool isDark,
+  ) {
     // 使用 Material 包装解决 Text 组件黄色下划线问题
     return Material(
       type: MaterialType.transparency,
       child: CupertinoPageScaffold(
-        backgroundColor: isDark ? const Color(0xFF000000) : CupertinoColors.systemGroupedBackground,
+        backgroundColor: isDark
+            ? const Color(0xFF000000)
+            : CupertinoColors.systemGroupedBackground,
         navigationBar: CupertinoNavigationBar(
           middle: const Text('账号'),
-          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withValues(alpha: 0.9),
+          backgroundColor:
+              (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white)
+                  .withValues(alpha: 0.9),
           border: null,
         ),
         child: SafeArea(
@@ -345,10 +363,7 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
     return TabBar(
       controller: _tabController,
       indicator: UnderlineTabIndicator(
-        borderSide: BorderSide(
-          color: colorScheme.primary,
-          width: 3,
-        ),
+        borderSide: BorderSide(color: colorScheme.primary, width: 3),
         borderRadius: BorderRadius.circular(3),
       ),
       indicatorSize: TabBarIndicatorSize.label,
@@ -387,6 +402,8 @@ class _LoginViewState extends State<_LoginView> {
   final _formKey = GlobalKey<FormState>();
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _accountFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _rememberLoginEnabled = true;
@@ -408,9 +425,15 @@ class _LoginViewState extends State<_LoginView> {
       _rememberCredentials = enabled;
       if (credentials.account != null && credentials.account!.isNotEmpty) {
         _accountController.text = credentials.account!;
+        _accountController.selection = TextSelection.collapsed(
+          offset: _accountController.text.length,
+        );
       }
       if (credentials.password != null && credentials.password!.isNotEmpty) {
         _passwordController.text = credentials.password!;
+        _passwordController.selection = TextSelection.collapsed(
+          offset: _passwordController.text.length,
+        );
       }
     });
   }
@@ -435,6 +458,8 @@ class _LoginViewState extends State<_LoginView> {
   void dispose() {
     _accountController.dispose();
     _passwordController.dispose();
+    _accountFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
@@ -468,13 +493,18 @@ class _LoginViewState extends State<_LoginView> {
         );
 
         // 登录成功后，自动上报IP归属地
-        _authFacade.updateLocation().then((locationResult) {
-          if (locationResult['success']) {
-            StructuredLogService.log('✅ [AuthPage] IP归属地已更新: ${locationResult['data']?['location']}');
-          }
-        }).catchError((error) {
-          StructuredLogService.log('❌ [AuthPage] IP归属地更新异常: $error');
-        });
+        _authFacade
+            .updateLocation()
+            .then((locationResult) {
+              if (locationResult['success']) {
+                StructuredLogService.log(
+                  '✅ [AuthPage] IP归属地已更新: ${locationResult['data']?['location']}',
+                );
+              }
+            })
+            .catchError((error) {
+              StructuredLogService.log('❌ [AuthPage] IP归属地更新异常: $error');
+            });
 
         // 嵌入模式：不操作路由，由父级监听 AuthService 自行推进
         if (!widget.embedded) {
@@ -519,6 +549,13 @@ class _LoginViewState extends State<_LoginView> {
             label: '邮箱 / 用户名',
             icon: Icons.person_rounded,
             colorScheme: colorScheme,
+            focusNode: _accountFocusNode,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.username],
+            autocorrect: false,
+            enableSuggestions: true,
+            onFieldSubmitted: (_) => _passwordFocusNode.requestFocus(),
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
                 return '请输入邮箱或用户名';
@@ -535,6 +572,12 @@ class _LoginViewState extends State<_LoginView> {
             icon: Icons.lock_rounded,
             obscureText: _obscurePassword,
             colorScheme: colorScheme,
+            focusNode: _passwordFocusNode,
+            keyboardType: TextInputType.visiblePassword,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.password],
+            autocorrect: false,
+            enableSuggestions: false,
             suffixIcon: IconButton(
               icon: Icon(
                 _obscurePassword
@@ -802,23 +845,27 @@ class _RegisterViewState extends State<_RegisterView> {
     final colorScheme = Theme.of(context).colorScheme;
 
     if (_checkingStatus) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (!_registrationEnabled) {
       return LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
-          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          final compact =
+              constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight
+              ? constraints.maxHeight
+              : 0.0;
           return SingleChildScrollView(
             physics: const ClampingScrollPhysics(),
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: minHeight),
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -908,7 +955,10 @@ class _RegisterViewState extends State<_RegisterView> {
                   ),
                 ),
               ),
-              suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+              suffixIconConstraints: const BoxConstraints(
+                minWidth: 0,
+                minHeight: 0,
+              ),
               filled: true,
               fillColor: colorScheme.surfaceContainerLow,
               border: OutlineInputBorder(
@@ -924,26 +974,20 @@ class _RegisterViewState extends State<_RegisterView> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(
-                  color: colorScheme.primary,
-                  width: 2,
-                ),
+                borderSide: BorderSide(color: colorScheme.primary, width: 2),
               ),
               errorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(
-                  color: colorScheme.error,
-                  width: 1,
-                ),
+                borderSide: BorderSide(color: colorScheme.error, width: 1),
               ),
               focusedErrorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(
-                  color: colorScheme.error,
-                  width: 2,
-                ),
+                borderSide: BorderSide(color: colorScheme.error, width: 2),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 18,
+              ),
             ),
           ),
           const SizedBox(height: 20),
@@ -958,7 +1002,9 @@ class _RegisterViewState extends State<_RegisterView> {
               if (value == null || value.trim().isEmpty) {
                 return '请输入用户名';
               }
-              if (!RegExp(r'^[\u4e00-\u9fa5a-zA-Z0-9_]{2,20}$').hasMatch(value)) {
+              if (!RegExp(
+                r'^[\u4e00-\u9fa5a-zA-Z0-9_]{2,20}$',
+              ).hasMatch(value)) {
                 return '2-20个字符，支持中文、字母、数字、下划线';
               }
               return null;
@@ -1009,7 +1055,9 @@ class _RegisterViewState extends State<_RegisterView> {
                     : Icons.visibility_off_rounded,
               ),
               onPressed: () {
-                setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
+                setState(
+                  () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                );
               },
             ),
             validator: (value) {
@@ -1269,11 +1317,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.info_rounded,
-                  color: colorScheme.primary,
-                  size: 22,
-                ),
+                Icon(Icons.info_rounded, color: colorScheme.primary, size: 22),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -1381,7 +1425,9 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
                     : Icons.visibility_off_rounded,
               ),
               onPressed: () {
-                setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
+                setState(
+                  () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                );
               },
             ),
             validator: (value) {
@@ -1422,7 +1468,9 @@ Widget _buildGradientButton({
   return Container(
     height: height ?? 54,
     decoration: BoxDecoration(
-      color: isEnabled ? colorScheme.primary : colorScheme.surfaceContainerHighest,
+      color: isEnabled
+          ? colorScheme.primary
+          : colorScheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(20), // Expressive 更大圆角
       boxShadow: isEnabled
           ? [
@@ -1456,7 +1504,9 @@ Widget _buildGradientButton({
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.1,
-                    color: isEnabled ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.4),
+                    color: isEnabled
+                        ? Colors.white
+                        : colorScheme.onSurface.withValues(alpha: 0.4),
                   ),
                 ),
         ),
@@ -1475,12 +1525,22 @@ Widget _buildTextField({
   Widget? suffixIcon,
   String? Function(String?)? validator,
   TextInputType? keyboardType,
+  TextInputAction? textInputAction,
+  FocusNode? focusNode,
+  Iterable<String>? autofillHints,
+  bool autocorrect = false,
+  bool enableSuggestions = false,
   void Function(String)? onFieldSubmitted,
 }) {
   return TextFormField(
     controller: controller,
+    focusNode: focusNode,
     obscureText: obscureText,
     keyboardType: keyboardType,
+    textInputAction: textInputAction,
+    autofillHints: autofillHints,
+    autocorrect: autocorrect,
+    enableSuggestions: enableSuggestions,
     validator: validator,
     onFieldSubmitted: onFieldSubmitted,
     style: TextStyle(
@@ -1509,11 +1569,7 @@ Widget _buildTextField({
           color: colorScheme.secondaryContainer,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(
-          icon,
-          color: colorScheme.onSecondaryContainer,
-          size: 20,
-        ),
+        child: Icon(icon, color: colorScheme.onSecondaryContainer, size: 20),
       ),
       suffixIcon: suffixIcon,
       // 填充色 - 使用 surfaceContainerLow 动态颜色
@@ -1526,36 +1582,21 @@ Widget _buildTextField({
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(
-          color: colorScheme.outlineVariant,
-          width: 1,
-        ),
+        borderSide: BorderSide(color: colorScheme.outlineVariant, width: 1),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(
-          color: colorScheme.primary,
-          width: 2,
-        ),
+        borderSide: BorderSide(color: colorScheme.primary, width: 2),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(
-          color: colorScheme.error,
-          width: 1,
-        ),
+        borderSide: BorderSide(color: colorScheme.error, width: 1),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(
-          color: colorScheme.error,
-          width: 2,
-        ),
+        borderSide: BorderSide(color: colorScheme.error, width: 2),
       ),
-      errorStyle: TextStyle(
-        color: colorScheme.error,
-        fontSize: 12,
-      ),
+      errorStyle: TextStyle(color: colorScheme.error, fontSize: 12),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
     ),
   );
@@ -1632,7 +1673,8 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
   }
 
   Future<void> _handleLogin() async {
-    if (_accountController.text.trim().isEmpty || _passwordController.text.isEmpty) {
+    if (_accountController.text.trim().isEmpty ||
+        _passwordController.text.isEmpty) {
       _showCupertinoAlert('请填写完整信息');
       return;
     }
@@ -1679,12 +1721,12 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
         actions: [
           CupertinoDialogAction(
             child: const Text('确定'),
-          onPressed: () {
-            final nav = Navigator.of(context);
-            if (nav.canPop()) {
-              nav.pop();
-            }
-          },
+            onPressed: () {
+              final nav = Navigator.of(context);
+              if (nav.canPop()) {
+                nav.pop();
+              }
+            },
           ),
         ],
       ),
@@ -1726,9 +1768,12 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
           suffix: CupertinoButton(
             padding: EdgeInsets.zero,
             minimumSize: Size.zero,
-            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+            onPressed: () =>
+                setState(() => _obscurePassword = !_obscurePassword),
             child: Icon(
-              _obscurePassword ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill,
+              _obscurePassword
+                  ? CupertinoIcons.eye_fill
+                  : CupertinoIcons.eye_slash_fill,
               color: CupertinoColors.systemGrey,
               size: 20,
             ),
@@ -1773,10 +1818,7 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
         Center(
           child: Text(
             '第一次使用？切换到注册标签页创建账号',
-            style: TextStyle(
-              color: CupertinoColors.systemGrey,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 13),
             textAlign: TextAlign.center,
           ),
         ),
@@ -1862,7 +1904,8 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
   }
 
   Future<void> _sendCode() async {
-    if (_qqNumberController.text.trim().isEmpty || _usernameController.text.trim().isEmpty) {
+    if (_qqNumberController.text.trim().isEmpty ||
+        _usernameController.text.trim().isEmpty) {
       _showCupertinoAlert('请先填写 QQ 号和用户名');
       return;
     }
@@ -1940,12 +1983,12 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
         actions: [
           CupertinoDialogAction(
             child: const Text('确定'),
-          onPressed: () {
-            final nav = Navigator.of(context);
-            if (nav.canPop()) {
-              nav.pop();
-            }
-          },
+            onPressed: () {
+              final nav = Navigator.of(context);
+              if (nav.canPop()) {
+                nav.pop();
+              }
+            },
           ),
         ],
       ),
@@ -1966,23 +2009,27 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
   @override
   Widget build(BuildContext context) {
     if (_checkingStatus) {
-      return const Center(
-        child: CupertinoActivityIndicator(),
-      );
+      return const Center(child: CupertinoActivityIndicator());
     }
 
     if (!_registrationEnabled) {
       return LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
-          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          final compact =
+              constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight
+              ? constraints.maxHeight
+              : 0.0;
           return SingleChildScrollView(
             physics: const ClampingScrollPhysics(),
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: minHeight),
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1998,7 +2045,9 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: widget.isDark ? CupertinoColors.white : CupertinoColors.black,
+                          color: widget.isDark
+                              ? CupertinoColors.white
+                              : CupertinoColors.black,
                         ),
                       ),
                     ],
@@ -2017,7 +2066,9 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
         // QQ 邮箱（QQ号 + @qq.com 后缀）
         Container(
           decoration: BoxDecoration(
-            color: widget.isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
+            color: widget.isDark
+                ? const Color(0xFF1C1C1E)
+                : CupertinoColors.white,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
@@ -2025,7 +2076,11 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
               // 左侧图标
               Padding(
                 padding: const EdgeInsets.only(left: 12),
-                child: Icon(CupertinoIcons.mail_solid, color: CupertinoColors.systemGrey, size: 20),
+                child: Icon(
+                  CupertinoIcons.mail_solid,
+                  color: CupertinoColors.systemGrey,
+                  size: 20,
+                ),
               ),
               // QQ 号输入框
               Expanded(
@@ -2033,10 +2088,15 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
                   controller: _qqNumberController,
                   placeholder: '请输入QQ号',
                   keyboardType: TextInputType.number,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
                   decoration: const BoxDecoration(),
                   style: TextStyle(
-                    color: widget.isDark ? CupertinoColors.white : CupertinoColors.black,
+                    color: widget.isDark
+                        ? CupertinoColors.white
+                        : CupertinoColors.black,
                     fontSize: 16,
                   ),
                   placeholderStyle: TextStyle(
@@ -2080,9 +2140,12 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
           suffix: CupertinoButton(
             padding: EdgeInsets.zero,
             minimumSize: Size.zero,
-            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+            onPressed: () =>
+                setState(() => _obscurePassword = !_obscurePassword),
             child: Icon(
-              _obscurePassword ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill,
+              _obscurePassword
+                  ? CupertinoIcons.eye_fill
+                  : CupertinoIcons.eye_slash_fill,
               color: CupertinoColors.systemGrey,
               size: 20,
             ),
@@ -2100,9 +2163,13 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
           suffix: CupertinoButton(
             padding: EdgeInsets.zero,
             minimumSize: Size.zero,
-            onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+            onPressed: () => setState(
+              () => _obscureConfirmPassword = !_obscureConfirmPassword,
+            ),
             child: Icon(
-              _obscureConfirmPassword ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill,
+              _obscureConfirmPassword
+                  ? CupertinoIcons.eye_fill
+                  : CupertinoIcons.eye_slash_fill,
               color: CupertinoColors.systemGrey,
               size: 20,
             ),
@@ -2169,10 +2236,12 @@ class _CupertinoForgotPasswordView extends StatefulWidget {
   });
 
   @override
-  State<_CupertinoForgotPasswordView> createState() => _CupertinoForgotPasswordViewState();
+  State<_CupertinoForgotPasswordView> createState() =>
+      _CupertinoForgotPasswordViewState();
 }
 
-class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordView> {
+class _CupertinoForgotPasswordViewState
+    extends State<_CupertinoForgotPasswordView> {
   final _emailController = TextEditingController();
   final _codeController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -2219,7 +2288,9 @@ class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordVi
     }
 
     setState(() => _isLoading = true);
-    final result = await _authFacade.sendResetCode(email: _emailController.text.trim());
+    final result = await _authFacade.sendResetCode(
+      email: _emailController.text.trim(),
+    );
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -2283,12 +2354,12 @@ class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordVi
         actions: [
           CupertinoDialogAction(
             child: const Text('确定'),
-          onPressed: () {
-            final nav = Navigator.of(context);
-            if (nav.canPop()) {
-              nav.pop();
-            }
-          },
+            onPressed: () {
+              final nav = Navigator.of(context);
+              if (nav.canPop()) {
+                nav.pop();
+              }
+            },
           ),
         ],
       ),
@@ -2320,7 +2391,11 @@ class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordVi
           ),
           child: Row(
             children: [
-              Icon(CupertinoIcons.info_circle_fill, color: CupertinoColors.activeBlue, size: 20),
+              Icon(
+                CupertinoIcons.info_circle_fill,
+                color: CupertinoColors.activeBlue,
+                size: 20,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -2384,9 +2459,12 @@ class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordVi
           suffix: CupertinoButton(
             padding: EdgeInsets.zero,
             minimumSize: Size.zero,
-            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+            onPressed: () =>
+                setState(() => _obscurePassword = !_obscurePassword),
             child: Icon(
-              _obscurePassword ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill,
+              _obscurePassword
+                  ? CupertinoIcons.eye_fill
+                  : CupertinoIcons.eye_slash_fill,
               color: CupertinoColors.systemGrey,
               size: 20,
             ),
@@ -2404,9 +2482,13 @@ class _CupertinoForgotPasswordViewState extends State<_CupertinoForgotPasswordVi
           suffix: CupertinoButton(
             padding: EdgeInsets.zero,
             minimumSize: Size.zero,
-            onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+            onPressed: () => setState(
+              () => _obscureConfirmPassword = !_obscureConfirmPassword,
+            ),
             child: Icon(
-              _obscureConfirmPassword ? CupertinoIcons.eye_fill : CupertinoIcons.eye_slash_fill,
+              _obscureConfirmPassword
+                  ? CupertinoIcons.eye_fill
+                  : CupertinoIcons.eye_slash_fill,
               color: CupertinoColors.systemGrey,
               size: 20,
             ),
@@ -2453,10 +2535,7 @@ Widget _buildCupertinoTextField({
         child: Icon(icon, color: CupertinoColors.systemGrey, size: 20),
       ),
       suffix: suffix != null
-          ? Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: suffix,
-            )
+          ? Padding(padding: const EdgeInsets.only(right: 8), child: suffix)
           : null,
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
@@ -2492,15 +2571,8 @@ Widget _buildCupertinoButton({
           ? const CupertinoActivityIndicator(color: CupertinoColors.white)
           : Text(
               label,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
     ),
   );
 }
-
-
-
-

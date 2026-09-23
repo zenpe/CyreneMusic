@@ -10,6 +10,34 @@ abstract class PlayableSource {
   ja.AudioSource? get audioSource => null;
 }
 
+class PreparedPlaybackSlot {
+  final String key;
+  final PlayableSource source;
+  final DateTime expiresAt;
+  final int queueRevision;
+
+  const PreparedPlaybackSlot({
+    required this.key,
+    required this.source,
+    required this.expiresAt,
+    required this.queueRevision,
+  });
+
+  bool get isExpired => DateTime.now().isAfter(expiresAt);
+}
+
+class PreparedPlaybackWindow {
+  final PreparedPlaybackSlot current;
+  final PreparedPlaybackSlot? previous;
+  final PreparedPlaybackSlot? next;
+
+  const PreparedPlaybackWindow({
+    required this.current,
+    this.previous,
+    this.next,
+  });
+}
+
 class DirectHttpPlayableSource extends PlayableSource {
   final String url;
   final Map<String, String>? requestHeaders;

@@ -248,8 +248,14 @@ class _PlayerPageState extends State<PlayerPage>
         ? '${currentTrack.source.name}_${currentTrack.id}'
         : null;
     final snapshot = player.lyricSnapshot;
-    final nextSignature = snapshot?.signature;
-    final nextState = snapshot?.state ?? LyricLoadState.idle;
+    final matchingSnapshot =
+        snapshot != null &&
+            snapshot.trackKey == currentTrackId &&
+            snapshot.playbackToken == player.viewState.generation
+        ? snapshot
+        : null;
+    final nextSignature = matchingSnapshot?.signature;
+    final nextState = matchingSnapshot?.state ?? player.lyricState;
 
     if (!force &&
         currentTrackId == _lastTrackId &&
@@ -268,7 +274,9 @@ class _PlayerPageState extends State<PlayerPage>
     _lastTrackId = currentTrackId;
     _lastLyricsSignature = nextSignature;
     _lyricState = nextState;
-    _lyrics = snapshot == null ? [] : List<LyricLine>.from(snapshot.lines);
+    _lyrics = matchingSnapshot == null
+        ? []
+        : List<LyricLine>.from(matchingSnapshot.lines);
     _currentLyricIndex = -1;
     _updateCurrentLyric(notify: false);
     if (mounted) {

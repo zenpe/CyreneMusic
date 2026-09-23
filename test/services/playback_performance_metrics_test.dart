@@ -11,6 +11,8 @@ void main() {
         totalMs: 300,
         remoteMs: 160,
         prefetched: true,
+        preparedEngineHit: true,
+        preparedActivationMs: 25,
         l1MemoryCached: true,
         audioCacheHit: true,
       ),
@@ -22,6 +24,9 @@ void main() {
     final snapshot = metrics.snapshot;
     expect(snapshot.completedSwitches, 3);
     expect(snapshot.prefetchedSwitches, 1);
+    expect(snapshot.preparedEngineHits, 1);
+    expect(snapshot.preparedActivation.count, 1);
+    expect(snapshot.preparedActivation.averageMs, 25);
     expect(snapshot.l1MemoryCacheHits, 1);
     expect(snapshot.audioCacheHits, 1);
     expect(snapshot.remoteResolutionAttempts, 3);
@@ -58,6 +63,8 @@ PlaybackTimingSample _sample({
   required int totalMs,
   int remoteMs = 10,
   bool prefetched = false,
+  bool preparedEngineHit = false,
+  int preparedActivationMs = 0,
   bool l1MemoryCached = false,
   bool audioCacheHit = false,
 }) => PlaybackTimingSample(
@@ -70,7 +77,9 @@ PlaybackTimingSample _sample({
   engineStartupMs: 5,
   engineSetSourceMs: 3,
   enginePlayToReadyMs: 2,
+  preparedActivationMs: preparedActivationMs,
   prefetched: prefetched,
+  preparedEngineHit: preparedEngineHit,
   l1MemoryCached: l1MemoryCached,
   audioCacheHit: audioCacheHit,
   remoteResolutionAttempts: 1,

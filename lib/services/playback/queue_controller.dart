@@ -45,11 +45,13 @@ class QueueController {
   List<int> _shuffledIndices = [];
   int _shufflePosition = -1;
   int _currentIndex = -1;
+  int _structureRevision = 0;
   QueueSource _source = QueueSource.none;
 
   List<Track> get tracks => _readOnlyTracks;
   int get currentIndex => _currentIndex;
   QueueSource get source => _source;
+  int get structureRevision => _structureRevision;
 
   void clearCoverProviders() => _coverProviders.clear();
   bool get isEmpty => _tracks.isEmpty;
@@ -72,6 +74,7 @@ class QueueController {
       ..addAll(tracks);
     _currentIndex = _tracks.isEmpty ? -1 : index.clamp(0, _tracks.length - 1);
     _source = _tracks.isEmpty ? QueueSource.none : source;
+    _structureRevision++;
     _coverProviders
       ..clear()
       ..addAll(coverProviders ?? const {});
@@ -79,6 +82,9 @@ class QueueController {
   }
 
   void clear() {
+    if (_tracks.isNotEmpty || _source != QueueSource.none) {
+      _structureRevision++;
+    }
     _tracks.clear();
     _currentIndex = -1;
     _source = QueueSource.none;
@@ -88,11 +94,15 @@ class QueueController {
 
   void append(Track track) {
     _tracks.add(track);
+    _structureRevision++;
     resetShuffle();
   }
 
   void appendAll(Iterable<Track> tracks) {
-    _tracks.addAll(tracks);
+    final additions = tracks.toList(growable: false);
+    if (additions.isEmpty) return;
+    _tracks.addAll(additions);
+    _structureRevision++;
     resetShuffle();
   }
 
@@ -100,6 +110,7 @@ class QueueController {
     removeDuplicate(track);
     final insertAt = (_currentIndex + 1).clamp(0, _tracks.length);
     _tracks.insert(insertAt, track);
+    _structureRevision++;
     resetShuffle();
   }
 
@@ -113,6 +124,7 @@ class QueueController {
     if (index < 0 || index >= length) return QueueRemovalResult.notRemoved;
     final removedCurrent = index == _currentIndex;
     _tracks.removeAt(index);
+    _structureRevision++;
     if (_tracks.isEmpty) {
       clear();
       return const QueueRemovalResult(
@@ -140,6 +152,7 @@ class QueueController {
     final track = _tracks.removeAt(oldIndex);
     final targetIndex = newIndex.clamp(0, _tracks.length);
     _tracks.insert(targetIndex, track);
+    _structureRevision++;
     if (oldIndex == _currentIndex) {
       _currentIndex = targetIndex;
     } else if (oldIndex < _currentIndex && targetIndex >= _currentIndex) {
@@ -161,6 +174,7 @@ class QueueController {
     final existing = indexOf(track);
     if (existing < 0) return;
     _tracks.removeAt(existing);
+    _structureRevision++;
     if (existing <= _currentIndex) {
       _currentIndex = (_currentIndex - 1).clamp(-1, _tracks.length);
     }

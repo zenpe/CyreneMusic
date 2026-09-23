@@ -154,7 +154,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
 
   Widget _buildSongInfo(BuildContext context, Track? track) {
     final player = PlayerService();
-    final isPending = player.isLoading && player.pendingTrack != null;
+    final isPending = player.isTrackSwitchPending;
     final effectiveTrack = player.displayTrack ?? track;
     final imageUrl = player.displayCoverUrl ?? '';
     final coverProvider = isPending ? null : player.currentCoverImageProvider;

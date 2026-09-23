@@ -328,12 +328,11 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
-        return AnimatedBuilder(
-          animation: PlayerService(),
-          builder: (context, child) {
-            final player = PlayerService();
+        return ValueListenableBuilder<Duration>(
+          valueListenable: PlayerService().positionNotifier,
+          builder: (context, position, child) {
             // 只有正在播放的歌词才显示填充效果，手动选择的显示静态高亮
-            final fillProgress = isActuallyPlaying ? _calculateFillProgress(lyric, player.position) : 0.0;
+            final fillProgress = isActuallyPlaying ? _calculateFillProgress(lyric, position) : 0.0;
             final isSelected = _isManualMode && !isActuallyPlaying;
 
             return Center(
@@ -344,7 +343,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
                 themeColor: themeColor,
                 isSelected: isSelected,
                 lyric: lyric,
-                currentPosition: player.position,
+                currentPosition: position,
               ),
             );
           },
