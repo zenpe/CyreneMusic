@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/toplist.dart';
 import '../models/track.dart';
 import '../models/song_detail.dart';
@@ -35,15 +36,81 @@ class MusicService extends ChangeNotifier {
   LxRuntimeFailure? _lastLxFailure;
   LxRuntimeFailure? get lastLxFailure => _lastLxFailure;
 
+  /// 本地榜单持久化缓存 Key
+  static const String _kToplistsCacheKey = 'cached_toplists_data_v1';
+  static const String _kToplistsCacheTimeKey = 'cached_toplists_time_v1';
+
   /// 数据是否已缓存（是否已成功加载过）
   bool _isCached = false;
   bool get isCached => _isCached;
+
+  /// 初始化服务并从本地磁盘恢复缓存
+  Future<void> initialize() async {
+    await Future.wait([
+      AuthService().ensureInitialized(),
+      loadCachedToplists(),
+    ]);
+  }
+
+  /// 尝试从本地持久化缓存恢复榜单数据（实现秒开，防止离线或冷启动直接报错）
+  Future<bool> loadCachedToplists() async {
+    if (_toplists.isNotEmpty) return true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString(_kToplistsCacheKey);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final List<dynamic> decoded = jsonDecode(jsonStr);
+        final restored = decoded
+            .map((item) => Toplist.fromJson(item as Map<String, dynamic>))
+            .toList();
+        if (restored.isNotEmpty) {
+          _toplists = restored;
+          _isCached = true;
+          _errorMessage = null;
+          StructuredLogService.log(
+            '💾 [MusicService] 从本地磁盘恢复了 ${_toplists.length} 个榜单',
+          );
+          notifyListeners();
+          return true;
+        }
+      }
+    } catch (e) {
+      StructuredLogService.log('⚠️ [MusicService] 读取本地榜单缓存异常: $e');
+    }
+    return false;
+  }
+
+  /// 保存榜单到本地持久化缓存
+  Future<void> _saveToplistsToCache() async {
+    try {
+      if (_toplists.isEmpty) return;
+      final prefs = await SharedPreferences.getInstance();
+      final listJson = _toplists.map((t) => t.toJson()).toList();
+      await prefs.setString(_kToplistsCacheKey, jsonEncode(listJson));
+      await prefs.setInt(
+        _kToplistsCacheTimeKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+      StructuredLogService.log('💾 [MusicService] 榜单数据已持久化到磁盘');
+    } catch (e) {
+      StructuredLogService.log('⚠️ [MusicService] 持久化榜单数据异常: $e');
+    }
+  }
 
   /// 获取榜单列表（带缓存）
   Future<void> fetchToplists({
     MusicSource source = MusicSource.netease,
     bool forceRefresh = false,
   }) async {
+    // /toplists requires authentication. Ensure the persisted token has been
+    // restored before the first request instead of racing app startup.
+    await AuthService().ensureInitialized();
+
+    // 如果内存没有，先尝试从本地磁盘恢复
+    if (_toplists.isEmpty) {
+      await loadCachedToplists();
+    }
+
     // 如果已有缓存且不是强制刷新，直接返回
     if (_isCached && !forceRefresh) {
       StructuredLogService.log('💾 [MusicService] 使用缓存数据，跳过加载');
@@ -65,7 +132,7 @@ class MusicService extends ChangeNotifier {
 
       final result = await ApiClient().getJson(
         '/toplists',
-        timeout: const Duration(seconds: 15),
+        timeout: const Duration(seconds: 20),
       );
 
       StructuredLogService.log('🎵 [MusicService] 响应状态码: ${result.statusCode}');
@@ -98,21 +165,68 @@ class MusicService extends ChangeNotifier {
           _errorMessage = null;
           _isCached = true; // 标记数据已缓存
           StructuredLogService.log('💾 [MusicService] 数据已缓存');
+          await _saveToplistsToCache();
         } else {
-          _errorMessage = '获取榜单失败: 服务器返回状态 ${data['status']}';
-          StructuredLogService.log('❌ [MusicService] $_errorMessage');
+          final errMsg = '获取榜单失败: 服务器返回状态 ${data['status']}';
+          StructuredLogService.log('❌ [MusicService] $errMsg');
+          if (_toplists.isEmpty) {
+            _errorMessage = errMsg;
+          } else {
+            StructuredLogService.log('⚠️ [MusicService] 保持使用旧缓存数据展示');
+          }
         }
       } else {
-        _errorMessage = '获取榜单失败: HTTP ${result.statusCode}';
-        StructuredLogService.log('❌ [MusicService] $_errorMessage');
+        final errMsg = _describeToplistsFailure(
+          statusCode: result.statusCode,
+          isNetworkError: result.isNetworkError,
+          detail: result.text,
+        );
+        StructuredLogService.event(
+          'music.toplists_request_failed',
+          level: LogLevel.warning,
+          fields: {
+            'status_code': result.statusCode,
+            'network_error': result.isNetworkError,
+          },
+          error: result.text,
+        );
+        // 关键：如果本地已有缓存榜单，不要将全屏遮蔽为错误状态，继续展示缓存内容！
+        if (_toplists.isEmpty) {
+          _errorMessage = errMsg;
+        } else {
+          StructuredLogService.log('⚠️ [MusicService] 网络不可达，继续使用本地离线缓存数据展示');
+        }
       }
     } catch (e) {
-      _errorMessage = '获取榜单失败: $e';
-      StructuredLogService.log('❌ [MusicService] $_errorMessage');
+      final errMsg = '获取榜单失败: $e';
+      StructuredLogService.log('❌ [MusicService] $errMsg');
+      if (_toplists.isEmpty) {
+        _errorMessage = errMsg;
+      } else {
+        StructuredLogService.log('⚠️ [MusicService] 发生异常，继续使用本地离线缓存数据展示');
+      }
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  String _describeToplistsFailure({
+    required int statusCode,
+    required bool isNetworkError,
+    String? detail,
+  }) {
+    if (statusCode == 401) {
+      return '获取榜单失败：登录状态已失效，请重新登录';
+    }
+    if (isNetworkError || statusCode == 0) {
+      final normalized = detail?.toLowerCase() ?? '';
+      if (normalized.contains('timeout')) {
+        return '获取榜单失败：服务器响应超时，请稍后重试';
+      }
+      return '获取榜单失败：网络连接异常，请检查网络后重试';
+    }
+    return '获取榜单失败：HTTP $statusCode';
   }
 
   /// 刷新榜单（强制重新加载）

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/player_service.dart';
@@ -56,7 +57,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
           CupertinoButton(
             padding: buttonPadding,
             minimumSize: Size.zero,
-            onPressed: player.hasPrevious ? () => player.playPrevious() : null,
+            onPressed: player.hasPrevious
+                ? () {
+                    HapticFeedback.lightImpact();
+                    player.playPrevious();
+                  }
+                : null,
             child: Icon(
               CupertinoIcons.backward_fill,
               size: skipIconSize,
@@ -65,37 +71,55 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   : CupertinoColors.systemGrey,
             ),
           ),
-        PlaybackSwitchRing(
-          isVisible: player.isTrackSwitchPending,
-          color: DynamicColorUtils.resolveAccent(
-            player.themeColorNotifier.value,
-            Theme.of(context).colorScheme,
-            isDark: isDark,
-          ),
-          strokeWidth: 1.8,
-          inset: 1.5,
-          child: CupertinoButton(
-            padding: buttonPadding,
-            minimumSize: Size.zero,
-            onPressed: () => player.togglePlayPause(),
-            child: Icon(
-              player.isPlaying
-                  ? CupertinoIcons.pause_fill
-                  : CupertinoIcons.play_fill,
-              size: playIconSize,
-              color: DynamicColorUtils.resolveAccent(
-                player.themeColorNotifier.value,
-                Theme.of(context).colorScheme,
-                isDark: isDark,
-              ),
-            ),
+        CupertinoButton(
+          padding: buttonPadding,
+          minimumSize: Size.zero,
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            player.togglePlayPause();
+          },
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: player.isTrackSwitchPending
+                ? SizedBox(
+                    key: const ValueKey('cupertino_mini_loading'),
+                    width: playIconSize,
+                    height: playIconSize,
+                    child: Center(
+                      child: CupertinoActivityIndicator(
+                        radius: playIconSize * 0.38,
+                        color: DynamicColorUtils.resolveAccent(
+                          player.themeColorNotifier.value,
+                          Theme.of(context).colorScheme,
+                          isDark: isDark,
+                        ),
+                      ),
+                    ),
+                  )
+                : Icon(
+                    key: ValueKey(player.isPlaying),
+                    player.isPlaying
+                        ? CupertinoIcons.pause_fill
+                        : CupertinoIcons.play_fill,
+                    size: playIconSize,
+                    color: DynamicColorUtils.resolveAccent(
+                      player.themeColorNotifier.value,
+                      Theme.of(context).colorScheme,
+                      isDark: isDark,
+                    ),
+                  ),
           ),
         ),
         if (!hideSkip)
           CupertinoButton(
             padding: buttonPadding,
             minimumSize: Size.zero,
-            onPressed: player.hasNext ? () => player.playNext() : null,
+            onPressed: player.hasNext
+                ? () {
+                    HapticFeedback.lightImpact();
+                    player.playNext();
+                  }
+                : null,
             child: Icon(
               CupertinoIcons.forward_fill,
               size: skipIconSize,
@@ -127,21 +151,47 @@ class _MiniPlayerState extends State<MiniPlayer> {
               size: skipIconSize,
               color: theme.resources.textFillColorPrimary,
             ),
-            onPressed: player.hasPrevious ? () => player.playPrevious() : null,
+            onPressed: player.hasPrevious
+                ? () {
+                    HapticFeedback.lightImpact();
+                    player.playPrevious();
+                  }
+                : null,
           ),
-        PlaybackSwitchRing(
-          isVisible: player.isTrackSwitchPending,
-          color: theme.accentColor.defaultBrushFor(theme.brightness),
-          strokeWidth: 1.8,
-          inset: 1.5,
-          child: fluent.IconButton(
-            icon: Icon(
-              player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              size: playIconSize,
-              color: theme.accentColor.defaultBrushFor(theme.brightness),
-            ),
-            onPressed: () => player.togglePlayPause(),
+        fluent.IconButton(
+          icon: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: player.isTrackSwitchPending
+                ? SizedBox(
+                    key: const ValueKey('fluent_mini_loading'),
+                    width: playIconSize,
+                    height: playIconSize,
+                    child: Center(
+                      child: SizedBox(
+                        width: playIconSize * 0.75,
+                        height: playIconSize * 0.75,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation(
+                            theme.accentColor.defaultBrushFor(theme.brightness),
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : Icon(
+                    key: ValueKey(player.isPlaying),
+                    player.isPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                    size: playIconSize,
+                    color: theme.accentColor.defaultBrushFor(theme.brightness),
+                  ),
           ),
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            player.togglePlayPause();
+          },
         ),
         if (!hideSkip)
           fluent.IconButton(
@@ -150,7 +200,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
               size: skipIconSize,
               color: theme.resources.textFillColorPrimary,
             ),
-            onPressed: player.hasNext ? () => player.playNext() : null,
+            onPressed: player.hasNext
+                ? () {
+                    HapticFeedback.lightImpact();
+                    player.playNext();
+                  }
+                : null,
           ),
       ],
     );
@@ -239,6 +294,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
         player.duration.inMilliseconds <= 0) {
       return;
     }
+    HapticFeedback.selectionClick();
     _markSeekGesture();
     setState(() {
       _isSeeking = true;
@@ -262,6 +318,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     _markSeekGesture();
     final ratio = _seekRatio;
     if (ratio != null && player.duration.inMilliseconds > 0) {
+      HapticFeedback.mediumImpact();
       final targetMs = (player.duration.inMilliseconds * ratio).round();
       player.seek(Duration(milliseconds: targetMs));
     }
@@ -1506,47 +1563,77 @@ class _MiniPlayerState extends State<MiniPlayer> {
               width: skipButtonSize,
               height: skipButtonSize,
             ),
-            onPressed: player.hasPrevious ? () => player.playPrevious() : null,
+            onPressed: player.hasPrevious
+                ? () {
+                    HapticFeedback.lightImpact();
+                    player.playPrevious();
+                  }
+                : null,
             tooltip: '上一首',
           ),
-        PlaybackSwitchRing(
-          isVisible: player.isTrackSwitchPending,
-          color: activeColor,
-          strokeWidth: 2,
-          inset: compact ? 1.5 : 2,
-          child: Container(
-            margin: EdgeInsets.symmetric(horizontal: compact ? 6 : 8),
-            decoration: BoxDecoration(
-              color: activeColor,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: activeColor.withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: IconButton(
-              icon: Icon(
-                player.isPlaying
-                    ? Icons.pause_rounded
-                    : Icons.play_arrow_rounded,
+        Container(
+          margin: EdgeInsets.symmetric(horizontal: compact ? 6 : 8),
+          decoration: BoxDecoration(
+            color: activeColor,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: activeColor.withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-              color:
-                  ThemeData.estimateBrightnessForColor(activeColor) ==
-                      Brightness.dark
-                  ? Colors.white
-                  : const Color(0xFF0F172A),
-              iconSize: playIconSize,
-              padding: EdgeInsets.zero,
-              constraints: BoxConstraints.tightFor(
-                width: playButtonSize,
-                height: playButtonSize,
-              ),
-              onPressed: () => player.togglePlayPause(),
-              tooltip: player.isPlaying ? '暂停' : '播放',
+            ],
+          ),
+          child: IconButton(
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: player.isTrackSwitchPending
+                  ? SizedBox(
+                      key: const ValueKey('material_mini_loading'),
+                      width: playIconSize,
+                      height: playIconSize,
+                      child: Center(
+                        child: SizedBox(
+                          width: playIconSize * 0.72,
+                          height: playIconSize * 0.72,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              ThemeData.estimateBrightnessForColor(
+                                        activeColor,
+                                      ) ==
+                                      Brightness.dark
+                                  ? Colors.white
+                                  : const Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : Icon(
+                      key: ValueKey(player.isPlaying),
+                      player.isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      size: playIconSize,
+                    ),
             ),
+            color:
+                ThemeData.estimateBrightnessForColor(activeColor) ==
+                        Brightness.dark
+                    ? Colors.white
+                    : const Color(0xFF0F172A),
+            iconSize: playIconSize,
+            padding: EdgeInsets.zero,
+            constraints: BoxConstraints.tightFor(
+              width: playButtonSize,
+              height: playButtonSize,
+            ),
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              player.togglePlayPause();
+            },
+            tooltip: player.isPlaying ? '暂停' : '播放',
           ),
         ),
         if (!hideSkip)
@@ -1563,7 +1650,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
               width: skipButtonSize,
               height: skipButtonSize,
             ),
-            onPressed: player.hasNext ? () => player.playNext() : null,
+            onPressed: player.hasNext
+                ? () {
+                    HapticFeedback.lightImpact();
+                    player.playNext();
+                  }
+                : null,
             tooltip: '下一首',
           ),
       ],

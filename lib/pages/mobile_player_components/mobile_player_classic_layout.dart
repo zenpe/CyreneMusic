@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../services/player_service.dart';
 import '../../services/player_background_service.dart';
 import 'mobile_player_app_bar.dart';
@@ -287,6 +288,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                   ),
                   WavySplitProgressBar(
                     value: max > 0 ? (value / max).clamp(0.0, 1.0) : 0.0,
+                    duration: Duration(milliseconds: max.toInt()),
                     isPlaying: player.isPlaying,
                     onChanged: (v) {
                       player.seek(Duration(milliseconds: (v * max).toInt()));
@@ -352,7 +354,12 @@ class MobilePlayerClassicLayout extends StatelessWidget {
         _buildExpressiveControlButton(
           context: context,
           icon: Icons.skip_previous_rounded,
-          onTap: player.hasPrevious ? player.playPrevious : null,
+          onTap: player.hasPrevious
+              ? () {
+                  HapticFeedback.lightImpact();
+                  player.playPrevious();
+                }
+              : null,
           size: 64,
           iconSize: 32,
           color: colorScheme.surfaceContainerHighest,
@@ -371,7 +378,10 @@ class MobilePlayerClassicLayout extends StatelessWidget {
             icon: player.isPlaying
                 ? Icons.pause_rounded
                 : Icons.play_arrow_rounded,
-            onTap: player.togglePlayPause,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              player.togglePlayPause();
+            },
             size: 84,
             iconSize: 48,
             color: colorScheme.primaryContainer,
@@ -387,7 +397,12 @@ class MobilePlayerClassicLayout extends StatelessWidget {
         _buildExpressiveControlButton(
           context: context,
           icon: Icons.skip_next_rounded,
-          onTap: player.hasNext ? player.playNext : null,
+          onTap: player.hasNext
+              ? () {
+                  HapticFeedback.lightImpact();
+                  player.playNext();
+                }
+              : null,
           size: 64,
           iconSize: 32,
           color: colorScheme.surfaceContainerHighest,

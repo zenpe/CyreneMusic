@@ -9,6 +9,7 @@ import '../../services/player_service.dart';
 import '../../utils/theme_manager.dart';
 import '../../utils/image_utils.dart';
 import '../skeleton_loader.dart';
+import '../warm_empty_state.dart';
 
 /// iOS 风格的分段控制器（替代胶囊 Tabs）
 /// 采用轻量纯文字样式，更符合 iOS 原生设计
@@ -602,11 +603,11 @@ class CupertinoGuessYouLikeSection extends StatelessWidget {
       future: guessYouLikeFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CupertinoActivityIndicator());
+          return const GuessYouLikeShimmerSkeleton();
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-          return _buildGuessYouLikePlaceholder(context, isDark, isError: true);
+          return _buildGuessYouLikePlaceholder(context, isDark, isError: snapshot.hasError);
         }
 
         final sampleTracks = snapshot.data!;
@@ -670,15 +671,14 @@ class CupertinoGuessYouLikeSection extends StatelessWidget {
 
   Widget _buildGuessYouLikePlaceholder(BuildContext context, bool isDark,
       {bool isError = false}) {
-    final message = isError ? '加载推荐失败' : '导入歌单查看更多';
-    return Center(
-      child: Text(
-        message,
-        style: TextStyle(
-          color: CupertinoColors.systemGrey,
-          fontSize: 14,
-        ),
-      ),
+    return WarmCompactEmptyCard(
+      title: isError ? '开启个性化推荐' : '定制专属心动单曲',
+      subtitle: isError ? '正在为你准备好听的音乐，轻触探索热门榜单' : '多听听歌或导入歌单，为你发现更多惊喜',
+      icon: isError ? Icons.auto_awesome_rounded : Icons.library_music_rounded,
+      actionLabel: '探索榜单',
+      onTap: () {
+        MusicService().fetchToplists();
+      },
     );
   }
 }
@@ -939,55 +939,13 @@ class CupertinoErrorSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            CupertinoIcons.exclamationmark_circle,
-            size: 64,
-            color: CupertinoColors.systemRed,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            '加载失败',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            MusicService().errorMessage ?? '未知错误',
-            style: TextStyle(
-              color: CupertinoColors.systemGrey,
-              fontSize: 14,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          CupertinoButton.filled(
-            onPressed: () {
-              MusicService().refreshToplists();
-            },
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(CupertinoIcons.refresh, size: 18),
-                SizedBox(width: 6),
-                Text('重试'),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return WarmStateCard(
+      type: MusicService().errorMessage?.contains('HTTP 0') == true ||
+              MusicService().errorMessage?.contains('Socket') == true
+          ? WarmStateType.network
+          : WarmStateType.error,
+      technicalDetails: MusicService().errorMessage,
+      onRetry: () => MusicService().refreshToplists(),
     );
   }
 }
@@ -998,54 +956,10 @@ class CupertinoEmptySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            CupertinoIcons.music_note,
-            size: 64,
-            color: CupertinoColors.systemGrey,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            '暂无榜单',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '请检查后端服务是否正常',
-            style: TextStyle(
-              color: CupertinoColors.systemGrey,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 24),
-          CupertinoButton.filled(
-            onPressed: () {
-              MusicService().fetchToplists();
-            },
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(CupertinoIcons.refresh, size: 18),
-                SizedBox(width: 6),
-                Text('刷新'),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return WarmStateCard(
+      type: WarmStateType.empty,
+      retryText: '获取榜单',
+      onRetry: () => MusicService().refreshToplists(),
     );
   }
 }

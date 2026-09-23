@@ -28,6 +28,7 @@ import 'package:cyrene_music/services/navidrome_session_service.dart';
 import 'package:cyrene_music/services/player_background_service.dart';
 import 'package:cyrene_music/services/player_service.dart';
 import 'package:cyrene_music/services/notification_service.dart';
+import 'package:cyrene_music/services/music_service.dart';
 import 'package:cyrene_music/services/permission_service.dart';
 import 'package:cyrene_music/services/playback/startup_playback_coordinator.dart';
 import 'package:cyrene_music/services/system_media_service.dart';
@@ -253,6 +254,10 @@ Future<void> main() async {
           timed('AudioSourceService.initialize', () async {
             await AudioSourceService().initialize();
             log('✅ 音源服务已初始化');
+          }),
+          timed('MusicService.initialize', () async {
+            await MusicService().initialize();
+            log('🎵 音乐服务榜单缓存已初始化');
           }),
         ]),
       );

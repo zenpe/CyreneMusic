@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../../utils/image_utils.dart';
 import '../../utils/page_visibility_notifier.dart';
 import '../../utils/theme_manager.dart';
+import '../../widgets/warm_empty_state.dart';
 
 /// 首页顶部胶囊 Tabs
 class HomeCapsuleTabs extends StatelessWidget {
@@ -889,11 +890,11 @@ class GuessYouLikeSection extends StatelessWidget {
       future: guessYouLikeFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const GuessYouLikeShimmerSkeleton();
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-          return _buildGuessYouLikePlaceholder(context, isLegacy: true, isError: true);
+          return _buildGuessYouLikePlaceholder(context, isError: snapshot.hasError);
         }
 
         final sampleTracks = snapshot.data!;
@@ -948,63 +949,14 @@ class GuessYouLikeSection extends StatelessWidget {
   }
 
   Widget _buildGuessYouLikePlaceholder(BuildContext context, {bool isError = false, bool isLegacy = false}) {
-    final message = isError ? '加载推荐失败' : '导入歌单查看更多';
-
-    // Legacy 风格
-    if (isLegacy) {
-      return InkWell(
-        onTap: () {
-          StructuredLogService.log('引导用户导入歌单');
-        },
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Expressive 风格
-    return InkWell(
+    return WarmCompactEmptyCard(
+      title: isError ? '开启个性化推荐' : '定制专属心动单曲',
+      subtitle: isError ? '正在为你准备好听的音乐，轻触探索热门榜单' : '多听听歌或导入歌单，为你发现更多惊喜',
+      icon: isError ? Icons.auto_awesome_rounded : Icons.library_music_rounded,
+      actionLabel: '探索榜单',
       onTap: () {
-        StructuredLogService.log('引导用户导入歌单');
+        StructuredLogService.log('用户点击推荐空态卡片');
       },
-      child: Container(
-        height: 88,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
-          ),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isError ? Icons.error_outline : Icons.add_circle_outline,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1297,41 +1249,14 @@ class ErrorSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final themeManager = ThemeManager();
-
-    final cardContent = Padding(
-      padding: const EdgeInsets.all(48.0),
-      child: Column(
-        children: [
-          Icon(Icons.error_outline, size: 64, color: colorScheme.error),
-          const SizedBox(height: 16),
-          Text('加载失败', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          Text(
-            MusicService().errorMessage ?? '未知错误',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: () {
-              MusicService().refreshToplists();
-            },
-            icon: const Icon(Icons.refresh),
-            label: const Text('重试'),
-          ),
-        ],
-      ),
+    return WarmStateCard(
+      type: MusicService().errorMessage?.contains('HTTP 0') == true ||
+              MusicService().errorMessage?.contains('Socket') == true
+          ? WarmStateType.network
+          : WarmStateType.error,
+      technicalDetails: MusicService().errorMessage,
+      onRetry: () => MusicService().refreshToplists(),
     );
-
-    if (themeManager.isFluentFramework) {
-      return fluent.Card(padding: EdgeInsets.zero, child: cardContent);
-    }
-
-    return Card(color: colorScheme.surfaceContainer, child: cardContent);
   }
 }
 
@@ -1340,39 +1265,10 @@ class EmptySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final themeManager = ThemeManager();
-
-    final cardContent = Padding(
-      padding: const EdgeInsets.all(48.0),
-      child: Column(
-        children: [
-          Icon(Icons.music_note, size: 64, color: colorScheme.onSurfaceVariant),
-          const SizedBox(height: 16),
-          Text('暂无榜单', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          Text(
-            '请检查后端服务是否正常',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: () {
-              MusicService().fetchToplists();
-            },
-            icon: const Icon(Icons.refresh),
-            label: const Text('刷新'),
-          ),
-        ],
-      ),
+    return WarmStateCard(
+      type: WarmStateType.empty,
+      retryText: '获取榜单',
+      onRetry: () => MusicService().refreshToplists(),
     );
-
-    if (themeManager.isFluentFramework) {
-      return fluent.Card(padding: EdgeInsets.zero, child: cardContent);
-    }
-
-    return Card(color: colorScheme.surfaceContainer, child: cardContent);
   }
 }

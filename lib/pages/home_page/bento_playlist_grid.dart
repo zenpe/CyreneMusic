@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../utils/image_utils.dart';
+import '../../services/music_service.dart';
+import '../../widgets/skeleton_loader.dart';
+import '../../widgets/warm_empty_state.dart';
 
 /// Bento 网格歌单 - 1大+4小布局
 class BentoPlaylistGrid extends StatelessWidget {
@@ -10,7 +13,20 @@ class BentoPlaylistGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (list.isEmpty) return Text('暂无数据', style: Theme.of(context).textTheme.bodySmall);
+    if (list.isEmpty) {
+      if (MusicService().isLoading) {
+        return const BentoPlaylistGridSkeleton();
+      }
+      return WarmCompactEmptyCard(
+        title: '精选歌单整备中',
+        subtitle: '暂无推荐歌单，轻触重新获取最新榜单与推荐',
+        icon: Icons.album_outlined,
+        actionLabel: '刷新',
+        onTap: () {
+          MusicService().refreshToplists();
+        },
+      );
+    }
 
     return LayoutBuilder(
       builder: (context, constraints) {

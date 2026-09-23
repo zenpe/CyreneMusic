@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../services/player_service.dart';
 import '../../services/playback_mode_service.dart';
 import '../../services/sleep_timer_service.dart';
@@ -169,6 +170,7 @@ class MobilePlayerControls extends StatelessWidget {
                       icon: Icon(icon, color: Colors.white),
                       iconSize: sideIconSize,
                       onPressed: () {
+                        HapticFeedback.selectionClick();
                         PlaybackModeService().toggleMode();
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -194,7 +196,10 @@ class MobilePlayerControls extends StatelessWidget {
                   ),
                   iconSize: skipIconSize,
                   onPressed: player.hasPrevious
-                      ? () => player.playPrevious()
+                      ? () {
+                          HapticFeedback.lightImpact();
+                          player.playPrevious();
+                        }
                       : null,
                   tooltip: '上一首',
                 ),
@@ -226,7 +231,7 @@ class MobilePlayerControls extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: showInitialLoading
+                    child: (showInitialLoading || player.viewState.isSwitching)
                         ? Padding(
                             padding: EdgeInsets.all(playButtonSize * 0.28),
                             child: const CircularProgressIndicator(
@@ -242,7 +247,10 @@ class MobilePlayerControls extends StatelessWidget {
                               color: Colors.black87,
                             ),
                             iconSize: playIconSize,
-                            onPressed: () => player.togglePlayPause(),
+                            onPressed: () {
+                              HapticFeedback.lightImpact();
+                              player.togglePlayPause();
+                            },
                             tooltip: player.isPlaying ? '暂停' : '播放',
                           ),
                   ),
@@ -257,7 +265,12 @@ class MobilePlayerControls extends StatelessWidget {
                     color: player.hasNext ? Colors.white : Colors.white38,
                   ),
                   iconSize: skipIconSize,
-                  onPressed: player.hasNext ? () => player.playNext() : null,
+                  onPressed: player.hasNext
+                      ? () {
+                          HapticFeedback.lightImpact();
+                          player.playNext();
+                        }
+                      : null,
                   tooltip: '下一首',
                 ),
 

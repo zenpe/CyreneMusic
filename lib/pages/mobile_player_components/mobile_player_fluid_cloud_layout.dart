@@ -735,6 +735,7 @@ class _MobilePlayerFluidCloudLayoutState
                 SizedBox(
                   height: 22,
                   child: Stack(
+                    clipBehavior: Clip.none,
                     alignment: Alignment.center,
                     children: [
                       Container(
@@ -759,6 +760,7 @@ class _MobilePlayerFluidCloudLayoutState
                       ),
                       _AppleMusicSlider(
                         value: progress,
+                        duration: Duration(milliseconds: durationMs.toInt()),
                         onChanged: (v) {
                           final pos = Duration(
                             milliseconds: (v * durationMs).round(),
@@ -789,7 +791,12 @@ class _MobilePlayerFluidCloudLayoutState
               icon: const Icon(CupertinoIcons.backward_fill),
               color: Colors.white.withValues(alpha: 0.9),
               iconSize: 32,
-              onPressed: player.hasPrevious ? player.playPrevious : null,
+              onPressed: player.hasPrevious
+                  ? () {
+                      HapticFeedback.lightImpact();
+                      player.playPrevious();
+                    }
+                  : null,
             ),
             const SizedBox(width: 14),
 
@@ -806,7 +813,10 @@ class _MobilePlayerFluidCloudLayoutState
                   ),
                   iconSize: 52,
                   padding: EdgeInsets.zero,
-                  onPressed: player.togglePlayPause,
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    player.togglePlayPause();
+                  },
                 );
               },
             ),
@@ -817,7 +827,12 @@ class _MobilePlayerFluidCloudLayoutState
               icon: const Icon(CupertinoIcons.forward_fill),
               color: Colors.white.withValues(alpha: 0.9),
               iconSize: 32,
-              onPressed: player.hasNext ? player.playNext : null,
+              onPressed: player.hasNext
+                  ? () {
+                      HapticFeedback.lightImpact();
+                      player.playNext();
+                    }
+                  : null,
             ),
 
             const Spacer(),
@@ -1001,6 +1016,7 @@ class _MobilePlayerFluidCloudLayoutState
                   return SizedBox(
                     height: 24, // 增加点击热区
                     child: Stack(
+                      clipBehavior: Clip.none,
                       alignment: Alignment.center,
                       children: [
                         Container(
@@ -1025,6 +1041,7 @@ class _MobilePlayerFluidCloudLayoutState
                         ),
                         _AppleMusicSlider(
                           value: value,
+                          duration: Duration(milliseconds: duration.toInt()),
                           onChanged: (v) {
                             final pos = Duration(
                               milliseconds: (v * duration).round(),
@@ -1118,7 +1135,12 @@ class _MobilePlayerFluidCloudLayoutState
                 icon: const Icon(CupertinoIcons.backward_fill),
                 color: Colors.white.withValues(alpha: 0.9),
                 iconSize: 42,
-                onPressed: player.hasPrevious ? player.playPrevious : null,
+                onPressed: player.hasPrevious
+                    ? () {
+                        HapticFeedback.lightImpact();
+                        player.playPrevious();
+                      }
+                    : null,
               ),
 
               // 播放/暂停（大图标，无圆形背景）
@@ -1134,7 +1156,10 @@ class _MobilePlayerFluidCloudLayoutState
                     ),
                     iconSize: 72,
                     padding: EdgeInsets.zero,
-                    onPressed: player.togglePlayPause,
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      player.togglePlayPause();
+                    },
                   );
                 },
               ),
@@ -1144,7 +1169,12 @@ class _MobilePlayerFluidCloudLayoutState
                 icon: const Icon(CupertinoIcons.forward_fill),
                 color: Colors.white.withValues(alpha: 0.9),
                 iconSize: 42,
-                onPressed: player.hasNext ? player.playNext : null,
+                onPressed: player.hasNext
+                    ? () {
+                        HapticFeedback.lightImpact();
+                        player.playNext();
+                      }
+                    : null,
               ),
             ],
           ),
@@ -1175,6 +1205,7 @@ class _MobilePlayerFluidCloudLayoutState
             constraints: const BoxConstraints(),
             tooltip: !_showCoverMode ? '显示封面' : '显示歌词',
             onPressed: () {
+              HapticFeedback.selectionClick();
               setState(() => _showCoverMode = !_showCoverMode);
             },
           ),
@@ -1202,6 +1233,7 @@ class _MobilePlayerFluidCloudLayoutState
                 constraints: const BoxConstraints(),
                 tooltip: '音量调节',
                 onPressed: () {
+                  HapticFeedback.selectionClick();
                   MobilePlayerDialogs.showVolumePopup(
                     context,
                     buttonKey: _volumeButtonKey,
@@ -1219,7 +1251,10 @@ class _MobilePlayerFluidCloudLayoutState
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
             tooltip: '播放队列',
-            onPressed: widget.onPlaylistPressed,
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              widget.onPlaylistPressed?.call();
+            },
           ),
         ],
       ),
@@ -1719,6 +1754,7 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
         color: _isInPlaylist ? Colors.redAccent : Colors.white.withValues(alpha: 0.8),
       ),
       onPressed: () {
+        HapticFeedback.mediumImpact();
         if (_isInPlaylist) {
           _showManageOptions(context);
         } else {
@@ -1945,12 +1981,14 @@ class _DownloadButtonState extends State<_DownloadButton> {
 }
 
 /// Apple Music 风格的 Slider 组件
-/// 1. 默认显示微弱滑块
+/// 1. 默认微弱滑块，触摸拖动时放大
 /// 2. 交互时激活轨道变亮
-/// 3. 使用圆形滑块，触摸拖动时放大
+/// 3. 拖动进度时上方弹出悬浮时间气泡，实时展示目标时间
+/// 4. 包含细腻的触觉反馈（开始、跨步、释放）
 class _AppleMusicSlider extends StatefulWidget {
   final double value;
   final ValueChanged<double>? onChanged;
+  final Duration? duration;
   static const double min = 0.0;
   static const double max = 1.0;
   static const Color activeColor = Colors.white;
@@ -1959,6 +1997,7 @@ class _AppleMusicSlider extends StatefulWidget {
   const _AppleMusicSlider({
     required this.value,
     required this.onChanged,
+    this.duration,
   });
 
   @override
@@ -1970,17 +2009,19 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider>
   double? _dragValue; // 用于处理移动端拖动时的平滑感
   late AnimationController _controller;
   late Animation<double> _animation;
+  int? _lastHapticSecond;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 180),
     );
     _animation = CurvedAnimation(
       parent: _controller,
       curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
     );
   }
 
@@ -1990,64 +2031,218 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider>
     super.dispose();
   }
 
+  String _formatBubbleTime(Duration duration) {
+    if (duration.inSeconds < 0) return '00:00';
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+    final seconds = duration.inSeconds % 60;
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        // 交互时 active track 变亮
-        final currentActiveColor = _AppleMusicSlider.activeColor.withValues(
-          alpha:
-          lerpDouble(0.65, 0.9, _animation.value) ?? 0.65,
-        );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final currentValue = _dragValue ?? widget.value;
+        final totalDuration = widget.duration ?? Duration.zero;
+        final currentTargetMs =
+            (currentValue.clamp(0.0, 1.0) * totalDuration.inMilliseconds).round();
+        final timeStr = _formatBubbleTime(Duration(milliseconds: currentTargetMs));
 
-        final currentInactiveColor =
-            Color.lerp(
-              _AppleMusicSlider.inactiveColor,
-              Colors.white.withValues(alpha: 0.3),
-              _animation.value,
-            ) ??
-            _AppleMusicSlider.inactiveColor;
+        final thumbRadius = _AppleMusicThumbShape.maxRadius; // 6.0
+        final availableTrackWidth = max(0.0, width - 2 * thumbRadius);
+        final thumbX = thumbRadius + currentValue.clamp(0.0, 1.0) * availableTrackWidth;
 
-        return SliderTheme(
-          data: SliderThemeData(
-            trackHeight: 6,
-            trackShape: const RoundedRectSliderTrackShape(),
-            thumbShape: _AppleMusicThumbShape(
-              scale: _animation.value, // 完全跟随动画，未交互时为 0 (隐藏)
-              opacity: _animation.value,
+        final isHour = totalDuration.inHours > 0;
+        final bubbleWidth = isHour ? 70.0 : 56.0;
+        const bubbleHeight = 26.0;
+        const arrowHeight = 4.5;
+
+        final double bubbleLeft =
+            (thumbX - bubbleWidth / 2).clamp(0.0, max(0.0, width - bubbleWidth)).toDouble();
+        final double arrowCenterX =
+            (thumbX - bubbleLeft).clamp(8.0, bubbleWidth - 8.0).toDouble();
+
+        return Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            // 1. 进度条主体
+            AnimatedBuilder(
+              animation: _animation,
+              builder: (context, child) {
+                final currentActiveColor = _AppleMusicSlider.activeColor.withValues(
+                  alpha: lerpDouble(0.65, 0.9, _animation.value) ?? 0.65,
+                );
+
+                final currentInactiveColor =
+                    Color.lerp(
+                      _AppleMusicSlider.inactiveColor,
+                      Colors.white.withValues(alpha: 0.3),
+                      _animation.value,
+                    ) ??
+                    _AppleMusicSlider.inactiveColor;
+
+                return SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 6,
+                    trackShape: const RoundedRectSliderTrackShape(),
+                    thumbShape: _AppleMusicThumbShape(
+                      scale: _animation.value,
+                      opacity: _animation.value,
+                    ),
+                    overlayShape: SliderComponentShape.noOverlay,
+                    activeTrackColor: currentActiveColor,
+                    inactiveTrackColor: currentInactiveColor,
+                  ),
+                  child: Slider(
+                    value: _dragValue ?? widget.value.clamp(0.0, 1.0),
+                    onChanged: (v) {
+                      setState(() {
+                        _dragValue = v;
+                      });
+                      if (widget.duration != null &&
+                          widget.duration!.inMilliseconds > 0) {
+                        final currentMs =
+                            (v * widget.duration!.inMilliseconds).round();
+                        final currentSecond = currentMs ~/ 1000;
+                        if (_lastHapticSecond != null &&
+                            (currentSecond ~/ 5) != (_lastHapticSecond! ~/ 5)) {
+                          HapticFeedback.selectionClick();
+                        }
+                        _lastHapticSecond = currentSecond;
+                      }
+                      if (widget.onChanged != null) widget.onChanged!(v);
+                    },
+                    onChangeStart: (_) {
+                      HapticFeedback.selectionClick();
+                      setState(() {
+                        _dragValue = widget.value;
+                      });
+                      if (widget.duration != null &&
+                          widget.duration!.inMilliseconds > 0) {
+                        _lastHapticSecond =
+                            ((widget.value * widget.duration!.inMilliseconds)
+                                    .round()) ~/
+                                1000;
+                      }
+                      _controller.forward();
+                    },
+                    onChangeEnd: (_) {
+                      HapticFeedback.mediumImpact();
+                      setState(() {
+                        _dragValue = null;
+                        _lastHapticSecond = null;
+                      });
+                      _controller.reverse();
+                    },
+                    min: _AppleMusicSlider.min,
+                    max: _AppleMusicSlider.max,
+                  ),
+                );
+              },
             ),
-            overlayShape: SliderComponentShape.noOverlay,
-            activeTrackColor: currentActiveColor,
-            inactiveTrackColor: currentInactiveColor,
-          ),
-          child: Slider(
-            value: _dragValue ?? widget.value,
-            onChanged: (v) {
-              setState(() {
-                _dragValue = v; // 立即更新本地值以确保拖动流畅
-              });
-              if (widget.onChanged != null) widget.onChanged!(v);
-            },
-            onChangeStart: (_) {
-              setState(() {
-                _dragValue = widget.value;
-              });
-              _controller.forward();
-            },
-            onChangeEnd: (_) {
-              setState(() {
-                _dragValue = null; // 释放拖动，恢复跟随外部进度
-              });
-              _controller.reverse();
-            },
-            min: _AppleMusicSlider.min,
-            max: _AppleMusicSlider.max,
-          ),
+
+            // 2. 拖拽时上方的悬浮时间气泡
+            Positioned(
+              top: -35,
+              left: bubbleLeft,
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _animation,
+                  builder: (context, _) {
+                    if (_animation.value <= 0.001) {
+                      return const SizedBox.shrink();
+                    }
+                    return Opacity(
+                      opacity: _animation.value,
+                      child: Transform.scale(
+                        scale: 0.75 + 0.25 * _animation.value,
+                        alignment: Alignment.bottomCenter,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: bubbleWidth,
+                              height: bubbleHeight,
+                              decoration: BoxDecoration(
+                                color: const Color(0xF21C1D26),
+                                borderRadius: BorderRadius.circular(13),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.22),
+                                  width: 0.8,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.45),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                timeStr,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  fontFamily: 'Consolas',
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: EdgeInsets.only(
+                                left: max(0.0, arrowCenterX - 4.5).toDouble(),
+                              ),
+                              child: CustomPaint(
+                                size: const Size(9, arrowHeight),
+                                painter: _BubbleArrowPainter(
+                                  color: const Color(0xF21C1D26),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
   }
+}
+
+class _BubbleArrowPainter extends CustomPainter {
+  final Color color;
+  const _BubbleArrowPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _BubbleArrowPainter oldDelegate) =>
+      color != oldDelegate.color;
 }
 
 /// 自定义圆形滑块，支持缩放和透明度动画

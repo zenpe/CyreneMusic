@@ -17,6 +17,7 @@ import '../services/app_settings_service.dart';
 import '../services/home_search_service.dart';
 import '../widgets/announcement_dialog.dart';
 import '../models/track.dart';
+import '../models/toplist.dart';
 import '../models/version_info.dart';
 import '../widgets/search_widget.dart';
 import '../utils/page_visibility_notifier.dart';
@@ -251,6 +252,10 @@ class _HomePageState extends State<HomePage>
       setState(() {
         // 数据变化时更新缓存并重启定时器
         _updateCachedTracksAndStartTimer();
+        // 如果榜单数据已就绪，且猜你喜欢尚未成功加载，重新触发生成
+        if (MusicService().toplists.isNotEmpty) {
+          _prepareGuessYouLikeFuture();
+        }
       });
     }
   }
@@ -2158,33 +2163,38 @@ class _HomePageState extends State<HomePage>
 
   /// 从榜单中获取随机歌曲
   Future<List<Track>> _fetchRandomTracksFromToplists() async {
-    // 等待一小段时间确保榜单数据已加载（如果是首次启动）
-    if (MusicService().toplists.isEmpty) {
-      await Future.delayed(const Duration(seconds: 1));
-    }
-
-    final toplists = MusicService().toplists;
+    // 1. 如果已有内存榜单，直接挑选
+    List<Toplist> toplists = MusicService().toplists;
     if (toplists.isEmpty) {
-      // 如果还没有榜单数据，尝试刷新一次
-      await MusicService().refreshToplists();
-      if (MusicService().toplists.isEmpty) {
-        return []; // 仍然没有数据，返回空
-      }
+      // 尝试快速从磁盘缓存恢复
+      await MusicService().loadCachedToplists();
+      toplists = MusicService().toplists;
     }
 
-    // 收集所有榜单的前10首歌曲作为候选池
-    final List<Track> candidates = [];
+    // 2. 如果当前正在网络加载中且还没有榜单数据，等待加载结束（最多等2.5秒）
+    if (toplists.isEmpty && MusicService().isLoading) {
+      int waitedMs = 0;
+      while (MusicService().isLoading && waitedMs < 2500) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        waitedMs += 100;
+      }
+      toplists = MusicService().toplists;
+    }
 
-    // 如果榜单数据中已经包含了 tracks (Track list)，直接使用
-    // 注意：Toplist 模型中包含 tracks 字段，是 ToplistTrack 类型
-    for (final toplist in MusicService().toplists) {
+    if (toplists.isEmpty) {
+      return []; // 无榜单数据
+    }
+
+    // 收集所有榜单的歌曲作为候选池
+    final List<Track> candidates = [];
+    for (final toplist in toplists) {
       if (toplist.tracks.isNotEmpty) {
         candidates.addAll(toplist.tracks);
       }
     }
 
     if (candidates.isEmpty) {
-       return [];
+      return [];
     }
 
     // 随机挑选3首
@@ -2192,7 +2202,6 @@ class _HomePageState extends State<HomePage>
     final List<Track> selected = [];
     final count = min(3, candidates.length);
 
-    // 简单的随机不重复选择
     final List<int> selectedIndices = [];
     while (selected.length < count) {
       final index = random.nextInt(candidates.length);

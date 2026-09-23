@@ -150,7 +150,7 @@ class ForYouSkeleton extends StatelessWidget {
           // 每日推荐歌单骨架
           const _SectionTitleSkeleton(),
           const SizedBox(height: 12),
-          const _BentoPlaylistGridSkeleton(),
+          const BentoPlaylistGridSkeleton(),
           const SizedBox(height: 28),
           // 专属歌单骨架
           const _SectionTitleSkeleton(),
@@ -634,8 +634,8 @@ class _HeroSectionSkeleton extends StatelessWidget {
 }
 
 /// Bento 歌单网格骨架
-class _BentoPlaylistGridSkeleton extends StatelessWidget {
-  const _BentoPlaylistGridSkeleton();
+class BentoPlaylistGridSkeleton extends StatelessWidget {
+  const BentoPlaylistGridSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {

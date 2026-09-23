@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -74,7 +75,7 @@ class MobilePlayerDialogs {
       context: context,
       barrierDismissible: true,
       barrierLabel: 'VolumePopup',
-      barrierColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.25),
       transitionDuration: const Duration(milliseconds: 180),
       transitionBuilder: (context, anim, _, child) {
         return FadeTransition(
@@ -88,173 +89,25 @@ class MobilePlayerDialogs {
         );
       },
       pageBuilder: (context, _, __) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-
         return Stack(
           children: [
             Positioned.fill(
               child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
+                behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.of(context).pop(),
+                onPanDown: (_) => Navigator.of(context).pop(),
               ),
             ),
             Positioned(
               left: left,
               top: top,
-              child: Material(
-                color: Colors.transparent,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                    child: Container(
-                      width: cardWidth,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: (isDark ? const Color(0xFF1E1E24) : Colors.white)
-                            .withValues(alpha: 0.92),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withValues(
-                            alpha: isDark ? 0.12 : 0.3,
-                          ),
-                          width: 0.8,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.35),
-                            blurRadius: 24,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: StatefulBuilder(
-                        builder: (context, setLocal) {
-                          Widget buildRow({
-                            required IconData icon,
-                            required String label,
-                            required double value,
-                            required ValueChanged<double> onChanged,
-                          }) {
-                            return Row(
-                              children: [
-                                Icon(
-                                  value == 0
-                                      ? Icons.volume_off_rounded
-                                      : value < 0.5
-                                      ? Icons.volume_down_rounded
-                                      : Icons.volume_up_rounded,
-                                  size: 20,
-                                  color: isDark
-                                      ? Colors.white70
-                                      : Colors.black87,
-                                ),
-                                if (systemSupported) ...[
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    label,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: isDark
-                                          ? Colors.white70
-                                          : Colors.black87,
-                                    ),
-                                  ),
-                                ],
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: SliderTheme(
-                                    data: SliderTheme.of(context).copyWith(
-                                      trackHeight: 4,
-                                      thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 7,
-                                      ),
-                                      overlayShape:
-                                          const RoundSliderOverlayShape(
-                                            overlayRadius: 14,
-                                          ),
-                                      activeTrackColor: isDark
-                                          ? Colors.white
-                                          : Colors.black87,
-                                      inactiveTrackColor:
-                                          (isDark ? Colors.white : Colors.black)
-                                              .withValues(alpha: 0.15),
-                                      thumbColor: isDark
-                                          ? Colors.white
-                                          : Colors.black87,
-                                    ),
-                                    child: Slider(
-                                      value: value,
-                                      min: 0.0,
-                                      max: 1.0,
-                                      onChanged: onChanged,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 38,
-                                  child: Text(
-                                    '${(value * 100).toInt()}%',
-                                    textAlign: TextAlign.end,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: isDark
-                                          ? Colors.white70
-                                          : Colors.black87,
-                                      fontFamily: 'Consolas',
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-
-                          if (!systemSupported) {
-                            return buildRow(
-                              icon: Icons.volume_up_rounded,
-                              label: '应用',
-                              value: appTemp,
-                              onChanged: (v) {
-                                setLocal(() => appTemp = v);
-                                player.setVolume(v);
-                              },
-                            );
-                          }
-
-                          return Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              buildRow(
-                                icon: Icons.speaker,
-                                label: '系统',
-                                value: systemTemp,
-                                onChanged: (v) {
-                                  setLocal(() => systemTemp = v);
-                                  systemService.setVolume(v);
-                                },
-                              ),
-                              const SizedBox(height: 6),
-                              buildRow(
-                                icon: Icons.music_note,
-                                label: '应用',
-                                value: appTemp,
-                                onChanged: (v) {
-                                  setLocal(() => appTemp = v);
-                                  player.setVolume(v);
-                                },
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ),
+              child: _MobileVolumePopupCard(
+                cardWidth: cardWidth,
+                systemSupported: systemSupported,
+                initialSystemVolume: systemTemp,
+                initialAppVolume: appTemp,
+                onAppVolumeChanged: (v) => player.setVolume(v),
+                onSystemVolumeChanged: (v) => systemService.setVolume(v),
               ),
             ),
           ],
@@ -1588,6 +1441,222 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _MobileVolumePopupCard extends StatefulWidget {
+  final double cardWidth;
+  final bool systemSupported;
+  final double initialSystemVolume;
+  final double initialAppVolume;
+  final ValueChanged<double> onAppVolumeChanged;
+  final ValueChanged<double> onSystemVolumeChanged;
+
+  const _MobileVolumePopupCard({
+    required this.cardWidth,
+    required this.systemSupported,
+    required this.initialSystemVolume,
+    required this.initialAppVolume,
+    required this.onAppVolumeChanged,
+    required this.onSystemVolumeChanged,
+  });
+
+  @override
+  State<_MobileVolumePopupCard> createState() => _MobileVolumePopupCardState();
+}
+
+class _MobileVolumePopupCardState extends State<_MobileVolumePopupCard> {
+  late double _systemVolume;
+  late double _appVolume;
+  Timer? _autoDismissTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _systemVolume = widget.initialSystemVolume;
+    _appVolume = widget.initialAppVolume;
+    _startAutoDismissTimer();
+  }
+
+  void _startAutoDismissTimer() {
+    _autoDismissTimer?.cancel();
+    _autoDismissTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoDismissTimer?.cancel();
+    super.dispose();
+  }
+
+  Widget _buildRow({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required double value,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Row(
+      children: [
+        Icon(
+          value == 0
+              ? Icons.volume_off_rounded
+              : value < 0.5
+              ? Icons.volume_down_rounded
+              : Icons.volume_up_rounded,
+          size: 19,
+          color: Colors.white.withValues(alpha: 0.85),
+        ),
+        if (widget.systemSupported) ...[
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withValues(alpha: 0.85),
+            ),
+          ),
+        ],
+        const SizedBox(width: 8),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3.5,
+              thumbShape: const RoundSliderThumbShape(
+                enabledThumbRadius: 6,
+              ),
+              overlayShape: const RoundSliderOverlayShape(
+                overlayRadius: 13,
+              ),
+              activeTrackColor: Colors.white,
+              inactiveTrackColor: Colors.white.withValues(alpha: 0.18),
+              thumbColor: Colors.white,
+            ),
+            child: Slider(
+              value: value.clamp(0.0, 1.0),
+              min: 0.0,
+              max: 1.0,
+              onChanged: (v) {
+                _startAutoDismissTimer();
+                onChanged(v);
+              },
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 38,
+          child: Text(
+            '${(value * 100).toInt()}%',
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.white.withValues(alpha: 0.95),
+              fontFamily: 'Consolas',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {}, // Prevent taps inside from propagating to barrier
+      onVerticalDragEnd: (details) {
+        if ((details.primaryVelocity ?? 0) > 100) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Material(
+        color: Colors.transparent,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+            child: Container(
+              width: widget.cardWidth,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xD9161620),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  width: 0.8,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    blurRadius: 28,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 28,
+                      height: 3,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(1.5),
+                      ),
+                    ),
+                  ),
+                  if (!widget.systemSupported)
+                    _buildRow(
+                      context: context,
+                      icon: Icons.volume_up_rounded,
+                      label: '应用',
+                      value: _appVolume,
+                      onChanged: (v) {
+                        setState(() => _appVolume = v);
+                        widget.onAppVolumeChanged(v);
+                      },
+                    )
+                  else ...[
+                    _buildRow(
+                      context: context,
+                      icon: Icons.speaker,
+                      label: '系统',
+                      value: _systemVolume,
+                      onChanged: (v) {
+                        setState(() => _systemVolume = v);
+                        widget.onSystemVolumeChanged(v);
+                      },
+                    ),
+                    const SizedBox(height: 6),
+                    _buildRow(
+                      context: context,
+                      icon: Icons.music_note,
+                      label: '应用',
+                      value: _appVolume,
+                      onChanged: (v) {
+                        setState(() => _appVolume = v);
+                        widget.onAppVolumeChanged(v);
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -11,6 +11,7 @@ import '../../utils/image_utils.dart';
 import 'home_widgets.dart';
 import 'toplist_detail.dart';
 import '../../widgets/skeleton_loader.dart';
+import '../../widgets/warm_empty_state.dart';
 
 class ChartsTab extends StatelessWidget {
   final List<Track> cachedRandomTracks;
@@ -45,31 +46,31 @@ class ChartsTab extends StatelessWidget {
 
     if (MusicService().errorMessage != null) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('加载失败\n${MusicService().errorMessage}'),
-              const SizedBox(height: 16),
-              if (ThemeManager().isFluentFramework)
-                fluent.Button(
-                  onPressed: onRefresh,
-                  child: const Text('重试'),
-                )
-              else
-                ElevatedButton(
-                  onPressed: onRefresh,
-                  child: const Text('重试'),
-                ),
-            ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 32),
+          child: WarmStateCard(
+            type: MusicService().errorMessage?.contains('HTTP 0') == true ||
+                    MusicService().errorMessage?.contains('Socket') == true
+                ? WarmStateType.network
+                : WarmStateType.error,
+            technicalDetails: MusicService().errorMessage,
+            onRetry: onRefresh,
           ),
         ),
       );
     }
 
     if (MusicService().toplists.isEmpty) {
-      return const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('暂无榜单数据')));
+      return Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 32),
+          child: WarmStateCard(
+            type: WarmStateType.empty,
+            onRetry: onRefresh,
+            retryText: '获取榜单',
+          ),
+        ),
+      );
     }
 
     return LayoutBuilder(
