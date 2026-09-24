@@ -309,7 +309,7 @@ class CacheService extends ChangeNotifier {
   Map<String, CacheMetadata> _cacheIndex = {};
   final Map<String, Future<bool>> _pendingCacheWrites = {};
   bool _isInitialized = false;
-  bool _cacheEnabled = false; // 缓存开关，默认关闭（由用户显式开启，避免移动网络隐式整曲下载）
+  bool _cacheEnabled = true; // 缓存开关，默认开启
   String? _customCacheDir; // 自定义缓存目录
   int _maxCacheSizeBytes = _defaultMaxCacheSizeBytes;
   Timer? _indexSaveDebounce;
@@ -1815,8 +1815,8 @@ class CacheService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // 加载缓存开关状态（默认关闭，保持用户显式开启，避免隐式消耗流量）
-      _cacheEnabled = prefs.getBool('cache_enabled') ?? false;
+      // 加载缓存开关状态（新用户默认开启，已有用户保留已保存的选择）
+      _cacheEnabled = prefs.getBool('cache_enabled') ?? true;
 
       // 加载自定义缓存目录
       _customCacheDir = prefs.getString('custom_cache_dir');

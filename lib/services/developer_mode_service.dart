@@ -14,7 +14,7 @@ class DeveloperModeService extends ChangeNotifier {
   bool _isDeveloperMode = false;
   bool get isDeveloperMode => _isDeveloperMode;
 
-  bool _isSearchResultMergeEnabled = true;
+  bool _isSearchResultMergeEnabled = false;
   bool get isSearchResultMergeEnabled => _isSearchResultMergeEnabled;
 
   bool _showPerformanceOverlay = false;
@@ -166,7 +166,8 @@ class DeveloperModeService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       _isDeveloperMode = prefs.getBool('developer_mode') ?? false;
-      _isSearchResultMergeEnabled = prefs.getBool('search_result_merge_enabled') ?? true;
+      _isSearchResultMergeEnabled =
+          prefs.getBool('search_result_merge_enabled') ?? false;
       _showPerformanceOverlay = prefs.getBool('show_performance_overlay') ?? false;
       _isInitialized = true;
       if (_isDeveloperMode) {
