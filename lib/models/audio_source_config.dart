@@ -1,28 +1,27 @@
-
 import '../services/audio_source_service.dart';
 
 /// Audio Source Configuration Model
 class AudioSourceConfig {
   /// Unique ID
   final String id;
-  
+
   /// Source Type
   final AudioSourceType type;
-  
+
   /// Display Name
   final String name;
-  
+
   /// Base API URL
   final String url;
-  
+
   /// API Key (optional)
   final String apiKey;
-  
+
   /// 当前解析器支持的播放平台列表。
   /// 搜索平台由 SearchProviderCatalog 独立管理。
   /// 可选值: 'netease', 'apple', 'qq', 'kugou', 'kuwo', 'spotify'
   final List<String> supportedPlatforms;
-  
+
   // --- LxMusic Specific Fields ---
   final String version;
   final String author;
@@ -80,7 +79,7 @@ class AudioSourceConfig {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'type': type.index,
+      'type': type.name,
       'name': name,
       'url': url,
       'apiKey': apiKey,
@@ -94,17 +93,21 @@ class AudioSourceConfig {
     };
   }
 
-  /// Create from JSON
-  factory AudioSourceConfig.fromJson(Map<String, dynamic> json) {
+  /// Create from JSON. Removed legacy source types are rejected.
+  static AudioSourceConfig? tryFromJson(Map<String, dynamic> json) {
+    final type = _parseType(json['type']);
+    if (type == null) return null;
     return AudioSourceConfig(
       id: json['id'] as String,
-      type: AudioSourceType.values[json['type'] as int],
+      type: type,
       name: json['name'] as String,
       url: json['url'] as String,
       apiKey: json['apiKey'] as String? ?? '',
-      supportedPlatforms: (json['supportedPlatforms'] as List<dynamic>?)
-          ?.map((e) => e as String)
-          .toList() ?? [],
+      supportedPlatforms:
+          (json['supportedPlatforms'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
       version: json['version'] as String? ?? '',
       author: json['author'] as String? ?? '',
       description: json['description'] as String? ?? '',
@@ -112,5 +115,31 @@ class AudioSourceConfig {
       scriptContent: json['scriptContent'] as String? ?? '',
       urlPathTemplate: json['urlPathTemplate'] as String? ?? '',
     );
+  }
+
+  factory AudioSourceConfig.fromJson(Map<String, dynamic> json) {
+    final config = tryFromJson(json);
+    if (config == null) {
+      throw const FormatException('Unsupported legacy audio source type');
+    }
+    return config;
+  }
+
+  static AudioSourceType? _parseType(dynamic value) {
+    if (value is String) {
+      return switch (value) {
+        'lxmusic' => AudioSourceType.lxmusic,
+        'navidrome' => AudioSourceType.navidrome,
+        _ => null,
+      };
+    }
+    if (value is int) {
+      return switch (value) {
+        1 => AudioSourceType.lxmusic,
+        3 => AudioSourceType.navidrome,
+        _ => null,
+      };
+    }
+    return null;
   }
 }

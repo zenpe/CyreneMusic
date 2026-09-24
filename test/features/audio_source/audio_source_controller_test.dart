@@ -57,7 +57,7 @@ class _InMemoryAudioSourceRepository implements AudioSourceRepository {
 AudioSourceConfig _buildConfig(String id, String name) {
   return AudioSourceConfig(
     id: id,
-    type: AudioSourceType.omniparse,
+    type: AudioSourceType.lxmusic,
     name: name,
     url: 'https://example.com/$id',
   );

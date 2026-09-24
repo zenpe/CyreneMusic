@@ -428,7 +428,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '请确保自定义源符合 OmniParse 标准',
+                      '请确保自定义源兼容 Cyrene API',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onPrimaryContainer,
                       ),

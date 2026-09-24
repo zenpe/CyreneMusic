@@ -63,7 +63,6 @@ dependencies:
   crypto: ^3.0.3
   
   # AES-GCM encryption for secure config files
-  pointycastle: ^4.0.0
   
   # File picker for directory selection
   file_picker: ^10.3.10

@@ -182,7 +182,7 @@ Future<void> searchSongs(String keyword) async {
 
 1. 进入 **设置** → **网络** → **后端源**
 2. 选择 **官方源** 或 **自定义源**
-3. 如果选择自定义源，输入符合 OmniParse 标准的后端地址
+3. 如果选择自定义源，输入兼容 Cyrene API 的后端地址
 4. 点击 **测试连接** 验证后端是否可用
 
 ## 🔒 URL 验证
@@ -196,9 +196,9 @@ final isValid2 = UrlService.isValidUrl('invalid-url');
 // false
 ```
 
-## 📋 OmniParse 标准
+## 📋 Cyrene API 兼容要求
 
-自定义后端源必须符合 OmniParse 标准，提供以下端点：
+自定义后端源必须兼容当前 Cyrene API，提供以下端点：
 
 - ✅ 所有网易云音乐 API
 - ✅ 所有 QQ 音乐 API

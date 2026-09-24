@@ -104,10 +104,6 @@ class PlaybackResolverRegistry {
     switch (type) {
       case AudioSourceType.lxmusic:
         return isActive ? service.currentSupportedPlaybackPlatforms : const [];
-      case AudioSourceType.tunehub:
-        return const ['netease', 'qq', 'kuwo'];
-      case AudioSourceType.omniparse:
-        return const ['netease', 'qq', 'kugou', 'kuwo', 'apple', 'spotify'];
       case AudioSourceType.navidrome:
         return const ['navidrome'];
     }

@@ -14,9 +14,7 @@ import 'navidrome_session_service.dart';
 
 /// 音源类型枚举
 enum AudioSourceType {
-  omniparse,   // OmniParse 音源（兼容现有后端格式）
   lxmusic,     // 洛雪音乐音源
-  tunehub,     // TuneHub 音源（公开 API）
   navidrome,   // Navidrome
 }
 
@@ -70,15 +68,6 @@ class AudioSourceService extends ChangeNotifier {
 
   static const List<String> lxQualityOptions = ['128k', '320k', 'flac', 'flac24bit'];
 
-  // ==================== TuneHub 音源来源代码映射 ====================
-  static const Map<MusicSource, String> _tuneHubSourceCodeMap = {
-    MusicSource.netease: 'netease',
-    MusicSource.qq: 'qq',
-    MusicSource.kuwo: 'kuwo',
-  };
-
-  static const List<String> tuneHubQualityOptions = ['128k', '320k', 'flac', 'flac24bit'];
-
   Future<void> _enqueueMutation(Future<void> Function() mutation) {
     final task = _mutationQueue.catchError((_) {}).then((_) => mutation());
     _mutationQueue = task.catchError((_) {});
@@ -92,8 +81,6 @@ class AudioSourceService extends ChangeNotifier {
 
   /// 各音源类型默认支持的搜索平台
   static const Map<AudioSourceType, List<String>> defaultSupportedPlatforms = {
-    AudioSourceType.omniparse: ['netease', 'qq', 'kugou', 'kuwo', 'apple', 'spotify'],
-    AudioSourceType.tunehub: ['netease', 'qq', 'kuwo'],
     AudioSourceType.lxmusic: [], // 动态从脚本获取
     AudioSourceType.navidrome: [], // Navidrome 使用独立 API
   };
@@ -181,11 +168,31 @@ class AudioSourceService extends ChangeNotifier {
       final sourcesJson = prefs.getString(_keySources);
       if (sourcesJson != null) {
         final List<dynamic> list = jsonDecode(sourcesJson);
-        _sources = list.map((e) => AudioSourceConfig.fromJson(e)).toList();
+        final needsRewrite = list.any(
+          (item) => item is! Map || item['type'] is! String,
+        );
+        _sources = list
+            .whereType<Map>()
+            .map((item) => AudioSourceConfig.tryFromJson(
+                  Map<String, dynamic>.from(item),
+                ))
+            .whereType<AudioSourceConfig>()
+            .toList();
+        if (needsRewrite || _sources.length != list.length) {
+          await prefs.setString(
+            _keySources,
+            jsonEncode(_sources.map((source) => source.toJson()).toList()),
+          );
+        }
       }
 
       // 2. 加载活动音源 ID
       _activeSourceId = prefs.getString(_keyActiveSourceId) ?? '';
+      if (_activeSourceId != navidromeSourceId &&
+          !_sources.any((source) => source.id == _activeSourceId)) {
+        _activeSourceId = '';
+        await prefs.setString(_keyActiveSourceId, '');
+      }
 
       // 3. 迁移旧版配置 (如果列表为空但有旧配置)
       if (_sources.isEmpty && prefs.containsKey(_keyOldSourceUrl)) {
@@ -209,18 +216,19 @@ class AudioSourceService extends ChangeNotifier {
   Future<void> _migrateOldSettings(SharedPreferences prefs) async {
     StructuredLogService.log('🔄 [AudioSourceService] 检测到旧版配置，开始迁移...');
     try {
-      final typeIndex = prefs.getInt(_keyOldSourceType) ?? 0;
-      final type = AudioSourceType.values[typeIndex];
+      final typeIndex = prefs.getInt(_keyOldSourceType);
       final url = prefs.getString(_keyOldSourceUrl) ?? '';
 
-      if (url.isEmpty) return;
+      if (typeIndex != 1 || url.isEmpty) {
+        StructuredLogService.log('ℹ️ [AudioSourceService] 忽略已废弃的旧版音源配置');
+        await _clearOldSettings(prefs);
+        return;
+      }
 
       final config = AudioSourceConfig(
         id: _generateId(),
-        type: type,
-        name: type == AudioSourceType.lxmusic
-            ? (prefs.getString(_keyOldLxSourceName) ?? '洛雪音源')
-            : (type == AudioSourceType.tunehub ? 'TuneHub 音源' : 'OmniParse 音源'),
+        type: AudioSourceType.lxmusic,
+        name: prefs.getString(_keyOldLxSourceName) ?? '洛雪音源',
         url: url,
         apiKey: prefs.getString(_keyOldLxApiKey) ?? '',
         version: prefs.getString(_keyOldLxSourceVersion) ?? '',
@@ -238,10 +246,26 @@ class AudioSourceService extends ChangeNotifier {
       await _saveSources();
       await _saveActiveSourceId();
 
-      // 清理旧配置 (可选，这里暂时保留以防万一)
+      await _clearOldSettings(prefs);
       StructuredLogService.log('✅ [AudioSourceService] 迁移完成');
     } catch (e) {
       StructuredLogService.log('❌ [AudioSourceService] 迁移失败: $e');
+    }
+  }
+
+  Future<void> _clearOldSettings(SharedPreferences prefs) async {
+    for (final key in [
+      _keyOldSourceType,
+      _keyOldSourceUrl,
+      _keyOldLxApiKey,
+      _keyOldLxSourceName,
+      _keyOldLxSourceVersion,
+      _keyOldLxScriptSource,
+      _keyOldLxSourceAuthor,
+      _keyOldLxSourceDescription,
+      _keyOldLxUrlPathTemplate,
+    ]) {
+      await prefs.remove(key);
     }
   }
 
@@ -376,24 +400,7 @@ class AudioSourceService extends ChangeNotifier {
     }
   }
 
-  // ==================== Compatibility Getters ====================
-  // 保持现有 API 兼容，但基于 activeSource 返回数据
-
-  AudioSourceType get sourceType => activeSource?.type ?? AudioSourceType.omniparse;
-
-  String get sourceUrl => activeSource?.url ?? '';
-
-  String get lxApiKey => activeSource?.apiKey ?? '';
-
-  String get lxSourceName => activeSource?.name ?? '';
-
-  String get lxSourceVersion => activeSource?.version ?? '';
-
-  String get lxSourceAuthor => activeSource?.author ?? '';
-
-  String get lxSourceDescription => activeSource?.description ?? '';
-
-  String get lxScriptSource => activeSource?.scriptSource ?? '';
+  AudioSourceType get sourceType => activeSource?.type ?? AudioSourceType.lxmusic;
 
   bool get isConfigured {
     if (isNavidromeActive) {
@@ -440,27 +447,7 @@ class AudioSourceService extends ChangeNotifier {
   List<String> get currentSupportedPlatforms =>
       currentSupportedPlaybackPlatforms;
 
-  String get baseUrl {
-    final url = activeSource?.url ?? '';
-    if (url.isEmpty) return '';
-    return _cleanUrl(url);
-  }
-
   // ==================== Helper Methods ====================
-
-  String _cleanUrl(String url) {
-    String result = url.trim();
-    while (result.startsWith("'") || result.startsWith('"')) {
-      result = result.substring(1);
-    }
-    while (result.endsWith("'") || result.endsWith('"')) {
-      result = result.substring(0, result.length - 1);
-    }
-    if (result.endsWith('/')) {
-      result = result.substring(0, result.length - 1);
-    }
-    return result;
-  }
 
   /// 验证 URL 格式
   static bool isValidUrl(String url) {
@@ -476,12 +463,8 @@ class AudioSourceService extends ChangeNotifier {
   /// 获取音源类型显示名称
   String getSourceTypeName() {
     switch (sourceType) {
-      case AudioSourceType.omniparse:
-        return 'OmniParse';
       case AudioSourceType.lxmusic:
         return '洛雪音乐';
-      case AudioSourceType.tunehub:
-        return 'TuneHub';
       case AudioSourceType.navidrome:
         return 'Navidrome';
     }
@@ -495,32 +478,7 @@ class AudioSourceService extends ChangeNotifier {
       final baseUrl = NavidromeSessionService().baseUrl;
       return baseUrl.isEmpty ? 'Navidrome (未配置)' : baseUrl;
     }
-    if (config.type == AudioSourceType.lxmusic) {
-      return '${config.name} (v${config.version})';
-    } else if (config.type == AudioSourceType.omniparse) {
-      return '${config.name} (URL 已隐藏)';
-    }    return config.url;
-  }
-
-  /// [Deprecated] Use addSource instead
-  @Deprecated('Use addSource for creating new sources or updateSource for existing ones')
-  Future<void> configure(AudioSourceType type, String url, {String? lxApiKey}) async {
-     // Compatibility implementation: Update active source or create new if none
-     if (activeSource != null) {
-       await updateSource(activeSource!.copyWith(
-         type: type.index != activeSource!.type.index ? null : activeSource!.type,
-         url: url,
-         apiKey: lxApiKey
-       ));
-     } else {
-       await addSource(AudioSourceConfig(
-         id: _generateId(),
-         type: type,
-         name: type == AudioSourceType.tunehub ? 'TuneHub' : 'OmniParse',
-         url: url,
-         apiKey: lxApiKey ?? '',
-       ));
-     }
+    return '${config.name} (v${config.version})';
   }
 
   /// [Deprecated] Use addSource instead
@@ -606,111 +564,4 @@ class AudioSourceService extends ChangeNotifier {
     }
   }
 
-  String buildLxMusicUrl(MusicSource source, dynamic songId, AudioQuality quality) {
-    final config = activeSource;
-    if (config == null) return '';
-
-    final sourceCode = getLxSourceCode(source);
-    if (sourceCode == null) throw UnsupportedError('洛雪音源不支持 ${source.name}');
-
-    final lxQuality = getLxQuality(quality);
-
-    if (config.urlPathTemplate.isNotEmpty) {
-      final path = config.urlPathTemplate
-          .replaceAll('{source}', sourceCode)
-          .replaceAll('{songId}', songId.toString())
-          .replaceAll('{quality}', lxQuality);
-      return '${baseUrl}$path';
-    }
-
-    return '${baseUrl}/url/$sourceCode/$songId/$lxQuality';
-  }
-
-  Map<String, String> getLxRequestHeaders() {
-    return {
-      'Content-Type': 'application/json',
-      'User-Agent': 'lx-music-request/1.0.0',
-      if (lxApiKey.isNotEmpty) 'X-Request-Key': lxApiKey,
-    };
-  }
-
-  // ==================== API Endpoints ====================
-
-  String get neteaseSongUrl => isConfigured ? '$baseUrl/song' : '';
-  String get qqSongUrl => isConfigured ? '$baseUrl/qq/song' : '';
-  String get kugouSongUrl => isConfigured ? '$baseUrl/kugou/song' : '';
-  String get kuwoSongUrl => isConfigured ? '$baseUrl/kuwo/song' : '';
-  String get appleSongUrl => isConfigured ? '$baseUrl/apple/song' : '';
-  String get appleStreamUrl => isConfigured ? '$baseUrl/apple/stream' : '';
-  String get audioProxyUrl => isConfigured ? '$baseUrl/audio/proxy' : '';
-
-  // ==================== TuneHub Logic ====================
-
-  bool isTuneHubSourceSupported(MusicSource source) {
-    if (sourceType != AudioSourceType.tunehub) return false;
-    return _tuneHubSourceCodeMap.containsKey(source);
-  }
-
-  String? getTuneHubSourceCode(MusicSource source) => _tuneHubSourceCodeMap[source];
-
-  String getTuneHubQuality(AudioQuality quality) {
-    switch (quality) {
-      case AudioQuality.standard: return '128k';
-      case AudioQuality.exhigh: return '320k';
-      case AudioQuality.lossless: return 'flac';
-      case AudioQuality.hires:
-      case AudioQuality.jymaster: return 'flac24bit';
-      default: return '320k';
-    }
-  }
-
-  String buildTuneHubInfoUrl(MusicSource source, dynamic songId) {
-    final sourceCode = getTuneHubSourceCode(source);
-    if (sourceCode == null) throw UnsupportedError('TuneHub 音源不支持 ${source.name}');
-    return '$baseUrl/api/?type=info&source=$sourceCode&id=$songId';
-  }
-
-  String buildTuneHubMusicUrl(MusicSource source, dynamic songId, AudioQuality quality) {
-    final sourceCode = getTuneHubSourceCode(source);
-    if (sourceCode == null) throw UnsupportedError('TuneHub 音源不支持 ${source.name}');
-    final tuneHubQuality = getTuneHubQuality(quality);
-    return '$baseUrl/api/?type=url&source=$sourceCode&id=$songId&br=$tuneHubQuality';
-  }
-
-  String buildTuneHubLyricUrl(MusicSource source, dynamic songId) {
-    final sourceCode = getTuneHubSourceCode(source);
-    if (sourceCode == null) throw UnsupportedError('TuneHub 音源不支持 ${source.name}');
-    return '$baseUrl/api/?type=lrc&source=$sourceCode&id=$songId';
-  }
-
-  // ==================== TuneHub v3 API ====================
-
-  /// TuneHub v3 解析端点 URL
-  String get tuneHubV3ParseUrl => '$baseUrl/v1/parse';
-
-  /// 获取 TuneHub v3 请求头（包含 API Key 认证）
-  Map<String, String> getTuneHubV3Headers() {
-    final config = activeSource;
-    return {
-      'Content-Type': 'application/json',
-      if (config?.apiKey.isNotEmpty == true)
-        'X-API-Key': config!.apiKey,
-    };
-  }
-
-  /// 构建 TuneHub v3 解析请求参数
-  Map<String, dynamic> buildTuneHubV3ParseBody(
-    MusicSource source,
-    dynamic songId,
-    AudioQuality quality,
-  ) {
-    final platform = getTuneHubSourceCode(source);
-    if (platform == null) throw UnsupportedError('TuneHub 音源不支持 ${source.name}');
-
-    return {
-      'platform': platform,
-      'ids': songId.toString(),
-      'quality': getTuneHubQuality(quality),
-    };
-  }
 }

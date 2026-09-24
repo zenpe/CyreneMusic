@@ -52,7 +52,7 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
   }
 
   String get _title => widget.title ?? '配置音源后开始使用';
-  String get _subtitle => widget.subtitle ?? '应用需要配置音源才能播放音乐，支持洛雪音源和 TuneHub 等第三方服务';
+  String get _subtitle => widget.subtitle ?? '应用需要先导入洛雪音源才能播放在线音乐';
 
   @override
   Widget build(BuildContext context) {
@@ -194,7 +194,6 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                     alignment: WrapAlignment.center,
                     children: [
                       _buildFeatureChip(context, Icons.cloud_outlined, '洛雪音源', cs),
-                      _buildFeatureChip(context, Icons.hub_outlined, 'TuneHub', cs),
                       _buildFeatureChip(context, Icons.music_note, '多平台支持', cs),
                       _buildFeatureChip(context, Icons.high_quality, '音质可选', cs),
                     ],
@@ -360,7 +359,6 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                     alignment: WrapAlignment.center,
                     children: [
                       _buildCupertinoFeatureChip(CupertinoIcons.cloud, '洛雪音源', isDark),
-                      _buildCupertinoFeatureChip(CupertinoIcons.link, 'TuneHub', isDark),
                       _buildCupertinoFeatureChip(CupertinoIcons.music_note, '多平台', isDark),
                       _buildCupertinoFeatureChip(CupertinoIcons.waveform, '高音质', isDark),
                     ],
@@ -529,7 +527,6 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                     alignment: WrapAlignment.center,
                     children: [
                       _buildFluentFeatureChip(fluent.FluentIcons.cloud, '洛雪音源', theme),
-                      _buildFluentFeatureChip(fluent.FluentIcons.link, 'TuneHub', theme),
                       _buildFluentFeatureChip(fluent.FluentIcons.music_in_collection, '多平台支持', theme),
                       _buildFluentFeatureChip(fluent.FluentIcons.equalizer, '音质可选', theme),
                     ],

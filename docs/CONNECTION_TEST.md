@@ -234,9 +234,9 @@ curl http://your-custom-backend:4055/
    - Status: `200 OK`
    - Body: `OK`
 
-## 📝 OmniParse 标准
+## 📝 Cyrene API 兼容要求
 
-符合 OmniParse 标准的后端必须：
+兼容的自定义后端必须：
 
 1. ✅ 在根路径 `/` 实现健康检查端点
 2. ✅ 返回状态码 200 和纯文本 "OK"

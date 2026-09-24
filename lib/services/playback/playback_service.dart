@@ -2872,21 +2872,14 @@ class PlaybackService extends ChangeNotifier {
       // Navidrome 歌词补全走独立 API，不依赖当前全局音源类型。
       return true;
     }
-    final sourceType = AudioSourceService().sourceType;
-    if (sourceType != AudioSourceType.lxmusic &&
-        sourceType != AudioSourceType.tunehub) {
-      return false;
-    }
-    return true;
+    return AudioSourceService().sourceType == AudioSourceType.lxmusic;
   }
 
   bool _shouldUseLyricOnlySupplementalFetch(Track track) {
     if (track.source == MusicSource.navidrome) {
       return true;
     }
-    final sourceType = AudioSourceService().sourceType;
-    return sourceType == AudioSourceType.lxmusic ||
-        sourceType == AudioSourceType.tunehub;
+    return AudioSourceService().sourceType == AudioSourceType.lxmusic;
   }
 
   bool _shouldAllowFullDetailFallbackForLyricOnlyFetch(Track track) {

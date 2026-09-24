@@ -2,7 +2,6 @@ import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/song_detail.dart';
-import '../models/track.dart';
 import 'audio_source_service.dart';
 import 'lx_music_runtime_service.dart';
 
@@ -29,23 +28,6 @@ class AudioQualityService extends ChangeNotifier {
     AudioQuality.hires,      // Hi-Res (24bit/96kHz)
     AudioQuality.jyeffect,   // Audio Vivid
     AudioQuality.jymaster,   // 超清母带
-  ];
-
-  /// TuneHub 音源支持的音质（128k, 320k, flac, flac24bit）
-  static const List<AudioQuality> tuneHubQualities = [
-    AudioQuality.standard,   // 128k
-    AudioQuality.exhigh,     // 320k
-    AudioQuality.lossless,   // flac
-    AudioQuality.hires,      // flac24bit
-  ];
-
-  /// OmniParse 音源支持的音质
-  static const List<AudioQuality> omniParseQualities = [
-    AudioQuality.standard,
-    AudioQuality.exhigh,
-    AudioQuality.lossless,
-    AudioQuality.hires,      // Hi-Res (24bit/96kHz) - 仅支持网易云
-    AudioQuality.jyeffect,   // Audio Vivid - 仅支持网易云
   ];
 
   /// 字符串音质转换为枚举
@@ -92,8 +74,6 @@ class AudioQualityService extends ChangeNotifier {
   /// 根据音源类型获取支持的音质列表
   List<AudioQuality> getSupportedQualities(AudioSourceType sourceType) {
     switch (sourceType) {
-      case AudioSourceType.tunehub:
-        return tuneHubQualities;
       case AudioSourceType.lxmusic:
         // 从洛雪运行时动态获取音质列表
         final runtime = LxMusicRuntimeService();
@@ -109,28 +89,10 @@ class AudioQualityService extends ChangeNotifier {
         }
         // 回退默认值
         return [AudioQuality.standard, AudioQuality.exhigh, AudioQuality.lossless];
-      case AudioSourceType.omniparse:
-        return omniParseQualities;
       case AudioSourceType.navidrome:
         // Navidrome 以服务端实际文件为准，这里给出全量可选
         return _qualityPriority;
     }
-  }
-
-  /// 获取 OmniParse 音源针对特定平台支持的音质列表
-  /// hires 和 jyeffect 只支持网易云平台，其他平台需要降级
-  /// [source] - 音乐平台
-  List<AudioQuality> getOmniParseQualitiesForPlatform(MusicSource source) {
-    if (source == MusicSource.netease) {
-      // 网易云平台支持所有 OmniParse 音质
-      return omniParseQualities;
-    }
-    // 其他平台只支持基础音质
-    return [
-      AudioQuality.standard,
-      AudioQuality.exhigh,
-      AudioQuality.lossless,
-    ];
   }
 
   /// 获取指定平台支持的音质列表（洛雪音源专用）
@@ -347,4 +309,3 @@ class AudioQualityService extends ChangeNotifier {
     return 'mp3';
   }
 }
-

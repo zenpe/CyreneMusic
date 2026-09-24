@@ -632,12 +632,8 @@ class _AudioSourceSettingsContentState
 
   String _getSourceTypeName(AudioSourceType type) {
     switch (type) {
-      case AudioSourceType.omniparse:
-        return 'OmniParse';
       case AudioSourceType.lxmusic:
         return '洛雪音乐';
-      case AudioSourceType.tunehub:
-        return 'TuneHub';
       case AudioSourceType.navidrome:
         return 'Navidrome';
     }
@@ -770,11 +766,7 @@ class _AudioSourceSettingsContentState
                 Row(
                   children: [
                     Icon(
-                      config.type == AudioSourceType.lxmusic
-                          ? fluent.FluentIcons.music_note
-                          : (config.type == AudioSourceType.tunehub
-                                ? fluent.FluentIcons.globe
-                                : fluent.FluentIcons.link),
+                      fluent.FluentIcons.music_note,
                       size: 20,
                       color: isActive
                           ? theme.accentColor
@@ -813,7 +805,7 @@ class _AudioSourceSettingsContentState
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '类型: ${config.type == AudioSourceType.lxmusic ? "洛雪音乐" : (config.type == AudioSourceType.tunehub ? "TuneHub" : "OmniParse")}',
+                  '类型: 洛雪音乐',
                   style: theme.typography.caption,
                 ),
                 if (config.version.isNotEmpty || config.author.isNotEmpty)
@@ -840,27 +832,17 @@ class _AudioSourceSettingsContentState
                     ),
                   ),
                 const SizedBox(height: 4),
-                // OmniParse 类型隐藏 URL
-                if (config.type == AudioSourceType.omniparse)
-                  Text(
-                    '已配置 (URL 已隐藏)',
+                fluent.Tooltip(
+                  message: config.scriptSource,
+                  child: Text(
+                    config.scriptSource,
                     style: theme.typography.caption?.copyWith(
                       color: theme.resources.textFillColorSecondary,
-                      fontStyle: FontStyle.italic,
                     ),
-                  )
-                else
-                  fluent.Tooltip(
-                    message: config.url,
-                    child: Text(
-                      config.url,
-                      style: theme.typography.caption?.copyWith(
-                        color: theme.resources.textFillColorSecondary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
+                ),
               ],
             ),
             Row(
@@ -1079,14 +1061,6 @@ class _AudioSourceSettingsContentState
           const Color(0xFF667eea),
           const Color(0xFF764ba2),
         ],
-        AudioSourceType.tunehub => [
-          const Color(0xFF11998e),
-          const Color(0xFF38ef7d),
-        ],
-        AudioSourceType.omniparse => [
-          const Color(0xFFf093fb),
-          const Color(0xFFf5576c),
-        ],
         AudioSourceType.navidrome => [
           const Color(0xFF00B4DB),
           const Color(0xFF0083B0),
@@ -1121,8 +1095,6 @@ class _AudioSourceSettingsContentState
         child: Icon(
           switch (config.type) {
             AudioSourceType.lxmusic => CupertinoIcons.music_note_2,
-            AudioSourceType.tunehub => CupertinoIcons.cloud,
-            AudioSourceType.omniparse => CupertinoIcons.link,
             AudioSourceType.navidrome => CupertinoIcons.music_note_list,
           },
           color: CupertinoColors.white,
