@@ -1520,7 +1520,6 @@ extension MyPageMaterialUI on _MyPageState {
               _showUserNotification('正在同步...', duration: const Duration(seconds: 1));
               final result = await _playlistService.syncPlaylist(playlist.id);
               _showUserNotification(_formatSyncResultMessage(result), severity: result.insertedCount > 0 ? fluent.InfoBarSeverity.success : fluent.InfoBarSeverity.info);
-              await _playlistService.loadPlaylistTracks(playlist.id);
             },
             tooltip: '同步',
           ),
@@ -2091,4 +2090,3 @@ extension MyPageMaterialUI on _MyPageState {
     );
   }
 }
-

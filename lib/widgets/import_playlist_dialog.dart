@@ -1,4 +1,3 @@
-import '../services/structured_log_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
@@ -2939,37 +2938,43 @@ class ImportPlaylistDialog {
     }
 
     try {
-      // 使用批量导入 API（一次网络请求，大幅提升速度）
-      final result = await playlistService.addTracksToPlaylist(
-        targetPlaylist.id,
-        sourcePlaylist.tracks,
-      );
+      late final int successCount;
+      late final int skipCount;
+      late final int failCount;
 
-      final successCount = result['successCount'] ?? 0;
-      final skipCount = result['skipCount'] ?? 0;
-      final failCount = result['failCount'] ?? 0;
+      final isServerManaged =
+          sourcePlaylist.platform == MusicPlatform.netease ||
+          sourcePlaylist.platform == MusicPlatform.qq;
+      if (isServerManaged) {
+        final platformKey = sourcePlaylist.platform == MusicPlatform.netease
+            ? 'netease'
+            : 'qq';
+        final syncResult = await playlistService.bindAndSyncPlaylist(
+          targetPlaylist.id,
+          source: platformKey,
+          sourcePlaylistId: sourcePlaylist.id.toString(),
+        );
+        if (!syncResult.succeeded) {
+          throw Exception(syncResult.message);
+        }
+        successCount = syncResult.insertedCount;
+        skipCount = syncResult.updatedCount;
+        failCount = syncResult.complete
+            ? 0
+            : syncResult.expectedCount - syncResult.resolvedCount;
+      } else {
+        // Sources without server-side sync remain a one-time local import.
+        final result = await playlistService.addTracksToPlaylist(
+          targetPlaylist.id,
+          sourcePlaylist.tracks,
+        );
+        successCount = result['successCount'] ?? 0;
+        skipCount = result['skipCount'] ?? 0;
+        failCount = result['failCount'] ?? 0;
+      }
 
       if (!context.mounted) return;
       Navigator.pop(context); // 关闭进度对话框
-
-      final platformKey = sourcePlaylist.platform == MusicPlatform.netease
-          ? 'netease'
-          : sourcePlaylist.platform == MusicPlatform.qq
-          ? 'qq'
-          : sourcePlaylist.platform == MusicPlatform.kuwo
-          ? 'kuwo'
-          : 'kugou';
-      final playlistId = sourcePlaylist.id.toString();
-      final bound = await playlistService.updateImportConfig(
-        targetPlaylist.id,
-        source: platformKey,
-        sourcePlaylistId: playlistId,
-      );
-      if (!bound) {
-        StructuredLogService.log(
-          '⚠️ [ImportPlaylistDialog] 更新导入配置失败 playlist=${targetPlaylist.id}',
-        );
-      }
 
       // 显示结果
       if (!context.mounted) return;

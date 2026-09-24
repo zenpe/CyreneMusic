@@ -159,6 +159,10 @@ class _MyPageState extends State<MyPage> {
   }
 
   String _formatSyncResultMessage(PlaylistSyncResult result) {
+    if (!result.succeeded) {
+      return result.message.isEmpty ? '同步失败' : result.message;
+    }
+    if (!result.complete) return result.message;
     if (result.insertedCount <= 0) return '同步完成，暂无新增歌曲';
     final preview = result.newTracks
         .map((t) => t.name)
@@ -349,9 +353,6 @@ class _MyPageState extends State<MyPage> {
           ? fluent.InfoBarSeverity.success
           : fluent.InfoBarSeverity.info,
     );
-    if (_selectedPlaylist?.id == playlist.id) {
-      await _playlistService.loadPlaylistTracks(playlist.id);
-    }
   }
 
   // ==================== 对话框方法 ====================

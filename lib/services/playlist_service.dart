@@ -6,25 +6,49 @@ import 'auth_service.dart';
 import 'api/api_client.dart';
 
 class PlaylistSyncResult {
+  final bool succeeded;
+  final int revision;
+  final bool complete;
+  final int expectedCount;
+  final int resolvedCount;
   final int insertedCount;
+  final int updatedCount;
+  final int removedCount;
+  final int trackCount;
   final List<PlaylistTrack> newTracks;
   final String message;
 
   const PlaylistSyncResult({
+    required this.succeeded,
+    required this.revision,
+    required this.complete,
+    required this.expectedCount,
+    required this.resolvedCount,
     required this.insertedCount,
+    required this.updatedCount,
+    required this.removedCount,
+    required this.trackCount,
     required this.newTracks,
     this.message = '',
   });
 
   factory PlaylistSyncResult.empty({String message = ''}) {
     return PlaylistSyncResult(
+      succeeded: false,
+      revision: 0,
+      complete: false,
+      expectedCount: 0,
+      resolvedCount: 0,
       insertedCount: 0,
+      updatedCount: 0,
+      removedCount: 0,
+      trackCount: 0,
       newTracks: const <PlaylistTrack>[],
       message: message,
     );
   }
 
-  bool get hasUpdates => insertedCount > 0;
+  bool get hasUpdates => insertedCount > 0 || removedCount > 0;
 }
 
 /// 歌单服务
@@ -60,6 +84,7 @@ class PlaylistService extends ChangeNotifier {
             name: p.name,
             isDefault: p.isDefault,
             trackCount: p.trackCount,
+            coverUrl: p.coverUrl,
             createdAt: p.createdAt,
             updatedAt: DateTime.now(),
             source: source,
@@ -94,29 +119,47 @@ class PlaylistService extends ChangeNotifier {
           return PlaylistSyncResult.empty(message: failureMessage);
         }
         final inserted = data['insertedCount'] as int? ?? 0;
+        final updated = data['updatedCount'] as int? ?? 0;
+        final removed = data['removedCount'] as int? ?? 0;
+        final trackCount = data['trackCount'] as int? ?? 0;
         final newTracks = (data['newTracks'] as List<dynamic>? ?? [])
             .map((item) => PlaylistTrack.fromJson(item as Map<String, dynamic>))
             .toList();
         final message = data['message'] as String? ?? '同步完成';
         StructuredLogService.log('✅ [PlaylistService] 同步完成，新增 $inserted 首');
-        if (inserted > 0) {
-          _applySyncUpdates(playlistId, inserted, newTracks);
+        _applyAuthoritativeTrackCount(playlistId, trackCount);
+        if (_currentPlaylistId == playlistId) {
+          await loadPlaylistTracks(playlistId);
         }
         return PlaylistSyncResult(
+          succeeded: true,
+          revision: data['revision'] as int? ?? 0,
+          complete: data['complete'] as bool? ?? false,
+          expectedCount: data['expectedCount'] as int? ?? 0,
+          resolvedCount: data['resolvedCount'] as int? ?? 0,
           insertedCount: inserted,
+          updatedCount: updated,
+          removedCount: removed,
+          trackCount: trackCount,
           newTracks: newTracks,
           message: message,
         );
       }
+      final responseData = result.data;
+      final failureMessage = responseData is Map<String, dynamic>
+          ? responseData['message'] as String?
+          : null;
       StructuredLogService.log('⚠️ [PlaylistService] 同步失败: HTTP ${result.statusCode}');
+      return PlaylistSyncResult.empty(
+        message: failureMessage ?? '同步失败: HTTP ${result.statusCode}',
+      );
     } catch (e) {
       StructuredLogService.log('❌ [PlaylistService] 同步异常: $e');
       return PlaylistSyncResult.empty(message: '同步失败: $e');
     }
-    return PlaylistSyncResult.empty(message: '同步失败');
   }
 
-  void _applySyncUpdates(int playlistId, int inserted, List<PlaylistTrack> newTracks) {
+  void _applyAuthoritativeTrackCount(int playlistId, int trackCount) {
     final idx = _playlists.indexWhere((p) => p.id == playlistId);
     if (idx != -1) {
       final playlist = _playlists[idx];
@@ -124,7 +167,8 @@ class PlaylistService extends ChangeNotifier {
         id: playlist.id,
         name: playlist.name,
         isDefault: playlist.isDefault,
-        trackCount: playlist.trackCount + inserted,
+        trackCount: trackCount,
+        coverUrl: playlist.coverUrl,
         createdAt: playlist.createdAt,
         updatedAt: DateTime.now(),
         source: playlist.source,
@@ -132,11 +176,24 @@ class PlaylistService extends ChangeNotifier {
       );
     }
 
-    if (_currentPlaylistId == playlistId && newTracks.isNotEmpty) {
-      _currentTracks = [...newTracks, ..._currentTracks];
-    }
-
     notifyListeners();
+  }
+
+  /// 绑定服务端支持的外部歌单，并导入服务端权威快照。
+  Future<PlaylistSyncResult> bindAndSyncPlaylist(
+    int playlistId, {
+    required String source,
+    required String sourcePlaylistId,
+  }) async {
+    final bound = await updateImportConfig(
+      playlistId,
+      source: source,
+      sourcePlaylistId: sourcePlaylistId,
+    );
+    if (!bound) {
+      return PlaylistSyncResult.empty(message: '绑定外部歌单失败');
+    }
+    return syncPlaylist(playlistId);
   }
 
   List<Playlist> _playlists = [];
@@ -155,6 +212,7 @@ class PlaylistService extends ChangeNotifier {
 
   bool _isLoadingTracks = false;
   bool get isLoadingTracks => _isLoadingTracks;
+  int _trackLoadGeneration = 0;
 
   /// 监听认证状态变化
   void _onAuthChanged() {
@@ -166,9 +224,12 @@ class PlaylistService extends ChangeNotifier {
 
   /// 清空所有数据
   void clear() {
+    _trackLoadGeneration++;
     _playlists = [];
     _currentPlaylistId = null;
     _currentTracks = [];
+    _isLoading = false;
+    _isLoadingTracks = false;
     notifyListeners();
   }
 
@@ -385,28 +446,13 @@ class PlaylistService extends ChangeNotifier {
         final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
-          // 更新歌单的歌曲数量
-          final index = _playlists.indexWhere((p) => p.id == playlistId);
-          if (index != -1) {
-            _playlists[index] = Playlist(
-              id: _playlists[index].id,
-              name: _playlists[index].name,
-              isDefault: _playlists[index].isDefault,
-              trackCount: _playlists[index].trackCount + 1,
-              createdAt: _playlists[index].createdAt,
-              updatedAt: DateTime.now(),
-              source: _playlists[index].source,
-              sourcePlaylistId: _playlists[index].sourcePlaylistId,
-            );
-          }
-
-          // 如果是当前选中的歌单，添加到当前列表
+          final trackCount = data['trackCount'] as int? ?? 0;
+          _applyAuthoritativeTrackCount(playlistId, trackCount);
           if (_currentPlaylistId == playlistId) {
-            _currentTracks.insert(0, playlistTrack);
+            await loadPlaylistTracks(playlistId);
           }
 
           StructuredLogService.log('✅ [PlaylistService] 添加歌曲成功: ${track.name}');
-          notifyListeners();
           return true;
         } else {
           throw Exception(data['message'] ?? '添加失败');
@@ -463,24 +509,13 @@ class PlaylistService extends ChangeNotifier {
           final successCount = data['successCount'] as int? ?? 0;
           final skipCount = data['skipCount'] as int? ?? 0;
           final failCount = data['failCount'] as int? ?? 0;
-
-          // 更新歌单的歌曲数量
-          final index = _playlists.indexWhere((p) => p.id == playlistId);
-          if (index != -1) {
-            _playlists[index] = Playlist(
-              id: _playlists[index].id,
-              name: _playlists[index].name,
-              isDefault: _playlists[index].isDefault,
-              trackCount: _playlists[index].trackCount + successCount,
-              createdAt: _playlists[index].createdAt,
-              updatedAt: DateTime.now(),
-              source: _playlists[index].source,
-              sourcePlaylistId: _playlists[index].sourcePlaylistId,
-            );
+          final trackCount = data['trackCount'] as int? ?? 0;
+          _applyAuthoritativeTrackCount(playlistId, trackCount);
+          if (_currentPlaylistId == playlistId) {
+            await loadPlaylistTracks(playlistId);
           }
 
           StructuredLogService.log('✅ [PlaylistService] 批量添加完成: 成功=$successCount, 跳过=$skipCount, 失败=$failCount');
-          notifyListeners();
           return {'successCount': successCount, 'skipCount': skipCount, 'failCount': failCount};
         } else {
           throw Exception(data['message'] ?? '批量添加失败');
@@ -501,6 +536,7 @@ class PlaylistService extends ChangeNotifier {
       return;
     }
 
+    final loadGeneration = ++_trackLoadGeneration;
     try {
       _isLoadingTracks = true;
       _currentPlaylistId = playlistId;
@@ -515,6 +551,10 @@ class PlaylistService extends ChangeNotifier {
         final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
+          if (loadGeneration != _trackLoadGeneration ||
+              _currentPlaylistId != playlistId) {
+            return;
+          }
           final List<dynamic> tracksJson = data['tracks'] ?? [];
           _currentTracks = tracksJson
               .map((item) => PlaylistTrack.fromJson(item as Map<String, dynamic>))
@@ -530,8 +570,10 @@ class PlaylistService extends ChangeNotifier {
     } catch (e) {
       StructuredLogService.log('❌ [PlaylistService] 加载歌曲列表失败: $e');
     } finally {
-      _isLoadingTracks = false;
-      notifyListeners();
+      if (loadGeneration == _trackLoadGeneration) {
+        _isLoadingTracks = false;
+        notifyListeners();
+      }
     }
   }
 

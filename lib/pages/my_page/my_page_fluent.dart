@@ -292,7 +292,6 @@ extension MyPageFluentUI on _MyPageState {
                               action: fluent.IconButton(
                                   icon: const Icon(fluent.FluentIcons.clear),
                                   onPressed: close)));
-                      await _playlistService.loadPlaylistTracks(playlist.id);
                     },
                   ),
                 ],
