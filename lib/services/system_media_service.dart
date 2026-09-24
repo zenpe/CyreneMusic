@@ -17,7 +17,7 @@ class SystemMediaService {
   CyreneAudioHandler? _audioHandler; // Android 媒体处理器
   bool _initialized = false;
   bool _isDisposed = false; // 是否已释放
-  bool _mobileInitialized = false; // 移动端是否已初始化（延迟初始化）
+  bool _mobileInitialized = false; // 移动端媒体会话是否已初始化
   Future<void>? _pendingMobileInitialization;
 
   // 缓存上次更新的信息，避免重复更新
@@ -32,9 +32,19 @@ class SystemMediaService {
       if (Platform.isWindows) {
         await _initializeWindows();
       } else if (Platform.isAndroid || Platform.isIOS) {
-        // 🔧 关键修复：移动端不在启动时初始化 audio_service，避免音频系统初始化导致的杂音
-        // audio_service 将在第一次播放时才初始化（见 _ensureMobileInitialized 方法）
-        StructuredLogService.log('📱 [SystemMediaService] 移动端 audio_service 将在首次播放时初始化');
+        // audio_service 只建立媒体会话，不会启动播放器。启动阶段完成初始化，
+        // 确保暂停恢复、系统通知和冷启动媒体按钮都已经有回调接收者。
+        StructuredLogService.log(
+          '📱 [SystemMediaService] 启动阶段初始化移动端 audio_service...',
+        );
+        try {
+          await ensureMobileInitialized();
+        } catch (e) {
+          // 保留状态监听作为兜底重试路径，避免媒体服务初始化失败阻塞应用启动。
+          StructuredLogService.log(
+            '⚠️ [SystemMediaService] 启动阶段初始化 audio_service 失败，将在播放会话出现时重试: $e',
+          );
+        }
       }
 
       // 监听播放器状态变化
@@ -47,7 +57,9 @@ class SystemMediaService {
     }
   }
 
-  /// 确保移动端 audio_service 已初始化（首次播放时或手动同步小部件时调用）
+  /// 确保移动端 audio_service 已初始化。
+  ///
+  /// 正常路径由 initialize() 在启动阶段调用，状态监听和小部件入口保留为兜底。
   Future<void> ensureMobileInitialized() async {
     if (_mobileInitialized || !Platform.isAndroid && !Platform.isIOS) return;
 
@@ -97,7 +109,9 @@ class SystemMediaService {
   Future<void> _initializeMobile() async {
     try {
       final platformName = Platform.isAndroid ? 'Android' : 'iOS';
-      StructuredLogService.log('📱 [SystemMediaService] 开始初始化 $platformName audio_service...');
+      StructuredLogService.log(
+        '📱 [SystemMediaService] 开始初始化 $platformName audio_service...',
+      );
 
       // 初始化 audio_service 并创建 AudioHandler
       // 根据文档：androidStopForegroundOnPause = false 时，androidNotificationOngoing 必须也为 false
@@ -120,10 +134,16 @@ class SystemMediaService {
         // “静音” AudioTrack 来抢占媒体按键路由，部分设备上会产生可闻杂音。
         // 这里不再调用该 workaround，优先保证启动恢复与首次播放的无噪音。
 
-        StructuredLogService.log('✅ [SystemMediaService] $platformName audio_service 初始化成功');
-        StructuredLogService.log('   AudioHandler 类型: ${_audioHandler.runtimeType}');
+        StructuredLogService.log(
+          '✅ [SystemMediaService] $platformName audio_service 初始化成功',
+        );
+        StructuredLogService.log(
+          '   AudioHandler 类型: ${_audioHandler.runtimeType}',
+        );
         if (Platform.isAndroid) {
-          StructuredLogService.log('   通知渠道 ID: com.cyrene.music.channel.audio');
+          StructuredLogService.log(
+            '   通知渠道 ID: com.cyrene.music.channel.audio',
+          );
           StructuredLogService.log('   ⚠️ 如果通知未显示，请检查：');
           StructuredLogService.log('      1. 是否授予了通知权限（Android 13+）');
           StructuredLogService.log('      2. 是否播放了歌曲触发状态更新');
@@ -133,7 +153,9 @@ class SystemMediaService {
         StructuredLogService.log('❌ [SystemMediaService] AudioHandler 为 null');
       }
     } catch (e, stackTrace) {
-      StructuredLogService.log('❌ [SystemMediaService] 移动端 audio_service 初始化失败: $e');
+      StructuredLogService.log(
+        '❌ [SystemMediaService] 移动端 audio_service 初始化失败: $e',
+      );
       StructuredLogService.log('   堆栈跟踪: $stackTrace');
     }
   }
@@ -175,7 +197,9 @@ class SystemMediaService {
         try {
           await ensureMobileInitialized();
         } catch (e) {
-          StructuredLogService.log('❌ [SystemMediaService] 更新小部件前初始化 audio_service 失败: $e');
+          StructuredLogService.log(
+            '❌ [SystemMediaService] 更新小部件前初始化 audio_service 失败: $e',
+          );
           return;
         }
       }
@@ -194,22 +218,32 @@ class SystemMediaService {
     }
 
     final player = PlayerService();
-    final song = player.currentSong;
-    final track = player.currentTrack;
+    final song = player.activeSong;
+    final track = player.activeTrack;
 
-    // 仅在真正进入播放态后再初始化 audio_service，避免在 loading 阶段
-    // 提前拉起媒体服务干扰启动恢复链路的音频建链时序。
+    // 有可恢复歌曲时，播放态和暂停态都需要先建立 audio_service。
+    // 否则应用恢复到暂停状态时，通知栏虽然可能残留旧卡片，但播放/暂停
+    // 回调尚未注册，点击控件不会进入 AudioHandler。
     if ((Platform.isAndroid || Platform.isIOS) && !_mobileInitialized) {
-      if (player.state == PlayerState.playing) {
-        StructuredLogService.log('🎵 [SystemMediaService] 检测到首次播放，初始化 audio_service...');
+      final shouldInitialize =
+          player.state == PlayerState.playing ||
+          player.state == PlayerState.paused;
+      if (shouldInitialize) {
+        StructuredLogService.log(
+          '🎵 [SystemMediaService] 检测到可用播放会话，初始化 audio_service...',
+        );
         ensureMobileInitialized()
             .then((_) {
-              StructuredLogService.log('✅ [SystemMediaService] audio_service 初始化完成，继续更新状态');
+              StructuredLogService.log(
+                '✅ [SystemMediaService] audio_service 初始化完成，继续更新状态',
+              );
               // 初始化完成后，再次触发状态更新
               _onPlayerStateChanged();
             })
             .catchError((e) {
-              StructuredLogService.log('❌ [SystemMediaService] audio_service 初始化失败: $e');
+              StructuredLogService.log(
+                '❌ [SystemMediaService] audio_service 初始化失败: $e',
+              );
             });
         return; // 等待初始化完成
       } else {
@@ -329,7 +363,9 @@ class SystemMediaService {
     StructuredLogService.log('   📝 标题: $title');
     StructuredLogService.log('   👤 艺术家: $artist');
     StructuredLogService.log('   💿 专辑: $album');
-    StructuredLogService.log('   🖼️ 封面: ${thumbnail.isNotEmpty ? "已设置" : "无"}');
+    StructuredLogService.log(
+      '   🖼️ 封面: ${thumbnail.isNotEmpty ? "已设置" : "无"}',
+    );
 
     _nativeSmtc!.updateMetadata(
       title: title,
@@ -386,7 +422,9 @@ class SystemMediaService {
 
       // 释放 Android AudioHandler
       if (_audioHandler != null) {
-        StructuredLogService.log('🗑️ [SystemMediaService] 释放 AudioHandler 资源...');
+        StructuredLogService.log(
+          '🗑️ [SystemMediaService] 释放 AudioHandler 资源...',
+        );
         _audioHandler = null;
       }
 
