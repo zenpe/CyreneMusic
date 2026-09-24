@@ -12,6 +12,7 @@ class FavoriteTrack {
   final String album;
   final String picUrl;
   final MusicSource source;
+  final TrackSourceIds sourceIds;
   final DateTime addedAt;
 
   FavoriteTrack({
@@ -21,6 +22,7 @@ class FavoriteTrack {
     required this.album,
     required this.picUrl,
     required this.source,
+    this.sourceIds = const TrackSourceIds(),
     required this.addedAt,
   });
 
@@ -33,6 +35,7 @@ class FavoriteTrack {
       album: track.album,
       picUrl: track.picUrl,
       source: track.source,
+      sourceIds: track.sourceIds,
       addedAt: DateTime.now(),
     );
   }
@@ -49,6 +52,7 @@ class FavoriteTrack {
         (e) => e.toString().split('.').last == json['source'],
         orElse: () => MusicSource.netease,
       ),
+      sourceIds: TrackSourceIds.fromJson(json['sourceIds']),
       addedAt: DateTime.parse(json['addedAt'] as String),
     );
   }
@@ -62,6 +66,7 @@ class FavoriteTrack {
       album: album,
       picUrl: picUrl,
       source: source,
+      sourceIds: sourceIds,
     );
   }
 
@@ -74,6 +79,7 @@ class FavoriteTrack {
       'album': album,
       'picUrl': picUrl,
       'source': source.toString().split('.').last,
+      if (!sourceIds.isEmpty) 'sourceIds': sourceIds.toJson(),
     };
   }
 }

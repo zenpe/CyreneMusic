@@ -19,6 +19,7 @@ void main() {
               required source,
               required title,
               required artist,
+              required sourceIds,
               required fetchLyrics,
               onLxFailure,
             }) async {
@@ -57,6 +58,7 @@ void main() {
             required source,
             required title,
             required artist,
+            required sourceIds,
             required fetchLyrics,
             onLxFailure,
           }) {
@@ -99,6 +101,7 @@ void main() {
             required source,
             required title,
             required artist,
+            required sourceIds,
             required fetchLyrics,
             onLxFailure,
           }) {
@@ -156,6 +159,7 @@ void main() {
               required source,
               required title,
               required artist,
+              required sourceIds,
               required fetchLyrics,
               onLxFailure,
             }) async {
@@ -218,6 +222,7 @@ void main() {
             required source,
             required title,
             required artist,
+            required sourceIds,
             required fetchLyrics,
             onLxFailure,
           }) async {
@@ -261,6 +266,7 @@ void main() {
             required source,
             required title,
             required artist,
+            required sourceIds,
             required fetchLyrics,
             onLxFailure,
           }) async {
@@ -304,6 +310,7 @@ void main() {
             required source,
             required title,
             required artist,
+            required sourceIds,
             required fetchLyrics,
             onLxFailure,
           }) async {
@@ -381,6 +388,7 @@ void main() {
             required source,
             required title,
             required artist,
+            required sourceIds,
             required fetchLyrics,
             onLxFailure,
           }) async {
@@ -423,6 +431,7 @@ void main() {
             required source,
             required title,
             required artist,
+            required sourceIds,
             required fetchLyrics,
             onLxFailure,
           }) async => _detail(songId as int),
@@ -454,6 +463,7 @@ void main() {
               required source,
               required title,
               required artist,
+              required sourceIds,
               required fetchLyrics,
               onLxFailure,
             }) => completer.future,
@@ -488,6 +498,7 @@ void main() {
             required source,
             required title,
             required artist,
+            required sourceIds,
             required fetchLyrics,
             onLxFailure,
           }) => completer.future,
@@ -521,6 +532,7 @@ void main() {
             required source,
             required title,
             required artist,
+            required sourceIds,
             required fetchLyrics,
             onLxFailure,
           }) {
@@ -566,6 +578,7 @@ void main() {
             required source,
             required title,
             required artist,
+            required sourceIds,
             required fetchLyrics,
             onLxFailure,
           }) async => _detail(songId as int),

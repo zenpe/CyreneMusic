@@ -1055,6 +1055,8 @@ class PlaybackService extends ChangeNotifier {
       case LxRuntimeFailureKind.scriptRejected:
       case LxRuntimeFailureKind.notReady:
         return PlaybackProblemKind.sourceInvalid;
+      case LxRuntimeFailureKind.invalidTrackIdentifier:
+        return PlaybackProblemKind.resourceUnavailable;
       case LxRuntimeFailureKind.timeout:
         return PlaybackProblemKind.networkTimeout;
       case LxRuntimeFailureKind.requestFailed:
@@ -1073,6 +1075,8 @@ class PlaybackService extends ChangeNotifier {
           PlaybackRecoveryAction.retry,
           PlaybackRecoveryAction.switchSource,
         };
+      case LxRuntimeFailureKind.invalidTrackIdentifier:
+        return const {};
       case LxRuntimeFailureKind.timeout:
       case LxRuntimeFailureKind.requestFailed:
       case null:
@@ -1091,6 +1095,8 @@ class PlaybackService extends ChangeNotifier {
         return '当前音源尚未就绪，请稍后重试或重新导入音源';
       case LxRuntimeFailureKind.timeout:
         return '获取播放链接超时，请检查网络后重试';
+      case LxRuntimeFailureKind.invalidTrackIdentifier:
+        return failure?.message ?? '歌曲标识不完整，请重新搜索或同步';
       case LxRuntimeFailureKind.requestFailed:
         return '音源请求失败，未返回可播放链接，请切换音源后重试';
       case null:
@@ -1138,6 +1144,8 @@ class PlaybackService extends ChangeNotifier {
         return SourceHealthFailureKind.transientTimeout;
       case LxRuntimeFailureKind.notReady:
         return SourceHealthFailureKind.runtimeNotReady;
+      case LxRuntimeFailureKind.invalidTrackIdentifier:
+        return SourceHealthFailureKind.trackSpecific;
       case LxRuntimeFailureKind.requestFailed:
         return SourceHealthFailureKind.transientTimeout;
       case null:
@@ -1153,6 +1161,7 @@ class PlaybackService extends ChangeNotifier {
       case null:
         return true;
       case LxRuntimeFailureKind.scriptRejected:
+      case LxRuntimeFailureKind.invalidTrackIdentifier:
         return false;
     }
   }
@@ -2219,6 +2228,7 @@ class PlaybackService extends ChangeNotifier {
         songId: track.id,
         quality: tx.selectedQuality,
         source: track.source,
+        sourceIds: track.sourceIds,
         title: track.name,
         artist: track.artists,
         timeout: resolveTimeout,
@@ -2735,6 +2745,7 @@ class PlaybackService extends ChangeNotifier {
               .fetchLyricOnlySongDetail(
                 songId: track.id,
                 source: track.source,
+                sourceIds: track.sourceIds,
                 title: track.name,
                 artist: track.artists,
               )
@@ -2754,6 +2765,7 @@ class PlaybackService extends ChangeNotifier {
         fetchFullDetail: () => _fetchSongDetailWithTimeout(
           songId: track.id,
           source: track.source,
+          sourceIds: track.sourceIds,
           quality: quality,
           title: track.name,
           artist: track.artists,
@@ -2820,6 +2832,7 @@ class PlaybackService extends ChangeNotifier {
             .fetchLyricOnlySongDetail(
               songId: track.id,
               source: track.source,
+              sourceIds: track.sourceIds,
               title: track.name,
               artist: track.artists,
             )
@@ -3970,6 +3983,7 @@ class PlaybackService extends ChangeNotifier {
     required dynamic songId,
     required AudioQuality quality,
     required MusicSource source,
+    TrackSourceIds sourceIds = const TrackSourceIds(),
     required String title,
     required String artist,
     required Duration timeout,
@@ -3980,6 +3994,7 @@ class PlaybackService extends ChangeNotifier {
       songId: songId,
       quality: quality,
       source: source,
+      sourceIds: sourceIds,
       title: title,
       artist: artist,
       timeout: timeout,
@@ -4386,6 +4401,7 @@ class PlaybackService extends ChangeNotifier {
       songId: track.id,
       quality: selectedQuality,
       source: track.source,
+      sourceIds: track.sourceIds,
       title: track.name,
       artist: track.artists,
       timeout: _preloadSongDetailTimeout,

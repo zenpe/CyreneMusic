@@ -1853,6 +1853,7 @@ class _DownloadButtonState extends State<_DownloadButton> {
         final detail = await MusicService().fetchSongDetail(
           songId: widget.track.id.toString(),
           source: widget.track.source,
+          sourceIds: widget.track.sourceIds,
           title: widget.track.name,
           artist: widget.track.artists,
         );

@@ -61,6 +61,7 @@ class PlaylistTrack {
   final String album;
   final String picUrl;
   final MusicSource source;
+  final TrackSourceIds sourceIds;
   final DateTime addedAt;
 
   PlaylistTrack({
@@ -70,6 +71,7 @@ class PlaylistTrack {
     required this.album,
     required this.picUrl,
     required this.source,
+    this.sourceIds = const TrackSourceIds(),
     required this.addedAt,
   });
 
@@ -81,6 +83,7 @@ class PlaylistTrack {
       album: json['album'] as String,
       picUrl: json['picUrl'] as String,
       source: _parseSource(json['source'] as String),
+      sourceIds: TrackSourceIds.fromJson(json['sourceIds']),
       addedAt: DateTime.parse(json['addedAt'] as String),
     );
   }
@@ -93,6 +96,7 @@ class PlaylistTrack {
       'album': album,
       'picUrl': picUrl,
       'source': source.toString().split('.').last,
+      if (!sourceIds.isEmpty) 'sourceIds': sourceIds.toJson(),
       'addedAt': addedAt.toIso8601String(),
     };
   }
@@ -106,6 +110,7 @@ class PlaylistTrack {
       album: track.album,
       picUrl: track.picUrl,
       source: track.source,
+      sourceIds: track.sourceIds,
       addedAt: DateTime.now(),
     );
   }
@@ -114,7 +119,7 @@ class PlaylistTrack {
   Track toTrack() {
     // 尝试解析为 int，如果失败则保持为字符串（用于 QQ 音乐和酷狗音乐）
     final dynamic trackIdValue = int.tryParse(trackId) ?? trackId;
-    
+
     return Track(
       id: trackIdValue,  // 支持 int 和 String 类型
       name: name,
@@ -122,6 +127,7 @@ class PlaylistTrack {
       album: album,
       picUrl: picUrl,
       source: source,
+      sourceIds: sourceIds,
     );
   }
 
@@ -147,4 +153,3 @@ class PlaylistTrack {
     }
   }
 }
-

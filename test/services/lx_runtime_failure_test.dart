@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/services/lx_runtime_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,5 +27,13 @@ void main() {
     final failure = classifyLxRuntimeFailure(Exception('洛雪音源脚本未就绪'));
 
     expect(failure.kind, LxRuntimeFailureKind.notReady);
+  });
+
+  test('classifies missing track identifiers separately', () {
+    final failure = classifyLxRuntimeFailure(
+      const MissingTrackSourceIdentifierException('歌曲标识不完整，请重新搜索或同步'),
+    );
+
+    expect(failure.kind, LxRuntimeFailureKind.invalidTrackIdentifier);
   });
 }

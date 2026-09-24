@@ -12,6 +12,7 @@ class PlayHistoryItem {
   final String album;        // 专辑
   final String picUrl;       // 封面图片URL
   final MusicSource source;  // 音乐平台
+  final TrackSourceIds sourceIds;
   final DateTime playedAt;   // 播放时间
 
   PlayHistoryItem({
@@ -21,6 +22,7 @@ class PlayHistoryItem {
     required this.album,
     required this.picUrl,
     required this.source,
+    this.sourceIds = const TrackSourceIds(),
     required this.playedAt,
   });
 
@@ -33,6 +35,7 @@ class PlayHistoryItem {
       album: track.album,
       picUrl: track.picUrl,
       source: track.source,
+      sourceIds: track.sourceIds,
       playedAt: DateTime.now(),
     );
   }
@@ -46,6 +49,7 @@ class PlayHistoryItem {
       album: album,
       picUrl: picUrl,
       source: source,
+      sourceIds: sourceIds,
     );
   }
 
@@ -58,6 +62,7 @@ class PlayHistoryItem {
       'album': album,
       'picUrl': picUrl,
       'source': source.toString().split('.').last,
+      if (!sourceIds.isEmpty) 'sourceIds': sourceIds.toJson(),
       'playedAt': playedAt.toIso8601String(),
     };
   }
@@ -74,6 +79,7 @@ class PlayHistoryItem {
         (e) => e.toString().split('.').last == json['source'],
         orElse: () => MusicSource.netease,
       ),
+      sourceIds: TrackSourceIds.fromJson(json['sourceIds']),
       playedAt: DateTime.parse(json['playedAt'] as String),
     );
   }

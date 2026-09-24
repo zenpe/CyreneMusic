@@ -337,7 +337,9 @@ class KugouSearchResult {
   final String name;
   final String singer;
   final String album;
+  final String hash;
   final String emixsongid;
+  final String? albumAudioId;
   final String? pic;
   final int? duration;
 
@@ -345,7 +347,9 @@ class KugouSearchResult {
     required this.name,
     required this.singer,
     required this.album,
+    required this.hash,
     required this.emixsongid,
+    this.albumAudioId,
     this.pic,
     this.duration,
   });
@@ -355,7 +359,9 @@ class KugouSearchResult {
       name: json['name']?.toString() ?? '',
       singer: json['singer']?.toString() ?? '',
       album: json['album']?.toString() ?? '',
+      hash: json['hash']?.toString() ?? '',
       emixsongid: json['emixsongid']?.toString() ?? '',
+      albumAudioId: json['album_audio_id']?.toString(),
       pic: json['pic']?.toString(),
       duration: json['duration'] is int ? json['duration'] : int.tryParse(json['duration']?.toString() ?? '0'),
     );

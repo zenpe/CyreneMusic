@@ -396,14 +396,26 @@ class SearchService extends ChangeNotifier {
 
         if (data['status'] == 200) {
           final results = (data['result'] as List<dynamic>)
-              .map((item) => Track(
-                    id: item['emixsongid'] as String,  // 酷狗使用 emixsongid
-                    name: item['name'] as String,
-                    artists: item['singer'] as String,
-                    album: item['album'] as String,
-                    picUrl: item['pic'] as String,
-                    source: MusicSource.kugou,
-                  ))
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .where((item) => _nonEmptyString(item['hash']) != null)
+              .map((item) {
+                final emixSongId = _nonEmptyString(item['emixsongid']);
+                final fileHash = _nonEmptyString(item['hash'])!;
+                return Track(
+                  id: emixSongId ?? fileHash,
+                  name: item['name']?.toString() ?? '',
+                  artists: item['singer']?.toString() ?? '',
+                  album: item['album']?.toString() ?? '',
+                  picUrl: item['pic']?.toString() ?? '',
+                  source: MusicSource.kugou,
+                  sourceIds: TrackSourceIds(
+                    fileHash: fileHash,
+                    emixSongId: emixSongId,
+                    albumAudioId: _nonEmptyString(item['album_audio_id']),
+                  ),
+                );
+              })
               .toList();
 
           if (!_isSessionActive(sessionId, keyword)) {
@@ -439,6 +451,11 @@ class SearchService extends ChangeNotifier {
       return;
     }
     notifyListeners();
+  }
+
+  static String? _nonEmptyString(dynamic value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
   }
 
   /// 搜索酷我音乐

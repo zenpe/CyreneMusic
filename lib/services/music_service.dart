@@ -309,6 +309,7 @@ class MusicService extends ChangeNotifier {
     MusicSource source = MusicSource.netease,
     String? title,
     String? artist,
+    TrackSourceIds sourceIds = const TrackSourceIds(),
     bool fetchLyrics = true,
     void Function(LxRuntimeFailure? failure)? onLxFailure,
   }) async {
@@ -394,6 +395,7 @@ class MusicService extends ChangeNotifier {
           songId: songId,
           quality: quality,
           source: source,
+          sourceIds: sourceIds,
           audioSourceService: audioSourceService,
           fetchLyrics: fetchLyrics,
           onFailure: onLxFailure,
@@ -969,6 +971,7 @@ class MusicService extends ChangeNotifier {
   Future<SongDetail?> fetchLyricOnlySongDetail({
     required dynamic songId,
     required MusicSource source,
+    TrackSourceIds sourceIds = const TrackSourceIds(),
     String? title,
     String? artist,
   }) async {
@@ -1027,7 +1030,11 @@ class MusicService extends ChangeNotifier {
         }
       }
 
-      final lyricData = await _fetchLyricFromBackend(source, songId);
+      final lyricData = await _fetchLyricFromBackend(
+        source,
+        songId,
+        sourceIds: sourceIds,
+      );
       if (lyricData == null) {
         DeveloperModeService().addLog(
           '⚠️ [MusicService] 歌词补全无结果: $songId (${source.name})',
@@ -1071,6 +1078,7 @@ class MusicService extends ChangeNotifier {
     required dynamic songId,
     required AudioQuality quality,
     required MusicSource source,
+    required TrackSourceIds sourceIds,
     required AudioSourceService audioSourceService,
     required bool fetchLyrics,
     void Function(LxRuntimeFailure? failure)? onFailure,
@@ -1086,12 +1094,12 @@ class MusicService extends ChangeNotifier {
     // - QQ音乐：songmid (String)
     // - 酷狗：hash (String)
     // - 酷我：rid/mid (int)
-    final String lxSongId = _extractLxSongId(songId, source);
     final sourceCode = audioSourceService.getLxSourceCode(source);
     final lxQuality = audioSourceService.getLxQuality(quality);
     final sourceId = audioSourceService.activeSource?.id;
 
     try {
+      final String lxSongId = lxPlaybackId(songId, source, sourceIds);
       final runtime = LxMusicRuntimeService();
 
       // Runtime is a singleton, so readiness must be tied to the active
@@ -1150,7 +1158,11 @@ class MusicService extends ChangeNotifier {
       String qrcTrans = '';
       if (fetchLyrics) {
         try {
-          final lyricData = await _fetchLyricFromBackend(source, songId);
+          final lyricData = await _fetchLyricFromBackend(
+            source,
+            songId,
+            sourceIds: sourceIds,
+          );
           if (lyricData != null) {
             lyric = lyricData['lyric'] ?? '';
             tlyric = lyricData['tlyric'] ?? '';
@@ -1205,8 +1217,9 @@ class MusicService extends ChangeNotifier {
   /// 从后端歌词 API 获取歌词（供洛雪音源使用）
   Future<Map<String, String>?> _fetchLyricFromBackend(
     MusicSource source,
-    dynamic songId,
-  ) async {
+    dynamic songId, {
+    TrackSourceIds sourceIds = const TrackSourceIds(),
+  }) async {
     String path;
     Map<String, dynamic> queryParameters;
 
@@ -1220,14 +1233,10 @@ class MusicService extends ChangeNotifier {
         queryParameters = {'id': songId.toString()};
         break;
       case MusicSource.kugou:
-        // 酷狗可能使用 hash 或 emixsongid
-        final idStr = songId.toString();
         path = '/lyrics/kugou';
-        if (idStr.length == 32 && RegExp(r'^[0-9A-Fa-f]+$').hasMatch(idStr)) {
-          queryParameters = {'hash': idStr};
-        } else {
-          queryParameters = {'emixsongid': songId.toString()};
-        }
+        final emixSongId = sourceIds.emixSongId;
+        if (emixSongId == null) return null;
+        queryParameters = {'emixsongid': emixSongId};
         break;
       case MusicSource.kuwo:
         path = '/lyrics/kuwo';
@@ -1274,16 +1283,20 @@ class MusicService extends ChangeNotifier {
     return null;
   }
 
-  /// 从 songId 中提取洛雪音源所需的 ID
-  String _extractLxSongId(dynamic songId, MusicSource source) {
-    final idStr = songId.toString();
-
-    // 酷狗音乐可能使用 "hash:album_audio_id" 格式，提取 hash
-    if (source == MusicSource.kugou && idStr.contains(':')) {
-      return idStr.split(':')[0].toUpperCase();
+  /// 返回 LX Music 协议需要的播放标识，不对平台标识做格式猜测。
+  static String lxPlaybackId(
+    dynamic songId,
+    MusicSource source,
+    TrackSourceIds sourceIds,
+  ) {
+    if (source != MusicSource.kugou) return songId.toString();
+    final fileHash = sourceIds.fileHash;
+    if (fileHash == null || fileHash.isEmpty) {
+      throw const MissingTrackSourceIdentifierException(
+        '歌曲标识不完整，请重新搜索或同步',
+      );
     }
-
-    return idStr;
+    return fileHash.toUpperCase();
   }
 
   /// 获取洛雪音源错误消息

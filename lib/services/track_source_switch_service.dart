@@ -279,19 +279,36 @@ class TrackSourceSwitchService extends ChangeNotifier {
       final data = result.data as Map<String, dynamic>;
       if (data['status'] == 200) {
         return (data['result'] as List<dynamic>)
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .where((item) => _nonEmptyString(item['hash']) != null)
             .take(1)
-            .map((item) => Track(
-                  id: item['emixsongid'] as String,
-                  name: item['name'] as String,
-                  artists: item['singer'] as String,
-                  album: item['album'] as String,
-                  picUrl: item['pic'] as String,
-                  source: MusicSource.kugou,
-                ))
+            .map((item) {
+              final emixSongId = _nonEmptyString(item['emixsongid']);
+              final fileHash = _nonEmptyString(item['hash'])!;
+              return Track(
+                id: emixSongId ?? fileHash,
+                name: item['name']?.toString() ?? '',
+                artists: item['singer']?.toString() ?? '',
+                album: item['album']?.toString() ?? '',
+                picUrl: item['pic']?.toString() ?? '',
+                source: MusicSource.kugou,
+                sourceIds: TrackSourceIds(
+                  fileHash: fileHash,
+                  emixSongId: emixSongId,
+                  albumAudioId: _nonEmptyString(item['album_audio_id']),
+                ),
+              );
+            })
             .toList();
       }
     }
     throw Exception('酷狗音乐搜索失败');
+  }
+
+  static String? _nonEmptyString(dynamic value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
   }
 
   /// 搜索酷我音乐

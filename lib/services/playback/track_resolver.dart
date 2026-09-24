@@ -84,6 +84,7 @@ typedef SongDetailFetcher =
       required MusicSource source,
       required String title,
       required String artist,
+      required TrackSourceIds sourceIds,
       required bool fetchLyrics,
       void Function(LxRuntimeFailure? failure)? onLxFailure,
     });
@@ -211,6 +212,7 @@ class TrackResolver {
     required MusicSource source,
     required String title,
     required String artist,
+    TrackSourceIds sourceIds = const TrackSourceIds(),
     required Duration timeout,
     bool fetchLyrics = true,
     String? resolverFingerprint,
@@ -267,6 +269,7 @@ class TrackResolver {
       source: source,
       title: title,
       artist: artist,
+      sourceIds: sourceIds,
       fetchLyrics: fetchLyrics,
       forceNew: skipMemoryCache,
     );
@@ -318,6 +321,7 @@ class TrackResolver {
     required MusicSource source,
     required String title,
     required String artist,
+    required TrackSourceIds sourceIds,
     required bool fetchLyrics,
     bool forceNew = false,
   }) {
@@ -350,6 +354,7 @@ class TrackResolver {
                 source: source,
                 title: title,
                 artist: artist,
+                sourceIds: sourceIds,
                 fetchLyrics: fetchLyrics,
                 onLxFailure: (failure) => requestFailure = failure,
               ),

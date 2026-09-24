@@ -1924,6 +1924,8 @@ class ImportPlaylistDialog {
         updateProgress(i + 1);
 
         String? emixsongid;
+        String? fileHash;
+        String? albumAudioId;
         try {
           // 构建搜索关键词：使用"歌曲名 歌手名"格式
           // 如果歌手名存在，使用"歌手名 歌曲名"；否则只使用歌曲名
@@ -1944,12 +1946,16 @@ class ImportPlaylistDialog {
               if (_artistsMatch(track.artists, firstResult.singer)) {
                 // 歌手匹配，使用第一个结果
                 emixsongid = firstResult.emixsongid;
+                fileHash = firstResult.hash;
+                albumAudioId = firstResult.albumAudioId;
               } else {
                 // 歌手不匹配，尝试在结果中找匹配的
                 for (final result in searchResults) {
                   if (_artistsMatch(track.artists, result.singer) &&
                       result.emixsongid.isNotEmpty) {
                     emixsongid = result.emixsongid;
+                    fileHash = result.hash;
+                    albumAudioId = result.albumAudioId;
                     break;
                   }
                 }
@@ -1963,6 +1969,8 @@ class ImportPlaylistDialog {
             } else {
               // 没有歌手信息，直接使用第一个结果
               emixsongid = searchResults[0].emixsongid;
+              fileHash = searchResults[0].hash;
+              albumAudioId = searchResults[0].albumAudioId;
             }
           }
         } catch (e) {
@@ -1970,8 +1978,10 @@ class ImportPlaylistDialog {
           // 搜索失败，继续处理下一首
         }
 
-        // 如果找到了emixsongid，使用它；否则使用hash作为备用
-        final trackId = emixsongid ?? track.hash;
+        fileHash = (fileHash?.isNotEmpty ?? false) ? fileHash : track.hash;
+        final trackId = (emixsongid?.isNotEmpty ?? false)
+            ? emixsongid!
+            : fileHash!;
 
         // 处理歌曲封面URL
         String trackPicUrl = track.img ?? '';
@@ -1989,6 +1999,11 @@ class ImportPlaylistDialog {
             album: track.albumName,
             picUrl: trackPicUrl,
             source: MusicSource.kugou,
+            sourceIds: TrackSourceIds(
+              fileHash: fileHash,
+              emixSongId: emixsongid,
+              albumAudioId: albumAudioId,
+            ),
           ),
         );
       }

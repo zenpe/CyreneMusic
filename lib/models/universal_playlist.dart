@@ -51,6 +51,13 @@ class UniversalPlaylist {
         album: (trackJson['album'] ?? '未知专辑') as String,
         picUrl: (trackJson['picUrl'] ?? '') as String,
         source: source,  // 🔥 关键：确保标记正确的来源
+        sourceIds: platform == MusicPlatform.kugou
+            ? TrackSourceIds(
+                fileHash: trackJson['hash']?.toString(),
+                emixSongId: trackJson['emixsongid']?.toString(),
+                albumAudioId: trackJson['album_audio_id']?.toString(),
+              )
+            : const TrackSourceIds(),
       );
     }).toList();
 

@@ -2,7 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-enum LxRuntimeFailureKind { notReady, timeout, scriptRejected, requestFailed }
+import '../models/track.dart';
+
+enum LxRuntimeFailureKind {
+  notReady,
+  timeout,
+  scriptRejected,
+  invalidTrackIdentifier,
+  requestFailed,
+}
 
 class LxRuntimeFailure {
   final LxRuntimeFailureKind kind;
@@ -15,6 +23,8 @@ LxRuntimeFailure classifyLxRuntimeFailure(Object error) {
   final message = error.toString();
   final kind = error is TimeoutException
       ? LxRuntimeFailureKind.timeout
+      : error is MissingTrackSourceIdentifierException
+      ? LxRuntimeFailureKind.invalidTrackIdentifier
       : message.contains('完整性验证失败')
       ? LxRuntimeFailureKind.scriptRejected
       : message.contains('未就绪') || message.contains('无法初始化')
