@@ -15,7 +15,6 @@ import '../models/track.dart';
 import '../utils/theme_manager.dart';
 import '../utils/image_utils.dart';
 import '../utils/dynamic_color_utils.dart';
-import 'playback_switch_ring.dart';
 import 'track_action_menu.dart';
 
 /// 迷你播放器组件（底部播放栏）
