@@ -5,6 +5,8 @@ import 'package:flutter/material.dart' show ImageProvider;
 
 import '../../models/track.dart';
 import '../playback_mode_service.dart';
+import 'playback_candidate_planner.dart';
+import 'playback_transition.dart';
 
 enum QueueSource {
   none,
@@ -68,6 +70,57 @@ class QueueController {
 
   int? entryIdAt(int index) =>
       index >= 0 && index < _entryIds.length ? _entryIds[index] : null;
+
+  PlaybackQueueSnapshot snapshot({
+    int? activeEntryId,
+    bool fallbackToCurrent = true,
+  }) => PlaybackQueueSnapshot(
+    entries: List<PlaybackQueueEntry>.unmodifiable(
+      List<PlaybackQueueEntry>.generate(
+        _tracks.length,
+        (index) => PlaybackQueueEntry(
+          entryId: _entryIds[index],
+          track: _tracks[index],
+        ),
+      ),
+    ),
+    activeEntryId: activeEntryId ?? (fallbackToCurrent ? currentEntryId : null),
+    structureRevision: _structureRevision,
+  );
+
+  List<int> shuffleTraversalEntryIds(
+    PlaybackTransitionDirection direction, {
+    int? activeEntryId,
+  }) {
+    if (isEmpty) return const [];
+    final requestedActiveIndex = activeEntryId == null
+        ? -1
+        : indexOfEntryId(activeEntryId);
+    final activeIndex = requestedActiveIndex >= 0
+        ? requestedActiveIndex
+        : _currentIndex;
+    final order = <int>[];
+    if (_shuffledIndices.isNotEmpty &&
+        _shufflePosition >= 0 &&
+        _shufflePosition < _shuffledIndices.length &&
+        _shuffledIndices[_shufflePosition] == activeIndex) {
+      if (direction == PlaybackTransitionDirection.forward) {
+        order.addAll(_shuffledIndices.skip(_shufflePosition + 1));
+        order.addAll(_shuffledIndices.take(_shufflePosition));
+      } else {
+        order.addAll(_shuffledIndices.take(_shufflePosition).toList().reversed);
+        order.addAll(
+          _shuffledIndices.skip(_shufflePosition + 1).toList().reversed,
+        );
+      }
+    } else {
+      final indices = List<int>.generate(length, (index) => index)
+        ..remove(activeIndex)
+        ..shuffle(_random);
+      order.addAll(indices);
+    }
+    return List<int>.unmodifiable(order.map((index) => _entryIds[index]));
+  }
 
   int indexOfEntryId(int entryId) => _entryIds.indexOf(entryId);
 
@@ -136,6 +189,29 @@ class QueueController {
   bool jumpTo(int index) {
     if (index < 0 || index >= length) return false;
     _currentIndex = index;
+    return true;
+  }
+
+  bool commitEntry(int entryId, {List<int>? shuffleTraversalEntryIds}) {
+    final index = indexOfEntryId(entryId);
+    if (index < 0) return false;
+    _currentIndex = index;
+    if (shuffleTraversalEntryIds != null) {
+      final indices = <int>[];
+      final seen = <int>{};
+      for (final id in shuffleTraversalEntryIds) {
+        final candidateIndex = indexOfEntryId(id);
+        if (candidateIndex >= 0 && seen.add(candidateIndex)) {
+          indices.add(candidateIndex);
+        }
+      }
+      if (!seen.contains(index)) indices.add(index);
+      _shuffledIndices = indices;
+      _shufflePosition = _shuffledIndices.indexOf(index);
+    } else {
+      final shuffleIndex = _shuffledIndices.indexOf(index);
+      if (shuffleIndex >= 0) _shufflePosition = shuffleIndex;
+    }
     return true;
   }
 

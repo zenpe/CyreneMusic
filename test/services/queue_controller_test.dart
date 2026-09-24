@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:cyrene_music/models/track.dart';
+import 'package:cyrene_music/services/playback/playback_transition.dart';
 import 'package:cyrene_music/services/playback/queue_controller.dart';
 import 'package:cyrene_music/services/playback_mode_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -114,5 +115,47 @@ void main() {
     queue.removeAt(0);
     expect(queue.currentEntryId, selectedId);
     expect(queue.indexOfEntryId(selectedId), 1);
+  });
+
+  test('snapshot preserves duplicate tracks as separate entries', () {
+    final queue = QueueController();
+    queue.replace([track(1), track(1), track(2)], 0, QueueSource.playlist);
+
+    final snapshot = queue.snapshot();
+
+    expect(snapshot.entries.map((entry) => entry.track.id), [1, 1, 2]);
+    expect(
+      snapshot.entries.map((entry) => entry.entryId).toSet(),
+      hasLength(3),
+    );
+  });
+
+  test('commitEntry moves the pointer only when the entry still exists', () {
+    final queue = QueueController();
+    queue.replace([track(1), track(2), track(3)], 0, QueueSource.playlist);
+    final targetId = queue.entryIdAt(2)!;
+
+    expect(queue.commitEntry(targetId), isTrue);
+    expect(queue.currentEntryId, targetId);
+    expect(queue.currentTrack?.id, 3);
+    expect(queue.commitEntry(999999), isFalse);
+    expect(queue.currentEntryId, targetId);
+  });
+
+  test('shuffle traversal is bounded and excludes the active entry', () {
+    final queue = QueueController(random: Random(7));
+    queue.replace(
+      [track(1), track(2), track(3), track(4)],
+      1,
+      QueueSource.playlist,
+    );
+
+    final traversal = queue.shuffleTraversalEntryIds(
+      PlaybackTransitionDirection.forward,
+    );
+
+    expect(traversal, hasLength(3));
+    expect(traversal.toSet(), hasLength(3));
+    expect(traversal, isNot(contains(queue.currentEntryId)));
   });
 }

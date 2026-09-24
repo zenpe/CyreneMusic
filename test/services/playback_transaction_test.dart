@@ -38,4 +38,28 @@ void main() {
       expect(historyWrites, 2);
     });
   });
+
+  group('TransactionEventGate', () {
+    test('publishes only the event belonging to the committed generation', () {
+      final gate = TransactionEventGate<String>();
+      gate.arm(1);
+      expect(gate.capture(1, 'playing'), isTrue);
+      gate.arm(2);
+      expect(gate.capture(1, 'stale'), isFalse);
+      expect(gate.capture(2, 'paused'), isTrue);
+
+      expect(gate.take(1), isNull);
+      expect(gate.take(2), 'paused');
+      expect(gate.take(2), isNull);
+    });
+
+    test('discard prevents a failed transition event from being committed', () {
+      final gate = TransactionEventGate<String>();
+      gate.arm(3);
+      gate.capture(3, 'playing');
+      gate.discard(3);
+
+      expect(gate.take(3), isNull);
+    });
+  });
 }

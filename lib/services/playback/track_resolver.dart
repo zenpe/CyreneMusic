@@ -215,6 +215,7 @@ class TrackResolver {
     bool fetchLyrics = true,
     String? resolverFingerprint,
     bool skipMemoryCache = false,
+    bool Function()? acceptResult,
   }) async {
     if (skipMemoryCache) {
       // A forced refresh must supersede any older in-flight request for the
@@ -292,7 +293,7 @@ class TrackResolver {
           'failure_kind': result.lxFailure?.kind.name,
         },
       );
-      if (result.isPlayable) {
+      if (result.isPlayable && (acceptResult?.call() ?? true)) {
         if (cacheEpoch == _cacheEpoch) {
           _putResolvedCache(key, result);
         }

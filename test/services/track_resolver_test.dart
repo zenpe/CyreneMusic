@@ -477,6 +477,39 @@ void main() {
     },
   );
 
+  test('cancelled caller does not populate the resolved URL cache', () async {
+    final completer = Completer<SongDetail?>();
+    var acceptResult = true;
+    final resolver = TrackResolver(
+      fetcher:
+          ({
+            required songId,
+            required quality,
+            required source,
+            required title,
+            required artist,
+            required fetchLyrics,
+            onLxFailure,
+          }) => completer.future,
+    );
+
+    final request = resolver.resolve(
+      songId: 717,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: '717',
+      artist: 'A',
+      timeout: const Duration(seconds: 1),
+      acceptResult: () => acceptResult,
+    );
+    await Future<void>.delayed(Duration.zero);
+    acceptResult = false;
+    completer.complete(_detail(717));
+
+    expect((await request).isPlayable, isTrue);
+    expect(resolver.resolvedCacheSize, 0);
+  });
+
   test('forced refresh replaces an older in-flight request', () async {
     var calls = 0;
     final oldRequest = Completer<SongDetail?>();
