@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/netease_discover.dart';
 import 'api/api_client.dart';
 
@@ -14,10 +17,13 @@ class NeteaseDiscoverService extends ChangeNotifier {
   List<NeteasePlaylistSummary> _playlists = [];
   List<NeteaseTag> _tags = [];
   String _currentCat = '全部歌单';
-  CancelToken? _playlistsCancelToken;
   CancelToken? _tagsCancelToken;
   int _playlistsRequestId = 0;
   int _tagsRequestId = 0;
+
+  static const _playlistCachePrefix = 'content.discover.playlists.v2.';
+  static const _tagsCacheKey = 'content.discover.tags.v2';
+  static const _cacheFreshness = Duration(minutes: 10);
 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -26,26 +32,40 @@ class NeteaseDiscoverService extends ChangeNotifier {
   String get currentCat => _currentCat;
 
   /// 获取"发现-推荐歌单"列表
-  Future<void> fetchDiscoverPlaylists({String cat = '全部歌单'}) async {
+  Future<void> fetchDiscoverPlaylists({
+    String cat = '全部歌单',
+    bool forceRefresh = false,
+  }) async {
     final requestId = ++_playlistsRequestId;
-    _cancelPlaylistsRequest('新的发现歌单请求');
-    final cancelToken = CancelToken();
-    _playlistsCancelToken = cancelToken;
-
-    _isLoading = true;
+    final previousCat = _currentCat;
+    _isLoading = _playlists.isEmpty;
     _errorMessage = null;
     _currentCat = cat;
+    if (previousCat != cat) {
+      _playlists = [];
+    }
     notifyListeners();
 
     try {
+      final cached = await _readPlaylistCache(cat);
+      if (requestId != _playlistsRequestId) return;
+      if (cached != null) {
+        _playlists = cached.items;
+        _isLoading = false;
+        notifyListeners();
+        if (!forceRefresh && DateTime.now().difference(cached.savedAt) < _cacheFreshness) {
+          return;
+        }
+      }
+
       final result = await ApiClient().getJson(
-        '/netease/top/playlist',
-        queryParameters: {'cat': cat},
+        '/v1/discover/playlists',
+        queryParameters: {
+          'category': cat,
+        },
         timeout: const Duration(seconds: 15),
-        cancelToken: cancelToken,
-        cacheTtl: const Duration(seconds: 8),
       );
-      if (!_isCurrentPlaylistsRequest(requestId, cancelToken)) {
+      if (requestId != _playlistsRequestId) {
         return;
       }
       if (!result.ok) {
@@ -54,20 +74,20 @@ class NeteaseDiscoverService extends ChangeNotifier {
 
       final data = result.data as Map<String, dynamic>;
       if (data['status'] != 200) {
-        throw Exception('status ${data['status']}');
+        throw Exception(data['message'] ?? 'status ${data['status']}');
       }
 
-      final list = (data['playlists'] as List<dynamic>? ?? []);
+      final list = (data['items'] as List<dynamic>? ?? []);
       _playlists = list.map((e) => NeteasePlaylistSummary.fromJson(e as Map<String, dynamic>)).toList();
+      await _writePlaylistCache(cat, _playlists);
     } catch (e) {
-      if (_isRequestCancelled(e, cancelToken) || !_isCurrentPlaylistsRequest(requestId, cancelToken)) {
+      if (requestId != _playlistsRequestId) {
         return;
       }
       _errorMessage = '获取推荐歌单失败: $e';
     } finally {
-      if (_isCurrentPlaylistsRequest(requestId, cancelToken)) {
+      if (requestId == _playlistsRequestId) {
         _isLoading = false;
-        _playlistsCancelToken = null;
         notifyListeners();
       }
     }
@@ -109,11 +129,20 @@ class NeteaseDiscoverService extends ChangeNotifier {
     _tagsCancelToken = cancelToken;
 
     try {
+      final cached = await _readTagsCache();
+      if (_isCurrentTagsRequest(requestId, cancelToken) && cached != null) {
+        _tags = cached.items;
+        notifyListeners();
+        if (DateTime.now().difference(cached.savedAt) < _cacheFreshness) {
+          _tagsCancelToken = null;
+          return;
+        }
+      }
+
       final result = await ApiClient().getJson(
-        '/netease/playlist/highquality/tags',
+        '/v1/discover/tags',
         timeout: const Duration(seconds: 15),
         cancelToken: cancelToken,
-        cacheTtl: const Duration(seconds: 30),
       );
       if (!_isCurrentTagsRequest(requestId, cancelToken)) {
         return;
@@ -125,8 +154,9 @@ class NeteaseDiscoverService extends ChangeNotifier {
       if (data['status'] != 200) {
         throw Exception('status ${data['status']}');
       }
-      final list = (data['tags'] as List<dynamic>? ?? []);
+      final list = (data['items'] as List<dynamic>? ?? []);
       _tags = list.map((e) => NeteaseTag.fromJson(e as Map<String, dynamic>)).toList();
+      await _writeTagsCache(_tags);
       notifyListeners();
     } catch (e) {
       if (_isRequestCancelled(e, cancelToken) || !_isCurrentTagsRequest(requestId, cancelToken)) {
@@ -141,20 +171,8 @@ class NeteaseDiscoverService extends ChangeNotifier {
     }
   }
 
-  bool _isCurrentPlaylistsRequest(int requestId, CancelToken cancelToken) {
-    return requestId == _playlistsRequestId && identical(_playlistsCancelToken, cancelToken);
-  }
-
   bool _isCurrentTagsRequest(int requestId, CancelToken cancelToken) {
     return requestId == _tagsRequestId && identical(_tagsCancelToken, cancelToken);
-  }
-
-  void _cancelPlaylistsRequest(String reason) {
-    final token = _playlistsCancelToken;
-    if (token == null || token.isCancelled) {
-      return;
-    }
-    token.cancel(reason);
   }
 
   void _cancelTagsRequest(String reason) {
@@ -177,10 +195,103 @@ class NeteaseDiscoverService extends ChangeNotifier {
 
   @override
   void dispose() {
-    _cancelPlaylistsRequest('NeteaseDiscoverService disposed');
     _cancelTagsRequest('NeteaseDiscoverService disposed');
-    _playlistsCancelToken = null;
     _tagsCancelToken = null;
     super.dispose();
   }
+
+  String _playlistCacheKey(String cat) {
+    return '$_playlistCachePrefix${Uri.encodeComponent(cat)}';
+  }
+
+  Future<_CachedPlaylistList?> _readPlaylistCache(String cat) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_playlistCacheKey(cat));
+      if (raw == null) return null;
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      final items = (decoded['items'] as List<dynamic>? ?? [])
+          .map((item) => NeteasePlaylistSummary.fromJson(item as Map<String, dynamic>))
+          .toList();
+      final savedAt = DateTime.fromMillisecondsSinceEpoch((decoded['savedAt'] as num).toInt());
+      return _CachedPlaylistList(items: items, savedAt: savedAt);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writePlaylistCache(String cat, List<NeteasePlaylistSummary> items) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _playlistCacheKey(cat),
+        jsonEncode({
+          'savedAt': DateTime.now().millisecondsSinceEpoch,
+          'items': items
+              .map((item) => {
+                    'id': item.id,
+                    'name': item.name,
+                    'coverImgUrl': item.coverImgUrl,
+                    'creator': {'nickname': item.creatorNickname},
+                    'trackCount': item.trackCount,
+                    'playCount': item.playCount,
+                  })
+              .toList(),
+        }),
+      );
+    } catch (_) {}
+  }
+
+  Future<_CachedTagList?> _readTagsCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_tagsCacheKey);
+      if (raw == null) return null;
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      final items = (decoded['items'] as List<dynamic>? ?? [])
+          .map((item) => NeteaseTag.fromJson(item as Map<String, dynamic>))
+          .toList();
+      return _CachedTagList(
+        items: items,
+        savedAt: DateTime.fromMillisecondsSinceEpoch((decoded['savedAt'] as num).toInt()),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeTagsCache(List<NeteaseTag> items) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _tagsCacheKey,
+        jsonEncode({
+          'savedAt': DateTime.now().millisecondsSinceEpoch,
+          'items': items
+              .map((item) => {
+                    'id': item.id,
+                    'name': item.name,
+                    'type': item.type,
+                    'category': item.category,
+                    'hot': item.hot,
+                  })
+              .toList(),
+        }),
+      );
+    } catch (_) {}
+  }
+}
+
+class _CachedPlaylistList {
+  final List<NeteasePlaylistSummary> items;
+  final DateTime savedAt;
+
+  const _CachedPlaylistList({required this.items, required this.savedAt});
+}
+
+class _CachedTagList {
+  final List<NeteaseTag> items;
+  final DateTime savedAt;
+
+  const _CachedTagList({required this.items, required this.savedAt});
 }

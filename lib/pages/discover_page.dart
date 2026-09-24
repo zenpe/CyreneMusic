@@ -183,6 +183,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
               final currentCat = NeteaseDiscoverService().currentCat;
               await NeteaseDiscoverService().fetchDiscoverPlaylists(
                 cat: currentCat,
+                forceRefresh: true,
               );
             },
           ),
@@ -545,6 +546,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   final currentCat = NeteaseDiscoverService().currentCat;
                   await NeteaseDiscoverService().fetchDiscoverPlaylists(
                     cat: currentCat,
+                    forceRefresh: true,
                   );
                 },
                 child: CustomScrollView(

@@ -43,6 +43,8 @@ class MusicService extends ChangeNotifier {
   /// 数据是否已缓存（是否已成功加载过）
   bool _isCached = false;
   bool get isCached => _isCached;
+  DateTime? _toplistsCacheSavedAt;
+  static const _toplistsFreshness = Duration(minutes: 10);
 
   /// 初始化服务并从本地磁盘恢复缓存
   Future<void> initialize() async {
@@ -66,6 +68,10 @@ class MusicService extends ChangeNotifier {
         if (restored.isNotEmpty) {
           _toplists = restored;
           _isCached = true;
+          final savedAtMs = prefs.getInt(_kToplistsCacheTimeKey);
+          _toplistsCacheSavedAt = savedAtMs == null
+              ? null
+              : DateTime.fromMillisecondsSinceEpoch(savedAtMs);
           _errorMessage = null;
           StructuredLogService.log(
             '💾 [MusicService] 从本地磁盘恢复了 ${_toplists.length} 个榜单',
@@ -91,6 +97,7 @@ class MusicService extends ChangeNotifier {
         _kToplistsCacheTimeKey,
         DateTime.now().millisecondsSinceEpoch,
       );
+      _toplistsCacheSavedAt = DateTime.now();
       StructuredLogService.log('💾 [MusicService] 榜单数据已持久化到磁盘');
     } catch (e) {
       StructuredLogService.log('⚠️ [MusicService] 持久化榜单数据异常: $e');
@@ -112,7 +119,10 @@ class MusicService extends ChangeNotifier {
     }
 
     // 如果已有缓存且不是强制刷新，直接返回
-    if (_isCached && !forceRefresh) {
+    if (_isCached &&
+        !forceRefresh &&
+        _toplistsCacheSavedAt != null &&
+        DateTime.now().difference(_toplistsCacheSavedAt!) < _toplistsFreshness) {
       StructuredLogService.log('💾 [MusicService] 使用缓存数据，跳过加载');
       DeveloperModeService().addLog('💾 [MusicService] 使用缓存数据');
       return;
@@ -131,8 +141,8 @@ class MusicService extends ChangeNotifier {
       }
 
       final result = await ApiClient().getJson(
-        '/toplists',
-        timeout: const Duration(seconds: 20),
+        '/v1/home/charts',
+        timeout: const Duration(seconds: 8),
       );
 
       StructuredLogService.log('🎵 [MusicService] 响应状态码: ${result.statusCode}');
@@ -141,7 +151,7 @@ class MusicService extends ChangeNotifier {
         final data = result.data as Map<String, dynamic>;
 
         if (data['status'] == 200) {
-          final toplistsData = data['toplists'] as List<dynamic>;
+          final toplistsData = data['sections'] as List<dynamic>? ?? const [];
           _toplists = toplistsData
               .map(
                 (item) => Toplist.fromJson(
