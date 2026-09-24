@@ -15,6 +15,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'lab_functions_service.dart';
+import 'playback_mode_service.dart';
+import 'android_media_notification_service.dart';
 import '../utils/image_utils.dart';
 
 /// Android 媒体通知处理器
@@ -61,6 +63,14 @@ class CyreneAudioHandler extends BaseAudioHandler
 
     // 监听播放器状态变化
     PlayerService().addListener(_onPlayerStateChanged);
+
+    // 监听播放模式变化（用于同步通知栏的单曲循环/列表循环/随机播放状态）
+    PlaybackModeService().addListener(_onPlaybackModeChanged);
+
+    // 启动自定义 Android 媒体通知服务（若在实验室设置中开启）
+    if (Platform.isAndroid && LabFunctionsService().enableCustomNotification) {
+      AndroidMediaNotificationService().start();
+    }
 
     // 🔧 性能优化：不在初始化时启动定时器，改为在 _onPlayerStateChanged() 中按需启动
     // 避免用户启动应用但未播放时定时器空转
@@ -186,7 +196,36 @@ class CyreneAudioHandler extends BaseAudioHandler
     _lyricUpdateTimer?.cancel();
     _positionUpdateTimer?.cancel();
     _iosStateRefreshTimer?.cancel(); // 🍎 iOS 专用定时器
+    PlaybackModeService().removeListener(_onPlaybackModeChanged);
     await super.onTaskRemoved();
+  }
+
+  void _onPlaybackModeChanged() {
+    final player = PlayerService();
+    _updatePlaybackState(
+      player.state,
+      player.position,
+      player.bufferedPosition,
+      player.playbackSpeed,
+    );
+  }
+
+  AudioServiceRepeatMode _getRepeatMode() {
+    switch (PlaybackModeService().currentMode) {
+      case PlaybackMode.sequential:
+        return AudioServiceRepeatMode.none;
+      case PlaybackMode.repeatOne:
+        return AudioServiceRepeatMode.one;
+      case PlaybackMode.loopAll:
+      case PlaybackMode.shuffle:
+        return AudioServiceRepeatMode.all;
+    }
+  }
+
+  AudioServiceShuffleMode _getShuffleMode() {
+    return PlaybackModeService().currentMode == PlaybackMode.shuffle
+        ? AudioServiceShuffleMode.all
+        : AudioServiceShuffleMode.none;
   }
 
   /// 设置初始播放状态（必需）
@@ -203,13 +242,28 @@ class CyreneAudioHandler extends BaseAudioHandler
     );
 
     // 设置初始 PlaybackState（这是显示通知的关键）
-    // 只显示 3 个按钮：上一首、播放、下一首
     playbackState.add(
       PlaybackState(
-        controls: [
+        controls: const [
+          MediaControl(
+            androidIcon: 'drawable/ic_notification_repeat_all',
+            label: '列表循环',
+            action: MediaAction.custom,
+            customAction: CustomMediaAction(
+              name: 'cycle_repeat_mode',
+            ),
+          ),
           MediaControl.skipToPrevious, // 上一首
           MediaControl.play, // 播放
           MediaControl.skipToNext, // 下一首
+          MediaControl(
+            androidIcon: 'drawable/ic_notification_lyric',
+            label: '桌面歌词',
+            action: MediaAction.custom,
+            customAction: CustomMediaAction(
+              name: 'toggle_floating_lyric',
+            ),
+          ),
         ],
         systemActions: const {
           MediaAction.seek,
@@ -217,10 +271,14 @@ class CyreneAudioHandler extends BaseAudioHandler
           MediaAction.pause, // 🎯 蓝牙耳机控制必需
           MediaAction.skipToNext, // 🎯 蓝牙耳机控制必需
           MediaAction.skipToPrevious, // 🎯 蓝牙耳机控制必需
+          MediaAction.setRepeatMode,
+          MediaAction.setShuffleMode,
         },
-        androidCompactActionIndices: const [0, 1, 2], // 全部 3 个按钮都显示
+        androidCompactActionIndices: const [1, 2, 3], // 紧凑视图：上一首、播放、下一首
         processingState: AudioProcessingState.idle,
         playing: false,
+        repeatMode: AudioServiceRepeatMode.all,
+        shuffleMode: AudioServiceShuffleMode.none,
         updatePosition: Duration.zero,
         bufferedPosition: Duration.zero,
         speed: 0.0,
@@ -228,7 +286,7 @@ class CyreneAudioHandler extends BaseAudioHandler
       ),
     );
 
-    StructuredLogService.log('✅ [AudioHandler] 初始播放状态已设置（3个按钮：上一首/播放/下一首）');
+    StructuredLogService.log('✅ [AudioHandler] 初始播放状态已设置（5个控制按钮）');
   }
 
   /// 播放器状态变化回调（带防抖）
@@ -868,25 +926,56 @@ class CyreneAudioHandler extends BaseAudioHandler
     Duration bufferedPosition,
     double playbackSpeed,
   ) {
-    // 只保留 3 个核心按钮：上一首、播放/暂停、下一首
+    final mode = PlaybackModeService().currentMode;
+    final modeLabel = switch (mode) {
+      PlaybackMode.sequential => '顺序播放',
+      PlaybackMode.repeatOne => '单曲循环',
+      PlaybackMode.shuffle => '随机播放',
+      PlaybackMode.loopAll => '列表循环',
+    };
+    final modeIcon = switch (mode) {
+      PlaybackMode.shuffle => 'drawable/ic_notification_shuffle',
+      PlaybackMode.repeatOne => 'drawable/ic_notification_repeat_one',
+      _ => 'drawable/ic_notification_repeat_all',
+    };
+
     final controls = [
+      MediaControl(
+        androidIcon: modeIcon,
+        label: modeLabel,
+        action: MediaAction.custom,
+        customAction: const CustomMediaAction(
+          name: 'cycle_repeat_mode',
+        ),
+      ),
       MediaControl.skipToPrevious, // 上一首
       if (playerState == PlayerState.playing)
-        MediaControl
-            .pause // 暂停
+        MediaControl.pause // 暂停
       else
         MediaControl.play, // 播放
       MediaControl.skipToNext, // 下一首
+      const MediaControl(
+        androidIcon: 'drawable/ic_notification_lyric',
+        label: '桌面歌词',
+        action: MediaAction.custom,
+        customAction: CustomMediaAction(
+          name: 'toggle_floating_lyric',
+        ),
+      ),
     ];
 
     final playing = playerState == PlayerState.playing;
     final processingState = _getProcessingState(playerState);
+    final repeatMode = _getRepeatMode();
+    final shuffleMode = _getShuffleMode();
     final currentState = playbackState.value;
 
     // 🔧 性能优化：只有当状态真正改变时才更新，避免不必要的系统通知更新
     final stateChanged =
         currentState.playing != playing ||
         currentState.processingState != processingState ||
+        currentState.repeatMode != repeatMode ||
+        currentState.shuffleMode != shuffleMode ||
         currentState.controls.length != controls.length ||
         !_controlsEqual(currentState.controls, controls);
 
@@ -902,10 +991,14 @@ class CyreneAudioHandler extends BaseAudioHandler
             MediaAction.pause, // 🎯 蓝牙耳机控制必需
             MediaAction.skipToNext, // 🎯 蓝牙耳机控制必需
             MediaAction.skipToPrevious, // 🎯 蓝牙耳机控制必需
+            MediaAction.setRepeatMode,
+            MediaAction.setShuffleMode,
           },
-          androidCompactActionIndices: const [0, 1, 2], // 全部3个按钮都显示在紧凑视图
+          androidCompactActionIndices: const [1, 2, 3], // 紧凑视图：上一首、播放、下一首
           processingState: processingState,
           playing: playing,
+          repeatMode: repeatMode,
+          shuffleMode: shuffleMode,
           updatePosition: position,
           bufferedPosition: bufferedPosition,
           speed: playing ? playbackSpeed : 0.0,
@@ -997,6 +1090,32 @@ class CyreneAudioHandler extends BaseAudioHandler
   }
 
   @override
+  Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
+    switch (repeatMode) {
+      case AudioServiceRepeatMode.none:
+        await PlaybackModeService().setMode(PlaybackMode.sequential);
+        break;
+      case AudioServiceRepeatMode.one:
+        await PlaybackModeService().setMode(PlaybackMode.repeatOne);
+        break;
+      case AudioServiceRepeatMode.all:
+      case AudioServiceRepeatMode.group:
+        await PlaybackModeService().setMode(PlaybackMode.loopAll);
+        break;
+    }
+  }
+
+  @override
+  Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
+    if (shuffleMode == AudioServiceShuffleMode.all ||
+        shuffleMode == AudioServiceShuffleMode.group) {
+      await PlaybackModeService().setMode(PlaybackMode.shuffle);
+    } else {
+      await PlaybackModeService().setMode(PlaybackMode.loopAll);
+    }
+  }
+
+  @override
   Future<void> customAction(String name, [Map<String, dynamic>? extras]) async {
     // 自定义操作处理
     if (!Platform.isAndroid) return;
@@ -1005,6 +1124,13 @@ class CyreneAudioHandler extends BaseAudioHandler
       // 来自系统媒体控件“词”按钮的指令
       StructuredLogService.log('🎮 [AudioHandler] 系统媒体控件: 切换悬浮歌词');
       await AndroidFloatingLyricService().toggle();
+      return;
+    }
+
+    if (name == 'cycle_repeat_mode') {
+      // 来自系统媒体控件“循环模式”按钮的指令
+      StructuredLogService.log('🎮 [AudioHandler] 系统媒体控件: 切换循环模式');
+      await PlaybackModeService().toggleMode();
       return;
     }
   }

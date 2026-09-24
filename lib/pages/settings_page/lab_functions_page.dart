@@ -80,7 +80,17 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                       )
                   : null,
             ),
-            if (Platform.isAndroid)
+            if (Platform.isAndroid) ...[
+              MD3SettingsTile(
+                leading: const Icon(Icons.notifications_active_outlined),
+                title: '增强媒体通知栏卡片',
+                subtitle: '开启精美亚克力背景、流光取色与循环模式切换（推荐 HyperOS 等系统）',
+                enabled: true,
+                trailing: Switch(
+                  value: _labService.enableCustomNotification,
+                  onChanged: (value) => _labService.setEnableCustomNotification(value),
+                ),
+              ),
               MD3SettingsTile(
                 leading: const Icon(Icons.widgets_outlined),
                 title: '安卓桌面小部件',
@@ -91,6 +101,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                   onChanged: (value) => _labService.setEnableAndroidWidget(value),
                 ),
               ),
+            ],
           ],
         ),
       ],
@@ -176,7 +187,16 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                       )
                   : null,
             ),
-            if (Platform.isAndroid)
+            if (Platform.isAndroid) ...[
+              CupertinoListTile(
+                leading: const Icon(CupertinoIcons.bell_fill, color: CupertinoColors.systemBlue),
+                title: const Text('增强媒体通知栏卡片'),
+                subtitle: const Text('开启精美亚克力背景与循环模式切换（推荐 HyperOS 等系统）'),
+                trailing: CupertinoSwitch(
+                  value: _labService.enableCustomNotification,
+                  onChanged: (value) => _labService.setEnableCustomNotification(value),
+                ),
+              ),
               CupertinoListTile(
                 leading: const Icon(CupertinoIcons.square_grid_2x2, color: CupertinoColors.systemBlue),
                 title: const Text('安卓桌面小部件'),
@@ -186,6 +206,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                   onChanged: (value) => _labService.setEnableAndroidWidget(value),
                 ),
               ),
+            ],
           ],
         ),
       ],
@@ -225,7 +246,29 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
           ),
         ),
         const SizedBox(height: 12),
-        if (Platform.isAndroid)
+        if (Platform.isAndroid) ...[
+          fluent_ui.Card(
+            child: Row(
+              children: [
+                const Icon(fluent_ui.FluentIcons.action_center),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('增强媒体通知栏卡片', style: theme.typography.bodyLarge),
+                      Text('开启精美亚克力背景与循环模式切换（推荐 HyperOS 等系统）', style: theme.typography.body),
+                    ],
+                  ),
+                ),
+                fluent_ui.ToggleSwitch(
+                  checked: _labService.enableCustomNotification,
+                  onChanged: (value) => _labService.setEnableCustomNotification(value),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           fluent_ui.Card(
             child: Row(
               children: [
@@ -246,7 +289,8 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                 ),
               ],
             ),
-          )
+          ),
+        ]
         else
           fluent_ui.Card(
             child: Row(
