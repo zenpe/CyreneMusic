@@ -35,15 +35,6 @@ class MainActivity : AudioServiceFragmentActivity() {
             Log.e("MainActivity", "❌ 悬浮歌词插件注册失败: ${e.message}", e)
         }
 
-        try {
-            // 注册 Android 媒体通知插件
-            val mediaNotificationPlugin = AndroidMediaNotificationPlugin()
-            flutterEngine.plugins.add(mediaNotificationPlugin)
-            Log.d("MainActivity", "✅ 媒体通知插件注册成功: ${mediaNotificationPlugin::class.java.simpleName}")
-        } catch (e: Exception) {
-            Log.e("MainActivity", "❌ 媒体通知插件注册失败: ${e.message}", e)
-        }
-
         // 注册广播接收器
         val filter = android.content.IntentFilter("com.cyrene.music.action.STOP_SLEEP_TIMER")
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -213,4 +204,3 @@ class MainActivity : AudioServiceFragmentActivity() {
         super.onDestroy()
     }
 }
-

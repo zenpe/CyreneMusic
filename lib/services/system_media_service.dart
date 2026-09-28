@@ -119,13 +119,12 @@ class SystemMediaService {
       _audioHandler = await AudioService.init(
         builder: () => CyreneAudioHandler(),
         config: AudioServiceConfig(
-          androidNotificationChannelId: 'com.cyrene.music.channel.audio',
-          androidNotificationChannelName: 'Cyrene Music',
-          androidNotificationOngoing:
-              false, // 恢复为 false 以符合 audio_service 的断言限制 (androidStopForegroundOnPause 为 false 时必须为 false)
+          androidNotificationChannelId: 'com.cyrene.music.channel.audio.v2',
+          androidNotificationChannelName: 'Cyrene Music 播放控制',
+          androidNotificationIcon: 'drawable/ic_notification',
+          androidNotificationOngoing: false,
           androidShowNotificationBadge: true,
-          androidStopForegroundOnPause:
-              false, // 保持核心逻辑：暂停时不停止前台服务，确保应用在 Android 12+ 后台存活
+          androidStopForegroundOnPause: false,
         ),
       );
 

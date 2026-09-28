@@ -16,7 +16,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'lab_functions_service.dart';
 import 'playback_mode_service.dart';
-import 'android_media_notification_service.dart';
 import '../utils/image_utils.dart';
 
 /// Android 媒体通知处理器
@@ -66,11 +65,6 @@ class CyreneAudioHandler extends BaseAudioHandler
 
     // 监听播放模式变化（用于同步通知栏的单曲循环/列表循环/随机播放状态）
     PlaybackModeService().addListener(_onPlaybackModeChanged);
-
-    // 启动自定义 Android 媒体通知服务（若在实验室设置中开启）
-    if (Platform.isAndroid && LabFunctionsService().enableCustomNotification) {
-      AndroidMediaNotificationService().start();
-    }
 
     // 🔧 性能优化：不在初始化时启动定时器，改为在 _onPlayerStateChanged() 中按需启动
     // 避免用户启动应用但未播放时定时器空转
@@ -166,13 +160,23 @@ class CyreneAudioHandler extends BaseAudioHandler
 
         // 只有当位置、状态或时长有显著变化时才更新（或 iOS 始终更新）
         if (shouldUpdate) {
+          if (stateChanged || playingStateChanged) {
+            // 播放标志和按钮动作必须一起发布，避免显示播放键却仍发送暂停命令。
+            _updatePlaybackState(
+              player.state,
+              currentPosition,
+              currentBuffered,
+              currentSpeed,
+            );
+            _lastUpdatedPosition = currentPosition;
+            _lastUpdatedState = player.state;
+            return;
+          }
           // 更新播放状态和进度
           playbackState.add(
             currentState.copyWith(
-              playing: isPlaying,
               updatePosition: currentPosition,
               bufferedPosition: currentBuffered,
-              speed: isPlaying ? currentSpeed : 0.0,
             ),
           );
 
@@ -254,7 +258,11 @@ class CyreneAudioHandler extends BaseAudioHandler
             ),
           ),
           MediaControl.skipToPrevious, // 上一首
-          MediaControl.play, // 播放
+          MediaControl(
+            androidIcon: 'drawable/audio_service_play_arrow',
+            label: '播放',
+            action: MediaAction.playPause,
+          ),
           MediaControl.skipToNext, // 下一首
           MediaControl(
             androidIcon: 'drawable/ic_notification_lyric',
@@ -949,10 +957,13 @@ class CyreneAudioHandler extends BaseAudioHandler
         ),
       ),
       MediaControl.skipToPrevious, // 上一首
-      if (playerState == PlayerState.playing)
-        MediaControl.pause // 暂停
-      else
-        MediaControl.play, // 播放
+      MediaControl(
+        androidIcon: playerState == PlayerState.playing
+            ? 'drawable/audio_service_pause'
+            : 'drawable/audio_service_play_arrow',
+        label: playerState == PlayerState.playing ? '暂停' : '播放',
+        action: MediaAction.playPause,
+      ),
       MediaControl.skipToNext, // 下一首
       const MediaControl(
         androidIcon: 'drawable/ic_notification_lyric',
@@ -1025,7 +1036,11 @@ class CyreneAudioHandler extends BaseAudioHandler
   bool _controlsEqual(List<MediaControl> a, List<MediaControl> b) {
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
-      if (a[i].action != b[i].action) return false;
+      if (a[i].action != b[i].action ||
+          a[i].androidIcon != b[i].androidIcon ||
+          a[i].label != b[i].label) {
+        return false;
+      }
     }
     return true;
   }
@@ -1046,6 +1061,18 @@ class CyreneAudioHandler extends BaseAudioHandler
   }
 
   // ============== 媒体控制按钮回调 ==============
+
+  @override
+  Future<void> click([MediaButton button = MediaButton.media]) async {
+    if (button != MediaButton.media) {
+      return super.click(button);
+    }
+    if (PlayerService().state == PlayerState.playing) {
+      await pause();
+    } else {
+      await play();
+    }
+  }
 
   @override
   Future<void> play() async {

@@ -1,0 +1,2 @@
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_notification,@drawable/ic_notification_lyric,@drawable/ic_notification_repeat_all,@drawable/ic_notification_repeat_one,@drawable/ic_notification_shuffle" />
