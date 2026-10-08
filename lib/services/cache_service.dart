@@ -1493,6 +1493,15 @@ class CacheService extends ChangeNotifier {
       });
     }
 
+    if (_pendingCacheWrites.isNotEmpty) {
+      _logCacheDebug(
+        'ℹ️ [CacheService] 跳过后台缓存(已有其他音频缓存任务): '
+        '${track.name} key=$cacheKey',
+        toDeveloperPanel: true,
+      );
+      return false;
+    }
+
     final task = _cacheSongInternal(
       track,
       songDetail,

@@ -26,6 +26,7 @@ class CyreneAudioHandler extends BaseAudioHandler
   Timer? _updateTimer; // 防抖定时器
   bool _updatePending = false; // 是否有待处理的更新
   Timer? _lyricUpdateTimer; // 悬浮歌词更新定时器（后台持续运行）
+  bool _lyricUpdateInFlight = false;
   Timer? _positionUpdateTimer; // 进度条更新定时器（播放时定期更新）
   Timer? _iosStateRefreshTimer; // iOS 专用状态刷新定时器（保持锁屏显示）
   PlayerState? _lastLoggedState; // 上次记录日志时的状态
@@ -85,10 +86,22 @@ class CyreneAudioHandler extends BaseAudioHandler
     _lyricUpdateTimer = Timer.periodic(const Duration(milliseconds: 2000), (
       timer,
     ) async {
-      if (Platform.isAndroid && AndroidFloatingLyricService().isVisible) {
-        // 使用 await 确保每次更新完成后再进行下一次
-        // 这样可以避免并发调用导致的问题
+      if (!Platform.isAndroid ||
+          !AndroidFloatingLyricService().isVisible ||
+          _lyricUpdateInFlight) {
+        return;
+      }
+      _lyricUpdateInFlight = true;
+      try {
         await _player.updateFloatingLyricManually();
+      } catch (error) {
+        StructuredLogService.event(
+          'audio_handler.floating_lyric_update_failed',
+          level: LogLevel.warning,
+          error: error,
+        );
+      } finally {
+        _lyricUpdateInFlight = false;
       }
     });
     StructuredLogService.log('✅ [AudioHandler] 悬浮歌词后台更新定时器已启动（2000ms间隔，定期校准）');

@@ -22,6 +22,7 @@ class PlaybackViewState {
   final PlaybackSwitchPhase switchPhase;
   final bool desiredPlaying;
   final bool enginePlaying;
+  final bool? pendingPlaying;
   final Duration position;
   final Duration? duration;
   final Duration bufferedPosition;
@@ -35,6 +36,7 @@ class PlaybackViewState {
     required this.switchPhase,
     required this.desiredPlaying,
     required this.enginePlaying,
+    this.pendingPlaying,
     required this.position,
     required this.duration,
     required this.bufferedPosition,
@@ -48,4 +50,18 @@ class PlaybackViewState {
 
   bool get timelineReady => duration != null;
   bool get canSeek => timelineReady && !isSwitching;
+
+  /// The state presented by interactive controls. During a switch the latest
+  /// transport intent wins; after commit, actual playback phase wins.
+  bool get effectivePlaying =>
+      pendingPlaying ??
+      switch (switchPhase) {
+        PlaybackSwitchPhase.resolving ||
+        PlaybackSwitchPhase.loadingSource ||
+        PlaybackSwitchPhase.ready => desiredPlaying,
+        PlaybackSwitchPhase.playing => true,
+        PlaybackSwitchPhase.idle ||
+        PlaybackSwitchPhase.paused ||
+        PlaybackSwitchPhase.failed => false,
+      };
 }

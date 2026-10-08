@@ -98,8 +98,8 @@ class PlayerService extends ChangeNotifier {
   Duration get position => viewState.position;
   Duration get bufferedPosition => viewState.bufferedPosition;
   String? get errorMessage => _pb.errorMessage;
-  bool get isPlaying => viewState.desiredPlaying;
-  bool get isPaused => !viewState.desiredPlaying;
+  bool get isPlaying => viewState.effectivePlaying;
+  bool get isPaused => !viewState.effectivePlaying;
   bool get isLoading => _pb.isLoading;
   bool get isTrackSwitchPending => _pb.isTrackSwitchPending;
   double get volume => _pb.volume;

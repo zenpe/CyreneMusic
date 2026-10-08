@@ -275,6 +275,10 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   bool _isPlaying = false;
   String? _lastCurrentSourceKey;
   int _sourceCommitTicket = 0;
+  DateTime? _bufferingStartedAt;
+  Duration _bufferingStartPosition = Duration.zero;
+  int _bufferingGeneration = 0;
+  Timer? _bufferingStallTimer;
 
   @override
   Duration get duration => _duration;
@@ -365,6 +369,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       // 但引擎内部 bookkeeping（_isPlaying/_position）照常更新。
       final stale = _epochGate.streamEventEpoch != _dispatchEpoch;
       final processing = state.processingState;
+      _observeBufferingState(state);
       if (processing == ja.ProcessingState.completed) {
         _isPlaying = false;
         _position = Duration.zero;
@@ -427,6 +432,78 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         _handleAndroidAudioSessionIdChanged,
       );
     }
+  }
+
+  void _observeBufferingState(ja.PlayerState state) {
+    final buffering =
+        state.playing && state.processingState == ja.ProcessingState.buffering;
+    if (!buffering) {
+      _finishBufferingObservation(state.processingState.name);
+      return;
+    }
+    if (_bufferingStartedAt != null) return;
+
+    final startedAt = DateTime.now();
+    _bufferingStartedAt = startedAt;
+    _bufferingStartPosition = _position;
+    _bufferingGeneration = _dispatchEpoch;
+    StructuredLogService.event(
+      'audio_engine.buffering_started',
+      fields: {
+        'engine': 'just_audio',
+        'epoch': _bufferingGeneration,
+        'position_ms': _position.inMilliseconds,
+        'buffered_ahead_ms': _bufferedAhead.inMilliseconds,
+      },
+    );
+
+    _bufferingStallTimer?.cancel();
+    _bufferingStallTimer = Timer(const Duration(seconds: 10), () {
+      if (_bufferingStartedAt != startedAt) return;
+      final positionDelta = _position - _bufferingStartPosition;
+      StructuredLogService.event(
+        'audio_engine.buffering_stalled',
+        level: LogLevel.warning,
+        fields: {
+          'engine': 'just_audio',
+          'epoch': _bufferingGeneration,
+          'duration_ms': DateTime.now().difference(startedAt).inMilliseconds,
+          'position_delta_ms': positionDelta.inMilliseconds,
+          'buffered_ahead_ms': _bufferedAhead.inMilliseconds,
+        },
+      );
+    });
+  }
+
+  Duration get _bufferedAhead {
+    final ahead = _bufferedPosition - _position;
+    return ahead.isNegative ? Duration.zero : ahead;
+  }
+
+  void _finishBufferingObservation(String outcome) {
+    final startedAt = _bufferingStartedAt;
+    if (startedAt == null) return;
+    final positionDelta = _position - _bufferingStartPosition;
+    StructuredLogService.event(
+      'audio_engine.buffering_ended',
+      fields: {
+        'engine': 'just_audio',
+        'epoch': _bufferingGeneration,
+        'duration_ms': DateTime.now().difference(startedAt).inMilliseconds,
+        'position_delta_ms': positionDelta.inMilliseconds,
+        'buffered_ahead_ms': _bufferedAhead.inMilliseconds,
+        'outcome': outcome,
+      },
+    );
+    _clearBufferingObservation();
+  }
+
+  void _clearBufferingObservation() {
+    _bufferingStallTimer?.cancel();
+    _bufferingStallTimer = null;
+    _bufferingStartedAt = null;
+    _bufferingStartPosition = Duration.zero;
+    _bufferingGeneration = 0;
   }
 
   String? _currentSourceKey(ja.AudioPlayer player) {
@@ -812,6 +889,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   Future<void> _disposePlayerOnly() async {
     _resumeRevision++;
     _equalizerRevision++;
+    _clearBufferingObservation();
     await _positionSub?.cancel();
     await _durationSub?.cancel();
     await _bufferedPositionSub?.cancel();
@@ -923,6 +1001,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     Duration? initialPosition,
     bool preload = true,
   }) async {
+    _finishBufferingObservation('source_replaced');
     _resumeRevision++;
     _lastStartupTiming = null;
     var ensurePlayerMs = 0;

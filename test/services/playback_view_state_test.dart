@@ -29,6 +29,7 @@ void main() {
 
     expect(state.isSwitching, isTrue);
     expect(state.desiredPlaying, isTrue);
+    expect(state.effectivePlaying, isTrue);
     expect(state.timelineReady, isFalse);
     expect(state.canSeek, isFalse);
   });
@@ -51,6 +52,7 @@ void main() {
     expect(state.isSwitching, isTrue);
     expect(state.desiredPlaying, isFalse);
     expect(state.enginePlaying, isTrue);
+    expect(state.effectivePlaying, isFalse);
   });
 
   test('committed playback enables seeking only with engine duration', () {
@@ -71,5 +73,43 @@ void main() {
     expect(state.isSwitching, isFalse);
     expect(state.timelineReady, isTrue);
     expect(state.canSeek, isTrue);
+    expect(state.effectivePlaying, isTrue);
+  });
+
+  test('committed pause wins over retained play intent', () {
+    final state = PlaybackViewState(
+      generation: 10,
+      track: track,
+      song: null,
+      switchPhase: PlaybackSwitchPhase.paused,
+      desiredPlaying: true,
+      enginePlaying: false,
+      position: const Duration(seconds: 12),
+      duration: const Duration(minutes: 3),
+      bufferedPosition: const Duration(seconds: 30),
+      lyricState: LyricLoadState.ready,
+      lyricSnapshot: null,
+    );
+
+    expect(state.effectivePlaying, isFalse);
+  });
+
+  test('latest explicit command wins during source loading', () {
+    final state = PlaybackViewState(
+      generation: 11,
+      track: track,
+      song: null,
+      switchPhase: PlaybackSwitchPhase.loadingSource,
+      desiredPlaying: true,
+      enginePlaying: true,
+      pendingPlaying: false,
+      position: Duration.zero,
+      duration: null,
+      bufferedPosition: Duration.zero,
+      lyricState: LyricLoadState.loading,
+      lyricSnapshot: null,
+    );
+
+    expect(state.effectivePlaying, isFalse);
   });
 }

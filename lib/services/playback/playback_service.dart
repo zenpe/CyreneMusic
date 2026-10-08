@@ -304,6 +304,8 @@ class PlaybackService extends ChangeNotifier {
   int _autoNextFlightId = 0;
   PlaybackRequestIntent _nativeActivationIntent =
       PlaybackRequestIntent.automatic;
+  Future<void>? _initializationFuture;
+  bool _initialized = false;
 
   static const Duration _resolutionRetryDelay = Duration(milliseconds: 300);
   static const Duration _trackSwitchSettleDelay = Duration(milliseconds: 80);
@@ -475,6 +477,7 @@ class PlaybackService extends ChangeNotifier {
       switchPhase: _viewSwitchPhase,
       desiredPlaying: _desiredPlaying,
       enginePlaying: _engine.isPlaying,
+      pendingPlaying: _controlIntent.pendingPlaying,
       position: presentationPositionNotifier.value,
       duration: _presentationDuration > Duration.zero
           ? _presentationDuration
@@ -623,7 +626,22 @@ class PlaybackService extends ChangeNotifier {
     }
   }
 
-  Future<void> initialize() async {
+  Future<void> initialize() {
+    if (_initialized) return Future<void>.value();
+    final inFlight = _initializationFuture;
+    if (inFlight != null) return inFlight;
+
+    late final Future<void> initialization;
+    initialization = _initializeOnce().whenComplete(() {
+      if (identical(_initializationFuture, initialization)) {
+        _initializationFuture = null;
+      }
+    });
+    _initializationFuture = initialization;
+    return initialization;
+  }
+
+  Future<void> _initializeOnce() async {
     if (Platform.isAndroid || Platform.isIOS) {
       await _audioSessionCoordinator.initialize();
     }
@@ -661,6 +679,7 @@ class PlaybackService extends ChangeNotifier {
     PlaybackModeService().addListener(_handlePlaybackModeChanged);
     _bindPreloadDependencyListeners();
 
+    _initialized = true;
     StructuredLogService.log('[PlaybackService] 初始化完成');
   }
 
@@ -755,7 +774,7 @@ class PlaybackService extends ChangeNotifier {
         if (beforeDeferredAutoPlay != null) {
           await beforeDeferredAutoPlay();
         }
-        await _engine.resume();
+        await resume();
       }
       return;
     }
@@ -1732,7 +1751,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> togglePlayPause() async {
-    _desiredPlaying ? await pause() : await resume();
+    viewState.effectivePlaying ? await pause() : await resume();
   }
 
   Future<void> retryCurrentTrack({
