@@ -129,6 +129,49 @@ void main() {
     await host.dispose();
   });
 
+  test('原生自然切歌采用预分配 generation', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+
+    await host.play('a', generation: 1);
+    engine.emitCurrentSourceKey('next', generation: 2);
+    await Future<void>.delayed(Duration.zero);
+
+    final sourceChanges = events
+        .whereType<EngineSourceCommittedEvent>()
+        .toList();
+    expect(sourceChanges, hasLength(1));
+    expect(sourceChanges.single.epoch, 2);
+    expect(sourceChanges.single.key, 'next');
+
+    await subscription.cancel();
+    await host.dispose();
+  });
+
+  test('旧 prepared source 不能覆盖更新的加载请求', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+
+    await host.play('a', generation: 1);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+    final newerRequest = host.play('c', generation: 3);
+    await Future<void>.delayed(Duration.zero);
+
+    engine.emitCurrentSourceKey('stale-next', generation: 2);
+    await Future<void>.delayed(Duration.zero);
+    expect(events.whereType<EngineSourceCommittedEvent>(), isEmpty);
+
+    gate.complete();
+    await newerRequest;
+    await subscription.cancel();
+    await host.dispose();
+  });
+
   test('排队中的 prepared 激活只执行最新 generation', () async {
     final engine = FakeEngine();
     final host = EngineHost(engineFactory: () => engine);
@@ -164,11 +207,7 @@ void main() {
     engine.sourceKeyOnActivation = 'b';
 
     expect(
-      await host.activatePreparedSlot(
-        'b',
-        generation: 2,
-        queueRevision: 1,
-      ),
+      await host.activatePreparedSlot('b', generation: 2, queueRevision: 1),
       isTrue,
     );
     await Future<void>.delayed(Duration.zero);
@@ -194,11 +233,7 @@ void main() {
     engine.activationResult = false;
 
     expect(
-      await host.activatePreparedSlot(
-        'b',
-        generation: 5,
-        queueRevision: 1,
-      ),
+      await host.activatePreparedSlot('b', generation: 5, queueRevision: 1),
       isFalse,
     );
     engine.emitCurrentSourceKey('a');
@@ -222,18 +257,23 @@ PreparedPlaybackSlot _slot(String key, int queueRevision) =>
       source: LocalFilePlayableSource('$key.mp3'),
       expiresAt: DateTime.now().add(const Duration(minutes: 1)),
       queueRevision: queueRevision,
+      generation: key == 'current' ? 1 : 2,
+      preparedFromGeneration: 1,
+      queueEntryId: key == 'current' ? 1 : 2,
+      trackKey: key,
+      nonce: key == 'current' ? 1 : 2,
     );
 
 class FakeEngine implements AudioEngine {
   @override
-  Stream<String?> get currentSourceKeyStream => _sourceKeys.stream;
+  Stream<EngineSourceCommit> get sourceCommitStream => _sourceKeys.stream;
   final _position = StreamController<Duration>.broadcast();
   final _duration = StreamController<Duration>.broadcast();
   final _bufferedPosition = StreamController<Duration>.broadcast();
   final _state = StreamController<EngineState>.broadcast();
   final _completion = StreamController<bool>.broadcast();
   final _errors = StreamController<EngineError>.broadcast();
-  final _sourceKeys = StreamController<String?>.broadcast();
+  final _sourceKeys = StreamController<EngineSourceCommit>.broadcast();
   final List<String> playedUrls = <String>[];
   final List<double> volumeWrites = <double>[];
   final List<PreparedPlaybackWindow> preparedWindows =
@@ -242,6 +282,7 @@ class FakeEngine implements AudioEngine {
   Completer<void>? playGate;
   bool activationResult = true;
   String? sourceKeyOnActivation;
+  int activeGeneration = 0;
 
   @override
   Duration duration = Duration.zero;
@@ -289,6 +330,7 @@ class FakeEngine implements AudioEngine {
     Duration? initialPosition,
     bool preload = true,
   }) async {
+    activeGeneration = generation;
     playedUrls.add(url);
     final gate = playGate;
     playGate = null;
@@ -328,8 +370,13 @@ class FakeEngine implements AudioEngine {
     Duration? initialPosition,
   }) async {
     activatedKeys.add(key);
+    if (activationResult) activeGeneration = generation;
     final sourceKey = sourceKeyOnActivation;
-    if (sourceKey != null) _sourceKeys.add(sourceKey);
+    if (sourceKey != null) {
+      _sourceKeys.add(
+        EngineSourceCommit(key: sourceKey, generation: generation),
+      );
+    }
     return activationResult;
   }
 
@@ -363,7 +410,9 @@ class FakeEngine implements AudioEngine {
 
   void emitError(EngineError error) => _errors.add(error);
 
-  void emitCurrentSourceKey(String key) => _sourceKeys.add(key);
+  void emitCurrentSourceKey(String key, {int? generation}) => _sourceKeys.add(
+    EngineSourceCommit(key: key, generation: generation ?? activeGeneration),
+  );
 
   @override
   Future<void> dispose() async {

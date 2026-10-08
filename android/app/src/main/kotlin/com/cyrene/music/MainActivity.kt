@@ -95,13 +95,17 @@ class MainActivity : AudioServiceFragmentActivity() {
                         result.success(attachAndroidEqualizer(sessionId))
                     }
                     "apply" -> {
+                        val sessionId = call.argument<Int>("sessionId") ?: -1
                         val enabled = call.argument<Boolean>("enabled") ?: false
                         val gains = call.argument<List<Double>>("gains") ?: emptyList()
                         val frequencies = call.argument<List<Int>>("frequencies") ?: emptyList()
-                        result.success(applyAndroidEqualizer(enabled, gains, frequencies))
+                        result.success(applyAndroidEqualizer(sessionId, enabled, gains, frequencies))
                     }
                     "release" -> {
-                        releaseAndroidEqualizer()
+                        val sessionId = call.argument<Int>("sessionId")
+                        if (sessionId == null || equalizerSessionId == sessionId) {
+                            releaseAndroidEqualizer()
+                        }
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -125,10 +129,12 @@ class MainActivity : AudioServiceFragmentActivity() {
     }
 
     private fun applyAndroidEqualizer(
+        expectedSessionId: Int,
         enabled: Boolean,
         gains: List<Double>,
         frequencies: List<Int>,
     ): Boolean {
+        if (expectedSessionId <= 0 || equalizerSessionId != expectedSessionId) return false
         val eq = androidEqualizer ?: return false
 
         return try {

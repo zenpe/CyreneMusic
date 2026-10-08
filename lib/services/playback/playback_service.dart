@@ -36,6 +36,7 @@ import '../structured_log_service.dart';
 
 import 'command_queue.dart';
 import 'audio_engine.dart';
+import 'audio_session_coordinator.dart';
 import 'engine_host.dart';
 import 'engine_event.dart';
 import 'cover_manager.dart';
@@ -50,6 +51,7 @@ import 'playback_transaction.dart';
 import 'playback_view_state.dart';
 import 'playback_control_intent.dart';
 import 'playback_history_recorder.dart';
+import 'playback_lyric_projection.dart';
 import 'playback_request_router.dart';
 import 'playback_session.dart';
 import 'playback_performance_metrics.dart';
@@ -72,6 +74,13 @@ class _PrefetchedPlayablePlanEntry {
   });
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
+}
+
+class _NativePreparedPlanEntry {
+  final _TrackSwitchPlaybackPlan plan;
+  final PreparedPlaybackSlot slot;
+
+  const _NativePreparedPlanEntry({required this.plan, required this.slot});
 }
 
 class TrackSwitchTiming {
@@ -204,6 +213,8 @@ class PlaybackService extends ChangeNotifier {
   // ══════════════════════════════════════════════════════
   final CommandQueue _commands = CommandQueue();
   final PlaybackRequestRouter _requestRouter = PlaybackRequestRouter();
+  final AudioSessionCoordinator _audioSessionCoordinator =
+      AudioSessionCoordinator();
   late final EngineHost _engine;
   final List<StreamSubscription> _engineSubs = [];
   final CoverManager coverManager = CoverManager();
@@ -217,6 +228,7 @@ class PlaybackService extends ChangeNotifier {
   PlayableSource? _activePlayableSource;
   SongDetail? _activeSong;
   SongDetail? _pendingSong;
+  final PlaybackLyricProjection _lyricProjection = PlaybackLyricProjection();
   int _activePlaybackToken = 0;
   Track? _pendingTrack;
   int? _pendingQueueEntryId;
@@ -284,8 +296,8 @@ class PlaybackService extends ChangeNotifier {
   bool _preloadingNext = false;
   int _preloadOp = 0;
   final Map<String, _PrefetchedPlayablePlanEntry> _prefetchedPlayablePlans = {};
-  final Map<String, _TrackSwitchPlaybackPlan> _nativePreparedPlans = {};
-  int _nextNativePlaybackToken = -1;
+  final Map<String, _NativePreparedPlanEntry> _nativePreparedPlans = {};
+  int _preparedSlotNonce = 0;
   Timer? _preloadTriggerTimer;
   bool _preloadDependencyListenersBound = false;
   bool _autoNextInFlight = false;
@@ -353,8 +365,8 @@ class PlaybackService extends ChangeNotifier {
   bool get isLoading => _state == PBState.loading;
   bool get isTrackSwitchPending => _pendingTrack != null;
   PBState get state => _state;
-  LyricLoadState get lyricLoadState => LyricService().currentState;
-  LyricSnapshot? get lyricSnapshot => LyricService().currentSnapshot;
+  LyricLoadState get lyricLoadState => viewState.lyricState;
+  LyricSnapshot? get lyricSnapshot => viewState.lyricSnapshot;
   SongDetail? get currentSong => _activeSong;
   String get displayTitle {
     final trackName = _activeTrack?.name;
@@ -445,16 +457,17 @@ class PlaybackService extends ChangeNotifier {
     final generation = _activeTrack != null
         ? _activePlaybackToken
         : _playGeneration;
-    final currentSnapshot = LyricService().currentSnapshot;
-    final expectedTrackKey = track == null
-        ? null
-        : '${track.source.name}_${track.id}';
-    final snapshot =
-        currentSnapshot != null &&
-            currentSnapshot.playbackToken == generation &&
-            currentSnapshot.trackKey == expectedTrackKey
-        ? currentSnapshot
-        : null;
+    final snapshot = _activeTrack != null
+        ? _lyricProjection.activeFor(
+            trackKey: _buildTrackIdentity(_activeTrack!),
+            generation: _activePlaybackToken,
+          )
+        : _lyricProjection.pendingFor(
+            trackKey: _pendingTrack == null
+                ? null
+                : _buildTrackIdentity(_pendingTrack!),
+            generation: generation,
+          );
     return PlaybackViewState(
       generation: generation,
       track: track,
@@ -469,7 +482,9 @@ class PlaybackService extends ChangeNotifier {
       bufferedPosition: _presentationBufferedPosition,
       lyricState:
           snapshot?.state ??
-          (switching ? LyricLoadState.loading : LyricLoadState.idle),
+          (_activeTrack == null && switching
+              ? LyricLoadState.loading
+              : LyricLoadState.idle),
       lyricSnapshot: snapshot,
     );
   }
@@ -551,11 +566,39 @@ class PlaybackService extends ChangeNotifier {
     // 所有引擎事件统一从带 epoch 的协议进入协调器；不再分别订阅裸的
     // position/state/error stream，避免其中一条漏掉会话归属校验。
     _engineSubs.add(_engine.events.listen(_onEngineEvent));
+    LyricService().addListener(_onLyricSnapshotChanged);
     AudioSourceService().addListener(_onAudioSourceConfigChanged);
     _syncActiveSourceHealth();
   }
 
+  void _captureLyricSnapshot({bool notify = false}) {
+    final snapshot = LyricService().currentSnapshot;
+    final capture = _lyricProjection.capture(
+      snapshot,
+      activeTrackKey: _activeTrack == null
+          ? null
+          : _buildTrackIdentity(_activeTrack!),
+      activeGeneration: _activePlaybackToken,
+      pendingTrackKey: _pendingTrack == null
+          ? null
+          : _buildTrackIdentity(_pendingTrack!),
+      pendingGeneration: _currentSwitchTx?.token ?? _playGeneration,
+    );
+    if (notify && capture != PlaybackLyricCapture.none) {
+      if (capture == PlaybackLyricCapture.active) {
+        _loadLyricsForFloatingDisplay();
+      }
+      notifyListeners();
+    }
+  }
+
+  void _onLyricSnapshotChanged() => _captureLyricSnapshot(notify: true);
+
   void _onEngineEvent(EngineEvent event) {
+    if (event is EngineSourceCommittedEvent) {
+      _onNativeSourceCommitted(event.epoch, event.key);
+      return;
+    }
     if (event.epoch != _playGeneration) {
       if (event is EngineFailureEvent) {
         StructuredLogService.log('[PlaybackService] 丢弃旧纪元引擎事件: ${event.error}');
@@ -571,8 +614,8 @@ class PlaybackService extends ChangeNotifier {
         _onDurationChanged(duration);
       case EngineBufferedPositionEvent(:final position):
         _onBufferedPositionChanged(position);
-      case EngineSourceCommittedEvent(:final key):
-        _onNativeSourceCommitted(key);
+      case EngineSourceCommittedEvent():
+        break;
       case EngineCompletedEvent():
         _onCompletion(true);
       case EngineFailureEvent(:final error):
@@ -581,6 +624,9 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    if (Platform.isAndroid || Platform.isIOS) {
+      await _audioSessionCoordinator.initialize();
+    }
     // 加载保存的音量设置
     final savedVolume = PersistentStorageService().getDouble('player_volume');
     if (savedVolume != null) {
@@ -1016,6 +1062,7 @@ class PlaybackService extends ChangeNotifier {
                 : LyricLoadState.idle),
         notify: false,
       );
+      _captureLyricSnapshot();
       notifyListeners();
     }
     if (transaction?.budgetExhausted ?? false) {
@@ -1253,7 +1300,7 @@ class PlaybackService extends ChangeNotifier {
     unawaited(_runAutoNextFlight(flightId));
   }
 
-  void _onNativeSourceCommitted(String? key) {
+  void _onNativeSourceCommitted(int generation, String? key) {
     final entryId = _queueEntryIdFromNativeKey(key);
     if (entryId == null || entryId == _activeQueueEntryId) return;
     final queueIndex = _queueController.indexOfEntryId(entryId);
@@ -1276,79 +1323,67 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
 
-    final track = _queue[queueIndex];
-    final quality = AudioQualityService().currentQuality;
-    final plan =
-        _nativePreparedPlans.remove(key) ??
-        _takePrefetchedPlayablePlan(track, quality);
-    if (plan == null) {
+    final prepared = key == null ? null : _nativePreparedPlans.remove(key);
+    if (prepared == null) {
       StructuredLogService.log('[PlaybackService] 原生播放源缺少预取计划，忽略切歌事件: $key');
       return;
     }
+    final slot = prepared.slot;
+    final track = _queue[queueIndex];
+    if (slot.generation != generation ||
+        slot.queueEntryId != entryId ||
+        slot.queueRevision != _queueController.structureRevision ||
+        slot.trackKey != _buildTrackIdentity(track) ||
+        slot.preparedFromGeneration != _activePlaybackToken) {
+      StructuredLogService.event(
+        'playback.stale_prepared_source_ignored',
+        level: LogLevel.warning,
+        fields: {
+          'source_generation': generation,
+          'slot_generation': slot.generation,
+          'prepared_from': slot.preparedFromGeneration,
+          'active_generation': _activePlaybackToken,
+          'queue_revision': _queueController.structureRevision,
+          'slot_queue_revision': slot.queueRevision,
+        },
+      );
+      _invalidatePreparedWindow(reschedule: _state == PBState.playing);
+      return;
+    }
+
+    var tx = _currentSwitchTx;
+    if (tx == null || tx.token != generation || tx.queueEntryId != entryId) {
+      tx = _prepareTrackSwitchTransaction(
+        reason: 'native-prepared-commit',
+        intent: _nativeActivationIntent,
+        candidateTrack: track,
+        candidateEntryId: entryId,
+        generation: generation,
+        preservePreloadState: true,
+      );
+      if (tx == null) return;
+      final preparedTx = tx;
+      _stagePendingPlanPresentation(
+        preparedTx,
+        prepared.plan,
+        () => _isTrackSwitchTransactionStale(preparedTx),
+      );
+    }
+    final committedTx = tx;
 
     _autoNextFlightId++;
     _autoNextInFlight = false;
     _resetPreloadState(clearPrefetchedDetails: false);
-    final matchingTx = _currentSwitchTx;
-    _queueController.commitEntry(
-      entryId,
-      shuffleTraversalEntryIds: matchingTx?.navigationOrder,
-    );
-    final activationIntent = _nativeActivationIntent;
     _nativeActivationIntent = PlaybackRequestIntent.automatic;
-    final playbackToken =
-        matchingTx != null &&
-            matchingTx.queueEntryId == entryId &&
-            _transactionGuard.isCurrent(matchingTx.token)
-        ? matchingTx.token
-        : _nextNativePlaybackToken--;
-    _activePlayableSource = plan.source;
-    _setCurrentCachedFileInfo(plan.resolvedSong.cacheInfo);
-    unawaited(_replaceCurrentTempFilePath(plan.retainedTempFilePath));
-    _stableCacheTrack = null;
-    _stableCacheSong = null;
-    _stableCacheQuality = null;
-    if (plan.shouldWriteBackgroundCache) {
-      _stableCacheTrack = track;
-      _stableCacheSong = plan.resolvedSong.songDetail;
-      _stableCacheQuality = quality.value;
-    }
-    _commitActivePresentation(
-      track,
-      queueEntryId: entryId,
-      songDetail: plan.resolvedSong.songDetail,
-      playbackToken: playbackToken,
-      intent: activationIntent,
+    _setCurrentCachedFileInfo(prepared.plan.resolvedSong.cacheInfo);
+    unawaited(_replaceCurrentTempFilePath(prepared.plan.retainedTempFilePath));
+    _commitPresentationStage(
+      committedTx,
+      prepared.plan,
+      () => _isTrackSwitchTransactionStale(committedTx),
     );
-    _scheduleCoverRefreshIfNeeded(track, plan);
-    _scheduleThemeRefreshIfNeeded(track, plan);
-    _loadLyricsForFloatingDisplay();
     _schedulePreloadNextTrack();
     _scheduleSessionPersist();
-    notifyListeners();
-  }
-
-  void _scheduleCoverRefreshIfNeeded(
-    Track track,
-    _TrackSwitchPlaybackPlan plan,
-  ) {
-    final url = plan.coverRefreshUrl;
-    if (url != null && url.isNotEmpty) {
-      _scheduleCoverRefresh(track, url, reason: plan.themeReason);
-    }
-  }
-
-  void _scheduleThemeRefreshIfNeeded(
-    Track track,
-    _TrackSwitchPlaybackPlan plan,
-  ) {
-    if (plan.themeImageUrl.isNotEmpty) {
-      _scheduleThemeColorRefresh(
-        track,
-        plan.themeImageUrl,
-        reason: plan.themeReason,
-      );
-    }
   }
 
   Future<void> _runAutoNextFlight(int flightId) async {
@@ -1773,6 +1808,7 @@ class PlaybackService extends ChangeNotifier {
     _activeTrack = track;
     _activeQueueEntryId = null;
     _activeSong = null;
+    _lyricProjection.clearActive();
     _activePlaybackToken++;
     _clearPendingTrack();
     _state = PBState.idle;
@@ -1900,6 +1936,7 @@ class PlaybackService extends ChangeNotifier {
     _pendingReason = reason;
     _pendingIntent = intent;
     _pendingSong = null;
+    _lyricProjection.beginPending();
     _pendingTimelineReady = false;
     if (_activeTrack == null) {
       _position = initialPosition;
@@ -1918,6 +1955,7 @@ class PlaybackService extends ChangeNotifier {
     _pendingTrack = null;
     _pendingQueueEntryId = null;
     _pendingSong = null;
+    _lyricProjection.clearPending();
     _pendingTimelineReady = false;
     _pendingReason = null;
     _pendingIntent = null;
@@ -1931,6 +1969,11 @@ class PlaybackService extends ChangeNotifier {
     PlaybackRequestIntent intent = PlaybackRequestIntent.manual,
     bool notify = true,
   }) {
+    _lyricProjection.promote(
+      trackKey: _buildTrackIdentity(track),
+      generation: playbackToken,
+      fallback: LyricService().currentSnapshot,
+    );
     _activeTrack = track;
     _activeQueueEntryId = queueEntryId;
     _activeSong = songDetail;
@@ -1974,6 +2017,8 @@ class PlaybackService extends ChangeNotifier {
     PlaybackTransitionBudget? budget,
     List<int>? navigationOrder,
     bool allowActiveFallback = true,
+    int? generation,
+    bool preservePreloadState = false,
   }) {
     final track = candidateTrack ?? _trackAtQueuePointer() ?? _activeTrack;
     if (track == null) return null;
@@ -1992,7 +2037,9 @@ class PlaybackService extends ChangeNotifier {
             ? _activeQueueEntryId
             : _queueController.currentEntryId);
 
-    _resetPreloadState(clearPrefetchedDetails: false);
+    if (!preservePreloadState) {
+      _resetPreloadState(clearPrefetchedDetails: false);
+    }
     _preloadedTrack = null;
     _stagePendingTrack(
       track,
@@ -2001,7 +2048,8 @@ class PlaybackService extends ChangeNotifier {
       intent: intent,
       initialPosition: initialPosition ?? Duration.zero,
     );
-    final token = _transactionGuard.begin();
+    final token = generation ?? _transactionGuard.allocate();
+    _transactionGuard.activate(token);
     _engineStateCommitGate.arm(token);
     LyricService().bindCurrentTrack(
       track: track,
@@ -2010,6 +2058,7 @@ class PlaybackService extends ChangeNotifier {
       state: LyricLoadState.loading,
       notify: false,
     );
+    _captureLyricSnapshot();
     final selectedQuality = AudioQualityService().currentQuality;
     final tx = TrackSwitchTransaction(
       token: token,
@@ -2977,6 +3026,7 @@ class PlaybackService extends ChangeNotifier {
     if (targetTrack == null) {
       if (nextState == LyricLoadState.idle) {
         LyricService().clearCurrent(notify: notify);
+        _lyricProjection.clearAll();
       }
       return;
     }
@@ -2988,6 +3038,7 @@ class PlaybackService extends ChangeNotifier {
       error: error,
       notify: notify,
     );
+    _captureLyricSnapshot();
   }
 
   LyricLoadState _deriveLyricLoadStateForPlan(
@@ -3028,6 +3079,7 @@ class PlaybackService extends ChangeNotifier {
       state: initialState,
       notify: false,
     );
+    _captureLyricSnapshot();
     notifyListeners();
 
     if (!shouldRequest) return;
@@ -3476,7 +3528,16 @@ class PlaybackService extends ChangeNotifier {
     final entryId = candidateEntryId ?? _queueController.currentEntryId;
     if (entryId == null) return false;
     final nativeKey = _nativeSourceKeyForEntry(entryId);
-    if (!_nativePreparedPlans.containsKey(nativeKey)) return false;
+    final prepared = _nativePreparedPlans[nativeKey];
+    if (prepared == null) return false;
+    final slot = prepared.slot;
+    if (slot.queueRevision != _queueController.structureRevision ||
+        slot.queueEntryId != entryId ||
+        slot.trackKey != _buildTrackIdentity(track) ||
+        slot.preparedFromGeneration != _activePlaybackToken) {
+      _nativePreparedPlans.remove(nativeKey);
+      return false;
+    }
 
     final tx = _prepareTrackSwitchTransaction(
       reason: 'prepared-activate',
@@ -3485,8 +3546,15 @@ class PlaybackService extends ChangeNotifier {
       candidateTrack: track,
       candidateEntryId: entryId,
       navigationOrder: navigationOrder,
+      generation: slot.generation,
+      preservePreloadState: true,
     );
     if (tx == null || tx.queueEntryId != entryId) return false;
+    _stagePendingPlanPresentation(
+      tx,
+      prepared.plan,
+      () => _isTrackSwitchTransactionStale(tx),
+    );
 
     if (!preserveDesiredPlaying) _desiredPlaying = true;
     _nativeActivationIntent = intent;
@@ -3501,7 +3569,7 @@ class PlaybackService extends ChangeNotifier {
       _nativeActivationIntent = PlaybackRequestIntent.automatic;
       return false;
     }
-    _onNativeSourceCommitted(nativeKey);
+    _onNativeSourceCommitted(slot.generation, nativeKey);
     return requestEpoch == null || _requestRouter.isCurrent(requestEpoch);
   }
 
@@ -4261,42 +4329,45 @@ class PlaybackService extends ChangeNotifier {
     final activeSource = _activePlayableSource;
     if (activeSource == null) return;
 
-    PreparedPlaybackSlot slotFor(int entryId, _TrackSwitchPlaybackPlan plan) {
-      return PreparedPlaybackSlot(
-        key: _nativeSourceKeyForEntry(entryId),
-        source: plan.source,
-        expiresAt: DateTime.now().add(_prefetchedSongDetailTtl),
-        queueRevision: queueRevision,
-      );
-    }
-
     final currentSlot = PreparedPlaybackSlot(
       key: _nativeSourceKeyForEntry(currentEntryId),
       source: activeSource,
       expiresAt: DateTime.now().add(_prefetchedSongDetailTtl),
       queueRevision: queueRevision,
+      generation: _activePlaybackToken,
+      preparedFromGeneration: _activePlaybackToken,
+      queueEntryId: currentEntryId,
+      trackKey: _buildTrackIdentity(currentTrack!),
+      nonce: ++_preparedSlotNonce,
     );
     final nextPlan = next == null
         ? null
         : _peekPrefetchedPlayablePlan(next, quality);
+    PreparedPlaybackSlot? nextSlot;
     if (nextPlan != null &&
         nextEntryId != null &&
         nextEntryId != currentEntryId) {
-      _nativePreparedPlans[_nativeSourceKeyForEntry(nextEntryId)] = nextPlan;
+      final generation = _transactionGuard.allocate();
+      nextSlot = PreparedPlaybackSlot(
+        key: _nativeSourceKeyForEntry(nextEntryId),
+        source: nextPlan.source,
+        expiresAt: DateTime.now().add(_prefetchedSongDetailTtl),
+        queueRevision: queueRevision,
+        generation: generation,
+        preparedFromGeneration: _activePlaybackToken,
+        queueEntryId: nextEntryId,
+        trackKey: _buildTrackIdentity(next!),
+        nonce: ++_preparedSlotNonce,
+      );
+      _nativePreparedPlans[nextSlot.key] = _NativePreparedPlanEntry(
+        plan: nextPlan,
+        slot: nextSlot,
+      );
     }
 
     await _engine.bindCurrentPreparedSlot(currentSlot);
     await _engine.preparePlaybackWindow(
-      PreparedPlaybackWindow(
-        current: currentSlot,
-        next:
-            nextPlan == null ||
-                next == null ||
-                nextEntryId == null ||
-                nextEntryId == currentEntryId
-            ? null
-            : slotFor(nextEntryId, nextPlan),
-      ),
+      PreparedPlaybackWindow(current: currentSlot, next: nextSlot),
     );
   }
 
@@ -4706,7 +4777,12 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _loadLyricsForFloatingDisplay() {
-    final snapshot = LyricService().currentSnapshot;
+    final snapshot = _lyricProjection.activeFor(
+      trackKey: _activeTrack == null
+          ? null
+          : _buildTrackIdentity(_activeTrack!),
+      generation: _activePlaybackToken,
+    );
     final song = _activeSong;
     final track = currentTrack;
     final coverUrl = song != null && song.pic.isNotEmpty
@@ -4865,6 +4941,7 @@ class PlaybackService extends ChangeNotifier {
       _activeTrack = null;
       _activeQueueEntryId = null;
       _activeSong = null;
+      _lyricProjection.clearActive();
       _preloadedTrack = null;
       _clearPendingTrack();
       _position = Duration.zero;
@@ -4881,6 +4958,7 @@ class PlaybackService extends ChangeNotifier {
       _sessionManager.dispose();
       _historyRecorder.dispose();
       await _engine.dispose();
+      await _audioSessionCoordinator.dispose();
     } catch (e) {
       StructuredLogService.log('[PlaybackService] 释放资源失败: $e');
     }
@@ -4891,6 +4969,7 @@ class PlaybackService extends ChangeNotifier {
     _resetPreloadState();
     _unbindPreloadDependencyListeners();
     _stabilityTracker.dispose();
+    LyricService().removeListener(_onLyricSnapshotChanged);
     AudioSourceService().removeListener(_onAudioSourceConfigChanged);
     for (final sub in _engineSubs) {
       sub.cancel();
@@ -4903,6 +4982,7 @@ class PlaybackService extends ChangeNotifier {
     _historyRecorder.dispose();
     _cleanupCurrentTempFile();
     _engine.dispose();
+    _audioSessionCoordinator.dispose();
     ProxyService().stop();
     coverManager.dispose();
     positionNotifier.dispose();

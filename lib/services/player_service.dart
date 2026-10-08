@@ -9,7 +9,6 @@ import '../models/song_detail.dart';
 import '../models/track.dart';
 import 'equalizer_service.dart';
 import 'lyric/lyric_snapshot.dart';
-import 'lyric/lyric_service.dart';
 import 'playback/playback_service.dart';
 import 'playback/playback_performance_metrics.dart';
 import 'playback/playback_problem.dart';
@@ -40,7 +39,6 @@ class PlayerService extends ChangeNotifier {
   PlayerService._internal() {
     // 转发 PlaybackService 的变更通知
     _pb.addListener(_scheduleNotify);
-    LyricService().addListener(_scheduleNotify);
     _pb.coverManager.addListener(_scheduleNotify);
   }
 

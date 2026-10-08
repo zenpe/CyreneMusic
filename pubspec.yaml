@@ -47,6 +47,7 @@ dependencies:
   
   # System media controls (Android only, Windows uses native C++ implementation)
   audio_service: ^0.18.12
+  audio_session: ^0.2.2
   
   # System tray (Windows/macOS/Linux)
   tray_manager: ^0.5.2

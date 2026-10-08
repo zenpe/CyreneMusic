@@ -48,6 +48,15 @@ class EngineEpochGate {
     }
   }
 
+  /// A source already prepared in the native playlist became current without
+  /// a new load operation. Adopt its preallocated epoch before publishing the
+  /// source change so subsequent stream events have the same owner.
+  void adoptPreparedSource(int epoch) {
+    _armedEpoch = epoch;
+    _pendingEpoch = null;
+    _stoppedEpoch = null;
+  }
+
   /// stop 开始：此后到下一次 [beginArm] 之前的流事件归属被停止的纪元。
   void beginStop() {
     if (_pendingEpoch == null) {

@@ -15,15 +15,32 @@ class PreparedPlaybackSlot {
   final PlayableSource source;
   final DateTime expiresAt;
   final int queueRevision;
+  final int generation;
+  final int preparedFromGeneration;
+  final int queueEntryId;
+  final String trackKey;
+  final int nonce;
 
   const PreparedPlaybackSlot({
     required this.key,
     required this.source,
     required this.expiresAt,
     required this.queueRevision,
+    required this.generation,
+    required this.preparedFromGeneration,
+    required this.queueEntryId,
+    required this.trackKey,
+    required this.nonce,
   });
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
+}
+
+class EngineSourceCommit {
+  final String key;
+  final int generation;
+
+  const EngineSourceCommit({required this.key, required this.generation});
 }
 
 class PreparedPlaybackWindow {

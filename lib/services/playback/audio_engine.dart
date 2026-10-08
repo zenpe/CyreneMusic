@@ -175,7 +175,8 @@ abstract class AudioEngine {
 
   /// Emits the stable key of the native playlist's current source.
   /// Single-source engines may leave this stream empty.
-  Stream<String?> get currentSourceKeyStream => Stream<String?>.empty();
+  Stream<EngineSourceCommit> get sourceCommitStream =>
+      Stream<EngineSourceCommit>.empty();
 
   Duration get duration;
   Duration get position;
@@ -229,6 +230,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   EngineStartupTiming? _lastStartupTiming;
   int? _androidAudioSessionId;
   bool _androidEqualizerDirty = true;
+  int _equalizerRevision = 0;
   bool _needsDeferredVolumeRestore = false;
   ja.AudioSource? _loadedAudioSource;
   final List<_PreparedEngineSlot> _preparedSlots = <_PreparedEngineSlot>[];
@@ -311,11 +313,12 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   @override
   Stream<EngineError> get errorStream => _errorController.stream;
 
-  final _currentSourceKeyController = StreamController<String?>.broadcast();
+  final _sourceCommitController =
+      StreamController<EngineSourceCommit>.broadcast();
 
   @override
-  Stream<String?> get currentSourceKeyStream =>
-      _currentSourceKeyController.stream;
+  Stream<EngineSourceCommit> get sourceCommitStream =>
+      _sourceCommitController.stream;
 
   Future<void> _ensurePlayer() async {
     if (_player != null) return;
@@ -469,26 +472,39 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
   void _emitCurrentSourceKey({String? expectedKey}) {
     final player = _player;
-    if (player == null || _epochGate.streamEventEpoch != _dispatchEpoch) {
-      return;
-    }
+    if (player == null) return;
     if (player.processingState != ja.ProcessingState.ready) return;
     final key = _currentSourceKey(player);
     if (expectedKey != null && key != expectedKey) return;
     if (key == _lastCurrentSourceKey) return;
+    final index = player.currentIndex;
+    final descriptor =
+        index != null &&
+            index >= 0 &&
+            index < _preparedSlots.length &&
+            _preparedSlots[index].descriptor.key == key
+        ? _preparedSlots[index].descriptor
+        : null;
+    if (descriptor != null && descriptor.generation != _dispatchEpoch) {
+      _dispatchEpoch = descriptor.generation;
+      _epochGate.adoptPreparedSource(descriptor.generation);
+    }
+    if (_epochGate.streamEventEpoch != _dispatchEpoch || key == null) return;
     _lastCurrentSourceKey = key;
-    _currentSourceKeyController.add(key);
+    _sourceCommitController.add(
+      EngineSourceCommit(key: key, generation: _dispatchEpoch),
+    );
   }
 
   void _handleAndroidAudioSessionIdChanged(int? id) {
     final previousId = _androidAudioSessionId;
     _androidAudioSessionId = id;
-    if (id == null || id <= 0) return;
-
     final isNewSession = previousId != id;
     if (isNewSession) {
+      _equalizerRevision++;
       _androidEqualizerDirty = true;
     }
+    if (id == null || id <= 0) return;
     if (!_androidEqualizerDirty) return;
 
     if (_isPlaying) {
@@ -692,20 +708,43 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
   Future<bool> _applyAndroidEqualizerIfReady() async {
     if (!Platform.isAndroid) return false;
+    final player = _player;
     final sessionId = _androidAudioSessionId;
-    if (sessionId == null || sessionId <= 0) return false;
+    if (player == null || sessionId == null || sessionId <= 0) return false;
+    final revision = _equalizerRevision;
+    final enabled = _equalizerEnabled;
+    final gains = List<double>.from(_equalizerGains);
+    final frequencies = List<int>.from(_equalizerFrequencies);
+
+    bool isCurrent() =>
+        identical(_player, player) &&
+        _androidAudioSessionId == sessionId &&
+        _equalizerRevision == revision;
+
+    if (!enabled) {
+      final released = await AndroidEqualizerService().release(
+        sessionId: sessionId,
+      );
+      if (released && isCurrent()) {
+        _androidEqualizerDirty = false;
+        return true;
+      }
+      return false;
+    }
 
     final attached = await AndroidEqualizerService().attachToSession(sessionId);
-    if (!attached) return false;
+    if (!attached || !isCurrent()) return false;
     final applied = await AndroidEqualizerService().apply(
-      enabled: _equalizerEnabled,
-      gains: _equalizerGains,
-      frequencies: _equalizerFrequencies,
+      sessionId: sessionId,
+      enabled: enabled,
+      gains: gains,
+      frequencies: frequencies,
     );
-    if (applied) {
+    if (applied && isCurrent()) {
       _androidEqualizerDirty = false;
+      return true;
     }
-    return applied;
+    return false;
   }
 
   bool _isCurrentPlayTicket(ja.AudioPlayer player, int playTicket) {
@@ -746,15 +785,17 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     final clampedTarget = targetVolume.clamp(0.0, 1.0);
     final startVolume = player.volume.clamp(0.0, 1.0);
     if ((startVolume - clampedTarget).abs() < 0.001) {
-      if (playTicket != null && !_isCurrentPlayTicket(player, playTicket))
+      if (playTicket != null && !_isCurrentPlayTicket(player, playTicket)) {
         return;
+      }
       await player.setVolume(clampedTarget);
       return;
     }
 
     for (int step = 1; step <= _eqVolumeFadeSteps; step++) {
-      if (playTicket != null && !_isCurrentPlayTicket(player, playTicket))
+      if (playTicket != null && !_isCurrentPlayTicket(player, playTicket)) {
         return;
+      }
       if (_player != player) return;
       final t = step / _eqVolumeFadeSteps;
       final nextVolume = startVolume + ((clampedTarget - startVolume) * t);
@@ -770,6 +811,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
   Future<void> _disposePlayerOnly() async {
     _resumeRevision++;
+    _equalizerRevision++;
     await _positionSub?.cancel();
     await _durationSub?.cancel();
     await _bufferedPositionSub?.cancel();
@@ -804,11 +846,12 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     _position = Duration.zero;
     _duration = Duration.zero;
     _bufferedPosition = Duration.zero;
+    final androidAudioSessionId = _androidAudioSessionId;
     _androidAudioSessionId = null;
     _androidEqualizerDirty = true;
     _needsDeferredVolumeRestore = false;
     if (Platform.isAndroid) {
-      await AndroidEqualizerService().release();
+      await AndroidEqualizerService().release(sessionId: androidAudioSessionId);
     }
   }
 
@@ -1330,7 +1373,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     await _stateController.close();
     await _completionController.close();
     await _errorController.close();
-    await _currentSourceKeyController.close();
+    await _sourceCommitController.close();
   }
 
   @override
@@ -1345,6 +1388,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     _equalizerEnabled = enabled;
     _equalizerGains = List<double>.from(gains);
     _equalizerFrequencies = List<int>.from(frequencies);
+    _equalizerRevision++;
 
     if (!Platform.isAndroid) return;
     _androidEqualizerDirty = true;
@@ -1363,7 +1407,8 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   }
 
   @override
-  Stream<String?> get currentSourceKeyStream => Stream<String?>.empty();
+  Stream<EngineSourceCommit> get sourceCommitStream =>
+      Stream<EngineSourceCommit>.empty();
 
   static Future<void>? _mediaKitInitFuture;
 

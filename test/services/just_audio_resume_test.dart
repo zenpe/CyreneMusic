@@ -92,6 +92,11 @@ void main() {
       source: const DirectHttpPlayableSource('https://example.test/a.mp3'),
       expiresAt: DateTime.now().add(const Duration(minutes: 5)),
       queueRevision: 1,
+      generation: 2,
+      preparedFromGeneration: 1,
+      queueEntryId: 1,
+      trackKey: 'netease_1',
+      nonce: 1,
     );
     await host.bindCurrentPreparedSlot(current);
     final activated = await host

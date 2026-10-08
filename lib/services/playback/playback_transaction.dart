@@ -1,9 +1,21 @@
 class PlaybackTransactionGuard {
+  int _lastAllocatedToken = 0;
   int _currentToken = 0;
 
   int get currentToken => _currentToken;
 
-  int begin() => ++_currentToken;
+  int allocate() => ++_lastAllocatedToken;
+
+  int begin() {
+    final token = allocate();
+    activate(token);
+    return token;
+  }
+
+  void activate(int token) {
+    if (token > _lastAllocatedToken) _lastAllocatedToken = token;
+    _currentToken = token;
+  }
 
   bool isCurrent(int token) => token == _currentToken;
 }

@@ -4,6 +4,18 @@ import 'package:cyrene_music/services/playback/engine_epoch_gate.dart';
 
 void main() {
   group('EngineEpochGate', () {
+    test('prepared source adoption updates event ownership', () {
+      final gate = EngineEpochGate();
+      gate.beginArm(1);
+      gate.commitArm(1);
+
+      gate.adoptPreparedSource(2);
+
+      expect(gate.armedEpoch, 2);
+      expect(gate.streamEventEpoch, 2);
+      expect(gate.armInFlight, isFalse);
+    });
+
     test('初始状态：纪元 0，无 arm 进行中', () {
       final gate = EngineEpochGate();
       expect(gate.armedEpoch, 0);

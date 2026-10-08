@@ -78,8 +78,8 @@ class EngineHost implements AudioEngine {
   Stream<EngineError> get errorStream => _errorController.stream;
 
   @override
-  Stream<String?> get currentSourceKeyStream =>
-      _active?.currentSourceKeyStream ?? Stream<String?>.empty();
+  Stream<EngineSourceCommit> get sourceCommitStream =>
+      _active?.sourceCommitStream ?? Stream<EngineSourceCommit>.empty();
 
   Stream<EngineEvent> get events => _eventController.stream;
 
@@ -117,9 +117,18 @@ class EngineHost implements AudioEngine {
       }),
     );
     _subscriptions.add(
-      engine.currentSourceKeyStream.listen((key) {
+      engine.sourceCommitStream.listen((commit) {
         if (!current()) return;
-        _eventController.add(EngineSourceCommittedEvent(_activeEpoch, key));
+        final expected = commit.generation == _latestRequestedGeneration;
+        final naturalAdvance =
+            _latestRequestedGeneration == _activeEpoch &&
+            commit.generation > _activeEpoch;
+        if (!expected && !naturalAdvance) return;
+        _activeEpoch = commit.generation;
+        _latestRequestedGeneration = commit.generation;
+        _eventController.add(
+          EngineSourceCommittedEvent(commit.generation, commit.key),
+        );
       }),
     );
     _subscriptions.add(
@@ -289,6 +298,9 @@ class EngineHost implements AudioEngine {
           false;
       if (!activated || generation != _latestRequestedGeneration) {
         if (_activeEpoch == generation) _activeEpoch = previousEpoch;
+        if (_latestRequestedGeneration == generation) {
+          _latestRequestedGeneration = previousEpoch;
+        }
         return activated;
       }
       _isPlaying = _active?.isPlaying ?? false;

@@ -18,6 +18,19 @@ void main() {
 
       expect(guard.isCurrent(token), isTrue);
     });
+
+    test('allocating a prepared generation does not activate it', () {
+      final guard = PlaybackTransactionGuard();
+      final active = guard.begin();
+      final prepared = guard.allocate();
+
+      expect(guard.currentToken, active);
+      expect(guard.isCurrent(active), isTrue);
+      expect(guard.isCurrent(prepared), isFalse);
+
+      guard.activate(prepared);
+      expect(guard.isCurrent(prepared), isTrue);
+    });
   });
 
   group('PlaybackStartCommitter', () {
