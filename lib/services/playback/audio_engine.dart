@@ -215,9 +215,12 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         ),
       );
 
-  JustAudioEngine() {
+  JustAudioEngine({ja.AudioPlayer Function()? playerFactory})
+    : _playerFactory = playerFactory {
     EqualizerService().setBackend(this);
   }
+
+  final ja.AudioPlayer Function()? _playerFactory;
 
   ja.AudioPlayer? _player;
   double _currentVolume = 1.0;
@@ -245,6 +248,9 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   static const Duration _prePlayEqWaitTimeout = Duration(milliseconds: 120);
   static const Duration _postPlayRestoreDelay = Duration(milliseconds: 70);
   int _playTicket = 0;
+  // Resume cancellation is separate from the ticket owning output restoration.
+  // Pausing must not cancel restoration and leave the next play muted.
+  int _resumeRevision = 0;
 
   final _positionController = StreamController<Duration>.broadcast();
   final _durationController = StreamController<Duration>.broadcast();
@@ -317,10 +323,12 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     // 移动端不使用 MediaKit 均衡器实现，避免 native EQ 路径影响播放稳定性。
     EqualizerService().setBackend(this);
 
-    final player = ja.AudioPlayer(
-      audioLoadConfiguration: _audioLoadConfiguration,
-      useLazyPreparation: true,
-    );
+    final player =
+        _playerFactory?.call() ??
+        ja.AudioPlayer(
+          audioLoadConfiguration: _audioLoadConfiguration,
+          useLazyPreparation: true,
+        );
     _player = player;
 
     final savedVolume = PersistentStorageService().getDouble('player_volume');
@@ -592,18 +600,25 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     );
   }
 
-  void _fireAndForgetPlay({bool restoreVolumeAfterStart = true}) {
+  void _fireAndForgetPlay({
+    bool restoreVolumeAfterStart = true,
+    bool Function()? canStart,
+  }) {
     final player = _player;
     if (player == null) return;
     final playTicket = ++_playTicket;
     unawaited(() async {
       try {
+        if (canStart != null && !canStart()) return;
         if (restoreVolumeAfterStart) {
+          _needsDeferredVolumeRestore = true;
           if (player.volume > 0.001) {
             await player.setVolume(0);
           }
+          if (canStart != null && !canStart()) return;
           await _primeAndroidEqualizerBeforePlaybackStart();
         }
+        if (canStart != null && !canStart()) return;
         final playFuture = player.play();
         if (restoreVolumeAfterStart) {
           unawaited(
@@ -616,6 +631,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         }
         await playFuture;
       } catch (e) {
+        if (canStart != null && !canStart()) return;
         // 使已排队的 deferred output 失效，避免 play() 失败后仍对白跑的
         // ticket 执行 EQ/apply/fade。
         if (_isCurrentPlayTicket(player, playTicket)) {
@@ -753,6 +769,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   }
 
   Future<void> _disposePlayerOnly() async {
+    _resumeRevision++;
     await _positionSub?.cancel();
     await _durationSub?.cancel();
     await _bufferedPositionSub?.cancel();
@@ -863,6 +880,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     Duration? initialPosition,
     bool preload = true,
   }) async {
+    _resumeRevision++;
     _lastStartupTiming = null;
     var ensurePlayerMs = 0;
     var muteMs = 0;
@@ -1058,6 +1076,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     );
     if (player == null || targetIndex < 0 || !_hasSource) return false;
 
+    _resumeRevision++;
     final target = _preparedSlots[targetIndex];
     final sw = Stopwatch()..start();
     _epochGate.beginArm(generation);
@@ -1230,12 +1249,15 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
   @override
   Future<void> pause() async {
+    _resumeRevision++;
     await _player?.pause();
   }
 
   @override
   Future<void> resume() async {
+    final revision = ++_resumeRevision;
     await _ensurePlayer();
+    if (revision != _resumeRevision) return;
     if (!_hasSource) {
       _emitError(
         EngineError(
@@ -1251,7 +1273,16 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     final needsVolumeRestore =
         _needsDeferredVolumeRestore ||
         (Platform.isAndroid && _androidEqualizerDirty);
-    _fireAndForgetPlay(restoreVolumeAfterStart: needsVolumeRestore);
+    final player = _player;
+    final epoch = _dispatchEpoch;
+    _fireAndForgetPlay(
+      restoreVolumeAfterStart: needsVolumeRestore,
+      canStart: () =>
+          revision == _resumeRevision &&
+          identical(player, _player) &&
+          epoch == _dispatchEpoch &&
+          _hasSource,
+    );
   }
 
   @override
@@ -1262,6 +1293,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
   @override
   Future<void> stop() async {
+    _resumeRevision++;
     // stop 属于源头操作：其后的流事件（idle/completed）归属被停止的纪元，
     // 在下一次 arm 前不会污染新歌。
     _epochGate.beginStop();

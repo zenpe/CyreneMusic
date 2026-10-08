@@ -7,6 +7,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:audio_service/audio_service.dart';
 import 'player_service.dart';
+import 'playback/media_transport_state.dart';
 import 'android_floating_lyric_service.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:crypto/crypto.dart';
@@ -30,8 +31,6 @@ class CyreneAudioHandler extends BaseAudioHandler
   PlayerState? _lastLoggedState; // 上次记录日志时的状态
   PlayerState? _lastObservedPlayerState; // 上次观察到的播放器真实状态
   DateTime? _lastLogTime; // 上次记录日志的时间
-  Duration? _lastUpdatedPosition; // 上次更新的位置（用于减少不必要的更新）
-  PlayerState? _lastUpdatedState; // 上次更新的播放状态（用于减少不必要的更新）
   String? _lastWidgetArtUri; // 上次小部件使用的封面 URI
   String? _lastWidgetArtPath; // 上次小部件使用的封面本地路径
   String? _lastWidgetSongKey; // 上次小部件显示的歌曲标识 (Title + Artist)
@@ -53,15 +52,18 @@ class CyreneAudioHandler extends BaseAudioHandler
   static const Duration _artNegativeCacheTtl = Duration(minutes: 10);
   static const Duration _artNegativeCacheTtlTransient = Duration(minutes: 2);
 
-  // 构造函数
-  CyreneAudioHandler() {
+  final PlayerService _player;
+
+  // The default remains the application's existing singleton.
+  CyreneAudioHandler({PlayerService? player})
+    : _player = player ?? PlayerService() {
     StructuredLogService.log('🎵 [AudioHandler] 开始初始化...');
 
     // 🔧 关键修复：立即设置初始播放状态（必需，否则通知不会显示）
     _setInitialPlaybackState();
 
     // 监听播放器状态变化
-    PlayerService().addListener(_onPlayerStateChanged);
+    _player.addListener(_onPlayerStateChanged);
 
     // 监听播放模式变化（用于同步通知栏的单曲循环/列表循环/随机播放状态）
     PlaybackModeService().addListener(_onPlaybackModeChanged);
@@ -86,7 +88,7 @@ class CyreneAudioHandler extends BaseAudioHandler
       if (Platform.isAndroid && AndroidFloatingLyricService().isVisible) {
         // 使用 await 确保每次更新完成后再进行下一次
         // 这样可以避免并发调用导致的问题
-        await PlayerService().updateFloatingLyricManually();
+        await _player.updateFloatingLyricManually();
       }
     });
     StructuredLogService.log('✅ [AudioHandler] 悬浮歌词后台更新定时器已启动（2000ms间隔，定期校准）');
@@ -97,7 +99,7 @@ class CyreneAudioHandler extends BaseAudioHandler
   void _startIOSStateRefreshTimer() {
     _iosStateRefreshTimer?.cancel();
     _iosStateRefreshTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      final player = PlayerService();
+      final player = _player;
       // 只要有歌曲在播放或暂停，就持续刷新状态
       if (player.state == PlayerState.playing ||
           player.state == PlayerState.paused) {
@@ -111,12 +113,7 @@ class CyreneAudioHandler extends BaseAudioHandler
         }
 
         // 更新播放状态
-        _updatePlaybackState(
-          player.state,
-          player.position,
-          player.bufferedPosition,
-          player.playbackSpeed,
-        );
+        _updatePlaybackState();
       }
     });
     StructuredLogService.log('✅ [AudioHandler] iOS 状态刷新定时器已启动（3秒间隔，保持锁屏显示）');
@@ -125,72 +122,11 @@ class CyreneAudioHandler extends BaseAudioHandler
   /// 启动进度条更新定时器（播放时定期更新进度）
   void _startPositionUpdateTimer() {
     _positionUpdateTimer?.cancel();
-    // 🔧 性能优化：降低更新频率到 1 秒，减少系统通知更新次数
-    // 每1秒更新一次进度条（仅在播放时）
-    _positionUpdateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      final player = PlayerService();
-      if (player.state == PlayerState.playing ||
-          player.state == PlayerState.paused) {
-        // 只更新进度位置，不触发完整的状态更新（避免与防抖冲突）
-        final currentState = playbackState.value;
-        final isPlaying = player.state == PlayerState.playing;
-        final currentPosition = player.position;
-        final currentBuffered = player.bufferedPosition;
-        final currentSpeed = player.playbackSpeed;
-
-        // 🔧 性能优化：只有当位置变化超过 0.5 秒或状态改变时才更新
-        // 这样可以大幅减少系统通知的更新频率
-        final positionChanged =
-            _lastUpdatedPosition == null ||
-            (currentPosition.inSeconds - _lastUpdatedPosition!.inSeconds)
-                    .abs() >=
-                0.5;
-        final stateChanged = _lastUpdatedState != player.state;
-        final playingStateChanged = currentState.playing != isPlaying;
-        final bufferedChanged =
-            currentState.bufferedPosition != currentBuffered;
-
-        // 🍎 iOS 始终更新以保持锁屏显示活跃，Android 使用优化逻辑
-        final shouldUpdate =
-            Platform.isIOS ||
-            positionChanged ||
-            stateChanged ||
-            playingStateChanged ||
-            bufferedChanged;
-
-        // 只有当位置、状态或时长有显著变化时才更新（或 iOS 始终更新）
-        if (shouldUpdate) {
-          if (stateChanged || playingStateChanged) {
-            // 播放标志和按钮动作必须一起发布，避免显示播放键却仍发送暂停命令。
-            _updatePlaybackState(
-              player.state,
-              currentPosition,
-              currentBuffered,
-              currentSpeed,
-            );
-            _lastUpdatedPosition = currentPosition;
-            _lastUpdatedState = player.state;
-            return;
-          }
-          // 更新播放状态和进度
-          playbackState.add(
-            currentState.copyWith(
-              updatePosition: currentPosition,
-              bufferedPosition: currentBuffered,
-            ),
-          );
-
-          // 记录上次更新的值
-          _lastUpdatedPosition = currentPosition;
-          _lastUpdatedState = player.state;
-        }
-      } else {
-        // 不在播放状态时，清除缓存
-        _lastUpdatedPosition = null;
-        _lastUpdatedState = null;
-      }
+    _positionUpdateTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      // Same projection as event updates: the fallback cannot overwrite a
+      // pending pause/resume with an older interpretation of PlayerState.
+      _updatePlaybackState(force: Platform.isIOS);
     });
-    StructuredLogService.log('✅ [AudioHandler] 进度条更新定时器已启动（1秒间隔，带位置变化阈值）');
   }
 
   @override
@@ -205,13 +141,7 @@ class CyreneAudioHandler extends BaseAudioHandler
   }
 
   void _onPlaybackModeChanged() {
-    final player = PlayerService();
-    _updatePlaybackState(
-      player.state,
-      player.position,
-      player.bufferedPosition,
-      player.playbackSpeed,
-    );
+    _updatePlaybackState();
   }
 
   AudioServiceRepeatMode _getRepeatMode() {
@@ -253,9 +183,7 @@ class CyreneAudioHandler extends BaseAudioHandler
             androidIcon: 'drawable/ic_notification_repeat_all',
             label: '列表循环',
             action: MediaAction.custom,
-            customAction: CustomMediaAction(
-              name: 'cycle_repeat_mode',
-            ),
+            customAction: CustomMediaAction(name: 'cycle_repeat_mode'),
           ),
           MediaControl.skipToPrevious, // 上一首
           MediaControl(
@@ -268,9 +196,7 @@ class CyreneAudioHandler extends BaseAudioHandler
             androidIcon: 'drawable/ic_notification_lyric',
             label: '桌面歌词',
             action: MediaAction.custom,
-            customAction: CustomMediaAction(
-              name: 'toggle_floating_lyric',
-            ),
+            customAction: CustomMediaAction(name: 'toggle_floating_lyric'),
           ),
         ],
         systemActions: const {
@@ -299,7 +225,10 @@ class CyreneAudioHandler extends BaseAudioHandler
 
   /// 播放器状态变化回调（带防抖）
   void _onPlayerStateChanged() {
-    final player = PlayerService();
+    // Publish transport synchronously, before metadata debounce or artwork I/O.
+    // Intent-only updates must not be discarded by metadata deduplication.
+    _updatePlaybackState(updatePosition: false);
+    final player = _player;
     final currentState = player.state;
     final stateChanged = currentState != _lastObservedPlayerState;
     if (stateChanged) _lastObservedPlayerState = currentState;
@@ -311,12 +240,19 @@ class CyreneAudioHandler extends BaseAudioHandler
         ? null
         : '${activeTrack.source.name}:${activeTrack.id}';
     final mediaChanged = mediaIdentity != _lastObservedMediaIdentity;
-    if (mediaChanged) _lastObservedMediaIdentity = mediaIdentity;
+    if (mediaChanged) {
+      _lastObservedMediaIdentity = mediaIdentity;
+      // Invalidate artwork immediately, even while an older cache lookup is
+      // holding the metadata queue.
+      _mediaArtRequestId++;
+      _currentMediaKey = null;
+    }
 
     // 🔧 性能优化：根据播放状态启停定时器，避免空转
     final isActive =
         currentState == PlayerState.playing ||
-        currentState == PlayerState.paused;
+        currentState == PlayerState.paused ||
+        currentState == PlayerState.loading;
     if (isActive && _positionUpdateTimer == null) {
       _startPositionUpdateTimer();
       if (Platform.isAndroid) _startLyricUpdateTimer();
@@ -359,10 +295,6 @@ class CyreneAudioHandler extends BaseAudioHandler
       _updatePending = false;
       unawaited(_performUpdate());
 
-      // 清除位置缓存，确保下次更新
-      _lastUpdatedPosition = null;
-      _lastUpdatedState = null;
-
       // 🔧 优化日志：只在状态真正改变时打印，且限制频率（最多每秒一次）
       final stateChanged = _lastLoggedState != currentState;
       final timeSinceLastLog =
@@ -392,9 +324,6 @@ class CyreneAudioHandler extends BaseAudioHandler
       if (_updatePending) {
         unawaited(_performUpdate());
         _updatePending = false;
-        // 清除位置缓存，确保下次更新
-        _lastUpdatedPosition = null;
-        _lastUpdatedState = null;
       }
     });
   }
@@ -418,18 +347,13 @@ class CyreneAudioHandler extends BaseAudioHandler
   }
 
   Future<void> _performUpdateInternal() async {
-    final player = PlayerService();
+    final player = _player;
     // 只发布已经提交给引擎的媒体，避免 pendingTrack 在切歌过程中污染通知。
     final song = player.activeSong;
     final track = player.activeTrack;
 
     // 更新播放状态
-    _updatePlaybackState(
-      player.state,
-      player.position,
-      player.bufferedPosition,
-      player.playbackSpeed,
-    );
+    _updatePlaybackState();
 
     // 更新媒体信息
     if (song != null || track != null) {
@@ -492,7 +416,7 @@ class CyreneAudioHandler extends BaseAudioHandler
 
       // --- 专辑封面同步逻辑 (优化：识别切歌并强制刷新) ---
       String? albumArtPath = _lastWidgetArtPath;
-      final artUri = PlayerService().currentCoverUrl ?? '';
+      final artUri = _player.currentCoverUrl ?? '';
       final currentSongKey = '$title-$artist';
       final songChanged = currentSongKey != _lastWidgetSongKey;
 
@@ -583,9 +507,9 @@ class CyreneAudioHandler extends BaseAudioHandler
     final title = song?.name ?? track?.name ?? '未知歌曲';
     final artist = song?.arName ?? track?.artists ?? '未知歌手';
     final album = song?.alName ?? track?.album ?? '';
-    final artUri = PlayerService().currentCoverUrl ?? '';
+    final artUri = _player.currentCoverUrl ?? '';
     final mediaId = track?.id.toString() ?? '0';
-    final duration = PlayerService().duration;
+    final duration = _player.duration;
 
     final mediaKey = '$mediaId|$title|$artist|$artUri';
     _currentMediaKey = mediaKey;
@@ -612,6 +536,7 @@ class CyreneAudioHandler extends BaseAudioHandler
       }
     }
 
+    if (requestId != _mediaArtRequestId || _currentMediaKey != mediaKey) return;
     mediaItem.add(
       _buildMediaItem(
         id: mediaId,
@@ -928,12 +853,25 @@ class CyreneAudioHandler extends BaseAudioHandler
   }
 
   /// 更新播放状态
-  void _updatePlaybackState(
-    PlayerState playerState,
-    Duration position,
-    Duration bufferedPosition,
-    double playbackSpeed,
-  ) {
+  MediaTransportState _readTransportState() {
+    final player = _player;
+    final view = player.viewState;
+    return MediaTransportState.project(
+      phase: view.switchPhase,
+      desiredPlaying: view.desiredPlaying,
+      enginePlaying: view.enginePlaying,
+      pendingPlaying: player.pendingPlaybackIntent,
+    );
+  }
+
+  void _updatePlaybackState({bool updatePosition = true, bool force = false}) {
+    final player = _player;
+    final transport = _readTransportState();
+    final playing = transport.playing;
+    final processingState = transport.processingState;
+    final position = player.position;
+    final bufferedPosition = player.bufferedPosition;
+    final playbackSpeed = player.playbackSpeed;
     final mode = PlaybackModeService().currentMode;
     final modeLabel = switch (mode) {
       PlaybackMode.sequential => '顺序播放',
@@ -952,16 +890,14 @@ class CyreneAudioHandler extends BaseAudioHandler
         androidIcon: modeIcon,
         label: modeLabel,
         action: MediaAction.custom,
-        customAction: const CustomMediaAction(
-          name: 'cycle_repeat_mode',
-        ),
+        customAction: const CustomMediaAction(name: 'cycle_repeat_mode'),
       ),
       MediaControl.skipToPrevious, // 上一首
       MediaControl(
-        androidIcon: playerState == PlayerState.playing
+        androidIcon: playing
             ? 'drawable/audio_service_pause'
             : 'drawable/audio_service_play_arrow',
-        label: playerState == PlayerState.playing ? '暂停' : '播放',
+        label: playing ? '暂停' : '播放',
         action: MediaAction.playPause,
       ),
       MediaControl.skipToNext, // 下一首
@@ -969,14 +905,10 @@ class CyreneAudioHandler extends BaseAudioHandler
         androidIcon: 'drawable/ic_notification_lyric',
         label: '桌面歌词',
         action: MediaAction.custom,
-        customAction: CustomMediaAction(
-          name: 'toggle_floating_lyric',
-        ),
+        customAction: CustomMediaAction(name: 'toggle_floating_lyric'),
       ),
     ];
 
-    final playing = playerState == PlayerState.playing;
-    final processingState = _getProcessingState(playerState);
     final repeatMode = _getRepeatMode();
     final shuffleMode = _getShuffleMode();
     final currentState = playbackState.value;
@@ -985,12 +917,13 @@ class CyreneAudioHandler extends BaseAudioHandler
     final stateChanged =
         currentState.playing != playing ||
         currentState.processingState != processingState ||
+        currentState.speed != (playing ? playbackSpeed : 0.0) ||
         currentState.repeatMode != repeatMode ||
         currentState.shuffleMode != shuffleMode ||
         currentState.controls.length != controls.length ||
         !_controlsEqual(currentState.controls, controls);
 
-    if (stateChanged) {
+    if (stateChanged || force) {
       playbackState.add(
         currentState.copyWith(
           controls: controls,
@@ -1021,7 +954,7 @@ class CyreneAudioHandler extends BaseAudioHandler
       final positionChanged =
           currentState.updatePosition != position ||
           currentState.bufferedPosition != bufferedPosition;
-      if (positionChanged) {
+      if (updatePosition && positionChanged) {
         playbackState.add(
           currentState.copyWith(
             updatePosition: position,
@@ -1045,21 +978,6 @@ class CyreneAudioHandler extends BaseAudioHandler
     return true;
   }
 
-  /// 转换播放状态
-  AudioProcessingState _getProcessingState(PlayerState state) {
-    switch (state) {
-      case PlayerState.idle:
-        return AudioProcessingState.idle;
-      case PlayerState.loading:
-        return AudioProcessingState.loading;
-      case PlayerState.playing:
-      case PlayerState.paused:
-        return AudioProcessingState.ready;
-      case PlayerState.error:
-        return AudioProcessingState.error;
-    }
-  }
-
   // ============== 媒体控制按钮回调 ==============
 
   @override
@@ -1067,7 +985,7 @@ class CyreneAudioHandler extends BaseAudioHandler
     if (button != MediaButton.media) {
       return super.click(button);
     }
-    if (PlayerService().state == PlayerState.playing) {
+    if (_readTransportState().playing) {
       await pause();
     } else {
       await play();
@@ -1077,19 +995,19 @@ class CyreneAudioHandler extends BaseAudioHandler
   @override
   Future<void> play() async {
     StructuredLogService.log('🎮 [AudioHandler] 蓝牙/系统媒体控件: 播放');
-    await PlayerService().resume();
+    await _player.resume();
   }
 
   @override
   Future<void> pause() async {
     StructuredLogService.log('🎮 [AudioHandler] 蓝牙/系统媒体控件: 暂停');
-    await PlayerService().pause();
+    await _player.pause();
   }
 
   @override
   Future<void> stop() async {
     StructuredLogService.log('🎮 [AudioHandler] 蓝牙/系统媒体控件: 停止');
-    await PlayerService().stop();
+    await _player.stop();
     await super.stop();
   }
 
@@ -1098,7 +1016,7 @@ class CyreneAudioHandler extends BaseAudioHandler
     StructuredLogService.log('🎮 [AudioHandler] 蓝牙/系统媒体控件: 下一首');
     // 🔧 修复：使用 PlayerService 的 playNext 方法
     // 这样可以正确处理播放队列和播放历史
-    await PlayerService().playNext();
+    await _player.playNext();
     // 注意：playNext 会触发歌曲切换，状态会通过 _onPlayerStateChanged 自动更新
   }
 
@@ -1107,13 +1025,13 @@ class CyreneAudioHandler extends BaseAudioHandler
     StructuredLogService.log('🎮 [AudioHandler] 蓝牙/系统媒体控件: 上一首');
     // 🔧 修复：使用 PlayerService 的 playPrevious 方法
     // 这样可以正确处理播放队列和播放历史
-    await PlayerService().playPrevious();
+    await _player.playPrevious();
     // 注意：playPrevious 会触发歌曲切换，状态会通过 _onPlayerStateChanged 自动更新
   }
 
   @override
   Future<void> seek(Duration position) async {
-    await PlayerService().seek(position);
+    await _player.seek(position);
   }
 
   @override

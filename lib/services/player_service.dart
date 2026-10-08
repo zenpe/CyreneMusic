@@ -76,6 +76,7 @@ class PlayerService extends ChangeNotifier {
   PlaybackViewState get viewState => _pb.viewState;
   PlaybackSwitchPhase get switchPhase => viewState.switchPhase;
   bool get desiredPlaying => viewState.desiredPlaying;
+  bool? get pendingPlaybackIntent => _pb.pendingPlaybackIntent;
   SongDetail? get currentSong => viewState.song;
   Track? get currentTrack => viewState.track;
   Track? get displayTrack => viewState.track;

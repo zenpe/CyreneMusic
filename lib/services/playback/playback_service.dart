@@ -48,6 +48,7 @@ import 'playback_transition.dart';
 import 'playback_transition_coordinator.dart';
 import 'playback_transaction.dart';
 import 'playback_view_state.dart';
+import 'playback_control_intent.dart';
 import 'playback_history_recorder.dart';
 import 'playback_request_router.dart';
 import 'playback_session.dart';
@@ -234,6 +235,8 @@ class PlaybackService extends ChangeNotifier {
   Duration _presentationBufferedPosition = Duration.zero;
   bool _pendingTimelineReady = false;
   bool _desiredPlaying = false;
+  final PlaybackControlIntent _controlIntent = PlaybackControlIntent();
+  bool? get pendingPlaybackIntent => _controlIntent.pendingPlaying;
   String? _errorMessage;
   Track? _lastFailedTrack;
   int? _lastFailedQueueEntryId;
@@ -760,6 +763,7 @@ class PlaybackService extends ChangeNotifier {
   void _applyEngineState(EngineState s, {bool notify = true}) {
     switch (s) {
       case EngineState.playing:
+        _controlIntent.acknowledge(true);
         _updateSessionPhase(PlaybackPhase.playing);
         _state = PBState.playing;
         // 注意：此处不清零 _retriedTrackKey，也不触发
@@ -776,6 +780,7 @@ class PlaybackService extends ChangeNotifier {
         _schedulePreloadNextTrack();
         break;
       case EngineState.paused:
+        _controlIntent.acknowledge(false);
         _updateSessionPhase(PlaybackPhase.paused);
         _state = PBState.paused;
         _stabilityTracker.onPlaybackInterrupted();
@@ -915,6 +920,7 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
 
+    _controlIntent.invalidate();
     _state = PBState.error;
     _errorMessage = _buildErrorMessage(error);
     _isAudioSourceNotConfigured = false;
@@ -1382,6 +1388,7 @@ class PlaybackService extends ChangeNotifier {
     bool preload = true,
     PlaybackRequestIntent intent = PlaybackRequestIntent.manual,
   }) {
+    _controlIntent.invalidate();
     final requestEpoch = _requestRouter.begin();
     // 队列指针和 pending session 必须在第一次 await 前切换。否则旧的
     // 解析任务会占住 CommandQueue，后续点击虽然最终会被丢弃，但用户仍
@@ -1448,6 +1455,7 @@ class PlaybackService extends ChangeNotifier {
     final track = index >= 0 && index < _queue.length ? _queue[index] : null;
     final entryId = _queueController.entryIdAt(index);
     if (track == null || entryId == null) return;
+    _controlIntent.invalidate();
     _resetPreloadState();
     _pendingRestorePosition = null;
     await _attemptTrackSwitch(
@@ -1554,8 +1562,21 @@ class PlaybackService extends ChangeNotifier {
   // ══════════════════════════════════════════════════════
 
   Future<void> resume() async {
+    final revision = _controlIntent.begin(true);
     _desiredPlaying = true;
     notifyListeners();
+    try {
+      await _resumeWithIntent(revision);
+      if (_engine.isPlaying) _controlIntent.settle(revision);
+    } catch (_) {
+      _controlIntent.settle(revision);
+      rethrow;
+    } finally {
+      notifyListeners();
+    }
+  }
+
+  Future<void> _resumeWithIntent(int revision) async {
     if (_pendingTrack != null) {
       return;
     }
@@ -1570,7 +1591,13 @@ class PlaybackService extends ChangeNotifier {
           autoPlay: true,
           initialPosition: restorePosition,
         );
-        _desiredPlaying = true;
+        // Loading may outlive a pause/stop or a different source request.
+        // Never restore the old intent after that asynchronous boundary.
+        if (!_controlIntent.isCurrent(revision) ||
+            !_requestRouter.isCurrent(requestEpoch) ||
+            !_desiredPlaying) {
+          return;
+        }
         if (restorePosition != null && _requestRouter.isCurrent(requestEpoch)) {
           _position = restorePosition;
           positionNotifier.value = restorePosition;
@@ -1586,16 +1613,25 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
     await _engine.resume();
+    if (!_controlIntent.isCurrent(revision)) return;
     _startListeningTimeTracking();
     _scheduleSessionPersist();
   }
 
   Future<void> pause() async {
+    final revision = _controlIntent.begin(false);
     _desiredPlaying = false;
     notifyListeners();
-    await _engine.pause();
-    _pauseListeningTimeTracking();
-    _scheduleSessionPersist();
+    try {
+      await _engine.pause();
+      if (_controlIntent.isCurrent(revision)) {
+        _pauseListeningTimeTracking();
+        _scheduleSessionPersist();
+      }
+    } finally {
+      _controlIntent.settle(revision);
+      notifyListeners();
+    }
   }
 
   Future<void> seek(Duration position) async {
@@ -1610,6 +1646,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> next() async {
+    _controlIntent.invalidate();
     final requestEpoch = _requestRouter.begin();
     await _runNavigationTransition(
       requestEpoch: requestEpoch,
@@ -1620,6 +1657,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> previous() async {
+    _controlIntent.invalidate();
     final requestEpoch = _requestRouter.begin();
     await _runNavigationTransition(
       requestEpoch: requestEpoch,
@@ -2009,6 +2047,7 @@ class PlaybackService extends ChangeNotifier {
 
     if (track.source != MusicSource.local &&
         !AudioSourceService().isConfigured) {
+      _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = '音源未配置，请在设置中配置音源';
       _isAudioSourceNotConfigured = true;
@@ -2026,6 +2065,7 @@ class PlaybackService extends ChangeNotifier {
 
     final isFromPlaylist = _source == QueueSource.playlist;
     if (isFromPlaylist && track.source == MusicSource.apple) {
+      _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = '由于Apple接口限制，通过该接口导入的音乐需要换源才能播放！';
       notifyListeners();
@@ -2079,6 +2119,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _invalidateCurrentPlayback() {
+    _controlIntent.invalidate();
     _requestRouter.begin();
     _transactionGuard.begin();
     _pendingSwitchToken++;
@@ -2141,6 +2182,7 @@ class PlaybackService extends ChangeNotifier {
     }
 
     if (lookup.localFileMissing) {
+      _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = '本地文件不存在';
       notifyListeners();
@@ -2164,6 +2206,7 @@ class PlaybackService extends ChangeNotifier {
       );
     }
     if (!sourceRequestAllowed) {
+      _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = '当前音源连续解析失败，已暂停请求，请重新导入或切换音源';
       notifyListeners();
@@ -2309,6 +2352,7 @@ class PlaybackService extends ChangeNotifier {
           ? null
           : _sourceHealthTracker.snapshot(lxSourceFingerprint!);
       final circuitOpen = sourceHealth?.isCircuitOpen ?? false;
+      _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = _resolutionFailureMessage(lxFailure);
       notifyListeners();
@@ -3383,6 +3427,7 @@ class PlaybackService extends ChangeNotifier {
       return _candidateFailureResult(transaction: tx, engineFailure: true);
     } on AudioSourceNotConfiguredException catch (e) {
       if (isStale()) return PlaybackCandidateAttemptResult.cancelled;
+      _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = e.message;
       _isAudioSourceNotConfigured = true;
@@ -3399,6 +3444,7 @@ class PlaybackService extends ChangeNotifier {
       return _candidateFailureResult(transaction: tx);
     } catch (e) {
       if (isStale()) return PlaybackCandidateAttemptResult.cancelled;
+      _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = '播放失败: $e';
       _isAudioSourceNotConfigured = false;
@@ -3623,6 +3669,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> _stopAtSequentialQueueEnd() async {
+    _controlIntent.invalidate();
     await _engine.stop();
     _desiredPlaying = false;
     _state = PBState.idle;
@@ -3648,6 +3695,7 @@ class PlaybackService extends ChangeNotifier {
       _clearPendingTrack();
     } else {
       _desiredPlaying = false;
+      _controlIntent.invalidate();
       _state = PBState.error;
     }
     StructuredLogService.event(
@@ -4765,6 +4813,7 @@ class PlaybackService extends ChangeNotifier {
 
   // ── 清除会话 ──
   Future<void> clearSession() async {
+    _controlIntent.invalidate();
     _desiredPlaying = false;
     await _engine.stop();
     _state = PBState.idle;
@@ -4805,6 +4854,7 @@ class PlaybackService extends ChangeNotifier {
 
   /// 强制释放所有资源
   Future<void> forceDispose() async {
+    _controlIntent.invalidate();
     try {
       _resetPreloadState();
       await _cleanupCurrentTempFile();
