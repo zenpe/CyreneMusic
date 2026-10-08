@@ -1616,6 +1616,11 @@ class PlaybackService extends ChangeNotifier {
   // ══════════════════════════════════════════════════════
 
   Future<void> resume() async {
+    if (_pendingTrack == null &&
+        currentTrack == null &&
+        _preloadedTrack == null) {
+      return;
+    }
     final revision = _controlIntent.begin(true);
     _desiredPlaying = true;
     notifyListeners();

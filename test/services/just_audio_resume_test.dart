@@ -188,6 +188,38 @@ void main() {
     ]);
     expect(events.last['outcome'], 'source_replaced');
   });
+
+  test('late buffering from the old source is ignored while arming', () async {
+    final lines = <String>[];
+    StructuredLogService.sink = lines.add;
+    final sourceLoadStarted = Completer<void>();
+    final releaseSourceLoad = Completer<void>();
+    player.nextSourceLoadStarted = sourceLoadStarted;
+    player.nextSourceLoad = releaseSourceLoad;
+
+    final replacement = host.play(
+      'https://example.test/replacement.mp3',
+      generation: 2,
+      autoPlay: false,
+    );
+    try {
+      await sourceLoadStarted.future.timeout(const Duration(seconds: 1));
+      player.states.add(ja.PlayerState(true, ja.ProcessingState.buffering));
+      await Future<void>.delayed(Duration.zero);
+    } finally {
+      if (!releaseSourceLoad.isCompleted) releaseSourceLoad.complete();
+    }
+    await replacement;
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+
+    final bufferingEvents = lines
+        .map((line) => jsonDecode(line) as Map<String, dynamic>)
+        .where(
+          (event) =>
+              (event['event'] as String).startsWith('audio_engine.buffering_'),
+        );
+    expect(bufferingEvents, isEmpty);
+  });
 }
 
 /// Only the native player is replaced. Tests execute the production engine,
@@ -195,6 +227,8 @@ void main() {
 class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
   final states = StreamController<ja.PlayerState>.broadcast();
   Completer<void>? nextMute;
+  Completer<void>? nextSourceLoadStarted;
+  Completer<void>? nextSourceLoad;
   Completer<void>? _playLifetime;
   int playCalls = 0;
   @override
@@ -245,6 +279,12 @@ class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
     int? initialIndex,
     Duration? initialPosition,
   }) async {
+    final started = nextSourceLoadStarted;
+    nextSourceLoadStarted = null;
+    if (started != null && !started.isCompleted) started.complete();
+    final sourceLoad = nextSourceLoad;
+    nextSourceLoad = null;
+    if (sourceLoad != null) await sourceLoad.future;
     sequence = [source as ja.IndexedAudioSource];
     return duration;
   }

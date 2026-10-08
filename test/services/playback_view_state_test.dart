@@ -112,4 +112,28 @@ void main() {
 
     expect(state.effectivePlaying, isFalse);
   });
+
+  test('terminal phases ignore pending play intent', () {
+    for (final phase in [
+      PlaybackSwitchPhase.idle,
+      PlaybackSwitchPhase.failed,
+    ]) {
+      final state = PlaybackViewState(
+        generation: 12,
+        track: null,
+        song: null,
+        switchPhase: phase,
+        desiredPlaying: true,
+        enginePlaying: false,
+        pendingPlaying: true,
+        position: Duration.zero,
+        duration: null,
+        bufferedPosition: Duration.zero,
+        lyricState: LyricLoadState.idle,
+        lyricSnapshot: null,
+      );
+
+      expect(state.effectivePlaying, isFalse, reason: phase.name);
+    }
+  });
 }

@@ -374,7 +374,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       // 但引擎内部 bookkeeping（_isPlaying/_position）照常更新。
       final stale = _epochGate.streamEventEpoch != _dispatchEpoch;
       final processing = state.processingState;
-      _observeBufferingState(state);
+      if (!stale) _observeBufferingState(state);
       if (processing == ja.ProcessingState.completed) {
         _isPlaying = false;
         _position = Duration.zero;
@@ -449,15 +449,16 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     if (_bufferingStartedAt != null) return;
 
     final startedAt = DateTime.now();
+    final position = _player?.position ?? _position;
     _bufferingStartedAt = startedAt;
-    _bufferingStartPosition = _position;
-    _bufferingGeneration = _dispatchEpoch;
+    _bufferingStartPosition = position;
+    _bufferingGeneration = _epochGate.streamEventEpoch;
     StructuredLogService.event(
       'audio_engine.buffering_started',
       fields: {
         'engine': 'just_audio',
         'epoch': _bufferingGeneration,
-        'position_ms': _position.inMilliseconds,
+        'position_ms': position.inMilliseconds,
         'buffered_ahead_ms': _bufferedAhead.inMilliseconds,
       },
     );
@@ -465,7 +466,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     _bufferingStallTimer?.cancel();
     _bufferingStallTimer = Timer(_bufferingStallThreshold, () {
       if (_bufferingStartedAt != startedAt) return;
-      final positionDelta = _position - _bufferingStartPosition;
+      final position = _player?.position ?? _position;
+      final positionDelta = position - _bufferingStartPosition;
       final bufferedAhead = _bufferedAhead;
       StructuredLogService.event(
         'audio_engine.buffering_stalled',
@@ -496,14 +498,18 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   }
 
   Duration get _bufferedAhead {
-    final ahead = _bufferedPosition - _position;
+    final player = _player;
+    final position = player?.position ?? _position;
+    final bufferedPosition = player?.bufferedPosition ?? _bufferedPosition;
+    final ahead = bufferedPosition - position;
     return ahead.isNegative ? Duration.zero : ahead;
   }
 
   void _finishBufferingObservation(String outcome) {
     final startedAt = _bufferingStartedAt;
     if (startedAt == null) return;
-    final positionDelta = _position - _bufferingStartPosition;
+    final position = _player?.position ?? _position;
+    final positionDelta = position - _bufferingStartPosition;
     StructuredLogService.event(
       'audio_engine.buffering_ended',
       fields: {

@@ -53,15 +53,12 @@ class PlaybackViewState {
 
   /// The state presented by interactive controls. During a switch the latest
   /// transport intent wins; after commit, actual playback phase wins.
-  bool get effectivePlaying =>
-      pendingPlaying ??
-      switch (switchPhase) {
-        PlaybackSwitchPhase.resolving ||
-        PlaybackSwitchPhase.loadingSource ||
-        PlaybackSwitchPhase.ready => desiredPlaying,
-        PlaybackSwitchPhase.playing => true,
-        PlaybackSwitchPhase.idle ||
-        PlaybackSwitchPhase.paused ||
-        PlaybackSwitchPhase.failed => false,
-      };
+  bool get effectivePlaying => switch (switchPhase) {
+    PlaybackSwitchPhase.idle || PlaybackSwitchPhase.failed => false,
+    PlaybackSwitchPhase.resolving ||
+    PlaybackSwitchPhase.loadingSource ||
+    PlaybackSwitchPhase.ready => pendingPlaying ?? desiredPlaying,
+    PlaybackSwitchPhase.playing || PlaybackSwitchPhase.paused =>
+      pendingPlaying ?? switchPhase == PlaybackSwitchPhase.playing,
+  };
 }
