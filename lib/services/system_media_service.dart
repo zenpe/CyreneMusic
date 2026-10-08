@@ -424,6 +424,7 @@ class SystemMediaService {
         StructuredLogService.log(
           '🗑️ [SystemMediaService] 释放 AudioHandler 资源...',
         );
+        _audioHandler!.dispose();
         _audioHandler = null;
       }
 

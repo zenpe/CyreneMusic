@@ -22,6 +22,7 @@ void main() {
   });
   tearDown(() async {
     await handler.onTaskRemoved();
+    handler.dispose();
     player.dispose();
   });
 
@@ -159,6 +160,37 @@ void main() {
       expect(handler.playbackState.value.playing, isFalse);
     },
   );
+
+  test(
+    'task removal keeps background transport synchronization alive',
+    () async {
+      player.phase = PlaybackSwitchPhase.playing;
+      player.changed();
+      expect(handler.playbackState.value.playing, isTrue);
+
+      await handler.onTaskRemoved();
+      player.phase = PlaybackSwitchPhase.paused;
+      player.changed();
+
+      expect(handler.playbackState.value.playing, isFalse);
+      expect(
+        handler.playbackState.value.processingState,
+        AudioProcessingState.ready,
+      );
+    },
+  );
+
+  test('dispose detaches transport synchronization', () {
+    player.phase = PlaybackSwitchPhase.playing;
+    player.changed();
+    expect(handler.playbackState.value.playing, isTrue);
+
+    handler.dispose();
+    player.phase = PlaybackSwitchPhase.paused;
+    player.changed();
+
+    expect(handler.playbackState.value.playing, isTrue);
+  });
 }
 
 class TransportPlayer extends ChangeNotifier implements PlayerService {

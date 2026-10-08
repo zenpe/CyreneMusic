@@ -43,6 +43,7 @@ class CyreneAudioHandler extends BaseAudioHandler
   String? _lastObservedMediaIdentity;
   Future<void> _updateQueue = Future.value();
   Future<void> _widgetUpdateQueue = Future.value();
+  bool _disposed = false;
   bool _cacheCleanupInProgress = false;
   DateTime? _lastCacheCleanup;
   static const int _artCacheMaxFiles = 120;
@@ -144,16 +145,39 @@ class CyreneAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> onTaskRemoved() async {
-    // 清理定时器
-    _updateTimer?.cancel();
-    _lyricUpdateTimer?.cancel();
-    _positionUpdateTimer?.cancel();
-    _iosStateRefreshTimer?.cancel(); // 🍎 iOS 专用定时器
-    PlaybackModeService().removeListener(_onPlaybackModeChanged);
+    // The media service may keep playing after the UI task is removed. Keep
+    // listeners alive, and retain periodic updates only for active playback.
+    final state = _player.state;
+    if (state != PlayerState.playing && state != PlayerState.loading) {
+      _stopPeriodicUpdates();
+    }
+    StructuredLogService.event('audio_handler.task_removed');
     await super.onTaskRemoved();
   }
 
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _player.removeListener(_onPlayerStateChanged);
+    PlaybackModeService().removeListener(_onPlaybackModeChanged);
+    _mediaArtRequestId++;
+    _updateTimer?.cancel();
+    _updateTimer = null;
+    _stopPeriodicUpdates();
+    _updatePending = false;
+  }
+
+  void _stopPeriodicUpdates() {
+    _lyricUpdateTimer?.cancel();
+    _lyricUpdateTimer = null;
+    _positionUpdateTimer?.cancel();
+    _positionUpdateTimer = null;
+    _iosStateRefreshTimer?.cancel();
+    _iosStateRefreshTimer = null;
+  }
+
   void _onPlaybackModeChanged() {
+    if (_disposed) return;
     _updatePlaybackState();
   }
 
@@ -238,6 +262,7 @@ class CyreneAudioHandler extends BaseAudioHandler
 
   /// 播放器状态变化回调（带防抖）
   void _onPlayerStateChanged() {
+    if (_disposed) return;
     // Publish transport synchronously, before metadata debounce or artwork I/O.
     // Intent-only updates must not be discarded by metadata deduplication.
     _updatePlaybackState(updatePosition: false);
@@ -271,12 +296,7 @@ class CyreneAudioHandler extends BaseAudioHandler
       if (Platform.isAndroid) _startLyricUpdateTimer();
       if (Platform.isIOS) _startIOSStateRefreshTimer();
     } else if (!isActive && _positionUpdateTimer != null) {
-      _positionUpdateTimer?.cancel();
-      _positionUpdateTimer = null;
-      _lyricUpdateTimer?.cancel();
-      _lyricUpdateTimer = null;
-      _iosStateRefreshTimer?.cancel();
-      _iosStateRefreshTimer = null;
+      _stopPeriodicUpdates();
     }
 
     // 🔧 性能优化：忽略仅位置变化的情况（位置更新由专门的定时器处理）
@@ -343,6 +363,7 @@ class CyreneAudioHandler extends BaseAudioHandler
 
   /// 外部手动触发更新（例如在设置中开启小部件后立即同步）
   void refreshWidget() {
+    if (_disposed) return;
     StructuredLogService.log('🔄 [AudioHandler] 手动触发小部件更新...');
     unawaited(_performUpdate());
   }
@@ -360,6 +381,7 @@ class CyreneAudioHandler extends BaseAudioHandler
   }
 
   Future<void> _performUpdateInternal() async {
+    if (_disposed) return;
     final player = _player;
     // 只发布已经提交给引擎的媒体，避免 pendingTrack 在切歌过程中污染通知。
     final song = player.activeSong;

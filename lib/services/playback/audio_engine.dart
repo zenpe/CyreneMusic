@@ -216,12 +216,17 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         ),
       );
 
-  JustAudioEngine({ja.AudioPlayer Function()? playerFactory})
-    : _playerFactory = playerFactory {
+  JustAudioEngine({
+    ja.AudioPlayer Function()? playerFactory,
+    Duration bufferingStallThreshold = const Duration(seconds: 10),
+  }) : _playerFactory = playerFactory,
+       _bufferingStallThreshold = bufferingStallThreshold,
+       assert(bufferingStallThreshold > Duration.zero) {
     EqualizerService().setBackend(this);
   }
 
   final ja.AudioPlayer Function()? _playerFactory;
+  final Duration _bufferingStallThreshold;
 
   ja.AudioPlayer? _player;
   double _currentVolume = 1.0;
@@ -458,9 +463,10 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     );
 
     _bufferingStallTimer?.cancel();
-    _bufferingStallTimer = Timer(const Duration(seconds: 10), () {
+    _bufferingStallTimer = Timer(_bufferingStallThreshold, () {
       if (_bufferingStartedAt != startedAt) return;
       final positionDelta = _position - _bufferingStartPosition;
+      final bufferedAhead = _bufferedAhead;
       StructuredLogService.event(
         'audio_engine.buffering_stalled',
         level: LogLevel.warning,
@@ -469,10 +475,24 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
           'epoch': _bufferingGeneration,
           'duration_ms': DateTime.now().difference(startedAt).inMilliseconds,
           'position_delta_ms': positionDelta.inMilliseconds,
-          'buffered_ahead_ms': _bufferedAhead.inMilliseconds,
+          'buffered_ahead_ms': bufferedAhead.inMilliseconds,
+          'stall_kind': _classifyBufferingStall(positionDelta, bufferedAhead),
         },
       );
     });
+  }
+
+  String _classifyBufferingStall(
+    Duration positionDelta,
+    Duration bufferedAhead,
+  ) {
+    if (positionDelta >= const Duration(milliseconds: 250)) {
+      return 'position_advancing';
+    }
+    if (bufferedAhead >= const Duration(milliseconds: 500)) {
+      return 'buffered_but_not_advancing';
+    }
+    return 'buffer_starved';
   }
 
   Duration get _bufferedAhead {

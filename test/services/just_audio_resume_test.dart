@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:cyrene_music/services/structured_log_service.dart';
 import 'package:cyrene_music/services/playback/audio_engine.dart';
 import 'package:cyrene_music/services/playback/engine_host.dart';
 import 'package:cyrene_music/services/playback/playable_source.dart';
@@ -14,7 +16,10 @@ void main() {
   setUp(() async {
     player = ControlledAudioPlayer();
     host = EngineHost(
-      engineFactory: () => JustAudioEngine(playerFactory: () => player),
+      engineFactory: () => JustAudioEngine(
+        playerFactory: () => player,
+        bufferingStallThreshold: const Duration(milliseconds: 20),
+      ),
     );
     await host.play(
       'https://example.test/a.mp3',
@@ -24,6 +29,7 @@ void main() {
     await host.setVolume(0.6);
   });
   tearDown(() async {
+    StructuredLogService.sink = null;
     await host.dispose();
     await player.states.close();
   });
@@ -121,6 +127,67 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     },
   );
+
+  test(
+    'buffering diagnostics close the observation without recovery',
+    () async {
+      final lines = <String>[];
+      StructuredLogService.sink = lines.add;
+      player.currentBufferedPosition = Duration.zero;
+      player.processingState = ja.ProcessingState.buffering;
+      player.states.add(ja.PlayerState(true, ja.ProcessingState.buffering));
+
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      player.processingState = ja.ProcessingState.ready;
+      player.states.add(ja.PlayerState(true, ja.ProcessingState.ready));
+      await Future<void>.delayed(Duration.zero);
+
+      final events = lines
+          .map((line) => jsonDecode(line) as Map<String, dynamic>)
+          .where(
+            (event) => (event['event'] as String).startsWith(
+              'audio_engine.buffering_',
+            ),
+          )
+          .toList();
+      expect(events.map((event) => event['event']), [
+        'audio_engine.buffering_started',
+        'audio_engine.buffering_stalled',
+        'audio_engine.buffering_ended',
+      ]);
+      expect(events[1]['stall_kind'], 'buffer_starved');
+      expect(events[2]['outcome'], 'ready');
+      expect(player.playCalls, 0);
+    },
+  );
+
+  test('source replacement cancels the previous buffering timer', () async {
+    final lines = <String>[];
+    StructuredLogService.sink = lines.add;
+    player.processingState = ja.ProcessingState.buffering;
+    player.states.add(ja.PlayerState(true, ja.ProcessingState.buffering));
+    await Future<void>.delayed(Duration.zero);
+
+    await host.play(
+      'https://example.test/replacement.mp3',
+      generation: 2,
+      autoPlay: false,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+
+    final events = lines
+        .map((line) => jsonDecode(line) as Map<String, dynamic>)
+        .where(
+          (event) =>
+              (event['event'] as String).startsWith('audio_engine.buffering_'),
+        )
+        .toList();
+    expect(events.map((event) => event['event']), [
+      'audio_engine.buffering_started',
+      'audio_engine.buffering_ended',
+    ]);
+    expect(events.last['outcome'], 'source_replaced');
+  });
 }
 
 /// Only the native player is replaced. Tests execute the production engine,
@@ -138,8 +205,9 @@ class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
   ja.ProcessingState processingState = ja.ProcessingState.ready;
   @override
   Duration get position => Duration.zero;
+  Duration currentBufferedPosition = const Duration(seconds: 2);
   @override
-  Duration get bufferedPosition => const Duration(seconds: 2);
+  Duration get bufferedPosition => currentBufferedPosition;
   @override
   Duration? get duration => const Duration(minutes: 3);
   @override
