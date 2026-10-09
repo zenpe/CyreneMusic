@@ -1,5 +1,6 @@
 import 'package:cyrene_music/models/playlist.dart';
 import 'package:cyrene_music/models/track.dart';
+import 'package:cyrene_music/services/playlist_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -60,5 +61,36 @@ void main() {
 
     expect(track.itemId, isNull);
     expect(track.toJson().containsKey('itemId'), isFalse);
+  });
+
+  test('playlist state merge never regresses independent revisions', () {
+    final current = Playlist(
+      id: 1,
+      name: 'current',
+      isDefault: false,
+      trackCount: 8,
+      createdAt: DateTime.utc(2026, 1, 1),
+      updatedAt: DateTime.utc(2026, 1, 2),
+      contentRevision: 5,
+      orderRevision: 3,
+    );
+    final incoming = Playlist(
+      id: 1,
+      name: 'incoming',
+      isDefault: false,
+      trackCount: 6,
+      createdAt: DateTime.utc(2026, 1, 1),
+      updatedAt: DateTime.utc(2026, 1, 3),
+      contentRevision: 4,
+      orderRevision: 6,
+    );
+
+    final merged = PlaylistService.mergePlaylistState(current, incoming);
+
+    expect(merged.contentRevision, 5);
+    expect(merged.orderRevision, 6);
+    expect(merged.trackCount, 8);
+    expect(merged.name, 'incoming');
+    expect(merged.updatedAt, incoming.updatedAt);
   });
 }

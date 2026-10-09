@@ -155,13 +155,57 @@ class PlaylistService extends ChangeNotifier {
 
   bool _isWritable(int playlistId) => _playlist(playlistId)?.isLocal == true;
 
-  void _upsertPlaylist(Playlist playlist) {
+  void _invalidateLoadsForMutation([int? playlistId]) {
+    _playlistLoadGeneration++;
+    var shouldNotify = _isLoading;
+    _isLoading = false;
+    if (playlistId != null) {
+      _trackLoadGenerations[playlistId] =
+          (_trackLoadGenerations[playlistId] ?? 0) + 1;
+      if (_currentPlaylistId == playlistId && _isLoadingTracks) {
+        _isLoadingTracks = false;
+        shouldNotify = true;
+      }
+    }
+    if (shouldNotify) notifyListeners();
+  }
+
+  @visibleForTesting
+  static Playlist mergePlaylistState(Playlist current, Playlist incoming) {
+    final keepCurrentMetadata = current.updatedAt.isAfter(incoming.updatedAt);
+    final keepCurrentContent =
+        current.contentRevision > incoming.contentRevision;
+    return Playlist(
+      id: incoming.id,
+      name: keepCurrentMetadata ? current.name : incoming.name,
+      isDefault: incoming.isDefault,
+      trackCount: keepCurrentContent ? current.trackCount : incoming.trackCount,
+      coverUrl: keepCurrentContent ? current.coverUrl : incoming.coverUrl,
+      createdAt: incoming.createdAt,
+      updatedAt: keepCurrentMetadata ? current.updatedAt : incoming.updatedAt,
+      source: incoming.source,
+      sourcePlaylistId: incoming.sourcePlaylistId,
+      type: incoming.type,
+      contentRevision: max(current.contentRevision, incoming.contentRevision),
+      orderRevision: max(current.orderRevision, incoming.orderRevision),
+      syncStatus: keepCurrentMetadata
+          ? current.syncStatus
+          : incoming.syncStatus,
+      lastSyncedAt: keepCurrentMetadata
+          ? current.lastSyncedAt
+          : incoming.lastSyncedAt,
+    );
+  }
+
+  Playlist _upsertPlaylist(Playlist playlist) {
     final index = _playlists.indexWhere((item) => item.id == playlist.id);
     if (index < 0) {
       _playlists.add(playlist);
-    } else {
-      _playlists[index] = playlist;
+      return playlist;
     }
+    final merged = mergePlaylistState(_playlists[index], playlist);
+    _playlists[index] = merged;
+    return merged;
   }
 
   Playlist? _playlistFromResponse(dynamic data) {
@@ -169,8 +213,7 @@ class PlaylistService extends ChangeNotifier {
     final json = data['playlist'];
     if (json is! Map<String, dynamic>) return null;
     final playlist = Playlist.fromJson(json);
-    _upsertPlaylist(playlist);
-    return playlist;
+    return _upsertPlaylist(playlist);
   }
 
   Future<void> _refreshCurrentTracks(int playlistId) async {
@@ -200,9 +243,16 @@ class PlaylistService extends ChangeNotifier {
           generation != _playlistLoadGeneration) {
         return;
       }
-      _playlists = (data['playlists'] as List<dynamic>? ?? const [])
-          .map((item) => Playlist.fromJson(item as Map<String, dynamic>))
-          .toList();
+      final currentById = {for (final item in _playlists) item.id: item};
+      _playlists = (data['playlists'] as List<dynamic>? ?? const []).map((
+        item,
+      ) {
+        final incoming = Playlist.fromJson(item as Map<String, dynamic>);
+        final current = currentById[incoming.id];
+        return current == null
+            ? incoming
+            : mergePlaylistState(current, incoming);
+      }).toList();
     } catch (error) {
       StructuredLogService.log('[PlaylistService] 加载歌单失败: $error');
     } finally {
@@ -216,6 +266,7 @@ class PlaylistService extends ChangeNotifier {
   Future<Playlist?> createPlaylist(String name) async {
     final session = _sessionIdentity();
     if (session == null || name.trim().isEmpty) return null;
+    _invalidateLoadsForMutation();
     try {
       final result = await ApiClient().postJson(
         '/playlists',
@@ -223,6 +274,7 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 10),
       );
       if (!result.ok || !_isCurrentSession(session)) return null;
+      _invalidateLoadsForMutation();
       final playlist = _playlistFromResponse(result.data);
       notifyListeners();
       return playlist;
@@ -239,6 +291,7 @@ class PlaylistService extends ChangeNotifier {
   }) async {
     final session = _sessionIdentity();
     if (session == null) return null;
+    _invalidateLoadsForMutation();
     try {
       final result = await ApiClient().postJson(
         '/playlists/follow',
@@ -251,6 +304,7 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 60),
       );
       if (!result.ok || !_isCurrentSession(session)) return null;
+      _invalidateLoadsForMutation();
       final playlist = _playlistFromResponse(result.data);
       notifyListeners();
       return playlist;
@@ -263,6 +317,7 @@ class PlaylistService extends ChangeNotifier {
   Future<Playlist?> copyPlaylist(int playlistId, {String? name}) async {
     final session = _sessionIdentity();
     if (session == null) return null;
+    _invalidateLoadsForMutation();
     try {
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/copy',
@@ -273,6 +328,7 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 30),
       );
       if (!result.ok || !_isCurrentSession(session)) return null;
+      _invalidateLoadsForMutation();
       final playlist = _playlistFromResponse(result.data);
       notifyListeners();
       return playlist;
@@ -285,6 +341,7 @@ class PlaylistService extends ChangeNotifier {
   Future<bool> updatePlaylist(int playlistId, String name) async {
     final session = _sessionIdentity();
     if (session == null || name.trim().isEmpty) return false;
+    _invalidateLoadsForMutation(playlistId);
     try {
       final result = await ApiClient().putJson(
         '/playlists/$playlistId',
@@ -292,13 +349,8 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 10),
       );
       if (!result.ok || !_isCurrentSession(session)) return false;
-      final index = _playlists.indexWhere((item) => item.id == playlistId);
-      if (index >= 0) {
-        _playlists[index] = _playlists[index].copyWith(
-          name: name.trim(),
-          updatedAt: DateTime.now(),
-        );
-      }
+      _invalidateLoadsForMutation(playlistId);
+      if (_playlistFromResponse(result.data) == null) return false;
       notifyListeners();
       return true;
     } catch (error) {
@@ -310,6 +362,7 @@ class PlaylistService extends ChangeNotifier {
   Future<bool> deletePlaylist(int playlistId) async {
     final session = _sessionIdentity();
     if (session == null) return false;
+    _invalidateLoadsForMutation(playlistId);
     try {
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/delete',
@@ -317,6 +370,7 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 10),
       );
       if (!result.ok || !_isCurrentSession(session)) return false;
+      _invalidateLoadsForMutation(playlistId);
       _playlists.removeWhere((item) => item.id == playlistId);
       _tracksByPlaylist.remove(playlistId);
       if (_currentPlaylistId == playlistId) _currentPlaylistId = null;
@@ -331,6 +385,7 @@ class PlaylistService extends ChangeNotifier {
   Future<bool> addTrackToPlaylist(int playlistId, Track track) async {
     final session = _sessionIdentity();
     if (session == null || !_isWritable(playlistId)) return false;
+    _invalidateLoadsForMutation(playlistId);
     try {
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/tracks',
@@ -341,6 +396,7 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 10),
       );
       if (!result.ok || !_isCurrentSession(session)) return false;
+      _invalidateLoadsForMutation(playlistId);
       _playlistFromResponse(result.data);
       await _refreshCurrentTracks(playlistId);
       if (!_isCurrentSession(session)) return false;
@@ -360,6 +416,7 @@ class PlaylistService extends ChangeNotifier {
     if (session == null || !_isWritable(playlistId) || tracks.isEmpty) {
       return {'successCount': 0, 'skipCount': 0, 'failCount': tracks.length};
     }
+    _invalidateLoadsForMutation(playlistId);
     try {
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/tracks/batch',
@@ -377,6 +434,7 @@ class PlaylistService extends ChangeNotifier {
           !_isCurrentSession(session)) {
         throw Exception('HTTP ${result.statusCode}');
       }
+      _invalidateLoadsForMutation(playlistId);
       final added = (data['addedCount'] as num?)?.toInt() ?? 0;
       _playlistFromResponse(data);
       await _refreshCurrentTracks(playlistId);
@@ -420,12 +478,24 @@ class PlaylistService extends ChangeNotifier {
           _trackLoadGenerations[playlistId] != generation) {
         return;
       }
-      _tracksByPlaylist[playlistId] =
-          (data['tracks'] as List<dynamic>? ?? const [])
-              .map(
-                (item) => PlaylistTrack.fromJson(item as Map<String, dynamic>),
-              )
-              .toList();
+      final tracks = (data['tracks'] as List<dynamic>? ?? const [])
+          .map((item) => PlaylistTrack.fromJson(item as Map<String, dynamic>))
+          .toList();
+      _tracksByPlaylist[playlistId] = tracks;
+      final current = _playlist(playlistId);
+      if (current != null) {
+        _upsertPlaylist(
+          current.copyWith(
+            trackCount: tracks.length,
+            contentRevision:
+                (data['contentRevision'] as num?)?.toInt() ??
+                current.contentRevision,
+            orderRevision:
+                (data['orderRevision'] as num?)?.toInt() ??
+                current.orderRevision,
+          ),
+        );
+      }
     } catch (error) {
       StructuredLogService.log('[PlaylistService] 加载歌曲失败: $error');
     } finally {
@@ -444,6 +514,7 @@ class PlaylistService extends ChangeNotifier {
     if (session == null || !_isWritable(playlistId) || itemId == null) {
       return false;
     }
+    _invalidateLoadsForMutation(playlistId);
     try {
       final result = await ApiClient().deleteJson(
         '/playlists/$playlistId/items/$itemId',
@@ -451,6 +522,7 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 10),
       );
       if (!result.ok || !_isCurrentSession(session)) return false;
+      _invalidateLoadsForMutation(playlistId);
       _playlistFromResponse(result.data);
       _tracksByPlaylist[playlistId]?.removeWhere(
         (item) => item.itemId == itemId,
@@ -494,6 +566,7 @@ class PlaylistService extends ChangeNotifier {
     if (session == null || !_isWritable(playlistId) || itemIds.isEmpty) {
       return 0;
     }
+    _invalidateLoadsForMutation(playlistId);
     try {
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/items/batch-remove',
@@ -506,6 +579,7 @@ class PlaylistService extends ChangeNotifier {
           !_isCurrentSession(session)) {
         return 0;
       }
+      _invalidateLoadsForMutation(playlistId);
       final removed = (data['removedCount'] as num?)?.toInt() ?? 0;
       _playlistFromResponse(data);
       _tracksByPlaylist[playlistId]?.removeWhere(
@@ -528,6 +602,7 @@ class PlaylistService extends ChangeNotifier {
     if (session == null || !_isWritable(playlistId) || current.itemId == null) {
       return false;
     }
+    _invalidateLoadsForMutation(playlistId);
     try {
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/items/${current.itemId}/replace',
@@ -538,6 +613,7 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 15),
       );
       if (!result.ok || !_isCurrentSession(session)) return false;
+      _invalidateLoadsForMutation(playlistId);
       _playlistFromResponse(result.data);
       await _refreshCurrentTracks(playlistId);
       if (!_isCurrentSession(session)) return false;
@@ -565,6 +641,7 @@ class PlaylistService extends ChangeNotifier {
         itemIds.length != orderedTracks.length) {
       return false;
     }
+    _invalidateLoadsForMutation(playlistId);
     try {
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/items/reorder',
@@ -576,6 +653,7 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 15),
       );
       if (!result.ok || !_isCurrentSession(session)) return false;
+      _invalidateLoadsForMutation(playlistId);
       _playlistFromResponse(result.data);
       _tracksByPlaylist[playlistId] = List.of(orderedTracks);
       notifyListeners();
@@ -592,6 +670,7 @@ class PlaylistService extends ChangeNotifier {
     if (session == null || playlist?.isSynced != true) {
       return PlaylistSyncResult.empty(message: '仅来源订阅可以同步');
     }
+    _invalidateLoadsForMutation(playlistId);
     try {
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/sync',
@@ -609,6 +688,7 @@ class PlaylistService extends ChangeNotifier {
               : '同步失败',
         );
       }
+      _invalidateLoadsForMutation(playlistId);
       final updated = _playlistFromResponse(result.data);
       if (updated == null) return PlaylistSyncResult.empty(message: '同步响应无效');
       await _refreshCurrentTracks(playlistId);
