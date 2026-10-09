@@ -19,11 +19,8 @@ class PlaylistSyncResult {
     this.message = '',
   });
 
-  factory PlaylistSyncResult.empty({String message = ''}) => PlaylistSyncResult(
-    succeeded: false,
-    trackCount: 0,
-    message: message,
-  );
+  factory PlaylistSyncResult.empty({String message = ''}) =>
+      PlaylistSyncResult(succeeded: false, trackCount: 0, message: message);
 
   factory PlaylistSyncResult.success(Playlist playlist) => PlaylistSyncResult(
     succeeded: true,
@@ -76,12 +73,16 @@ class PlaylistService extends ChangeNotifier {
   factory PlaylistService() => _instance;
 
   PlaylistService._internal() {
-    AuthService().addListener(_onAuthChanged);
+    final auth = AuthService();
+    _observedSessionIdentity = _sessionIdentity();
+    auth.addListener(_onAuthChanged);
   }
 
   final Random _secureRandom = Random.secure();
   final Map<int, List<PlaylistTrack>> _tracksByPlaylist = {};
   final Map<int, int> _trackLoadGenerations = {};
+  int _playlistLoadGeneration = 0;
+  String? _observedSessionIdentity;
   List<Playlist> _playlists = [];
   int? _currentPlaylistId;
   bool _isLoading = false;
@@ -104,6 +105,18 @@ class PlaylistService extends ChangeNotifier {
     return null;
   }
 
+  String? _sessionIdentity() {
+    final auth = AuthService();
+    final token = auth.token;
+    final userId = auth.currentUser?.id;
+    if (!auth.isLoggedIn || token == null || token.isEmpty || userId == null) {
+      return null;
+    }
+    return '$userId:$token';
+  }
+
+  bool _isCurrentSession(String session) => _sessionIdentity() == session;
+
   String _operationId() {
     final bytes = List<int>.generate(16, (_) => _secureRandom.nextInt(256));
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
@@ -116,10 +129,14 @@ class PlaylistService extends ChangeNotifier {
   }
 
   void _onAuthChanged() {
-    if (!AuthService().isLoggedIn) clear();
+    final current = _sessionIdentity();
+    if (current == _observedSessionIdentity) return;
+    _observedSessionIdentity = current;
+    clear();
   }
 
   void clear() {
+    _playlistLoadGeneration++;
     _playlists = [];
     _currentPlaylistId = null;
     _tracksByPlaylist.clear();
@@ -161,7 +178,9 @@ class PlaylistService extends ChangeNotifier {
   }
 
   Future<void> loadPlaylists() async {
-    if (!AuthService().isLoggedIn) return;
+    final session = _sessionIdentity();
+    if (session == null) return;
+    final generation = ++_playlistLoadGeneration;
     _isLoading = true;
     notifyListeners();
     try {
@@ -177,26 +196,33 @@ class PlaylistService extends ChangeNotifier {
           data is Map ? data['message'] : 'HTTP ${result.statusCode}',
         );
       }
+      if (!_isCurrentSession(session) ||
+          generation != _playlistLoadGeneration) {
+        return;
+      }
       _playlists = (data['playlists'] as List<dynamic>? ?? const [])
           .map((item) => Playlist.fromJson(item as Map<String, dynamic>))
           .toList();
     } catch (error) {
       StructuredLogService.log('[PlaylistService] 加载歌单失败: $error');
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (_isCurrentSession(session) && generation == _playlistLoadGeneration) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<Playlist?> createPlaylist(String name) async {
-    if (!AuthService().isLoggedIn || name.trim().isEmpty) return null;
+    final session = _sessionIdentity();
+    if (session == null || name.trim().isEmpty) return null;
     try {
       final result = await ApiClient().postJson(
         '/playlists',
         data: {'name': name.trim(), 'operationId': _operationId()},
         timeout: const Duration(seconds: 10),
       );
-      if (!result.ok) return null;
+      if (!result.ok || !_isCurrentSession(session)) return null;
       final playlist = _playlistFromResponse(result.data);
       notifyListeners();
       return playlist;
@@ -211,7 +237,8 @@ class PlaylistService extends ChangeNotifier {
     required String sourcePlaylistId,
     String? name,
   }) async {
-    if (!AuthService().isLoggedIn) return null;
+    final session = _sessionIdentity();
+    if (session == null) return null;
     try {
       final result = await ApiClient().postJson(
         '/playlists/follow',
@@ -223,7 +250,7 @@ class PlaylistService extends ChangeNotifier {
         },
         timeout: const Duration(seconds: 60),
       );
-      if (!result.ok) return null;
+      if (!result.ok || !_isCurrentSession(session)) return null;
       final playlist = _playlistFromResponse(result.data);
       notifyListeners();
       return playlist;
@@ -234,6 +261,8 @@ class PlaylistService extends ChangeNotifier {
   }
 
   Future<Playlist?> copyPlaylist(int playlistId, {String? name}) async {
+    final session = _sessionIdentity();
+    if (session == null) return null;
     try {
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/copy',
@@ -243,7 +272,7 @@ class PlaylistService extends ChangeNotifier {
         },
         timeout: const Duration(seconds: 30),
       );
-      if (!result.ok) return null;
+      if (!result.ok || !_isCurrentSession(session)) return null;
       final playlist = _playlistFromResponse(result.data);
       notifyListeners();
       return playlist;
@@ -254,14 +283,15 @@ class PlaylistService extends ChangeNotifier {
   }
 
   Future<bool> updatePlaylist(int playlistId, String name) async {
-    if (!AuthService().isLoggedIn || name.trim().isEmpty) return false;
+    final session = _sessionIdentity();
+    if (session == null || name.trim().isEmpty) return false;
     try {
       final result = await ApiClient().putJson(
         '/playlists/$playlistId',
         data: {'name': name.trim(), 'operationId': _operationId()},
         timeout: const Duration(seconds: 10),
       );
-      if (!result.ok) return false;
+      if (!result.ok || !_isCurrentSession(session)) return false;
       final index = _playlists.indexWhere((item) => item.id == playlistId);
       if (index >= 0) {
         _playlists[index] = _playlists[index].copyWith(
@@ -278,14 +308,15 @@ class PlaylistService extends ChangeNotifier {
   }
 
   Future<bool> deletePlaylist(int playlistId) async {
-    if (!AuthService().isLoggedIn) return false;
+    final session = _sessionIdentity();
+    if (session == null) return false;
     try {
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/delete',
         data: {'operationId': _operationId()},
         timeout: const Duration(seconds: 10),
       );
-      if (!result.ok) return false;
+      if (!result.ok || !_isCurrentSession(session)) return false;
       _playlists.removeWhere((item) => item.id == playlistId);
       _tracksByPlaylist.remove(playlistId);
       if (_currentPlaylistId == playlistId) _currentPlaylistId = null;
@@ -298,7 +329,8 @@ class PlaylistService extends ChangeNotifier {
   }
 
   Future<bool> addTrackToPlaylist(int playlistId, Track track) async {
-    if (!AuthService().isLoggedIn || !_isWritable(playlistId)) return false;
+    final session = _sessionIdentity();
+    if (session == null || !_isWritable(playlistId)) return false;
     try {
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/tracks',
@@ -308,9 +340,10 @@ class PlaylistService extends ChangeNotifier {
         },
         timeout: const Duration(seconds: 10),
       );
-      if (!result.ok) return false;
+      if (!result.ok || !_isCurrentSession(session)) return false;
       _playlistFromResponse(result.data);
       await _refreshCurrentTracks(playlistId);
+      if (!_isCurrentSession(session)) return false;
       notifyListeners();
       return true;
     } catch (error) {
@@ -323,9 +356,8 @@ class PlaylistService extends ChangeNotifier {
     int playlistId,
     List<Track> tracks,
   ) async {
-    if (!AuthService().isLoggedIn ||
-        !_isWritable(playlistId) ||
-        tracks.isEmpty) {
+    final session = _sessionIdentity();
+    if (session == null || !_isWritable(playlistId) || tracks.isEmpty) {
       return {'successCount': 0, 'skipCount': 0, 'failCount': tracks.length};
     }
     try {
@@ -340,12 +372,17 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 60),
       );
       final data = result.data;
-      if (!result.ok || data is! Map<String, dynamic>) {
+      if (!result.ok ||
+          data is! Map<String, dynamic> ||
+          !_isCurrentSession(session)) {
         throw Exception('HTTP ${result.statusCode}');
       }
       final added = (data['addedCount'] as num?)?.toInt() ?? 0;
       _playlistFromResponse(data);
       await _refreshCurrentTracks(playlistId);
+      if (!_isCurrentSession(session)) {
+        return {'successCount': 0, 'skipCount': 0, 'failCount': tracks.length};
+      }
       notifyListeners();
       return {
         'successCount': added,
@@ -359,7 +396,8 @@ class PlaylistService extends ChangeNotifier {
   }
 
   Future<void> loadPlaylistTracks(int playlistId) async {
-    if (!AuthService().isLoggedIn) return;
+    final session = _sessionIdentity();
+    if (session == null) return;
     final generation = (_trackLoadGenerations[playlistId] ?? 0) + 1;
     _trackLoadGenerations[playlistId] = generation;
     _currentPlaylistId = playlistId;
@@ -378,7 +416,10 @@ class PlaylistService extends ChangeNotifier {
           data is Map ? data['message'] : 'HTTP ${result.statusCode}',
         );
       }
-      if (_trackLoadGenerations[playlistId] != generation) return;
+      if (!_isCurrentSession(session) ||
+          _trackLoadGenerations[playlistId] != generation) {
+        return;
+      }
       _tracksByPlaylist[playlistId] =
           (data['tracks'] as List<dynamic>? ?? const [])
               .map(
@@ -388,7 +429,8 @@ class PlaylistService extends ChangeNotifier {
     } catch (error) {
       StructuredLogService.log('[PlaylistService] 加载歌曲失败: $error');
     } finally {
-      if (_trackLoadGenerations[playlistId] == generation &&
+      if (_isCurrentSession(session) &&
+          _trackLoadGenerations[playlistId] == generation &&
           _currentPlaylistId == playlistId) {
         _isLoadingTracks = false;
         notifyListeners();
@@ -397,10 +439,9 @@ class PlaylistService extends ChangeNotifier {
   }
 
   Future<bool> removePlaylistTrack(int playlistId, PlaylistTrack track) async {
+    final session = _sessionIdentity();
     final itemId = track.itemId;
-    if (!AuthService().isLoggedIn ||
-        !_isWritable(playlistId) ||
-        itemId == null) {
+    if (session == null || !_isWritable(playlistId) || itemId == null) {
       return false;
     }
     try {
@@ -409,7 +450,7 @@ class PlaylistService extends ChangeNotifier {
         data: {'operationId': _operationId()},
         timeout: const Duration(seconds: 10),
       );
-      if (!result.ok) return false;
+      if (!result.ok || !_isCurrentSession(session)) return false;
       _playlistFromResponse(result.data);
       _tracksByPlaylist[playlistId]?.removeWhere(
         (item) => item.itemId == itemId,
@@ -444,14 +485,13 @@ class PlaylistService extends ChangeNotifier {
     int playlistId,
     List<PlaylistTrack> tracks,
   ) async {
+    final session = _sessionIdentity();
     final itemIds = tracks
         .map((track) => track.itemId)
         .whereType<int>()
         .toSet()
         .toList();
-    if (!AuthService().isLoggedIn ||
-        !_isWritable(playlistId) ||
-        itemIds.isEmpty) {
+    if (session == null || !_isWritable(playlistId) || itemIds.isEmpty) {
       return 0;
     }
     try {
@@ -461,7 +501,11 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 30),
       );
       final data = result.data;
-      if (!result.ok || data is! Map<String, dynamic>) return 0;
+      if (!result.ok ||
+          data is! Map<String, dynamic> ||
+          !_isCurrentSession(session)) {
+        return 0;
+      }
       final removed = (data['removedCount'] as num?)?.toInt() ?? 0;
       _playlistFromResponse(data);
       _tracksByPlaylist[playlistId]?.removeWhere(
@@ -480,7 +524,10 @@ class PlaylistService extends ChangeNotifier {
     PlaylistTrack current,
     Track replacement,
   ) async {
-    if (!_isWritable(playlistId) || current.itemId == null) return false;
+    final session = _sessionIdentity();
+    if (session == null || !_isWritable(playlistId) || current.itemId == null) {
+      return false;
+    }
     try {
       final result = await ApiClient().postJson(
         '/playlists/$playlistId/items/${current.itemId}/replace',
@@ -490,9 +537,10 @@ class PlaylistService extends ChangeNotifier {
         },
         timeout: const Duration(seconds: 15),
       );
-      if (!result.ok) return false;
+      if (!result.ok || !_isCurrentSession(session)) return false;
       _playlistFromResponse(result.data);
       await _refreshCurrentTracks(playlistId);
+      if (!_isCurrentSession(session)) return false;
       notifyListeners();
       return true;
     } catch (error) {
@@ -505,12 +553,14 @@ class PlaylistService extends ChangeNotifier {
     int playlistId,
     List<PlaylistTrack> orderedTracks,
   ) async {
+    final session = _sessionIdentity();
     final playlist = _playlist(playlistId);
     final itemIds = orderedTracks
         .map((track) => track.itemId)
         .whereType<int>()
         .toList();
-    if (playlist == null ||
+    if (session == null ||
+        playlist == null ||
         !playlist.isLocal ||
         itemIds.length != orderedTracks.length) {
       return false;
@@ -525,7 +575,7 @@ class PlaylistService extends ChangeNotifier {
         },
         timeout: const Duration(seconds: 15),
       );
-      if (!result.ok) return false;
+      if (!result.ok || !_isCurrentSession(session)) return false;
       _playlistFromResponse(result.data);
       _tracksByPlaylist[playlistId] = List.of(orderedTracks);
       notifyListeners();
@@ -537,8 +587,9 @@ class PlaylistService extends ChangeNotifier {
   }
 
   Future<PlaylistSyncResult> syncPlaylist(int playlistId) async {
+    final session = _sessionIdentity();
     final playlist = _playlist(playlistId);
-    if (!AuthService().isLoggedIn || playlist?.isSynced != true) {
+    if (session == null || playlist?.isSynced != true) {
       return PlaylistSyncResult.empty(message: '仅来源订阅可以同步');
     }
     try {
@@ -547,6 +598,9 @@ class PlaylistService extends ChangeNotifier {
         data: {'operationId': _operationId()},
         timeout: const Duration(seconds: 60),
       );
+      if (!_isCurrentSession(session)) {
+        return PlaylistSyncResult.empty(message: '账号状态已变化');
+      }
       if (!result.ok) {
         final data = result.data;
         return PlaylistSyncResult.empty(
@@ -558,6 +612,9 @@ class PlaylistService extends ChangeNotifier {
       final updated = _playlistFromResponse(result.data);
       if (updated == null) return PlaylistSyncResult.empty(message: '同步响应无效');
       await _refreshCurrentTracks(playlistId);
+      if (!_isCurrentSession(session)) {
+        return PlaylistSyncResult.empty(message: '账号状态已变化');
+      }
       notifyListeners();
       return PlaylistSyncResult.success(updated);
     } catch (error) {
@@ -574,7 +631,8 @@ class PlaylistService extends ChangeNotifier {
   }
 
   Future<TrackInPlaylistResult> isTrackInAnyPlaylist(Track track) async {
-    if (!AuthService().isLoggedIn) {
+    final session = _sessionIdentity();
+    if (session == null) {
       return const TrackInPlaylistResult(known: true, matches: []);
     }
     try {
@@ -587,7 +645,9 @@ class PlaylistService extends ChangeNotifier {
         timeout: const Duration(seconds: 10),
       );
       final data = result.data;
-      if (!result.ok || data is! Map<String, dynamic>) {
+      if (!result.ok ||
+          data is! Map<String, dynamic> ||
+          !_isCurrentSession(session)) {
         return const TrackInPlaylistResult(known: false, matches: []);
       }
       final matches = (data['matches'] as List<dynamic>? ?? const [])

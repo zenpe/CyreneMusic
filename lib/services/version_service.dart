@@ -25,7 +25,7 @@ class VersionService extends ChangeNotifier {
 
   /// ⚠️⚠️⚠️ 应用当前版本（硬编码）⚠️⚠️⚠️
   /// 发布新版本时 **必须** 手动更新此值！
-  static const String kAppVersion = '1.3.3';
+  static const String kAppVersion = '1.3.4';
   static const bool kDisableUpdateCheck = true;
 
   /// 当前应用版本
@@ -63,12 +63,19 @@ class VersionService extends ChangeNotifier {
       // 如果用户已忽略某个版本，检查最新版本是否更新
       if (ignoredVersion.isNotEmpty) {
         // 只有当最新版本 > 已忽略版本时，才提示
-        final comparison = _compareVersions(versionInfo.version, ignoredVersion);
+        final comparison = _compareVersions(
+          versionInfo.version,
+          ignoredVersion,
+        );
         if (comparison <= 0) {
-          StructuredLogService.log('🔕 [VersionService] 用户已忽略版本 $ignoredVersion，当前版本 ${versionInfo.version} 不更新');
+          StructuredLogService.log(
+            '🔕 [VersionService] 用户已忽略版本 $ignoredVersion，当前版本 ${versionInfo.version} 不更新',
+          );
           return false;
         } else {
-          StructuredLogService.log('✅ [VersionService] 发现新版本 ${versionInfo.version}，大于已忽略版本 $ignoredVersion');
+          StructuredLogService.log(
+            '✅ [VersionService] 发现新版本 ${versionInfo.version}，大于已忽略版本 $ignoredVersion',
+          );
         }
       }
 
@@ -123,16 +130,22 @@ class VersionService extends ChangeNotifier {
       final packageInfo = await PackageInfo.fromPlatform();
       if (packageInfo.version.isNotEmpty) {
         _currentVersion = packageInfo.version;
-        StructuredLogService.log('📱 [VersionService] 从 PackageInfo 获取版本: $_currentVersion');
+        StructuredLogService.log(
+          '📱 [VersionService] 从 PackageInfo 获取版本: $_currentVersion',
+        );
       } else {
         // 如果获取失败，使用硬编码版本
         _currentVersion = kAppVersion;
-        StructuredLogService.log('📱 [VersionService] 使用硬编码版本: $_currentVersion');
+        StructuredLogService.log(
+          '📱 [VersionService] 使用硬编码版本: $_currentVersion',
+        );
       }
       DeveloperModeService().addLog('📱 当前版本: $_currentVersion');
     } catch (e) {
       // 获取失败时使用硬编码版本
-      StructuredLogService.log('⚠️ [VersionService] PackageInfo 获取失败，使用硬编码版本: $kAppVersion');
+      StructuredLogService.log(
+        '⚠️ [VersionService] PackageInfo 获取失败，使用硬编码版本: $kAppVersion',
+      );
       _currentVersion = kAppVersion;
       DeveloperModeService().addLog('📱 当前版本: $_currentVersion');
     }
@@ -166,7 +179,9 @@ class VersionService extends ChangeNotifier {
 
       final result = await ApiClient().getJson('/version/latest', auth: false);
 
-      StructuredLogService.log('🔍 [VersionService] 响应状态码: ${result.statusCode}');
+      StructuredLogService.log(
+        '🔍 [VersionService] 响应状态码: ${result.statusCode}',
+      );
 
       if (result.ok) {
         final data = result.data as Map<String, dynamic>?;
@@ -174,13 +189,17 @@ class VersionService extends ChangeNotifier {
         if (data != null && data['status'] == 200 && data['data'] != null) {
           _latestVersion = VersionInfo.fromJson(data['data']);
 
-          StructuredLogService.log('✅ [VersionService] 最新版本: ${_latestVersion!.version}');
+          StructuredLogService.log(
+            '✅ [VersionService] 最新版本: ${_latestVersion!.version}',
+          );
           StructuredLogService.log('✅ [VersionService] 当前版本: $_currentVersion');
 
           if (hasUpdate) {
             StructuredLogService.log('🆕 [VersionService] 发现新版本！');
             if (!silent) {
-              DeveloperModeService().addLog('🆕 发现新版本: ${_latestVersion!.version}');
+              DeveloperModeService().addLog(
+                '🆕 发现新版本: ${_latestVersion!.version}',
+              );
             }
             AutoUpdateService().onNewVersionDetected(_latestVersion!);
           } else {
@@ -225,7 +244,9 @@ class VersionService extends ChangeNotifier {
       final parts1 = v1.split('.').map((e) => int.tryParse(e) ?? 0).toList();
       final parts2 = v2.split('.').map((e) => int.tryParse(e) ?? 0).toList();
 
-      final maxLength = parts1.length > parts2.length ? parts1.length : parts2.length;
+      final maxLength = parts1.length > parts2.length
+          ? parts1.length
+          : parts2.length;
 
       for (int i = 0; i < maxLength; i++) {
         final part1 = i < parts1.length ? parts1[i] : 0;
@@ -255,4 +276,3 @@ class VersionService extends ChangeNotifier {
     }
   }
 }
-
