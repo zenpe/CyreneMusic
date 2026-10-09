@@ -39,7 +39,7 @@ class PlayerDialogs {
       builder: (context) => AnimatedBuilder(
         animation: playlistService,
         builder: (context, child) {
-          final playlists = playlistService.playlists;
+          final playlists = playlistService.playlists.where((p) => p.isLocal).toList();
 
           if (playlists.isEmpty) {
             return const Center(
@@ -731,4 +731,3 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
     );
   }
 }
-

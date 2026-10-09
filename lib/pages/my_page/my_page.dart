@@ -154,24 +154,14 @@ class _MyPageState extends State<MyPage> {
   }
 
   bool _hasImportConfig(Playlist playlist) {
-    return (playlist.source?.isNotEmpty ?? false) &&
-        (playlist.sourcePlaylistId?.isNotEmpty ?? false);
+    return playlist.isSynced;
   }
 
   String _formatSyncResultMessage(PlaylistSyncResult result) {
     if (!result.succeeded) {
       return result.message.isEmpty ? '同步失败' : result.message;
     }
-    if (!result.complete) return result.message;
-    if (result.insertedCount <= 0) return '同步完成，暂无新增歌曲';
-    final preview = result.newTracks
-        .map((t) => t.name)
-        .where((name) => name.isNotEmpty)
-        .take(3)
-        .toList();
-    final suffix = result.insertedCount > preview.length ? '…' : '';
-    final details = preview.isEmpty ? '' : '：${preview.join('、')}$suffix';
-    return '同步完成，新增 ${result.insertedCount} 首$details';
+    return '同步完成，共 ${result.trackCount} 首歌曲';
   }
 
   void _openPlaylistDetail(Playlist playlist) {
@@ -250,6 +240,7 @@ class _MyPageState extends State<MyPage> {
   }
 
   void _toggleEditMode() {
+    if (_selectedPlaylist?.isLocal != true) return;
     setState(() {
       _isEditMode = !_isEditMode;
       if (!_isEditMode) _selectedTrackIds.clear();
@@ -349,9 +340,21 @@ class _MyPageState extends State<MyPage> {
     final result = await _playlistService.syncPlaylist(playlist.id);
     _showUserNotification(
       _formatSyncResultMessage(result),
-      severity: result.insertedCount > 0
+      severity: result.succeeded
           ? fluent.InfoBarSeverity.success
           : fluent.InfoBarSeverity.info,
+    );
+  }
+
+  Future<void> _copySyncedPlaylist(Playlist playlist) async {
+    if (!playlist.isSynced) return;
+    final copy = await _playlistService.copyPlaylist(playlist.id);
+    if (!mounted) return;
+    _showUserNotification(
+      copy == null ? '复制失败，请稍后重试' : '已创建「${copy.name}」',
+      severity: copy == null
+          ? fluent.InfoBarSeverity.error
+          : fluent.InfoBarSeverity.success,
     );
   }
 
@@ -493,6 +496,7 @@ class _MyPageState extends State<MyPage> {
   }
 
   Future<void> _batchRemoveTracks() async {
+    if (_selectedPlaylist?.isLocal != true) return;
     if (_selectedPlaylist == null || _selectedTrackIds.isEmpty) return;
 
     bool? confirmed;
@@ -562,7 +566,7 @@ class _MyPageState extends State<MyPage> {
   }
 
   Future<void> _confirmRemoveTrack(PlaylistTrack track) async {
-    if (_selectedPlaylist == null) return;
+    if (_selectedPlaylist?.isLocal != true) return;
 
     bool? confirmed;
     if (_themeManager.isFluentFramework) {
@@ -711,6 +715,10 @@ class _MyPageState extends State<MyPage> {
   }
 
   Future<void> _showSourceSwitchDialog(Playlist playlist, List<PlaylistTrack> tracks) async {
+    if (!playlist.isLocal) {
+      _showUserNotification('同步歌单为只读，请先复制为本地歌单');
+      return;
+    }
     if (tracks.isEmpty) {
       _showUserNotification('歌单为空，无法换源', severity: fluent.InfoBarSeverity.warning);
       return;
@@ -796,14 +804,13 @@ class _MyPageState extends State<MyPage> {
       final newTrack = pair.value;
 
       try {
-        final removeSuccess = await _playlistService.removePlaylistTrack(playlist.id, oldTrack);
-        if (removeSuccess) {
-          final addSuccess = await _playlistService.addTrackToPlaylist(playlist.id, newTrack);
-          if (addSuccess) {
-            successCount++;
-          } else {
-            failCount++;
-          }
+        final replaceSuccess = await _playlistService.replacePlaylistTrack(
+          playlist.id,
+          oldTrack,
+          newTrack,
+        );
+        if (replaceSuccess) {
+          successCount++;
         } else {
           failCount++;
         }

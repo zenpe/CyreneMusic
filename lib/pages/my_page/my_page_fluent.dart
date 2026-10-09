@@ -247,53 +247,29 @@ extension MyPageFluentUI on _MyPageState {
                         onPressed: _toggleSearchMode),
                     const SizedBox(width: 4),
                   ],
-                  if (allTracks.isNotEmpty) ...[
+                  if (allTracks.isNotEmpty && playlist.isLocal) ...[
                     fluent.IconButton(
                         icon: const Icon(fluent.FluentIcons.switch_widget),
                         onPressed: () =>
                             _showSourceSwitchDialog(playlist, allTracks)),
                     const SizedBox(width: 4),
                   ],
-                  if (allTracks.isNotEmpty) ...[
+                  if (allTracks.isNotEmpty && playlist.isLocal) ...[
                     fluent.IconButton(
                         icon: const Icon(fluent.FluentIcons.edit),
                         onPressed: _toggleEditMode),
                     const SizedBox(width: 4),
                   ],
-                  fluent.IconButton(
-                    icon: const Icon(fluent.FluentIcons.sync),
-                    onPressed: () async {
-                      if (!_hasImportConfig(playlist)) {
-                        fluent.displayInfoBar(context,
-                            builder: (context, close) => fluent.InfoBar(
-                                title: const Text('同步'),
-                                content: const Text('请先在"导入管理"中绑定来源后再同步'),
-                                severity: fluent.InfoBarSeverity.warning,
-                                action: fluent.IconButton(
-                                    icon: const Icon(fluent.FluentIcons.clear),
-                                    onPressed: close)));
-                        return;
-                      }
-                      fluent.displayInfoBar(context,
-                          builder: (context, close) => fluent.InfoBar(
-                              title: const Text('同步'),
-                              content: const Text('正在同步...'),
-                              severity: fluent.InfoBarSeverity.info,
-                              action: fluent.IconButton(
-                                  icon: const Icon(fluent.FluentIcons.clear),
-                                  onPressed: close)));
-                      final result = await _playlistService.syncPlaylist(playlist.id);
-                      if (!mounted) return;
-                      fluent.displayInfoBar(context,
-                          builder: (context, close) => fluent.InfoBar(
-                              title: const Text('同步完成'),
-                              content: Text(_formatSyncResultMessage(result)),
-                              severity: fluent.InfoBarSeverity.success,
-                              action: fluent.IconButton(
-                                  icon: const Icon(fluent.FluentIcons.clear),
-                                  onPressed: close)));
-                    },
-                  ),
+                  if (playlist.isSynced) ...[
+                    fluent.IconButton(
+                      icon: const Icon(fluent.FluentIcons.copy),
+                      onPressed: () => _copySyncedPlaylist(playlist),
+                    ),
+                    fluent.IconButton(
+                      icon: const Icon(fluent.FluentIcons.sync),
+                      onPressed: () => _syncPlaylistFromList(playlist),
+                    ),
+                  ],
                 ],
               ],
             ),
@@ -330,6 +306,7 @@ extension MyPageFluentUI on _MyPageState {
                       item: track,
                       index: originalIndex,
                       isEditMode: _isEditMode,
+                      isReadOnly: playlist.isSynced,
                       isSelected: isSelected,
                       onToggleSelection: () => _toggleTrackSelection(track),
                       onPlay: () => _playDetailTrack(originalIndex),
@@ -401,6 +378,7 @@ class _FluentMyTrackTile extends StatelessWidget {
   final PlaylistTrack item;
   final int index;
   final bool isEditMode;
+  final bool isReadOnly;
   final bool isSelected;
   final VoidCallback onToggleSelection;
   final VoidCallback onPlay;
@@ -410,6 +388,7 @@ class _FluentMyTrackTile extends StatelessWidget {
     required this.item,
     required this.index,
     required this.isEditMode,
+    required this.isReadOnly,
     required this.isSelected,
     required this.onToggleSelection,
     required this.onPlay,
@@ -510,7 +489,7 @@ class _FluentMyTrackTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (!isEditMode) ...[
+                if (!isEditMode && !isReadOnly) ...[
                   const SizedBox(width: 12),
                   TrackMoreButton(
                     track: item.toTrack(),

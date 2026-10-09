@@ -42,26 +42,14 @@ class _PlaylistsPageState extends State<PlaylistsPage>
   }
 
   bool _hasImportConfig(Playlist playlist) {
-    return (playlist.source?.isNotEmpty ?? false) &&
-        (playlist.sourcePlaylistId?.isNotEmpty ?? false);
+    return playlist.isSynced;
   }
 
   String _formatSyncResultMessage(PlaylistSyncResult result) {
     if (!result.succeeded) {
       return result.message.isEmpty ? '同步失败' : result.message;
     }
-    if (!result.complete) return result.message;
-    if (result.insertedCount <= 0) {
-      return '同步完成，暂无新增歌曲';
-    }
-    final preview = result.newTracks
-        .map((t) => t.name)
-        .where((name) => name.isNotEmpty)
-        .take(3)
-        .toList();
-    final suffix = result.insertedCount > preview.length ? '…' : '';
-    final details = preview.isEmpty ? '' : '：${preview.join('、')}$suffix';
-    return '同步完成，新增 ${result.insertedCount} 首$details';
+    return '同步完成，共 ${result.trackCount} 首歌曲';
   }
 
   Future<void> _syncPlaylistFromList(Playlist playlist) async {
@@ -102,6 +90,18 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(_formatSyncResultMessage(result))));
+  }
+
+  Future<void> _copySelectedPlaylist() async {
+    final selected = _selectedPlaylist;
+    if (selected?.isSynced != true) return;
+    final copy = await _playlistService.copyPlaylist(selected!.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(copy == null ? '复制失败，请稍后重试' : '已创建「${copy.name}」'),
+      ),
+    );
   }
 
   @override
@@ -452,6 +452,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
 
   /// 切换编辑模式
   void _toggleEditMode() {
+    if (_selectedPlaylist?.isLocal != true) return;
     setState(() {
       _isEditMode = !_isEditMode;
       if (!_isEditMode) {
@@ -490,7 +491,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
 
   /// 批量删除选中的歌曲
   Future<void> _batchRemoveTracks() async {
-    if (_selectedPlaylist == null || _selectedTrackIds.isEmpty) {
+    if (_selectedPlaylist?.isLocal != true || _selectedTrackIds.isEmpty) {
       return;
     }
 
@@ -907,41 +908,24 @@ class _PlaylistsPageState extends State<PlaylistsPage>
           TextButton(onPressed: _toggleEditMode, child: const Text('取消')),
         ] else ...[
           // 编辑按钮
-          if (tracks.isNotEmpty)
+          if (tracks.isNotEmpty && playlist.isLocal)
             IconButton(
               icon: const Icon(Icons.edit),
               onPressed: _toggleEditMode,
               tooltip: '批量管理',
             ),
-          IconButton(
-            icon: const Icon(Icons.sync),
-            onPressed: _syncSelectedPlaylist,
-            tooltip: '同步新增歌曲',
-          ),
-          // 刷新按钮
-          IconButton(
-            icon: const Icon(Icons.sync),
-            onPressed: () async {
-              if (!_hasImportConfig(playlist)) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('请先设置导入来源后再同步')));
-                return;
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('正在同步...'),
-                  duration: Duration(seconds: 1),
-                ),
-              );
-              final result = await _playlistService.syncPlaylist(playlist.id);
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(_formatSyncResultMessage(result))),
-              );
-            },
-            tooltip: '同步',
-          ),
+          if (playlist.isSynced)
+            IconButton(
+              icon: const Icon(Icons.copy),
+              onPressed: _copySelectedPlaylist,
+              tooltip: '复制为本地歌单',
+            ),
+          if (playlist.isSynced)
+            IconButton(
+              icon: const Icon(Icons.sync),
+              onPressed: _syncSelectedPlaylist,
+              tooltip: '同步来源歌单',
+            ),
         ],
       ],
     );
@@ -1074,7 +1058,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
             ),
           ],
         ),
-        trailing: _isEditMode
+        trailing: _isEditMode || _selectedPlaylist?.isSynced == true
             ? null
             : TrackMoreButton(
                 track: item.toTrack(),
@@ -1128,6 +1112,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
 
   /// 确认从歌单移除
   void _confirmRemoveTrack(PlaylistTrack track) async {
+    if (_selectedPlaylist?.isLocal != true) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

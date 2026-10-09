@@ -1406,6 +1406,8 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
   bool _isLoading = true;
   List<String> _playlistNames = [];
   List<int> _playlistIds = [];
+  List<PlaylistTrackMatch> _playlistMatches = [];
+  int _checkGeneration = 0;
 
   @override
   void initState() {
@@ -1424,6 +1426,7 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
   }
 
   Future<void> _checkIfInPlaylist() async {
+    final generation = ++_checkGeneration;
     setState(() => _isLoading = true);
 
     final playlistService = PlaylistService();
@@ -1431,11 +1434,14 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
     // 调用后端 API 检查歌曲是否在任何歌单中
     final result = await playlistService.isTrackInAnyPlaylist(widget.track);
 
-    if (mounted) {
+    if (mounted && generation == _checkGeneration) {
       setState(() {
-        _isInPlaylist = result.inPlaylist;
-        _playlistNames = result.playlistNames;
-        _playlistIds = result.playlistIds;
+        if (result.known) {
+          _isInPlaylist = result.inPlaylist;
+          _playlistNames = result.playlistNames;
+          _playlistIds = result.playlistIds;
+          _playlistMatches = result.matches;
+        }
         _isLoading = false;
       });
     }
@@ -1446,12 +1452,8 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
 
     final playlistService = PlaylistService();
 
-    for (final playlistId in _playlistIds) {
-      await playlistService.removeTrackFromPlaylist(
-        playlistId,
-        widget.track.id.toString(),
-        widget.track.source.name,
-      );
+    for (final match in _playlistMatches) {
+      await playlistService.removeTrackMatch(match, widget.track);
     }
 
     // 刷新状态

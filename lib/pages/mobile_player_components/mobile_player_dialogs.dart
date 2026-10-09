@@ -469,7 +469,7 @@ class MobilePlayerDialogs {
               child: AnimatedBuilder(
                 animation: playlistService,
                 builder: (context, child) {
-                  final playlists = playlistService.playlists;
+                  final playlists = playlistService.playlists.where((p) => p.isLocal).toList();
 
                   if (playlists.isEmpty) {
                     return Center(

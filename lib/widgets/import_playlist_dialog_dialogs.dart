@@ -37,7 +37,7 @@ class _SelectTargetPlaylistDialogState
 
   @override
   Widget build(BuildContext context) {
-    final playlists = _playlistService.playlists;
+    final playlists = _playlistService.playlists.where((p) => p.isLocal).toList();
     final colorScheme = Theme.of(context).colorScheme;
 
     return AlertDialog(

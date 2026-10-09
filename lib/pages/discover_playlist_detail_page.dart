@@ -18,7 +18,6 @@ import '../services/player_service.dart';
 import '../pages/auth/auth_page.dart';
 import '../utils/theme_manager.dart';
 import '../utils/image_utils.dart';
-import '../services/api/api_client.dart';
 import '../services/playlist_service.dart';
 
 class DiscoverPlaylistDetailPage extends StatelessWidget {
@@ -364,9 +363,11 @@ class _DiscoverPlaylistDetailContentState
           width: 420,
           height: 360,
           child: ListView.builder(
-            itemCount: playlistService.playlists.length,
+            itemCount: playlistService.playlists.where((p) => p.isLocal).length,
             itemBuilder: (context, index) {
-              final p = playlistService.playlists[index];
+              final p = playlistService.playlists
+                  .where((p) => p.isLocal)
+                  .elementAt(index);
               return ListTile(
                 leading: Icon(p.isDefault ? Icons.favorite : Icons.queue_music),
                 title: Text(p.name),
@@ -386,27 +387,30 @@ class _DiscoverPlaylistDetailContentState
     );
     if (target == null) return;
     try {
-      final api = ApiClient();
-      final putResp = await api.putJson(
-        '/playlists/${target.id}/import-config',
-        data: {'source': 'netease', 'sourcePlaylistId': '$neteasePlaylistId'},
-        timeout: const Duration(seconds: 20),
+      final tracks = (_detail?.tracks ?? const [])
+          .map(
+            (track) => Track(
+              id: track.id,
+              name: track.name,
+              artists: track.artists,
+              album: track.album,
+              picUrl: track.picUrl,
+              source: MusicSource.netease,
+            ),
+          )
+          .toList();
+      final result = await playlistService.addTracksToPlaylist(
+        target.id,
+        tracks,
       );
-      if (!putResp.ok) {
-        throw Exception('绑定来源失败: HTTP ${putResp.statusCode}');
-      }
-      final postResp = await api.postJson(
-        '/playlists/${target.id}/sync',
-        timeout: const Duration(minutes: 2),
-      );
-      if (!postResp.ok) {
-        throw Exception('同步失败: HTTP ${postResp.statusCode}');
+      if ((result['failCount'] ?? tracks.length) > 0) {
+        throw Exception('部分歌曲导入失败');
       }
       if (!context.mounted) return;
       fluent.displayInfoBar(
         context,
         builder: (context, close) => fluent.InfoBar(
-          title: const Text('已开始同步'),
+          title: const Text('导入完成'),
           content: Text('目标歌单：${target.name}'),
           action: fluent.IconButton(
             icon: const Icon(fluent.FluentIcons.clear),
@@ -679,8 +683,8 @@ class _DiscoverPlaylistDetailContentState
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: CupertinoColors.systemBlue.withValues(alpha:
-                                0.1,
+                              color: CupertinoColors.systemBlue.withValues(
+                                alpha: 0.1,
                               ),
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -887,7 +891,9 @@ class _DiscoverPlaylistDetailContentState
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: CupertinoColors.systemGrey.withValues(alpha: 0.8),
+                        color: CupertinoColors.systemGrey.withValues(
+                          alpha: 0.8,
+                        ),
                       ),
                     ),
                   ],
@@ -1064,7 +1070,9 @@ class _DiscoverPlaylistDetailContentState
               Expanded(
                 child: ListView.separated(
                   padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: playlistService.playlists.length,
+                  itemCount: playlistService.playlists
+                      .where((p) => p.isLocal)
+                      .length,
                   separatorBuilder: (_, __) => Padding(
                     padding: const EdgeInsets.only(left: 72),
                     child: Container(
@@ -1073,7 +1081,9 @@ class _DiscoverPlaylistDetailContentState
                     ),
                   ),
                   itemBuilder: (context, index) {
-                    final p = playlistService.playlists[index];
+                    final p = playlistService.playlists
+                        .where((p) => p.isLocal)
+                        .elementAt(index);
                     final isDark =
                         CupertinoTheme.brightnessOf(context) == Brightness.dark;
                     return CupertinoButton(
@@ -1151,21 +1161,24 @@ class _DiscoverPlaylistDetailContentState
     if (target == null) return;
 
     try {
-      final api = ApiClient();
-      final putResp = await api.putJson(
-        '/playlists/${target.id}/import-config',
-        data: {'source': 'netease', 'sourcePlaylistId': '$neteasePlaylistId'},
-        timeout: const Duration(seconds: 20),
+      final tracks = (_detail?.tracks ?? const [])
+          .map(
+            (track) => Track(
+              id: track.id,
+              name: track.name,
+              artists: track.artists,
+              album: track.album,
+              picUrl: track.picUrl,
+              source: MusicSource.netease,
+            ),
+          )
+          .toList();
+      final result = await playlistService.addTracksToPlaylist(
+        target.id,
+        tracks,
       );
-      if (!putResp.ok) {
-        throw Exception('绑定来源失败: HTTP ${putResp.statusCode}');
-      }
-      final postResp = await api.postJson(
-        '/playlists/${target.id}/sync',
-        timeout: const Duration(minutes: 2),
-      );
-      if (!postResp.ok) {
-        throw Exception('同步失败: HTTP ${postResp.statusCode}');
+      if ((result['failCount'] ?? tracks.length) > 0) {
+        throw Exception('部分歌曲导入失败');
       }
       if (!context.mounted) return;
 
@@ -1173,8 +1186,8 @@ class _DiscoverPlaylistDetailContentState
       showCupertinoDialog(
         context: context,
         builder: (context) => CupertinoAlertDialog(
-          title: const Text('同步成功'),
-          content: Text('已开始同步到「${target.name}」'),
+          title: const Text('导入成功'),
+          content: Text('已导入到「${target.name}」'),
           actions: [
             CupertinoDialogAction(
               isDefaultAction: true,
@@ -1984,7 +1997,7 @@ class _DiscoverPlaylistDetailContentState
               const SizedBox(height: 6),
               Text(
                 'by ${detail.creator}',
-                 style: (typography.body ?? const TextStyle(fontSize: 14))
+                style: (typography.body ?? const TextStyle(fontSize: 14))
                     .copyWith(color: resources.textFillColorSecondary),
               ),
               const SizedBox(height: 6),

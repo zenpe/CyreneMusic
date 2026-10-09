@@ -1,817 +1,636 @@
-import 'structured_log_service.dart';
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
+
 import '../models/playlist.dart';
 import '../models/track.dart';
-import 'auth_service.dart';
 import 'api/api_client.dart';
+import 'auth_service.dart';
+import 'structured_log_service.dart';
 
 class PlaylistSyncResult {
   final bool succeeded;
-  final int revision;
-  final bool complete;
-  final int expectedCount;
-  final int resolvedCount;
-  final int insertedCount;
-  final int updatedCount;
-  final int removedCount;
   final int trackCount;
-  final List<PlaylistTrack> newTracks;
   final String message;
 
   const PlaylistSyncResult({
     required this.succeeded,
-    required this.revision,
-    required this.complete,
-    required this.expectedCount,
-    required this.resolvedCount,
-    required this.insertedCount,
-    required this.updatedCount,
-    required this.removedCount,
     required this.trackCount,
-    required this.newTracks,
     this.message = '',
   });
 
-  factory PlaylistSyncResult.empty({String message = ''}) {
-    return PlaylistSyncResult(
-      succeeded: false,
-      revision: 0,
-      complete: false,
-      expectedCount: 0,
-      resolvedCount: 0,
-      insertedCount: 0,
-      updatedCount: 0,
-      removedCount: 0,
-      trackCount: 0,
-      newTracks: const <PlaylistTrack>[],
-      message: message,
-    );
-  }
+  factory PlaylistSyncResult.empty({String message = ''}) => PlaylistSyncResult(
+    succeeded: false,
+    trackCount: 0,
+    message: message,
+  );
 
-  bool get hasUpdates => insertedCount > 0 || removedCount > 0;
+  factory PlaylistSyncResult.success(Playlist playlist) => PlaylistSyncResult(
+    succeeded: true,
+    trackCount: playlist.trackCount,
+    message: '同步完成',
+  );
 }
 
-/// 歌单服务
+class PlaylistTrackMatch {
+  final int playlistId;
+  final String playlistName;
+  final int itemId;
+
+  const PlaylistTrackMatch({
+    required this.playlistId,
+    required this.playlistName,
+    required this.itemId,
+  });
+
+  factory PlaylistTrackMatch.fromJson(Map<String, dynamic> json) =>
+      PlaylistTrackMatch(
+        playlistId: (json['playlistId'] as num).toInt(),
+        playlistName: json['playlistName'] as String,
+        itemId: (json['itemId'] as num).toInt(),
+      );
+}
+
+class TrackInPlaylistResult {
+  final bool known;
+  final List<PlaylistTrackMatch> matches;
+
+  const TrackInPlaylistResult({required this.known, required this.matches});
+
+  bool get inPlaylist => matches.isNotEmpty;
+  List<int> get playlistIds =>
+      matches.map((match) => match.playlistId).toList();
+  List<String> get playlistNames =>
+      matches.map((match) => match.playlistName).toList();
+
+  int? itemIdFor(int playlistId) {
+    for (final match in matches) {
+      if (match.playlistId == playlistId) return match.itemId;
+    }
+    return null;
+  }
+}
+
 class PlaylistService extends ChangeNotifier {
   static final PlaylistService _instance = PlaylistService._internal();
   factory PlaylistService() => _instance;
+
   PlaylistService._internal() {
-    // 监听登录状态变化
     AuthService().addListener(_onAuthChanged);
   }
 
-  /// 更新歌单导入配置
-  Future<bool> updateImportConfig(int playlistId, {
-    required String source,
-    required String sourcePlaylistId,
-  }) async {
-    if (!AuthService().isLoggedIn) return false;
-    try {
-      final result = await ApiClient().putJson(
-        '/playlists/$playlistId/import-config',
-        data: {
-          'source': source,
-          'sourcePlaylistId': sourcePlaylistId,
-        },
-        timeout: const Duration(seconds: 15),
-      );
-      if (result.ok) {
-        final idx = _playlists.indexWhere((p) => p.id == playlistId);
-        if (idx != -1) {
-          final p = _playlists[idx];
-          _playlists[idx] = Playlist(
-            id: p.id,
-            name: p.name,
-            isDefault: p.isDefault,
-            trackCount: p.trackCount,
-            coverUrl: p.coverUrl,
-            createdAt: p.createdAt,
-            updatedAt: DateTime.now(),
-            source: source,
-            sourcePlaylistId: sourcePlaylistId,
-          );
-          notifyListeners();
-        }
-        return true;
-      }
-    } catch (_) {}
-    return false;
-  }
-
-  /// 触发服务端同步
-  Future<PlaylistSyncResult> syncPlaylist(int playlistId) async {
-    if (!AuthService().isLoggedIn) return PlaylistSyncResult.empty();
-    try {
-      StructuredLogService.log('🚀 [PlaylistService] 同步开始: /playlists/$playlistId/sync (playlistId=$playlistId)');
-      final result = await ApiClient().postJson(
-        '/playlists/$playlistId/sync',
-        timeout: const Duration(minutes: 2),
-      );
-      StructuredLogService.log('📥 [PlaylistService] 同步响应: status=${result.statusCode}');
-      if (result.text != null && result.text!.isNotEmpty) {
-        StructuredLogService.log('📄 [PlaylistService] 响应内容: ${result.text}');
-      }
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-        if ((data['status'] as int?) != 200) {
-          final failureMessage = data['message'] as String? ?? '同步失败';
-          StructuredLogService.log('⚠️ [PlaylistService] 同步失败: $failureMessage');
-          return PlaylistSyncResult.empty(message: failureMessage);
-        }
-        final inserted = data['insertedCount'] as int? ?? 0;
-        final updated = data['updatedCount'] as int? ?? 0;
-        final removed = data['removedCount'] as int? ?? 0;
-        final trackCount = data['trackCount'] as int? ?? 0;
-        final newTracks = (data['newTracks'] as List<dynamic>? ?? [])
-            .map((item) => PlaylistTrack.fromJson(item as Map<String, dynamic>))
-            .toList();
-        final message = data['message'] as String? ?? '同步完成';
-        StructuredLogService.log('✅ [PlaylistService] 同步完成，新增 $inserted 首');
-        _applyAuthoritativeTrackCount(playlistId, trackCount);
-        if (_currentPlaylistId == playlistId) {
-          await loadPlaylistTracks(playlistId);
-        }
-        return PlaylistSyncResult(
-          succeeded: true,
-          revision: data['revision'] as int? ?? 0,
-          complete: data['complete'] as bool? ?? false,
-          expectedCount: data['expectedCount'] as int? ?? 0,
-          resolvedCount: data['resolvedCount'] as int? ?? 0,
-          insertedCount: inserted,
-          updatedCount: updated,
-          removedCount: removed,
-          trackCount: trackCount,
-          newTracks: newTracks,
-          message: message,
-        );
-      }
-      final responseData = result.data;
-      final failureMessage = responseData is Map<String, dynamic>
-          ? responseData['message'] as String?
-          : null;
-      StructuredLogService.log('⚠️ [PlaylistService] 同步失败: HTTP ${result.statusCode}');
-      return PlaylistSyncResult.empty(
-        message: failureMessage ?? '同步失败: HTTP ${result.statusCode}',
-      );
-    } catch (e) {
-      StructuredLogService.log('❌ [PlaylistService] 同步异常: $e');
-      return PlaylistSyncResult.empty(message: '同步失败: $e');
-    }
-  }
-
-  void _applyAuthoritativeTrackCount(int playlistId, int trackCount) {
-    final idx = _playlists.indexWhere((p) => p.id == playlistId);
-    if (idx != -1) {
-      final playlist = _playlists[idx];
-      _playlists[idx] = Playlist(
-        id: playlist.id,
-        name: playlist.name,
-        isDefault: playlist.isDefault,
-        trackCount: trackCount,
-        coverUrl: playlist.coverUrl,
-        createdAt: playlist.createdAt,
-        updatedAt: DateTime.now(),
-        source: playlist.source,
-        sourcePlaylistId: playlist.sourcePlaylistId,
-      );
-    }
-
-    notifyListeners();
-  }
-
-  /// 绑定服务端支持的外部歌单，并导入服务端权威快照。
-  Future<PlaylistSyncResult> bindAndSyncPlaylist(
-    int playlistId, {
-    required String source,
-    required String sourcePlaylistId,
-  }) async {
-    final bound = await updateImportConfig(
-      playlistId,
-      source: source,
-      sourcePlaylistId: sourcePlaylistId,
-    );
-    if (!bound) {
-      return PlaylistSyncResult.empty(message: '绑定外部歌单失败');
-    }
-    return syncPlaylist(playlistId);
-  }
-
+  final Random _secureRandom = Random.secure();
+  final Map<int, List<PlaylistTrack>> _tracksByPlaylist = {};
+  final Map<int, int> _trackLoadGenerations = {};
   List<Playlist> _playlists = [];
-  List<Playlist> get playlists => _playlists;
-
-  // 当前选中的歌单 ID
   int? _currentPlaylistId;
-  int? get currentPlaylistId => _currentPlaylistId;
-
-  // 当前歌单的歌曲列表
-  List<PlaylistTrack> _currentTracks = [];
-  List<PlaylistTrack> get currentTracks => _currentTracks;
-
   bool _isLoading = false;
-  bool get isLoading => _isLoading;
-
   bool _isLoadingTracks = false;
-  bool get isLoadingTracks => _isLoadingTracks;
-  int _trackLoadGeneration = 0;
 
-  /// 监听认证状态变化
-  void _onAuthChanged() {
-    if (!AuthService().isLoggedIn) {
-      // 用户登出时清空数据
-      clear();
+  List<Playlist> get playlists => List.unmodifiable(_playlists);
+  int? get currentPlaylistId => _currentPlaylistId;
+  List<PlaylistTrack> get currentTracks => List.unmodifiable(
+    _currentPlaylistId == null
+        ? const <PlaylistTrack>[]
+        : (_tracksByPlaylist[_currentPlaylistId] ?? const <PlaylistTrack>[]),
+  );
+  bool get isLoading => _isLoading;
+  bool get isLoadingTracks => _isLoadingTracks;
+
+  Playlist? get defaultPlaylist {
+    for (final playlist in _playlists) {
+      if (playlist.isDefault) return playlist;
     }
+    return null;
   }
 
-  /// 清空所有数据
+  String _operationId() {
+    final bytes = List<int>.generate(16, (_) => _secureRandom.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    String hex(int value) => value.toRadixString(16).padLeft(2, '0');
+    final value = bytes.map(hex).join();
+    return '${value.substring(0, 8)}-${value.substring(8, 12)}-'
+        '${value.substring(12, 16)}-${value.substring(16, 20)}-'
+        '${value.substring(20)}';
+  }
+
+  void _onAuthChanged() {
+    if (!AuthService().isLoggedIn) clear();
+  }
+
   void clear() {
-    _trackLoadGeneration++;
     _playlists = [];
     _currentPlaylistId = null;
-    _currentTracks = [];
+    _tracksByPlaylist.clear();
+    _trackLoadGenerations.clear();
     _isLoading = false;
     _isLoadingTracks = false;
     notifyListeners();
   }
 
-  /// 获取默认歌单（我的收藏）
-  Playlist? get defaultPlaylist {
-    return _playlists.firstWhere(
-      (p) => p.isDefault,
-      orElse: () => _playlists.isNotEmpty ? _playlists.first : Playlist(
-        id: 0,
-        name: '我的收藏',
-        isDefault: true,
-        trackCount: 0,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      ),
-    );
+  Playlist? _playlist(int playlistId) {
+    for (final playlist in _playlists) {
+      if (playlist.id == playlistId) return playlist;
+    }
+    return null;
   }
 
-  /// 加载歌单列表
-  Future<void> loadPlaylists() async {
-    if (!AuthService().isLoggedIn) {
-      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法加载歌单');
-      return;
+  bool _isWritable(int playlistId) => _playlist(playlistId)?.isLocal == true;
+
+  void _upsertPlaylist(Playlist playlist) {
+    final index = _playlists.indexWhere((item) => item.id == playlist.id);
+    if (index < 0) {
+      _playlists.add(playlist);
+    } else {
+      _playlists[index] = playlist;
     }
+  }
 
+  Playlist? _playlistFromResponse(dynamic data) {
+    if (data is! Map<String, dynamic>) return null;
+    final json = data['playlist'];
+    if (json is! Map<String, dynamic>) return null;
+    final playlist = Playlist.fromJson(json);
+    _upsertPlaylist(playlist);
+    return playlist;
+  }
+
+  Future<void> _refreshCurrentTracks(int playlistId) async {
+    if (_currentPlaylistId == playlistId) await loadPlaylistTracks(playlistId);
+  }
+
+  Future<void> loadPlaylists() async {
+    if (!AuthService().isLoggedIn) return;
+    _isLoading = true;
+    notifyListeners();
     try {
-      _isLoading = true;
-      notifyListeners();
-
       final result = await ApiClient().getJson(
         '/playlists',
         timeout: const Duration(seconds: 10),
       );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          final List<dynamic> playlistsJson = data['playlists'] ?? [];
-          _playlists = playlistsJson
-              .map((item) => Playlist.fromJson(item as Map<String, dynamic>))
-              .toList();
-
-          StructuredLogService.log('✅ [PlaylistService] 加载歌单列表: ${_playlists.length} 个');
-        } else {
-          throw Exception(data['message'] ?? '加载失败');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
+      final data = result.data;
+      if (!result.ok ||
+          data is! Map<String, dynamic> ||
+          data['status'] != 200) {
+        throw Exception(
+          data is Map ? data['message'] : 'HTTP ${result.statusCode}',
+        );
       }
-    } catch (e) {
-      StructuredLogService.log('❌ [PlaylistService] 加载歌单列表失败: $e');
+      _playlists = (data['playlists'] as List<dynamic>? ?? const [])
+          .map((item) => Playlist.fromJson(item as Map<String, dynamic>))
+          .toList();
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 加载歌单失败: $error');
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  /// 创建新歌单
-  /// 返回新创建的 Playlist 对象，失败时返回 null
   Future<Playlist?> createPlaylist(String name) async {
-    if (!AuthService().isLoggedIn) {
-      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法创建歌单');
-      return null;
-    }
-
-    if (name.trim().isEmpty) {
-      StructuredLogService.log('⚠️ [PlaylistService] 歌单名称不能为空');
-      return null;
-    }
-
+    if (!AuthService().isLoggedIn || name.trim().isEmpty) return null;
     try {
       final result = await ApiClient().postJson(
         '/playlists',
-        data: {'name': name.trim()},
+        data: {'name': name.trim(), 'operationId': _operationId()},
         timeout: const Duration(seconds: 10),
       );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          // 添加到本地列表
-          final newPlaylist = Playlist.fromJson(data['playlist'] as Map<String, dynamic>);
-          _playlists.add(newPlaylist);
-
-          StructuredLogService.log('✅ [PlaylistService] 创建歌单成功: $name (id=${newPlaylist.id})');
-          notifyListeners();
-          return newPlaylist;
-        } else {
-          throw Exception(data['message'] ?? '创建失败');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [PlaylistService] 创建歌单失败: $e');
+      if (!result.ok) return null;
+      final playlist = _playlistFromResponse(result.data);
+      notifyListeners();
+      return playlist;
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 创建歌单失败: $error');
       return null;
     }
   }
 
-  /// 更新歌单（重命名）
-  Future<bool> updatePlaylist(int playlistId, String name) async {
-    if (!AuthService().isLoggedIn) {
-      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法更新歌单');
-      return false;
-    }
-
-    if (name.trim().isEmpty) {
-      StructuredLogService.log('⚠️ [PlaylistService] 歌单名称不能为空');
-      return false;
-    }
-
-    try {
-      final result = await ApiClient().putJson(
-        '/playlists/$playlistId',
-        data: {'name': name.trim()},
-        timeout: const Duration(seconds: 10),
-      );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          // 更新本地列表
-          final index = _playlists.indexWhere((p) => p.id == playlistId);
-          if (index != -1) {
-            _playlists[index] = Playlist(
-              id: _playlists[index].id,
-              name: name.trim(),
-              isDefault: _playlists[index].isDefault,
-              trackCount: _playlists[index].trackCount,
-              createdAt: _playlists[index].createdAt,
-              updatedAt: DateTime.now(),
-              source: _playlists[index].source,
-              sourcePlaylistId: _playlists[index].sourcePlaylistId,
-            );
-          }
-
-          StructuredLogService.log('✅ [PlaylistService] 更新歌单成功: $name');
-          notifyListeners();
-          return true;
-        } else {
-          throw Exception(data['message'] ?? '更新失败');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [PlaylistService] 更新歌单失败: $e');
-      return false;
-    }
-  }
-
-  /// 删除歌单
-  Future<bool> deletePlaylist(int playlistId) async {
-    if (!AuthService().isLoggedIn) {
-      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法删除歌单');
-      return false;
-    }
-
-    try {
-      final result = await ApiClient().postJson(
-        '/playlists/$playlistId/delete',
-        data: {},
-        timeout: const Duration(seconds: 10),
-      );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          // 从本地列表删除
-          _playlists.removeWhere((p) => p.id == playlistId);
-
-          // 如果删除的是当前选中的歌单，清空当前歌曲列表
-          if (_currentPlaylistId == playlistId) {
-            _currentPlaylistId = null;
-            _currentTracks = [];
-          }
-
-          StructuredLogService.log('✅ [PlaylistService] 删除歌单成功');
-          notifyListeners();
-          return true;
-        } else {
-          throw Exception(data['message'] ?? '删除失败');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [PlaylistService] 删除歌单失败: $e');
-      return false;
-    }
-  }
-
-  /// 添加歌曲到歌单
-  Future<bool> addTrackToPlaylist(int playlistId, Track track) async {
-    if (!AuthService().isLoggedIn) {
-      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法添加歌曲');
-      return false;
-    }
-
-    try {
-      final playlistTrack = PlaylistTrack.fromTrack(track);
-
-      final result = await ApiClient().postJson(
-        '/playlists/$playlistId/tracks',
-        data: playlistTrack.toJson(),
-        timeout: const Duration(seconds: 10),
-      );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          final trackCount = data['trackCount'] as int? ?? 0;
-          _applyAuthoritativeTrackCount(playlistId, trackCount);
-          if (_currentPlaylistId == playlistId) {
-            await loadPlaylistTracks(playlistId);
-          }
-
-          StructuredLogService.log('✅ [PlaylistService] 添加歌曲成功: ${track.name}');
-          return true;
-        } else {
-          throw Exception(data['message'] ?? '添加失败');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [PlaylistService] 添加歌曲失败: $e');
-      return false;
-    }
-  }
-
-  /// 批量添加歌曲到歌单（高性能版本，一次网络请求）
-  /// [mode]
-  ///   - 'append'（默认）：追加到歌单末尾，position 在当前最大值后递增
-  ///   - 'replace'：先清空目标歌单再写入，用于"同步刷新"等场景
-  /// 传入的 [tracks] 顺序即写入顺序，后端会按数组下标分配 position
-  /// 返回 {successCount, skipCount, failCount}
-  Future<Map<String, int>> addTracksToPlaylist(
-    int playlistId,
-    List<Track> tracks, {
-    String mode = 'append',
+  Future<Playlist?> followPlaylist({
+    required String source,
+    required String sourcePlaylistId,
+    String? name,
   }) async {
-    if (!AuthService().isLoggedIn) {
-      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法批量添加歌曲');
-      return {'successCount': 0, 'skipCount': 0, 'failCount': tracks.length};
-    }
-
-    if (tracks.isEmpty) {
-      return {'successCount': 0, 'skipCount': 0, 'failCount': 0};
-    }
-
+    if (!AuthService().isLoggedIn) return null;
     try {
-      // 转换为 API 需要的格式（保持原始顺序）
-      final tracksData = tracks.map((track) {
-        final playlistTrack = PlaylistTrack.fromTrack(track);
-        return playlistTrack.toJson();
-      }).toList();
-
       final result = await ApiClient().postJson(
-        '/playlists/$playlistId/tracks/batch',
+        '/playlists/follow',
         data: {
-          'tracks': tracksData,
-          'mode': mode,
+          'source': source,
+          'sourcePlaylistId': sourcePlaylistId,
+          if (name?.trim().isNotEmpty == true) 'name': name!.trim(),
+          'operationId': _operationId(),
         },
         timeout: const Duration(seconds: 60),
       );
+      if (!result.ok) return null;
+      final playlist = _playlistFromResponse(result.data);
+      notifyListeners();
+      return playlist;
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 关注来源歌单失败: $error');
+      return null;
+    }
+  }
 
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
+  Future<Playlist?> copyPlaylist(int playlistId, {String? name}) async {
+    try {
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/copy',
+        data: {
+          'operationId': _operationId(),
+          if (name?.trim().isNotEmpty == true) 'name': name!.trim(),
+        },
+        timeout: const Duration(seconds: 30),
+      );
+      if (!result.ok) return null;
+      final playlist = _playlistFromResponse(result.data);
+      notifyListeners();
+      return playlist;
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 复制歌单失败: $error');
+      return null;
+    }
+  }
 
-        if (data['status'] == 200) {
-          final successCount = data['successCount'] as int? ?? 0;
-          final skipCount = data['skipCount'] as int? ?? 0;
-          final failCount = data['failCount'] as int? ?? 0;
-          final trackCount = data['trackCount'] as int? ?? 0;
-          _applyAuthoritativeTrackCount(playlistId, trackCount);
-          if (_currentPlaylistId == playlistId) {
-            await loadPlaylistTracks(playlistId);
-          }
+  Future<bool> updatePlaylist(int playlistId, String name) async {
+    if (!AuthService().isLoggedIn || name.trim().isEmpty) return false;
+    try {
+      final result = await ApiClient().putJson(
+        '/playlists/$playlistId',
+        data: {'name': name.trim(), 'operationId': _operationId()},
+        timeout: const Duration(seconds: 10),
+      );
+      if (!result.ok) return false;
+      final index = _playlists.indexWhere((item) => item.id == playlistId);
+      if (index >= 0) {
+        _playlists[index] = _playlists[index].copyWith(
+          name: name.trim(),
+          updatedAt: DateTime.now(),
+        );
+      }
+      notifyListeners();
+      return true;
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 重命名歌单失败: $error');
+      return false;
+    }
+  }
 
-          StructuredLogService.log('✅ [PlaylistService] 批量添加完成: 成功=$successCount, 跳过=$skipCount, 失败=$failCount');
-          return {'successCount': successCount, 'skipCount': skipCount, 'failCount': failCount};
-        } else {
-          throw Exception(data['message'] ?? '批量添加失败');
-        }
-      } else {
+  Future<bool> deletePlaylist(int playlistId) async {
+    if (!AuthService().isLoggedIn) return false;
+    try {
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/delete',
+        data: {'operationId': _operationId()},
+        timeout: const Duration(seconds: 10),
+      );
+      if (!result.ok) return false;
+      _playlists.removeWhere((item) => item.id == playlistId);
+      _tracksByPlaylist.remove(playlistId);
+      if (_currentPlaylistId == playlistId) _currentPlaylistId = null;
+      notifyListeners();
+      return true;
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 删除歌单失败: $error');
+      return false;
+    }
+  }
+
+  Future<bool> addTrackToPlaylist(int playlistId, Track track) async {
+    if (!AuthService().isLoggedIn || !_isWritable(playlistId)) return false;
+    try {
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/tracks',
+        data: {
+          'operationId': _operationId(),
+          'track': PlaylistTrack.fromTrack(track).toJson(),
+        },
+        timeout: const Duration(seconds: 10),
+      );
+      if (!result.ok) return false;
+      _playlistFromResponse(result.data);
+      await _refreshCurrentTracks(playlistId);
+      notifyListeners();
+      return true;
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 添加歌曲失败: $error');
+      return false;
+    }
+  }
+
+  Future<Map<String, int>> addTracksToPlaylist(
+    int playlistId,
+    List<Track> tracks,
+  ) async {
+    if (!AuthService().isLoggedIn ||
+        !_isWritable(playlistId) ||
+        tracks.isEmpty) {
+      return {'successCount': 0, 'skipCount': 0, 'failCount': tracks.length};
+    }
+    try {
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/tracks/batch',
+        data: {
+          'operationId': _operationId(),
+          'tracks': tracks
+              .map((track) => PlaylistTrack.fromTrack(track).toJson())
+              .toList(),
+        },
+        timeout: const Duration(seconds: 60),
+      );
+      final data = result.data;
+      if (!result.ok || data is! Map<String, dynamic>) {
         throw Exception('HTTP ${result.statusCode}');
       }
-    } catch (e) {
-      StructuredLogService.log('❌ [PlaylistService] 批量添加歌曲失败: $e');
+      final added = (data['addedCount'] as num?)?.toInt() ?? 0;
+      _playlistFromResponse(data);
+      await _refreshCurrentTracks(playlistId);
+      notifyListeners();
+      return {
+        'successCount': added,
+        'skipCount': tracks.length - added,
+        'failCount': 0,
+      };
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 批量添加失败: $error');
       return {'successCount': 0, 'skipCount': 0, 'failCount': tracks.length};
     }
   }
 
-  /// 加载歌单中的歌曲
   Future<void> loadPlaylistTracks(int playlistId) async {
-    if (!AuthService().isLoggedIn) {
-      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法加载歌曲');
-      return;
-    }
-
-    final loadGeneration = ++_trackLoadGeneration;
+    if (!AuthService().isLoggedIn) return;
+    final generation = (_trackLoadGenerations[playlistId] ?? 0) + 1;
+    _trackLoadGenerations[playlistId] = generation;
+    _currentPlaylistId = playlistId;
+    _isLoadingTracks = true;
+    notifyListeners();
     try {
-      _isLoadingTracks = true;
-      _currentPlaylistId = playlistId;
-      notifyListeners();
-
       final result = await ApiClient().getJson(
         '/playlists/$playlistId/tracks',
         timeout: const Duration(seconds: 10),
       );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          if (loadGeneration != _trackLoadGeneration ||
-              _currentPlaylistId != playlistId) {
-            return;
-          }
-          final List<dynamic> tracksJson = data['tracks'] ?? [];
-          _currentTracks = tracksJson
-              .map((item) => PlaylistTrack.fromJson(item as Map<String, dynamic>))
-              .toList();
-
-          StructuredLogService.log('✅ [PlaylistService] 加载歌曲列表: ${_currentTracks.length} 首');
-        } else {
-          throw Exception(data['message'] ?? '加载失败');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
+      final data = result.data;
+      if (!result.ok ||
+          data is! Map<String, dynamic> ||
+          data['status'] != 200) {
+        throw Exception(
+          data is Map ? data['message'] : 'HTTP ${result.statusCode}',
+        );
       }
-    } catch (e) {
-      StructuredLogService.log('❌ [PlaylistService] 加载歌曲列表失败: $e');
+      if (_trackLoadGenerations[playlistId] != generation) return;
+      _tracksByPlaylist[playlistId] =
+          (data['tracks'] as List<dynamic>? ?? const [])
+              .map(
+                (item) => PlaylistTrack.fromJson(item as Map<String, dynamic>),
+              )
+              .toList();
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 加载歌曲失败: $error');
     } finally {
-      if (loadGeneration == _trackLoadGeneration) {
+      if (_trackLoadGenerations[playlistId] == generation &&
+          _currentPlaylistId == playlistId) {
         _isLoadingTracks = false;
         notifyListeners();
       }
     }
   }
 
-  /// 从歌单删除歌曲（通过 trackId 和 source 字符串）
-  Future<bool> removeTrackFromPlaylist(int playlistId, String trackId, String source) async {
-    if (!AuthService().isLoggedIn) {
-      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法删除歌曲');
+  Future<bool> removePlaylistTrack(int playlistId, PlaylistTrack track) async {
+    final itemId = track.itemId;
+    if (!AuthService().isLoggedIn ||
+        !_isWritable(playlistId) ||
+        itemId == null) {
       return false;
     }
-
     try {
-      // 诊断日志
-      StructuredLogService.log('🗑️ [PlaylistService] 准备删除歌曲:');
-      StructuredLogService.log('   PlaylistId: $playlistId');
-      StructuredLogService.log('   TrackId: $trackId');
-      StructuredLogService.log('   Source: $source');
-      StructuredLogService.log('   URL: /playlists/$playlistId/tracks/remove');
-
-      // 使用 POST 请求代替 DELETE（避免某些框架的解析问题）
-      final result = await ApiClient().postJson(
-        '/playlists/$playlistId/tracks/remove',
-        data: {
-          'trackId': trackId,
-          'source': source,
-        },
+      final result = await ApiClient().deleteJson(
+        '/playlists/$playlistId/items/$itemId',
+        data: {'operationId': _operationId()},
         timeout: const Duration(seconds: 10),
       );
-
-      StructuredLogService.log('📥 [PlaylistService] 删除请求响应状态码: ${result.statusCode}');
-      if (!result.ok) {
-        StructuredLogService.log('📄 [PlaylistService] 响应内容: ${result.text}');
-      }
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          // 更新歌单的歌曲数量
-          final index = _playlists.indexWhere((p) => p.id == playlistId);
-          if (index != -1) {
-            _playlists[index] = Playlist(
-              id: _playlists[index].id,
-              name: _playlists[index].name,
-              isDefault: _playlists[index].isDefault,
-              trackCount: _playlists[index].trackCount - 1,
-              createdAt: _playlists[index].createdAt,
-              updatedAt: DateTime.now(),
-              source: _playlists[index].source,
-              sourcePlaylistId: _playlists[index].sourcePlaylistId,
-            );
-          }
-
-          // 从当前列表删除
-          if (_currentPlaylistId == playlistId) {
-            _currentTracks.removeWhere((t) =>
-              t.trackId == trackId && t.source.name == source
-            );
-          }
-
-          StructuredLogService.log('✅ [PlaylistService] 删除歌曲成功');
-          notifyListeners();
-          return true;
-        } else {
-          throw Exception(data['message'] ?? '删除失败');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [PlaylistService] 删除歌曲失败: $e');
-      return false;
-    }
-  }
-
-  /// 从歌单删除歌曲（通过 PlaylistTrack 对象）
-  Future<bool> removePlaylistTrack(int playlistId, PlaylistTrack track) async {
-    final source = track.source.toString().split('.').last;
-    return removeTrackFromPlaylist(playlistId, track.trackId, source);
-  }
-
-  /// 批量删除歌曲
-  Future<int> removeTracksFromPlaylist(int playlistId, List<PlaylistTrack> tracks) async {
-    if (!AuthService().isLoggedIn) {
-      StructuredLogService.log('⚠️ [PlaylistService] 未登录，无法批量删除歌曲');
-      return 0;
-    }
-
-    if (tracks.isEmpty) {
-      StructuredLogService.log('⚠️ [PlaylistService] 歌曲列表为空');
-      return 0;
-    }
-
-    try {
-      // 构建删除列表
-      final tracksToDelete = tracks.map((track) => {
-        'trackId': track.trackId,
-        'source': track.source.toString().split('.').last,
-      }).toList();
-
-      StructuredLogService.log('🗑️ [PlaylistService] 准备批量删除 ${tracks.length} 首歌曲');
-
-      final result = await ApiClient().postJson(
-        '/playlists/$playlistId/tracks/batch-remove',
-        data: {
-          'tracks': tracksToDelete,
-        },
-        timeout: const Duration(seconds: 30),
+      if (!result.ok) return false;
+      _playlistFromResponse(result.data);
+      _tracksByPlaylist[playlistId]?.removeWhere(
+        (item) => item.itemId == itemId,
       );
-
-      StructuredLogService.log('📥 [PlaylistService] 批量删除响应状态码: ${result.statusCode}');
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          final deletedCount = data['deletedCount'] as int? ?? 0;
-
-          // 更新歌单的歌曲数量
-          final index = _playlists.indexWhere((p) => p.id == playlistId);
-          if (index != -1) {
-            _playlists[index] = Playlist(
-              id: _playlists[index].id,
-              name: _playlists[index].name,
-              isDefault: _playlists[index].isDefault,
-              trackCount: _playlists[index].trackCount - deletedCount,
-              createdAt: _playlists[index].createdAt,
-              updatedAt: DateTime.now(),
-              source: _playlists[index].source,
-              sourcePlaylistId: _playlists[index].sourcePlaylistId,
-            );
-          }
-
-          // 从当前列表批量删除
-          if (_currentPlaylistId == playlistId) {
-            for (var track in tracks) {
-              _currentTracks.removeWhere((t) =>
-                t.trackId == track.trackId && t.source == track.source
-              );
-            }
-          }
-
-          StructuredLogService.log('✅ [PlaylistService] 批量删除成功: $deletedCount 首');
-          notifyListeners();
-          return deletedCount;
-        } else {
-          throw Exception(data['message'] ?? '批量删除失败');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [PlaylistService] 批量删除失败: $e');
-      return 0;
+      notifyListeners();
+      return true;
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 移除歌曲失败: $error');
+      return false;
     }
   }
 
-  /// 检查歌曲是否在指定歌单中
-  bool isTrackInPlaylist(int playlistId, Track track) {
-    if (_currentPlaylistId != playlistId) {
-      return false;
-    }
-    return _currentTracks.any((t) =>
-      t.trackId == track.id.toString() && t.source == track.source
+  Future<bool> removeTrackMatch(PlaylistTrackMatch match, Track track) {
+    final value = PlaylistTrack.fromTrack(track);
+    return removePlaylistTrack(
+      match.playlistId,
+      PlaylistTrack(
+        itemId: match.itemId,
+        trackId: value.trackId,
+        name: value.name,
+        artists: value.artists,
+        album: value.album,
+        picUrl: value.picUrl,
+        source: value.source,
+        sourceIds: value.sourceIds,
+        addedAt: value.addedAt,
+      ),
     );
   }
 
-  /// 检查歌曲是否在用户的任一歌单中（调用后端 API）
-  Future<TrackInPlaylistResult> isTrackInAnyPlaylist(Track track) async {
-    if (!AuthService().isLoggedIn) {
-      return TrackInPlaylistResult(inPlaylist: false, playlistIds: [], playlistNames: []);
+  Future<int> removeTracksFromPlaylist(
+    int playlistId,
+    List<PlaylistTrack> tracks,
+  ) async {
+    final itemIds = tracks
+        .map((track) => track.itemId)
+        .whereType<int>()
+        .toSet()
+        .toList();
+    if (!AuthService().isLoggedIn ||
+        !_isWritable(playlistId) ||
+        itemIds.isEmpty) {
+      return 0;
     }
-
     try {
-      final trackId = track.id.toString();
-      final source = track.source.name;
-
-      final result = await ApiClient().getJson(
-        '/playlists/check-track',
-        queryParameters: {'trackId': trackId, 'source': source},
-        timeout: const Duration(seconds: 10),
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/items/batch-remove',
+        data: {'operationId': _operationId(), 'itemIds': itemIds},
+        timeout: const Duration(seconds: 30),
       );
+      final data = result.data;
+      if (!result.ok || data is! Map<String, dynamic>) return 0;
+      final removed = (data['removedCount'] as num?)?.toInt() ?? 0;
+      _playlistFromResponse(data);
+      _tracksByPlaylist[playlistId]?.removeWhere(
+        (track) => itemIds.contains(track.itemId),
+      );
+      notifyListeners();
+      return removed;
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 批量移除失败: $error');
+      return 0;
+    }
+  }
 
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-        return TrackInPlaylistResult(
-          inPlaylist: data['inPlaylist'] as bool? ?? false,
-          playlistIds: (data['playlistIds'] as List<dynamic>?)?.map((e) => e as int).toList() ?? [],
-          playlistNames: (data['playlistNames'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+  Future<bool> replacePlaylistTrack(
+    int playlistId,
+    PlaylistTrack current,
+    Track replacement,
+  ) async {
+    if (!_isWritable(playlistId) || current.itemId == null) return false;
+    try {
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/items/${current.itemId}/replace',
+        data: {
+          'operationId': _operationId(),
+          'track': PlaylistTrack.fromTrack(replacement).toJson(),
+        },
+        timeout: const Duration(seconds: 15),
+      );
+      if (!result.ok) return false;
+      _playlistFromResponse(result.data);
+      await _refreshCurrentTracks(playlistId);
+      notifyListeners();
+      return true;
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 原子换源失败: $error');
+      return false;
+    }
+  }
+
+  Future<bool> reorderPlaylist(
+    int playlistId,
+    List<PlaylistTrack> orderedTracks,
+  ) async {
+    final playlist = _playlist(playlistId);
+    final itemIds = orderedTracks
+        .map((track) => track.itemId)
+        .whereType<int>()
+        .toList();
+    if (playlist == null ||
+        !playlist.isLocal ||
+        itemIds.length != orderedTracks.length) {
+      return false;
+    }
+    try {
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/items/reorder',
+        data: {
+          'operationId': _operationId(),
+          'expectedOrderRevision': playlist.orderRevision,
+          'itemIds': itemIds,
+        },
+        timeout: const Duration(seconds: 15),
+      );
+      if (!result.ok) return false;
+      _playlistFromResponse(result.data);
+      _tracksByPlaylist[playlistId] = List.of(orderedTracks);
+      notifyListeners();
+      return true;
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 歌单排序失败: $error');
+      return false;
+    }
+  }
+
+  Future<PlaylistSyncResult> syncPlaylist(int playlistId) async {
+    final playlist = _playlist(playlistId);
+    if (!AuthService().isLoggedIn || playlist?.isSynced != true) {
+      return PlaylistSyncResult.empty(message: '仅来源订阅可以同步');
+    }
+    try {
+      final result = await ApiClient().postJson(
+        '/playlists/$playlistId/sync',
+        data: {'operationId': _operationId()},
+        timeout: const Duration(seconds: 60),
+      );
+      if (!result.ok) {
+        final data = result.data;
+        return PlaylistSyncResult.empty(
+          message: data is Map
+              ? (data['message']?.toString() ?? '同步失败')
+              : '同步失败',
         );
       }
-    } catch (e) {
-      StructuredLogService.log('❌ [PlaylistService] 检查歌曲是否在歌单中失败: $e');
+      final updated = _playlistFromResponse(result.data);
+      if (updated == null) return PlaylistSyncResult.empty(message: '同步响应无效');
+      await _refreshCurrentTracks(playlistId);
+      notifyListeners();
+      return PlaylistSyncResult.success(updated);
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 同步失败: $error');
+      return PlaylistSyncResult.empty(message: '同步失败，请稍后重试');
     }
-
-    return TrackInPlaylistResult(inPlaylist: false, playlistIds: [], playlistNames: []);
   }
 
-  /// 检查歌曲是否在"我的收藏"中
+  bool isTrackInPlaylist(int playlistId, Track track) {
+    return (_tracksByPlaylist[playlistId] ?? const <PlaylistTrack>[]).any(
+      (item) =>
+          item.trackId == track.id.toString() && item.source == track.source,
+    );
+  }
+
+  Future<TrackInPlaylistResult> isTrackInAnyPlaylist(Track track) async {
+    if (!AuthService().isLoggedIn) {
+      return const TrackInPlaylistResult(known: true, matches: []);
+    }
+    try {
+      final result = await ApiClient().getJson(
+        '/playlists/check-track',
+        queryParameters: {
+          'trackId': track.id.toString(),
+          'source': track.source.name,
+        },
+        timeout: const Duration(seconds: 10),
+      );
+      final data = result.data;
+      if (!result.ok || data is! Map<String, dynamic>) {
+        return const TrackInPlaylistResult(known: false, matches: []);
+      }
+      final matches = (data['matches'] as List<dynamic>? ?? const [])
+          .map(
+            (item) => PlaylistTrackMatch.fromJson(item as Map<String, dynamic>),
+          )
+          .toList();
+      return TrackInPlaylistResult(known: true, matches: matches);
+    } catch (error) {
+      StructuredLogService.log('[PlaylistService] 查询收藏状态失败: $error');
+      return const TrackInPlaylistResult(known: false, matches: []);
+    }
+  }
+
   bool isFavorite(Track? track) {
-    if (track == null) return false;
-    final favPlaylist = defaultPlaylist;
-    if (favPlaylist == null) return false;
-
-    // 如果当前正在加载收藏歌单，优先从 _currentTracks 查找
-    if (_currentPlaylistId == favPlaylist.id) {
-      return _currentTracks.any((t) => t.trackId == track.id.toString() && t.source == track.source);
-    }
-
-    // 否则只能返回 false 或等待 API 检查（同步调用不支持 Future）
-    return false;
+    if (track == null || defaultPlaylist == null) return false;
+    return isTrackInPlaylist(defaultPlaylist!.id, track);
   }
 
-  /// 切换收藏状态
   Future<void> toggleFavorite(Track? track) async {
-    if (track == null) return;
-    final favPlaylist = defaultPlaylist;
-    if (favPlaylist == null) return;
-
+    final favorite = defaultPlaylist;
+    if (track == null || favorite == null) return;
     final result = await isTrackInAnyPlaylist(track);
-    final isInFav = result.playlistIds.contains(favPlaylist.id);
-
-    if (isInFav) {
-      await removeTrackFromPlaylist(favPlaylist.id, track.id.toString(), track.source.name);
-    } else {
-      await addTrackToPlaylist(favPlaylist.id, track);
+    if (!result.known) return;
+    final itemId = result.itemIdFor(favorite.id);
+    if (itemId == null) {
+      await addTrackToPlaylist(favorite.id, track);
+      return;
     }
+    final current = PlaylistTrack.fromTrack(track);
+    await removePlaylistTrack(
+      favorite.id,
+      PlaylistTrack(
+        itemId: itemId,
+        trackId: current.trackId,
+        name: current.name,
+        artists: current.artists,
+        album: current.album,
+        picUrl: current.picUrl,
+        source: current.source,
+        sourceIds: current.sourceIds,
+        addedAt: current.addedAt,
+      ),
+    );
   }
-}
-
-/// 歌曲在歌单中的检查结果
-class TrackInPlaylistResult {
-  final bool inPlaylist;
-  final List<int> playlistIds;
-  final List<String> playlistNames;
-
-  TrackInPlaylistResult({
-    required this.inPlaylist,
-    required this.playlistIds,
-    required this.playlistNames,
-  });
 }

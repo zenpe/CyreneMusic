@@ -1510,19 +1510,18 @@ extension MyPageMaterialUI on _MyPageState {
               onPressed: _toggleSearchMode,
               tooltip: _isSearchMode ? '关闭搜索' : '搜索歌曲',
             ),
-          IconButton(
-            icon: Icon(Icons.sync_rounded, size: 22, color: colorScheme.onSurfaceVariant),
-            onPressed: () async {
-              if (!_hasImportConfig(playlist)) {
-                _showUserNotification('请先在"导入管理"中绑定来源后再同步', severity: fluent.InfoBarSeverity.warning);
-                return;
-              }
-              _showUserNotification('正在同步...', duration: const Duration(seconds: 1));
-              final result = await _playlistService.syncPlaylist(playlist.id);
-              _showUserNotification(_formatSyncResultMessage(result), severity: result.insertedCount > 0 ? fluent.InfoBarSeverity.success : fluent.InfoBarSeverity.info);
-            },
-            tooltip: '同步',
-          ),
+          if (playlist.isSynced) ...[
+            IconButton(
+              icon: Icon(Icons.copy_rounded, size: 22, color: colorScheme.onSurfaceVariant),
+              onPressed: () => _copySyncedPlaylist(playlist),
+              tooltip: '复制为本地歌单',
+            ),
+            IconButton(
+              icon: Icon(Icons.sync_rounded, size: 22, color: colorScheme.onSurfaceVariant),
+              onPressed: () => _syncPlaylistFromList(playlist),
+              tooltip: '同步来源歌单',
+            ),
+          ],
         ],
         const SizedBox(width: 8),
       ],
@@ -1669,7 +1668,7 @@ extension MyPageMaterialUI on _MyPageState {
                             );
                           },
                         ),
-                      if (tracks.isNotEmpty) ...[
+                      if (tracks.isNotEmpty && playlist.isLocal) ...[
                         const SizedBox(width: 8),
                         InkWell(
                           onTap: () => _showSourceSwitchDialog(playlist, tracks),
@@ -1908,7 +1907,7 @@ extension MyPageMaterialUI on _MyPageState {
                         ],
                       ),
                     ),
-                    if (!_isEditMode)
+                    if (!_isEditMode && _selectedPlaylist?.isLocal == true)
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [

@@ -733,7 +733,7 @@ class TrackActionMenu {
       builder: (context) => AnimatedBuilder(
         animation: playlistService,
         builder: (context, child) {
-          final playlists = playlistService.playlists;
+          final playlists = playlistService.playlists.where((p) => p.isLocal).toList();
 
           return Container(
             decoration: BoxDecoration(
@@ -1113,7 +1113,7 @@ class TrackActionMenu {
         content: AnimatedBuilder(
           animation: playlistService,
           builder: (context, child) {
-            final playlists = playlistService.playlists;
+            final playlists = playlistService.playlists.where((p) => p.isLocal).toList();
 
             if (playlists.isEmpty) {
               return const Center(
@@ -1212,7 +1212,7 @@ class TrackActionMenu {
       builder: (context) => AnimatedBuilder(
         animation: playlistService,
         builder: (context, child) {
-          final playlists = playlistService.playlists;
+          final playlists = playlistService.playlists.where((p) => p.isLocal).toList();
 
           return SafeArea(
             child: Column(

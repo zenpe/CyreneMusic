@@ -322,7 +322,8 @@ extension MyPageCupertinoUI on _MyPageState {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (allTracks.isNotEmpty) CupertinoButton(padding: EdgeInsets.zero, onPressed: _toggleSearchMode, child: Icon(_isSearchMode ? CupertinoIcons.search : CupertinoIcons.search)),
-                  if (allTracks.isNotEmpty) CupertinoButton(padding: EdgeInsets.zero, onPressed: _toggleEditMode, child: const Icon(CupertinoIcons.pencil)),
+                  if (playlist.isSynced) CupertinoButton(padding: EdgeInsets.zero, onPressed: () => _copySyncedPlaylist(playlist), child: const Icon(CupertinoIcons.doc_on_doc)),
+                  if (allTracks.isNotEmpty && playlist.isLocal) CupertinoButton(padding: EdgeInsets.zero, onPressed: _toggleEditMode, child: const Icon(CupertinoIcons.pencil)),
                 ],
               ),
       ),

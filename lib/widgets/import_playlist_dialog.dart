@@ -2324,6 +2324,27 @@ class ImportPlaylistDialog {
 
     if (!context.mounted) return;
 
+    final supportsSubscription =
+        sourcePlaylist.platform == MusicPlatform.netease ||
+        sourcePlaylist.platform == MusicPlatform.qq;
+    if (supportsSubscription) {
+      final subscribe = await _chooseImportMode(context, sourcePlaylist);
+      if (subscribe == null || !context.mounted) return;
+      if (subscribe) {
+        final source = sourcePlaylist.platform == MusicPlatform.netease
+            ? 'netease'
+            : 'qq';
+        final followed = await playlistService.followPlaylist(
+          source: source,
+          sourcePlaylistId: sourcePlaylist.id.toString(),
+          name: sourcePlaylist.name,
+        );
+        if (!context.mounted) return;
+        await _showSubscriptionResult(context, followed != null);
+        return;
+      }
+    }
+
     Playlist? targetPlaylist;
     if (ThemeManager().isFluentFramework) {
       targetPlaylist = await _showFluentSelectTargetPlaylistDialog(
@@ -2345,6 +2366,85 @@ class ImportPlaylistDialog {
 
     if (targetPlaylist != null && context.mounted) {
       await _importTracks(context, sourcePlaylist, targetPlaylist);
+    }
+  }
+
+  static Future<bool?> _chooseImportMode(
+    BuildContext context,
+    UniversalPlaylist playlist,
+  ) {
+    if (ThemeManager().isCupertinoFramework) {
+      return showCupertinoDialog<bool>(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: Text(playlist.name),
+          content: const Text('关注来源会保持远端顺序且只读；本地副本可自由编辑。'),
+          actions: [
+            CupertinoDialogAction(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+            CupertinoDialogAction(onPressed: () => Navigator.pop(context, false), child: const Text('导入本地副本')),
+            CupertinoDialogAction(isDefaultAction: true, onPressed: () => Navigator.pop(context, true), child: const Text('关注来源')),
+          ],
+        ),
+      );
+    }
+    if (ThemeManager().isFluentFramework) {
+      return fluent.showDialog<bool>(
+        context: context,
+        builder: (context) => fluent.ContentDialog(
+          title: Text(playlist.name),
+          content: const Text('关注来源会保持远端顺序且只读；本地副本可自由编辑。'),
+          actions: [
+            fluent.Button(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+            fluent.Button(onPressed: () => Navigator.pop(context, false), child: const Text('导入本地副本')),
+            fluent.FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('关注来源')),
+          ],
+        ),
+      );
+    }
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(playlist.name),
+        content: const Text('关注来源会保持远端顺序且只读；本地副本可自由编辑。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          OutlinedButton(onPressed: () => Navigator.pop(context, false), child: const Text('导入本地副本')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('关注来源')),
+        ],
+      ),
+    );
+  }
+
+  static Future<void> _showSubscriptionResult(BuildContext context, bool succeeded) async {
+    final title = succeeded ? '关注成功' : '关注失败';
+    final message = succeeded ? '已创建只读来源歌单' : '未能获取完整来源歌单，请稍后重试';
+    if (ThemeManager().isCupertinoFramework) {
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [CupertinoDialogAction(onPressed: () => Navigator.pop(context), child: const Text('确定'))],
+        ),
+      );
+    } else if (ThemeManager().isFluentFramework) {
+      await fluent.showDialog<void>(
+        context: context,
+        builder: (context) => fluent.ContentDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [fluent.FilledButton(onPressed: () => Navigator.pop(context), child: const Text('确定'))],
+        ),
+      );
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('确定'))],
+        ),
+      );
     }
   }
 
@@ -2621,7 +2721,7 @@ class ImportPlaylistDialog {
                             ),
 
                             // 现有歌单列表
-                            ...playlistService.playlists.map((p) {
+                            ...playlistService.playlists.where((p) => p.isLocal).map((p) {
                               return Material(
                                 color: Colors.transparent,
                                 child: InkWell(
@@ -2870,9 +2970,9 @@ class ImportPlaylistDialog {
               SizedBox(
                 height: 320,
                 child: ListView.builder(
-                  itemCount: playlistService.playlists.length,
+                  itemCount: playlistService.playlists.where((p) => p.isLocal).length,
                   itemBuilder: (context, index) {
-                    final p = playlistService.playlists[index];
+                    final p = playlistService.playlists.where((p) => p.isLocal).elementAt(index);
                     return fluent.ListTile(
                       leading: Icon(
                         p.isDefault
@@ -2957,36 +3057,13 @@ class ImportPlaylistDialog {
       late final int skipCount;
       late final int failCount;
 
-      final isServerManaged =
-          sourcePlaylist.platform == MusicPlatform.netease ||
-          sourcePlaylist.platform == MusicPlatform.qq;
-      if (isServerManaged) {
-        final platformKey = sourcePlaylist.platform == MusicPlatform.netease
-            ? 'netease'
-            : 'qq';
-        final syncResult = await playlistService.bindAndSyncPlaylist(
-          targetPlaylist.id,
-          source: platformKey,
-          sourcePlaylistId: sourcePlaylist.id.toString(),
-        );
-        if (!syncResult.succeeded) {
-          throw Exception(syncResult.message);
-        }
-        successCount = syncResult.insertedCount;
-        skipCount = syncResult.updatedCount;
-        failCount = syncResult.complete
-            ? 0
-            : syncResult.expectedCount - syncResult.resolvedCount;
-      } else {
-        // Sources without server-side sync remain a one-time local import.
-        final result = await playlistService.addTracksToPlaylist(
-          targetPlaylist.id,
-          sourcePlaylist.tracks,
-        );
-        successCount = result['successCount'] ?? 0;
-        skipCount = result['skipCount'] ?? 0;
-        failCount = result['failCount'] ?? 0;
-      }
+      final result = await playlistService.addTracksToPlaylist(
+        targetPlaylist.id,
+        sourcePlaylist.tracks,
+      );
+      successCount = result['successCount'] ?? 0;
+      skipCount = result['skipCount'] ?? 0;
+      failCount = result['failCount'] ?? 0;
 
       if (!context.mounted) return;
       Navigator.pop(context); // 关闭进度对话框
