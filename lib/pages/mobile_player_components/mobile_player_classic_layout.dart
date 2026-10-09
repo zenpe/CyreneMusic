@@ -328,11 +328,13 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                   ? null
                   : player.errorMessage,
               margin: const EdgeInsets.only(top: 6),
-              onRetry: () {
-                player.retryCurrent();
-              },
-              showSkip: player.hasNext,
-              onSkip: player.hasNext
+              onRetry: player.canRetryCurrentProblem
+                  ? () {
+                      player.retryCurrent();
+                    }
+                  : null,
+              showSkip: player.canSkipCurrentProblem,
+              onSkip: player.canSkipCurrentProblem
                   ? () {
                       player.playNext();
                     }

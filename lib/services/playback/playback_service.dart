@@ -42,6 +42,7 @@ import 'engine_event.dart';
 import 'cover_manager.dart';
 import 'playback_session_snapshot.dart';
 import 'playback_session_manager.dart';
+import 'playback_failure_policy.dart';
 import 'playback_problem.dart';
 import 'playback_stability_tracker.dart';
 import 'playback_candidate_planner.dart';
@@ -125,6 +126,7 @@ class TrackSwitchTransaction {
   final PlaybackSession? previousSession;
   final LyricLoadState? previousLyricState;
   bool budgetExhausted = false;
+  PlaybackFailureEvidence? failureEvidence;
 
   TrackSwitchTransaction({
     required this.token,
@@ -271,6 +273,7 @@ class PlaybackService extends ChangeNotifier {
       const PlaybackCandidatePlanner();
   final PlaybackTransitionCoordinator _transitionCoordinator =
       const PlaybackTransitionCoordinator();
+  final PlaybackRecoveryPolicy _recoveryPolicy = const PlaybackRecoveryPolicy();
   final PlaybackTransactionGuard _transactionGuard = PlaybackTransactionGuard();
   final PlaybackHistoryRecorder _historyRecorder = PlaybackHistoryRecorder();
   late final PlaybackSessionManager _sessionManager;
@@ -292,6 +295,7 @@ class PlaybackService extends ChangeNotifier {
   double _playbackSpeed = 1.0;
   bool _isAudioSourceNotConfigured = false;
   String? _retriedTrackKey;
+  PlaybackFailureEvidence? _lastFailureEvidence;
   String? _lastPreloadedTargetKey;
   bool _preloadingNext = false;
   int _preloadOp = 0;
@@ -311,7 +315,7 @@ class PlaybackService extends ChangeNotifier {
   static const Duration _trackSwitchSettleDelay = Duration(milliseconds: 80);
   static const Duration _preloadTriggerDelay = Duration(milliseconds: 600);
   static const Duration _prefetchedSongDetailTtl = Duration(minutes: 5);
-  static const Duration _playSongDetailTimeout = Duration(seconds: 12);
+  static const Duration _playSongDetailTimeout = Duration(seconds: 6);
   static const Duration _preloadSongDetailTimeout = Duration(seconds: 8);
   static const Duration _lyricSongDetailTimeout = Duration(seconds: 6);
   static const int _maxPrefetchedPlayableDetails = 4;
@@ -980,6 +984,7 @@ class PlaybackService extends ChangeNotifier {
           intent: failureIntent,
           requestEpoch: requestEpoch,
           forceRemoteResolution: true,
+          budget: _stabilityTracker.isStable ? null : _currentSwitchTx?.budget,
         ),
       );
       return;
@@ -1085,15 +1090,34 @@ class PlaybackService extends ChangeNotifier {
       notifyListeners();
     }
     if (transaction?.budgetExhausted ?? false) {
+      if (_state == PBState.loading && transaction != null) {
+        const evidence = PlaybackFailureEvidence(
+          cause: PlaybackFailureCause.requestFailed,
+          scope: PlaybackFailureScope.network,
+        );
+        transaction.failureEvidence = evidence;
+        _lastFailureEvidence = evidence;
+        _controlIntent.invalidate();
+        _state = PBState.error;
+        _errorMessage = '暂时无法获取播放链接，请稍后重试';
+        notifyListeners();
+        _reportPlaybackFailure(
+          transaction.track,
+          _errorMessage!,
+          kind: PlaybackProblemKind.resourceUnavailable,
+          recoveryActions: const {PlaybackRecoveryAction.retry},
+        );
+      }
       return PlaybackCandidateAttemptResult(
         PlaybackCandidateAttemptStatus.budgetExhausted,
         message: _errorMessage,
       );
     }
     final problem = _problemStore.current;
+    final evidence = transaction?.failureEvidence ?? _lastFailureEvidence;
     final sourceFailure =
-        problem?.kind == PlaybackProblemKind.sourceNotConfigured ||
-        problem?.kind == PlaybackProblemKind.sourceInvalid;
+        evidence?.scope == PlaybackFailureScope.source ||
+        evidence?.scope == PlaybackFailureScope.configuration;
     return PlaybackCandidateAttemptResult(
       sourceFailure
           ? PlaybackCandidateAttemptStatus.sourceFailure
@@ -1135,6 +1159,59 @@ class PlaybackService extends ChangeNotifier {
       case null:
         return PlaybackProblemKind.resourceUnavailable;
     }
+  }
+
+  PlaybackFailureEvidence _resolutionFailureEvidence(
+    LxRuntimeFailure? failure, {
+    bool circuitOpen = false,
+  }) {
+    if (circuitOpen) {
+      return PlaybackFailureEvidence(
+        cause: failure == null
+            ? PlaybackFailureCause.emptyUrl
+            : _resolutionFailureCause(failure),
+        scope: PlaybackFailureScope.source,
+      );
+    }
+    return switch (failure?.kind) {
+      LxRuntimeFailureKind.scriptRejected => const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.sourceRejected,
+        scope: PlaybackFailureScope.source,
+      ),
+      LxRuntimeFailureKind.notReady => const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.sourceNotReady,
+        scope: PlaybackFailureScope.source,
+      ),
+      LxRuntimeFailureKind.timeout => const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.timeout,
+        scope: PlaybackFailureScope.network,
+      ),
+      LxRuntimeFailureKind.requestFailed => const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.requestFailed,
+        scope: PlaybackFailureScope.network,
+      ),
+      LxRuntimeFailureKind.invalidTrackIdentifier =>
+        const PlaybackFailureEvidence(
+          cause: PlaybackFailureCause.invalidTrackIdentifier,
+          scope: PlaybackFailureScope.track,
+        ),
+      null => const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.emptyUrl,
+        scope: PlaybackFailureScope.track,
+      ),
+    };
+  }
+
+  PlaybackFailureCause _resolutionFailureCause(LxRuntimeFailure failure) {
+    return switch (failure.kind) {
+      LxRuntimeFailureKind.scriptRejected =>
+        PlaybackFailureCause.sourceRejected,
+      LxRuntimeFailureKind.notReady => PlaybackFailureCause.sourceNotReady,
+      LxRuntimeFailureKind.timeout => PlaybackFailureCause.timeout,
+      LxRuntimeFailureKind.requestFailed => PlaybackFailureCause.requestFailed,
+      LxRuntimeFailureKind.invalidTrackIdentifier =>
+        PlaybackFailureCause.invalidTrackIdentifier,
+    };
   }
 
   Set<PlaybackRecoveryAction> _recoveryActionsForResolutionFailure(
@@ -1226,16 +1303,15 @@ class PlaybackService extends ChangeNotifier {
   }
 
   bool _shouldRetryResolutionFailure(LxRuntimeFailure? failure) {
-    switch (failure?.kind) {
-      case LxRuntimeFailureKind.timeout:
-      case LxRuntimeFailureKind.requestFailed:
-      case LxRuntimeFailureKind.notReady:
-      case null:
-        return true;
-      case LxRuntimeFailureKind.scriptRejected:
-      case LxRuntimeFailureKind.invalidTrackIdentifier:
-        return false;
-    }
+    return _recoveryPolicy
+        .decide(
+          _resolutionFailureEvidence(failure),
+          const PlaybackRecoveryContext(
+            retryAvailable: true,
+            navigatingQueue: false,
+          ),
+        )
+        .retryResolution;
   }
 
   SourceHealthSnapshot _recordSourceResolutionFailure(
@@ -2044,6 +2120,7 @@ class PlaybackService extends ChangeNotifier {
     int? generation,
     bool preservePreloadState = false,
   }) {
+    _lastFailureEvidence = null;
     final track = candidateTrack ?? _trackAtQueuePointer() ?? _activeTrack;
     if (track == null) return null;
     final previousSession = _currentSession;
@@ -2120,6 +2197,11 @@ class PlaybackService extends ChangeNotifier {
 
     if (track.source != MusicSource.local &&
         !AudioSourceService().isConfigured) {
+      _lastFailureEvidence = const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.sourceNotConfigured,
+        scope: PlaybackFailureScope.configuration,
+      );
+      tx.failureEvidence = _lastFailureEvidence;
       _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = '音源未配置，请在设置中配置音源';
@@ -2138,6 +2220,11 @@ class PlaybackService extends ChangeNotifier {
 
     final isFromPlaylist = _source == QueueSource.playlist;
     if (isFromPlaylist && track.source == MusicSource.apple) {
+      _lastFailureEvidence = const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.unknown,
+        scope: PlaybackFailureScope.track,
+      );
+      tx.failureEvidence = _lastFailureEvidence;
       _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = '由于Apple接口限制，通过该接口导入的音乐需要换源才能播放！';
@@ -2255,6 +2342,12 @@ class PlaybackService extends ChangeNotifier {
     }
 
     if (lookup.localFileMissing) {
+      final evidence = const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.localFileMissing,
+        scope: PlaybackFailureScope.track,
+      );
+      tx.failureEvidence = evidence;
+      _lastFailureEvidence = evidence;
       _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = '本地文件不存在';
@@ -2279,6 +2372,12 @@ class PlaybackService extends ChangeNotifier {
       );
     }
     if (!sourceRequestAllowed) {
+      final evidence = const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.sourceRejected,
+        scope: PlaybackFailureScope.source,
+      );
+      tx.failureEvidence = evidence;
+      _lastFailureEvidence = evidence;
       _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = '当前音源连续解析失败，已暂停请求，请重新导入或切换音源';
@@ -2383,13 +2482,6 @@ class PlaybackService extends ChangeNotifier {
         break;
       }
 
-      if (isSameLxSource) {
-        _recordSourceResolutionFailure(
-          lxSourceFingerprint,
-          resolution.lxFailure,
-        );
-      }
-
       if (attempt + 1 < maxResolutionAttempts &&
           _shouldRetryResolutionFailure(resolution.lxFailure)) {
         _trackResolver.invalidateTrack(
@@ -2421,10 +2513,19 @@ class PlaybackService extends ChangeNotifier {
     }
     if (songDetail == null || songDetail.url.isEmpty) {
       final lxFailure = isSameLxSource ? resolution.lxFailure : null;
+      if (isSameLxSource) {
+        _recordSourceResolutionFailure(lxSourceFingerprint!, lxFailure);
+      }
       final sourceHealth = !isSameLxSource
           ? null
           : _sourceHealthTracker.snapshot(lxSourceFingerprint!);
       final circuitOpen = sourceHealth?.isCircuitOpen ?? false;
+      final evidence = _resolutionFailureEvidence(
+        lxFailure,
+        circuitOpen: circuitOpen,
+      );
+      tx.failureEvidence = evidence;
+      _lastFailureEvidence = evidence;
       _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = _resolutionFailureMessage(lxFailure);
@@ -3299,6 +3400,7 @@ class PlaybackService extends ChangeNotifier {
     bool preload = true,
     bool forceRemoteResolution = false,
     int settleMs = 0,
+    PlaybackTransitionBudget? budget,
   }) async {
     await _attemptTrackSwitch(
       reason: reason,
@@ -3309,6 +3411,7 @@ class PlaybackService extends ChangeNotifier {
       preload: preload,
       forceRemoteResolution: forceRemoteResolution,
       settleMs: settleMs,
+      budget: budget,
     );
   }
 
@@ -3328,6 +3431,14 @@ class PlaybackService extends ChangeNotifier {
     bool preserveDesiredPlaying = false,
     bool allowActiveFallback = true,
   }) async {
+    final attemptBudget =
+        budget ??
+        PlaybackTransitionBudget(
+          maxDuration: intent == PlaybackRequestIntent.automatic
+              ? const Duration(seconds: 12)
+              : const Duration(seconds: 10),
+          maxRemoteRequests: intent == PlaybackRequestIntent.automatic ? 3 : 2,
+        );
     // 1. prepareTarget
     final tx = _prepareTrackSwitchTransaction(
       reason: reason,
@@ -3337,7 +3448,7 @@ class PlaybackService extends ChangeNotifier {
       initialPosition: initialPosition,
       candidateTrack: candidateTrack,
       candidateEntryId: candidateEntryId,
-      budget: budget,
+      budget: attemptBudget,
       navigationOrder: navigationOrder,
       allowActiveFallback: allowActiveFallback,
     );
@@ -3479,8 +3590,22 @@ class PlaybackService extends ChangeNotifier {
       _commitPresentationStage(tx, committedPlan, isStale);
       trace.mark('presentation_committed');
       return PlaybackCandidateAttemptResult.committed;
-    } on EngineReportedException {
+    } on EngineReportedException catch (exception) {
       if (isStale()) return PlaybackCandidateAttemptResult.cancelled;
+      final evidence = PlaybackFailureEvidence(
+        cause: switch (exception.error.type) {
+          EngineErrorType.networkTimeout => PlaybackFailureCause.timeout,
+          EngineErrorType.accessDenied => PlaybackFailureCause.accessDenied,
+          EngineErrorType.unsupportedFormat =>
+            PlaybackFailureCause.unsupportedFormat,
+          EngineErrorType.sourceLoad => PlaybackFailureCause.sourceLoad,
+          EngineErrorType.playback => PlaybackFailureCause.playback,
+          EngineErrorType.unknown => PlaybackFailureCause.unknown,
+        },
+        scope: PlaybackFailureScope.engine,
+      );
+      tx.failureEvidence = evidence;
+      _lastFailureEvidence = evidence;
       trace.mark('engine_failed', level: LogLevel.error);
       if (_deferredEngineRetryGeneration == tx.token) {
         _deferredEngineRetryGeneration = null;
@@ -3494,7 +3619,7 @@ class PlaybackService extends ChangeNotifier {
           forceRemoteResolution: true,
           candidateTrack: tx.track,
           candidateEntryId: tx.queueEntryId,
-          budget: budget,
+          budget: tx.budget,
           navigationOrder: navigationOrder,
           preserveDesiredPlaying: true,
           allowActiveFallback: allowActiveFallback,
@@ -3503,6 +3628,12 @@ class PlaybackService extends ChangeNotifier {
       return _candidateFailureResult(transaction: tx, engineFailure: true);
     } on AudioSourceNotConfiguredException catch (e) {
       if (isStale()) return PlaybackCandidateAttemptResult.cancelled;
+      final evidence = const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.sourceNotConfigured,
+        scope: PlaybackFailureScope.configuration,
+      );
+      tx.failureEvidence = evidence;
+      _lastFailureEvidence = evidence;
       _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = e.message;
@@ -3520,6 +3651,12 @@ class PlaybackService extends ChangeNotifier {
       return _candidateFailureResult(transaction: tx);
     } catch (e) {
       if (isStale()) return PlaybackCandidateAttemptResult.cancelled;
+      final evidence = const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.unknown,
+        scope: PlaybackFailureScope.track,
+      );
+      tx.failureEvidence = evidence;
+      _lastFailureEvidence = evidence;
       _controlIntent.invalidate();
       _state = PBState.error;
       _errorMessage = '播放失败: $e';
@@ -3655,7 +3792,14 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
 
-    final budget = PlaybackTransitionBudget();
+    final budget = PlaybackTransitionBudget(
+      maxDuration: intent == PlaybackTransitionIntent.automaticAdvance
+          ? const Duration(seconds: 12)
+          : const Duration(seconds: 10),
+      maxRemoteRequests: intent == PlaybackTransitionIntent.automaticAdvance
+          ? 3
+          : 2,
+    );
     final playbackIntent = intent == PlaybackTransitionIntent.automaticAdvance
         ? PlaybackRequestIntent.automatic
         : PlaybackRequestIntent.manual;

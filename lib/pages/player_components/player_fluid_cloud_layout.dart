@@ -684,11 +684,13 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                       ? null
                                       : player.errorMessage,
                                   margin: const EdgeInsets.only(top: 8),
-                                  onRetry: () {
-                                    player.retryCurrent();
-                                  },
-                                  showSkip: player.hasNext,
-                                  onSkip: player.hasNext
+                                  onRetry: player.canRetryCurrentProblem
+                                      ? () {
+                                          player.retryCurrent();
+                                        }
+                                      : null,
+                                  showSkip: player.canSkipCurrentProblem,
+                                  onSkip: player.canSkipCurrentProblem
                                       ? () {
                                           player.playNext();
                                         }
@@ -893,11 +895,13 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                             ? null
                             : player.errorMessage,
                         margin: const EdgeInsets.only(top: 8),
-                        onRetry: () {
-                          player.retryCurrent();
-                        },
-                        showSkip: player.hasNext,
-                        onSkip: player.hasNext
+                        onRetry: player.canRetryCurrentProblem
+                            ? () {
+                                player.retryCurrent();
+                              }
+                            : null,
+                        showSkip: player.canSkipCurrentProblem,
+                        onSkip: player.canSkipCurrentProblem
                             ? () {
                                 player.playNext();
                               }

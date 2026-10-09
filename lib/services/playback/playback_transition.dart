@@ -14,26 +14,25 @@ enum PlaybackTransitionDirection { forward, backward }
 enum PlaybackTransitionFailureScope { track, source, engine, cancelled }
 
 class PlaybackTransitionBudget {
-  final DateTime startedAt;
   final Duration maxDuration;
   final int maxRemoteRequests;
-  final DateTime Function() _now;
+  final Stopwatch _stopwatch;
+  final Duration Function()? _elapsedOverride;
   final Set<int> _visitedEntryIds = <int>{};
   int _remoteRequests = 0;
 
   PlaybackTransitionBudget({
-    DateTime? startedAt,
-    this.maxDuration = const Duration(seconds: 20),
-    this.maxRemoteRequests = 4,
-    DateTime Function()? now,
-  }) : _now = now ?? DateTime.now,
-       startedAt = startedAt ?? (now ?? DateTime.now)();
+    this.maxDuration = const Duration(seconds: 12),
+    this.maxRemoteRequests = 3,
+    Duration Function()? elapsed,
+  }) : _elapsedOverride = elapsed,
+       _stopwatch = Stopwatch()..start();
 
   int get remoteRequests => _remoteRequests;
   Set<int> get visitedEntryIds => Set.unmodifiable(_visitedEntryIds);
 
-  Duration remaining([DateTime? now]) {
-    final elapsed = (now ?? _now()).difference(startedAt);
+  Duration remaining() {
+    final elapsed = _elapsedOverride?.call() ?? _stopwatch.elapsed;
     final value = maxDuration - elapsed;
     return value.isNegative ? Duration.zero : value;
   }

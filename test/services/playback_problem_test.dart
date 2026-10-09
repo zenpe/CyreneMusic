@@ -63,6 +63,7 @@ void main() {
     );
 
     expect(problem.canRetry, isFalse);
+    expect(problem.allowsManualSkip, isFalse);
     expect(
       problem.recoveryActions,
       containsAll({
@@ -70,6 +71,21 @@ void main() {
         PlaybackRecoveryAction.reimportSource,
       }),
     );
+  });
+
+  test('track-scoped failures allow manual skip', () {
+    final problem = PlaybackProblem(
+      id: 3,
+      transactionId: 11,
+      track: track,
+      kind: PlaybackProblemKind.resourceUnavailable,
+      message: 'Unavailable',
+      recoveryActions: const {},
+      occurredAt: DateTime.utc(2026),
+    );
+
+    expect(problem.canRetry, isFalse);
+    expect(problem.allowsManualSkip, isTrue);
   });
 
   test('store emits at most one problem per playback transaction', () {

@@ -120,6 +120,9 @@ class PlayerService extends ChangeNotifier {
       _pb.bufferedPositionNotifier;
   ValueNotifier<PlaybackProblem?> get problemNotifier => _pb.problemNotifier;
   PlaybackProblem? get currentProblem => _pb.currentProblem;
+  bool get canRetryCurrentProblem => currentProblem?.canRetry ?? false;
+  bool get canSkipCurrentProblem =>
+      hasNext && (currentProblem?.allowsManualSkip ?? false);
   bool isCurrentPlaybackProblem(PlaybackProblem problem) =>
       _pb.isCurrentPlaybackProblem(problem);
   ValueNotifier<SourceHealthSnapshot?> get sourceHealthNotifier =>

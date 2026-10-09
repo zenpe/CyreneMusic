@@ -40,6 +40,12 @@ class PlaybackProblem {
 
   bool get canRetry => recoveryActions.contains(PlaybackRecoveryAction.retry);
 
+  bool get allowsManualSkip => switch (kind) {
+    PlaybackProblemKind.sourceNotConfigured ||
+    PlaybackProblemKind.sourceInvalid => false,
+    _ => true,
+  };
+
   List<PlaybackRecoveryAction> get orderedRecoveryActions => [
     PlaybackRecoveryAction.retry,
     PlaybackRecoveryAction.switchSource,

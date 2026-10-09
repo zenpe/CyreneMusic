@@ -113,11 +113,29 @@ void main() {
     expect(result.committedCandidate?.entryId, 2);
     expect(result.skippedCount, 1);
   });
+
+  test('budget uses elapsed duration and bounds remote requests', () {
+    var elapsed = Duration.zero;
+    final budget = PlaybackTransitionBudget(
+      maxDuration: const Duration(seconds: 10),
+      maxRemoteRequests: 2,
+      elapsed: () => elapsed,
+    );
+
+    expect(budget.remaining(), const Duration(seconds: 10));
+    expect(budget.consumeRemoteRequest(), isTrue);
+    elapsed = const Duration(seconds: 6);
+    expect(budget.remaining(), const Duration(seconds: 4));
+    expect(budget.consumeRemoteRequest(), isTrue);
+    expect(budget.consumeRemoteRequest(), isFalse);
+    elapsed = const Duration(seconds: 11);
+    expect(budget.remaining(), Duration.zero);
+    expect(budget.hasTimeRemaining, isFalse);
+  });
 }
 
 PlaybackTransitionBudget fixedBudget() {
-  final now = DateTime(2026, 1, 1);
-  return PlaybackTransitionBudget(startedAt: now, now: () => now);
+  return PlaybackTransitionBudget(elapsed: () => Duration.zero);
 }
 
 PlaybackQueueEntry entry(int id) => PlaybackQueueEntry(

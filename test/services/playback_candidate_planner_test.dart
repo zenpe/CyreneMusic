@@ -92,10 +92,9 @@ void main() {
   });
 
   test('transition budget bounds time, requests, and duplicate visits', () {
-    final started = DateTime(2026, 1, 1, 12);
+    var elapsed = Duration.zero;
     final budget = PlaybackTransitionBudget(
-      startedAt: started,
-      now: () => started,
+      elapsed: () => elapsed,
       maxDuration: const Duration(seconds: 20),
       maxRemoteRequests: 2,
     );
@@ -105,14 +104,11 @@ void main() {
     expect(budget.consumeRemoteRequest(), isTrue);
     expect(budget.consumeRemoteRequest(), isTrue);
     expect(budget.consumeRemoteRequest(), isFalse);
-    expect(
-      budget.remaining(started.add(const Duration(seconds: 7))),
-      const Duration(seconds: 13),
-    );
-    expect(
-      budget.remaining(started.add(const Duration(seconds: 30))),
-      Duration.zero,
-    );
+    elapsed = const Duration(seconds: 7);
+    expect(budget.remaining(), const Duration(seconds: 13));
+    elapsed = const Duration(seconds: 30);
+    expect(budget.remaining(), Duration.zero);
+    expect(budget.consumeRemoteRequest(), isFalse);
   });
 }
 
