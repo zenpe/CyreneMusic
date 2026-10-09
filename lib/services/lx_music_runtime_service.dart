@@ -26,12 +26,14 @@ class LxMusicRuntimeService {
     required dynamic songId,
     required String quality,
     Map<String, dynamic>? musicInfo,
+    Duration? timeout,
   }) {
     return _runtime.getMusicUrl(
       source: source,
       songId: songId,
       quality: quality,
       musicInfo: musicInfo,
+      timeout: timeout,
     );
   }
 }

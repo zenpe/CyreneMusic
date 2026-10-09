@@ -23,6 +23,7 @@ class _PendingLxRequest {
 }
 
 class LxQuickJsRuntime implements LxRuntime {
+  static const Duration _defaultMusicUrlTimeout = Duration(seconds: 6);
   JavascriptRuntime? _runtime;
   _LxRuntimeContext? _context;
   int _runtimeGeneration = 0;
@@ -40,6 +41,7 @@ class LxQuickJsRuntime implements LxRuntime {
 
   Future<void> _evalQueue = Future.value();
   Future<void> _operationQueue = Future.value();
+  DateTime? _activeDeadline;
 
   void _debug(String message) {
     if (kDebugMode) {
@@ -211,15 +213,32 @@ class LxQuickJsRuntime implements LxRuntime {
     required dynamic songId,
     required String quality,
     Map<String, dynamic>? musicInfo,
+    Duration? timeout,
   }) {
-    return _enqueueOperation(
-      () => _getMusicUrlInternal(
-        source: source,
-        songId: songId,
-        quality: quality,
-        musicInfo: musicInfo,
-      ),
-    );
+    final effectiveTimeout = timeout ?? _defaultMusicUrlTimeout;
+    final deadline = DateTime.now().add(effectiveTimeout);
+    return _enqueueOperation(() async {
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) {
+        _lastFailure = const LxRuntimeFailure(
+          kind: LxRuntimeFailureKind.timeout,
+          message: '获取播放地址前请求已过期',
+        );
+        return null;
+      }
+      _activeDeadline = deadline;
+      try {
+        return await _getMusicUrlInternal(
+          source: source,
+          songId: songId,
+          quality: quality,
+          musicInfo: musicInfo,
+          deadline: deadline,
+        );
+      } finally {
+        if (_activeDeadline == deadline) _activeDeadline = null;
+      }
+    });
   }
 
   Future<String?> _getMusicUrlInternal({
@@ -227,6 +246,7 @@ class LxQuickJsRuntime implements LxRuntime {
     required dynamic songId,
     required String quality,
     Map<String, dynamic>? musicInfo,
+    required DateTime deadline,
   }) async {
     _lastFailure = null;
     if (!_isInitialized || !_isScriptReady) {
@@ -273,10 +293,16 @@ class LxQuickJsRuntime implements LxRuntime {
       await _evaluate(
         'globalThis.__lx_sendRequest__($requestData);',
         context: context,
+        operationDeadline: deadline,
       );
 
+      final responseTimeout = deadline.difference(DateTime.now());
+      if (responseTimeout <= Duration.zero) {
+        _pendingRequests.remove(requestKey);
+        throw TimeoutException('请求超时');
+      }
       final result = await completer.future.timeout(
-        const Duration(seconds: 30),
+        responseTimeout,
         onTimeout: () {
           _pendingRequests.remove(requestKey);
           throw TimeoutException('请求超时');
@@ -346,6 +372,7 @@ class LxQuickJsRuntime implements LxRuntime {
   Future<void> _evaluate(
     String code, {
     required _LxRuntimeContext context,
+    DateTime? operationDeadline,
   }) async {
     if (context.disposed || !identical(context, _context)) {
       throw StateError('LxRuntime operation belongs to an obsolete context');
@@ -362,6 +389,10 @@ class LxQuickJsRuntime implements LxRuntime {
               throw StateError(
                 'LxRuntime operation belongs to an obsolete context',
               );
+            }
+            if (operationDeadline != null &&
+                !DateTime.now().isBefore(operationDeadline)) {
+              throw TimeoutException('LxRuntime operation expired');
             }
             final result = runtime.evaluate(code);
             if (result.isError) {
@@ -494,7 +525,7 @@ class LxQuickJsRuntime implements LxRuntime {
 
     if (requestId == null || url == null) return;
     _debug('🌐 [LxQuickJsRuntime] HTTP 请求: $url');
-    _executeHttpRequest(context, requestId, url, options);
+    _executeHttpRequest(context, requestId, url, options, _activeDeadline);
   }
 
   void _handleResponse(_LxRuntimeContext context, dynamic data) {
@@ -523,10 +554,19 @@ class LxQuickJsRuntime implements LxRuntime {
     String requestId,
     String url,
     Map<String, dynamic> options,
+    DateTime? deadline,
   ) async {
     if (context.disposed || !identical(context, _context)) return;
     try {
-      final result = await LxHttpBridge.performHttpRequest(url, options);
+      final remaining = deadline?.difference(DateTime.now());
+      if (remaining != null && remaining <= Duration.zero) {
+        throw TimeoutException('Lx HTTP request expired before execution');
+      }
+      final result = await LxHttpBridge.performHttpRequest(
+        url,
+        options,
+        timeout: remaining ?? const Duration(seconds: 30),
+      );
       _debug('✅ [LxQuickJsRuntime] HTTP 请求成功，准备回调 JS');
       _debug('   requestId: $requestId');
       final bodyPreview = result['body']?.toString() ?? '';
@@ -549,10 +589,15 @@ class LxQuickJsRuntime implements LxRuntime {
 
       _debug('📤 [LxQuickJsRuntime] 调用 __lx_handleHttpResponse__');
       _debug('   responseData length: ${responseData.length}');
-      if (context.disposed || !identical(context, _context)) return;
+      if (context.disposed ||
+          !identical(context, _context) ||
+          (deadline != null && !DateTime.now().isBefore(deadline))) {
+        return;
+      }
       await _evaluate(
         'globalThis.__lx_handleHttpResponse__($responseData);',
         context: context,
+        operationDeadline: deadline,
       );
       _debug('✅ [LxQuickJsRuntime] __lx_handleHttpResponse__ 调用完成');
     } catch (e, st) {
@@ -566,10 +611,15 @@ class LxQuickJsRuntime implements LxRuntime {
       });
 
       try {
-        if (context.disposed || !identical(context, _context)) return;
+        if (context.disposed ||
+            !identical(context, _context) ||
+            (deadline != null && !DateTime.now().isBefore(deadline))) {
+          return;
+        }
         await _evaluate(
           'globalThis.__lx_handleHttpResponse__($errorData);',
           context: context,
+          operationDeadline: deadline,
         );
       } catch (e2) {
         _error('❌ [LxQuickJsRuntime] 错误回调也失败: $e2');

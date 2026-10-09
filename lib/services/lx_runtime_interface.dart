@@ -47,6 +47,7 @@ abstract class LxRuntime {
     required dynamic songId,
     required String quality,
     Map<String, dynamic>? musicInfo,
+    Duration? timeout,
   });
   Future<void> dispose();
 }

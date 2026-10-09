@@ -68,13 +68,22 @@ enum _RequestState { running, completed, failed, expired }
 
 class _RequestEntry {
   final DateTime hardDeadline;
+  final DateTime requestDeadline;
   final Future<TrackResolutionResult> future;
   _RequestState state = _RequestState.running;
 
-  _RequestEntry({required this.hardDeadline, required this.future});
+  _RequestEntry({
+    required this.hardDeadline,
+    required this.requestDeadline,
+    required this.future,
+  });
 
-  bool get isReusable =>
-      state == _RequestState.running && DateTime.now().isBefore(hardDeadline);
+  bool isReusableFor(Duration callerTimeout) {
+    final now = DateTime.now();
+    return state == _RequestState.running &&
+        now.isBefore(hardDeadline) &&
+        requestDeadline.difference(now) >= callerTimeout;
+  }
 }
 
 typedef SongDetailFetcher =
@@ -87,6 +96,7 @@ typedef SongDetailFetcher =
       required TrackSourceIds sourceIds,
       required bool fetchLyrics,
       void Function(LxRuntimeFailure? failure)? onLxFailure,
+      Duration? requestTimeout,
     });
 
 class TrackResolver {
@@ -272,6 +282,7 @@ class TrackResolver {
       sourceIds: sourceIds,
       fetchLyrics: fetchLyrics,
       forceNew: skipMemoryCache,
+      requestTimeout: timeout,
     );
     try {
       final result = await request.timeout(
@@ -324,9 +335,14 @@ class TrackResolver {
     required TrackSourceIds sourceIds,
     required bool fetchLyrics,
     bool forceNew = false,
+    required Duration requestTimeout,
   }) {
+    final effectiveRequestTimeout = requestTimeout < hardTimeout
+        ? requestTimeout
+        : hardTimeout;
     final existing = _pending[key];
-    if (!forceNew && (existing?.isReusable ?? false)) {
+    if (!forceNew &&
+        (existing?.isReusableFor(effectiveRequestTimeout) ?? false)) {
       return existing!.future;
     }
     if (existing != null) {
@@ -336,8 +352,10 @@ class TrackResolver {
 
     final completer = Completer<TrackResolutionResult>();
     late final _RequestEntry entry;
+    final requestStartedAt = DateTime.now();
     entry = _RequestEntry(
-      hardDeadline: DateTime.now().add(hardTimeout),
+      hardDeadline: requestStartedAt.add(hardTimeout),
+      requestDeadline: requestStartedAt.add(effectiveRequestTimeout),
       future: completer.future,
     );
     _pending[key] = entry;
@@ -357,6 +375,7 @@ class TrackResolver {
                 sourceIds: sourceIds,
                 fetchLyrics: fetchLyrics,
                 onLxFailure: (failure) => requestFailure = failure,
+                requestTimeout: effectiveRequestTimeout,
               ),
             ).timeout(
               hardTimeout,

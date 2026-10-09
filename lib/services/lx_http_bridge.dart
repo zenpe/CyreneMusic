@@ -6,8 +6,10 @@ import 'package:http/http.dart' as http;
 class LxHttpBridge {
   static Future<Map<String, dynamic>> performHttpRequest(
     String url,
-    Map<String, dynamic> options,
-  ) async {
+    Map<String, dynamic> options, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final client = http.Client();
     try {
       final debug = kDebugMode;
       if (debug) {
@@ -15,8 +17,12 @@ class LxHttpBridge {
         StructuredLogService.log('🔍 [HTTP] 原始 URL: $url');
         StructuredLogService.log('🔍 [HTTP] 原始 options: $options');
         if (options['headers'] != null) {
-          StructuredLogService.log('🔍 [HTTP] 原始 headers: ${options['headers']}');
-          StructuredLogService.log('🔍 [HTTP] headers 类型: ${options['headers'].runtimeType}');
+          StructuredLogService.log(
+            '🔍 [HTTP] 原始 headers: ${options['headers']}',
+          );
+          StructuredLogService.log(
+            '🔍 [HTTP] headers 类型: ${options['headers'].runtimeType}',
+          );
         } else {
           StructuredLogService.log('🔍 [HTTP] 原始 headers: (null - 脚本未传递请求头)');
         }
@@ -62,10 +68,9 @@ class LxHttpBridge {
       http.Response response;
 
       if (method == 'GET') {
-        response = await http.get(
-          Uri.parse(url),
-          headers: normalizedHeaders,
-        ).timeout(const Duration(seconds: 30));
+        response = await client
+            .get(Uri.parse(url), headers: normalizedHeaders)
+            .timeout(timeout);
       } else if (method == 'POST') {
         dynamic body;
         String? contentType;
@@ -80,8 +85,10 @@ class LxHttpBridge {
           body = options['form'];
           if (body is Map) {
             body = body.entries
-                .map((e) =>
-                    '${Uri.encodeComponent(e.key.toString())}=${Uri.encodeComponent(e.value.toString())}')
+                .map(
+                  (e) =>
+                      '${Uri.encodeComponent(e.key.toString())}=${Uri.encodeComponent(e.value.toString())}',
+                )
                 .join('&');
             contentType = 'application/x-www-form-urlencoded';
           }
@@ -92,11 +99,9 @@ class LxHttpBridge {
           normalizedHeaders['content-type'] = contentType;
         }
 
-        response = await http.post(
-          Uri.parse(url),
-          headers: normalizedHeaders,
-          body: body,
-        ).timeout(const Duration(seconds: 30));
+        response = await client
+            .post(Uri.parse(url), headers: normalizedHeaders, body: body)
+            .timeout(timeout);
       } else {
         throw Exception('Unsupported HTTP method: $method');
       }
@@ -123,6 +128,8 @@ class LxHttpBridge {
     } catch (e) {
       StructuredLogService.log('❌ [HTTP] Error: $e');
       rethrow;
+    } finally {
+      client.close();
     }
   }
 }

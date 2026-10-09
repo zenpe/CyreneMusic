@@ -7,6 +7,38 @@ import 'package:cyrene_music/services/playback/track_resolver.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('forwards the caller deadline to the underlying resolver', () async {
+    Duration? observedTimeout;
+    final resolver = TrackResolver(
+      fetcher:
+          ({
+            required songId,
+            required quality,
+            required source,
+            required title,
+            required artist,
+            required sourceIds,
+            required fetchLyrics,
+            onLxFailure,
+            requestTimeout,
+          }) async {
+            observedTimeout = requestTimeout;
+            return _detail(songId as int);
+          },
+    );
+
+    await resolver.resolve(
+      songId: 1,
+      quality: AudioQuality.standard,
+      source: MusicSource.netease,
+      title: 'title',
+      artist: 'artist',
+      timeout: const Duration(seconds: 4),
+    );
+
+    expect(observedTimeout, const Duration(seconds: 4));
+  });
+
   test(
     'reports a missing local file without starting a remote request',
     () async {
@@ -22,6 +54,7 @@ void main() {
               required sourceIds,
               required fetchLyrics,
               onLxFailure,
+              requestTimeout,
             }) async {
               calls++;
               return null;
@@ -47,7 +80,7 @@ void main() {
     },
   );
 
-  test('deduplicates identical in-flight resolution requests', () async {
+  test('deduplicates when the shared deadline covers the caller', () async {
     var calls = 0;
     final completer = Completer<SongDetail?>();
     final resolver = TrackResolver(
@@ -61,6 +94,7 @@ void main() {
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
+            requestTimeout,
           }) {
             calls++;
             return completer.future;
@@ -73,7 +107,7 @@ void main() {
       source: MusicSource.netease,
       title: 'Track',
       artist: 'Artist',
-      timeout: const Duration(seconds: 1),
+      timeout: const Duration(seconds: 2),
     );
     final second = resolver.resolve(
       songId: 1,
@@ -87,6 +121,104 @@ void main() {
 
     expect((await first).detail?.id, 1);
     expect((await second).detail?.id, 1);
+    expect(calls, 1);
+  });
+
+  test(
+    'does not let a short shared deadline constrain a longer caller',
+    () async {
+      final completers = <Completer<SongDetail?>>[];
+      final observedTimeouts = <Duration?>[];
+      final resolver = TrackResolver(
+        fetcher:
+            ({
+              required songId,
+              required quality,
+              required source,
+              required title,
+              required artist,
+              required sourceIds,
+              required fetchLyrics,
+              onLxFailure,
+              requestTimeout,
+            }) {
+              observedTimeouts.add(requestTimeout);
+              final completer = Completer<SongDetail?>();
+              completers.add(completer);
+              return completer.future;
+            },
+      );
+
+      final shortRequest = resolver.resolve(
+        songId: 2,
+        quality: AudioQuality.exhigh,
+        source: MusicSource.netease,
+        title: 'Track',
+        artist: 'Artist',
+        timeout: const Duration(seconds: 1),
+      );
+      final longRequest = resolver.resolve(
+        songId: 2,
+        quality: AudioQuality.exhigh,
+        source: MusicSource.netease,
+        title: 'Track',
+        artist: 'Artist',
+        timeout: const Duration(seconds: 8),
+      );
+
+      expect(observedTimeouts, const [
+        Duration(seconds: 1),
+        Duration(seconds: 8),
+      ]);
+      completers[0].complete(_detail(2));
+      completers[1].complete(_detail(2));
+
+      expect((await shortRequest).isPlayable, isTrue);
+      expect((await longRequest).isPlayable, isTrue);
+    },
+  );
+
+  test('reuses a longer shared deadline for a shorter caller', () async {
+    var calls = 0;
+    final completer = Completer<SongDetail?>();
+    final resolver = TrackResolver(
+      fetcher:
+          ({
+            required songId,
+            required quality,
+            required source,
+            required title,
+            required artist,
+            required sourceIds,
+            required fetchLyrics,
+            onLxFailure,
+            requestTimeout,
+          }) {
+            calls++;
+            return completer.future;
+          },
+    );
+
+    final longRequest = resolver.resolve(
+      songId: 3,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: 'Track',
+      artist: 'Artist',
+      timeout: const Duration(seconds: 8),
+    );
+    final shortRequest = resolver.resolve(
+      songId: 3,
+      quality: AudioQuality.exhigh,
+      source: MusicSource.netease,
+      title: 'Track',
+      artist: 'Artist',
+      timeout: const Duration(seconds: 1),
+    );
+    completer.complete(_detail(3));
+
+    expect((await longRequest).isPlayable, isTrue);
+    expect((await shortRequest).isPlayable, isTrue);
     expect(calls, 1);
   });
 
@@ -104,6 +236,7 @@ void main() {
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
+            requestTimeout,
           }) {
             final id = songId as int;
             failureCallbacks[id] = onLxFailure!;
@@ -162,6 +295,7 @@ void main() {
               required sourceIds,
               required fetchLyrics,
               onLxFailure,
+              requestTimeout,
             }) async {
               calls++;
               return _detail(songId as int);
@@ -225,6 +359,7 @@ void main() {
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
+            requestTimeout,
           }) async {
             calls++;
             return _detail(songId as int);
@@ -269,6 +404,7 @@ void main() {
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
+            requestTimeout,
           }) async {
             calls++;
             return _detail(songId as int);
@@ -313,6 +449,7 @@ void main() {
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
+            requestTimeout,
           }) async {
             calls++;
             return _detail(songId as int);
@@ -391,6 +528,7 @@ void main() {
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
+            requestTimeout,
           }) async {
             calls++;
             return _detail(songId as int);
@@ -434,6 +572,7 @@ void main() {
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
+            requestTimeout,
           }) async => _detail(songId as int),
     );
 
@@ -466,6 +605,7 @@ void main() {
               required sourceIds,
               required fetchLyrics,
               onLxFailure,
+              requestTimeout,
             }) => completer.future,
       );
 
@@ -501,6 +641,7 @@ void main() {
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
+            requestTimeout,
           }) => completer.future,
     );
 
@@ -535,6 +676,7 @@ void main() {
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
+            requestTimeout,
           }) {
             calls++;
             return calls == 1 ? oldRequest.future : Future.value(_detail(808));
@@ -581,6 +723,7 @@ void main() {
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
+            requestTimeout,
           }) async => _detail(songId as int),
     );
 

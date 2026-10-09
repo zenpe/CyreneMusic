@@ -309,6 +309,7 @@ class MusicService extends ChangeNotifier {
     TrackSourceIds sourceIds = const TrackSourceIds(),
     bool fetchLyrics = true,
     void Function(LxRuntimeFailure? failure)? onLxFailure,
+    Duration? requestTimeout,
   }) async {
     try {
       StructuredLogService.log(
@@ -398,6 +399,7 @@ class MusicService extends ChangeNotifier {
         audioSourceService: audioSourceService,
         fetchLyrics: fetchLyrics,
         onFailure: onLxFailure,
+        requestTimeout: requestTimeout,
       );
     } on AudioSourceNotConfiguredException {
       rethrow;
@@ -522,6 +524,7 @@ class MusicService extends ChangeNotifier {
     required AudioSourceService audioSourceService,
     required bool fetchLyrics,
     void Function(LxRuntimeFailure? failure)? onFailure,
+    Duration? requestTimeout,
   }) async {
     _lastLxFailure = null;
     onFailure?.call(null);
@@ -568,6 +571,7 @@ class MusicService extends ChangeNotifier {
         source: sourceCode!,
         songId: lxSongId,
         quality: lxQuality,
+        timeout: requestTimeout,
       );
 
       if (audioUrl == null || audioUrl.isEmpty) {

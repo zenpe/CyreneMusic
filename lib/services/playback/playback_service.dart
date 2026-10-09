@@ -52,6 +52,7 @@ import 'playback_transaction.dart';
 import 'playback_view_state.dart';
 import 'playback_control_intent.dart';
 import 'playback_history_recorder.dart';
+import 'playback_liveness_monitor.dart';
 import 'playback_lyric_projection.dart';
 import 'playback_request_router.dart';
 import 'playback_session.dart';
@@ -286,6 +287,7 @@ class PlaybackService extends ChangeNotifier {
   /// 门控失败计数清零、历史记录、预载等成功副作用，避免"播 1s 失败
   /// 但计数被清零"的连跳循环。
   late final PlaybackStabilityTracker _stabilityTracker;
+  late final PlaybackLivenessMonitor _livenessMonitor;
   PlaybackSession? _currentSession;
   TrackSwitchTransaction? _currentSwitchTx;
   Track? _stableCacheTrack;
@@ -568,6 +570,7 @@ class PlaybackService extends ChangeNotifier {
       position: () => _position,
     );
     _stabilityTracker.onStable = _onStablePlayback;
+    _livenessMonitor = PlaybackLivenessMonitor(onStalled: _onPlaybackStalled);
 
     // 监听引擎状态
     // 所有引擎事件统一从带 epoch 的协议进入协调器；不再分别订阅裸的
@@ -846,6 +849,13 @@ class PlaybackService extends ChangeNotifier {
           AndroidFloatingLyricService().setPlayingState(true);
         _scheduleSessionPersist();
         _stabilityTracker.onPlaybackStarted(_activePlaybackToken);
+        if (_pendingTrack == null) {
+          _livenessMonitor.start(
+            generation: _activePlaybackToken,
+            position: _position,
+            bufferedPosition: _bufferedPosition,
+          );
+        }
         _schedulePreloadNextTrack();
         break;
       case EngineState.paused:
@@ -853,6 +863,7 @@ class PlaybackService extends ChangeNotifier {
         _updateSessionPhase(PlaybackPhase.paused);
         _state = PBState.paused;
         _stabilityTracker.onPlaybackInterrupted();
+        _livenessMonitor.suspend();
         _pauseListeningTimeTracking();
         _stopStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(false);
@@ -865,6 +876,7 @@ class PlaybackService extends ChangeNotifier {
         _updateSessionPhase(PlaybackPhase.idle);
         _state = PBState.idle;
         _stabilityTracker.onPlaybackInterrupted();
+        _livenessMonitor.suspend();
         _pauseListeningTimeTracking();
         _stopStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(false);
@@ -880,7 +892,6 @@ class PlaybackService extends ChangeNotifier {
   /// 播放已稳定（持续 ≥3s 且进度前进）：此时才承认播放成功，
   /// 执行成功副作用并重置失败追踪状态。
   void _onStablePlayback() {
-    _retriedTrackKey = null;
     _startListeningTimeTracking();
     _recordPlaybackStarted();
     final track = _stableCacheTrack;
@@ -896,6 +907,7 @@ class PlaybackService extends ChangeNotifier {
 
   void _onPositionChanged(Duration pos) {
     _position = pos;
+    _livenessMonitor.updatePosition(pos);
     positionNotifier.value = pos;
     if (_pendingTrack == null) {
       presentationPositionNotifier.value = pos;
@@ -916,6 +928,7 @@ class PlaybackService extends ChangeNotifier {
 
   void _onBufferedPositionChanged(Duration buffered) {
     _bufferedPosition = buffered;
+    _livenessMonitor.updateBufferedPosition(buffered);
     bufferedPositionNotifier.value = buffered;
     if (_pendingTrack == null) {
       _presentationBufferedPosition = buffered;
@@ -975,6 +988,9 @@ class PlaybackService extends ChangeNotifier {
         return;
       }
       final requestEpoch = _requestRouter.begin();
+      final stall = error.cause is PlaybackStallEvidence
+          ? error.cause as PlaybackStallEvidence
+          : null;
       // 强制远端重解析：预取/缓存的 URL 已被证明失败（常见为 CDN
       // 直链过期），复用只会再次失败。forceRemoteResolution 同时
       // 会丢弃同曲预取计划。
@@ -984,7 +1000,15 @@ class PlaybackService extends ChangeNotifier {
           intent: failureIntent,
           requestEpoch: requestEpoch,
           forceRemoteResolution: true,
-          budget: _stabilityTracker.isStable ? null : _currentSwitchTx?.budget,
+          initialPosition: stall == null
+              ? null
+              : _clampRecoveryPosition(stall.position),
+          budget: stall != null
+              ? PlaybackTransitionBudget(
+                  maxDuration: const Duration(seconds: 8),
+                  maxRemoteRequests: 1,
+                )
+              : (_stabilityTracker.isStable ? null : _currentSwitchTx?.budget),
         ),
       );
       return;
@@ -1002,6 +1026,58 @@ class PlaybackService extends ChangeNotifier {
       recoveryActions: error.type == EngineErrorType.unsupportedFormat
           ? const {}
           : const {PlaybackRecoveryAction.retry},
+    );
+  }
+
+  Duration _clampRecoveryPosition(Duration position) {
+    if (_duration <= const Duration(seconds: 1)) return position;
+    final latest = _duration - const Duration(seconds: 1);
+    return position > latest ? latest : position;
+  }
+
+  void _onPlaybackStalled(PlaybackStallEvidence evidence) {
+    final track = _activeTrack;
+    if (track == null ||
+        evidence.generation != _activePlaybackToken ||
+        evidence.generation != _playGeneration ||
+        _pendingTrack != null ||
+        !_desiredPlaying ||
+        _state != PBState.playing ||
+        track.source == MusicSource.local ||
+        _source == QueueSource.radio) {
+      return;
+    }
+    if (_duration > Duration.zero &&
+        _duration - evidence.position <= const Duration(seconds: 2)) {
+      StructuredLogService.event(
+        'playback.stall_near_completion',
+        level: LogLevel.warning,
+        fields: {
+          'generation': evidence.generation,
+          'position_ms': evidence.position.inMilliseconds,
+          'duration_ms': _duration.inMilliseconds,
+        },
+      );
+      _onCompletion(true);
+      return;
+    }
+    StructuredLogService.event(
+      'playback.stall_detected',
+      level: LogLevel.warning,
+      fields: {
+        'generation': evidence.generation,
+        'position_ms': evidence.position.inMilliseconds,
+        'buffered_ms': evidence.bufferedPosition.inMilliseconds,
+      },
+    );
+    _onEngineError(
+      EngineError(
+        type: EngineErrorType.networkTimeout,
+        message: '播放流持续无进度',
+        cause: evidence,
+        retriable: true,
+        epoch: evidence.generation,
+      ),
     );
   }
 
@@ -1074,6 +1150,7 @@ class PlaybackService extends ChangeNotifier {
             phase: PlaybackPhase.playing,
           );
       _currentSwitchTx = null;
+      _transactionGuard.activate(_activePlaybackToken);
       final activeSong = _activeSong;
       LyricService().bindCurrentTrack(
         track: _activeTrack!,
@@ -1087,6 +1164,7 @@ class PlaybackService extends ChangeNotifier {
         notify: false,
       );
       _captureLyricSnapshot();
+      _restartLivenessForActivePlayback();
       notifyListeners();
     }
     if (transaction?.budgetExhausted ?? false) {
@@ -1771,12 +1849,20 @@ class PlaybackService extends ChangeNotifier {
 
   Future<void> seek(Duration position) async {
     if (!viewState.canSeek) return;
+    _livenessMonitor.suspend();
     await _engine.seek(position);
     _position = position;
     positionNotifier.value = position;
     presentationPositionNotifier.value = position;
     _syncPositionToNative(position, force: true);
     _pendingRestorePosition = null;
+    if (_desiredPlaying && _state == PBState.playing) {
+      _livenessMonitor.start(
+        generation: _activePlaybackToken,
+        position: position,
+        bufferedPosition: _bufferedPosition,
+      );
+    }
     _scheduleSessionPersist();
   }
 
@@ -2093,6 +2179,11 @@ class PlaybackService extends ChangeNotifier {
     }
     if (_state == PBState.playing) {
       _stabilityTracker.onPlaybackStarted(playbackToken);
+      _livenessMonitor.start(
+        generation: playbackToken,
+        position: _position,
+        bufferedPosition: _bufferedPosition,
+      );
     }
     if (notify) {
       notifyListeners();
@@ -2121,6 +2212,10 @@ class PlaybackService extends ChangeNotifier {
     bool preservePreloadState = false,
   }) {
     _lastFailureEvidence = null;
+    _livenessMonitor.suspend();
+    if (reason != 'engine-retry') {
+      _retriedTrackKey = null;
+    }
     final track = candidateTrack ?? _trackAtQueuePointer() ?? _activeTrack;
     if (track == null) return null;
     final previousSession = _currentSession;
@@ -2269,6 +2364,8 @@ class PlaybackService extends ChangeNotifier {
   void _beginReplaySession(int requestEpoch) {
     final track = currentTrack;
     if (track == null) return;
+    _livenessMonitor.suspend();
+    _retriedTrackKey = null;
     final token = _transactionGuard.begin();
     _currentSession = PlaybackSession(
       epoch: token,
@@ -2279,6 +2376,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _invalidateCurrentPlayback() {
+    _livenessMonitor.suspend();
     _controlIntent.invalidate();
     _requestRouter.begin();
     _transactionGuard.begin();
@@ -2302,7 +2400,25 @@ class PlaybackService extends ChangeNotifier {
     _clearPendingTrack();
     if (_engine.isPlaying && _activeTrack != null) {
       _state = PBState.playing;
+      _transactionGuard.activate(_activePlaybackToken);
+      _restartLivenessForActivePlayback();
     }
+  }
+
+  void _restartLivenessForActivePlayback() {
+    final track = _activeTrack;
+    if (!_desiredPlaying ||
+        _state != PBState.playing ||
+        track == null ||
+        track.source == MusicSource.local ||
+        _source == QueueSource.radio) {
+      return;
+    }
+    _livenessMonitor.start(
+      generation: _activePlaybackToken,
+      position: _position,
+      bufferedPosition: _bufferedPosition,
+    );
   }
 
   Future<_ResolvedTrackSwitchSong?> _resolveSongDetailStage(
@@ -3929,6 +4045,8 @@ class PlaybackService extends ChangeNotifier {
       _state = PBState.playing;
       _errorMessage = null;
       _clearPendingTrack();
+      _transactionGuard.activate(_activePlaybackToken);
+      _restartLivenessForActivePlayback();
     } else {
       _desiredPlaying = false;
       _controlIntent.invalidate();
@@ -4300,6 +4418,7 @@ class PlaybackService extends ChangeNotifier {
     bool preload = true,
     TrackSwitchTransaction? transaction,
   }) async {
+    final loadTimeout = transaction?.budget?.remaining();
     await _performSoftSwitch(
       (generation) => _engine.play(
         url,
@@ -4309,6 +4428,7 @@ class PlaybackService extends ChangeNotifier {
         autoPlay: autoPlay,
         initialPosition: initialPosition,
         preload: preload,
+        loadTimeout: loadTimeout,
       ),
       transaction: transaction,
     );
@@ -4321,6 +4441,7 @@ class PlaybackService extends ChangeNotifier {
     bool preload = true,
     TrackSwitchTransaction? transaction,
   }) async {
+    final loadTimeout = transaction?.budget?.remaining();
     await _performSoftSwitch(
       (generation) => _engine.playSource(
         source,
@@ -4328,6 +4449,7 @@ class PlaybackService extends ChangeNotifier {
         autoPlay: autoPlay,
         initialPosition: initialPosition,
         preload: preload,
+        loadTimeout: loadTimeout,
       ),
       transaction: transaction,
     );
@@ -5137,6 +5259,7 @@ class PlaybackService extends ChangeNotifier {
     _resetPreloadState();
     _unbindPreloadDependencyListeners();
     _stabilityTracker.dispose();
+    _livenessMonitor.dispose();
     LyricService().removeListener(_onLyricSnapshotChanged);
     AudioSourceService().removeListener(_onAudioSourceConfigChanged);
     for (final sub in _engineSubs) {

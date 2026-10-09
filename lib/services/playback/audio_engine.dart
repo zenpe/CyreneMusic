@@ -100,6 +100,7 @@ abstract class AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   });
   Future<void> playAudioSource(
     ja.AudioSource source, {
@@ -108,6 +109,7 @@ abstract class AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   });
   Future<void> playSource(
     PlayableSource source, {
@@ -115,6 +117,7 @@ abstract class AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) async {
     final customSource = source.audioSource;
     if (customSource != null) {
@@ -125,6 +128,7 @@ abstract class AudioEngine {
         autoPlay: autoPlay,
         initialPosition: initialPosition,
         preload: preload,
+        loadTimeout: loadTimeout,
       );
       return;
     }
@@ -141,6 +145,7 @@ abstract class AudioEngine {
       autoPlay: autoPlay,
       initialPosition: initialPosition,
       preload: preload,
+      loadTimeout: loadTimeout,
     );
   }
 
@@ -968,6 +973,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) async {
     final source = _buildAudioSource(
       isLocal
@@ -981,6 +987,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       autoPlay: autoPlay,
       initialPosition: initialPosition,
       preload: preload,
+      loadTimeout: loadTimeout,
     );
   }
 
@@ -991,6 +998,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) async {
     await playAudioSource(
       _buildAudioSource(source),
@@ -999,6 +1007,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       autoPlay: autoPlay,
       initialPosition: initialPosition,
       preload: preload,
+      loadTimeout: loadTimeout,
     );
   }
 
@@ -1026,6 +1035,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) async {
     _finishBufferingObservation('source_replaced');
     _resumeRevision++;
@@ -1065,7 +1075,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
             initialPosition: initialPosition,
             preload: preload,
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(loadTimeout ?? const Duration(seconds: 15));
       setSourceMs = setSourceSw.elapsedMilliseconds;
       _hasSource = true;
       _loadedAudioSource = source;
@@ -1786,6 +1796,29 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     });
   }
 
+  Future<void> _discardPlayerAfterLoadFailure(mk.Player player) async {
+    if (identical(_player, player)) _player = null;
+    await _playingSub?.cancel();
+    await _positionSub?.cancel();
+    await _durationSub?.cancel();
+    await _bufferSub?.cancel();
+    await _rateSub?.cancel();
+    await _completedSub?.cancel();
+    await _errorSub?.cancel();
+    _playingSub = null;
+    _positionSub = null;
+    _durationSub = null;
+    _bufferSub = null;
+    _rateSub = null;
+    _completedSub = null;
+    _errorSub = null;
+    _hasMedia = false;
+    _isPlaying = false;
+    try {
+      await player.dispose();
+    } catch (_) {}
+  }
+
   @override
   Future<void> play(
     String url, {
@@ -1795,6 +1828,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) async {
     _lastStartupTiming = null;
     var ensurePlayerMs = 0;
@@ -1821,20 +1855,24 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     }
     try {
       final setSourceSw = Stopwatch()..start();
-      await player.open(mk.Media(url, httpHeaders: headers), play: false);
+      await player
+          .open(mk.Media(url, httpHeaders: headers), play: false)
+          .timeout(loadTimeout ?? const Duration(seconds: 15));
       setSourceMs = setSourceSw.elapsedMilliseconds;
       _hasMedia = true;
     } catch (e) {
+      final base = _mapMediaKitError(e.toString(), sourceUrl: url);
       final mapped = EngineError(
-        type: EngineErrorType.sourceLoad,
-        message: e.toString(),
-        sourceUrl: url,
+        type: base.type,
+        message: base.message,
+        sourceUrl: base.sourceUrl,
         cause: e,
-        retriable: true,
+        retriable: base.retriable,
         epoch: generation,
       );
       _epochGate.abandonArm(generation);
       _emitError(mapped, epoch: generation);
+      await _discardPlayerAfterLoadFailure(player);
       throw EngineReportedException(mapped);
     }
 
@@ -1957,6 +1995,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) async {
     final customSource = source.audioSource;
     if (customSource != null) {
@@ -1967,6 +2006,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
         autoPlay: autoPlay,
         initialPosition: initialPosition,
         preload: preload,
+        loadTimeout: loadTimeout,
       );
       return;
     }
@@ -1983,6 +2023,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
       autoPlay: autoPlay,
       initialPosition: initialPosition,
       preload: preload,
+      loadTimeout: loadTimeout,
     );
   }
 
@@ -1994,6 +2035,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) async {
     throw UnsupportedError(
       'Custom audio sources are only supported on just_audio platforms.',

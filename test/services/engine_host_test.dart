@@ -70,6 +70,39 @@ void main() {
     await host.dispose();
   });
 
+  test('stop invalidates a source load that has not started', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+
+    final active = host.play('a', generation: 1);
+    await Future<void>.delayed(Duration.zero);
+    final queued = host.play('b', generation: 2);
+    final stop = host.stop();
+
+    gate.complete();
+    await Future.wait([active, queued, stop]);
+
+    expect(engine.playedUrls, ['a']);
+    expect(engine.stopCount, 1);
+    await host.dispose();
+  });
+
+  test('forwards the source load deadline to the native engine', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+
+    await host.play(
+      'a',
+      generation: 1,
+      loadTimeout: const Duration(seconds: 4),
+    );
+
+    expect(engine.loadTimeouts, [const Duration(seconds: 4)]);
+    await host.dispose();
+  });
+
   test('排队中的音量写入会合并为最后一个值', () async {
     final engine = FakeEngine();
     final host = EngineHost(engineFactory: () => engine);
@@ -275,6 +308,7 @@ class FakeEngine implements AudioEngine {
   final _errors = StreamController<EngineError>.broadcast();
   final _sourceKeys = StreamController<EngineSourceCommit>.broadcast();
   final List<String> playedUrls = <String>[];
+  final List<Duration?> loadTimeouts = <Duration?>[];
   final List<double> volumeWrites = <double>[];
   final List<PreparedPlaybackWindow> preparedWindows =
       <PreparedPlaybackWindow>[];
@@ -283,6 +317,7 @@ class FakeEngine implements AudioEngine {
   bool activationResult = true;
   String? sourceKeyOnActivation;
   int activeGeneration = 0;
+  int stopCount = 0;
 
   @override
   Duration duration = Duration.zero;
@@ -329,9 +364,11 @@ class FakeEngine implements AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) async {
     activeGeneration = generation;
     playedUrls.add(url);
+    loadTimeouts.add(loadTimeout);
     final gate = playGate;
     playGate = null;
     await gate?.future;
@@ -345,6 +382,7 @@ class FakeEngine implements AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) async {}
 
   @override
@@ -354,6 +392,7 @@ class FakeEngine implements AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) async {}
 
   @override
@@ -396,7 +435,9 @@ class FakeEngine implements AudioEngine {
   Future<void> seek(Duration position) async {}
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async {
+    stopCount++;
+  }
 
   @override
   Future<void> setVolume(double volume) async {

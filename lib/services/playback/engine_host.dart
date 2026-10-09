@@ -33,6 +33,8 @@ class EngineHost implements AudioEngine {
   Duration _duration = Duration.zero;
   Duration _bufferedPosition = Duration.zero;
   int _latestRequestedGeneration = 0;
+  int _loadRevision = 0;
+  bool _desiredPlaying = false;
   int _volumeRevision = 0;
 
   EngineHost({AudioEngine Function()? engineFactory})
@@ -203,20 +205,30 @@ class EngineHost implements AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) {
+    final loadRevision = ++_loadRevision;
+    _desiredPlaying = autoPlay;
     _latestRequestedGeneration = generation;
     return _write(() async {
-      if (generation != _latestRequestedGeneration) return;
+      if (generation != _latestRequestedGeneration ||
+          loadRevision != _loadRevision) {
+        return;
+      }
       _beginEpoch(generation);
       await _active!.play(
         url,
         generation: generation,
         isLocal: isLocal,
         headers: headers,
-        autoPlay: autoPlay,
+        autoPlay: autoPlay && _desiredPlaying,
         initialPosition: initialPosition,
         preload: preload,
+        loadTimeout: loadTimeout,
       );
+      if (!_desiredPlaying && (_active?.isPlaying ?? false)) {
+        await _active?.pause();
+      }
     });
   }
 
@@ -227,18 +239,28 @@ class EngineHost implements AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) {
+    final loadRevision = ++_loadRevision;
+    _desiredPlaying = autoPlay;
     _latestRequestedGeneration = generation;
     return _write(() async {
-      if (generation != _latestRequestedGeneration) return;
+      if (generation != _latestRequestedGeneration ||
+          loadRevision != _loadRevision) {
+        return;
+      }
       _beginEpoch(generation);
       await _active!.playSource(
         source,
         generation: generation,
-        autoPlay: autoPlay,
+        autoPlay: autoPlay && _desiredPlaying,
         initialPosition: initialPosition,
         preload: preload,
+        loadTimeout: loadTimeout,
       );
+      if (!_desiredPlaying && (_active?.isPlaying ?? false)) {
+        await _active?.pause();
+      }
     });
   }
 
@@ -250,19 +272,29 @@ class EngineHost implements AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
     bool preload = true,
+    Duration? loadTimeout,
   }) {
+    final loadRevision = ++_loadRevision;
+    _desiredPlaying = autoPlay;
     _latestRequestedGeneration = generation;
     return _write(() async {
-      if (generation != _latestRequestedGeneration) return;
+      if (generation != _latestRequestedGeneration ||
+          loadRevision != _loadRevision) {
+        return;
+      }
       _beginEpoch(generation);
       await _active!.playAudioSource(
         source,
         generation: generation,
         sourceUrl: sourceUrl,
-        autoPlay: autoPlay,
+        autoPlay: autoPlay && _desiredPlaying,
         initialPosition: initialPosition,
         preload: preload,
+        loadTimeout: loadTimeout,
       );
+      if (!_desiredPlaying && (_active?.isPlaying ?? false)) {
+        await _active?.pause();
+      }
     });
   }
 
@@ -282,9 +314,14 @@ class EngineHost implements AudioEngine {
     bool autoPlay = true,
     Duration? initialPosition,
   }) {
+    final loadRevision = ++_loadRevision;
+    _desiredPlaying = autoPlay;
     _latestRequestedGeneration = generation;
     return _write(() async {
-      if (generation != _latestRequestedGeneration) return false;
+      if (generation != _latestRequestedGeneration ||
+          loadRevision != _loadRevision) {
+        return false;
+      }
       final previousEpoch = _activeEpoch;
       _activeEpoch = generation;
       final activated =
@@ -322,22 +359,32 @@ class EngineHost implements AudioEngine {
       _write(() => _active?.invalidatePreparedSlots() ?? Future.value());
 
   @override
-  Future<void> pause() => _write(() => _active?.pause() ?? Future.value());
+  Future<void> pause() {
+    _desiredPlaying = false;
+    return _write(() => _active?.pause() ?? Future.value());
+  }
 
   @override
-  Future<void> resume() => _write(() => _active?.resume() ?? Future.value());
+  Future<void> resume() {
+    _desiredPlaying = true;
+    return _write(() => _active?.resume() ?? Future.value());
+  }
 
   @override
   Future<void> seek(Duration position) =>
       _write(() => _active?.seek(position) ?? Future.value());
 
   @override
-  Future<void> stop() => _write(() async {
-    await _active?.stop();
-    _isPlaying = false;
-    _stateController.add(EngineState.idle);
-    _eventController.add(EngineStateEvent(_activeEpoch, EngineState.idle));
-  });
+  Future<void> stop() {
+    _desiredPlaying = false;
+    _loadRevision++;
+    return _write(() async {
+      await _active?.stop();
+      _isPlaying = false;
+      _stateController.add(EngineState.idle);
+      _eventController.add(EngineStateEvent(_activeEpoch, EngineState.idle));
+    });
+  }
 
   @override
   Future<void> setVolume(double volume) {
