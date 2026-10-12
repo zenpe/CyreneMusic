@@ -10,6 +10,14 @@ import 'lyric_snapshot.dart';
 
 typedef LyricLogFn = void Function(String message, {bool toDeveloperPanel});
 
+typedef LyricLookupFn =
+    Future<LyricLookupResult?> Function({
+      required Track track,
+      required String quality,
+      required SongDetail? currentSong,
+      required LyricRepositoryLogFn log,
+    });
+
 class LyricRequestFetchAdapter {
   final bool useLyricOnlyFetch;
   final bool allowFullDetailFallback;
@@ -97,7 +105,12 @@ class LyricService extends ChangeNotifier {
   static final RegExp _plainLyricParensDoublePattern = RegExp(r'\(\d+,\d+\)');
   static final RegExp _plainLyricAngleTriplePattern = RegExp(r'<\d+,\d+,\d+>');
 
-  LyricService._internal();
+  LyricService._internal() : _lookup = LyricRepository().lookup;
+
+  @visibleForTesting
+  LyricService.forTesting({required LyricLookupFn lookup}) : _lookup = lookup;
+
+  final LyricLookupFn _lookup;
 
   final Set<String> _pendingRefreshKeys = <String>{};
 
@@ -185,7 +198,7 @@ class LyricService extends ChangeNotifier {
     final presentation = adapter.presentation;
     final fetch = adapter.fetch;
     final cache = adapter.cache;
-    final cachedResult = await _repository.lookup(
+    final cachedResult = await _lookupSafely(
       track: track,
       quality: quality,
       currentSong: _displayableSongOrNull(presentation.currentSong()),
@@ -228,12 +241,14 @@ class LyricService extends ChangeNotifier {
       }
     }
 
-    if (_pendingRefreshKeys.contains(refreshKey)) {
+    // A previous playback of this track must not suppress the new generation.
+    final requestKey = 'request_${playbackToken}_$refreshKey';
+    if (_pendingRefreshKeys.contains(requestKey)) {
       adapter.log('[LyricService] 跳过重复歌词补全: $refreshKey');
       return;
     }
 
-    _pendingRefreshKeys.add(refreshKey);
+    _pendingRefreshKeys.add(requestKey);
     adapter.log('[LyricService] 歌词补全开始: $refreshKey', toDeveloperPanel: true);
 
     if (_isCurrent(trackKey, playbackToken)) {
@@ -396,7 +411,7 @@ class LyricService extends ChangeNotifier {
       );
       finalize(LyricLoadState.failed, error: e.toString());
     } finally {
-      _pendingRefreshKeys.remove(refreshKey);
+      _pendingRefreshKeys.remove(requestKey);
       if (!finalized && _isCurrent(trackKey, playbackToken)) {
         final currentSong = presentation.currentSong();
         final fallbackState = _resolvedLyricState(currentSong);
@@ -422,7 +437,7 @@ class LyricService extends ChangeNotifier {
     required LyricPrefetchAdapter adapter,
   }) async {
     final prefetchKey = 'prefetch_$refreshKey';
-    final cachedResult = await _repository.lookup(
+    final cachedResult = await _lookupSafely(
       track: track,
       quality: quality,
       currentSong: null,
@@ -496,6 +511,28 @@ class LyricService extends ChangeNotifier {
       );
     } finally {
       _pendingRefreshKeys.remove(prefetchKey);
+    }
+  }
+
+  Future<LyricLookupResult?> _lookupSafely({
+    required Track track,
+    required String quality,
+    required SongDetail? currentSong,
+    required LyricRepositoryLogFn log,
+  }) async {
+    try {
+      return await _lookup(
+        track: track,
+        quality: quality,
+        currentSong: currentSong,
+        log: log,
+      );
+    } catch (e) {
+      log(
+        '[LyricService] 歌词缓存读取失败，继续远端获取: ${_trackKey(track)}, $e',
+        toDeveloperPanel: true,
+      );
+      return null;
     }
   }
 

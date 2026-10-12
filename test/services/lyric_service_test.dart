@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cyrene_music/models/song_detail.dart';
 import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/services/lyric/lyric_service.dart';
@@ -63,6 +65,155 @@ void main() {
   }
 
   group('LyricService regressions', () {
+    for (final outcome in ['ready', 'miss', 'failed']) {
+      test('cache read failure settles remote $outcome result', () async {
+        final isolated = LyricService.forTesting(
+          lookup:
+              ({
+                required track,
+                required quality,
+                required currentSong,
+                required log,
+              }) async => throw StateError('disk unavailable'),
+        );
+        final track = buildTrack();
+        var currentSong = buildSongDetail(track);
+        var fetchCount = 0;
+        isolated.bindCurrentTrack(
+          track: track,
+          playbackToken: 1,
+          song: currentSong,
+          state: LyricLoadState.loading,
+          notify: false,
+        );
+        await isolated.requestLyrics(
+          track: track,
+          playbackToken: 1,
+          quality: 'standard',
+          refreshKey: track.id,
+          adapter: _buildRequestAdapter(
+            currentSong: () => currentSong,
+            applyResolvedSongDetail: (detail) => currentSong = detail,
+            fetchFullDetail: () async {
+              fetchCount++;
+              if (outcome == 'failed') throw StateError('network unavailable');
+              if (outcome == 'miss') return null;
+              return buildSongDetail(track, lyric: '[00:00.00]Remote lyrics');
+            },
+          ),
+        );
+        expect(fetchCount, 1);
+        expect(isolated.currentState, switch (outcome) {
+          'ready' => LyricLoadState.ready,
+          'miss' => LyricLoadState.transientMiss,
+          _ => LyricLoadState.failed,
+        });
+        isolated.dispose();
+      });
+    }
+
+    test(
+      'new playback fetches while old request is pending and ignores old result',
+      () async {
+        final isolated = LyricService.forTesting(
+          lookup:
+              ({
+                required track,
+                required quality,
+                required currentSong,
+                required log,
+              }) async => null,
+        );
+        final track = buildTrack();
+        var currentSong = buildSongDetail(track);
+        final oldResult = Completer<SongDetail?>();
+        final newResult = Completer<SongDetail?>();
+        final oldStarted = Completer<void>();
+        final newStarted = Completer<void>();
+        var fetchCount = 0;
+        final adapter = _buildRequestAdapter(
+          currentSong: () => currentSong,
+          applyResolvedSongDetail: (detail) => currentSong = detail,
+          fetchFullDetail: () {
+            fetchCount++;
+            if (fetchCount == 1) {
+              oldStarted.complete();
+              return oldResult.future;
+            }
+            newStarted.complete();
+            return newResult.future;
+          },
+        );
+        Future<void> request(int token) => isolated.requestLyrics(
+          track: track,
+          playbackToken: token,
+          quality: 'standard',
+          refreshKey: track.id,
+          adapter: adapter,
+        );
+        void bind(int token) => isolated.bindCurrentTrack(
+          track: track,
+          playbackToken: token,
+          song: currentSong,
+          state: LyricLoadState.loading,
+          notify: false,
+        );
+        bind(1);
+        final oldRequest = request(1);
+        await oldStarted.future;
+        bind(2);
+        final newRequest = request(2);
+        await newStarted.future;
+        // Same-generation duplicates still share the pending request.
+        await request(2);
+        expect(fetchCount, 2);
+        oldResult.complete(buildSongDetail(track, lyric: '[00:00.00]Old'));
+        await oldRequest;
+        expect(isolated.currentState, LyricLoadState.loading);
+        expect(currentSong.lyric, isEmpty);
+        // Completing the old request must not release the new request's lock.
+        await request(2);
+        expect(fetchCount, 2);
+        newResult.complete(buildSongDetail(track, lyric: '[00:00.00]New'));
+        await newRequest;
+        expect(isolated.currentState, LyricLoadState.ready);
+        expect(isolated.currentSnapshot!.playbackToken, 2);
+        expect(currentSong.lyric, '[00:00.00]New');
+        isolated.dispose();
+      },
+    );
+
+    test('prefetch continues after cache read failure', () async {
+      final isolated = LyricService.forTesting(
+        lookup:
+            ({
+              required track,
+              required quality,
+              required currentSong,
+              required log,
+            }) async => throw StateError('disk unavailable'),
+      );
+      final track = buildTrack();
+      var fetchCount = 0;
+      await isolated.prefetchLyrics(
+        track: track,
+        quality: 'standard',
+        refreshKey: track.id,
+        adapter: LyricPrefetchAdapter(
+          fetchLyricOnlyDetail: () async {
+            fetchCount++;
+            return buildSongDetail(track, lyric: '[00:00.00]Prefetched');
+          },
+          normalizeSongDetail: (detail) => detail,
+          hasAnyLyricPayload: _hasAnyLyricPayload,
+          log: _noopLog,
+        ),
+      );
+      expect(fetchCount, 1);
+      expect(isolated.currentSnapshot, isNull);
+      isolated.dispose();
+    });
+
     test('prefetch null miss does not block foreground lyric fetch', () async {
       final track = buildTrack();
       var currentSong = buildSongDetail(track);
