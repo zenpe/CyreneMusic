@@ -12,18 +12,21 @@ class ApiClient {
   factory ApiClient() => _instance;
 
   final Dio _dio;
-  final Map<String, _JsonCacheEntry> _getJsonCache = <String, _JsonCacheEntry>{};
+  final Map<String, _JsonCacheEntry> _getJsonCache =
+      <String, _JsonCacheEntry>{};
   final Map<String, Future<ApiResult<dynamic>>> _inFlightGetJsonRequests =
       <String, Future<ApiResult<dynamic>>>{};
 
   ApiClient._internal()
-      : _dio = Dio(BaseOptions(
+    : _dio = Dio(
+        BaseOptions(
           connectTimeout: const Duration(seconds: 10),
           sendTimeout: const Duration(seconds: 15),
           receiveTimeout: const Duration(seconds: 15),
           responseType: ResponseType.bytes,
           validateStatus: (status) => status != null && status > 0,
-        )) {
+        ),
+      ) {
     _dio.interceptors.add(_BaseUrlInterceptor());
     _dio.interceptors.add(_AuthInterceptor());
     _dio.interceptors.add(_LogInterceptor());
@@ -43,7 +46,10 @@ class ApiClient {
       headers: headers,
       contentType: contentType,
       responseType: responseType,
-      extra: <String, dynamic>{'auth': auth},
+      extra: <String, dynamic>{
+        'auth': auth,
+        if (auth) 'authTokenSnapshot': AuthTokenStore.token,
+      },
     );
     if (timeout != null) {
       options = options.copyWith(
@@ -97,22 +103,23 @@ class ApiClient {
       }
     }
 
-    final requestFuture = _sendJsonRequest(
-      path,
-      method: method,
-      queryParameters: queryParameters,
-      data: data,
-      headers: headers,
-      auth: auth,
-      timeout: timeout,
-      contentType: contentType,
-      cancelToken: cancelToken,
-    ).then((result) {
-      if (shouldCache && getRequestKey != null && result.ok) {
-        _writeGetJsonCache(getRequestKey, result, cacheTtl!);
-      }
-      return result;
-    });
+    final requestFuture =
+        _sendJsonRequest(
+          path,
+          method: method,
+          queryParameters: queryParameters,
+          data: data,
+          headers: headers,
+          auth: auth,
+          timeout: timeout,
+          contentType: contentType,
+          cancelToken: cancelToken,
+        ).then((result) {
+          if (shouldCache && getRequestKey != null && result.ok) {
+            _writeGetJsonCache(getRequestKey, result, cacheTtl!);
+          }
+          return result;
+        });
 
     if (shouldDedupe && getRequestKey != null) {
       _inFlightGetJsonRequests[getRequestKey] = requestFuture;
@@ -154,8 +161,9 @@ class ApiClient {
       );
 
       final bytes = response.data ?? const <int>[];
-      final text =
-          bytes.isNotEmpty ? utf8.decode(bytes, allowMalformed: true) : '';
+      final text = bytes.isNotEmpty
+          ? utf8.decode(bytes, allowMalformed: true)
+          : '';
 
       dynamic json;
       if (text.isNotEmpty) {
@@ -399,8 +407,12 @@ class ApiClient {
 
   void _writeGetJsonCache(String key, ApiResult<dynamic> result, Duration ttl) {
     _pruneExpiredGetJsonCache();
-    final expiresAtMs = DateTime.now().millisecondsSinceEpoch + ttl.inMilliseconds;
-    _getJsonCache[key] = _JsonCacheEntry(result: result, expiresAtMs: expiresAtMs);
+    final expiresAtMs =
+        DateTime.now().millisecondsSinceEpoch + ttl.inMilliseconds;
+    _getJsonCache[key] = _JsonCacheEntry(
+      result: result,
+      expiresAtMs: expiresAtMs,
+    );
   }
 
   void _pruneExpiredGetJsonCache() {
@@ -420,7 +432,9 @@ class ApiClient {
   }) {
     final payload = <String, dynamic>{
       'path': path,
-      'query': _normalizeCacheKeyValue(queryParameters ?? const <String, dynamic>{}),
+      'query': _normalizeCacheKeyValue(
+        queryParameters ?? const <String, dynamic>{},
+      ),
       'headers': _normalizeCacheKeyValue(headers ?? const <String, String>{}),
       'auth': auth,
       'timeoutMs': timeout?.inMilliseconds,
@@ -431,10 +445,11 @@ class ApiClient {
 
   dynamic _normalizeCacheKeyValue(dynamic value) {
     if (value is Map) {
-      final entries = value.entries
-          .map((entry) => MapEntry(entry.key.toString(), entry.value))
-          .toList()
-        ..sort((a, b) => a.key.compareTo(b.key));
+      final entries =
+          value.entries
+              .map((entry) => MapEntry(entry.key.toString(), entry.value))
+              .toList()
+            ..sort((a, b) => a.key.compareTo(b.key));
       final normalized = <String, dynamic>{};
       for (final entry in entries) {
         normalized[entry.key] = _normalizeCacheKeyValue(entry.value);
@@ -458,10 +473,7 @@ class _JsonCacheEntry {
   final ApiResult<dynamic> result;
   final int expiresAtMs;
 
-  _JsonCacheEntry({
-    required this.result,
-    required this.expiresAtMs,
-  });
+  _JsonCacheEntry({required this.result, required this.expiresAtMs});
 }
 
 class _BaseUrlInterceptor extends Interceptor {
@@ -480,7 +492,7 @@ class _AuthInterceptor extends Interceptor {
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     final authEnabled = options.extra['auth'] != false;
     if (authEnabled) {
-      final token = AuthTokenStore.token;
+      final token = options.extra['authTokenSnapshot'] as String?;
       final hasToken = token != null && token.isNotEmpty;
       options.extra['hadAuthHeader'] = hasToken;
       options.extra['authTokenSnapshot'] = hasToken ? token : null;
@@ -542,9 +554,7 @@ class _UnauthorizedInterceptor extends Interceptor {
 
     // 忽略“旧 token 请求晚到”的 401，避免新登录后被旧请求回包踢下线
     if (requestToken != null && requestToken != currentToken) {
-      DeveloperModeService().addLog(
-        '[Auth] 忽略过期请求触发的 401（token 已更新）',
-      );
+      DeveloperModeService().addLog('[Auth] 忽略过期请求触发的 401（token 已更新）');
       return false;
     }
     return true;

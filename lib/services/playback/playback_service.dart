@@ -15,6 +15,7 @@ import '../../utils/toast_utils.dart';
 import '../../utils/image_utils.dart';
 import '../../utils/audio_request_headers.dart';
 import '../music_service.dart';
+import '../auth_service.dart';
 import '../audio_source_service.dart';
 import '../cache_service.dart';
 import '../proxy_service.dart';
@@ -579,6 +580,7 @@ class PlaybackService extends ChangeNotifier {
     LyricService().addListener(_onLyricSnapshotChanged);
     AudioSourceService().addListener(_onAudioSourceConfigChanged);
     _syncActiveSourceHealth();
+    AuthService().onSessionEnded = stop;
   }
 
   void _captureLyricSnapshot({bool notify = false}) {
@@ -1597,6 +1599,7 @@ class PlaybackService extends ChangeNotifier {
     bool preload = true,
     PlaybackRequestIntent intent = PlaybackRequestIntent.manual,
   }) {
+    if (!AuthService().isLoggedIn) return Future<void>.value();
     _controlIntent.invalidate();
     final requestEpoch = _requestRouter.begin();
     // 队列指针和 pending session 必须在第一次 await 前切换。否则旧的
@@ -1660,6 +1663,7 @@ class PlaybackService extends ChangeNotifier {
 
   /// 跳转到队列中某首
   Future<void> jumpTo(int index) async {
+    if (!AuthService().isLoggedIn) return;
     final requestEpoch = _requestRouter.begin();
     final track = index >= 0 && index < _queue.length ? _queue[index] : null;
     final entryId = _queueController.entryIdAt(index);
@@ -1771,6 +1775,7 @@ class PlaybackService extends ChangeNotifier {
   // ══════════════════════════════════════════════════════
 
   Future<void> resume() async {
+    if (!AuthService().isLoggedIn) return;
     if (_pendingTrack == null &&
         currentTrack == null &&
         _preloadedTrack == null) {
@@ -1868,6 +1873,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> next() async {
+    if (!AuthService().isLoggedIn) return;
     _controlIntent.invalidate();
     final requestEpoch = _requestRouter.begin();
     await _runNavigationTransition(
@@ -1879,6 +1885,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> previous() async {
+    if (!AuthService().isLoggedIn) return;
     _controlIntent.invalidate();
     final requestEpoch = _requestRouter.begin();
     await _runNavigationTransition(
@@ -1891,10 +1898,14 @@ class PlaybackService extends ChangeNotifier {
 
   Future<void> stop() async {
     _desiredPlaying = false;
+    _resetPreloadState();
     _invalidateCurrentPlayback();
-    await _engine.stop();
-    await _cleanupCurrentTempFile();
+    final stopEpoch = _requestRouter.currentEpoch;
     _pauseListeningTimeTracking();
+    await _engine.stop();
+    if (!_requestRouter.isCurrent(stopEpoch)) return;
+    await _cleanupCurrentTempFile();
+    if (!_requestRouter.isCurrent(stopEpoch)) return;
     _state = PBState.idle;
     _preloadedTrack = null;
     _clearPendingTrack();
@@ -1926,6 +1937,7 @@ class PlaybackService extends ChangeNotifier {
     PlaybackProblem? expectedProblem,
     bool forceRemoteResolution = false,
   }) async {
+    if (!AuthService().isLoggedIn) return;
     final requestEpoch = _requestRouter.begin();
     if (expectedProblem != null && !isCurrentPlaybackProblem(expectedProblem)) {
       return;
@@ -2025,9 +2037,14 @@ class PlaybackService extends ChangeNotifier {
 
   /// 播放网络电台流
   Future<void> playRadioStream(String streamUrl, Track radioTrack) async {
+    if (!AuthService().isLoggedIn) return;
     final requestEpoch = _requestRouter.begin();
     return _commands.enqueue(() async {
       await _cleanupCurrentTempFile();
+      if (!AuthService().isLoggedIn ||
+          !_requestRouter.isCurrent(requestEpoch)) {
+        return;
+      }
       _state = PBState.loading;
       _preloadedTrack = null;
       _clearPendingTrack();
@@ -2354,7 +2371,8 @@ class PlaybackService extends ChangeNotifier {
 
   bool _canStartPlayback(int generation) {
     final session = _currentSession;
-    return _transactionGuard.isCurrent(generation) &&
+    return AuthService().isLoggedIn &&
+        _transactionGuard.isCurrent(generation) &&
         session != null &&
         session.epoch == generation &&
         _requestRouter.isCurrent(session.requestEpoch) &&
@@ -4072,6 +4090,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> _playNextAuto() async {
+    if (!AuthService().isLoggedIn) return;
     final requestEpoch = _requestRouter.begin();
     final mode = PlaybackModeService().currentMode;
     switch (mode) {
@@ -5180,6 +5199,7 @@ class PlaybackService extends ChangeNotifier {
 
   // ── 清除会话 ──
   Future<void> clearSession() async {
+    _invalidateCurrentPlayback();
     _controlIntent.invalidate();
     _desiredPlaying = false;
     await _engine.stop();
@@ -5221,6 +5241,7 @@ class PlaybackService extends ChangeNotifier {
 
   /// 强制释放所有资源
   Future<void> forceDispose() async {
+    AuthService().onSessionEnded = null;
     _controlIntent.invalidate();
     try {
       _resetPreloadState();
@@ -5257,6 +5278,7 @@ class PlaybackService extends ChangeNotifier {
 
   @override
   void dispose() {
+    AuthService().onSessionEnded = null;
     _resetPreloadState();
     _unbindPreloadDependencyListeners();
     _stabilityTracker.dispose();

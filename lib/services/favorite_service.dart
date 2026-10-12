@@ -89,6 +89,7 @@ class FavoriteService extends ChangeNotifier {
   static final FavoriteService _instance = FavoriteService._internal();
   factory FavoriteService() => _instance;
   FavoriteService._internal() {
+    _observedSession = AuthService().sessionIdentity;
     // 监听登录状态变化
     AuthService().addListener(_onAuthChanged);
   }
@@ -97,13 +98,17 @@ class FavoriteService extends ChangeNotifier {
   List<FavoriteTrack> get favorites => _favorites;
 
   bool _isLoading = false;
+  String? _observedSession;
+  int _loadGeneration = 0;
   bool get isLoading => _isLoading;
 
   Set<String> _favoriteIds = {}; // 用于快速查找
 
   /// 监听认证状态变化
   void _onAuthChanged() {
-    if (!AuthService().isLoggedIn) {
+    final session = AuthService().sessionIdentity;
+    if (_observedSession != session) {
+      _observedSession = session;
       // 用户登出时清空收藏列表
       clear();
     }
@@ -117,16 +122,23 @@ class FavoriteService extends ChangeNotifier {
 
   /// 加载收藏列表
   Future<void> loadFavorites() async {
-    if (!AuthService().isLoggedIn) {
+    _onAuthChanged();
+    final session = AuthService().sessionIdentity;
+    if (session == null) {
       StructuredLogService.log('[FavoriteService] not logged in');
       return;
     }
 
+    final generation = ++_loadGeneration;
     try {
       _isLoading = true;
       notifyListeners();
 
       final result = await ApiClient().getJson('/favorites');
+      if (session != AuthService().sessionIdentity ||
+          generation != _loadGeneration) {
+        return;
+      }
 
       if (result.ok) {
         final data = result.data as Map<String, dynamic>?;
@@ -134,15 +146,17 @@ class FavoriteService extends ChangeNotifier {
         if (data != null && data['status'] == 200) {
           final List<dynamic> favoritesJson = data['favorites'] ?? [];
           _favorites = favoritesJson
-              .map((item) => FavoriteTrack.fromJson(item as Map<String, dynamic>))
+              .map(
+                (item) => FavoriteTrack.fromJson(item as Map<String, dynamic>),
+              )
               .toList();
 
           // 更新快速查找集合
-          _favoriteIds = _favorites
-              .map((f) => '${f.source}_${f.id}')
-              .toSet();
+          _favoriteIds = _favorites.map((f) => '${f.source}_${f.id}').toSet();
 
-          StructuredLogService.log('[FavoriteService] loaded ${_favorites.length} favorites');
+          StructuredLogService.log(
+            '[FavoriteService] loaded ${_favorites.length} favorites',
+          );
         } else {
           throw Exception(data?['message'] ?? '加载失败');
         }
@@ -152,14 +166,19 @@ class FavoriteService extends ChangeNotifier {
     } catch (e) {
       StructuredLogService.log('[FavoriteService] loadFavorites failed: $e');
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (session == AuthService().sessionIdentity &&
+          generation == _loadGeneration) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
   /// 添加收藏
   Future<bool> addFavorite(Track track) async {
-    if (!AuthService().isLoggedIn) {
+    _onAuthChanged();
+    final session = AuthService().sessionIdentity;
+    if (session == null) {
       StructuredLogService.log('[FavoriteService] not logged in');
       return false;
     }
@@ -171,6 +190,7 @@ class FavoriteService extends ChangeNotifier {
         '/favorites',
         data: favoriteTrack.toJson(),
       );
+      if (session != AuthService().sessionIdentity) return false;
 
       if (result.ok) {
         final data = result.data as Map<String, dynamic>?;
@@ -197,7 +217,9 @@ class FavoriteService extends ChangeNotifier {
 
   /// 删除收藏
   Future<bool> removeFavorite(Track track) async {
-    if (!AuthService().isLoggedIn) {
+    _onAuthChanged();
+    final session = AuthService().sessionIdentity;
+    if (session == null) {
       StructuredLogService.log('[FavoriteService] not logged in');
       return false;
     }
@@ -206,14 +228,19 @@ class FavoriteService extends ChangeNotifier {
       final trackId = track.id.toString();
       final source = track.source.toString().split('.').last;
 
-      final result = await ApiClient().deleteJson('/favorites/$trackId/$source');
+      final result = await ApiClient().deleteJson(
+        '/favorites/$trackId/$source',
+      );
+      if (session != AuthService().sessionIdentity) return false;
 
       if (result.ok) {
         final data = result.data as Map<String, dynamic>?;
 
         if (data != null && data['status'] == 200) {
           // 从本地列表删除
-          _favorites.removeWhere((f) => f.id == trackId && f.source == track.source);
+          _favorites.removeWhere(
+            (f) => f.id == trackId && f.source == track.source,
+          );
           _favoriteIds.remove('${track.source}_${track.id}');
 
           StructuredLogService.log('[FavoriteService] removed: ${track.name}');
@@ -242,6 +269,8 @@ class FavoriteService extends ChangeNotifier {
 
   /// 清空收藏列表（登出时调用）
   void clear() {
+    _loadGeneration++;
+    _isLoading = false;
     _favorites.clear();
     _favoriteIds.clear();
     notifyListeners();

@@ -21,8 +21,11 @@ class ListeningStatsData {
     return ListeningStatsData(
       totalListeningTime: json['totalListeningTime'] as int? ?? 0,
       totalPlayCount: json['totalPlayCount'] as int? ?? 0,
-      playCounts: (json['playCounts'] as List<dynamic>?)
-              ?.map((item) => PlayCountItem.fromJson(item as Map<String, dynamic>))
+      playCounts:
+          (json['playCounts'] as List<dynamic>?)
+              ?.map(
+                (item) => PlayCountItem.fromJson(item as Map<String, dynamic>),
+              )
               .toList() ??
           [],
     );
@@ -101,9 +104,26 @@ class PlayCountItem {
 
 /// 听歌统计服务
 class ListeningStatsService extends ChangeNotifier {
-  static final ListeningStatsService _instance = ListeningStatsService._internal();
+  static final ListeningStatsService _instance =
+      ListeningStatsService._internal();
   factory ListeningStatsService() => _instance;
-  ListeningStatsService._internal();
+  ListeningStatsService._internal() {
+    _observedSession = AuthService().sessionIdentity;
+    AuthService().addListener(_onAuthChanged);
+  }
+
+  String? _observedSession;
+  String? _syncingSession;
+
+  void _onAuthChanged() {
+    final session = AuthService().sessionIdentity;
+    if (session == _observedSession) return;
+    _observedSession = session;
+    _pendingSeconds = 0;
+    _statsData = null;
+    _syncingSession = null;
+    notifyListeners();
+  }
 
   final ApiClient _api = ApiClient();
 
@@ -115,6 +135,7 @@ class ListeningStatsService extends ChangeNotifier {
 
   /// 初始化服务
   void initialize() {
+    if (_syncTimer?.isActive ?? false) return;
     // 每30秒同步一次听歌时长
     _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _syncListeningTime();
@@ -124,13 +145,20 @@ class ListeningStatsService extends ChangeNotifier {
 
   /// 累积听歌时长
   void accumulateListeningTime(int seconds) {
+    _onAuthChanged();
+    if (AuthService().sessionIdentity == null || seconds <= 0) return;
     _pendingSeconds += seconds;
   }
 
   /// 同步听歌时长到服务器
   Future<void> _syncListeningTime() async {
+    _onAuthChanged();
+    final session = AuthService().sessionIdentity;
+    if (session == null || _syncingSession == session) return;
     if (_pendingSeconds <= 0) {
-      StructuredLogService.log('📊 [ListeningStatsService] 无待同步数据（待同步: ${_pendingSeconds}秒）');
+      StructuredLogService.log(
+        '📊 [ListeningStatsService] 无待同步数据（待同步: ${_pendingSeconds}秒）',
+      );
       return;
     }
 
@@ -140,36 +168,50 @@ class ListeningStatsService extends ChangeNotifier {
     }
 
     final seconds = _pendingSeconds;
+    _syncingSession = session;
     _pendingSeconds = 0; // 重置待同步秒数
 
-    StructuredLogService.log('📤 [ListeningStatsService] 准备同步听歌时长: ${seconds}秒');
+    StructuredLogService.log(
+      '📤 [ListeningStatsService] 准备同步听歌时长: ${seconds}秒',
+    );
 
     try {
       final result = await _api.postJson(
         '/stats/listening-time',
         data: {'seconds': seconds},
       );
+      if (session != AuthService().sessionIdentity) return;
 
-      StructuredLogService.log('📥 [ListeningStatsService] 同步响应状态: ${result.statusCode}');
+      StructuredLogService.log(
+        '📥 [ListeningStatsService] 同步响应状态: ${result.statusCode}',
+      );
 
       if (result.ok) {
         final data = result.data as Map<String, dynamic>?;
-        StructuredLogService.log('✅ [ListeningStatsService] 听歌时长已同步: +${seconds}秒, 总计: ${data?['data']?['totalListeningTime']}秒');
+        StructuredLogService.log(
+          '✅ [ListeningStatsService] 听歌时长已同步: +${seconds}秒, 总计: ${data?['data']?['totalListeningTime']}秒',
+        );
       } else {
-        StructuredLogService.log('❌ [ListeningStatsService] 同步听歌时长失败: ${result.statusCode}');
+        StructuredLogService.log(
+          '❌ [ListeningStatsService] 同步听歌时长失败: ${result.statusCode}',
+        );
         // 同步失败，将秒数加回待同步队列
         _pendingSeconds += seconds;
       }
     } catch (e) {
       StructuredLogService.log('❌ [ListeningStatsService] 同步听歌时长异常: $e');
       // 异常时将秒数加回待同步队列
-      _pendingSeconds += seconds;
+      if (session == AuthService().sessionIdentity) _pendingSeconds += seconds;
+    } finally {
+      if (_syncingSession == session) _syncingSession = null;
     }
   }
 
   /// 立即同步听歌时长（用于调试）
   Future<void> syncNow() async {
-    StructuredLogService.log('🔄 [ListeningStatsService] 手动触发同步，待同步: ${_pendingSeconds}秒');
+    StructuredLogService.log(
+      '🔄 [ListeningStatsService] 手动触发同步，待同步: ${_pendingSeconds}秒',
+    );
     await _syncListeningTime();
   }
 
@@ -191,9 +233,13 @@ class ListeningStatsService extends ChangeNotifier {
       );
 
       if (result.ok) {
-        StructuredLogService.log('✅ [ListeningStatsService] 播放次数已记录: ${track.name}');
+        StructuredLogService.log(
+          '✅ [ListeningStatsService] 播放次数已记录: ${track.name}',
+        );
       } else {
-        StructuredLogService.log('❌ [ListeningStatsService] 记录播放次数失败: ${result.statusCode}');
+        StructuredLogService.log(
+          '❌ [ListeningStatsService] 记录播放次数失败: ${result.statusCode}',
+        );
       }
     } catch (e) {
       StructuredLogService.log('❌ [ListeningStatsService] 记录播放次数异常: $e');
@@ -202,21 +248,28 @@ class ListeningStatsService extends ChangeNotifier {
 
   /// 获取统计数据
   Future<ListeningStatsData?> fetchStats() async {
-    if (!AuthService().isLoggedIn) {
+    _onAuthChanged();
+    final session = AuthService().sessionIdentity;
+    if (session == null) {
       StructuredLogService.log('⚠️ [ListeningStatsService] 用户未登录');
       return null;
     }
 
     try {
       final result = await _api.getJson('/stats');
+      if (session != AuthService().sessionIdentity) return null;
 
       if (result.ok) {
-        _statsData = ListeningStatsData.fromJson(result.bodyData as Map<String, dynamic>);
+        _statsData = ListeningStatsData.fromJson(
+          result.bodyData as Map<String, dynamic>,
+        );
         notifyListeners();
         StructuredLogService.log('✅ [ListeningStatsService] 统计数据已获取');
         return _statsData;
       } else {
-        StructuredLogService.log('❌ [ListeningStatsService] 获取统计数据失败: ${result.statusCode}');
+        StructuredLogService.log(
+          '❌ [ListeningStatsService] 获取统计数据失败: ${result.statusCode}',
+        );
         return null;
       }
     } catch (e) {
@@ -251,6 +304,7 @@ class ListeningStatsService extends ChangeNotifier {
   /// 清理资源
   @override
   void dispose() {
+    AuthService().removeListener(_onAuthChanged);
     _syncTimer?.cancel();
     StructuredLogService.log('🗑️ [ListeningStatsService] 服务已释放');
     super.dispose();

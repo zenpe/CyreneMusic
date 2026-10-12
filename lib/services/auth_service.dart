@@ -83,6 +83,13 @@ class AuthService extends ChangeNotifier {
   bool _isLoggedIn = false;
   String? _authToken;
   bool _isHandlingUnauthorized = false;
+  int _sessionRevision = 0;
+
+  /// Registered by the playback service without constructing it during logout.
+  Future<void> Function()? onSessionEnded;
+
+  String? get sessionIdentity =>
+      !_isLoggedIn ? null : '${_currentUser?.id}:$_sessionRevision:$_authToken';
 
   // 用于跟踪 Linux Do OAuth 登录的本地服务器
   // 确保在启动新登录前关闭旧服务器，避免端口占用
@@ -119,8 +126,10 @@ class AuthService extends ChangeNotifier {
 
   /// 保存用户信息到本地存储
   Future<void> _saveUserToStorage(User user) async {
+    final revision = _sessionRevision;
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (revision != _sessionRevision) return;
       await prefs.setString('current_user', jsonEncode(user.toJson()));
       StructuredLogService.log('💾 [AuthService] 用户信息已保存到本地');
     } catch (e) {
@@ -129,17 +138,20 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> _saveTokenToStorage(String token) async {
+    final revision = _sessionRevision;
+    AuthTokenStore.token = token;
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (revision != _sessionRevision) return;
       await prefs.setString('auth_token', token);
-      AuthTokenStore.token = token;
     } catch (_) {}
   }
 
   /// 清除本地存储的用户信息
-  Future<void> _clearUserFromStorage() async {
+  Future<void> _clearUserFromStorage(int revision) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (revision != _sessionRevision) return;
       await prefs.remove('current_user');
       StructuredLogService.log('🗑️ [AuthService] 已清除本地用户信息');
     } catch (e) {
@@ -147,11 +159,11 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<void> _clearTokenFromStorage() async {
+  Future<void> _clearTokenFromStorage(int revision) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (revision != _sessionRevision) return;
       await prefs.remove('auth_token');
-      AuthTokenStore.token = null;
     } catch (_) {}
   }
 
@@ -159,19 +171,27 @@ class AuthService extends ChangeNotifier {
     required String token,
     Map<String, dynamic>? userJson,
   }) async {
+    await ensureInitialized();
+    final user = userJson != null && userJson.isNotEmpty
+        ? User.fromJson(userJson)
+        : null;
+    final revision = ++_sessionRevision;
     _authToken = token;
+    _currentUser = user;
+    _isLoggedIn = user != null;
     await _saveTokenToStorage(token);
+    if (revision != _sessionRevision) return;
 
-    if (userJson != null && userJson.isNotEmpty) {
-      _currentUser = User.fromJson(userJson);
-      _isLoggedIn = true;
+    if (user != null) {
       await _saveUserToStorage(_currentUser!);
+      if (revision != _sessionRevision) return;
       notifyListeners();
       return;
     }
 
     // 兜底：通过后端校验 token 并获取用户信息
     final ok = await validateToken();
+    if (revision != _sessionRevision) return;
     if (!ok) {
       await logout();
     }
@@ -296,6 +316,8 @@ class AuthService extends ChangeNotifier {
     required String account,
     required String password,
   }) async {
+    await ensureInitialized();
+    final revision = ++_sessionRevision;
     try {
       final result = await ApiClient().postJson(
         '/auth/login',
@@ -303,6 +325,9 @@ class AuthService extends ChangeNotifier {
         auth: false,
       );
 
+      if (revision != _sessionRevision) {
+        return {'success': false, 'message': '登录状态已变化，请重试'};
+      }
       if (result.ok) {
         final data = result.data as Map<String, dynamic>;
         _currentUser = User.fromJson(data['data']);
@@ -311,8 +336,14 @@ class AuthService extends ChangeNotifier {
 
         // 保存用户信息到本地
         await _saveUserToStorage(_currentUser!);
+        if (revision != _sessionRevision) {
+          return {'success': false, 'message': '登录状态已变化，请重试'};
+        }
         if (_authToken != null) {
           await _saveTokenToStorage(_authToken!);
+        }
+        if (revision != _sessionRevision) {
+          return {'success': false, 'message': '登录状态已变化，请重试'};
         }
 
         notifyListeners();
@@ -714,13 +745,28 @@ class AuthService extends ChangeNotifier {
   /// 登出
   Future<void> logout() async {
     final username = _currentUser?.username;
+    final revision = ++_sessionRevision;
     _currentUser = null;
     _isLoggedIn = false;
     _authToken = null;
+    AuthTokenStore.token = null;
+    notifyListeners();
+
+    // stop() invalidates pending playback synchronously before its first await.
+    Future<void> stopPlayback() async {
+      try {
+        await onSessionEnded?.call();
+      } catch (e) {
+        StructuredLogService.log('停止退出会话播放失败: $e', level: LogLevel.error);
+      }
+    }
+
+    final stopping = stopPlayback();
 
     // 清除本地存储
-    await _clearUserFromStorage();
-    await _clearTokenFromStorage();
+    await _clearUserFromStorage(revision);
+    await _clearTokenFromStorage(revision);
+    await stopping;
 
     // 清除收藏列表（需要在这里导入 FavoriteService，但为避免循环依赖，改为在 FavoriteService 中监听登出）
 
@@ -733,8 +779,13 @@ class AuthService extends ChangeNotifier {
     if (_authToken == null || _authToken!.isEmpty) {
       return false;
     }
+    final revision = _sessionRevision;
+    final requestToken = _authToken;
+    bool isCurrent() =>
+        revision == _sessionRevision && requestToken == _authToken;
     try {
       final result = await ApiClient().getJson('/auth/validate-token');
+      if (!isCurrent()) return _isLoggedIn;
       if (result.ok) {
         final body = result.bodyData as Map<String, dynamic>;
         _currentUser = User.fromJson(body);
@@ -742,13 +793,14 @@ class AuthService extends ChangeNotifier {
         if (refreshedToken != null && refreshedToken.isNotEmpty) {
           _authToken = refreshedToken;
           await _saveTokenToStorage(refreshedToken);
+          if (revision != _sessionRevision) return _isLoggedIn;
         }
         _isLoggedIn = true;
         notifyListeners();
         return true;
       }
       // 仅在明确 401 时清理登录态，避免后端瞬时异常/网关错误导致误登出
-      if (result.statusCode == 401) {
+      if (result.statusCode == 401 && isCurrent()) {
         await handleUnauthorized();
         return false;
       }
@@ -757,6 +809,7 @@ class AuthService extends ChangeNotifier {
       );
       return _isLoggedIn;
     } catch (e) {
+      if (!isCurrent()) return _isLoggedIn;
       DeveloperModeService().addLog(
         '⚠️ [AuthService] validate-token 异常，保留当前登录态: $e',
       );
