@@ -834,12 +834,17 @@ class AuthService extends ChangeNotifier {
     if (_authToken == null || _authToken!.isEmpty) {
       return {'success': false, 'message': '未登录'};
     }
+    final session = sessionIdentity;
 
     try {
       final result = await ApiClient().postJson(
         '/auth/update-username',
         data: {'newUsername': newUsername},
       );
+
+      if (session == null || session != sessionIdentity) {
+        return {'success': false, 'message': '登录状态已变化，请重试'};
+      }
 
       if (result.ok) {
         // 更新本地用户信息
@@ -853,6 +858,9 @@ class AuthService extends ChangeNotifier {
             avatarUrl: _currentUser!.avatarUrl,
           );
           await _saveUserToStorage(_currentUser!);
+          if (session != sessionIdentity) {
+            return {'success': false, 'message': '登录状态已变化，请重试'};
+          }
           notifyListeners();
         }
 

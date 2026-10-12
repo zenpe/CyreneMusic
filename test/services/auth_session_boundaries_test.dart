@@ -66,6 +66,54 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  for (final switchAccount in [false, true]) {
+    test(
+      'late username update cannot overwrite ${switchAccount ? 'new account' : 'logout'}',
+      () async {
+        final received = Completer<void>();
+        final release = Completer<void>();
+        await withServer(
+          (request) async {
+            expect(request.headers.value('Authorization'), 'Bearer token-a');
+            received.complete();
+            await release.future;
+            await reply(request, {'code': 200, 'message': 'updated'});
+          },
+          (auth) async {
+            final update = auth.updateUsername('changed-name');
+            await received.future.timeout(const Duration(seconds: 5));
+            if (switchAccount) {
+              await auth.loginWithToken(token: 'token-b', userJson: user(2));
+            } else {
+              await auth.logout();
+            }
+            release.complete();
+            expect((await update)['success'], false);
+            expect(auth.currentUser?.username, switchAccount ? 'test2' : null);
+            final saved = (await SharedPreferences.getInstance()).getString(
+              'current_user',
+            );
+            expect(
+              saved == null ? null : jsonDecode(saved)['username'],
+              switchAccount ? 'test2' : null,
+            );
+          },
+        );
+      },
+    );
+  }
+
+  test('current-session username update still persists', () async {
+    await withServer((request) => reply(request, {'code': 200}), (auth) async {
+      expect((await auth.updateUsername('newname'))['success'], true);
+      expect(auth.currentUser?.username, 'newname');
+      final saved = (await SharedPreferences.getInstance()).getString(
+        'current_user',
+      );
+      expect(jsonDecode(saved!)['username'], 'newname');
+    });
+  });
+
   for (final status in [200, 401]) {
     for (final switchAccount in [false, true]) {
       test(
