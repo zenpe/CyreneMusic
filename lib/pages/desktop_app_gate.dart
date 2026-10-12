@@ -28,7 +28,8 @@ class _DesktopAppGateState extends State<DesktopAppGate> {
       AppGateRoute.navidromeMain => const NavidromeMainLayout(),
       AppGateRoute.navidromeSetup => const NavidromeSetupPage(),
       AppGateRoute.regularMain => const FluentMainLayout(),
-      AppGateRoute.regularSetup => const DesktopSetupPage(),
+      // Re-evaluate login and consent even when the setup route is unchanged.
+      AppGateRoute.regularSetup => DesktopSetupPage(),
     };
   }
 

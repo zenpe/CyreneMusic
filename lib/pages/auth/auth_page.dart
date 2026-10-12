@@ -411,6 +411,7 @@ class _LoginViewState extends State<_LoginView> {
   final _accountFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
   bool _isLoading = false;
+  String? _loginError;
   bool _obscurePassword = true;
   bool _rememberLoginEnabled = true;
   bool _rememberCredentials = true;
@@ -481,7 +482,11 @@ class _LoginViewState extends State<_LoginView> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isLoading = true;
+      _loginError = null;
+    });
 
     final account = _accountController.text.trim();
     final password = _passwordController.text;
@@ -499,7 +504,12 @@ class _LoginViewState extends State<_LoginView> {
       );
     }
     if (!mounted) return;
-    setState(() => _isLoading = false);
+    setState(() {
+      _isLoading = false;
+      _loginError = result['success'] == true
+          ? null
+          : result['message'] as String? ?? '登录失败';
+    });
 
     if (mounted) {
       if (result['success']) {
@@ -653,9 +663,11 @@ class _LoginViewState extends State<_LoginView> {
           // 提示文字
           Center(
             child: Text(
-              '第一次使用？切换到注册标签页创建账号',
+              _loginError ?? '第一次使用？切换到注册标签页创建账号',
               style: TextStyle(
-                color: colorScheme.onSurfaceVariant,
+                color: _loginError == null
+                    ? colorScheme.onSurfaceVariant
+                    : colorScheme.error,
                 fontSize: 13,
                 letterSpacing: 0.1,
               ),

@@ -354,7 +354,12 @@ class AuthService extends ChangeNotifier {
           'user': _currentUser,
         };
       } else {
-        return {'success': false, 'message': result.message ?? '登录失败'};
+        return {
+          'success': false,
+          'message': result.statusCode >= 500
+              ? '登录服务暂时不可用，请稍后重试'
+              : result.message ?? '登录失败',
+        };
       }
     } catch (e) {
       return {'success': false, 'message': '网络错误: ${e.toString()}'};

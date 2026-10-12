@@ -183,6 +183,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  String? _loginError;
   bool _obscurePassword = true;
   bool _rememberLoginEnabled = true;
   bool _rememberCredentials = true;
@@ -247,7 +248,11 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isLoading = true;
+      _loginError = null;
+    });
 
     final account = _accountController.text.trim();
     final password = _passwordController.text;
@@ -265,7 +270,12 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
       );
     }
     if (!mounted) return;
-    setState(() => _isLoading = false);
+    setState(() {
+      _isLoading = false;
+      _loginError = result['success'] == true
+          ? null
+          : result['message'] as String? ?? '登录失败';
+    });
 
     if (mounted) {
       if (result['success']) {
@@ -389,7 +399,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
           const SizedBox(height: 16),
           Center(
             child: Text(
-              '第一次使用？切换到注册标签页创建账号',
+              _loginError ?? '第一次使用？切换到注册标签页创建账号',
               style: theme.typography.caption?.copyWith(
                 color: theme.brightness == Brightness.dark
                     ? Colors.white54

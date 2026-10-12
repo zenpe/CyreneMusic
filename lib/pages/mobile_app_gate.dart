@@ -32,7 +32,10 @@ class _MobileAppGateState extends State<MobileAppGate>
       AppGateRoute.navidromeMain => const NavidromeMainLayout(),
       AppGateRoute.navidromeSetup => const NavidromeSetupPage(),
       AppGateRoute.regularMain => const MainLayout(),
-      AppGateRoute.regularSetup => const MobileSetupPage(),
+      // Setup remains the same route while login/consent prerequisites change.
+      // Rebuild its contents when entry state changes instead of reusing a
+      // canonical const widget that Flutter skips updating.
+      AppGateRoute.regularSetup => MobileSetupPage(),
     };
   }
 

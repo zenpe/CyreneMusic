@@ -66,6 +66,40 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  for (final status in [429, 503]) {
+    test(
+      'password login failure $status leaves session logged out and explains the failure',
+      () async {
+        await withServer(
+          (request) async {
+            expect(request.uri.path, '/auth/login');
+            expect(request.headers.value('Authorization'), isNull);
+            request.response.headers.set('Retry-After', '37');
+            await reply(
+              request,
+              status == 429 ? {'code': 429, 'message': '操作过于频繁'} : {},
+              status: status,
+            );
+          },
+          (auth) async {
+            await auth.logout();
+            final result = await auth.login(
+              account: 'test',
+              password: 'test-only-password',
+            );
+            expect(result['success'], false);
+            expect(
+              result['message'],
+              status == 429 ? '操作过于频繁，请在 37 秒后重试' : '登录服务暂时不可用，请稍后重试',
+            );
+            expect(auth.isLoggedIn, false);
+            expect(AuthTokenStore.token, isNull);
+          },
+        );
+      },
+    );
+  }
+
   for (final switchAccount in [false, true]) {
     test(
       'late username update cannot overwrite ${switchAccount ? 'new account' : 'logout'}',
