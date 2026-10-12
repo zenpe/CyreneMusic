@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 
 import '../../features/audio_source/audio_source_feature.dart';
 import '../../models/audio_source_config.dart';
-import '../../services/app_config_service.dart';
 import '../../services/audio_source_service.dart';
 import '../../services/lx_music_source_parser.dart';
 import '../../utils/theme_manager.dart';
@@ -21,16 +20,11 @@ class AddAudioSourceDialog extends StatefulWidget {
 }
 
 class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
-  static const List<String> _defaultQuickScriptUrls = [
-    'https://zenn.cc.cd/pub/lx.js',
-  ];
-
   final TextEditingController _scriptUrlController = TextEditingController();
   final TextEditingController _apiKeyController = TextEditingController();
   final LxMusicSourceParser _parser = LxMusicSourceParser();
   final AudioSourceController _controller = AudioSourceController();
 
-  List<String> _quickScriptUrls = List<String>.from(_defaultQuickScriptUrls);
   bool _isProcessing = false;
   bool _needsApiKey = false;
   bool _isError = false;
@@ -48,7 +42,6 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
       _scriptUrlController.text = existing.scriptSource;
       _apiKeyController.text = existing.apiKey;
     }
-    _loadQuickScriptPresets();
   }
 
   @override
@@ -56,37 +49,6 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
     _scriptUrlController.dispose();
     _apiKeyController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadQuickScriptPresets() async {
-    try {
-      final config = await AppConfigService().fetchPublicConfig();
-      if (!mounted) return;
-      final urls = config.lxScriptPresets
-          .where(AudioSourceService.isValidUrl)
-          .toSet()
-          .toList();
-      if (urls.isNotEmpty) setState(() => _quickScriptUrls = urls);
-    } catch (_) {
-      // Keep the bundled preset when remote configuration is unavailable.
-    }
-  }
-
-  String _presetLabel(String url) {
-    final uri = Uri.tryParse(url);
-    if (uri == null || uri.host.isEmpty) return url;
-    final file = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
-    return file.isEmpty ? uri.host : '${uri.host}/$file';
-  }
-
-  void _selectPreset(String url) {
-    setState(() {
-      _scriptUrlController.text = url;
-      _scriptUrlController.selection = TextSelection.collapsed(
-        offset: url.length,
-      );
-      _resetDraft();
-    });
   }
 
   void _resetDraft() {
@@ -248,27 +210,6 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              DropdownButtonFormField<String>(
-                initialValue:
-                    _quickScriptUrls.contains(_scriptUrlController.text)
-                    ? _scriptUrlController.text
-                    : null,
-                decoration: const InputDecoration(labelText: '预设'),
-                items: _quickScriptUrls
-                    .map(
-                      (url) => DropdownMenuItem(
-                        value: url,
-                        child: Text(_presetLabel(url)),
-                      ),
-                    )
-                    .toList(),
-                onChanged: _isProcessing
-                    ? null
-                    : (url) {
-                        if (url != null) _selectPreset(url);
-                      },
-              ),
-              const SizedBox(height: 12),
               TextField(
                 controller: _scriptUrlController,
                 enabled: !_isProcessing,
@@ -367,13 +308,6 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                 Expanded(
                   child: ListView(
                     children: [
-                      CupertinoButton(
-                        padding: EdgeInsets.zero,
-                        onPressed: _isProcessing
-                            ? null
-                            : () => _selectPreset(_quickScriptUrls.first),
-                        child: Text(_presetLabel(_quickScriptUrls.first)),
-                      ),
                       CupertinoTextField(
                         controller: _scriptUrlController,
                         enabled: !_isProcessing,
@@ -430,23 +364,6 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            fluent.ComboBox<String>(
-              placeholder: const Text('选择预设'),
-              items: _quickScriptUrls
-                  .map(
-                    (url) => fluent.ComboBoxItem(
-                      value: url,
-                      child: Text(_presetLabel(url)),
-                    ),
-                  )
-                  .toList(),
-              onChanged: _isProcessing
-                  ? null
-                  : (url) {
-                      if (url != null) _selectPreset(url);
-                    },
-            ),
-            const SizedBox(height: 12),
             fluent.TextBox(
               controller: _scriptUrlController,
               enabled: !_isProcessing,

@@ -119,7 +119,8 @@ class MusicService extends ChangeNotifier {
     if (_isCached &&
         !forceRefresh &&
         _toplistsCacheSavedAt != null &&
-        DateTime.now().difference(_toplistsCacheSavedAt!) < _toplistsFreshness) {
+        DateTime.now().difference(_toplistsCacheSavedAt!) <
+            _toplistsFreshness) {
       StructuredLogService.log('💾 [MusicService] 使用缓存数据，跳过加载');
       DeveloperModeService().addLog('💾 [MusicService] 使用缓存数据');
       return;
@@ -548,6 +549,7 @@ class MusicService extends ChangeNotifier {
       // Runtime is a singleton, so readiness must be tied to the active
       // source rather than only to the runtime's initialized flag.
       await audioSourceService.initializeLxRuntime();
+      final sourceRevision = audioSourceService.lxSourceRevision;
       if (audioSourceService.activeSource?.id != sourceId ||
           !runtime.isInitialized ||
           !runtime.isScriptReady) {
@@ -573,6 +575,11 @@ class MusicService extends ChangeNotifier {
         quality: lxQuality,
         timeout: requestTimeout,
       );
+
+      if (audioSourceService.lxSourceRevision != sourceRevision ||
+          audioSourceService.activeSource?.id != sourceId) {
+        throw Exception('洛雪音源已切换，请重试');
+      }
 
       if (audioUrl == null || audioUrl.isEmpty) {
         _lastLxFailure = runtime.lastFailure;
@@ -630,6 +637,10 @@ class MusicService extends ChangeNotifier {
 
       // 洛雪音源只返回 URL，创建一个简化的 SongDetail
       // 注意：歌曲元数据（名称、艺术家、封面等）需要从其他地方获取
+      if (audioSourceService.lxSourceRevision != sourceRevision ||
+          audioSourceService.activeSource?.id != sourceId) {
+        throw Exception('洛雪音源已切换，请重试');
+      }
       return SongDetail(
         id: songId,
         name: '', // 需要从 Track 信息获取
@@ -736,9 +747,7 @@ class MusicService extends ChangeNotifier {
     if (source != MusicSource.kugou) return songId.toString();
     final fileHash = sourceIds.fileHash;
     if (fileHash == null || fileHash.isEmpty) {
-      throw const MissingTrackSourceIdentifierException(
-        '歌曲标识不完整，请重新搜索或同步',
-      );
+      throw const MissingTrackSourceIdentifierException('歌曲标识不完整，请重新搜索或同步');
     }
     return fileHash.toUpperCase();
   }
@@ -754,7 +763,6 @@ class MusicService extends ChangeNotifier {
     StructuredLogService.log('🗑️ [MusicService] 已清除数据和缓存');
     notifyListeners();
   }
-
 }
 
 /// 音源未配置异常

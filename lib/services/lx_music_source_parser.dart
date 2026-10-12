@@ -66,18 +66,26 @@ class LxMusicSourceParser {
   /// 返回解析后的配置，如果解析失败返回 null
   Future<LxMusicSourceConfig?> parseFromUrl(String scriptUrl) async {
     try {
-      StructuredLogService.log('🔍 [LxMusicSourceParser] 从 URL 解析脚本: $scriptUrl');
+      StructuredLogService.log(
+        '🔍 [LxMusicSourceParser] 从 URL 解析脚本: $scriptUrl',
+      );
 
       // 下载脚本内容
-      final response = await http.get(
-        Uri.parse(scriptUrl),
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .get(
+            Uri.parse(scriptUrl),
+            headers: {
+              'Cache-Control': 'no-cache',
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
-        StructuredLogService.log('❌ [LxMusicSourceParser] 下载脚本失败: HTTP ${response.statusCode}');
+        StructuredLogService.log(
+          '❌ [LxMusicSourceParser] 下载脚本失败: HTTP ${response.statusCode}',
+        );
         return null;
       }
 
@@ -85,7 +93,9 @@ class LxMusicSourceParser {
         response.bodyBytes,
         contentType: response.headers['content-type'],
       );
-      StructuredLogService.log('✅ [LxMusicSourceParser] 脚本下载成功，长度: ${scriptContent.length}');
+      StructuredLogService.log(
+        '✅ [LxMusicSourceParser] 脚本下载成功，长度: ${scriptContent.length}',
+      );
 
       // 解析脚本内容
       final config = _parseScriptContent(scriptContent, scriptUrl);
@@ -137,7 +147,9 @@ class LxMusicSourceParser {
       }
 
       scriptContent = _decodeScriptBytes(scriptBytes);
-      StructuredLogService.log('✅ [LxMusicSourceParser] 文件读取成功: ${file.name}，长度: ${scriptContent.length}');
+      StructuredLogService.log(
+        '✅ [LxMusicSourceParser] 文件读取成功: ${file.name}，长度: ${scriptContent.length}',
+      );
 
       // 解析脚本内容
       final config = _parseScriptContent(scriptContent, source);
@@ -152,7 +164,10 @@ class LxMusicSourceParser {
   /// 解析脚本内容
   ///
   /// 从 JS 脚本中提取配置信息
-  LxMusicSourceConfig? _parseScriptContent(String scriptContent, String source) {
+  LxMusicSourceConfig? _parseScriptContent(
+    String scriptContent,
+    String source,
+  ) {
     try {
       StructuredLogService.log('🔍 [LxMusicSourceParser] 开始解析脚本内容...');
 
@@ -163,7 +178,8 @@ class LxMusicSourceParser {
       String name = headerMetadata['name'] ?? _extractName(scriptContent);
 
       // 提取版本
-      String version = headerMetadata['version'] ?? _extractVersion(scriptContent);
+      String version =
+          headerMetadata['version'] ?? _extractVersion(scriptContent);
 
       // 提取 API URL
       String apiUrl = _extractApiUrl(scriptContent);
@@ -178,7 +194,8 @@ class LxMusicSourceParser {
       String author = headerMetadata['author'] ?? _extractAuthor(scriptContent);
 
       // 提取描述
-      String description = headerMetadata['description'] ?? _extractDescription(scriptContent);
+      String description =
+          headerMetadata['description'] ?? _extractDescription(scriptContent);
 
       // 清洗元数据，尽量修复常见 UTF-8/Latin1 误解码乱码
       name = _normalizeMetadataText(name, fallback: '洛雪音源');
@@ -189,11 +206,19 @@ class LxMusicSourceParser {
       StructuredLogService.log('📋 [LxMusicSourceParser] 解析结果:');
       StructuredLogService.log('   名称: $name');
       StructuredLogService.log('   版本: $version');
-      StructuredLogService.log('   作者: ${author.isNotEmpty ? author : "(未找到)"}');
-      StructuredLogService.log('   描述: ${description.isNotEmpty ? description : "(未找到)"}');
+      StructuredLogService.log(
+        '   作者: ${author.isNotEmpty ? author : "(未找到)"}',
+      );
+      StructuredLogService.log(
+        '   描述: ${description.isNotEmpty ? description : "(未找到)"}',
+      );
       StructuredLogService.log('   API URL: $apiUrl');
-      StructuredLogService.log('   API Key: ${apiKey.isNotEmpty ? "(已提取)" : "(未找到)"}');
-      StructuredLogService.log('   路径模板: ${urlPathTemplate.isNotEmpty ? urlPathTemplate : "(未找到)"}');
+      StructuredLogService.log(
+        '   API Key: ${apiKey.isNotEmpty ? "(已提取)" : "(未找到)"}',
+      );
+      StructuredLogService.log(
+        '   路径模板: ${urlPathTemplate.isNotEmpty ? urlPathTemplate : "(未找到)"}',
+      );
 
       return LxMusicSourceConfig(
         name: name,
@@ -462,7 +487,9 @@ class LxMusicSourceParser {
       final trimmed = segment.trim();
       if (!trimmed.startsWith('charset=')) continue;
       var charsetName = trimmed.substring('charset='.length).trim();
-      if (charsetName.startsWith('"') && charsetName.endsWith('"') && charsetName.length > 1) {
+      if (charsetName.startsWith('"') &&
+          charsetName.endsWith('"') &&
+          charsetName.length > 1) {
         charsetName = charsetName.substring(1, charsetName.length - 1);
       } else if (charsetName.startsWith("'") &&
           charsetName.endsWith("'") &&

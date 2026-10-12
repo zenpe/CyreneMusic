@@ -22,8 +22,10 @@ class AudioSourceUseCases {
 
   Future<void> setActiveSource(String id) => _repository.setActiveSource(id);
 
+  Future<void> useLxSource(String scriptUrl) =>
+      _repository.useLxSource(scriptUrl);
+
   Future<void> removeSource(String id) => _repository.removeSource(id);
 
   Future<void> clearSelection() => _repository.clear();
 }
-

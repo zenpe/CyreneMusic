@@ -10,12 +10,14 @@ import '../models/track.dart';
 import '../models/song_detail.dart';
 import '../models/audio_source_config.dart';
 import 'lx_music_runtime_service.dart';
+import 'lx_runtime_interface.dart';
+import 'lx_music_source_parser.dart';
 import 'navidrome_session_service.dart';
 
 /// 音源类型枚举
 enum AudioSourceType {
-  lxmusic,     // 洛雪音乐音源
-  navidrome,   // Navidrome
+  lxmusic, // 洛雪音乐音源
+  navidrome, // Navidrome
 }
 
 /// 音源服务 - 管理音源配置（获取歌曲播放 URL）
@@ -24,7 +26,22 @@ enum AudioSourceType {
 class AudioSourceService extends ChangeNotifier {
   static final AudioSourceService _instance = AudioSourceService._internal();
   factory AudioSourceService() => _instance;
-  AudioSourceService._internal();
+  AudioSourceService._internal()
+    : _runtime = LxMusicRuntimeService(),
+      _parser = LxMusicSourceParser();
+
+  @visibleForTesting
+  AudioSourceService.withDependencies({
+    required LxRuntime runtime,
+    required LxMusicSourceParser parser,
+  }) : _runtime = runtime,
+       _parser = parser;
+
+  final LxRuntime _runtime;
+  final LxMusicSourceParser _parser;
+  Future<void>? _candidateActivation;
+  int _lxSourceRevision = 0;
+  int get lxSourceRevision => _lxSourceRevision;
 
   /// 外部触发状态刷新（代替直接调用 notifyListeners）
   void refresh() => notifyListeners();
@@ -55,18 +72,25 @@ class AudioSourceService extends ChangeNotifier {
   static const String _keyOldLxSourceVersion = 'audio_source_lx_version';
   static const String _keyOldLxScriptSource = 'audio_source_lx_script_source';
   static const String _keyOldLxSourceAuthor = 'audio_source_lx_author';
-  static const String _keyOldLxSourceDescription = 'audio_source_lx_description';
-  static const String _keyOldLxUrlPathTemplate = 'audio_source_lx_url_path_template';
+  static const String _keyOldLxSourceDescription =
+      'audio_source_lx_description';
+  static const String _keyOldLxUrlPathTemplate =
+      'audio_source_lx_url_path_template';
 
   // ==================== 洛雪音源来源代码映射 ====================
   static const Map<MusicSource, String> _lxSourceCodeMap = {
-    MusicSource.netease: 'wy',  // 网易云音乐
-    MusicSource.qq: 'tx',       // QQ音乐（腾讯）
-    MusicSource.kugou: 'kg',    // 酷狗音乐
-    MusicSource.kuwo: 'kw',     // 酷我音乐
+    MusicSource.netease: 'wy', // 网易云音乐
+    MusicSource.qq: 'tx', // QQ音乐（腾讯）
+    MusicSource.kugou: 'kg', // 酷狗音乐
+    MusicSource.kuwo: 'kw', // 酷我音乐
   };
 
-  static const List<String> lxQualityOptions = ['128k', '320k', 'flac', 'flac24bit'];
+  static const List<String> lxQualityOptions = [
+    '128k',
+    '320k',
+    'flac',
+    'flac24bit',
+  ];
 
   Future<void> _enqueueMutation(Future<void> Function() mutation) {
     final task = _mutationQueue.catchError((_) {}).then((_) => mutation());
@@ -75,6 +99,7 @@ class AudioSourceService extends ChangeNotifier {
   }
 
   void _invalidateLxRuntime() {
+    _lxSourceRevision++;
     _lxRuntimeGeneration++;
     _lxRuntimeSourceId = null;
   }
@@ -102,6 +127,11 @@ class AudioSourceService extends ChangeNotifier {
 
   /// 初始化洛雪运行时环境
   Future<void> initializeLxRuntime() async {
+    while (true) {
+      final activation = _candidateActivation;
+      if (activation == null) break;
+      await activation;
+    }
     final source = activeSource;
     final generation = ++_lxRuntimeGeneration;
     if (source == null || source.type != AudioSourceType.lxmusic) {
@@ -116,32 +146,39 @@ class AudioSourceService extends ChangeNotifier {
       if (generation != _lxRuntimeGeneration || activeSource?.id != sourceId) {
         return;
       }
-      if (_lxRuntimeSourceId == sourceId &&
-          LxMusicRuntimeService().isScriptReady) {
+      if (_lxRuntimeSourceId == sourceId && _runtime.isScriptReady) {
         return;
       }
 
       try {
-        StructuredLogService.log('🚀 [AudioSourceService] 正在初始化洛雪运行时: $sourceId');
+        StructuredLogService.log(
+          '🚀 [AudioSourceService] 正在初始化洛雪运行时: $sourceId',
+        );
         String? scriptContent = source.scriptContent;
         if (scriptContent.isEmpty) {
           scriptContent = await _loadLxScriptContent();
         }
         if (scriptContent == null || scriptContent.isEmpty) {
-          StructuredLogService.log('⚠️ [AudioSourceService] 未找到洛雪脚本内容，无法初始化运行时');
+          StructuredLogService.log(
+            '⚠️ [AudioSourceService] 未找到洛雪脚本内容，无法初始化运行时',
+          );
           return;
         }
 
-        final runtime = LxMusicRuntimeService();
+        final runtime = _runtime;
         final loaded = await runtime.loadScript(scriptContent);
         if (loaded == null || !runtime.isScriptReady) {
-          StructuredLogService.log('⚠️ [AudioSourceService] 洛雪脚本加载失败: $sourceId');
+          StructuredLogService.log(
+            '⚠️ [AudioSourceService] 洛雪脚本加载失败: $sourceId',
+          );
           return;
         }
         if (generation == _lxRuntimeGeneration &&
             activeSource?.id == sourceId) {
           _lxRuntimeSourceId = sourceId;
-          StructuredLogService.log('✅ [AudioSourceService] 洛雪运行时初始化成功: $sourceId');
+          StructuredLogService.log(
+            '✅ [AudioSourceService] 洛雪运行时初始化成功: $sourceId',
+          );
         }
       } catch (e) {
         StructuredLogService.log('❌ [AudioSourceService] 初始化洛雪运行时失败: $e');
@@ -173,9 +210,11 @@ class AudioSourceService extends ChangeNotifier {
         );
         _sources = list
             .whereType<Map>()
-            .map((item) => AudioSourceConfig.tryFromJson(
-                  Map<String, dynamic>.from(item),
-                ))
+            .map(
+              (item) => AudioSourceConfig.tryFromJson(
+                Map<String, dynamic>.from(item),
+              ),
+            )
             .whereType<AudioSourceConfig>()
             .toList();
         if (needsRewrite || _sources.length != list.length) {
@@ -199,9 +238,13 @@ class AudioSourceService extends ChangeNotifier {
         await _migrateOldSettings(prefs);
       }
 
-      StructuredLogService.log('🔊 [AudioSourceService] 加载配置完成: ${_sources.length} 个音源');
+      StructuredLogService.log(
+        '🔊 [AudioSourceService] 加载配置完成: ${_sources.length} 个音源',
+      );
       if (activeSource != null) {
-        StructuredLogService.log('   当前活动音源: ${activeSource!.name} (${activeSource!.type.name})');
+        StructuredLogService.log(
+          '   当前活动音源: ${activeSource!.name} (${activeSource!.type.name})',
+        );
       } else {
         StructuredLogService.log('   当前无活动音源');
       }
@@ -315,6 +358,120 @@ class AudioSourceService extends ChangeNotifier {
 
   bool get isNavidromeActive => _activeSourceId == navidromeSourceId;
 
+  /// Download and activate as one serialized operation. Until initialization
+  /// succeeds, neither the saved selection nor the source list is changed.
+  Future<void> useLxSource(String scriptUrl) {
+    return _enqueueMutation(() async {
+      if (!isValidUrl(scriptUrl)) throw Exception('无效的音源链接');
+      final parsed = await _parser.parseFromUrl(scriptUrl);
+      if (parsed == null || parsed.scriptContent.isEmpty) {
+        throw Exception('无法下载或读取音源脚本，请刷新列表后重试');
+      }
+
+      final previousSources = List<AudioSourceConfig>.from(_sources);
+      final previousId = _activeSourceId;
+      final previous = activeSource;
+      final index = _sources.indexWhere(
+        (source) =>
+            source.type == AudioSourceType.lxmusic &&
+            source.scriptSource == scriptUrl,
+      );
+      final barrier = Completer<void>();
+      _candidateActivation = barrier.future;
+      _invalidateLxRuntime();
+      SharedPreferences? prefs;
+      String? storedSources;
+      String? storedId;
+      var persistenceStarted = false;
+      try {
+        await _lxRuntimeOperation.catchError((_) {});
+        final info = await _runtime.loadScript(parsed.scriptContent);
+        if (info == null || !_runtime.isScriptReady) {
+          throw Exception('脚本加载失败或初始化超时');
+        }
+        final config = AudioSourceConfig(
+          id: index < 0 ? createSourceId() : _sources[index].id,
+          type: AudioSourceType.lxmusic,
+          name: parsed.name,
+          version: parsed.version,
+          url: parsed.apiUrl,
+          apiKey: parsed.apiKey,
+          scriptSource: scriptUrl,
+          scriptContent: parsed.scriptContent,
+          author: parsed.author,
+          description: parsed.description,
+          urlPathTemplate: parsed.urlPathTemplate,
+          supportedPlatforms: info.supportedPlatforms,
+        );
+        final nextSources = List<AudioSourceConfig>.from(_sources);
+        if (index < 0) {
+          nextSources.add(config);
+        } else {
+          nextSources[index] = config;
+        }
+        prefs = await SharedPreferences.getInstance();
+        storedSources = prefs.getString(_keySources);
+        storedId = prefs.getString(_keyActiveSourceId);
+        persistenceStarted = true;
+        if (!await prefs.setString(
+              _keySources,
+              jsonEncode(nextSources.map((source) => source.toJson()).toList()),
+            ) ||
+            !await prefs.setString(_keyActiveSourceId, config.id)) {
+          throw Exception('无法保存音源配置');
+        }
+        _sources = nextSources;
+        _activeSourceId = config.id;
+        _lxRuntimeSourceId = config.id;
+      } catch (error) {
+        _sources = previousSources;
+        _activeSourceId = previousId;
+        _lxRuntimeSourceId = null;
+        var restored = true;
+        if (persistenceStarted && prefs != null) {
+          try {
+            final restoredSources = storedSources == null
+                ? await prefs.remove(_keySources)
+                : await prefs.setString(_keySources, storedSources);
+            final restoredId = storedId == null
+                ? await prefs.remove(_keyActiveSourceId)
+                : await prefs.setString(_keyActiveSourceId, storedId);
+            restored = restoredSources && restoredId;
+          } catch (_) {
+            restored = false;
+          }
+        }
+        try {
+          if (previous?.type == AudioSourceType.lxmusic) {
+            final content = previous!.scriptContent.isNotEmpty
+                ? previous.scriptContent
+                : await _loadLxScriptContent();
+            final info = content == null || content.isEmpty
+                ? null
+                : await _runtime.loadScript(content);
+            if (info == null || !_runtime.isScriptReady) {
+              restored = false;
+            } else {
+              _lxRuntimeSourceId = previous.id;
+            }
+          } else {
+            await _runtime.dispose();
+          }
+        } catch (_) {
+          restored = false;
+        }
+        if (!restored) {
+          throw Exception('加载音源失败，原配置已保留但恢复未完成，请重新选择音源');
+        }
+        rethrow;
+      } finally {
+        _candidateActivation = null;
+        barrier.complete();
+        notifyListeners();
+      }
+    });
+  }
+
   /// 添加新音源
   Future<void> addSource(AudioSourceConfig config) {
     return _enqueueMutation(() async {
@@ -339,7 +496,8 @@ class AudioSourceService extends ChangeNotifier {
         await _saveSources();
 
         // 如果更新的是当前活动音源，可能需要重新初始化运行时
-        if (config.id == _activeSourceId && config.type == AudioSourceType.lxmusic) {
+        if (config.id == _activeSourceId &&
+            config.type == AudioSourceType.lxmusic) {
           _invalidateLxRuntime();
           await initializeLxRuntime();
         } else if (config.id == _activeSourceId) {
@@ -385,6 +543,7 @@ class AudioSourceService extends ChangeNotifier {
 
   Future<void> _setActiveSourceInternal(String id) async {
     if (_activeSourceId != id) {
+      _invalidateLxRuntime();
       _activeSourceId = id;
       await _saveActiveSourceId();
 
@@ -396,11 +555,14 @@ class AudioSourceService extends ChangeNotifier {
       }
 
       notifyListeners();
-      StructuredLogService.log('🔊 [AudioSourceService] 切换音源至: ${activeSource?.name}');
+      StructuredLogService.log(
+        '🔊 [AudioSourceService] 切换音源至: ${activeSource?.name}',
+      );
     }
   }
 
-  AudioSourceType get sourceType => activeSource?.type ?? AudioSourceType.lxmusic;
+  AudioSourceType get sourceType =>
+      activeSource?.type ?? AudioSourceType.lxmusic;
 
   bool get isConfigured {
     if (isNavidromeActive) {
@@ -430,7 +592,7 @@ class AudioSourceService extends ChangeNotifier {
 
     // 如果是洛雪音源且运行时已加载脚本，从运行时获取
     if (source.type == AudioSourceType.lxmusic) {
-      final runtime = LxMusicRuntimeService();
+      final runtime = _runtime;
       if (runtime.isScriptReady && runtime.currentScript != null) {
         final platforms = runtime.currentScript!.supportedPlatforms;
         if (platforms.isNotEmpty) {
@@ -440,7 +602,8 @@ class AudioSourceService extends ChangeNotifier {
     }
 
     // 回退到默认配置
-    return defaultSupportedPlatforms[source.type] ?? ['netease', 'apple', 'qq', 'kugou', 'kuwo'];
+    return defaultSupportedPlatforms[source.type] ??
+        ['netease', 'apple', 'qq', 'kugou', 'kuwo'];
   }
 
   /// @deprecated Use [currentSupportedPlaybackPlatforms].
@@ -495,19 +658,21 @@ class AudioSourceService extends ChangeNotifier {
     String description = '',
   }) async {
     // Creating a new source for LxMusic import
-    await addSource(AudioSourceConfig(
-      id: _generateId(),
-      type: AudioSourceType.lxmusic,
-      name: name,
-      version: version,
-      url: apiUrl,
-      apiKey: apiKey,
-      scriptSource: scriptSource,
-      scriptContent: scriptContent,
-      urlPathTemplate: urlPathTemplate ?? '',
-      author: author,
-      description: description,
-    ));
+    await addSource(
+      AudioSourceConfig(
+        id: _generateId(),
+        type: AudioSourceType.lxmusic,
+        name: name,
+        version: version,
+        url: apiUrl,
+        apiKey: apiKey,
+        scriptSource: scriptSource,
+        scriptContent: scriptContent,
+        urlPathTemplate: urlPathTemplate ?? '',
+        author: author,
+        description: description,
+      ),
+    );
   }
 
   // ==================== Legacy File Support ====================
@@ -543,7 +708,7 @@ class AudioSourceService extends ChangeNotifier {
     final sourceCode = _lxSourceCodeMap[source];
     if (sourceCode == null) return false;
 
-    final runtime = LxMusicRuntimeService();
+    final runtime = _runtime;
     final declaredSources = runtime.currentScript?.supportedSources ?? const [];
     if (runtime.isScriptReady && declaredSources.isNotEmpty) {
       return declaredSources.contains(sourceCode);
@@ -555,13 +720,17 @@ class AudioSourceService extends ChangeNotifier {
 
   String getLxQuality(AudioQuality quality) {
     switch (quality) {
-      case AudioQuality.standard: return '128k';
-      case AudioQuality.exhigh: return '320k';
-      case AudioQuality.lossless: return 'flac';
+      case AudioQuality.standard:
+        return '128k';
+      case AudioQuality.exhigh:
+        return '320k';
+      case AudioQuality.lossless:
+        return 'flac';
       case AudioQuality.hires:
-      case AudioQuality.jymaster: return 'flac24bit';
-      default: return '320k';
+      case AudioQuality.jymaster:
+        return 'flac24bit';
+      default:
+        return '320k';
     }
   }
-
 }

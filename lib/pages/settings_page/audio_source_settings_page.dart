@@ -6,6 +6,9 @@ import '../../features/audio_source/audio_source_feature.dart';
 import '../../widgets/material/material_settings_widgets.dart';
 import '../../services/audio_source_service.dart';
 import '../../services/player_service.dart';
+import '../../services/lx_source_catalog_service.dart';
+import '../../services/url_service.dart';
+import '../../models/lx_source_candidate.dart';
 
 import '../../services/navidrome_session_service.dart';
 import '../../models/audio_source_config.dart';
@@ -72,6 +75,20 @@ class _AudioSourceSettingsContentState
   final AudioSourceController _audioSourceController = AudioSourceController();
   bool _showNavidromeConfig = false;
   bool _isSourceActionBusy = false;
+  final LxSourceCatalogService _catalog = LxSourceCatalogService();
+  List<LxSourceCandidate> _candidates = const [];
+  bool _isLoadingCandidates = false;
+  int _catalogRequest = 0;
+  String? _candidateError;
+  String? _candidateNotice;
+  String? _usingCandidateUrl;
+
+  List<AudioSourceConfig> get _localSources {
+    final urls = _candidates.map((source) => source.url).toSet();
+    return _audioSourceReadController.sources
+        .where((source) => !urls.contains(source.scriptSource))
+        .toList();
+  }
 
   SourceHealthSnapshot? get _visibleSourceHealth {
     final health = PlayerService().sourceHealth;
@@ -81,6 +98,8 @@ class _AudioSourceSettingsContentState
   @override
   void initState() {
     super.initState();
+    _candidates = _catalog.candidates;
+    _loadCandidates();
     _showNavidromeConfig = widget.openNavidromeSettings;
     if (widget.openNavidromeSettings) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -96,6 +115,7 @@ class _AudioSourceSettingsContentState
     _audioSourceReadController.addListener(_onSourceChanged);
     NavidromeSessionService().addListener(_onSourceChanged);
     PlayerService().sourceHealthNotifier.addListener(_onSourceChanged);
+    UrlService().addListener(_onBackendChanged);
   }
 
   @override
@@ -103,12 +123,187 @@ class _AudioSourceSettingsContentState
     _audioSourceReadController.removeListener(_onSourceChanged);
     NavidromeSessionService().removeListener(_onSourceChanged);
     PlayerService().sourceHealthNotifier.removeListener(_onSourceChanged);
+    UrlService().removeListener(_onBackendChanged);
     super.dispose();
   }
 
   void _onSourceChanged() {
     if (!mounted) return;
     setState(() {});
+  }
+
+  void _onBackendChanged() {
+    if (!mounted) return;
+    setState(() {
+      _candidates = _catalog.candidates;
+      _candidateNotice = null;
+    });
+    _loadCandidates();
+  }
+
+  Future<void> _loadCandidates() async {
+    final request = ++_catalogRequest;
+    setState(() {
+      _isLoadingCandidates = true;
+      _candidateError = null;
+    });
+    try {
+      final sources = await _catalog.refresh();
+      if (!mounted || request != _catalogRequest) return;
+      setState(() => _candidates = sources);
+    } catch (error) {
+      if (!mounted || request != _catalogRequest) return;
+      setState(
+        () =>
+            _candidateError = error.toString().replaceFirst('Exception: ', ''),
+      );
+    } finally {
+      if (mounted && request == _catalogRequest) {
+        setState(() => _isLoadingCandidates = false);
+      }
+    }
+  }
+
+  Future<void> _useCandidate(LxSourceCandidate candidate) async {
+    if (_isSourceActionBusy) return;
+    final reloading =
+        _audioSourceReadController.activeSource?.scriptSource == candidate.url;
+    await _runWithSourceActionLock(
+      action: () async {
+        setState(() {
+          _usingCandidateUrl = candidate.url;
+          _candidateNotice = null;
+        });
+        try {
+          final result = await _audioSourceController.useLxSource(
+            candidate.url,
+          );
+          if (!mounted) return;
+          if (!result.isSuccess) {
+            _showActionError(result.errorMessage ?? '加载音源失败');
+          } else {
+            setState(() => _candidateNotice = reloading ? '音源已重新加载' : '已切换音源');
+          }
+        } finally {
+          if (mounted) setState(() => _usingCandidateUrl = null);
+        }
+      },
+    );
+  }
+
+  Widget _candidateButton(String label, VoidCallback? onPressed) {
+    final manager = ThemeManager();
+    if (manager.isFluentFramework && Platform.isWindows) {
+      return fluent.Button(onPressed: onPressed, child: Text(label));
+    }
+    if (manager.isCupertinoFramework &&
+        (Platform.isIOS || Platform.isAndroid || Platform.isMacOS)) {
+      return CupertinoButton(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        onPressed: onPressed,
+        child: Text(label),
+      );
+    }
+    return TextButton(onPressed: onPressed, child: Text(label));
+  }
+
+  Widget _buildCandidateSection(BuildContext context) {
+    final manager = ThemeManager();
+    final isFluent = manager.isFluentFramework && Platform.isWindows;
+    final isCupertino =
+        manager.isCupertinoFramework &&
+        (Platform.isIOS || Platform.isAndroid || Platform.isMacOS);
+    final color = isFluent
+        ? fluent.FluentTheme.of(context).resources.textFillColorPrimary
+        : isCupertino
+        ? CupertinoColors.label.resolveFrom(context)
+        : Theme.of(context).colorScheme.onSurface;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: DefaultTextStyle(
+        style: TextStyle(
+          color: color,
+          fontSize: 14,
+          decoration: TextDecoration.none,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    '候选音源',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                _candidateButton(
+                  _isLoadingCandidates ? '刷新中…' : '刷新列表',
+                  _isLoadingCandidates || _isSourceActionBusy
+                      ? null
+                      : _loadCandidates,
+                ),
+              ],
+            ),
+            if (_candidateError != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(_candidateError!),
+              ),
+            if (!_isLoadingCandidates &&
+                _candidateError == null &&
+                _candidates.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('暂无候选音源，可使用下方自定义导入'),
+              ),
+            ..._candidates.map((candidate) {
+              final active =
+                  _audioSourceReadController.activeSource?.scriptSource ==
+                  candidate.url;
+              final busy = _usingCandidateUrl == candidate.url;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            candidate.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (active)
+                            const Text('当前使用', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    _candidateButton(
+                      busy
+                          ? '加载中…'
+                          : active
+                          ? '重新加载'
+                          : '使用',
+                      _isSourceActionBusy
+                          ? null
+                          : () => _useCandidate(candidate),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            if (_candidateNotice != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(_candidateNotice!),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _revalidateActiveSource() async {
@@ -243,13 +438,8 @@ class _AudioSourceSettingsContentState
     try {
       await action();
     } finally {
-      if (!mounted) {
-        _isSourceActionBusy = false;
-        return;
-      }
-      setState(() {
-        _isSourceActionBusy = false;
-      });
+      _isSourceActionBusy = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -670,7 +860,7 @@ class _AudioSourceSettingsContentState
   /// Fluent UI 内容 (Windows)
   Widget _buildFluentContent(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
-    final sources = _audioSourceReadController.sources;
+    final sources = _localSources;
     final navidromeConfig = _buildNavidromeConfig();
     final displaySources = [navidromeConfig, ...sources];
     final sourceHealth = _visibleSourceHealth;
@@ -688,6 +878,7 @@ class _AudioSourceSettingsContentState
     }
 
     final children = <Widget>[
+      _buildCandidateSection(context),
       if (sourceHealth != null) _buildFluentHealthBanner(sourceHealth),
       if (sourceHealth != null) const SizedBox(height: 16),
       // 说明卡片
@@ -804,10 +995,7 @@ class _AudioSourceSettingsContentState
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  '类型: 洛雪音乐',
-                  style: theme.typography.caption,
-                ),
+                Text('类型: 洛雪音乐', style: theme.typography.caption),
                 if (config.version.isNotEmpty || config.author.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
@@ -872,8 +1060,9 @@ class _AudioSourceSettingsContentState
                       : () => _deleteSource(config.id),
                   style: fluent.ButtonStyle(
                     foregroundColor: WidgetStateProperty.resolveWith((states) {
-                      if (states.contains(WidgetState.hovered))
+                      if (states.contains(WidgetState.hovered)) {
                         return fluent.Colors.red;
+                      }
                       return fluent.Colors.red.withValues(alpha: 0.8);
                     }),
                   ),
@@ -1017,7 +1206,7 @@ class _AudioSourceSettingsContentState
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '添加音源',
+                    '自定义导入',
                     style: TextStyle(
                       color: theme.accentColor,
                       fontWeight: FontWeight.bold,
@@ -1034,7 +1223,7 @@ class _AudioSourceSettingsContentState
 
   /// Cupertino 风格内容
   Widget _buildCupertinoContent(BuildContext context) {
-    final sources = _audioSourceReadController.sources;
+    final sources = _localSources;
     final navidromeConfig = _buildNavidromeConfig();
     final displaySources = [navidromeConfig, ...sources];
     final sourceHealth = _visibleSourceHealth;
@@ -1735,6 +1924,8 @@ class _AudioSourceSettingsContentState
 
               const SizedBox(height: 24),
 
+              _buildCandidateSection(context),
+
               // 分组标题
               if (displaySources.isNotEmpty)
                 Padding(
@@ -1777,7 +1968,7 @@ class _AudioSourceSettingsContentState
                       ),
                       const SizedBox(width: 8),
                       const Text(
-                        '添加音源',
+                        '自定义导入',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -1809,14 +2000,15 @@ class _AudioSourceSettingsContentState
   }
 
   Widget _buildMaterialContent(BuildContext context) {
-    final sources = _audioSourceReadController.sources;
+    final sources = _localSources;
     final navidromeConfig = _buildNavidromeConfig();
     final isNavidromeConfigured = _isNavidromeConfigured;
     final isNavidromeActive = _audioSourceReadController.isNavidromeActive;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final sourceHealth = _visibleSourceHealth;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     final content = _showNavidromeConfig
         ? _buildNavidromeConfigBody(context)
@@ -1886,6 +2078,7 @@ class _AudioSourceSettingsContentState
                 ),
               ),
 
+              _buildCandidateSection(context),
               MD3SettingsSection(
                 title: '已配置音源',
                 children: [
@@ -1912,7 +2105,7 @@ class _AudioSourceSettingsContentState
                       Icons.add_circle_outline,
                       color: colorScheme.primary,
                     ),
-                    title: '添加音源',
+                    title: '自定义导入',
                     onTap: _isSourceActionBusy ? null : _showAddSourceDialog,
                   ),
                 ],

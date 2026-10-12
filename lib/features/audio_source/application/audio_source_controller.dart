@@ -7,15 +7,16 @@ import 'audio_source_use_cases.dart';
 ///
 /// 作为 UI 与用例层之间的唯一写入口，统一错误收敛格式。
 class AudioSourceController {
-  static final AudioSourceController _instance = AudioSourceController._internal();
+  static final AudioSourceController _instance =
+      AudioSourceController._internal();
 
   factory AudioSourceController() => _instance;
 
   AudioSourceController.withUseCases(AudioSourceUseCases useCases)
-      : _useCases = useCases;
+    : _useCases = useCases;
 
   AudioSourceController._internal({AudioSourceUseCases? useCases})
-      : _useCases = useCases ?? AudioSourceUseCases(AudioSourceRepositoryImpl());
+    : _useCases = useCases ?? AudioSourceUseCases(AudioSourceRepositoryImpl());
 
   final AudioSourceUseCases _useCases;
 
@@ -32,24 +33,22 @@ class AudioSourceController {
   }
 
   Future<AudioSourceActionResult> setActiveSource(String id) {
+    return _run(() => _useCases.setActiveSource(id), fallbackMessage: '切换音源失败');
+  }
+
+  Future<AudioSourceActionResult> useLxSource(String scriptUrl) {
     return _run(
-      () => _useCases.setActiveSource(id),
-      fallbackMessage: '切换音源失败',
+      () => _useCases.useLxSource(scriptUrl),
+      fallbackMessage: '加载音源失败',
     );
   }
 
   Future<AudioSourceActionResult> removeSource(String id) {
-    return _run(
-      () => _useCases.removeSource(id),
-      fallbackMessage: '删除音源失败',
-    );
+    return _run(() => _useCases.removeSource(id), fallbackMessage: '删除音源失败');
   }
 
   Future<AudioSourceActionResult> clearSelection() {
-    return _run(
-      () => _useCases.clearSelection(),
-      fallbackMessage: '重置音源状态失败',
-    );
+    return _run(() => _useCases.clearSelection(), fallbackMessage: '重置音源状态失败');
   }
 
   Future<AudioSourceActionResult> _run(

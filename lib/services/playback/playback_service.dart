@@ -1339,6 +1339,7 @@ class PlaybackService extends ChangeNotifier {
     // 下编辑 endpoint/API key；只绑定脚本会复用旧的熔断状态，阻断新配置。
     final requestConfig = <Object?>[
       source.id,
+      sourceService.lxSourceRevision,
       source.type.name,
       source.version,
       source.url,

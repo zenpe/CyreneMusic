@@ -26,33 +26,18 @@ class QQGroupConfig {
 /// 应用公共配置
 class AppPublicConfig {
   final QQGroupConfig qqGroup;
-  final List<String> lxScriptPresets;
-
-  AppPublicConfig({required this.qqGroup, required this.lxScriptPresets});
+  AppPublicConfig({required this.qqGroup});
 
   factory AppPublicConfig.fromJson(Map<String, dynamic> json) {
     return AppPublicConfig(
       qqGroup: json['qq_group'] != null
           ? QQGroupConfig.fromJson(json['qq_group'])
           : QQGroupConfig.disabled(),
-      lxScriptPresets: _parseStringList(json['lx_script_presets']),
     );
   }
 
   factory AppPublicConfig.empty() {
-    return AppPublicConfig(
-      qqGroup: QQGroupConfig.disabled(),
-      lxScriptPresets: const [],
-    );
-  }
-
-  static List<String> _parseStringList(dynamic value) {
-    if (value is! List) return const [];
-    return value
-        .whereType<String>()
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toList();
+    return AppPublicConfig(qqGroup: QQGroupConfig.disabled());
   }
 }
 
@@ -82,7 +67,9 @@ class AppConfigService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      StructuredLogService.log('[AppConfigService] Fetching public config from: /config/public');
+      StructuredLogService.log(
+        '[AppConfigService] Fetching public config from: /config/public',
+      );
 
       final result = await ApiClient().getJson(
         '/config/public',
@@ -90,7 +77,9 @@ class AppConfigService extends ChangeNotifier {
         timeout: const Duration(seconds: 10),
       );
 
-      StructuredLogService.log('[AppConfigService] Status: ${result.statusCode}');
+      StructuredLogService.log(
+        '[AppConfigService] Status: ${result.statusCode}',
+      );
       StructuredLogService.log('[AppConfigService] Body: ${result.data}');
 
       if (result.ok && result.data != null) {

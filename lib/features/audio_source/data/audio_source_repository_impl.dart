@@ -5,7 +5,7 @@ import '../domain/audio_source_repository.dart';
 /// 音源仓储默认实现（基于现有 AudioSourceService）。
 class AudioSourceRepositoryImpl implements AudioSourceRepository {
   AudioSourceRepositoryImpl({AudioSourceService? service})
-      : _service = service ?? AudioSourceService();
+    : _service = service ?? AudioSourceService();
 
   final AudioSourceService _service;
 
@@ -33,8 +33,10 @@ class AudioSourceRepositoryImpl implements AudioSourceRepository {
   }
 
   @override
+  Future<void> useLxSource(String scriptUrl) => _service.useLxSource(scriptUrl);
+
+  @override
   Future<void> clear() {
     return _service.clear();
   }
 }
-

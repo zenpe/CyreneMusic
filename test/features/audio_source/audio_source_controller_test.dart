@@ -46,6 +46,11 @@ class _InMemoryAudioSourceRepository implements AudioSourceRepository {
   }
 
   @override
+  Future<void> useLxSource(String scriptUrl) async {
+    if (throwOnSetActive) throw Exception('load failed');
+  }
+
+  @override
   Future<void> updateSource(AudioSourceConfig config) async {
     if (throwOnUpdate) throw Exception('update failed');
     final index = sources.indexWhere((item) => item.id == config.id);
