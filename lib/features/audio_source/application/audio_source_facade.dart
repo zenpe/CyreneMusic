@@ -53,6 +53,7 @@ class AudioSourceFacade {
   bool get isAudioConfigured => _readController.isConfigured;
   bool get isNavidromeActive => _readController.isNavidromeActive;
   bool get isLoggedIn => _authService.isLoggedIn;
+  Future<void> ensureAuthInitialized() => _authService.ensureInitialized();
   bool get termsAccepted => _storageService.termsAccepted;
   bool get isLocalModeEnabled => _storageService.enableLocalMode;
   bool get isThemeConfigured => _storageService.themeConfigured;
@@ -67,6 +68,7 @@ class AudioSourceFacade {
 
   AppGateRoute resolveEntryRoute() {
     final route = AppEntryResolver.resolve(
+      isLoggedIn: isLoggedIn,
       isConfigured: isAudioConfigured,
       isNavidromeActive: isNavidromeActive,
       isTermsAccepted: termsAccepted,
@@ -81,12 +83,14 @@ class AudioSourceFacade {
   }
 
   void addEntryStateListener(VoidCallback listener) {
+    _authService.addListener(listener);
     _readController.addListener(listener);
     _navidromeSessionService.addListener(listener);
     _storageService.addListener(listener);
   }
 
   void removeEntryStateListener(VoidCallback listener) {
+    _authService.removeListener(listener);
     _readController.removeListener(listener);
     _navidromeSessionService.removeListener(listener);
     _storageService.removeListener(listener);
@@ -111,16 +115,21 @@ class AudioSourceFacade {
   }
 
   Future<void> acceptTermsAndEnterMain() async {
+    if (!isLoggedIn) throw StateError('请先登录');
     await _storageService.setTermsAccepted(true);
     await _storageService.setEnableLocalMode(false);
     _notifyEntryStateChanged();
   }
 
-  Future<void> skipSetupAndEnterMain() => acceptTermsAndEnterMain();
+  Future<void> skipSetupAndEnterMain() async {
+    throw StateError('请完成登录、协议确认和音源配置');
+  }
 
   Future<void> enterLocalModeAndEnterMain() async {
+    if (!isLoggedIn || !termsAccepted) {
+      throw StateError('请先登录并确认使用协议');
+    }
     await _storageService.setEnableLocalMode(true);
-    await _storageService.setTermsAccepted(true);
     _notifyEntryStateChanged();
   }
 

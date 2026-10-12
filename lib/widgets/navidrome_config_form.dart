@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../features/audio_source/audio_source_feature.dart';
 
 class NavidromeConfigForm extends StatefulWidget {
-  final bool acceptTermsOnSave;
   final String saveLabel;
   final bool showClearButton;
   final VoidCallback? onSaved;
@@ -13,7 +12,6 @@ class NavidromeConfigForm extends StatefulWidget {
 
   const NavidromeConfigForm({
     super.key,
-    this.acceptTermsOnSave = false,
     this.saveLabel = '保存',
     this.showClearButton = false,
     this.onSaved,
@@ -107,9 +105,6 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
         username: username,
         password: password,
       );
-      if (widget.acceptTermsOnSave) {
-        await _audioSourceFacade.acceptTermsAndEnterMain();
-      }
       widget.onSaved?.call();
     } catch (e) {
       setState(() {
@@ -214,17 +209,11 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
               ),
             ),
             obscureText: _obscurePassword,
-            validator: (value) =>
-                value == null || value.isEmpty ? '必填' : null,
+            validator: (value) => value == null || value.isEmpty ? '必填' : null,
           ),
           const SizedBox(height: 16),
           if (_statusMessage != null)
-            Text(
-              _statusMessage!,
-              style: TextStyle(
-                color: statusColor,
-              ),
-            ),
+            Text(_statusMessage!, style: TextStyle(color: statusColor)),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -251,10 +240,7 @@ class _NavidromeConfigFormState extends State<NavidromeConfigForm> {
           ),
           if (widget.showClearButton) ...[
             const SizedBox(height: 8),
-            TextButton(
-              onPressed: _clearConfig,
-              child: const Text('清除登录信息'),
-            ),
+            TextButton(onPressed: _clearConfig, child: const Text('清除登录信息')),
           ],
           if (widget.footer != null) ...[
             const SizedBox(height: 20),

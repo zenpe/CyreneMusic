@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../../services/auth_overlay_service.dart';
 import '../../services/auth_credentials_service.dart';
+import '../../widgets/terms_consent.dart';
 import '../../features/auth/auth_feature.dart';
 
 final AuthFacade _authFacade = AuthFacade();
@@ -32,6 +33,10 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
 
   @override
   Widget build(BuildContext context) {
+    return TermsConsentScope(child: Builder(builder: _buildPage));
+  }
+
+  Widget _buildPage(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
 
     return SingleChildScrollView(
@@ -68,7 +73,11 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
     );
   }
 
-  Widget _buildTabButton(fluent.FluentThemeData theme, int index, String label) {
+  Widget _buildTabButton(
+    fluent.FluentThemeData theme,
+    int index,
+    String label,
+  ) {
     final isSelected = _selectedTab == index;
     return fluent.Button(
       style: fluent.ButtonStyle(
@@ -201,16 +210,20 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
     });
   }
 
-  Future<void> _syncRememberedCredentials() async {
+  Future<void> _syncRememberedCredentials({
+    required String account,
+    required String password,
+    required bool remember,
+  }) async {
     final credentialsService = AuthCredentialsService();
     if (!credentialsService.isRememberLoginEnabled) {
       await credentialsService.clearCredentials();
       return;
     }
-    if (_rememberCredentials) {
+    if (remember) {
       await credentialsService.saveCredentials(
-        account: _accountController.text.trim(),
-        password: _passwordController.text,
+        account: account,
+        password: password,
       );
       return;
     }
@@ -225,6 +238,9 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
   }
 
   Future<void> _handleLogin() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (_accountController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
       _showInfoBar('请填写完整信息', fluent.InfoBarSeverity.warning);
@@ -233,17 +249,26 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
 
     setState(() => _isLoading = true);
 
+    final account = _accountController.text.trim();
+    final password = _passwordController.text;
+    final remember = _rememberCredentials;
     final result = await _authFacade.login(
-      account: _accountController.text.trim(),
-      password: _passwordController.text,
+      account: account,
+      password: password,
     );
 
+    if (result['success'] == true) {
+      await _syncRememberedCredentials(
+        account: account,
+        password: password,
+        remember: remember,
+      );
+    }
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
       if (result['success']) {
-        await _syncRememberedCredentials();
-        if (!mounted) return;
         _showInfoBar(result['message'], fluent.InfoBarSeverity.success);
         // 登录成功后，自动上报IP归属地
         _authFacade.updateLocation();
@@ -318,7 +343,8 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
               ),
               onSubmitted: (_) => _handleLogin(),
             ),
@@ -335,16 +361,14 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
                   },
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  '记住账号密码',
-                  style: theme.typography.body,
-                ),
+                Text('记住账号密码', style: theme.typography.body),
               ],
             ),
           ],
           const SizedBox(height: 24),
 
           // 登录按钮
+          const TermsConsentTile(fluentStyle: true),
           fluent.FilledButton(
             onPressed: _isLoading ? null : _handleLogin,
             child: _isLoading
@@ -355,7 +379,10 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
                   )
                 : const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('登录', style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: Text(
+                      '登录',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
           ),
 
@@ -374,7 +401,6 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
       ),
     );
   }
-
 }
 
 /// Fluent UI 注册视图
@@ -451,6 +477,9 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
   }
 
   Future<void> _sendCode() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (_qqNumberController.text.trim().isEmpty ||
         _usernameController.text.trim().isEmpty) {
       _showInfoBar('请先填写 QQ 号和用户名', fluent.InfoBarSeverity.warning);
@@ -464,6 +493,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
       username: _usernameController.text.trim(),
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -477,6 +507,9 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
   }
 
   Future<void> _handleRegister() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     // 验证表单
     if (_qqNumberController.text.trim().isEmpty) {
       _showInfoBar('请输入 QQ 号', fluent.InfoBarSeverity.warning);
@@ -490,7 +523,8 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
       _showInfoBar('请输入用户名', fluent.InfoBarSeverity.warning);
       return;
     }
-    if (_passwordController.text.isEmpty || _passwordController.text.length < 8) {
+    if (_passwordController.text.isEmpty ||
+        _passwordController.text.length < 8) {
       _showInfoBar('密码至少8个字符', fluent.InfoBarSeverity.warning);
       return;
     }
@@ -512,6 +546,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
       code: _codeController.text.trim(),
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -545,15 +580,21 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
     if (!_registrationEnabled) {
       return LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
-          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          final compact =
+              constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight
+              ? constraints.maxHeight
+              : 0.0;
           return SingleChildScrollView(
             physics: const ClampingScrollPhysics(),
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: minHeight),
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -602,10 +643,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
               padding: const EdgeInsets.only(left: 4, top: 4),
               child: Text(
                 '注册邮箱：${_getFullEmail()}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.accentColor,
-                ),
+                style: TextStyle(fontSize: 12, color: theme.accentColor),
               ),
             ),
           const SizedBox(height: 16),
@@ -642,7 +680,8 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
               ),
             ),
           ),
@@ -666,7 +705,9 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
-                onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                onPressed: () => setState(
+                  () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                ),
               ),
             ),
           ),
@@ -702,6 +743,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
           const SizedBox(height: 24),
 
           // 注册按钮
+          const TermsConsentTile(fluentStyle: true),
           fluent.FilledButton(
             onPressed: _isLoading ? null : _handleRegister,
             child: _isLoading
@@ -712,14 +754,17 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
                   )
                 : const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('注册', style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: Text(
+                      '注册',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
           ),
 
           const SizedBox(height: 12),
           Center(
             child: Text(
-              '注册即表示您同意我们的服务条款和隐私政策',
+              '账号用于同步收藏与播放记录',
               style: theme.typography.caption?.copyWith(
                 color: theme.brightness == Brightness.dark
                     ? Colors.white54
@@ -740,7 +785,8 @@ class _FluentForgotPasswordView extends StatefulWidget {
   const _FluentForgotPasswordView({super.key, required this.embedded});
 
   @override
-  State<_FluentForgotPasswordView> createState() => _FluentForgotPasswordViewState();
+  State<_FluentForgotPasswordView> createState() =>
+      _FluentForgotPasswordViewState();
 }
 
 class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
@@ -785,6 +831,9 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
   }
 
   Future<void> _sendCode() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (_emailController.text.trim().isEmpty) {
       _showInfoBar('请输入邮箱', fluent.InfoBarSeverity.warning);
       return;
@@ -796,6 +845,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
       email: _emailController.text.trim(),
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -809,12 +859,17 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
   }
 
   Future<void> _handleReset() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     // 验证表单
     if (_emailController.text.trim().isEmpty) {
       _showInfoBar('请输入邮箱', fluent.InfoBarSeverity.warning);
       return;
     }
-    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(_emailController.text.trim())) {
+    if (!RegExp(
+      r'^[^@]+@[^@]+\.[^@]+',
+    ).hasMatch(_emailController.text.trim())) {
       _showInfoBar('邮箱格式不正确', fluent.InfoBarSeverity.warning);
       return;
     }
@@ -822,7 +877,8 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
       _showInfoBar('请输入验证码', fluent.InfoBarSeverity.warning);
       return;
     }
-    if (_passwordController.text.isEmpty || _passwordController.text.length < 8) {
+    if (_passwordController.text.isEmpty ||
+        _passwordController.text.length < 8) {
       _showInfoBar('密码至少8个字符', fluent.InfoBarSeverity.warning);
       return;
     }
@@ -839,6 +895,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
       newPassword: _passwordController.text,
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -863,7 +920,6 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
 
   @override
   Widget build(BuildContext context) {
-
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 400),
       child: Column(
@@ -938,7 +994,8 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
               ),
             ),
           ),
@@ -962,13 +1019,16 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
-                onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                onPressed: () => setState(
+                  () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                ),
               ),
             ),
           ),
           const SizedBox(height: 24),
 
           // 重置密码按钮
+          const TermsConsentTile(fluentStyle: true),
           fluent.FilledButton(
             onPressed: _isLoading ? null : _handleReset,
             child: _isLoading
@@ -979,7 +1039,10 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
                   )
                 : const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('重置密码', style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: Text(
+                      '重置密码',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
           ),
         ],
@@ -987,6 +1050,3 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
     );
   }
 }
-
-
-

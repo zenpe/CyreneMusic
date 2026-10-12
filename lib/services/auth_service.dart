@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'developer_mode_service.dart';
-import 'auth_overlay_service.dart';
 import 'api/api_client.dart';
 import 'api/auth_token_store.dart';
 import 'location_service.dart';
@@ -771,12 +770,7 @@ class AuthService extends ChangeNotifier {
     try {
       await logout();
       DeveloperModeService().addLog('[Auth] 登录态已失效');
-      // 桌面端：强制 overlay 重登
-      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-        AuthOverlayService().show();
-      }
-      // Android/iOS：不强制弹 overlay，由各页面按需提示登录
-      // Gate 不再要求 isLoggedIn，用户留在主界面，功能受限时自然引导登录
+      // AppGate observes authentication and owns the re-login page on all platforms.
     } finally {
       _isHandlingUnauthorized = false;
     }

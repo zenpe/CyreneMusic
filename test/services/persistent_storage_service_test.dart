@@ -50,11 +50,17 @@ void main() {
     });
 
     test('set/get for termsAccepted is consistent', () async {
+      var notifications = 0;
+      void listener() => notifications++;
+      storage.addListener(listener);
+      addTearDown(() => storage.removeListener(listener));
       await storage.setTermsAccepted(true);
       expect(storage.termsAccepted, isTrue);
+      expect(notifications, 1);
 
       await storage.setTermsAccepted(false);
       expect(storage.termsAccepted, isFalse);
+      expect(notifications, 2);
     });
 
     test('set/get for themeConfigured is consistent', () async {

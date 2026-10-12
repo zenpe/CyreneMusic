@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:io';
 import '../../services/auth_overlay_service.dart';
 import '../../services/auth_credentials_service.dart';
+import '../../widgets/terms_consent.dart';
 import '../../features/auth/auth_feature.dart';
 import '../../utils/theme_manager.dart';
 
@@ -113,6 +114,10 @@ class _AuthPageState extends State<AuthPage>
 
   @override
   Widget build(BuildContext context) {
+    return TermsConsentScope(child: Builder(builder: _buildPage));
+  }
+
+  Widget _buildPage(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -181,9 +186,10 @@ class _AuthPageState extends State<AuthPage>
                     ),
                     const SizedBox(height: 8),
                     // 桌面覆盖层下的返回按钮（避免依赖系统返回）
-                    if (Platform.isWindows ||
-                        Platform.isLinux ||
-                        Platform.isMacOS)
+                    if (!widget.embedded &&
+                        (Platform.isWindows ||
+                            Platform.isLinux ||
+                            Platform.isMacOS))
                       Align(
                         alignment: Alignment.center,
                         child: TextButton.icon(
@@ -438,16 +444,20 @@ class _LoginViewState extends State<_LoginView> {
     });
   }
 
-  Future<void> _syncRememberedCredentials() async {
+  Future<void> _syncRememberedCredentials({
+    required String account,
+    required String password,
+    required bool remember,
+  }) async {
     final credentialsService = AuthCredentialsService();
     if (!credentialsService.isRememberLoginEnabled) {
       await credentialsService.clearCredentials();
       return;
     }
-    if (_rememberCredentials) {
+    if (remember) {
       await credentialsService.saveCredentials(
-        account: _accountController.text.trim(),
-        password: _passwordController.text,
+        account: account,
+        password: password,
       );
       return;
     }
@@ -464,23 +474,35 @@ class _LoginViewState extends State<_LoginView> {
   }
 
   Future<void> _handleLogin() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
     setState(() => _isLoading = true);
 
+    final account = _accountController.text.trim();
+    final password = _passwordController.text;
+    final remember = _rememberCredentials;
     final result = await _authFacade.login(
-      account: _accountController.text.trim(),
-      password: _passwordController.text,
+      account: account,
+      password: password,
     );
 
+    if (result['success'] == true) {
+      await _syncRememberedCredentials(
+        account: account,
+        password: password,
+        remember: remember,
+      );
+    }
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
       if (result['success']) {
-        await _syncRememberedCredentials();
-        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
@@ -618,6 +640,7 @@ class _LoginViewState extends State<_LoginView> {
           const SizedBox(height: 24),
 
           // 登录按钮
+          const TermsConsentTile(),
           _buildGradientButton(
             label: '登录',
             isLoading: _isLoading,
@@ -721,6 +744,9 @@ class _RegisterViewState extends State<_RegisterView> {
   }
 
   Future<void> _sendCode() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (_qqNumberController.text.trim().isEmpty ||
         _usernameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -742,6 +768,7 @@ class _RegisterViewState extends State<_RegisterView> {
       username: _usernameController.text.trim(),
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -773,6 +800,9 @@ class _RegisterViewState extends State<_RegisterView> {
   }
 
   Future<void> _handleRegister() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -799,6 +829,7 @@ class _RegisterViewState extends State<_RegisterView> {
       code: _codeController.text.trim(),
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -1101,6 +1132,7 @@ class _RegisterViewState extends State<_RegisterView> {
           const SizedBox(height: 32),
 
           // 注册按钮
+          const TermsConsentTile(),
           _buildGradientButton(
             label: '注册',
             isLoading: _isLoading,
@@ -1113,7 +1145,7 @@ class _RegisterViewState extends State<_RegisterView> {
           // 用户协议
           Center(
             child: Text(
-              '注册即表示您同意我们的服务条款和隐私政策',
+              '账号用于同步收藏与播放记录',
               style: TextStyle(
                 color: colorScheme.onSurfaceVariant,
                 fontSize: 12,
@@ -1180,6 +1212,9 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
   }
 
   Future<void> _sendCode() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (_emailController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1199,6 +1234,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
       email: _emailController.text.trim(),
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -1230,6 +1266,9 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
   }
 
   Future<void> _handleReset() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -1255,6 +1294,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
       newPassword: _passwordController.text,
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -1443,6 +1483,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
           const SizedBox(height: 32),
 
           // 重置密码按钮
+          const TermsConsentTile(),
           _buildGradientButton(
             label: '重置密码',
             isLoading: _isLoading,
@@ -1649,16 +1690,20 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
     });
   }
 
-  Future<void> _syncRememberedCredentials() async {
+  Future<void> _syncRememberedCredentials({
+    required String account,
+    required String password,
+    required bool remember,
+  }) async {
     final credentialsService = AuthCredentialsService();
     if (!credentialsService.isRememberLoginEnabled) {
       await credentialsService.clearCredentials();
       return;
     }
-    if (_rememberCredentials) {
+    if (remember) {
       await credentialsService.saveCredentials(
-        account: _accountController.text.trim(),
-        password: _passwordController.text,
+        account: account,
+        password: password,
       );
       return;
     }
@@ -1673,6 +1718,9 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
   }
 
   Future<void> _handleLogin() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (_accountController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
       _showCupertinoAlert('请填写完整信息');
@@ -1681,17 +1729,26 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
 
     setState(() => _isLoading = true);
 
+    final account = _accountController.text.trim();
+    final password = _passwordController.text;
+    final remember = _rememberCredentials;
     final result = await _authFacade.login(
-      account: _accountController.text.trim(),
-      password: _passwordController.text,
+      account: account,
+      password: password,
     );
 
+    if (result['success'] == true) {
+      await _syncRememberedCredentials(
+        account: account,
+        password: password,
+        remember: remember,
+      );
+    }
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
       if (result['success']) {
-        await _syncRememberedCredentials();
-        if (!mounted) return;
         _showCupertinoToast(result['message'], isSuccess: true);
         _authFacade.updateLocation();
         if (!widget.embedded) {
@@ -1806,6 +1863,7 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
         const SizedBox(height: 28),
 
         // 登录按钮
+        const TermsConsentTile(),
         _buildCupertinoButton(
           label: '登录',
           isLoading: _isLoading,
@@ -1904,6 +1962,9 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
   }
 
   Future<void> _sendCode() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (_qqNumberController.text.trim().isEmpty ||
         _usernameController.text.trim().isEmpty) {
       _showCupertinoAlert('请先填写 QQ 号和用户名');
@@ -1915,6 +1976,7 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
       email: _getFullEmail(),
       username: _usernameController.text.trim(),
     );
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -1928,6 +1990,9 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
   }
 
   Future<void> _handleRegister() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (_qqNumberController.text.trim().isEmpty ||
         _usernameController.text.trim().isEmpty ||
         _passwordController.text.isEmpty ||
@@ -1951,6 +2016,7 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
       password: _passwordController.text,
       code: _codeController.text.trim(),
     );
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -2205,6 +2271,7 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
         const SizedBox(height: 24),
 
         // 注册按钮
+        const TermsConsentTile(),
         _buildCupertinoButton(
           label: '注册',
           isLoading: _isLoading,
@@ -2215,7 +2282,7 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
 
         Center(
           child: Text(
-            '注册即表示您同意我们的服务条款和隐私政策',
+            '账号用于同步收藏与播放记录',
             style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 12),
             textAlign: TextAlign.center,
           ),
@@ -2282,6 +2349,9 @@ class _CupertinoForgotPasswordViewState
   }
 
   Future<void> _sendCode() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (_emailController.text.trim().isEmpty) {
       _showCupertinoAlert('请输入邮箱');
       return;
@@ -2291,6 +2361,7 @@ class _CupertinoForgotPasswordViewState
     final result = await _authFacade.sendResetCode(
       email: _emailController.text.trim(),
     );
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -2304,6 +2375,9 @@ class _CupertinoForgotPasswordViewState
   }
 
   Future<void> _handleReset() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (_emailController.text.trim().isEmpty ||
         _codeController.text.trim().isEmpty ||
         _passwordController.text.isEmpty ||
@@ -2322,6 +2396,7 @@ class _CupertinoForgotPasswordViewState
       code: _codeController.text.trim(),
       newPassword: _passwordController.text,
     );
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -2497,6 +2572,7 @@ class _CupertinoForgotPasswordViewState
         const SizedBox(height: 24),
 
         // 重置按钮
+        const TermsConsentTile(),
         _buildCupertinoButton(
           label: '重置密码',
           isLoading: _isLoading,

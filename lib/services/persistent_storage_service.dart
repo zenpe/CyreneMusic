@@ -468,8 +468,15 @@ class PersistentStorageService extends ChangeNotifier {
   bool get termsAccepted => getBool(_keyTermsAccepted) ?? false;
 
   /// 设置用户协议确认状态
-  Future<void> setTermsAccepted(bool value) =>
-      setBool(_keyTermsAccepted, value);
+  Future<void> setTermsAccepted(bool value) async {
+    final previous = termsAccepted;
+    if (!await setBool(_keyTermsAccepted, value)) {
+      // SharedPreferences updates its memory cache before reporting write failure.
+      await setBool(_keyTermsAccepted, previous);
+      throw StateError('协议确认保存失败');
+    }
+    notifyListeners();
+  }
 
   /// 主题是否已完成初始化配置
   bool get themeConfigured => getBool(_keyThemeConfigured) ?? false;
