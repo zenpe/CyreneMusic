@@ -105,13 +105,14 @@ class AndroidFloatingLyricService {
   }
 
   /// 请求权限并等待用户授权
-  Future<bool> requestPermissionWithDialog(context) async {
+  Future<bool> requestPermissionWithDialog(BuildContext context) async {
     if (!Platform.isAndroid) return false;
 
     // 先检查是否已有权限
     if (await checkPermission()) {
       return true;
     }
+    if (!context.mounted) return false;
 
     // 显示权限说明对话框
     final shouldRequest = await _showPermissionDialog(context);
@@ -121,13 +122,14 @@ class AndroidFloatingLyricService {
 
     // 跳转到设置页面
     await requestPermission();
+    if (!context.mounted) return false;
 
     // 等待用户操作并检查权限状态
     return await _waitForPermissionResult(context);
   }
 
   /// 显示权限说明对话框
-  Future<bool> _showPermissionDialog(context) async {
+  Future<bool> _showPermissionDialog(BuildContext context) async {
     return await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -162,7 +164,7 @@ class AndroidFloatingLyricService {
   }
 
   /// 等待权限授权结果
-  Future<bool> _waitForPermissionResult(context) async {
+  Future<bool> _waitForPermissionResult(BuildContext context) async {
     return await showDialog<bool>(
       context: context,
       barrierDismissible: false,

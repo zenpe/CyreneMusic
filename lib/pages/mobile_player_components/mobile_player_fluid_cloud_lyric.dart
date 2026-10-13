@@ -328,8 +328,11 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
 
     // 7. 模糊逻辑
     double targetBlur = 3.0;
-    if (diff == 0) targetBlur = 0.0;
-    else if (diff.abs() == 1) targetBlur = 0.8;
+    if (diff == 0) {
+      targetBlur = 0.0;
+    } else if (diff.abs() == 1) {
+      targetBlur = 0.8;
+    }
 
     final bool isActive = (diff == 0);
 
@@ -437,7 +440,7 @@ class _MobileElasticLyricLine extends StatefulWidget {
   final bool showTranslation;
 
   const _MobileElasticLyricLine({
-    Key? key,
+    super.key,
     required this.text,
     this.translation,
     required this.lyric,
@@ -452,7 +455,7 @@ class _MobileElasticLyricLine extends StatefulWidget {
     required this.delay,
     required this.isDragging,
     required this.showTranslation,
-  }) : super(key: key);
+  });
 
   @override
   State<_MobileElasticLyricLine> createState() => _MobileElasticLyricLineState();
@@ -873,12 +876,12 @@ class _MobileWordFillWidget extends StatefulWidget {
   final ValueNotifier<Duration> positionNotifier;
 
   const _MobileWordFillWidget({
-    Key? key,
+    super.key,
     required this.text,
     required this.word,
     required this.style,
     required this.positionNotifier,
-  }) : super(key: key);
+  });
 
   @override
   State<_MobileWordFillWidget> createState() => _MobileWordFillWidgetState();

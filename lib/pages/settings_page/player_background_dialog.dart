@@ -51,7 +51,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 // 自适应背景
                 const fluent_ui.RadioButton<PlayerBackgroundType>(
                   value: PlayerBackgroundType.adaptive,
-                  content: const Text('自适应背景'),
+                  content: Text('自适应背景'),
                 ),
                 // 渐变开关（仅在自适应背景时显示，流体云样式下隐藏）
                 if (currentType == PlayerBackgroundType.adaptive &&
@@ -87,7 +87,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
                 // 纯色背景
                 const fluent_ui.RadioButton<PlayerBackgroundType>(
                   value: PlayerBackgroundType.solidColor,
-                  content: const Text('纯色背景'),
+                  content: Text('纯色背景'),
                 ),
                 if (currentType == PlayerBackgroundType.solidColor) ...[
                   const SizedBox(height: 8),

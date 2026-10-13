@@ -9,7 +9,7 @@ class WeatherService {
 
   String? _cachedText;
   DateTime? _cachedAt;
-  Duration _ttl = const Duration(minutes: 10);
+  final Duration _ttl = const Duration(minutes: 10);
   static const String _amapKey = 'ea2bc1b1ae9a513cf4e8d910623d26ea';
 
   static const Map<String, String> _provinceCapital = {

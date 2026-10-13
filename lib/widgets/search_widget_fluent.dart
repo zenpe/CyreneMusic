@@ -217,14 +217,14 @@ extension _SearchWidgetFluent on _SearchWidgetState {
                             memCacheWidth: 128,
                             memCacheHeight: 128,
                             fit: BoxFit.cover,
-                            placeholder: (_, __) => Container(
+                            placeholder: (_, _) => Container(
                               width: 64,
                               height: 64,
                               color: resources.controlAltFillColorSecondary,
                               alignment: Alignment.center,
                               child: const fluent.ProgressRing(strokeWidth: 2),
                             ),
-                            errorWidget: (_, __, ___) => Container(
+                            errorWidget: (_, _, _) => Container(
                               width: 64,
                               height: 64,
                               color: resources.controlAltFillColorSecondary,
@@ -318,11 +318,10 @@ class _FluentPivotTabs extends StatelessWidget {
   final ValueChanged<int> onChanged;
 
   const _FluentPivotTabs({
-    Key? key,
     required this.items,
     required this.selectedIndex,
     required this.onChanged,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

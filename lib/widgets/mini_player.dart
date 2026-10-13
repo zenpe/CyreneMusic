@@ -16,11 +16,34 @@ import '../utils/theme_manager.dart';
 import '../utils/image_utils.dart';
 import '../utils/dynamic_color_utils.dart';
 import 'track_action_menu.dart';
+import 'liquid_glass_container.dart';
 
 /// 迷你播放器组件（底部播放栏）
 class MiniPlayer extends StatefulWidget {
   final bool transparent;
   const MiniPlayer({super.key, this.transparent = false});
+
+  /// Shared by the floating layout and its content so accessibility text fits.
+  static double cupertinoHeight(BuildContext context) {
+    double lineHeight(double fontSize) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: '国Ag',
+          style: TextStyle(fontSize: fontSize, height: 1.2),
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout();
+      final height = painter.height;
+      painter.dispose();
+      return height;
+    }
+
+    return (lineHeight(13.5) + lineHeight(11.5) + 1.5 + 16).clamp(
+      52.0,
+      double.infinity,
+    );
+  }
 
   @override
   State<MiniPlayer> createState() => _MiniPlayerState();
@@ -41,6 +64,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     BuildContext context, {
     bool hideSkip = false,
     bool compact = false,
+    Size minimumSize = Size.zero,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final double skipIconSize = compact ? 20 : 24;
@@ -72,7 +96,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
           ),
         CupertinoButton(
           padding: buttonPadding,
-          minimumSize: Size.zero,
+          minimumSize: minimumSize,
           onPressed: () {
             HapticFeedback.lightImpact();
             player.togglePlayPause();
@@ -369,6 +393,258 @@ class _MiniPlayerState extends State<MiniPlayer> {
     );
   }
 
+  /// iOS Cupertino 风格液态玻璃悬浮胶囊播放器
+  Widget _buildCupertinoFloatingPlayer({
+    required BuildContext context,
+    required PlayerService player,
+    required dynamic song,
+    required dynamic track,
+    required ColorScheme colorScheme,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ValueListenableBuilder<Color?>(
+      valueListenable: player.themeColorNotifier,
+      builder: (context, color, _) => _buildCupertinoGlassContent(
+        context: context,
+        player: player,
+        song: song,
+        track: track,
+        colorScheme: colorScheme,
+        dynamicAccent: DynamicColorUtils.resolveAccent(
+          color,
+          colorScheme,
+          isDark: isDark,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCupertinoGlassContent({
+    required BuildContext context,
+    required PlayerService player,
+    required dynamic song,
+    required dynamic track,
+    required ColorScheme colorScheme,
+    required Color dynamicAccent,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final name = player.displayTitle;
+    final artist = player.displayArtist;
+    return LiquidGlassContainer(
+      borderRadius: 18,
+      height: MiniPlayer.cupertinoHeight(context),
+      isDark: isDark,
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+            child: Row(
+              children: [
+                _buildCover(
+                  song,
+                  track,
+                  colorScheme,
+                  size: 38,
+                  borderRadius: 8,
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                          color: isDark
+                              ? CupertinoColors.white
+                              : CupertinoColors.black,
+                          letterSpacing: -0.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 1.5),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              artist.isNotEmpty ? artist : '未知艺术家',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                height: 1.2,
+                                fontWeight: FontWeight.w400,
+                                color: isDark
+                                    ? CupertinoColors.systemGrey
+                                    : const Color(0xFF8E8E93),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            ' · ',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              height: 1.2,
+                              fontWeight: FontWeight.w500,
+                              color: isDark
+                                  ? CupertinoColors.systemGrey2
+                                  : const Color(0xFFAEAEC2),
+                            ),
+                          ),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              setState(() {
+                                _showRemainingTime = !_showRemainingTime;
+                              });
+                            },
+                            child: AnimatedBuilder(
+                              animation: Listenable.merge([
+                                player.positionNotifier,
+                                player,
+                              ]),
+                              builder: (context, _) {
+                                final position = player.positionNotifier.value;
+                                final duration = player.duration;
+                                final displayPosition = _seekRatio != null
+                                    ? Duration(
+                                        milliseconds:
+                                            (duration.inMilliseconds *
+                                                    _seekRatio!)
+                                                .round(),
+                                      )
+                                    : position;
+                                final currentStr = _formatDuration(
+                                  displayPosition,
+                                );
+                                final remaining = duration > displayPosition
+                                    ? duration - displayPosition
+                                    : Duration.zero;
+                                final totalOrRemainingStr =
+                                    duration.inSeconds > 0
+                                        ? (_showRemainingTime
+                                              ? '-${_formatDuration(remaining)}'
+                                              : _formatDuration(duration))
+                                        : '--:--';
+
+                                return Text(
+                                  '$currentStr / $totalOrRemainingStr',
+                                  style: TextStyle(
+                                    fontSize: 11.0,
+                                    height: 1.2,
+                                    fontWeight: FontWeight.w500,
+                                    fontFeatures: const [
+                                      ui.FontFeature.tabularFigures(),
+                                    ],
+                                    color: isDark
+                                        ? CupertinoColors.systemGrey
+                                        : const Color(0xFF8E8E93),
+                                    letterSpacing: -0.2,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 2),
+                _buildCenterControlsCupertino(
+                  player,
+                  context,
+                  hideSkip: true,
+                  compact: true,
+                  minimumSize: const Size(44, 44),
+                ),
+                CupertinoButton(
+                  padding: const EdgeInsets.all(4),
+                  minimumSize: const Size(44, 44),
+                  onPressed: player.hasNext
+                      ? () {
+                          HapticFeedback.lightImpact();
+                          player.playNext();
+                        }
+                      : null,
+                  child: Icon(
+                    CupertinoIcons.forward_fill,
+                    size: 20,
+                    color: player.hasNext
+                        ? (isDark
+                              ? CupertinoColors.white
+                              : CupertinoColors.black)
+                        : CupertinoColors.systemGrey,
+                  ),
+                ),
+                _buildQueueButton(
+                  context,
+                  colorScheme,
+                  compact: true,
+                  minimumSize: const Size(44, 44),
+                ),
+              ],
+            ),
+          ),
+          // 底部极细微光流光进度条 (2px)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: AnimatedBuilder(
+              animation: Listenable.merge([player.positionNotifier, player]),
+              builder: (context, _) {
+                final position = player.positionNotifier.value;
+                final duration = player.duration;
+                final progress =
+                    _seekRatio ??
+                    (duration.inMilliseconds > 0
+                        ? (position.inMilliseconds / duration.inMilliseconds)
+                              .clamp(0.0, 1.0)
+                        : 0.0);
+                return _buildSeekableProgressBar(
+                  player: player,
+                  hitHeight: 12,
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Container(
+                      height: 2.0,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.05),
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: progress,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: dynamicAccent,
+                            boxShadow: [
+                              BoxShadow(
+                                color: dynamicAccent.withValues(alpha: 0.6),
+                                blurRadius: 3,
+                                offset: const Offset(0, -0.5),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildExpandedPlayer({
     required BuildContext context,
     required PlayerService player,
@@ -390,6 +666,17 @@ class _MiniPlayerState extends State<MiniPlayer> {
     );
     final progressBarActiveColor = dynamicAccent;
     final bool useAlignedLayout = !isCompactWidth;
+
+    // iOS Cupertino 悬浮液态玻璃药丸播放器
+    if (_isCupertino && !widget.transparent) {
+      return _buildCupertinoFloatingPlayer(
+        context: context,
+        player: player,
+        song: song,
+        track: track,
+        colorScheme: colorScheme,
+      );
+    }
 
     if (!useAlignedLayout) {
       final decoration = widget.transparent
@@ -720,6 +1007,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     BuildContext context,
     ColorScheme colorScheme, {
     bool compact = false,
+    Size minimumSize = Size.zero,
   }) {
     if (ThemeManager().isFluentFramework) {
       final theme = fluent.FluentTheme.of(context);
@@ -735,7 +1023,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     if (_isCupertino) {
       return CupertinoButton(
         padding: compact ? const EdgeInsets.all(2) : const EdgeInsets.all(6),
-        minimumSize: Size.zero,
+        minimumSize: minimumSize,
         onPressed: () => _showQueueSheet(context),
         child: Icon(
           CupertinoIcons.music_note_list,
@@ -1181,6 +1469,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     dynamic track,
     ColorScheme colorScheme, {
     double size = 48,
+    double? borderRadius,
   }) {
     final player = PlayerService();
     final isPending = player.isTrackSwitchPending;
@@ -1188,7 +1477,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
     final provider = isPending ? null : player.currentCoverImageProvider;
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(
+        borderRadius ?? (_isCupertino ? 10 : 6),
+      ),
       child: provider != null
           ? Image(image: provider, width: size, height: size, fit: BoxFit.cover)
           : imageUrl.isNotEmpty
@@ -1619,9 +1910,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
             ),
             color:
                 ThemeData.estimateBrightnessForColor(activeColor) ==
-                        Brightness.dark
-                    ? Colors.white
-                    : const Color(0xFF0F172A),
+                    Brightness.dark
+                ? Colors.white
+                : const Color(0xFF0F172A),
             iconSize: playIconSize,
             padding: EdgeInsets.zero,
             constraints: BoxConstraints.tightFor(
@@ -2032,7 +2323,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                       ? const Center(child: Text('播放列表为空'))
                       : ListView.separated(
                           itemCount: displayListNow.length,
-                          separatorBuilder: (_, __) =>
+                          separatorBuilder: (_, _) =>
                               const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             final Track t = displayListNow[i] as Track;
@@ -2254,8 +2545,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                         ? ReorderableListView.builder(
                                             buildDefaultDragHandles: false,
                                             onReorder: (oldIndex, newIndex) {
-                                              if (newIndex > oldIndex)
+                                              if (newIndex > oldIndex) {
                                                 newIndex -= 1;
+                                              }
                                               queueService.move(
                                                 oldIndex,
                                                 newIndex,
@@ -2811,8 +3103,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                     ? ReorderableListView.builder(
                                         buildDefaultDragHandles: false,
                                         onReorder: (oldIndex, newIndex) {
-                                          if (newIndex > oldIndex)
+                                          if (newIndex > oldIndex) {
                                             newIndex -= 1;
+                                          }
                                           queueService.move(oldIndex, newIndex);
                                         },
                                         itemCount: list.length,
@@ -3026,7 +3319,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                       )
                                     : ListView.separated(
                                         itemCount: list.length,
-                                        separatorBuilder: (_, __) =>
+                                        separatorBuilder: (_, _) =>
                                             const Divider(height: 1),
                                         itemBuilder: (context, i) {
                                           final Track t = list[i];

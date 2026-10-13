@@ -24,7 +24,7 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
   String _status = '未初始化';
   String _scriptInfo = '';
   String _result = '';
-  List<String> _logs = [];
+  final List<String> _logs = [];
 
   // 测试参数
   String _testSource = 'wy';

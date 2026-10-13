@@ -3,7 +3,6 @@ part of 'search_widget.dart';
 extension _SearchWidgetShared on _SearchWidgetState {
   Future<void> _retrySearch() async {
     if (!await _checkLoginStatus() || !mounted) return;
-    _searchDebounceTimer?.cancel();
     _runSearch(_searchService.currentKeyword, saveHistory: false, force: true);
   }
 
@@ -391,14 +390,14 @@ extension _SearchWidgetShared on _SearchWidgetState {
                       memCacheWidth: 128,
                       memCacheHeight: 128,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(
+                      placeholder: (_, _) => Container(
                         width: 64,
                         height: 64,
                         color: resources.controlAltFillColorSecondary,
                         alignment: Alignment.center,
                         child: const fluent.ProgressRing(strokeWidth: 2),
                       ),
-                      errorWidget: (_, __, ___) => Container(
+                      errorWidget: (_, _, _) => Container(
                         width: 64,
                         height: 64,
                         color: resources.controlAltFillColorSecondary,
@@ -871,14 +870,14 @@ extension _SearchWidgetShared on _SearchWidgetState {
                       memCacheWidth: 128,
                       memCacheHeight: 128,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(
+                      placeholder: (_, _) => Container(
                         width: 64,
                         height: 64,
                         color: resources.controlAltFillColorSecondary,
                         alignment: Alignment.center,
                         child: const fluent.ProgressRing(strokeWidth: 2),
                       ),
-                      errorWidget: (_, __, ___) => Container(
+                      errorWidget: (_, _, _) => Container(
                         width: 64,
                         height: 64,
                         color: resources.controlAltFillColorSecondary,

@@ -209,7 +209,7 @@ class SleepTimerSection extends StatelessWidget {
             timer.setTimerByDuration(minutes);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('定时器已设置: ${minutes}分钟后停止播放'),
+                content: Text('定时器已设置: $minutes分钟后停止播放'),
                 behavior: SnackBarBehavior.floating,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),

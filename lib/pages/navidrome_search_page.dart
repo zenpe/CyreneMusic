@@ -670,7 +670,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
         bottomPadding,
       ),
       itemCount: artists.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         final artist = artists[index];
         final coverUrl = artist.coverArt != null && _api != null
@@ -844,7 +844,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
         bottomPadding,
       ),
       itemCount: _radioStations.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         final station = _radioStations[index];
         return _RadioStationTile(

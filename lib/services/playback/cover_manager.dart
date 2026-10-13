@@ -1,6 +1,5 @@
 import '../structured_log_service.dart';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -139,7 +138,7 @@ class CoverManager extends ChangeNotifier {
     final stream = provider.resolve(const ImageConfiguration());
     late ImageStreamListener listener;
     listener = ImageStreamListener(
-      (_, __) {
+      (_, _) {
         if (!completer.isCompleted) {
           completer.complete();
         }

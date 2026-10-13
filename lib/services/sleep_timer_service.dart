@@ -79,7 +79,7 @@ class SleepTimerService extends ChangeNotifier {
       AndroidSleepTimerService().start(_endTime!);
     }
 
-    StructuredLogService.log('⏰ [SleepTimerService] 设置定时器: ${minutes}分钟后停止播放');
+    StructuredLogService.log('⏰ [SleepTimerService] 设置定时器: $minutes分钟后停止播放');
   }
 
   /// 设置定时器（按时间点）
@@ -185,7 +185,7 @@ class SleepTimerService extends ChangeNotifier {
       AndroidSleepTimerService().start(_endTime!);
 
       notifyListeners();
-      StructuredLogService.log('⏰ [SleepTimerService] 定时器已延长 ${minutes} 分钟');
+      StructuredLogService.log('⏰ [SleepTimerService] 定时器已延长 $minutes 分钟');
     }
   }
 

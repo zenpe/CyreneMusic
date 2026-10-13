@@ -721,7 +721,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
   }
 
   /// 确认删除用户
-  void _confirmDeleteUser(user) {
+  void _confirmDeleteUser(AdminUserData user) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(

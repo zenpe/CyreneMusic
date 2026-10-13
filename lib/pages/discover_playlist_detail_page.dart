@@ -491,7 +491,7 @@ class _DiscoverPlaylistDetailContentState
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              CupertinoButton(child: const Text('重试'), onPressed: _load),
+              CupertinoButton(onPressed: _load, child: const Text('重试')),
             ],
           ),
         ),
@@ -1073,7 +1073,7 @@ class _DiscoverPlaylistDetailContentState
                   itemCount: playlistService.playlists
                       .where((p) => p.isLocal)
                       .length,
-                  separatorBuilder: (_, __) => Padding(
+                  separatorBuilder: (_, _) => Padding(
                     padding: const EdgeInsets.only(left: 72),
                     child: Container(
                       height: 0.5,
@@ -1930,7 +1930,7 @@ class _DiscoverPlaylistDetailContentState
           ],
           const SizedBox(height: 16),
           ...tracks.asMap().entries.map(
-            (entry) => _FluentTrackTile(
+            (entry) => _buildFluentTrackTile(
               track: entry.value,
               index: entry.key,
               onTap: () => _handleTrackTap(context, entry.key, tracks),
@@ -2086,7 +2086,7 @@ class _DiscoverPlaylistDetailContentState
   }
 
   // Fluent UI 单曲列表项
-  Widget _FluentTrackTile({
+  Widget _buildFluentTrackTile({
     required Track track,
     required int index,
     required VoidCallback onTap,

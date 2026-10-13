@@ -1626,7 +1626,7 @@ class _HomePageState extends State<HomePage>
         return Stack(
           children: [
             ...previousChildren,
-            if (currentChild != null) currentChild,
+            ?currentChild,
           ],
         );
       },
@@ -1994,14 +1994,14 @@ class _HomePageState extends State<HomePage>
     }
 
     if (_showSearch) {
-      final handler = () {
+      Null handler() {
         if (!mounted) return;
         setState(() {
           _showSearch = false;
           _initialSearchKeyword = null;
         });
         _syncGlobalBackHandler();
-      };
+      }
       _homeOverlayController.setBackHandler(handler);
       GlobalBackHandlerService().register('home_overlay', () {
         handler();

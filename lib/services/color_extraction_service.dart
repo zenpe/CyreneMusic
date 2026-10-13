@@ -289,7 +289,7 @@ class ColorExtractionService {
         final imageBytes = byteData.buffer.asUint8List();
         final imageWidth = imageInfo.image.width;
         final imageHeight = imageInfo.image.height;
-        debugPrint('🎨 [ColorExtraction] 从 ImageProvider 提取颜色 (${imageWidth}x${imageHeight}, ${imageBytes.length} bytes RGBA)');
+        debugPrint('🎨 [ColorExtraction] 从 ImageProvider 提取颜色 (${imageWidth}x$imageHeight, ${imageBytes.length} bytes RGBA)');
 
         final result = await compute(
           _extractColorsInIsolate,

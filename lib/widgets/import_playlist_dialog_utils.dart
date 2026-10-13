@@ -26,7 +26,7 @@ bool _artistsMatch(String trackArtists, String resultSinger) {
   if (trackArtists.isEmpty || resultSinger.isEmpty) return false;
 
   // 标准化：转换为小写，移除空格
-  final normalize = (String s) => s.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+  String normalize(String s) => s.toLowerCase().replaceAll(RegExp(r'\s+'), '');
 
   // 分割艺术家（支持多种分隔符）
   final trackArtistsList = trackArtists.split(RegExp(r'[/、,，\s]+'))

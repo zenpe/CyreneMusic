@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import '../../services/player_service.dart';
 import '../../services/lyric_font_service.dart';
@@ -269,7 +268,7 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel>
                       return Stack(
                         alignment: Alignment.center,
                         children: <Widget>[
-                          if (currentChild != null) currentChild,
+                          ?currentChild,
                         ],
                       );
                     },

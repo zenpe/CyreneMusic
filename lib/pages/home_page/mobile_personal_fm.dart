@@ -48,10 +48,10 @@ class MobilePersonalFm extends StatelessWidget {
         final isFmPlaying = PlayerService().isPlaying && (isFmCurrent || isFmQueue);
 
         // Common click handler to jump to player
-        final void Function() onOpenPlayer = () {
+        void onOpenPlayer() {
             // PlayerService handles navigation to full screen usually via a global state or callback
             // For now we just implement the play logic as required by the card
-        };
+        }
 
         if (themeManager.isFluentFramework) {
           return fluent.Card(

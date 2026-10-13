@@ -418,7 +418,7 @@ extension _DeveloperPageFluent on _DeveloperPageState {
     );
   }
 
-  void _confirmFluentDeleteUser(user) {
+  void _confirmFluentDeleteUser(AdminUserData user) {
     showDialog(
       context: context,
       builder: (context) => fluent.ContentDialog(

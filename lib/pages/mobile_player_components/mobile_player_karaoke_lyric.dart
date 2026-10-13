@@ -299,7 +299,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
         return Stack(
           alignment: Alignment.center,
           children: <Widget>[
-            if (currentChild != null) currentChild,
+            ?currentChild,
           ],
         );
       },

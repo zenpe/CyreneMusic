@@ -155,7 +155,7 @@ class ImportPlaylistDialog {
             width: size,
             height: size,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
+            errorBuilder: (_, _, _) => Container(
               width: size,
               height: size,
               color: Colors.grey[300],
@@ -182,7 +182,7 @@ class ImportPlaylistDialog {
             width: size,
             height: size,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
+            errorBuilder: (_, _, _) => Container(
               width: size,
               height: size,
               color: CupertinoColors.systemGrey5,
@@ -212,7 +212,7 @@ class ImportPlaylistDialog {
             width: size,
             height: size,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
+            errorBuilder: (_, _, _) => Container(
               width: size,
               height: size,
               color: Colors.grey[300],
@@ -1164,7 +1164,7 @@ class ImportPlaylistDialog {
                               width: 48,
                               height: 48,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
+                              errorBuilder: (_, _, _) => Container(
                                 width: 48,
                                 height: 48,
                                 color: Colors.grey[300],
@@ -1291,7 +1291,7 @@ class ImportPlaylistDialog {
                                                 width: 50,
                                                 height: 50,
                                                 fit: BoxFit.cover,
-                                                errorBuilder: (_, __, ___) =>
+                                                errorBuilder: (_, _, _) =>
                                                     Container(
                                                       width: 50,
                                                       height: 50,
@@ -1387,7 +1387,7 @@ class ImportPlaylistDialog {
                               width: 48,
                               height: 48,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
+                              errorBuilder: (_, _, _) => Container(
                                 width: 48,
                                 height: 48,
                                 color: Colors.grey[300],
@@ -1494,7 +1494,7 @@ class ImportPlaylistDialog {
                               width: 48,
                               height: 48,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
+                              errorBuilder: (_, _, _) => Container(
                                 width: 48,
                                 height: 48,
                                 color: Colors.grey[300],
@@ -1701,7 +1701,7 @@ class ImportPlaylistDialog {
                               width: 48,
                               height: 48,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
+                              errorBuilder: (_, _, _) => Container(
                                 width: 48,
                                 height: 48,
                                 color: Colors.grey[300],
@@ -2546,7 +2546,7 @@ class ImportPlaylistDialog {
                                       width: 60,
                                       height: 60,
                                       fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => Container(
+                                      errorBuilder: (_, _, _) => Container(
                                         width: 60,
                                         height: 60,
                                         color: CupertinoColors.systemGrey5,
@@ -2564,7 +2564,7 @@ class ImportPlaylistDialog {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          '${sourcePlaylist.name}',
+                                          sourcePlaylist.name,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -2818,7 +2818,7 @@ class ImportPlaylistDialog {
                                   ),
                                 ),
                               );
-                            }).toList(),
+                            }),
                           ],
                         ),
                       ),

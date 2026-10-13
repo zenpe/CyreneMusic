@@ -1471,7 +1471,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
     void applyWindowEffect(WindowEffect? value) {
       if (value == null) return;
       ThemeManager().setWindowEffect(value).then((_) {
-        if (!context.mounted) return;
+        if (!mounted) return;
         Navigator.pop(context);
         setState(() {});
       });

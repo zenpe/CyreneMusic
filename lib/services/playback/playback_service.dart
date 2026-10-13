@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:http/http.dart' as http;
@@ -847,8 +846,9 @@ class PlaybackService extends ChangeNotifier {
         _clearPlaybackProblem();
         _startStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(true);
-        if (Platform.isAndroid)
+        if (Platform.isAndroid) {
           AndroidFloatingLyricService().setPlayingState(true);
+        }
         _scheduleSessionPersist();
         _stabilityTracker.onPlaybackStarted(_activePlaybackToken);
         if (_pendingTrack == null) {
@@ -869,8 +869,9 @@ class PlaybackService extends ChangeNotifier {
         _pauseListeningTimeTracking();
         _stopStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(false);
-        if (Platform.isAndroid)
+        if (Platform.isAndroid) {
           AndroidFloatingLyricService().setPlayingState(false);
+        }
         _cancelScheduledPreload();
         _scheduleSessionPersist();
         break;
@@ -882,8 +883,9 @@ class PlaybackService extends ChangeNotifier {
         _pauseListeningTimeTracking();
         _stopStateSaveTimer();
         if (Platform.isWindows) DesktopLyricService().setPlayingState(false);
-        if (Platform.isAndroid)
+        if (Platform.isAndroid) {
           AndroidFloatingLyricService().setPlayingState(false);
+        }
         _cancelScheduledPreload();
         _scheduleSessionPersist();
         break;
@@ -3974,7 +3976,7 @@ class PlaybackService extends ChangeNotifier {
         : PlaybackRequestIntent.manual;
     final navigationOrder = mode == PlaybackMode.shuffle
         ? <int>[
-            if (activeEntryId != null) activeEntryId,
+            ?activeEntryId,
             ...plan.candidates.map((candidate) => candidate.entryId),
           ]
         : null;
@@ -4259,7 +4261,7 @@ class PlaybackService extends ChangeNotifier {
       final stream = provider.resolve(ImageConfiguration.empty);
       late ImageStreamListener listener;
       listener = ImageStreamListener(
-        (_, __) {
+        (_, _) {
           stream.removeListener(listener);
           final bg = PlayerBackgroundService();
           if (bg.enableGradient &&
@@ -4267,7 +4269,7 @@ class PlaybackService extends ChangeNotifier {
             coverManager.precacheThemeColor(url);
           }
         },
-        onError: (_, __) {
+        onError: (_, _) {
           stream.removeListener(listener);
         },
       );

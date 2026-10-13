@@ -187,7 +187,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       }
 
       return Text(
-        '${latency} ms',
+        '$latency ms',
         style: TextStyle(fontWeight: FontWeight.bold, color: displayColor),
       );
     }
@@ -632,7 +632,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       }
 
       return Text(
-        '${latency} ms',
+        '$latency ms',
         style: TextStyle(fontWeight: FontWeight.bold, color: displayColor),
       );
     }

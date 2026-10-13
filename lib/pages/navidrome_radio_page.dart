@@ -166,7 +166,7 @@ class _NavidromeRadioPageState extends State<NavidromeRadioPage> {
                       bottomPadding,
                     ),
                     itemCount: _stations.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final station = _stations[index];
                       final isPlaying = _playingStationId == station.id;

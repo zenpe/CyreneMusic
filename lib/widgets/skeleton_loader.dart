@@ -117,7 +117,7 @@ class ForYouSkeleton extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: 3,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, index) => SkeletonLoader(
                 width: 100,
                 height: 120,
@@ -182,10 +182,15 @@ class DiscoverPageSkeleton extends StatelessWidget {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         int crossAxisCount = 2;
-        if (width >= 1200) crossAxisCount = 6;
-        else if (width >= 1000) crossAxisCount = 5;
-        else if (width >= 800) crossAxisCount = 4;
-        else if (width >= 600) crossAxisCount = 3;
+        if (width >= 1200) {
+          crossAxisCount = 6;
+        } else if (width >= 1000) {
+          crossAxisCount = 5;
+        } else if (width >= 800) {
+          crossAxisCount = 4;
+        } else if (width >= 600) {
+          crossAxisCount = 3;
+        }
 
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -461,7 +466,7 @@ class ChartsTabSkeleton extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: 3,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (context, index) => SkeletonLoader(
               width: 300,
               height: 220,
@@ -489,7 +494,7 @@ class ChartsTabSkeleton extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: 4,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, index) => SkeletonLoader(
               width: 160,
               height: 80,
@@ -728,7 +733,7 @@ class _HorizontalCarouselSkeleton extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: 4,
-        separatorBuilder: (_, __) => const SizedBox(width: 16),
+        separatorBuilder: (_, _) => const SizedBox(width: 16),
         itemBuilder: (context, index) => SkeletonLoader(
           width: 320,
           height: 200,
@@ -751,7 +756,7 @@ class _MixedSizeGridSkeleton extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: 5,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
           final isLarge = index == 0;
           return SkeletonLoader(
@@ -777,7 +782,7 @@ class _NewsongCardsSkeleton extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: 5,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (context, index) => SkeletonLoader(
           width: 280,
           height: 160,
@@ -829,7 +834,7 @@ class _ToplistSectionSkeleton extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: 6,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (context, index) => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -886,7 +891,7 @@ class MobileChartsTabSkeleton extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: 4,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, index) => const _MobileHistoryCardSkeleton(),
           ),
         ),
@@ -900,7 +905,7 @@ class MobileChartsTabSkeleton extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: 4,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, index) => const _MobileHistoryCardSkeleton(),
           ),
         ),
@@ -1002,7 +1007,7 @@ class _MobileToplistSectionSkeleton extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: 4,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, index) => const _MobileTrackCardSkeleton(),
           ),
         ),
@@ -1071,7 +1076,7 @@ class MobileForYouSkeleton extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: 4,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, index) => SkeletonLoader(
               width: 70,
               height: 90,

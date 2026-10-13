@@ -1,4 +1,5 @@
 /// Navidrome/Subsonic API 数据模型
+library;
 
 /// 专辑模型
 class NavidromeAlbum {

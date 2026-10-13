@@ -1,7 +1,7 @@
 part of 'my_page.dart';
 
 /// Cupertino UI 构建方法
-extension MyPageCupertinoUI on _MyPageState {
+extension _MyPageCupertinoUI on _MyPageState {
   Widget _buildCupertinoPage(BuildContext context, bool isLoggedIn) {
     final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
     if (!isLoggedIn) return _buildCupertinoLoginPrompt(context, isDark);
@@ -101,7 +101,7 @@ extension MyPageCupertinoUI on _MyPageState {
             child: user.avatarUrl != null
                 ? (user.avatarUrl!.contains('linux.do')
                     ? ClipOval(child: LinuxDoAvatarMaterial(url: user.avatarUrl!, userId: user.id, size: 60))
-                    : ClipOval(child: CachedNetworkImage(imageUrl: user.avatarUrl!, fit: BoxFit.cover, placeholder: (_, __) => const CupertinoActivityIndicator(), errorWidget: (_, __, ___) => Text(user.username[0].toUpperCase(), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)))))
+                    : ClipOval(child: CachedNetworkImage(imageUrl: user.avatarUrl!, fit: BoxFit.cover, placeholder: (_, _) => const CupertinoActivityIndicator(), errorWidget: (_, _, _) => Text(user.username[0].toUpperCase(), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)))))
                 : Center(child: Text(user.username[0].toUpperCase(), style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: CupertinoColors.systemBlue))),
           ),
           const SizedBox(width: 16),
@@ -233,8 +233,8 @@ extension MyPageCupertinoUI on _MyPageState {
         child: CachedNetworkImage(
           imageUrl: playlist.coverUrl!, width: 48, height: 48, fit: BoxFit.cover,
           memCacheWidth: 128, memCacheHeight: 128,
-          placeholder: (_, __) => Container(width: 48, height: 48, decoration: BoxDecoration(color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, borderRadius: BorderRadius.circular(8)), child: Icon(playlist.isDefault ? CupertinoIcons.heart_fill : CupertinoIcons.music_albums, color: playlist.isDefault ? CupertinoColors.systemRed : CupertinoColors.systemBlue, size: 20)),
-          errorWidget: (_, __, ___) => Container(width: 48, height: 48, decoration: BoxDecoration(color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, borderRadius: BorderRadius.circular(8)), child: Icon(playlist.isDefault ? CupertinoIcons.heart_fill : CupertinoIcons.music_albums, color: playlist.isDefault ? CupertinoColors.systemRed : CupertinoColors.systemBlue, size: 20)),
+          placeholder: (_, _) => Container(width: 48, height: 48, decoration: BoxDecoration(color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, borderRadius: BorderRadius.circular(8)), child: Icon(playlist.isDefault ? CupertinoIcons.heart_fill : CupertinoIcons.music_albums, color: playlist.isDefault ? CupertinoColors.systemRed : CupertinoColors.systemBlue, size: 20)),
+          errorWidget: (_, _, _) => Container(width: 48, height: 48, decoration: BoxDecoration(color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, borderRadius: BorderRadius.circular(8)), child: Icon(playlist.isDefault ? CupertinoIcons.heart_fill : CupertinoIcons.music_albums, color: playlist.isDefault ? CupertinoColors.systemRed : CupertinoColors.systemBlue, size: 20)),
         ),
       );
     }
@@ -252,10 +252,15 @@ extension MyPageCupertinoUI on _MyPageState {
           final rank = index + 1;
           final isLast = index == topPlays.length - 1;
           Color rankColor;
-          if (rank == 1) rankColor = const Color(0xFFFFD700);
-          else if (rank == 2) rankColor = const Color(0xFFC0C0C0);
-          else if (rank == 3) rankColor = const Color(0xFFCD7F32);
-          else rankColor = CupertinoColors.systemBlue;
+          if (rank == 1) {
+            rankColor = const Color(0xFFFFD700);
+          } else if (rank == 2) {
+            rankColor = const Color(0xFFC0C0C0);
+          } else if (rank == 3) {
+            rankColor = const Color(0xFFCD7F32);
+          } else {
+            rankColor = CupertinoColors.systemBlue;
+          }
 
           return Column(
             children: [
@@ -273,8 +278,8 @@ extension MyPageCupertinoUI on _MyPageState {
                             child: CachedNetworkImage(
                               imageUrl: item.picUrl, width: 48, height: 48, fit: BoxFit.cover,
                               memCacheWidth: 128, memCacheHeight: 128,
-                              placeholder: (_, __) => Container(width: 48, height: 48, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
-                              errorWidget: (_, __, ___) => Container(width: 48, height: 48, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
+                              placeholder: (_, _) => Container(width: 48, height: 48, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
+                              errorWidget: (_, _, _) => Container(width: 48, height: 48, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
                             ),
                           ),
                           Positioned(left: 0, top: 0, child: Container(padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2), decoration: BoxDecoration(color: rankColor, borderRadius: const BorderRadius.only(topLeft: Radius.circular(6), bottomRight: Radius.circular(6))), child: Text('$rank', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: CupertinoColors.white)))),
@@ -418,8 +423,8 @@ extension MyPageCupertinoUI on _MyPageState {
                       child: CachedNetworkImage(
                         imageUrl: item.picUrl, width: 50, height: 50, fit: BoxFit.cover,
                         memCacheWidth: 128, memCacheHeight: 128,
-                        placeholder: (_, __) => Container(width: 50, height: 50, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Center(child: CupertinoActivityIndicator(radius: 10))),
-                        errorWidget: (_, __, ___) => Container(width: 50, height: 50, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
+                        placeholder: (_, _) => Container(width: 50, height: 50, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Center(child: CupertinoActivityIndicator(radius: 10))),
+                        errorWidget: (_, _, _) => Container(width: 50, height: 50, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
                       ),
                     ),
                     Positioned(bottom: 0, right: 0, child: Container(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2), decoration: BoxDecoration(color: CupertinoColors.systemBlue, borderRadius: const BorderRadius.only(topLeft: Radius.circular(4))), child: Text('#${index + 1}', style: const TextStyle(color: CupertinoColors.white, fontSize: 9, fontWeight: FontWeight.bold)))),

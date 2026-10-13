@@ -157,7 +157,7 @@ class ListeningStatsService extends ChangeNotifier {
     if (session == null || _syncingSession == session) return;
     if (_pendingSeconds <= 0) {
       StructuredLogService.log(
-        '📊 [ListeningStatsService] 无待同步数据（待同步: ${_pendingSeconds}秒）',
+        '📊 [ListeningStatsService] 无待同步数据（待同步: $_pendingSeconds秒）',
       );
       return;
     }
@@ -172,7 +172,7 @@ class ListeningStatsService extends ChangeNotifier {
     _pendingSeconds = 0; // 重置待同步秒数
 
     StructuredLogService.log(
-      '📤 [ListeningStatsService] 准备同步听歌时长: ${seconds}秒',
+      '📤 [ListeningStatsService] 准备同步听歌时长: $seconds秒',
     );
 
     try {
@@ -189,7 +189,7 @@ class ListeningStatsService extends ChangeNotifier {
       if (result.ok) {
         final data = result.data as Map<String, dynamic>?;
         StructuredLogService.log(
-          '✅ [ListeningStatsService] 听歌时长已同步: +${seconds}秒, 总计: ${data?['data']?['totalListeningTime']}秒',
+          '✅ [ListeningStatsService] 听歌时长已同步: +$seconds秒, 总计: ${data?['data']?['totalListeningTime']}秒',
         );
       } else {
         StructuredLogService.log(
@@ -210,7 +210,7 @@ class ListeningStatsService extends ChangeNotifier {
   /// 立即同步听歌时长（用于调试）
   Future<void> syncNow() async {
     StructuredLogService.log(
-      '🔄 [ListeningStatsService] 手动触发同步，待同步: ${_pendingSeconds}秒',
+      '🔄 [ListeningStatsService] 手动触发同步，待同步: $_pendingSeconds秒',
     );
     await _syncListeningTime();
   }
@@ -281,15 +281,15 @@ class ListeningStatsService extends ChangeNotifier {
   /// 格式化时长（秒转为时分秒）
   static String formatDuration(int seconds) {
     if (seconds < 60) {
-      return '${seconds}秒';
+      return '$seconds秒';
     } else if (seconds < 3600) {
       final minutes = seconds ~/ 60;
       final secs = seconds % 60;
-      return '${minutes}分${secs}秒';
+      return '$minutes分$secs秒';
     } else {
       final hours = seconds ~/ 3600;
       final minutes = (seconds % 3600) ~/ 60;
-      return '${hours}小时${minutes}分';
+      return '$hours小时$minutes分';
     }
   }
 

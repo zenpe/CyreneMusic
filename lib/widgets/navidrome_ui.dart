@@ -699,7 +699,7 @@ class _NavidromeAlbumCardState extends State<NavidromeAlbumCard> {
                           fit: BoxFit.cover,
                           width: double.infinity,
                           height: double.infinity,
-                          errorBuilder: (_, __, ___) => _buildPlaceholder(backgroundColor),
+                          errorBuilder: (_, _, _) => _buildPlaceholder(backgroundColor),
                         )
                       : _buildPlaceholder(backgroundColor),
                 ),
@@ -782,7 +782,7 @@ class NavidromeSongTile extends StatelessWidget {
                   ? Image.network(
                       coverUrl!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _buildCoverPlaceholder(navTheme.isDark),
+                      errorBuilder: (_, _, _) => _buildCoverPlaceholder(navTheme.isDark),
                     )
                   : _buildCoverPlaceholder(navTheme.isDark),
             ),
@@ -875,7 +875,7 @@ class NavidromeSongList extends StatelessWidget {
           physics: physics,
           shrinkWrap: shrinkWrap,
           itemCount: songs.length,
-          separatorBuilder: (_, __) => SizedBox(height: separatorHeight),
+          separatorBuilder: (_, _) => SizedBox(height: separatorHeight),
           itemBuilder: (context, index) {
             final song = songs[index];
             final coverUrl = api?.buildCoverUrl(song.coverArt) ?? '';
@@ -1054,7 +1054,7 @@ class _NavidromeAlbumSheetState extends State<NavidromeAlbumSheet> {
         width: size,
         height: size,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => SizedBox(
+        errorBuilder: (_, _, _) => SizedBox(
           width: size,
           height: size,
           child: NavidromeCoverPlaceholder(

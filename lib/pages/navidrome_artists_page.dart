@@ -143,7 +143,7 @@ class _NavidromeArtistsPageState extends State<NavidromeArtistsPage> {
                         bottomPadding,
                       ),
                       itemCount: _artists.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
                         final artist = _artists[index];
                         return _ArtistTile(
@@ -894,7 +894,7 @@ class _AlbumGridItem extends StatelessWidget {
                       ? Image.network(
                           coverUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => NavidromeCoverPlaceholder(
+                          errorBuilder: (_, _, _) => NavidromeCoverPlaceholder(
                             baseColor: colorScheme.surfaceContainerHighest,
                             iconSize: 32,
                             borderRadius: 12,

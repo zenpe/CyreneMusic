@@ -34,7 +34,7 @@ class MobileNewsongList extends StatelessWidget {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: list.length,
-          separatorBuilder: (_, __) => Divider(
+          separatorBuilder: (_, _) => Divider(
             height: 0.5,
             color: isDark
                 ? CupertinoColors.systemGrey.withValues(alpha: 0.3)
@@ -106,7 +106,7 @@ class MobileNewsongList extends StatelessWidget {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: list.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, i) {
         final s = list[i];
         final song = (s['song'] ?? s);

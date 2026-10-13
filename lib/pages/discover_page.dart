@@ -758,14 +758,15 @@ class _DiscoverPageState extends State<DiscoverPage> {
           builder: (context, constraints) {
             final width = constraints.maxWidth;
             int crossAxisCount = 2;
-            if (width >= 1200)
+            if (width >= 1200) {
               crossAxisCount = 6;
-            else if (width >= 1000)
+            } else if (width >= 1000) {
               crossAxisCount = 5;
-            else if (width >= 800)
+            } else if (width >= 800) {
               crossAxisCount = 4;
-            else if (width >= 600)
+            } else if (width >= 600) {
               crossAxisCount = 3;
+            }
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1255,7 +1256,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
       final materialTheme = _themeManager.buildThemeData(brightness);
 
       return Padding(
-        key: ValueKey('discover_detail_${_selectedPlaylistId}'),
+        key: ValueKey('discover_detail_$_selectedPlaylistId'),
         padding: padding,
         child: Theme(
           data: materialTheme,
@@ -1471,7 +1472,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
         return Stack(
           children: [
             ...previousChildren,
-            if (currentChild != null) currentChild,
+            ?currentChild,
           ],
         );
       },

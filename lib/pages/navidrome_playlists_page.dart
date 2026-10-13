@@ -133,7 +133,7 @@ class _NavidromePlaylistsPageState extends State<NavidromePlaylistsPage> {
                         bottomPadding,
                       ),
                       itemCount: _playlists.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
                         final playlist = _playlists[index];
                         final coverUrl = _api?.buildCoverUrl(playlist.coverArt) ?? '';
@@ -308,7 +308,7 @@ class _NavidromePlaylistDetailPageState
                       bottomPadding,
                     ),
                     itemCount: _songs.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final song = _songs[index];
                       final coverUrl = _api?.buildCoverUrl(song.coverArt) ?? '';
@@ -505,7 +505,7 @@ class _CoverTile extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
+        errorBuilder: (_, _, _) => Container(
           width: size,
           height: size,
           decoration: BoxDecoration(

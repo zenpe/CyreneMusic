@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:dio/dio.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
@@ -189,14 +187,12 @@ class _SearchWidgetState extends State<SearchWidget> {
   final AuthFacade _authFacade = AuthFacade();
   final TextEditingController _searchController = TextEditingController();
   final SearchService _searchService = SearchService();
-  Timer? _searchDebounceTimer;
   final SearchTabSelection _tabSelection = SearchTabSelection();
   bool get _mergeEnabled => DeveloperModeService().isSearchResultMergeEnabled;
   List<SearchTab> get _searchTabs => SearchTab.tabs(merged: _mergeEnabled);
   SearchTab get _selectedTab => _tabSelection.active(merged: _mergeEnabled);
   int get _currentTabIndex => _tabSelection.index(merged: _mergeEnabled);
   final ThemeManager _themeManager = ThemeManager();
-  static const Duration _searchDebounceDuration = Duration(milliseconds: 300);
 
   bool get _isFluent => _themeManager.isFluentFramework;
   bool get _isCupertino => _themeManager.isCupertinoFramework;
@@ -240,7 +236,6 @@ class _SearchWidgetState extends State<SearchWidget> {
 
   @override
   void dispose() {
-    _searchDebounceTimer?.cancel();
     _cancelArtistSearchRequests('SearchWidget disposed');
     _artistSearchCancelToken = null;
     _searchController.dispose();
@@ -340,8 +335,6 @@ class _SearchWidgetState extends State<SearchWidget> {
   }
 
   void _performSearch() async {
-    _searchDebounceTimer?.cancel();
-
     // 检查登录状态
     final isLoggedIn = await _checkLoginStatus();
     if (!isLoggedIn) return;
@@ -350,28 +343,13 @@ class _SearchWidgetState extends State<SearchWidget> {
   }
 
   void _onSearchInputChanged(String rawInput) {
-    final keyword = rawInput.trim();
-
-    _searchDebounceTimer?.cancel();
-
-    if (keyword.isEmpty) {
+    if (rawInput.trim().isEmpty) {
       _resetSearchOnEmptyInput();
-      return;
     }
-
-    _searchDebounceTimer = Timer(_searchDebounceDuration, () {
-      if (!mounted) return;
-
-      // 输入联想式搜索不主动弹登录框，避免频繁打断用户输入。
-      if (!_authFacade.isLoggedIn) return;
-
-      _runSearch(keyword, saveHistory: false);
-    });
   }
 
   void _clearSearchInputAndResult() {
     _searchController.clear();
-    _searchDebounceTimer?.cancel();
     _resetSearchOnEmptyInput();
   }
 
@@ -421,7 +399,7 @@ class _SearchWidgetState extends State<SearchWidget> {
   }
 
   void _triggerArtistSearchIfNeeded() {
-    final keyword = _searchController.text.trim();
+    final keyword = _lastTrackSearchKeyword;
     if (keyword.isNotEmpty && keyword != _lastArtistSearchKeyword) {
       _lastArtistSearchKeyword = keyword;
       _searchArtists(keyword);
@@ -473,7 +451,7 @@ class _SearchWidgetState extends State<SearchWidget> {
       );
       if (!mounted ||
           requestId != _artistSearchRequestId ||
-          normalizedKeyword != _searchController.text.trim()) {
+          normalizedKeyword != _lastTrackSearchKeyword) {
         return;
       }
       setState(() {
@@ -483,7 +461,7 @@ class _SearchWidgetState extends State<SearchWidget> {
     } catch (e) {
       if (!mounted ||
           requestId != _artistSearchRequestId ||
-          normalizedKeyword != _searchController.text.trim()) {
+          normalizedKeyword != _lastTrackSearchKeyword) {
         return;
       }
       setState(() {

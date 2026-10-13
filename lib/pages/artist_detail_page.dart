@@ -318,7 +318,7 @@ Widget _buildAdaptiveListTile({
                 ],
               ),
             ),
-            if (trailing != null) trailing,
+            ?trailing,
           ],
         ),
       ),
@@ -911,7 +911,7 @@ class _SongsThumbView extends StatelessWidget {
             padding: const EdgeInsets.all(10),
             child: cardContent,
           );
-          final tapHandler = () => PlayerService().playTrack(track);
+          Future<void> tapHandler() => PlayerService().playTrack(track);
 
           return ConstrainedBox(
             constraints: const BoxConstraints(minWidth: 260, maxWidth: 440),

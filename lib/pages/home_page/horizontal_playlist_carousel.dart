@@ -21,7 +21,7 @@ class HorizontalPlaylistCarousel extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             clipBehavior: Clip.none,
             itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (context, i) => CarouselPlaylistCard(playlist: list[i], onTap: onTap),
           ),
         );

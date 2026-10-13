@@ -1,6 +1,5 @@
 import 'structured_log_service.dart';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';

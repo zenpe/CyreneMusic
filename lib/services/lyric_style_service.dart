@@ -152,7 +152,9 @@ class LyricStyleService extends ChangeNotifier {
       if (_autoLineHeight) {
         await prefs.setDouble(_lineHeightKey, _lineHeight);
       }
-    } catch (e) {}
+    } catch (e) {
+      StructuredLogService.log('❌ [LyricStyleService] 保存字号失败: $e');
+    }
   }
 
   /// 设置行高
@@ -163,7 +165,9 @@ class LyricStyleService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_lineHeightKey, height);
-    } catch (e) {}
+    } catch (e) {
+      StructuredLogService.log('❌ [LyricStyleService] 保存行高失败: $e');
+    }
   }
 
   /// 设置模糊强度
@@ -174,7 +178,9 @@ class LyricStyleService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_blurSigmaKey, sigma);
-    } catch (e) {}
+    } catch (e) {
+      StructuredLogService.log('❌ [LyricStyleService] 保存模糊强度失败: $e');
+    }
   }
 
   /// 设置自适应间距
@@ -193,7 +199,9 @@ class LyricStyleService extends ChangeNotifier {
       if (auto) {
         await prefs.setDouble(_lineHeightKey, _lineHeight);
       }
-    } catch (e) {}
+    } catch (e) {
+      StructuredLogService.log('❌ [LyricStyleService] 保存自适应间距失败: $e');
+    }
   }
 
   /// 获取样式的显示名称

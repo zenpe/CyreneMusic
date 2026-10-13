@@ -9,6 +9,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../widgets/custom_title_bar.dart';
 import '../widgets/cupertino/cupertino_bottom_nav.dart';
 import '../widgets/mini_player.dart';
+import '../widgets/liquid_glass_container.dart';
 import '../pages/home_page.dart';
 import '../pages/discover_page.dart';
 import '../pages/history_page.dart';
@@ -299,6 +300,13 @@ class _MainLayoutState extends State<MainLayout>
         ThemeManager().isCupertinoFramework;
     final orientation = MediaQuery.of(context).orientation;
     final isLandscape = orientation == Orientation.landscape;
+    final double bottomPadding = MediaQuery.of(context).padding.bottom;
+    final double cupertinoDockBottom = bottomPadding > 0 ? bottomPadding : 16.0;
+    const double cupertinoTabBarHeight = 60.0;
+    const double cupertinoMiniPlayerGap = 6.0;
+    final double cupertinoMiniPlayerHeight = MiniPlayer.cupertinoHeight(context);
+    final double cupertinoMiniPlayerBottom =
+        cupertinoDockBottom + cupertinoTabBarHeight + cupertinoMiniPlayerGap;
 
     final scaffold = PopScope(
       canPop: false, // 始终拦截返回键
@@ -366,12 +374,62 @@ class _MainLayoutState extends State<MainLayout>
                       ],
                     ),
                   ),
-                  // 横屏布局没有使用 bottomNavigationBar，迷你播放器需要单独悬浮在内容底部。
-                  if (isCupertinoUI || isLandscape)
+                  // 悬浮液态玻璃 Tab 栏与迷你播放器
+                  if (isCupertinoUI) ...[
+                    // iOS 悬浮胶囊迷你播放器（平滑入场/退场动画）
+                    Positioned(
+                      left: 16,
+                      right: 16,
+                      bottom: cupertinoMiniPlayerBottom,
+                      height: cupertinoMiniPlayerHeight,
+                      child: AnimatedBuilder(
+                        animation: PlayerService(),
+                        builder: (context, _) {
+                          final hasMiniPlayer =
+                              PlayerService().currentTrack != null ||
+                              PlayerService().currentSong != null;
+                          return AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 260),
+                            reverseDuration: const Duration(milliseconds: 200),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, animation) {
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: const Offset(0, 0.2),
+                                    end: Offset.zero,
+                                  ).animate(animation),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: hasMiniPlayer
+                                ? const MiniPlayer(
+                                    key: ValueKey(
+                                      'cupertino_floating_mini_player',
+                                    ),
+                                  )
+                                : const SizedBox.shrink(
+                                    key: ValueKey('cupertino_mini_empty'),
+                                  ),
+                          );
+                        },
+                      ),
+                    ),
+                    // iOS 悬浮液态玻璃 Tab 栏
                     Positioned(
                       left: 0,
                       right: 0,
-                      bottom: isCupertinoUI ? 80 : 0,
+                      bottom: 0,
+                      child: _buildCupertinoTabBar(context),
+                    ),
+                  ] else if (isLandscape) ...[
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
                       child: AnimatedBuilder(
                         animation: PlayerService(),
                         builder: (context, child) {
@@ -383,14 +441,7 @@ class _MainLayoutState extends State<MainLayout>
                         },
                       ),
                     ),
-                  // iOS 26 悬浮液态玻璃 Tab 栏
-                  if (isCupertinoUI)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: _buildCupertinoTabBar(context),
-                    ),
+                  ],
                 ],
               ),
         // 非 Cupertino 模式使用 bottomNavigationBar
@@ -742,13 +793,12 @@ class _MainLayoutState extends State<MainLayout>
 
     return Container(
       padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
+        left: 16,
+        right: 16,
         bottom: bottomPadding > 0 ? bottomPadding : 16,
-        top: 8,
       ),
-      child: _LiquidGlassContainer(
-        borderRadius: 32,
+      child: LiquidGlassContainer(
+        borderRadius: 30,
         height: 60,
         isDark: isDark,
         child: Row(
@@ -1531,159 +1581,4 @@ class _FloatingTabItem {
   final String svgAsset;
   final String label;
   const _FloatingTabItem({required this.svgAsset, required this.label});
-}
-
-/// iOS 26 液态玻璃容器
-/// 参考 Apple 的 Liquid Glass 设计语言
-class _LiquidGlassContainer extends StatelessWidget {
-  final Widget child;
-  final double borderRadius;
-  final double height;
-  final bool isDark;
-
-  const _LiquidGlassContainer({
-    required this.child,
-    required this.borderRadius,
-    required this.height,
-    required this.isDark,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(borderRadius),
-        // 外部阴影
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.15),
-            blurRadius: 32,
-            offset: const Offset(0, 12),
-            spreadRadius: -4,
-          ),
-          // 底部环境光反射
-          BoxShadow(
-            color: ThemeManager.iosBlue.withValues(alpha: isDark ? 0.2 : 0.1),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-            spreadRadius: -8,
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(borderRadius),
-        child: BackdropFilter(
-          // 极致背景模糊
-          filter: ui.ImageFilter.blur(sigmaX: 60, sigmaY: 60),
-          child: CustomPaint(
-            painter: _LiquidGlassPainter(
-              borderRadius: borderRadius,
-              isDark: isDark,
-            ),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(borderRadius),
-                // 半透明背景 - 增加噪点纹理感
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    (isDark ? const Color(0xFF3A3A3C) : Colors.white)
-                        .withValues(alpha: isDark ? 0.6 : 0.5),
-                    (isDark ? const Color(0xFF1C1C1E) : Colors.white)
-                        .withValues(alpha: isDark ? 0.4 : 0.2),
-                  ],
-                ),
-                // 边框由 Painter 绘制以实现渐变
-              ),
-              child: Stack(
-                children: [
-                  // 顶部高光
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: height / 2,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.white.withValues(alpha: isDark ? 0.1 : 0.4),
-                            Colors.white.withValues(alpha: 0),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(borderRadius),
-                        ),
-                      ),
-                    ),
-                  ),
-                  // 内容
-                  child,
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 液态玻璃内阴影绘制器
-class _LiquidGlassPainter extends CustomPainter {
-  final double borderRadius;
-  final bool isDark;
-
-  _LiquidGlassPainter({required this.borderRadius, required this.isDark});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(borderRadius));
-
-    // 1. 绘制细腻的边框 (渐变)
-    final borderPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          Colors.white.withValues(alpha: isDark ? 0.3 : 0.8),
-          Colors.white.withValues(alpha: isDark ? 0.05 : 0.1),
-          Colors.white.withValues(alpha: isDark ? 0.05 : 0.1),
-          Colors.white.withValues(alpha: isDark ? 0.2 : 0.4),
-        ],
-        stops: const [0.0, 0.4, 0.6, 1.0],
-      ).createShader(rect);
-
-    canvas.drawRRect(rrect.deflate(0.5), borderPaint);
-
-    // 2. 绘制内部反光 (Inset Light)
-    final innerGlowPaint = Paint()
-      ..shader = RadialGradient(
-        center: const Alignment(0, -0.8),
-        radius: 1.0,
-        colors: [
-          Colors.white.withValues(alpha: isDark ? 0.1 : 0.2),
-          Colors.transparent,
-        ],
-        stops: const [0.0, 0.7],
-      ).createShader(rect);
-
-    canvas.save();
-    canvas.clipRRect(rrect);
-    canvas.drawRect(rect, innerGlowPaint);
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _LiquidGlassPainter oldDelegate) {
-    return oldDelegate.isDark != isDark ||
-        oldDelegate.borderRadius != borderRadius;
-  }
 }

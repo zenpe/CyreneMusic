@@ -43,7 +43,7 @@ class FluentHomeBreadcrumbs extends StatelessWidget {
                 const TextStyle(fontSize: 15, fontWeight: FontWeight.w500))
             .copyWith(color: resources.textFillColorSecondary);
 
-    TextStyle _resolveStyle(HomeBreadcrumbItem item) {
+    TextStyle resolveStyle(HomeBreadcrumbItem item) {
       if (item.isCurrent) {
         return emphasizedStyle;
       }
@@ -72,7 +72,7 @@ class FluentHomeBreadcrumbs extends StatelessWidget {
         );
       }
 
-      final style = _resolveStyle(item);
+      final style = resolveStyle(item);
       final hasTap = item.onTap != null && !item.isCurrent;
 
       if (hasTap) {

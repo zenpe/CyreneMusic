@@ -108,8 +108,8 @@ class KugouQrCheckResult {
   final String? userid;
   final String? username;
   final String? avatar;
-  final int? vip_type;
-  final String? vip_token;
+  final int? vipType;
+  final String? vipToken;
   KugouQrCheckResult({
     required this.status,
     this.message,
@@ -117,8 +117,8 @@ class KugouQrCheckResult {
     this.userid,
     this.username,
     this.avatar,
-    this.vip_type,
-    this.vip_token,
+    this.vipType,
+    this.vipToken,
   });
 }
 
@@ -202,8 +202,8 @@ class KugouLoginService extends ChangeNotifier {
       userid: data['userid'] as String?,
       username: data['username'] as String?,
       avatar: data['avatar'] as String?,
-      vip_type: data['vip_type'] as int?,
-      vip_token: data['vip_token'] as String?,
+      vipType: data['vip_type'] as int?,
+      vipToken: data['vip_token'] as String?,
     );
 
     // 如果绑定成功（status 4），通知监听者刷新 UI

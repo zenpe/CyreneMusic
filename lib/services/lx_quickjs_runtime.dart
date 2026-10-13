@@ -324,7 +324,7 @@ class LxQuickJsRuntime implements LxRuntime {
   /// second request cannot overwrite script-level state used by the first.
   Future<T> _enqueueOperation<T>(Future<T> Function() operation) {
     final result = _operationQueue.then<T>((_) => operation());
-    _operationQueue = result.then<void>((_) {}, onError: (_, __) {});
+    _operationQueue = result.then<void>((_) {}, onError: (_, _) {});
     return result;
   }
 

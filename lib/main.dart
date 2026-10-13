@@ -465,8 +465,9 @@ class _MyAppState extends State<MyApp> {
         final optimalMode = modes.reduce((curr, next) {
           if (next.refreshRate > curr.refreshRate) return next;
           if (next.refreshRate == curr.refreshRate &&
-              (next.width * next.height) > (curr.width * curr.height))
+              (next.width * next.height) > (curr.width * curr.height)) {
             return next;
+          }
           return curr;
         });
 

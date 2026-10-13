@@ -1,7 +1,7 @@
 part of 'my_page.dart';
 
 /// Material UI 构建方法
-extension MyPageMaterialUI on _MyPageState {
+extension _MyPageMaterialUI on _MyPageState {
   Widget _buildMaterialPage(BuildContext context, ColorScheme colorScheme, bool isLoggedIn) {
     if (!isLoggedIn) {
       return Scaffold(
@@ -299,13 +299,13 @@ extension MyPageMaterialUI on _MyPageState {
                               fit: BoxFit.cover,
                               memCacheWidth: 150,
                               memCacheHeight: 150,
-                              placeholder: (_, __) => Container(
+                              placeholder: (_, _) => Container(
                                 width: 48,
                                 height: 48,
                                 color: colorScheme.surfaceContainerHighest,
                                 child: Icon(Icons.person, size: 24, color: colorScheme.onSurfaceVariant),
                               ),
-                              errorWidget: (_, __, ___) => Container(
+                              errorWidget: (_, _, _) => Container(
                                 width: 48,
                                 height: 48,
                                 color: colorScheme.surfaceContainerHighest,
@@ -529,13 +529,13 @@ extension MyPageMaterialUI on _MyPageState {
                                 fit: BoxFit.cover,
                                 memCacheWidth: 200,
                                 memCacheHeight: 200,
-                                placeholder: (_, __) => Container(
+                                placeholder: (_, _) => Container(
                                   width: 72,
                                   height: 72,
                                   color: colorScheme.surfaceContainerHighest,
                                   child: Icon(Icons.person, color: colorScheme.onSurfaceVariant),
                                 ),
-                                errorWidget: (_, __, ___) => Container(
+                                errorWidget: (_, _, _) => Container(
                                   width: 72,
                                   height: 72,
                                   color: colorScheme.surfaceContainerHighest,
@@ -1174,12 +1174,12 @@ extension MyPageMaterialUI on _MyPageState {
                             fit: BoxFit.cover,
                             memCacheWidth: 128,
                             memCacheHeight: 128,
-                            placeholder: (_, __) => Container(
+                            placeholder: (_, _) => Container(
                               width: 44,
                               height: 44,
                               color: colorScheme.surfaceContainerHighest,
                             ),
-                            errorWidget: (_, __, ___) => Container(
+                            errorWidget: (_, _, _) => Container(
                               width: 44,
                               height: 44,
                               color: colorScheme.surfaceContainerHighest,
@@ -1563,11 +1563,11 @@ extension MyPageMaterialUI on _MyPageState {
                       fit: BoxFit.cover,
                       memCacheWidth: 200,
                       memCacheHeight: 200,
-                      placeholder: (_, __) => Container(
+                      placeholder: (_, _) => Container(
                         color: colorScheme.primaryContainer,
                         child: Icon(Icons.music_note_rounded, color: colorScheme.primary, size: 38),
                       ),
-                      errorWidget: (_, __, ___) => Container(
+                      errorWidget: (_, _, _) => Container(
                         color: colorScheme.primaryContainer,
                         child: Icon(
                           playlist.isDefault ? Icons.favorite_rounded : Icons.music_note_rounded,
@@ -1862,12 +1862,12 @@ extension MyPageMaterialUI on _MyPageState {
                         fit: BoxFit.cover,
                         memCacheWidth: 128,
                         memCacheHeight: 128,
-                        placeholder: (_, __) => Container(
+                        placeholder: (_, _) => Container(
                           width: 44,
                           height: 44,
                           color: colorScheme.surfaceContainerHighest,
                         ),
-                        errorWidget: (_, __, ___) => Container(
+                        errorWidget: (_, _, _) => Container(
                           width: 44,
                           height: 44,
                           color: colorScheme.surfaceContainerHighest,
@@ -2012,11 +2012,11 @@ extension MyPageMaterialUI on _MyPageState {
             fit: BoxFit.cover,
             memCacheWidth: 128,
             memCacheHeight: 128,
-            placeholder: (_, __) => Container(
+            placeholder: (_, _) => Container(
               color: colorScheme.surfaceContainerHighest,
               child: Icon(Icons.music_note_rounded, color: colorScheme.primary, size: size * 0.45),
             ),
-            errorWidget: (_, __, ___) => _buildFallbackPlaylistCover(playlist, colorScheme, size: size, radius: radius),
+            errorWidget: (_, _, _) => _buildFallbackPlaylistCover(playlist, colorScheme, size: size, radius: radius),
           ),
         ),
       );

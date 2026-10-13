@@ -290,7 +290,7 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                                 memCacheWidth: 128,
                                 memCacheHeight: 128,
                                 fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) => Container(
+                                errorWidget: (_, _, _) => Container(
                                   width: 40,
                                   height: 40,
                                   color: colorScheme.surfaceContainerHighest,
@@ -512,7 +512,7 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                                 memCacheWidth: 128,
                                 memCacheHeight: 128,
                                 fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) => Container(
+                                errorWidget: (_, _, _) => Container(
                                   width: 40,
                                   height: 40,
                                   color:
@@ -958,7 +958,7 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                     memCacheWidth: 128,
                     memCacheHeight: 128,
                     fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) => Container(
+                    errorWidget: (_, _, _) => Container(
                       width: 48,
                       height: 48,
                       color: colorScheme.surfaceContainerHighest,
@@ -1062,7 +1062,7 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                       memCacheWidth: 128,
                       memCacheHeight: 128,
                       fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => Container(
+                      errorWidget: (_, _, _) => Container(
                         width: 40,
                         height: 40,
                         color: colorScheme.surfaceContainerHighest,
@@ -1236,7 +1236,7 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                     memCacheWidth: 128,
                     memCacheHeight: 128,
                     fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) => Container(
+                    errorWidget: (_, _, _) => Container(
                       width: 48,
                       height: 48,
                       color: theme.resources.controlFillColorDefault,
@@ -1342,7 +1342,7 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                       memCacheWidth: 128,
                       memCacheHeight: 128,
                       fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => Container(
+                      errorWidget: (_, _, _) => Container(
                         width: 40,
                         height: 40,
                         color: theme.resources.controlFillColorDefault,

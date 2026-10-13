@@ -35,7 +35,9 @@ class MobilePlayerDialogs {
       }
     } catch (_) {}
 
+    if (!context.mounted) return;
     final overlay = Overlay.of(context);
+    if (!overlay.mounted) return;
     final overlayBox = overlay.context.findRenderObject() as RenderBox?;
     final screenSize = overlayBox?.size ?? MediaQuery.of(context).size;
 
@@ -88,7 +90,7 @@ class MobilePlayerDialogs {
           ),
         );
       },
-      pageBuilder: (context, _, __) {
+      pageBuilder: (context, _, _) {
         return Stack(
           children: [
             Positioned.fill(
@@ -1362,7 +1364,7 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
           children: _durationOptions.map((duration) {
             final isSelected = duration == _selectedDuration;
             return FilterChip(
-              label: Text('${duration}分钟'),
+              label: Text('$duration分钟'),
               selected: isSelected,
               onSelected: (selected) {
                 if (selected) {
@@ -1372,7 +1374,7 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
                   SleepTimerService().setTimerByDuration(duration);
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('定时器已设置: ${duration}分钟后停止播放')),
+                    SnackBar(content: Text('定时器已设置: $duration分钟后停止播放')),
                   );
                 }
               },

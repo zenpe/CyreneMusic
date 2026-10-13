@@ -43,7 +43,7 @@ class FluentDiscoverBreadcrumbs extends StatelessWidget {
                 const TextStyle(fontSize: 15, fontWeight: FontWeight.w500))
             .copyWith(color: resources.textFillColorSecondary);
 
-    TextStyle _resolveStyle(DiscoverBreadcrumbItem item) {
+    TextStyle resolveStyle(DiscoverBreadcrumbItem item) {
       if (item.isCurrent) {
         return emphasizedStyle;
       }
@@ -72,7 +72,7 @@ class FluentDiscoverBreadcrumbs extends StatelessWidget {
         );
       }
 
-      final style = _resolveStyle(item);
+      final style = resolveStyle(item);
       if (item.onTap != null && !item.isCurrent) {
         final decoration =
             item.isEmphasized ? TextDecoration.none : TextDecoration.underline;

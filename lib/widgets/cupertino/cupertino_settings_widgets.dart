@@ -141,7 +141,7 @@ class CupertinoSettingsTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (trailing != null) trailing!,
+            ?trailing,
             if (showChevron && trailing == null)
               Icon(
                 CupertinoIcons.chevron_forward,

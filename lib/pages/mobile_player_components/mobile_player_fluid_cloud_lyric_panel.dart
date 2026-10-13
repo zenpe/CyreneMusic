@@ -321,8 +321,11 @@ class _MobilePlayerFluidCloudLyricsPanelState extends State<MobilePlayerFluidClo
 
     final blurSigma = styleService.blurSigma;
     double targetBlur = blurSigma;
-    if (diff == 0) targetBlur = 0.0;
-    else if (diff.abs() == 1) targetBlur = blurSigma * 0.25;
+    if (diff == 0) {
+      targetBlur = 0.0;
+    } else if (diff.abs() == 1) {
+      targetBlur = blurSigma * 0.25;
+    }
     if (item.type == _VirtualEntryType.dots && diff < 0) targetBlur = blurSigma;
 
     final bool isActive = (diff == 0);
@@ -452,7 +455,7 @@ class _ElasticLyricLine extends StatefulWidget {
   final double layoutWidth;
 
   const _ElasticLyricLine({
-    Key? key,
+    super.key,
     required this.text,
     this.translation,
     required this.lyric,
@@ -468,7 +471,7 @@ class _ElasticLyricLine extends StatefulWidget {
     required this.isDragging,
     required this.showTranslation,
     required this.layoutWidth,
-  }) : super(key: key);
+  });
 
   @override
   State<_ElasticLyricLine> createState() => _ElasticLyricLineState();
@@ -1011,12 +1014,12 @@ class _WordFillWidget extends StatefulWidget {
   final ValueNotifier<Duration> positionNotifier;
 
   const _WordFillWidget({
-    Key? key,
+    super.key,
     required this.text,
     required this.word,
     required this.style,
     required this.positionNotifier,
-  }) : super(key: key);
+  });
 
   @override
   State<_WordFillWidget> createState() => _WordFillWidgetState();
@@ -1276,13 +1279,13 @@ class _CountdownDotsWrapper extends StatelessWidget {
   final double layoutWidth;
 
   const _CountdownDotsWrapper({
-    Key? key,
+    super.key,
     required this.startTime,
     required this.endTime,
     required this.targetY,
     required this.targetOpacity,
     required this.layoutWidth,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -230,18 +230,24 @@ class SearchService extends ChangeNotifier {
 
     // 只向支持的平台发送搜索请求
     final futures = <Future<void>>[];
-    if (supportedPlatforms.contains('netease'))
+    if (supportedPlatforms.contains('netease')) {
       futures.add(_searchNetease(normalizedKeyword, sessionId, cancelToken));
-    if (supportedPlatforms.contains('apple'))
+    }
+    if (supportedPlatforms.contains('apple')) {
       futures.add(_searchApple(normalizedKeyword, sessionId, cancelToken));
-    if (supportedPlatforms.contains('qq'))
+    }
+    if (supportedPlatforms.contains('qq')) {
       futures.add(_searchQQ(normalizedKeyword, sessionId, cancelToken));
-    if (supportedPlatforms.contains('kugou'))
+    }
+    if (supportedPlatforms.contains('kugou')) {
       futures.add(_searchKugou(normalizedKeyword, sessionId, cancelToken));
-    if (supportedPlatforms.contains('kuwo'))
+    }
+    if (supportedPlatforms.contains('kuwo')) {
       futures.add(_searchKuwo(normalizedKeyword, sessionId, cancelToken));
-    if (supportedPlatforms.contains('spotify'))
+    }
+    if (supportedPlatforms.contains('spotify')) {
       futures.add(_searchSpotify(normalizedKeyword, sessionId, cancelToken));
+    }
 
     await Future.wait(futures);
 

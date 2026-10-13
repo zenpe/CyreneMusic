@@ -115,7 +115,7 @@ class PlaybackCandidatePlanner {
     };
     final activeId = queue.activeEntryId;
     final ordered = <PlaybackQueueEntry>[];
-    final seen = <int>{if (activeId != null) activeId};
+    final seen = <int>{?activeId};
     for (final entryId in shuffleEntryOrder) {
       final entry = byId[entryId];
       if (entry != null && seen.add(entryId)) ordered.add(entry);

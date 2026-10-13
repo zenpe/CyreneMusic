@@ -23,8 +23,9 @@ class NeteaseRecommendService extends ChangeNotifier {
     );
     if (!result.ok) throw Exception('HTTP ${result.statusCode}');
     final data = result.data as Map<String, dynamic>;
-    if ((data['code'] as num?)?.toInt() != 200)
+    if ((data['code'] as num?)?.toInt() != 200) {
       throw Exception('code ${data['code']}');
+    }
     final list = (data['recommend'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
     return list;
@@ -41,8 +42,9 @@ class NeteaseRecommendService extends ChangeNotifier {
     );
     if (!result.ok) throw Exception('HTTP ${result.statusCode}');
     final data = result.data as Map<String, dynamic>;
-    if ((data['code'] as num?)?.toInt() != 200)
+    if ((data['code'] as num?)?.toInt() != 200) {
       throw Exception('code ${data['code']}');
+    }
     final list = (data['recommend'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
     return list;
@@ -59,8 +61,9 @@ class NeteaseRecommendService extends ChangeNotifier {
     );
     if (!result.ok) throw Exception('HTTP ${result.statusCode}');
     final data = result.data as Map<String, dynamic>;
-    if ((data['code'] as num?)?.toInt() != 200)
+    if ((data['code'] as num?)?.toInt() != 200) {
       throw Exception('code ${data['code']}');
+    }
     final list = (data['data'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
     return list;
@@ -89,8 +92,9 @@ class NeteaseRecommendService extends ChangeNotifier {
     );
     if (!result.ok) throw Exception('HTTP ${result.statusCode}');
     final data = result.data as Map<String, dynamic>;
-    if ((data['code'] as num?)?.toInt() != 200)
+    if ((data['code'] as num?)?.toInt() != 200) {
       throw Exception('code ${data['code']}');
+    }
     final list = (data['result'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
     return list;
@@ -109,8 +113,9 @@ class NeteaseRecommendService extends ChangeNotifier {
     );
     if (!result.ok) throw Exception('HTTP ${result.statusCode}');
     final data = result.data as Map<String, dynamic>;
-    if ((data['code'] as num?)?.toInt() != 200)
+    if ((data['code'] as num?)?.toInt() != 200) {
       throw Exception('code ${data['code']}');
+    }
     final list = (data['result'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
     return list;
@@ -141,8 +146,9 @@ class NeteaseRecommendService extends ChangeNotifier {
       );
       if (!result.ok) throw Exception('HTTP ${result.statusCode}');
       final data = result.data as Map<String, dynamic>;
-      if ((data['status'] as num?)?.toInt() != 200)
+      if ((data['status'] as num?)?.toInt() != 200) {
         throw Exception('status ${data['status']}');
+      }
       final playlist =
           (data['data'] as Map<String, dynamic>?)?['playlist']
               as Map<String, dynamic>?;

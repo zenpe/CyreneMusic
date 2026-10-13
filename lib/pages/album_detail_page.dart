@@ -146,7 +146,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         memCacheWidth: 280,
         memCacheHeight: 280,
         fit: BoxFit.cover,
-        placeholder: (_, __) => Container(
+        placeholder: (_, _) => Container(
           width: 120,
           height: 120,
           color: placeholderColor,
@@ -158,7 +158,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
             ),
           ),
         ),
-        errorWidget: (_, __, ___) => Container(
+        errorWidget: (_, _, _) => Container(
           width: 120,
           height: 120,
           color: placeholderColor,
@@ -463,7 +463,7 @@ Widget _buildSongListItem({
           width: isExpressive ? 56 : 50,
           height: isExpressive ? 56 : 50,
           fit: BoxFit.cover,
-          placeholder: (_, __) => Container(
+          placeholder: (_, _) => Container(
             width: isExpressive ? 56 : 50,
             height: isExpressive ? 56 : 50,
             color: placeholderColor,
@@ -475,7 +475,7 @@ Widget _buildSongListItem({
               ),
             ),
           ),
-          errorWidget: (_, __, ___) => Container(
+          errorWidget: (_, _, _) => Container(
             width: isExpressive ? 56 : 50,
             height: isExpressive ? 56 : 50,
             color: placeholderColor,
@@ -618,7 +618,7 @@ Widget _buildSongsGrid({
               memCacheWidth: 280,
               memCacheHeight: 280,
               fit: BoxFit.cover,
-              placeholder: (_, __) => Container(
+              placeholder: (_, _) => Container(
                 width: isExpressive ? 88 : 80,
                 height: isExpressive ? 88 : 80,
                 color: placeholderColor,
@@ -630,7 +630,7 @@ Widget _buildSongsGrid({
                   ),
                 ),
               ),
-              errorWidget: (_, __, ___) => Container(
+              errorWidget: (_, _, _) => Container(
                 width: isExpressive ? 88 : 80,
                 height: isExpressive ? 88 : 80,
                 color: placeholderColor,

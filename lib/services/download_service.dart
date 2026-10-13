@@ -487,8 +487,9 @@ class DownloadService extends ChangeNotifier {
     String artist,
     String? album,
   ) async {
-    if (fileData.length < 4 || utf8.decode(fileData.sublist(0, 4)) != 'fLaC')
+    if (fileData.length < 4 || utf8.decode(fileData.sublist(0, 4)) != 'fLaC') {
       throw Exception('无效 FLAC');
+    }
 
     final builder = BytesBuilder();
     builder.add(fileData.sublist(0, 4));
@@ -510,7 +511,7 @@ class DownloadService extends ChangeNotifier {
         // 跳过旧的图片块(6)和注块块(4)
         offset += 4 + blockLength;
         if (isLastBlock) {
-          if (!commentAdded)
+          if (!commentAdded) {
             builder.add(
               _buildVorbisCommentBlock(
                 lyrics,
@@ -520,8 +521,10 @@ class DownloadService extends ChangeNotifier {
                 isLast: !pictureAdded && coverData == null,
               ),
             );
-          if (coverData != null && !pictureAdded)
+          }
+          if (coverData != null && !pictureAdded) {
             builder.add(_buildFlacPictureBlock(coverData, isLast: true));
+          }
           break;
         }
         continue;
@@ -539,8 +542,9 @@ class DownloadService extends ChangeNotifier {
             isLast: coverData == null,
           ),
         );
-        if (coverData != null)
+        if (coverData != null) {
           builder.add(_buildFlacPictureBlock(coverData, isLast: true));
+        }
         offset += 4 + blockLength;
         break;
       }
@@ -631,7 +635,9 @@ class DownloadService extends ChangeNotifier {
     blockContent.addByte(0);
 
     // 4. Width, Height, Depth, Colors (All 0 for simple embedding, player will auto-detect)
-    for (int i = 0; i < 16; i++) blockContent.addByte(0);
+    for (int i = 0; i < 16; i++) {
+      blockContent.addByte(0);
+    }
 
     // 5. Picture data length
     blockContent.addByte((imageData.length >> 24) & 0xFF);

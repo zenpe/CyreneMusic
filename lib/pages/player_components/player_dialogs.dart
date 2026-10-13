@@ -440,7 +440,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
           children: _durationOptions.map((duration) {
             final isSelected = duration == _selectedDuration;
             return FilterChip(
-              label: Text('${duration}分钟'),
+              label: Text('$duration分钟'),
               selected: isSelected,
               onSelected: (selected) {
                 if (selected) {
@@ -451,7 +451,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('定时器已设置: ${duration}分钟后停止播放'),
+                      content: Text('定时器已设置: $duration分钟后停止播放'),
                     ),
                   );
                 }
@@ -554,7 +554,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                 if (messenger != null) {
                   messenger.showSnackBar(
                     SnackBar(
-                      content: Text('定时器已设置: ${duration}分钟后停止播放'),
+                      content: Text('定时器已设置: $duration分钟后停止播放'),
                     ),
                   );
                 }
@@ -573,7 +573,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                   return fluentTheme.resources.textFillColorPrimary;
                 }),
               ),
-              child: Text('${duration}分钟'),
+              child: Text('$duration分钟'),
             );
           }).toList(),
         ),

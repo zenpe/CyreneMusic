@@ -864,11 +864,11 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                         memCacheWidth: 280,
                         memCacheHeight: 280,
                         fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(
+                        placeholder: (_, _) => Container(
                           color: Colors.white.withValues(alpha: 0.1),
                           child: Icon(Icons.queue_music, color: Colors.white.withValues(alpha: 0.3), size: 48),
                         ),
-                        errorWidget: (_, __, ___) => Container(
+                        errorWidget: (_, _, _) => Container(
                           color: Colors.white.withValues(alpha: 0.1),
                           child: Icon(Icons.queue_music, color: Colors.white.withValues(alpha: 0.3), size: 48),
                         ),
@@ -1044,11 +1044,11 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                   fit: BoxFit.cover,
                   memCacheWidth: 128,
                   memCacheHeight: 128,
-                  placeholder: (_, __) => Container(
+                  placeholder: (_, _) => Container(
                     color: Colors.white.withValues(alpha: 0.1),
                     child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3), size: 20),
                   ),
-                  errorWidget: (_, __, ___) => Container(
+                  errorWidget: (_, _, _) => Container(
                     color: Colors.white.withValues(alpha: 0.1),
                     child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3), size: 20),
                   ),
@@ -1151,11 +1151,11 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                   fit: BoxFit.cover,
                   memCacheWidth: 128,
                   memCacheHeight: 128,
-                  placeholder: (_, __) => Container(
+                  placeholder: (_, _) => Container(
                     color: Colors.white.withValues(alpha: 0.1),
                     child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3)),
                   ),
-                  errorWidget: (_, __, ___) => Container(
+                  errorWidget: (_, _, _) => Container(
                     color: Colors.white.withValues(alpha: 0.1),
                     child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3)),
                   ),
@@ -1239,7 +1239,7 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                     fit: BoxFit.cover,
                     memCacheWidth: 128,
                     memCacheHeight: 128,
-                    placeholder: (_, __) => Container(
+                    placeholder: (_, _) => Container(
                       color: Colors.white.withValues(alpha: 0.1),
                       child: Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.3)),
                     ),
@@ -1316,11 +1316,11 @@ class _PlayerFluidCloudSongWikiPanelState extends State<PlayerFluidCloudSongWiki
                       fit: BoxFit.cover,
                       memCacheWidth: 280,
                       memCacheHeight: 280,
-                      placeholder: (_, __) => Container(
+                      placeholder: (_, _) => Container(
                         color: Colors.white.withValues(alpha: 0.1),
                         child: Icon(Icons.queue_music, color: Colors.white.withValues(alpha: 0.3), size: 32),
                       ),
-                      errorWidget: (_, __, ___) => Container(
+                      errorWidget: (_, _, _) => Container(
                         color: Colors.white.withValues(alpha: 0.1),
                         child: Icon(Icons.queue_music, color: Colors.white.withValues(alpha: 0.3), size: 32),
                       ),

@@ -45,10 +45,6 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
 
   NavidromeApi? get _api => NavidromeSessionService().api;
 
-  @override
-  void initState() {
-    super.initState();
-  }
 
   @override
   void didChangeDependencies() {
@@ -370,7 +366,7 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
           bottomPadding,
         ),
         itemCount: _playlists.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
           final playlist = _playlists[index];
           final coverUrl = _api?.buildCoverUrl(playlist.coverArt) ?? '';
@@ -438,7 +434,7 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
           bottomPadding,
         ),
         itemCount: _artists.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
           final artist = _artists[index];
           final coverUrl = artist.coverArt != null
@@ -554,7 +550,7 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
           bottomPadding,
         ),
         itemCount: _radioStations.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
           final station = _radioStations[index];
 
@@ -886,7 +882,7 @@ class _CoverImage extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
+        errorBuilder: (_, _, _) => Container(
           width: size,
           height: size,
           color: colorScheme.surfaceContainerHighest,

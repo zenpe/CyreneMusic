@@ -212,7 +212,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                         },
                       ),
                     ),
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemCount: history.length,
                   ),
           ),
@@ -235,8 +235,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
           trailing: history.isNotEmpty
               ? CupertinoButton(
                   padding: EdgeInsets.zero,
-                  child: const Icon(CupertinoIcons.trash, size: 22),
                   onPressed: _showCupertinoClearConfirmDialog,
+                  child: const Icon(CupertinoIcons.trash, size: 22),
                 )
               : null,
         ),

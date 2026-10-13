@@ -277,13 +277,13 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
             children: [
               CupertinoButton(
                 padding: EdgeInsets.zero,
-                child: const Icon(CupertinoIcons.refresh, size: 22),
                 onPressed: AdminService().isLoading
                     ? null
                     : () async {
                         await AdminService().fetchUsers();
                         await AdminService().fetchStats();
                       },
+                child: const Icon(CupertinoIcons.refresh, size: 22),
               ),
               const Spacer(),
               CupertinoButton(

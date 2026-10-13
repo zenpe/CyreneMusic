@@ -169,7 +169,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
     return Image.network(
       picUrl,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => Container(
+      errorBuilder: (_, _, _) => Container(
         color: Colors.white10,
         child: const Icon(
           Icons.broken_image_rounded,

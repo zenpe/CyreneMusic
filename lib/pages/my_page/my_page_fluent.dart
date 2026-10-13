@@ -1,7 +1,7 @@
 part of 'my_page.dart';
 
 /// Fluent UI 构建方法
-extension MyPageFluentUI on _MyPageState {
+extension _MyPageFluentUI on _MyPageState {
   Widget _buildFluentPage(BuildContext context, bool isLoggedIn) {
     if (!isLoggedIn) {
       return fluent.ScaffoldPage(
@@ -151,7 +151,7 @@ extension MyPageFluentUI on _MyPageState {
         return Stack(
           children: [
             ...previousChildren,
-            if (currentChild != null) currentChild,
+            ?currentChild,
           ],
         );
       },
@@ -314,7 +314,7 @@ extension MyPageFluentUI on _MyPageState {
                     ),
                   );
                 },
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemCount: filteredTracks.length,
               ),
             ),
@@ -442,14 +442,14 @@ class _FluentMyTrackTile extends StatelessWidget {
                     memCacheWidth: 128,
                     memCacheHeight: 128,
                     fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(
+                    placeholder: (_, _) => Container(
                       width: 64,
                       height: 64,
                       color: resources.controlAltFillColorSecondary,
                       alignment: Alignment.center,
                       child: const fluent.ProgressRing(strokeWidth: 2),
                     ),
-                    errorWidget: (_, __, ___) => Container(
+                    errorWidget: (_, _, _) => Container(
                       width: 64,
                       height: 64,
                       color: resources.controlAltFillColorSecondary,
@@ -507,7 +507,7 @@ class _FluentMyTrackTile extends StatelessWidget {
   }
 }
 
-extension MyPageFluentUIComponents on _MyPageState {
+extension _MyPageFluentUIComponents on _MyPageState {
 
   Widget _buildFluentStatsCard() {
     final stats = _statsData!;
@@ -695,14 +695,14 @@ class _FluentMyPlaylistTile extends StatelessWidget {
               memCacheWidth: 128,
               memCacheHeight: 128,
               fit: BoxFit.cover,
-              placeholder: (_, __) => Container(
+              placeholder: (_, _) => Container(
                 width: 64,
                 height: 64,
                 color: resources.controlAltFillColorSecondary,
                 alignment: Alignment.center,
                 child: const fluent.ProgressRing(strokeWidth: 2),
               ),
-              errorWidget: (_, __, ___) => Container(
+              errorWidget: (_, _, _) => Container(
                 width: 64,
                 height: 64,
                 color: resources.controlAltFillColorSecondary,
@@ -721,7 +721,7 @@ class _FluentMyPlaylistTile extends StatelessWidget {
   }
 }
 
-extension MyPageFluentUITopPlays on _MyPageState {
+extension _MyPageFluentUITopPlays on _MyPageState {
 
   Widget _buildFluentTopPlaysList() {
     final topPlays = _statsData!.playCounts.take(10).toList();
@@ -733,9 +733,13 @@ extension MyPageFluentUITopPlays on _MyPageState {
         final item = entry.value;
         final rank = index + 1;
         Color? rankColor;
-        if (rank == 1) rankColor = Colors.amber;
-        else if (rank == 2) rankColor = Colors.grey[400];
-        else if (rank == 3) rankColor = Colors.orange[300];
+        if (rank == 1) {
+          rankColor = Colors.amber;
+        } else if (rank == 2) {
+          rankColor = Colors.grey[400];
+        } else if (rank == 3) {
+          rankColor = Colors.orange[300];
+        }
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
@@ -771,14 +775,14 @@ extension MyPageFluentUITopPlays on _MyPageState {
                         memCacheWidth: 128,
                         memCacheHeight: 128,
                         fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(
+                        placeholder: (_, _) => Container(
                           width: 56,
                           height: 56,
                           color: theme.resources.controlAltFillColorSecondary,
                           alignment: Alignment.center,
                           child: const fluent.ProgressRing(strokeWidth: 2),
                         ),
-                        errorWidget: (_, __, ___) => Container(
+                        errorWidget: (_, _, _) => Container(
                           width: 56,
                           height: 56,
                           color: theme.resources.controlAltFillColorSecondary,

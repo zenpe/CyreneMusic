@@ -385,7 +385,7 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
           )
         : ListView.separated(
             itemCount: queue.length,
-            separatorBuilder: (_, __) => Container(
+            separatorBuilder: (_, _) => Container(
               height: 1,
               margin: const EdgeInsets.only(left: 64, right: 10),
               color: Colors.white.withValues(alpha: 0.10),
@@ -456,12 +456,12 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
         PlaylistQueueService().updateCoverProvider(t, imageProvider);
         return Image(image: imageProvider, width: 44, height: 44, fit: BoxFit.cover);
       },
-      placeholder: (_, __) => Container(
+      placeholder: (_, _) => Container(
         width: 44,
         height: 44,
         color: Colors.white.withValues(alpha: 0.12),
       ),
-      errorWidget: (_, __, ___) => Container(
+      errorWidget: (_, _, _) => Container(
         width: 44,
         height: 44,
         color: Colors.white.withValues(alpha: 0.12),
@@ -483,7 +483,7 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
             fit: BoxFit.cover,
             memCacheWidth: 1080,
             memCacheHeight: 1080,
-            errorWidget: (_, __, ___) => Container(color: backgroundColor),
+            errorWidget: (_, _, _) => Container(color: backgroundColor),
           ),
 
         // 模糊 + 半透明遮罩
@@ -541,11 +541,11 @@ class _MiniPlayerWindowPageState extends State<MiniPlayerWindowPage>
                     imageUrl: coverUrl,
                     httpHeaders: getImageHeaders(coverUrl),
                     fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(
+                    placeholder: (_, _) => Container(
                       color: Colors.grey[700],
                       child: const Icon(Icons.music_note, color: Colors.white54, size: 24),
                     ),
-                    errorWidget: (_, __, ___) => Container(
+                    errorWidget: (_, _, _) => Container(
                       color: Colors.grey[700],
                       child: const Icon(Icons.music_note, color: Colors.white54, size: 24),
                     ),

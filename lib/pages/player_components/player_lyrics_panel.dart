@@ -154,7 +154,7 @@ class PlayerLyricsPanel extends StatelessWidget {
                   return Stack(
                     alignment: Alignment.center,
                     children: <Widget>[
-                      if (currentChild != null) currentChild,
+                      ?currentChild,
                     ],
                   );
                 },
