@@ -203,6 +203,12 @@ class PlaybackService extends ChangeNotifier {
   static final PlaybackService _instance = PlaybackService._internal();
   factory PlaybackService() => _instance;
 
+  @visibleForTesting
+  PlaybackService.forTesting({
+    required EngineHost engine,
+    TrackResolver? resolver,
+  }) : this._internal(engine: engine, resolver: resolver);
+
   // ══════════════════════════════════════════════════════
   // 队列状态（原 PlaylistQueueService）
   // ══════════════════════════════════════════════════════
@@ -251,6 +257,10 @@ class PlaybackService extends ChangeNotifier {
   bool _pendingTimelineReady = false;
   bool _desiredPlaying = false;
   final PlaybackControlIntent _controlIntent = PlaybackControlIntent();
+  int? _manualRetryRequestEpoch;
+  bool get _manualRetryInFlight =>
+      _manualRetryRequestEpoch != null &&
+      _requestRouter.isCurrent(_manualRetryRequestEpoch!);
   bool? get pendingPlaybackIntent => _controlIntent.pendingPlaying;
   String? _errorMessage;
   Track? _lastFailedTrack;
@@ -279,7 +289,7 @@ class PlaybackService extends ChangeNotifier {
   final PlaybackHistoryRecorder _historyRecorder = PlaybackHistoryRecorder();
   late final PlaybackSessionManager _sessionManager;
   final SourceHealthTracker _sourceHealthTracker = SourceHealthTracker();
-  final TrackResolver _trackResolver = TrackResolver();
+  final TrackResolver _trackResolver;
   final PlaybackPerformanceMetrics _performanceMetrics =
       PlaybackPerformanceMetrics();
 
@@ -560,11 +570,12 @@ class PlaybackService extends ChangeNotifier {
   // ══════════════════════════════════════════════════════
   // 初始化
   // ══════════════════════════════════════════════════════
-  PlaybackService._internal() {
+  PlaybackService._internal({EngineHost? engine, TrackResolver? resolver})
+    : _trackResolver = resolver ?? TrackResolver() {
     _sessionManager = PlaybackSessionManager(
       snapshotBuilder: _buildSessionSnapshot,
     );
-    _engine = EngineHost();
+    _engine = engine ?? EngineHost();
     _stabilityTracker = PlaybackStabilityTracker(
       isPlaying: () => _state == PBState.playing,
       position: () => _position,
@@ -962,9 +973,13 @@ class PlaybackService extends ChangeNotifier {
     final cacheQuality = _currentCachedFileInfo?.metadata.quality;
     final shouldRetryWithoutCache =
         cacheQuality != null && _retriedTrackKey != trackKey;
+    final navigatingCandidate =
+        failedDuringArming &&
+        _scanningRequestEpoch == _currentSession?.requestEpoch;
     final canRetry =
-        shouldRetryWithoutCache ||
-        (_canRetryOnError(error) && _retriedTrackKey != trackKey);
+        !navigatingCandidate &&
+        (shouldRetryWithoutCache ||
+            (_canRetryOnError(error) && _retriedTrackKey != trackKey));
 
     if (canRetry) {
       _performanceMetrics.recordEngineRetry();
@@ -1172,6 +1187,13 @@ class PlaybackService extends ChangeNotifier {
       notifyListeners();
     }
     if (transaction?.budgetExhausted ?? false) {
+      final attempted = (transaction?.timing.remoteResolutionAttempts ?? 0) > 0;
+      if (!attempted && _scanningRequestEpoch == transaction?.requestEpoch) {
+        return const PlaybackCandidateAttemptResult(
+          PlaybackCandidateAttemptStatus.budgetExhausted,
+          attempted: false,
+        );
+      }
       if (_state == PBState.loading && transaction != null) {
         const evidence = PlaybackFailureEvidence(
           cause: PlaybackFailureCause.requestFailed,
@@ -1193,6 +1215,7 @@ class PlaybackService extends ChangeNotifier {
       return PlaybackCandidateAttemptResult(
         PlaybackCandidateAttemptStatus.budgetExhausted,
         message: _errorMessage,
+        attempted: attempted,
       );
     }
     final problem = _problemStore.current;
@@ -1603,6 +1626,8 @@ class PlaybackService extends ChangeNotifier {
   }) {
     if (!AuthService().isLoggedIn) return Future<void>.value();
     _controlIntent.invalidate();
+    _lastFailedTrack = null;
+    _lastFailedQueueEntryId = null;
     final requestEpoch = _requestRouter.begin();
     // 队列指针和 pending session 必须在第一次 await 前切换。否则旧的
     // 解析任务会占住 CommandQueue，后续点击虽然最终会被丢弃，但用户仍
@@ -1671,6 +1696,8 @@ class PlaybackService extends ChangeNotifier {
     final entryId = _queueController.entryIdAt(index);
     if (track == null || entryId == null) return;
     _controlIntent.invalidate();
+    _lastFailedTrack = null;
+    _lastFailedQueueEntryId = null;
     _resetPreloadState();
     _pendingRestorePosition = null;
     await _attemptTrackSwitch(
@@ -1778,6 +1805,10 @@ class PlaybackService extends ChangeNotifier {
 
   Future<void> resume() async {
     if (!AuthService().isLoggedIn) return;
+    if (_state == PBState.error && !_engine.isPlaying) {
+      await retryCurrentTrack();
+      return;
+    }
     if (_pendingTrack == null &&
         currentTrack == null &&
         _preloadedTrack == null) {
@@ -1798,7 +1829,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> _resumeWithIntent(int revision) async {
-    if (_pendingTrack != null) {
+    if (_pendingTrack != null || _manualRetryInFlight) {
       return;
     }
     // 预载态：播放器尚未初始化，走完整播放
@@ -1940,7 +1971,7 @@ class PlaybackService extends ChangeNotifier {
     bool forceRemoteResolution = false,
   }) async {
     if (!AuthService().isLoggedIn) return;
-    final requestEpoch = _requestRouter.begin();
+    if (_manualRetryInFlight) return;
     if (expectedProblem != null && !isCurrentPlaybackProblem(expectedProblem)) {
       return;
     }
@@ -1957,21 +1988,30 @@ class PlaybackService extends ChangeNotifier {
             )
             ? _queueController.currentEntryId
             : null);
+    final requestEpoch = _requestRouter.begin();
+    _manualRetryRequestEpoch = requestEpoch;
     _state = PBState.loading;
     _errorMessage = null;
     _isAudioSourceNotConfigured = false;
     notifyListeners();
-    await _attemptTrackSwitch(
-      reason: 'manual-retry',
-      intent: PlaybackRequestIntent.retry,
-      requestEpoch: requestEpoch,
-      forceRemoteResolution: forceRemoteResolution,
-      candidateTrack: retryTrack,
-      candidateEntryId: retryEntryId,
-    );
+    try {
+      await _attemptTrackSwitch(
+        reason: 'manual-retry',
+        intent: PlaybackRequestIntent.retry,
+        requestEpoch: requestEpoch,
+        forceRemoteResolution: forceRemoteResolution,
+        candidateTrack: retryTrack,
+        candidateEntryId: retryEntryId,
+      );
+    } finally {
+      if (_manualRetryRequestEpoch == requestEpoch) {
+        _manualRetryRequestEpoch = null;
+      }
+    }
   }
 
   Future<bool> revalidateActiveSource() async {
+    if (_manualRetryInFlight) return false;
     final fingerprint = _activeLxSourceFingerprint();
     if (fingerprint == null ||
         (_trackAtQueuePointer() == null && _activeTrack == null)) {
@@ -2410,6 +2450,8 @@ class PlaybackService extends ChangeNotifier {
 
   void _invalidateCurrentPlayback() {
     _livenessMonitor.suspend();
+    _lastFailedTrack = null;
+    _lastFailedQueueEntryId = null;
     _controlIntent.invalidate();
     _requestRouter.begin();
     _transactionGuard.begin();
@@ -2512,6 +2554,11 @@ class PlaybackService extends ChangeNotifier {
 
     final lxSourceFingerprint = _activeLxSourceFingerprint();
     final resolverFingerprint = _resolverFingerprintFor(track);
+    if (lxSourceFingerprint != null &&
+        tx.intent == PlaybackRequestIntent.retry &&
+        _sourceHealthTracker.snapshot(lxSourceFingerprint).isCircuitOpen) {
+      _sourceHealthTracker.prepareManualProbe(lxSourceFingerprint);
+    }
     final sourceRequestAllowed =
         lxSourceFingerprint == null ||
         _sourceHealthTracker.allowRequest(lxSourceFingerprint);
@@ -2546,7 +2593,7 @@ class PlaybackService extends ChangeNotifier {
     TrackResolutionResult? resolution;
     final maxResolutionAttempts = _retriedTrackKey == _buildTrackIdentity(track)
         ? 1
-        : 2;
+        : (tx.budget?.maxResolutionAttemptsPerTrack ?? 2);
     var isSameLxSource =
         lxSourceFingerprint != null &&
         _activeLxSourceFingerprint() == lxSourceFingerprint;
@@ -2625,6 +2672,7 @@ class PlaybackService extends ChangeNotifier {
       }
 
       if (resolution.isPlayable) {
+        _errorMessage = null;
         if (isSameLxSource) {
           _recordSourceResolutionSuccess(lxSourceFingerprint);
         }
@@ -3766,6 +3814,13 @@ class PlaybackService extends ChangeNotifier {
       tx.failureEvidence = evidence;
       _lastFailureEvidence = evidence;
       trace.mark('engine_failed', level: LogLevel.error);
+      // Error streams are asynchronous: the throwing load may finish before
+      // its error event arrives. Handle it here as well, so retry/failure does
+      // not depend on stream delivery racing this attempt's finally block.
+      if (_currentSession?.phase != PlaybackPhase.failed) {
+        _onEngineError(exception.error);
+      }
+      if (isStale()) return PlaybackCandidateAttemptResult.cancelled;
       if (_deferredEngineRetryGeneration == tx.token) {
         _deferredEngineRetryGeneration = null;
         return _attemptTrackSwitch(
@@ -3782,6 +3837,21 @@ class PlaybackService extends ChangeNotifier {
           navigationOrder: navigationOrder,
           preserveDesiredPlaying: true,
           allowActiveFallback: allowActiveFallback,
+        );
+      }
+      if (_state != PBState.error) {
+        _controlIntent.invalidate();
+        _state = PBState.error;
+        _errorMessage = _buildErrorMessage(exception.error);
+        _isAudioSourceNotConfigured = false;
+        _reportPlaybackFailure(
+          tx.track,
+          _errorMessage!,
+          kind: _problemKindForEngineError(exception.error),
+          recoveryActions:
+              exception.error.type == EngineErrorType.unsupportedFormat
+              ? const {}
+              : const {PlaybackRecoveryAction.retry},
         );
       }
       return _candidateFailureResult(transaction: tx, engineFailure: true);
@@ -3925,8 +3995,15 @@ class PlaybackService extends ChangeNotifier {
     }
 
     final mode = PlaybackModeService().currentMode;
+    final failedOrPendingEntryId =
+        intent == PlaybackTransitionIntent.manualAdvance
+        ? (_pendingQueueEntryId ?? _lastFailedQueueEntryId)
+        : null;
     final activeEntryId =
-        _activeQueueEntryId ?? _queueController.currentEntryId;
+        failedOrPendingEntryId != null &&
+            _queueController.indexOfEntryId(failedOrPendingEntryId) >= 0
+        ? failedOrPendingEntryId
+        : (_activeQueueEntryId ?? _queueController.currentEntryId);
     var queueSnapshot = _queueController.snapshot(activeEntryId: activeEntryId);
     if (activeEntryId != null &&
         queueSnapshot.indexOfEntry(activeEntryId) < 0 &&
@@ -3970,6 +4047,7 @@ class PlaybackService extends ChangeNotifier {
       maxRemoteRequests: intent == PlaybackTransitionIntent.automaticAdvance
           ? 3
           : 2,
+      maxResolutionAttemptsPerTrack: 1,
     );
     final playbackIntent = intent == PlaybackTransitionIntent.automaticAdvance
         ? PlaybackRequestIntent.automatic
@@ -3982,6 +4060,7 @@ class PlaybackService extends ChangeNotifier {
         : null;
     _scanningRequestEpoch = requestEpoch;
 
+    PlaybackProblem? lastAttemptedProblem;
     late final PlaybackTransitionResult result;
     try {
       result = await _transitionCoordinator.run(
@@ -3994,6 +4073,7 @@ class PlaybackService extends ChangeNotifier {
             return const PlaybackCandidateAttemptResult(
               PlaybackCandidateAttemptStatus.trackFailure,
               message: '歌曲已从播放队列移除',
+              attempted: false,
             );
           }
 
@@ -4015,7 +4095,7 @@ class PlaybackService extends ChangeNotifier {
           }
           if (!isCurrent()) return PlaybackCandidateAttemptResult.cancelled;
 
-          return _attemptTrackSwitch(
+          final outcome = await _attemptTrackSwitch(
             reason: reason,
             intent: playbackIntent,
             requestEpoch: requestEpoch,
@@ -4027,6 +4107,10 @@ class PlaybackService extends ChangeNotifier {
             allowActiveFallback:
                 intent == PlaybackTransitionIntent.manualAdvance,
           );
+          if (isCurrent() && outcome.attempted) {
+            lastAttemptedProblem = _problemStore.current;
+          }
+          return outcome;
         },
       );
     } catch (error) {
@@ -4064,6 +4148,18 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
 
+    // Probing later local/cache candidates after the remote cap can stage new
+    // transactions without actually requesting them. Report the actual failure.
+    if (lastAttemptedProblem case final problem?) {
+      _errorMessage = problem.message;
+      _reportPlaybackFailure(
+        problem.track,
+        problem.message,
+        kind: problem.kind,
+        recoveryActions: problem.recoveryActions,
+        emitEffect: false,
+      );
+    }
     _finishFailedNavigation(
       result,
       reason: reason,
@@ -4109,8 +4205,10 @@ class PlaybackService extends ChangeNotifier {
     required String reason,
     required bool allowActiveFallback,
   }) {
-    _lastFailedTrack = result.lastFailedCandidate?.track;
-    _lastFailedQueueEntryId = result.lastFailedCandidate?.entryId;
+    if (result.lastFailedCandidate case final candidate?) {
+      _lastFailedTrack = candidate.track;
+      _lastFailedQueueEntryId = candidate.entryId;
+    }
     final activeStillPlaying =
         allowActiveFallback && _activeTrack != null && _engine.isPlaying;
     if (activeStillPlaying) {
@@ -4123,6 +4221,9 @@ class PlaybackService extends ChangeNotifier {
       _desiredPlaying = false;
       _controlIntent.invalidate();
       _state = PBState.error;
+      // Pending can refer to an entry whose remote request was never admitted.
+      // Preserve the coordinator's last actual failure as the retry target.
+      _clearPendingTrack();
       _finishPendingFailure();
     }
     StructuredLogService.event(

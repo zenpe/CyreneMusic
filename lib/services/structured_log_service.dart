@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
@@ -43,7 +44,11 @@ class StructuredLogService {
       output(line);
       return;
     }
-    developer.log(line, name: 'cyrene');
+    if (kReleaseMode || level.index >= LogLevel.warning.index) {
+      Zone.root.print(line);
+    } else {
+      developer.log(line, name: 'cyrene');
+    }
   }
 
   static Map<String, Object?> _redactMap(Map<String, Object?> input) {
@@ -76,7 +81,7 @@ class StructuredLogService {
     );
     result = result.replaceAllMapped(
       RegExp(
-        r'(token|cookie|authorization|password|secret)=([^&\s,]+)',
+        r'(card_key|card-key|key|token|cookie|authorization|password|secret)=([^&\s,]+)',
         caseSensitive: false,
       ),
       (match) => '${match.group(1)}=<redacted>',
@@ -93,6 +98,9 @@ class StructuredLogService {
     'secret',
     'script',
     'headers',
+    'card_key',
+    'card-key',
+    'resolver_fp',
   };
 }
 

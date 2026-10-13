@@ -15,7 +15,9 @@ void main() {
       fields: {
         'transaction_id': 7,
         'url': 'https://example.test/audio?token=abc',
-        'message': 'failed at https://example.test/audio token=abc',
+        'resolver_fp': 'source script and credential',
+        'message':
+            'failed at https://example.test/audio token=abc key=credential card_key=credential',
       },
     );
 
@@ -25,6 +27,7 @@ void main() {
     expect(payload['message'], contains('<url>'));
     expect(payload['message'], contains('token=<redacted>'));
     expect(lines.single, isNot(contains('abc')));
+    expect(lines.single, isNot(contains('credential')));
   });
 
   test('operation trace emits stage and total latency', () {

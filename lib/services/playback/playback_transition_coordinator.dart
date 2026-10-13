@@ -13,8 +13,13 @@ enum PlaybackCandidateAttemptStatus {
 class PlaybackCandidateAttemptResult {
   final PlaybackCandidateAttemptStatus status;
   final String? message;
+  final bool attempted;
 
-  const PlaybackCandidateAttemptResult(this.status, {this.message});
+  const PlaybackCandidateAttemptResult(
+    this.status, {
+    this.message,
+    this.attempted = true,
+  });
 
   static const committed = PlaybackCandidateAttemptResult(
     PlaybackCandidateAttemptStatus.committed,
@@ -106,8 +111,10 @@ class PlaybackTransitionCoordinator {
         );
       }
 
-      lastFailed = candidate;
-      skippedCount++;
+      if (outcome.attempted) {
+        lastFailed = candidate;
+        skippedCount++;
+      }
       if (outcome.status == PlaybackCandidateAttemptStatus.sourceFailure) {
         return _result(
           PlaybackTransitionResultStatus.sourceFailure,

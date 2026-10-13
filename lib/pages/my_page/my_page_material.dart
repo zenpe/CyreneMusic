@@ -1075,6 +1075,15 @@ extension _MyPageMaterialUI on _MyPageState {
             ),
             if (!playlist.isDefault)
               ListTile(
+                leading: const Icon(Icons.drive_file_rename_outline),
+                title: const Text('重命名'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showRenamePlaylistDialog(playlist);
+                },
+              ),
+            if (!playlist.isDefault)
+              ListTile(
                 leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
                 title: const Text('删除歌单', style: TextStyle(color: Colors.redAccent)),
                 onTap: () {
@@ -1504,6 +1513,12 @@ extension _MyPageMaterialUI on _MyPageState {
           ),
           TextButton(onPressed: _toggleEditMode, child: const Text('取消')),
         ] else ...[
+          if (!playlist.isDefault)
+            IconButton(
+              icon: const Icon(Icons.drive_file_rename_outline),
+              tooltip: '重命名歌单',
+              onPressed: () => _showRenamePlaylistDialog(playlist),
+            ),
           if (tracks.isNotEmpty)
             IconButton(
               icon: Icon(_isSearchMode ? Icons.search_off : Icons.search_rounded, size: 22, color: colorScheme.onSurfaceVariant),

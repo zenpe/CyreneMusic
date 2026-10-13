@@ -239,6 +239,14 @@ extension _MyPageFluentUI on _MyPageState {
                   const SizedBox(width: 8),
                   fluent.Button(onPressed: _toggleEditMode, child: const Text('取消')),
                 ] else ...[
+                  if (!playlist.isDefault)
+                    fluent.Tooltip(
+                      message: '重命名歌单',
+                      child: fluent.IconButton(
+                        icon: const Icon(fluent.FluentIcons.rename),
+                        onPressed: () => _showRenamePlaylistDialog(playlist),
+                      ),
+                    ),
                   if (allTracks.isNotEmpty) ...[
                     fluent.IconButton(
                         icon: Icon(_isSearchMode
@@ -577,6 +585,7 @@ extension _MyPageFluentUIComponents on _MyPageState {
             onTap: () => _openPlaylistDetail(playlist),
             onSync: () => _syncPlaylistFromList(playlist),
             onDelete: () => _confirmDeletePlaylist(playlist),
+            onRename: () => _showRenamePlaylistDialog(playlist),
           ),
         );
       }).toList(),
@@ -591,6 +600,7 @@ class _FluentMyPlaylistTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onSync;
   final VoidCallback onDelete;
+  final VoidCallback onRename;
 
   const _FluentMyPlaylistTile({
     required this.playlist,
@@ -598,6 +608,7 @@ class _FluentMyPlaylistTile extends StatelessWidget {
     required this.onTap,
     required this.onSync,
     required this.onDelete,
+    required this.onRename,
   });
 
   @override
@@ -651,6 +662,13 @@ class _FluentMyPlaylistTile extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (!playlist.isDefault) ...[
+                      fluent.Tooltip(
+                        message: '重命名歌单',
+                        child: fluent.IconButton(
+                          icon: const Icon(fluent.FluentIcons.rename),
+                          onPressed: onRename,
+                        ),
+                      ),
                       fluent.IconButton(
                         icon: Icon(
                           fluent.FluentIcons.sync,

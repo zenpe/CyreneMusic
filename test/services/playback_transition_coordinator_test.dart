@@ -82,13 +82,15 @@ void main() {
         attempted.add(candidate.entryId);
         return const PlaybackCandidateAttemptResult(
           PlaybackCandidateAttemptStatus.budgetExhausted,
+          attempted: false,
         );
       },
     );
 
     expect(attempted, [1, 2, 3]);
     expect(result.status, PlaybackTransitionResultStatus.budgetExhausted);
-    expect(result.skippedCount, 3);
+    expect(result.skippedCount, 0);
+    expect(result.lastFailedCandidate, isNull);
   });
 
   test('can commit a local candidate after remote budget exhaustion', () async {
@@ -102,6 +104,7 @@ void main() {
         if (candidate.entryId == 1) {
           return const PlaybackCandidateAttemptResult(
             PlaybackCandidateAttemptStatus.budgetExhausted,
+            attempted: false,
           );
         }
         return PlaybackCandidateAttemptResult.committed;
@@ -111,6 +114,27 @@ void main() {
     expect(attempted, [1, 2]);
     expect(result.status, PlaybackTransitionResultStatus.committed);
     expect(result.committedCandidate?.entryId, 2);
+    expect(result.skippedCount, 0);
+  });
+
+  test('time exhaustion stops after the actual failed candidate', () async {
+    var elapsed = Duration.zero;
+    final attempted = <int>[];
+    final result = await coordinator.run(
+      plan: plan,
+      budget: PlaybackTransitionBudget(elapsed: () => elapsed),
+      isCurrent: () => true,
+      attempt: (candidate, budget, isCurrent) async {
+        attempted.add(candidate.entryId);
+        elapsed = const Duration(seconds: 12);
+        return const PlaybackCandidateAttemptResult(
+          PlaybackCandidateAttemptStatus.trackFailure,
+        );
+      },
+    );
+    expect(attempted, [1]);
+    expect(result.status, PlaybackTransitionResultStatus.budgetExhausted);
+    expect(result.lastFailedCandidate?.entryId, 1);
     expect(result.skippedCount, 1);
   });
 
@@ -132,6 +156,27 @@ void main() {
     expect(budget.remaining(), Duration.zero);
     expect(budget.hasTimeRemaining, isFalse);
   });
+
+  test(
+    'request cap does not move failure cursor past the last attempted track',
+    () async {
+      final result = await coordinator.run(
+        plan: plan,
+        budget: fixedBudget(),
+        isCurrent: () => true,
+        attempt: (candidate, budget, isCurrent) async => candidate.entryId == 1
+            ? const PlaybackCandidateAttemptResult(
+                PlaybackCandidateAttemptStatus.trackFailure,
+              )
+            : const PlaybackCandidateAttemptResult(
+                PlaybackCandidateAttemptStatus.budgetExhausted,
+                attempted: false,
+              ),
+      );
+      expect(result.lastFailedCandidate?.entryId, 1);
+      expect(result.skippedCount, 1);
+    },
+  );
 }
 
 PlaybackTransitionBudget fixedBudget() {

@@ -327,6 +327,11 @@ extension _MyPageCupertinoUI on _MyPageState {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (allTracks.isNotEmpty) CupertinoButton(padding: EdgeInsets.zero, onPressed: _toggleSearchMode, child: Icon(_isSearchMode ? CupertinoIcons.search : CupertinoIcons.search)),
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () => _showPlaylistMoreOptionsCupertino(playlist, isDark),
+                    child: const Icon(CupertinoIcons.ellipsis),
+                  ),
                   if (playlist.isSynced) CupertinoButton(padding: EdgeInsets.zero, onPressed: () => _copySyncedPlaylist(playlist), child: const Icon(CupertinoIcons.doc_on_doc)),
                   if (allTracks.isNotEmpty && playlist.isLocal) CupertinoButton(padding: EdgeInsets.zero, onPressed: _toggleEditMode, child: const Icon(CupertinoIcons.pencil)),
                 ],
@@ -552,6 +557,14 @@ extension _MyPageCupertinoUI on _MyPageState {
         title: Text(playlist.name),
         message: Text('共 ${playlist.trackCount} 首歌曲'),
         actions: [
+          if (!playlist.isDefault)
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(context);
+                _showRenamePlaylistDialog(playlist);
+              },
+              child: const Text('重命名'),
+            ),
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(context);

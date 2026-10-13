@@ -16,6 +16,7 @@ import '../../models/track.dart';
 import '../../widgets/import_playlist_dialog.dart';
 import '../../widgets/source_switch_dialog.dart';
 import '../../widgets/music_taste_dialog.dart';
+import '../../widgets/playlist_rename_dialog.dart';
 import '../auth/auth_page.dart';
 import '../settings_page/user_card.dart';
 import 'my_page_breadcrumbs.dart';
@@ -44,6 +45,7 @@ class _MyPageState extends State<MyPage> {
   bool _isLoadingStats = true;
   Playlist? _selectedPlaylist;
   bool _isEditMode = false;
+  bool _renameDialogOpen = false;
   final Set<String> _selectedTrackIds = {};
 
   bool _isSearchMode = false;
@@ -80,7 +82,16 @@ class _MyPageState extends State<MyPage> {
   }
 
   void _onPlaylistsChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {
+      final selectedId = _selectedPlaylist?.id;
+      for (final playlist in _playlistService.playlists) {
+        if (playlist.id == selectedId) {
+          _selectedPlaylist = playlist;
+          break;
+        }
+      }
+    });
   }
 
   /// 触发 UI 刷新 (供 extension 使用)
@@ -358,6 +369,31 @@ class _MyPageState extends State<MyPage> {
   }
 
   // ==================== 对话框方法 ====================
+
+  Future<void> _showRenamePlaylistDialog(Playlist playlist) async {
+    if (playlist.isDefault || _renameDialogOpen || !mounted) return;
+    _renameDialogOpen = true;
+    try {
+      final saved = await PlaylistRenameDialog.show(
+        context,
+        name: playlist.name,
+        onSave: (name) => _playlistService.updatePlaylist(playlist.id, name),
+        style: _themeManager.isFluentFramework
+            ? PlaylistRenameStyle.fluent
+            : _themeManager.isCupertinoFramework
+            ? PlaylistRenameStyle.cupertino
+            : PlaylistRenameStyle.material,
+      );
+      if (saved == true && mounted) {
+        _showUserNotification(
+          '歌单已重命名',
+          severity: fluent.InfoBarSeverity.success,
+        );
+      }
+    } finally {
+      _renameDialogOpen = false;
+    }
+  }
 
   void _showImportPlaylistDialog() {
     ImportPlaylistDialog.show(context).then((_) {

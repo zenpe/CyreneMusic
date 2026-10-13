@@ -11,7 +11,7 @@ void main() {
     final requestSeen = Completer<void>();
     final serverTask = server.first.then((request) async {
       requestSeen.complete();
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await Future<void>.delayed(const Duration(seconds: 1));
       try {
         request.response.write('{}');
         await request.response.close();
@@ -23,11 +23,14 @@ void main() {
     final request = LxHttpBridge.performHttpRequest(
       'http://${server.address.address}:${server.port}/slow',
       const <String, dynamic>{},
-      timeout: const Duration(milliseconds: 20),
+      timeout: const Duration(milliseconds: 500),
     );
 
-    await requestSeen.future;
-    await expectLater(request, throwsA(isA<TimeoutException>()));
+    // Attach the error handler before waiting for server-side observation.
+    // Otherwise a busy test runner can let the deadline expire unhandled.
+    final timedOut = expectLater(request, throwsA(isA<TimeoutException>()));
+    await requestSeen.future.timeout(const Duration(seconds: 2));
+    await timedOut;
     await serverTask;
     await server.close(force: true);
   });

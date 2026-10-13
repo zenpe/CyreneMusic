@@ -270,6 +270,7 @@ class LxQuickJsRuntime implements LxRuntime {
     }
     final completer = Completer<String>();
     _pendingRequests[requestKey] = _PendingLxRequest(context, completer);
+    final requestClock = Stopwatch()..start();
 
     try {
       final info =
@@ -313,6 +314,19 @@ class LxQuickJsRuntime implements LxRuntime {
       return result;
     } catch (e) {
       _lastFailure = classifyLxRuntimeFailure(e);
+      StructuredLogService.event(
+        'lx.music_url_failed',
+        level: LogLevel.warning,
+        fields: {
+          'request_id': requestKey,
+          'source': source,
+          'quality': quality,
+          'failure_kind': _lastFailure!.kind.name,
+          'elapsed_ms': requestClock.elapsedMilliseconds,
+          'deadline_exceeded': !DateTime.now().isBefore(deadline),
+        },
+        error: e,
+      );
       _error('❌ [LxQuickJsRuntime] 获取 URL 失败: $e');
       _pendingRequests.remove(requestKey);
       return null;
@@ -557,6 +571,7 @@ class LxQuickJsRuntime implements LxRuntime {
     DateTime? deadline,
   ) async {
     if (context.disposed || !identical(context, _context)) return;
+    final httpClock = Stopwatch()..start();
     try {
       final remaining = deadline?.difference(DateTime.now());
       if (remaining != null && remaining <= Duration.zero) {
@@ -566,6 +581,21 @@ class LxQuickJsRuntime implements LxRuntime {
         url,
         options,
         timeout: remaining ?? const Duration(seconds: 30),
+      );
+      final responseBody = result['body'];
+      final endpoint = Uri.tryParse(url);
+      StructuredLogService.event(
+        'lx.http_response',
+        level: LogLevel.warning,
+        fields: {
+          'request_id': requestId,
+          'host': endpoint?.host,
+          'path': endpoint?.path,
+          'status': result['statusCode'],
+          'business_code': responseBody is Map ? responseBody['code'] : null,
+          'business_message': responseBody is Map ? responseBody['message'] : null,
+          'elapsed_ms': httpClock.elapsedMilliseconds,
+        },
       );
       _debug('✅ [LxQuickJsRuntime] HTTP 请求成功，准备回调 JS');
       _debug('   requestId: $requestId');
@@ -601,6 +631,17 @@ class LxQuickJsRuntime implements LxRuntime {
       );
       _debug('✅ [LxQuickJsRuntime] __lx_handleHttpResponse__ 调用完成');
     } catch (e, st) {
+      StructuredLogService.event(
+        'lx.http_failed',
+        level: LogLevel.warning,
+        fields: {
+          'request_id': requestId,
+          'elapsed_ms': httpClock.elapsedMilliseconds,
+          'deadline_exceeded':
+              deadline != null && !DateTime.now().isBefore(deadline),
+        },
+        error: e,
+      );
       _error('❌ [LxQuickJsRuntime] HTTP 请求/回调失败: $e');
       _error('   Stack: $st');
 

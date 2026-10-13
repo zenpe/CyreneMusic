@@ -16,6 +16,7 @@ enum PlaybackTransitionFailureScope { track, source, engine, cancelled }
 class PlaybackTransitionBudget {
   final Duration maxDuration;
   final int maxRemoteRequests;
+  final int maxResolutionAttemptsPerTrack;
   final Stopwatch _stopwatch;
   final Duration Function()? _elapsedOverride;
   final Set<int> _visitedEntryIds = <int>{};
@@ -24,6 +25,7 @@ class PlaybackTransitionBudget {
   PlaybackTransitionBudget({
     this.maxDuration = const Duration(seconds: 12),
     this.maxRemoteRequests = 3,
+    this.maxResolutionAttemptsPerTrack = 2,
     Duration Function()? elapsed,
   }) : _elapsedOverride = elapsed,
        _stopwatch = Stopwatch()..start();

@@ -44,6 +44,7 @@ void main() {
         expect(playback.isTrackSwitchPending, isFalse);
         expect(playback.viewState.isSwitching, isFalse);
         expect(playback.viewState.switchPhase, PlaybackSwitchPhase.failed);
+        expect(playback.pendingPlaybackIntent, isNull);
       }
 
       try {
@@ -57,12 +58,36 @@ void main() {
         await playback.retryCurrentTrack();
         expectFinished();
         expect(failures.single, same(failedTrack));
+        failures.clear();
+        await playback.togglePlayPause();
+        expectFinished();
+        expect(failures.single, same(failedTrack));
+        // Repeated recovery commands must share the current resolution.
+        failures.clear();
+        await Future.wait([
+          playback.resume(),
+          playback.resume(),
+          playback.retryCurrentTrack(),
+        ]);
+        expectFinished();
+        expect(failures, [failedTrack]);
+        failures.clear();
+        final recovering = playback.resume();
+        await playback.pause();
+        expect(playback.viewState.desiredPlaying, isFalse);
+        await recovering;
+        expectFinished();
+        expect(failures, [failedTrack]);
         // Both lookups are asynchronous. The first request becomes stale before
         // it returns and must not clear or report failure for the newer target.
         failures.clear();
         await Future.wait([playback.jumpTo(0), playback.jumpTo(1)]);
         expectFinished();
         expect(failures, [tracks[1]]);
+        failures.clear();
+        await Future.wait([playback.resume(), playback.jumpTo(2)]);
+        expectFinished();
+        expect(failures, [tracks[2]]);
       } finally {
         playback.onPlaybackFailure = null;
         await auth.logout();

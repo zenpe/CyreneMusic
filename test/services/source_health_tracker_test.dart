@@ -79,6 +79,18 @@ void main() {
     expect(tracker.allowRequest(source), isFalse);
   });
 
+  test('repeated manual validation cannot replace an in-flight probe', () {
+    tracker
+      ..recordFailure(source, SourceHealthFailureKind.systemicRejection)
+      ..recordFailure(source, SourceHealthFailureKind.systemicRejection)
+      ..prepareManualProbe(source);
+    expect(tracker.allowRequest(source), isTrue);
+    expect(tracker.prepareManualProbe(source).probeInFlight, isTrue);
+    expect(tracker.allowRequest(source), isFalse);
+    tracker.recordFailure(source, SourceHealthFailureKind.transientTimeout);
+    expect(tracker.allowRequest(source), isFalse);
+  });
+
   test('timeouts degrade but do not open the circuit', () {
     for (var i = 0; i < 3; i++) {
       tracker.recordFailure(source, SourceHealthFailureKind.transientTimeout);

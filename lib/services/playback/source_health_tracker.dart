@@ -47,10 +47,13 @@ class SourceHealthTracker {
       _snapshot(sourceFingerprint, _stateFor(sourceFingerprint));
 
   SourceHealthSnapshot prepareManualProbe(String sourceFingerprint) {
-    final state = _stateFor(sourceFingerprint)
+    final state = _stateFor(sourceFingerprint);
+    if (state.probeInFlight || state.manualProbePending) {
+      return _snapshot(sourceFingerprint, state);
+    }
+    state
       ..status = SourceHealthStatus.degraded
-      ..manualProbePending = true
-      ..probeInFlight = false;
+      ..manualProbePending = true;
     return _snapshot(sourceFingerprint, state);
   }
 
