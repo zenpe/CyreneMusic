@@ -88,9 +88,9 @@ extension _SearchWidgetFluent on _SearchWidgetState {
     );
   }
 
-  Widget _buildFluentTabHeader(String label) {
-    if (_isPlatformTab(label)) {
-      final platformCode = _getPlatformCodeFromLabel(label);
+  Widget _buildFluentTabHeader(SearchTab tab) {
+    if (tab.platform != null) {
+      final platformCode = tab.platform!.name;
       final brightness = fluent.FluentTheme.of(context).brightness;
       final dotColor = _getPlatformDotColor(platformCode, brightness);
 
@@ -114,7 +114,7 @@ extension _SearchWidgetFluent on _SearchWidgetState {
       );
     }
 
-    return Text(label);
+    return Text(tab.label);
   }
 
   /// Fluent UI 风格歌手结果
@@ -130,11 +130,15 @@ extension _SearchWidgetFluent on _SearchWidgetState {
       );
     }
 
-    if (_artistLoading && _secondaryArtistId == null && _secondaryAlbumId == null) {
+    if (_artistLoading &&
+        _secondaryArtistId == null &&
+        _secondaryAlbumId == null) {
       return const Center(child: fluent.ProgressRing());
     }
 
-    if (_artistError != null && _secondaryArtistId == null && _secondaryAlbumId == null) {
+    if (_artistError != null &&
+        _secondaryArtistId == null &&
+        _secondaryAlbumId == null) {
       return Center(
         child: Text(
           '搜索失败: $_artistError',
@@ -143,7 +147,9 @@ extension _SearchWidgetFluent on _SearchWidgetState {
       );
     }
 
-    if (_artistResults.isEmpty && _secondaryArtistId == null && _secondaryAlbumId == null) {
+    if (_artistResults.isEmpty &&
+        _secondaryArtistId == null &&
+        _secondaryAlbumId == null) {
       return _buildFluentEmptyState(
         icon: fluent.FluentIcons.people,
         title: '没有找到相关歌手',
@@ -158,7 +164,8 @@ extension _SearchWidgetFluent on _SearchWidgetState {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       itemCount: _artistResults.length,
-      itemBuilder: (context, index) => _buildFluentArtistTile(_artistResults[index]),
+      itemBuilder: (context, index) =>
+          _buildFluentArtistTile(_artistResults[index]),
     );
   }
 
@@ -298,13 +305,7 @@ extension _SearchWidgetFluent on _SearchWidgetState {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 13,
-              color: subtleColor,
-            ),
-          ),
+          Text(subtitle, style: TextStyle(fontSize: 13, color: subtleColor)),
         ],
       ),
     );
@@ -344,11 +345,16 @@ class _FluentPivotTabs extends StatelessWidget {
                   : theme.typography.body?.color?.withValues(alpha: 0.7);
 
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 margin: const EdgeInsets.only(right: 4),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(4),
-                  color: isHovering ? theme.resources.controlFillColorSecondary : Colors.transparent,
+                  color: isHovering
+                      ? theme.resources.controlFillColorSecondary
+                      : Colors.transparent,
                   border: Border(
                     bottom: BorderSide(
                       color: isSelected ? accentColor : Colors.transparent,
@@ -359,7 +365,9 @@ class _FluentPivotTabs extends StatelessWidget {
                 child: DefaultTextStyle.merge(
                   style: TextStyle(
                     color: textColor,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    fontWeight: isSelected
+                        ? FontWeight.w600
+                        : FontWeight.normal,
                   ),
                   child: items[index],
                 ),

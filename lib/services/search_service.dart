@@ -9,6 +9,37 @@ import 'search_provider_catalog.dart';
 
 /// 搜索结果模型
 class SearchResult {
+  static const Object _unchanged = Object();
+
+  List<Track> resultsFor(MusicSource source) => switch (source) {
+    MusicSource.netease => neteaseResults,
+    MusicSource.qq => qqResults,
+    MusicSource.kugou => kugouResults,
+    MusicSource.kuwo => kuwoResults,
+    MusicSource.apple => appleResults,
+    MusicSource.spotify => spotifyResults,
+    _ => const [],
+  };
+
+  bool loadingFor(MusicSource source) => switch (source) {
+    MusicSource.netease => neteaseLoading,
+    MusicSource.qq => qqLoading,
+    MusicSource.kugou => kugouLoading,
+    MusicSource.kuwo => kuwoLoading,
+    MusicSource.apple => appleLoading,
+    MusicSource.spotify => spotifyLoading,
+    _ => false,
+  };
+
+  String? errorFor(MusicSource source) => switch (source) {
+    MusicSource.netease => neteaseError,
+    MusicSource.qq => qqError,
+    MusicSource.kugou => kugouError,
+    MusicSource.kuwo => kuwoError,
+    MusicSource.apple => appleError,
+    MusicSource.spotify => spotifyError,
+    _ => null,
+  };
   final List<Track> neteaseResults;
   final List<Track> appleResults;
   final List<Track> qqResults;
@@ -50,13 +81,31 @@ class SearchResult {
   });
 
   /// 获取所有结果的总数
-  int get totalCount => neteaseResults.length + appleResults.length + qqResults.length + kugouResults.length + kuwoResults.length + spotifyResults.length;
+  int get totalCount =>
+      neteaseResults.length +
+      appleResults.length +
+      qqResults.length +
+      kugouResults.length +
+      kuwoResults.length +
+      spotifyResults.length;
 
   /// 是否所有平加载完成
-  bool get allCompleted => !neteaseLoading && !appleLoading && !qqLoading && !kugouLoading && !kuwoLoading && !spotifyLoading;
+  bool get allCompleted =>
+      !neteaseLoading &&
+      !appleLoading &&
+      !qqLoading &&
+      !kugouLoading &&
+      !kuwoLoading &&
+      !spotifyLoading;
 
   /// 是否有任何错误
-  bool get hasError => neteaseError != null || appleError != null || qqError != null || kugouError != null || kuwoError != null || spotifyError != null;
+  bool get hasError =>
+      neteaseError != null ||
+      appleError != null ||
+      qqError != null ||
+      kugouError != null ||
+      kuwoError != null ||
+      spotifyError != null;
 
   /// 复制并修改部分字段
   SearchResult copyWith({
@@ -72,12 +121,12 @@ class SearchResult {
     bool? kugouLoading,
     bool? kuwoLoading,
     bool? spotifyLoading,
-    String? neteaseError,
-    String? appleError,
-    String? qqError,
-    String? kugouError,
-    String? kuwoError,
-    String? spotifyError,
+    Object? neteaseError = _unchanged,
+    Object? appleError = _unchanged,
+    Object? qqError = _unchanged,
+    Object? kugouError = _unchanged,
+    Object? kuwoError = _unchanged,
+    Object? spotifyError = _unchanged,
   }) {
     return SearchResult(
       neteaseResults: neteaseResults ?? this.neteaseResults,
@@ -92,12 +141,24 @@ class SearchResult {
       kugouLoading: kugouLoading ?? this.kugouLoading,
       kuwoLoading: kuwoLoading ?? this.kuwoLoading,
       spotifyLoading: spotifyLoading ?? this.spotifyLoading,
-      neteaseError: neteaseError,
-      appleError: appleError,
-      qqError: qqError,
-      kugouError: kugouError,
-      kuwoError: kuwoError,
-      spotifyError: spotifyError,
+      neteaseError: identical(neteaseError, _unchanged)
+          ? this.neteaseError
+          : neteaseError as String?,
+      appleError: identical(appleError, _unchanged)
+          ? this.appleError
+          : appleError as String?,
+      qqError: identical(qqError, _unchanged)
+          ? this.qqError
+          : qqError as String?,
+      kugouError: identical(kugouError, _unchanged)
+          ? this.kugouError
+          : kugouError as String?,
+      kuwoError: identical(kuwoError, _unchanged)
+          ? this.kuwoError
+          : kuwoError as String?,
+      spotifyError: identical(spotifyError, _unchanged)
+          ? this.spotifyError
+          : spotifyError as String?,
     );
   }
 }
@@ -124,8 +185,7 @@ class SearchService extends ChangeNotifier {
 
   static const String _historyKey = 'search_history';
   static const int _maxHistoryCount = 20; // 最多保存20条历史记录
-  static const SearchProviderCatalog _providerCatalog =
-      SearchProviderCatalog();
+  static const SearchProviderCatalog _providerCatalog = SearchProviderCatalog();
 
   /// 搜索歌曲（根据后端搜索目录的平台并行搜索）。
   Future<void> search(String keyword, {bool saveHistory = true}) async {
@@ -144,7 +204,9 @@ class SearchService extends ChangeNotifier {
     if (saveHistory) {
       await _addToSearchHistory(normalizedKeyword);
       if (!_isSessionActive(sessionId, normalizedKeyword)) {
-        StructuredLogService.log('⏭️ [SearchService] 忽略过期搜索（历史保存后）: $normalizedKeyword');
+        StructuredLogService.log(
+          '⏭️ [SearchService] 忽略过期搜索（历史保存后）: $normalizedKeyword',
+        );
         return;
       }
     }
@@ -168,17 +230,25 @@ class SearchService extends ChangeNotifier {
 
     // 只向支持的平台发送搜索请求
     final futures = <Future<void>>[];
-    if (supportedPlatforms.contains('netease')) futures.add(_searchNetease(normalizedKeyword, sessionId, cancelToken));
-    if (supportedPlatforms.contains('apple')) futures.add(_searchApple(normalizedKeyword, sessionId, cancelToken));
-    if (supportedPlatforms.contains('qq')) futures.add(_searchQQ(normalizedKeyword, sessionId, cancelToken));
-    if (supportedPlatforms.contains('kugou')) futures.add(_searchKugou(normalizedKeyword, sessionId, cancelToken));
-    if (supportedPlatforms.contains('kuwo')) futures.add(_searchKuwo(normalizedKeyword, sessionId, cancelToken));
-    if (supportedPlatforms.contains('spotify')) futures.add(_searchSpotify(normalizedKeyword, sessionId, cancelToken));
+    if (supportedPlatforms.contains('netease'))
+      futures.add(_searchNetease(normalizedKeyword, sessionId, cancelToken));
+    if (supportedPlatforms.contains('apple'))
+      futures.add(_searchApple(normalizedKeyword, sessionId, cancelToken));
+    if (supportedPlatforms.contains('qq'))
+      futures.add(_searchQQ(normalizedKeyword, sessionId, cancelToken));
+    if (supportedPlatforms.contains('kugou'))
+      futures.add(_searchKugou(normalizedKeyword, sessionId, cancelToken));
+    if (supportedPlatforms.contains('kuwo'))
+      futures.add(_searchKuwo(normalizedKeyword, sessionId, cancelToken));
+    if (supportedPlatforms.contains('spotify'))
+      futures.add(_searchSpotify(normalizedKeyword, sessionId, cancelToken));
 
     await Future.wait(futures);
 
     if (!_isSessionActive(sessionId, normalizedKeyword)) {
-      StructuredLogService.log('⏭️ [SearchService] 忽略过期搜索（全部返回后）: $normalizedKeyword');
+      StructuredLogService.log(
+        '⏭️ [SearchService] 忽略过期搜索（全部返回后）: $normalizedKeyword',
+      );
       return;
     }
 
@@ -186,14 +256,20 @@ class SearchService extends ChangeNotifier {
       _activeSearchCancelToken = null;
     }
 
-    StructuredLogService.log('✅ [SearchService] 搜索完成，共 ${_searchResult.totalCount} 条结果');
+    StructuredLogService.log(
+      '✅ [SearchService] 搜索完成，共 ${_searchResult.totalCount} 条结果',
+    );
   }
 
   /// 获取后端搜索目录支持的平台列表。
   List<String> get currentSupportedPlatforms => _providerCatalog.platformKeys;
 
   /// 搜索网易云音乐
-  Future<void> _searchNetease(String keyword, int sessionId, CancelToken cancelToken) async {
+  Future<void> _searchNetease(
+    String keyword,
+    int sessionId,
+    CancelToken cancelToken,
+  ) async {
     try {
       StructuredLogService.log('🎵 [SearchService] 网易云搜索: $keyword');
 
@@ -210,14 +286,16 @@ class SearchService extends ChangeNotifier {
 
         if (data['status'] == 200) {
           final results = (data['result'] as List<dynamic>)
-              .map((item) => Track(
-                    id: item['id'] as int,
-                    name: item['name'] as String,
-                    artists: item['artists'] as String,
-                    album: item['album'] as String,
-                    picUrl: item['picUrl'] as String,
-                    source: MusicSource.netease,
-                  ))
+              .map(
+                (item) => Track(
+                  id: item['id'] as int,
+                  name: item['name'] as String,
+                  artists: item['artists'] as String,
+                  album: item['album'] as String,
+                  picUrl: item['picUrl'] as String,
+                  source: MusicSource.netease,
+                ),
+              )
               .toList();
 
           if (!_isSessionActive(sessionId, keyword)) {
@@ -230,7 +308,9 @@ class SearchService extends ChangeNotifier {
             neteaseLoading: false,
           );
 
-          StructuredLogService.log('✅ [SearchService] 网易云搜索完成: ${results.length} 条结果');
+          StructuredLogService.log(
+            '✅ [SearchService] 网易云搜索完成: ${results.length} 条结果',
+          );
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
@@ -256,7 +336,11 @@ class SearchService extends ChangeNotifier {
   }
 
   /// 搜索 Apple Music
-  Future<void> _searchApple(String keyword, int sessionId, CancelToken cancelToken) async {
+  Future<void> _searchApple(
+    String keyword,
+    int sessionId,
+    CancelToken cancelToken,
+  ) async {
     try {
       StructuredLogService.log('🍎 [SearchService] Apple Music 搜索: $keyword');
 
@@ -272,18 +356,22 @@ class SearchService extends ChangeNotifier {
 
         if (data['status'] == 200) {
           final results = (data['result'] as List<dynamic>)
-              .map((item) => Track(
-                    id: item['id'],
-                    name: item['name'] as String,
-                    artists: item['artists'] as String,
-                    album: item['album'] as String,
-                    picUrl: item['picUrl'] as String,
-                    source: MusicSource.apple,
-                  ))
+              .map(
+                (item) => Track(
+                  id: item['id'],
+                  name: item['name'] as String,
+                  artists: item['artists'] as String,
+                  album: item['album'] as String,
+                  picUrl: item['picUrl'] as String,
+                  source: MusicSource.apple,
+                ),
+              )
               .toList();
 
           if (!_isSessionActive(sessionId, keyword)) {
-            StructuredLogService.log('⏭️ [SearchService] 丢弃过期 Apple 结果: $keyword');
+            StructuredLogService.log(
+              '⏭️ [SearchService] 丢弃过期 Apple 结果: $keyword',
+            );
             return;
           }
 
@@ -292,7 +380,9 @@ class SearchService extends ChangeNotifier {
             appleLoading: false,
           );
 
-          StructuredLogService.log('✅ [SearchService] Apple Music 搜索完成: ${results.length} 条结果');
+          StructuredLogService.log(
+            '✅ [SearchService] Apple Music 搜索完成: ${results.length} 条结果',
+          );
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
@@ -318,7 +408,11 @@ class SearchService extends ChangeNotifier {
   }
 
   /// 搜索QQ音乐
-  Future<void> _searchQQ(String keyword, int sessionId, CancelToken cancelToken) async {
+  Future<void> _searchQQ(
+    String keyword,
+    int sessionId,
+    CancelToken cancelToken,
+  ) async {
     try {
       StructuredLogService.log('🎶 [SearchService] QQ音乐搜索: $keyword');
 
@@ -334,14 +428,16 @@ class SearchService extends ChangeNotifier {
 
         if (data['status'] == 200) {
           final results = (data['result'] as List<dynamic>)
-              .map((item) => Track(
-                    id: item['mid'] as String,  // QQ音乐使用 mid
-                    name: item['name'] as String,
-                    artists: item['singer'] as String,
-                    album: item['album'] as String,
-                    picUrl: item['pic'] as String,
-                    source: MusicSource.qq,
-                  ))
+              .map(
+                (item) => Track(
+                  id: item['mid'] as String, // QQ音乐使用 mid
+                  name: item['name'] as String,
+                  artists: item['singer'] as String,
+                  album: item['album'] as String,
+                  picUrl: item['pic'] as String,
+                  source: MusicSource.qq,
+                ),
+              )
               .toList();
 
           if (!_isSessionActive(sessionId, keyword)) {
@@ -354,7 +450,9 @@ class SearchService extends ChangeNotifier {
             qqLoading: false,
           );
 
-          StructuredLogService.log('✅ [SearchService] QQ音乐搜索完成: ${results.length} 条结果');
+          StructuredLogService.log(
+            '✅ [SearchService] QQ音乐搜索完成: ${results.length} 条结果',
+          );
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
@@ -380,7 +478,11 @@ class SearchService extends ChangeNotifier {
   }
 
   /// 搜索酷狗音乐
-  Future<void> _searchKugou(String keyword, int sessionId, CancelToken cancelToken) async {
+  Future<void> _searchKugou(
+    String keyword,
+    int sessionId,
+    CancelToken cancelToken,
+  ) async {
     try {
       StructuredLogService.log('🎼 [SearchService] 酷狗音乐搜索: $keyword');
 
@@ -428,7 +530,9 @@ class SearchService extends ChangeNotifier {
             kugouLoading: false,
           );
 
-          StructuredLogService.log('✅ [SearchService] 酷狗音乐搜索完成: ${results.length} 条结果');
+          StructuredLogService.log(
+            '✅ [SearchService] 酷狗音乐搜索完成: ${results.length} 条结果',
+          );
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
@@ -459,7 +563,11 @@ class SearchService extends ChangeNotifier {
   }
 
   /// 搜索酷我音乐
-  Future<void> _searchKuwo(String keyword, int sessionId, CancelToken cancelToken) async {
+  Future<void> _searchKuwo(
+    String keyword,
+    int sessionId,
+    CancelToken cancelToken,
+  ) async {
     try {
       StructuredLogService.log('🎸 [SearchService] 酷我音乐搜索: $keyword');
 
@@ -476,14 +584,16 @@ class SearchService extends ChangeNotifier {
         if (data['status'] == 200) {
           final songsData = data['data']?['songs'] as List<dynamic>? ?? [];
           final results = songsData
-              .map((item) => Track(
-                    id: item['rid'] as int,  // 酷我使用 rid
-                    name: item['name'] as String,
-                    artists: item['artist'] as String,
-                    album: item['album'] as String? ?? '',
-                    picUrl: item['pic'] as String? ?? '',
-                    source: MusicSource.kuwo,
-                  ))
+              .map(
+                (item) => Track(
+                  id: item['rid'] as int, // 酷我使用 rid
+                  name: item['name'] as String,
+                  artists: item['artist'] as String,
+                  album: item['album'] as String? ?? '',
+                  picUrl: item['pic'] as String? ?? '',
+                  source: MusicSource.kuwo,
+                ),
+              )
               .toList();
 
           if (!_isSessionActive(sessionId, keyword)) {
@@ -496,7 +606,9 @@ class SearchService extends ChangeNotifier {
             kuwoLoading: false,
           );
 
-          StructuredLogService.log('✅ [SearchService] 酷我音乐搜索完成: ${results.length} 条结果');
+          StructuredLogService.log(
+            '✅ [SearchService] 酷我音乐搜索完成: ${results.length} 条结果',
+          );
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
@@ -522,7 +634,11 @@ class SearchService extends ChangeNotifier {
   }
 
   /// 搜索 Spotify
-  Future<void> _searchSpotify(String keyword, int sessionId, CancelToken cancelToken) async {
+  Future<void> _searchSpotify(
+    String keyword,
+    int sessionId,
+    CancelToken cancelToken,
+  ) async {
     try {
       StructuredLogService.log('🟢 [SearchService] Spotify 搜索: $keyword');
 
@@ -540,7 +656,9 @@ class SearchService extends ChangeNotifier {
           final tracksData = data['result']?['tracks'] as List<dynamic>? ?? [];
           final results = tracksData.map((item) {
             final artistsList = item['artists'] as List<dynamic>? ?? [];
-            final artistsNames = artistsList.map((a) => a['name'] as String).join(', ');
+            final artistsNames = artistsList
+                .map((a) => a['name'] as String)
+                .join(', ');
             final albumData = item['album'] as Map<String, dynamic>? ?? {};
 
             return Track(
@@ -554,7 +672,9 @@ class SearchService extends ChangeNotifier {
           }).toList();
 
           if (!_isSessionActive(sessionId, keyword)) {
-            StructuredLogService.log('⏭️ [SearchService] 丢弃过期 Spotify 结果: $keyword');
+            StructuredLogService.log(
+              '⏭️ [SearchService] 丢弃过期 Spotify 结果: $keyword',
+            );
             return;
           }
 
@@ -563,7 +683,9 @@ class SearchService extends ChangeNotifier {
             spotifyLoading: false,
           );
 
-          StructuredLogService.log('✅ [SearchService] Spotify 搜索完成: ${results.length} 条结果');
+          StructuredLogService.log(
+            '✅ [SearchService] Spotify 搜索完成: ${results.length} 条结果',
+          );
         } else {
           throw Exception('服务器返回状态 ${data['status']}');
         }
@@ -573,7 +695,9 @@ class SearchService extends ChangeNotifier {
     } catch (e) {
       StructuredLogService.log('❌ [SearchService] Spotify 搜索失败: $e');
       if (!_isSessionActive(sessionId, keyword)) {
-        StructuredLogService.log('⏭️ [SearchService] 丢弃过期 Spotify 错误: $keyword');
+        StructuredLogService.log(
+          '⏭️ [SearchService] 丢弃过期 Spotify 错误: $keyword',
+        );
         return;
       }
       _searchResult = _searchResult.copyWith(
@@ -624,7 +748,9 @@ class SearchService extends ChangeNotifier {
         .map((tracks) => MergedTrack.fromTracks(tracks))
         .toList();
 
-    StructuredLogService.log('🔍 [SearchService] 合并结果: ${allTracks.length} 首 → ${mergedTracks.length} 首');
+    StructuredLogService.log(
+      '🔍 [SearchService] 合并结果: ${allTracks.length} 首 → ${mergedTracks.length} 首',
+    );
 
     if (_currentKeyword.trim().isNotEmpty) {
       final keyword = _currentKeyword;
@@ -714,8 +840,9 @@ class SearchService extends ChangeNotifier {
     if (keywordTokens.isNotEmpty && nameTokens.isNotEmpty) {
       final keywordSet = keywordTokens.toSet();
       final nameSet = nameTokens.toSet();
-      final intersectionCount =
-          keywordSet.where((token) => nameSet.contains(token)).length;
+      final intersectionCount = keywordSet
+          .where((token) => nameSet.contains(token))
+          .length;
       tokenScore = intersectionCount / keywordSet.length;
     }
 
@@ -723,8 +850,10 @@ class SearchService extends ChangeNotifier {
     if (strippedKeyword.isNotEmpty) {
       final strippedName = _stripForLcs(name);
       if (strippedName.isNotEmpty) {
-        final lcsLength =
-            _longestCommonSubsequenceLength(strippedName, strippedKeyword);
+        final lcsLength = _longestCommonSubsequenceLength(
+          strippedName,
+          strippedKeyword,
+        );
         lcsScore = lcsLength / strippedKeyword.length;
       }
     }
@@ -749,9 +878,7 @@ class SearchService extends ChangeNotifier {
   }
 
   String _stripForLcs(String input) {
-    return input
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^\w\u4e00-\u9fa5]+'), '');
+    return input.toLowerCase().replaceAll(RegExp(r'[^\w\u4e00-\u9fa5]+'), '');
   }
 
   int _longestCommonSubsequenceLength(String a, String b) {
@@ -761,10 +888,7 @@ class SearchService extends ChangeNotifier {
       return 0;
     }
 
-    final dp = List.generate(
-      m + 1,
-      (_) => List<int>.filled(n + 1, 0),
-    );
+    final dp = List.generate(m + 1, (_) => List<int>.filled(n + 1, 0));
 
     for (var i = 1; i <= m; i++) {
       for (var j = 1; j <= n; j++) {
@@ -815,7 +939,9 @@ class SearchService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final history = prefs.getStringList(_historyKey) ?? [];
       _searchHistory = history;
-      StructuredLogService.log('📚 [SearchService] 加载搜索历史: ${_searchHistory.length} 条');
+      StructuredLogService.log(
+        '📚 [SearchService] 加载搜索历史: ${_searchHistory.length} 条',
+      );
     } catch (e) {
       StructuredLogService.log('❌ [SearchService] 加载搜索历史失败: $e');
       _searchHistory = [];

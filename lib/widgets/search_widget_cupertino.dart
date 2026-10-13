@@ -2,7 +2,10 @@ part of 'search_widget.dart';
 
 extension _SearchWidgetCupertino on _SearchWidgetState {
   /// iOS 风格搜索界面
-  Widget _buildCupertinoSearch(BuildContext context, SearchResult searchResult) {
+  Widget _buildCupertinoSearch(
+    BuildContext context,
+    SearchResult searchResult,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final backgroundColor = isDark
         ? const Color(0xFF000000)
@@ -109,10 +112,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
     SearchResult searchResult,
     bool isDark,
   ) {
-    final isMergeEnabled = DeveloperModeService().isSearchResultMergeEnabled;
-    final tabs = isMergeEnabled
-        ? ['歌曲', '歌手']
-        : ['网易云', 'Apple', 'Spotify', 'QQ音乐', '酷狗', '酷我', '歌手'];
+    final tabs = _searchTabs;
     final brightness = isDark ? Brightness.dark : Brightness.light;
 
     return Column(
@@ -127,25 +127,28 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
               children: {
                 for (int i = 0; i < tabs.length; i++)
                   i: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    child: _isPlatformTab(tabs[i])
-                      // 平台tab：显示彩色小球
-                      ? Container(
-                          width: 14,
-                          height: 14,
-                          decoration: BoxDecoration(
-                            color: _getPlatformDotColor(
-                              _getPlatformCodeFromLabel(tabs[i]),
-                              brightness,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: tabs[i].platform != null
+                        // 平台tab：显示彩色小球
+                        ? Container(
+                            width: 14,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              color: _getPlatformDotColor(
+                                tabs[i].platform!.name,
+                                brightness,
+                              ),
+                              shape: BoxShape.circle,
                             ),
-                            shape: BoxShape.circle,
+                          )
+                        // 功能tab：显示文字
+                        : Text(
+                            tabs[i].label,
+                            style: const TextStyle(fontSize: 13),
                           ),
-                        )
-                      // 功能tab：显示文字
-                      : Text(
-                          tabs[i],
-                          style: const TextStyle(fontSize: 13),
-                        ),
                   ),
               },
               onValueChanged: (value) {
@@ -153,7 +156,6 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                   _handleTabChanged(value);
                 }
               },
-
             ),
           ),
         ),
@@ -192,57 +194,19 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
       );
     } else {
       // 分平台模式：根据当前音源支持的平台动态显示
-      final platformCodes = _getSupportedPlatformCodes();
+      final tabs = _searchTabs;
 
       // 如果 _currentTabIndex 在平台范围内，显示对应平台的结果
-      if (_currentTabIndex < platformCodes.length) {
-        final platform = platformCodes[_currentTabIndex];
-
-        List<Track> results;
-        bool isLoading;
-        String valueKey;
-
-        switch (platform) {
-          case 'netease':
-            results = searchResult.neteaseResults;
-            isLoading = searchResult.neteaseLoading;
-            valueKey = 'cupertino_netease_tab';
-            break;
-          case 'apple':
-            results = searchResult.appleResults;
-            isLoading = searchResult.appleLoading;
-            valueKey = 'cupertino_apple_tab';
-            break;
-          case 'qq':
-            results = searchResult.qqResults;
-            isLoading = searchResult.qqLoading;
-            valueKey = 'cupertino_qq_tab';
-            break;
-          case 'kugou':
-            results = searchResult.kugouResults;
-            isLoading = searchResult.kugouLoading;
-            valueKey = 'cupertino_kugou_tab';
-            break;
-          case 'kuwo':
-            results = searchResult.kuwoResults;
-            isLoading = searchResult.kuwoLoading;
-            valueKey = 'cupertino_kuwo_tab';
-            break;
-          case 'spotify':
-            results = searchResult.spotifyResults;
-            isLoading = searchResult.spotifyLoading;
-            valueKey = 'cupertino_spotify_tab';
-            break;
-          default:
-            return Container(
-              key: const ValueKey('cupertino_artists_tab'),
-              child: _buildCupertinoArtistResults(isDark),
-            );
-        }
-
+      if (tabs[_currentTabIndex].platform != null) {
+        final platform = tabs[_currentTabIndex].platform!;
         return Container(
-          key: ValueKey(valueKey),
-          child: _buildCupertinoSinglePlatformList(results, isLoading, isDark),
+          key: ValueKey('cupertino_${platform.name}_tab'),
+          child: _buildCupertinoSinglePlatformList(
+            searchResult.resultsFor(platform),
+            searchResult.loadingFor(platform),
+            isDark,
+            searchResult.errorFor(platform),
+          ),
         );
       }
 
@@ -259,10 +223,13 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
     List<Track> tracks,
     bool isLoading,
     bool isDark,
+    String? error,
   ) {
     if (_searchService.currentKeyword.isEmpty) {
       return _buildCupertinoSearchHistory(isDark);
     }
+
+    if (!isLoading && error != null) return _buildSearchFailure();
 
     if (!isLoading && tracks.isEmpty) {
       return _buildCupertinoEmptyState(
@@ -310,7 +277,8 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
       return _buildCupertinoSearchHistory(isDark);
     }
 
-    final isLoading = result.neteaseLoading ||
+    final isLoading =
+        result.neteaseLoading ||
         result.appleLoading ||
         result.qqLoading ||
         result.kugouLoading ||
@@ -318,6 +286,9 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
         result.spotifyLoading;
     final mergedResults = _searchService.getMergedResults();
 
+    if (result.allCompleted && mergedResults.isEmpty && result.hasError) {
+      return _buildSearchFailure();
+    }
     if (result.allCompleted && mergedResults.isEmpty) {
       return _buildCupertinoEmptyState(
         icon: CupertinoIcons.music_note,
@@ -331,6 +302,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
         _buildCupertinoSearchHeader(mergedResults.length, isDark),
+        if (result.hasError) _buildSearchFailure(partial: true),
         const SizedBox(height: 12),
         if (isLoading)
           Padding(
@@ -493,7 +465,9 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 16,
-                      color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                      color: isDark
+                          ? CupertinoColors.white
+                          : CupertinoColors.black,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -579,7 +553,9 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 16,
-                        color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                        color: isDark
+                            ? CupertinoColors.white
+                            : CupertinoColors.black,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -620,11 +596,15 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
       );
     }
 
-    if (_artistLoading && _secondaryArtistId == null && _secondaryAlbumId == null) {
+    if (_artistLoading &&
+        _secondaryArtistId == null &&
+        _secondaryAlbumId == null) {
       return const Center(child: CupertinoActivityIndicator(radius: 14));
     }
 
-    if (_artistError != null && _secondaryArtistId == null && _secondaryAlbumId == null) {
+    if (_artistError != null &&
+        _secondaryArtistId == null &&
+        _secondaryAlbumId == null) {
       return Center(
         child: Text(
           '搜索失败: $_artistError',
@@ -633,7 +613,9 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
       );
     }
 
-    if (_artistResults.isEmpty && _secondaryArtistId == null && _secondaryAlbumId == null) {
+    if (_artistResults.isEmpty &&
+        _secondaryArtistId == null &&
+        _secondaryAlbumId == null) {
       return _buildCupertinoEmptyState(
         icon: CupertinoIcons.person_badge_minus,
         title: '没有找到相关歌手',
@@ -760,7 +742,8 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
       return _buildCupertinoEmptyState(
         icon: CupertinoIcons.search,
         title: '搜索音乐',
-        subtitle: '支持网易云、QQ音乐、酷狗音乐',
+        subtitle:
+            '支持${SearchTab.tabs(merged: false).where((tab) => tab.platform != null).map((tab) => tab.label).join('、')}',
         isDark: isDark,
       );
     }
@@ -785,7 +768,9 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                    color: isDark
+                        ? CupertinoColors.white
+                        : CupertinoColors.black,
                   ),
                 ),
               ],
@@ -897,15 +882,21 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
         : CupertinoColors.black.withValues(alpha: 0.8);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
-        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        final compact =
+            constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 0.0;
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -1006,8 +997,13 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                             track.picUrl,
                             headers: getImageHeaders(track.picUrl),
                           );
-                          PlayerService().setCurrentCoverImageProvider(provider);
-                          PlayerService().playTrack(track, coverProvider: provider);
+                          PlayerService().setCurrentCoverImageProvider(
+                            provider,
+                          );
+                          PlayerService().playTrack(
+                            track,
+                            coverProvider: provider,
+                          );
                         } else {
                           PlayerService().playTrack(track);
                         }

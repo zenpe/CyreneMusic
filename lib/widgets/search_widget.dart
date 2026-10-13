@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/track.dart';
+import '../models/search_tab.dart';
 import '../models/merged_track.dart';
 import '../services/search_service.dart';
 import '../services/developer_mode_service.dart';
@@ -13,7 +14,6 @@ import '../services/netease_artist_service.dart';
 import '../pages/artist_detail_page.dart';
 import '../pages/album_detail_page.dart';
 import '../services/player_service.dart';
-import '../services/structured_log_service.dart';
 import '../features/auth/auth_feature.dart';
 import '../pages/auth/auth_page.dart';
 import '../utils/image_utils.dart';
@@ -45,26 +45,6 @@ Color _getPlatformDotColor(String platformCode, Brightness brightness) {
   }
 }
 
-/// 判断是否为平台tab（非歌手/歌曲等功能tab）
-bool _isPlatformTab(String tab) {
-  return tab == 'netease' || tab == 'qq' || tab == 'kugou' ||
-         tab == 'kuwo' || tab == 'apple' || tab == 'spotify' ||
-         tab.contains('网易云') || tab.contains('QQ') || tab.contains('酷狗') ||
-         tab.contains('酷我') || tab.contains('Apple') || tab.contains('Spotify');
-}
-
-/// 从显示名称获取平台代码
-String _getPlatformCodeFromLabel(String label) {
-  if (label.contains('网易云')) return 'netease';
-  if (label.contains('Apple')) return 'apple';
-  if (label.contains('QQ')) return 'qq';
-  if (label.contains('酷狗')) return 'kugou';
-  if (label.contains('酷我')) return 'kuwo';
-  if (label.contains('Spotify')) return 'spotify';
-  return '';
-}
-
-
 /// 搜索组件（内嵌版本）
 class SearchWidget extends StatefulWidget {
   final VoidCallback onClose;
@@ -76,11 +56,10 @@ class SearchWidget extends StatefulWidget {
   State<SearchWidget> createState() => _SearchWidgetState();
 }
 
-
 /// Material Design Expressive 风格的 Tab 栏
 /// 平台tab使用彩色小球，功能tab（如歌手）保留文字
 class _SearchExpressiveTabs extends StatelessWidget {
-  final List<String> tabs;
+  final List<SearchTab> tabs;
   final int currentIndex;
   final ValueChanged<int> onChanged;
 
@@ -96,8 +75,8 @@ class _SearchExpressiveTabs extends StatelessWidget {
     final brightness = Theme.of(context).brightness;
 
     // 品牌配色映射
-    Color getPlatformColor(String tab) {
-      final code = _getPlatformCodeFromLabel(tab);
+    Color getPlatformColor(SearchTab tab) {
+      final code = tab.platform?.name ?? '';
       if (code.isNotEmpty) {
         return _getPlatformDotColor(code, brightness);
       }
@@ -140,7 +119,7 @@ class _SearchExpressiveTabs extends StatelessWidget {
                 children: List.generate(count, (i) {
                   final selected = i == currentIndex;
                   final platformColor = getPlatformColor(tabs[i]);
-                  final isPlatform = _isPlatformTab(tabs[i]);
+                  final isPlatform = tabs[i].platform != null;
 
                   return Expanded(
                     child: GestureDetector(
@@ -149,36 +128,48 @@ class _SearchExpressiveTabs extends StatelessWidget {
                       child: Container(
                         alignment: Alignment.center,
                         child: isPlatform
-                          // 平台tab：显示彩色小球
-                          ? AnimatedContainer(
-                              duration: const Duration(milliseconds: 250),
-                              curve: Curves.easeOutCubic,
-                              width: selected ? 20 : 14,
-                              height: selected ? 20 : 14,
-                              decoration: BoxDecoration(
-                                color: platformColor.withValues(alpha: selected ? 1.0 : 0.5),
-                                shape: BoxShape.circle,
-                                boxShadow: selected ? [
-                                  BoxShadow(
-                                    color: platformColor.withValues(alpha: 0.4),
-                                    blurRadius: 8,
-                                    spreadRadius: 1,
+                            // 平台tab：显示彩色小球
+                            ? AnimatedContainer(
+                                duration: const Duration(milliseconds: 250),
+                                curve: Curves.easeOutCubic,
+                                width: selected ? 20 : 14,
+                                height: selected ? 20 : 14,
+                                decoration: BoxDecoration(
+                                  color: platformColor.withValues(
+                                    alpha: selected ? 1.0 : 0.5,
                                   ),
-                                ] : null,
+                                  shape: BoxShape.circle,
+                                  boxShadow: selected
+                                      ? [
+                                          BoxShadow(
+                                            color: platformColor.withValues(
+                                              alpha: 0.4,
+                                            ),
+                                            blurRadius: 8,
+                                            spreadRadius: 1,
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                              )
+                            // 功能tab（如歌手）：显示文字
+                            : AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 250),
+                                curve: Curves.easeOutCubic,
+                                style: TextStyle(
+                                  color: selected
+                                      ? (brightness == Brightness.dark
+                                            ? Colors.white
+                                            : Colors.black87)
+                                      : cs.onSurface.withValues(alpha: 0.5),
+                                  fontSize: selected ? 19 : 15,
+                                  fontWeight: selected
+                                      ? FontWeight.w900
+                                      : FontWeight.w600,
+                                  letterSpacing: selected ? -0.2 : 0,
+                                ),
+                                child: Text(tabs[i].label),
                               ),
-                            )
-                          // 功能tab（如歌手）：显示文字
-                          : AnimatedDefaultTextStyle(
-                              duration: const Duration(milliseconds: 250),
-                              curve: Curves.easeOutCubic,
-                              style: TextStyle(
-                                color: selected ? (brightness == Brightness.dark ? Colors.white : Colors.black87) : cs.onSurface.withValues(alpha: 0.5),
-                                fontSize: selected ? 19 : 15,
-                                fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
-                                letterSpacing: selected ? -0.2 : 0,
-                              ),
-                              child: Text(tabs[i]),
-                            ),
                       ),
                     ),
                   );
@@ -192,23 +183,18 @@ class _SearchExpressiveTabs extends StatelessWidget {
   }
 }
 
-
-
-
-
-
-
-
-
 /// 滑动指示器组件 - 通过测量文字宽度来计算位置
-
 
 class _SearchWidgetState extends State<SearchWidget> {
   final AuthFacade _authFacade = AuthFacade();
   final TextEditingController _searchController = TextEditingController();
   final SearchService _searchService = SearchService();
   Timer? _searchDebounceTimer;
-  int _currentTabIndex = 0;
+  final SearchTabSelection _tabSelection = SearchTabSelection();
+  bool get _mergeEnabled => DeveloperModeService().isSearchResultMergeEnabled;
+  List<SearchTab> get _searchTabs => SearchTab.tabs(merged: _mergeEnabled);
+  SearchTab get _selectedTab => _tabSelection.active(merged: _mergeEnabled);
+  int get _currentTabIndex => _tabSelection.index(merged: _mergeEnabled);
   final ThemeManager _themeManager = ThemeManager();
   static const Duration _searchDebounceDuration = Duration(milliseconds: 300);
 
@@ -405,17 +391,19 @@ class _SearchWidgetState extends State<SearchWidget> {
     _searchService.clear();
   }
 
-  void _runSearch(String rawKeyword, {required bool saveHistory}) {
+  void _runSearch(
+    String rawKeyword, {
+    required bool saveHistory,
+    bool force = false,
+  }) {
     final keyword = rawKeyword.trim();
     if (keyword.isEmpty) return;
 
-    final isMergeEnabled = DeveloperModeService().isSearchResultMergeEnabled;
-    // 合并模式: 歌手索引为 1，分平台模式: 歌手索引为平台数量
-    final artistTabIndex = isMergeEnabled ? 1 : _getSupportedPlatformCodes().length;
-    final isArtistTab = _currentTabIndex == artistTabIndex;
+    final isArtistTab = _selectedTab.kind == SearchTabKind.artists;
 
-    final shouldSearchTracks = keyword != _lastTrackSearchKeyword;
-    final shouldSearchArtists = isArtistTab && keyword != _lastArtistSearchKeyword;
+    final shouldSearchTracks = force || keyword != _lastTrackSearchKeyword;
+    final shouldSearchArtists =
+        isArtistTab && (force || keyword != _lastArtistSearchKeyword);
 
     if (!shouldSearchTracks && !shouldSearchArtists) {
       return;
@@ -441,10 +429,9 @@ class _SearchWidgetState extends State<SearchWidget> {
   }
 
   void _handleTabChanged(int index) {
-    final isMergeEnabled = DeveloperModeService().isSearchResultMergeEnabled;
-    // 合并模式: 歌手索引为 1，分平台模式: 歌手索引为平台数量
-    final artistTabIndex = isMergeEnabled ? 1 : _getSupportedPlatformCodes().length;
-    final isArtistTab = index == artistTabIndex;
+    final tabs = _searchTabs;
+    if (index < 0 || index >= tabs.length) return;
+    final isArtistTab = tabs[index].kind == SearchTabKind.artists;
 
     if (_currentTabIndex == index) {
       if (isArtistTab) {
@@ -454,7 +441,7 @@ class _SearchWidgetState extends State<SearchWidget> {
     }
 
     setState(() {
-      _currentTabIndex = index;
+      _tabSelection.select(index, merged: _mergeEnabled);
     });
 
     if (isArtistTab) {
@@ -543,9 +530,7 @@ class _SearchWidgetState extends State<SearchWidget> {
                 // 搜索栏
                 Container(
                   padding: const EdgeInsets.fromLTRB(12, 16, 16, 16),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surface,
-                  ),
+                  decoration: BoxDecoration(color: colorScheme.surface),
                   child: Row(
                     children: [
                       IconButton(
@@ -559,7 +544,8 @@ class _SearchWidgetState extends State<SearchWidget> {
                         child: Container(
                           height: 52,
                           decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                            color: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(26),
                           ),
                           child: TextField(
@@ -572,25 +558,34 @@ class _SearchWidgetState extends State<SearchWidget> {
                             decoration: InputDecoration(
                               hintText: '搜索歌曲、歌手...',
                               hintStyle: TextStyle(
-                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                color: colorScheme.onSurfaceVariant.withValues(
+                                  alpha: 0.6,
+                                ),
                                 fontSize: 16,
                               ),
                               prefixIcon: Icon(
                                 Icons.search,
-                                color: colorScheme.primary.withValues(alpha: 0.7),
+                                color: colorScheme.primary.withValues(
+                                  alpha: 0.7,
+                                ),
                                 size: 22,
                               ),
-                              suffixIcon: ValueListenableBuilder<TextEditingValue>(
-                                valueListenable: _searchController,
-                                builder: (context, value, _) {
-                                  return value.text.isNotEmpty
-                                      ? IconButton(
-                                          icon: const Icon(Icons.close, size: 20),
-                                          onPressed: _clearSearchInputAndResult,
-                                        )
-                                      : const SizedBox.shrink();
-                                },
-                              ),
+                              suffixIcon:
+                                  ValueListenableBuilder<TextEditingValue>(
+                                    valueListenable: _searchController,
+                                    builder: (context, value, _) {
+                                      return value.text.isNotEmpty
+                                          ? IconButton(
+                                              icon: const Icon(
+                                                Icons.close,
+                                                size: 20,
+                                              ),
+                                              onPressed:
+                                                  _clearSearchInputAndResult,
+                                            )
+                                          : const SizedBox.shrink();
+                                    },
+                                  ),
                               border: InputBorder.none,
                               contentPadding: const EdgeInsets.symmetric(
                                 vertical: 14,
@@ -614,7 +609,9 @@ class _SearchWidgetState extends State<SearchWidget> {
                             ),
                             padding: const EdgeInsets.symmetric(horizontal: 20),
                             elevation: 2,
-                            shadowColor: colorScheme.primary.withValues(alpha: 0.3),
+                            shadowColor: colorScheme.primary.withValues(
+                              alpha: 0.3,
+                            ),
                           ),
                           child: const Text(
                             '搜索',
@@ -656,5 +653,4 @@ class _SearchWidgetState extends State<SearchWidget> {
       ),
     );
   }
-
 }

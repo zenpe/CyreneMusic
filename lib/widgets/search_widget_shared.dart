@@ -1,6 +1,32 @@
 part of 'search_widget.dart';
 
 extension _SearchWidgetShared on _SearchWidgetState {
+  Future<void> _retrySearch() async {
+    if (!await _checkLoginStatus() || !mounted) return;
+    _searchDebounceTimer?.cancel();
+    _runSearch(_searchService.currentKeyword, saveHistory: false, force: true);
+  }
+
+  Widget _buildSearchFailure({bool partial = false}) {
+    final message = partial ? '部分平台搜索失败，已显示其他结果' : '搜索失败，请稍后重试';
+    final button = _isFluent
+        ? fluent.Button(onPressed: _retrySearch, child: const Text('重试'))
+        : _isCupertino
+        ? CupertinoButton(onPressed: _retrySearch, child: const Text('重试'))
+        : TextButton(onPressed: _retrySearch, child: const Text('重试'));
+    final content = Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(message, textAlign: TextAlign.center),
+          button,
+        ],
+      ),
+    );
+    return partial ? content : Center(child: content);
+  }
+
   // ─── Secondary overlay ─────────────────────────────────────────────
 
   Widget _buildSecondaryOverlayContainer({
@@ -28,21 +54,21 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     ),
                   )
                 : _isCupertino
-                    ? CupertinoButton(
-                        padding: const EdgeInsets.all(8),
-                        minimumSize: Size.zero,
-                        onPressed: _handleSecondaryBack,
-                        child: Icon(
-                          CupertinoIcons.back,
-                          color: CupertinoColors.activeBlue,
-                          size: 24,
-                        ),
-                      )
-                    : IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: _handleSecondaryBack,
-                        tooltip: '返回',
-                      ),
+                ? CupertinoButton(
+                    padding: const EdgeInsets.all(8),
+                    minimumSize: Size.zero,
+                    onPressed: _handleSecondaryBack,
+                    child: Icon(
+                      CupertinoIcons.back,
+                      color: CupertinoColors.activeBlue,
+                      size: 24,
+                    ),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: _handleSecondaryBack,
+                    tooltip: '返回',
+                  ),
             const SizedBox(width: 4),
             Expanded(
               child: Text(
@@ -51,7 +77,9 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     ? TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w600,
-                        color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                        color: isDark
+                            ? CupertinoColors.white
+                            : CupertinoColors.black,
                       )
                     : Theme.of(context).textTheme.titleMedium,
                 overflow: TextOverflow.ellipsis,
@@ -65,14 +93,13 @@ extension _SearchWidgetShared on _SearchWidgetState {
     final dividerColor = _isFluent
         ? fluent.FluentTheme.of(context).resources.dividerStrokeColorDefault
         : _isCupertino
-            ? CupertinoColors.systemGrey.withValues(alpha: 0.3)
-            : Theme.of(context).dividerColor;
+        ? CupertinoColors.systemGrey.withValues(alpha: 0.3)
+        : Theme.of(context).dividerColor;
 
     final content = Column(
       children: [
         header,
-        if (_isFluent || _isCupertino)
-          Divider(height: 1, color: dividerColor),
+        if (_isFluent || _isCupertino) Divider(height: 1, color: dividerColor),
 
         Expanded(
           child: _secondaryAlbumId != null
@@ -109,77 +136,12 @@ extension _SearchWidgetShared on _SearchWidgetState {
 
   // ─── Platform tabs / content builders ──────────────────────────────
 
-  /// 获取当前平台 tab 列表（根据音源支持情况动态生成）
-  List<String> _getPlatformTabs() {
-    try {
-      final supportedPlatforms = _searchService.currentSupportedPlatforms;
-      final tabs = <String>[];
-
-      // 平台代码到显示名称的映射
-      const platformLabels = {
-        'netease': '网易云',
-        'apple': 'Apple',
-        'spotify': 'Spotify',
-        'qq': 'QQ音乐',
-        'kugou': '酷狗',
-        'kuwo': '酷我',
-      };
-
-      // 按固定顺序添加支持的平台
-      for (final platform in ['netease', 'apple', 'spotify', 'qq', 'kugou', 'kuwo']) {
-        if (supportedPlatforms.contains(platform)) {
-          tabs.add(platformLabels[platform]!);
-        }
-      }
-
-      // 如果没有任何平台，返回默认所有平台
-      if (tabs.isEmpty) {
-        tabs.addAll(['网易云', 'Apple', 'QQ音乐', '酷狗', '酷我']);
-      }
-
-      tabs.add('歌手'); // 歌手 tab 始终显示
-      return tabs;
-    } catch (e) {
-      // 出现异常时返回默认 tabs
-      StructuredLogService.log('⚠️ [SearchWidget] _getPlatformTabs error: $e');
-      return ['网易云', 'Apple', 'QQ音乐', '酷狗', '酷我', '歌手'];
-    }
-  }
-
-  /// 获取当前支持的平台代码列表（排序后）
-  List<String> _getSupportedPlatformCodes() {
-    try {
-      final supportedPlatforms = _searchService.currentSupportedPlatforms;
-      final codes = <String>[];
-
-      for (final platform in ['netease', 'apple', 'spotify', 'qq', 'kugou', 'kuwo']) {
-        if (supportedPlatforms.contains(platform)) {
-          codes.add(platform);
-        }
-      }
-
-      // 如果没有任何平台，返回默认所有平台
-      if (codes.isEmpty) {
-        return ['netease', 'apple', 'qq', 'kugou', 'kuwo'];
-      }
-
-      return codes;
-    } catch (e) {
-      // 出现异常时返回默认平台列表
-      StructuredLogService.log('⚠️ [SearchWidget] _getSupportedPlatformCodes error: $e');
-      return ['netease', 'apple', 'qq', 'kugou', 'kuwo'];
-    }
-  }
-
   Widget _buildSearchTabsArea(
     BuildContext context,
     SearchResult searchResult, {
     required EdgeInsetsGeometry padding,
   }) {
-    final isMergeEnabled = DeveloperModeService().isSearchResultMergeEnabled;
-    final tabs = isMergeEnabled
-        ? ['歌曲', '歌手']
-        : _getPlatformTabs();
+    final tabs = _searchTabs;
 
     if (_isFluent) {
       return Column(
@@ -194,9 +156,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
             ),
           ),
           const SizedBox(height: 8),
-          Expanded(
-            child: _buildTabContent(_currentTabIndex, searchResult),
-          ),
+          Expanded(child: _buildTabContent(_currentTabIndex, searchResult)),
         ],
       );
     }
@@ -224,10 +184,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
     );
   }
 
-  Widget _buildActiveTabView(
-    BuildContext context,
-    SearchResult searchResult,
-  ) {
+  Widget _buildActiveTabView(BuildContext context, SearchResult searchResult) {
     return _buildTabContent(_currentTabIndex, searchResult);
   }
 
@@ -236,8 +193,8 @@ extension _SearchWidgetShared on _SearchWidgetState {
     final materialTheme = Theme.of(context);
     final backgroundColor = _isFluent
         ? (fluentTheme?.micaBackgroundColor ??
-            fluentTheme?.scaffoldBackgroundColor ??
-            materialTheme.colorScheme.surface)
+              fluentTheme?.scaffoldBackgroundColor ??
+              materialTheme.colorScheme.surface)
         : materialTheme.colorScheme.surface;
 
     final isMergeEnabled = DeveloperModeService().isSearchResultMergeEnabled;
@@ -258,59 +215,21 @@ extension _SearchWidgetShared on _SearchWidgetState {
       );
     } else {
       // 分平台模式：根据当前音源支持的平台动态显示
-      final platformCodes = _getSupportedPlatformCodes();
+      final tabs = _searchTabs;
 
       // 如果 tabIndex 在平台范围内，显示对应平台的结果
-      if (tabIndex < platformCodes.length) {
-        final platform = platformCodes[tabIndex];
-
-        List<Track> results;
-        bool isLoading;
-        String valueKey;
-
-        switch (platform) {
-          case 'netease':
-            results = searchResult.neteaseResults;
-            isLoading = searchResult.neteaseLoading;
-            valueKey = 'netease_tab';
-            break;
-          case 'apple':
-            results = searchResult.appleResults;
-            isLoading = searchResult.appleLoading;
-            valueKey = 'apple_tab';
-            break;
-          case 'qq':
-            results = searchResult.qqResults;
-            isLoading = searchResult.qqLoading;
-            valueKey = 'qq_tab';
-            break;
-          case 'kugou':
-            results = searchResult.kugouResults;
-            isLoading = searchResult.kugouLoading;
-            valueKey = 'kugou_tab';
-            break;
-          case 'kuwo':
-            results = searchResult.kuwoResults;
-            isLoading = searchResult.kuwoLoading;
-            valueKey = 'kuwo_tab';
-            break;
-          case 'spotify':
-            results = searchResult.spotifyResults;
-            isLoading = searchResult.spotifyLoading;
-            valueKey = 'spotify_tab';
-            break;
-          default:
-            return Container(
-              key: const ValueKey('artists_tab'),
-              color: backgroundColor,
-              child: _isFluent ? _buildFluentArtistResults() : _buildArtistResults(),
-            );
-        }
-
+      if (tabIndex >= 0 &&
+          tabIndex < tabs.length &&
+          tabs[tabIndex].platform != null) {
+        final platform = tabs[tabIndex].platform!;
         return Container(
-          key: ValueKey(valueKey),
+          key: ValueKey('${platform.name}_tab'),
           color: backgroundColor,
-          child: _buildSinglePlatformList(results, isLoading),
+          child: _buildSinglePlatformList(
+            searchResult.resultsFor(platform),
+            searchResult.loadingFor(platform),
+            searchResult.errorFor(platform),
+          ),
         );
       }
 
@@ -381,11 +300,17 @@ extension _SearchWidgetShared on _SearchWidgetState {
 
   // ─── Single-platform list ──────────────────────────────────────────
 
-  Widget _buildSinglePlatformList(List<Track> tracks, bool isLoading) {
+  Widget _buildSinglePlatformList(
+    List<Track> tracks,
+    bool isLoading,
+    String? error,
+  ) {
     // 如果没有搜索或搜索结果为空，显示搜索历史
     if (_searchService.currentKeyword.isEmpty) {
       return _buildSearchHistory();
     }
+
+    if (!isLoading && error != null) return _buildSearchFailure();
 
     // 如果加载完成且没有结果
     if (!isLoading && tracks.isEmpty) {
@@ -425,9 +350,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
           ),
 
         // 歌曲列表
-        ...tracks.map(
-          (track) => _buildSingleTrackItem(track),
-        ),
+        ...tracks.map((track) => _buildSingleTrackItem(track)),
       ],
     );
   }
@@ -572,12 +495,19 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     placeholder: (context, url) => Container(
                       color: cs.surfaceContainerHighest,
                       child: const Center(
-                        child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       ),
                     ),
                     errorWidget: (context, url, error) => Container(
                       color: cs.surfaceContainerHighest,
-                      child: Icon(Icons.music_note, color: cs.primary.withValues(alpha: 0.5)),
+                      child: Icon(
+                        Icons.music_note,
+                        color: cs.primary.withValues(alpha: 0.5),
+                      ),
                     ),
                   ),
                 ),
@@ -666,6 +596,9 @@ extension _SearchWidgetShared on _SearchWidgetState {
     final mergedResults = _searchService.getMergedResults();
 
     // 如果所有平台都加载完成且没有结果
+    if (result.allCompleted && mergedResults.isEmpty && result.hasError) {
+      return _buildSearchFailure();
+    }
     if (result.allCompleted && mergedResults.isEmpty) {
       return _buildEmptyState(
         icon: Icons.music_off,
@@ -679,6 +612,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
       children: [
         // 搜索统计
         _buildSearchHeader(mergedResults.length, result),
+        if (result.hasError) _buildSearchFailure(partial: true),
 
         const SizedBox(height: 16),
 
@@ -774,7 +708,11 @@ extension _SearchWidgetShared on _SearchWidgetState {
               child: artist.picUrl.isEmpty
                   ? Container(
                       color: cs.surfaceContainerHighest,
-                      child: Icon(Icons.person, size: 32, color: cs.primary.withValues(alpha: 0.5)),
+                      child: Icon(
+                        Icons.person,
+                        size: 32,
+                        color: cs.primary.withValues(alpha: 0.5),
+                      ),
                     )
                   : CachedNetworkImage(
                       imageUrl: artist.picUrl,
@@ -785,7 +723,11 @@ extension _SearchWidgetShared on _SearchWidgetState {
                       placeholder: (context, url) => Container(
                         color: cs.surfaceContainerHighest,
                         child: const Center(
-                          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
                         ),
                       ),
                     ),
@@ -820,7 +762,11 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Icon(Icons.arrow_forward_ios, size: 16, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                ),
               ],
             ),
           ),
@@ -834,7 +780,9 @@ extension _SearchWidgetShared on _SearchWidgetState {
   /// 构建搜索头部（统计信息）
   Widget _buildSearchHeader(int totalCount, SearchResult result) {
     if (_isFluent) {
-      final textStyle = Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold);
+      final textStyle = Theme.of(
+        context,
+      ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold);
       return _wrapCard(
         padding: const EdgeInsets.all(12),
         child: Row(
@@ -1024,12 +972,19 @@ extension _SearchWidgetShared on _SearchWidgetState {
                     placeholder: (context, url) => Container(
                       color: cs.surfaceContainerHighest,
                       child: const Center(
-                        child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       ),
                     ),
                     errorWidget: (context, url, error) => Container(
                       color: cs.surfaceContainerHighest,
-                      child: Icon(Icons.music_note, color: cs.primary.withValues(alpha: 0.5)),
+                      child: Icon(
+                        Icons.music_note,
+                        color: cs.primary.withValues(alpha: 0.5),
+                      ),
                     ),
                   ),
                 ),
@@ -1229,7 +1184,8 @@ extension _SearchWidgetShared on _SearchWidgetState {
       return _buildEmptyState(
         icon: Icons.search,
         title: '搜索音乐',
-        subtitle: '支持网易云、QQ音乐、酷狗音乐',
+        subtitle:
+            '支持${SearchTab.tabs(merged: false).where((tab) => tab.platform != null).map((tab) => tab.label).join('、')}',
       );
     }
 
@@ -1287,7 +1243,8 @@ extension _SearchWidgetShared on _SearchWidgetState {
                   message: '删除',
                   child: fluent.IconButton(
                     icon: const Icon(fluent.FluentIcons.chrome_close, size: 12),
-                    onPressed: () => _searchService.removeSearchHistory(keyword),
+                    onPressed: () =>
+                        _searchService.removeSearchHistory(keyword),
                   ),
                 )
               : IconButton(
@@ -1410,22 +1367,30 @@ extension _SearchWidgetShared on _SearchWidgetState {
     final colorScheme = theme.colorScheme;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
-        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        final compact =
+            constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 0.0;
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       icon,
                       size: compact ? 56 : 80,
-                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.3,
+                      ),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -1444,7 +1409,9 @@ extension _SearchWidgetShared on _SearchWidgetState {
                       maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.7,
+                        ),
                       ),
                     ),
                   ],
@@ -1456,5 +1423,4 @@ extension _SearchWidgetShared on _SearchWidgetState {
       },
     );
   }
-
 }
