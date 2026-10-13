@@ -159,6 +159,7 @@ abstract class AudioEngine {
     required int queueRevision,
     bool autoPlay = true,
     Duration? initialPosition,
+    Duration? loadTimeout,
   }) async => false;
 
   Future<void> invalidatePreparedSlots() async {}
@@ -224,14 +225,25 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   JustAudioEngine({
     ja.AudioPlayer Function()? playerFactory,
     Duration bufferingStallThreshold = const Duration(seconds: 10),
+    Duration nativeOperationTimeout = const Duration(seconds: 3),
+    Duration nativeCleanupTimeout = const Duration(seconds: 2),
   }) : _playerFactory = playerFactory,
+       _nativeOperationTimeout = nativeOperationTimeout,
+       _nativeCleanupTimeout = nativeCleanupTimeout,
        _bufferingStallThreshold = bufferingStallThreshold,
+       assert(nativeOperationTimeout > Duration.zero),
+       assert(nativeCleanupTimeout > Duration.zero),
        assert(bufferingStallThreshold > Duration.zero) {
     EqualizerService().setBackend(this);
   }
 
   final ja.AudioPlayer Function()? _playerFactory;
   final Duration _bufferingStallThreshold;
+  final Duration _nativeOperationTimeout;
+  final Duration _nativeCleanupTimeout;
+  Duration? _operationBudget;
+  final Stopwatch _operationClock = Stopwatch();
+  bool _volumeInitialized = false;
 
   ja.AudioPlayer? _player;
   double _currentVolume = 1.0;
@@ -348,12 +360,19 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         );
     _player = player;
 
-    final savedVolume = PersistentStorageService().getDouble('player_volume');
-    _currentVolume = (savedVolume ?? 0.7).clamp(0.0, 1.0);
-    await player.setVolume(0);
-    await player.setSpeed(_playbackSpeed);
+    if (!_volumeInitialized) {
+      final savedVolume = PersistentStorageService().getDouble('player_volume');
+      _currentVolume = (savedVolume ?? 0.7).clamp(0.0, 1.0);
+      _volumeInitialized = true;
+    }
+    await _awaitNative(player.setVolume(0), stage: 'initialize_volume');
+    await _awaitNative(
+      player.setSpeed(_playbackSpeed),
+      stage: 'initialize_speed',
+    );
 
     _positionSub = player.positionStream.listen((pos) {
+      if (!identical(_player, player)) return;
       _position = pos;
       if (_epochGate.streamEventEpoch == _dispatchEpoch) {
         _positionController.add(pos);
@@ -361,6 +380,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     });
 
     _durationSub = player.durationStream.listen((dur) {
+      if (!identical(_player, player)) return;
       _duration = dur ?? Duration.zero;
       if (_epochGate.streamEventEpoch == _dispatchEpoch) {
         _durationController.add(_duration);
@@ -368,6 +388,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     });
 
     _bufferedPositionSub = player.bufferedPositionStream.listen((buffered) {
+      if (!identical(_player, player)) return;
       _bufferedPosition = buffered;
       if (_epochGate.streamEventEpoch == _dispatchEpoch) {
         _bufferedPositionController.add(buffered);
@@ -375,6 +396,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     });
 
     _playerStateSub = player.playerStateStream.listen((state) {
+      if (!identical(_player, player)) return;
       // 纪元闸门：切换窗口内的状态/完成事件归属旧纪元，不向外分发，
       // 但引擎内部 bookkeeping（_isPlaying/_position）照常更新。
       final stale = _epochGate.streamEventEpoch != _dispatchEpoch;
@@ -408,12 +430,14 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     });
 
     _currentIndexSub = player.currentIndexStream.listen((_) {
+      if (!identical(_player, player)) return;
       _scheduleCurrentSourceCommit(player);
     });
 
     _eventSub = player.playbackEventStream.listen(
       (_) {},
       onError: (Object e, StackTrace st) {
+        if (!identical(_player, player)) return;
         final mapped = _mapJustAudioError(e);
         // 纪元闸门：arm/stop 窗口内的流事件归属旧纪元，直接抑制，
         // 避免旧歌的迟到错误触发新歌的错误处理/自动跳歌。
@@ -438,9 +462,9 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     );
 
     if (Platform.isAndroid) {
-      _androidSessionSub = player.androidAudioSessionIdStream.listen(
-        _handleAndroidAudioSessionIdChanged,
-      );
+      _androidSessionSub = player.androidAudioSessionIdStream.listen((id) {
+        if (identical(_player, player)) _handleAndroidAudioSessionIdChanged(id);
+      });
     }
   }
 
@@ -737,25 +761,36 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         if (restoreVolumeAfterStart) {
           _needsDeferredVolumeRestore = true;
           if (player.volume > 0.001) {
-            await player.setVolume(0);
+            await player.setVolume(0).timeout(_nativeOperationTimeout);
           }
           if (canStart != null && !canStart()) return;
+          if (!_isCurrentPlayTicket(player, playTicket)) return;
           await _primeAndroidEqualizerBeforePlaybackStart();
         }
         if (canStart != null && !canStart()) return;
+        if (!_isCurrentPlayTicket(player, playTicket)) return;
         final playFuture = player.play();
         if (restoreVolumeAfterStart) {
           unawaited(
-            _completeDeferredOutputAfterPlaybackKickoff(player, playTicket),
+            _observeOutputTask(
+              _completeDeferredOutputAfterPlaybackKickoff(player, playTicket),
+              player,
+              playTicket,
+            ),
           );
         } else if (Platform.isAndroid && _androidEqualizerDirty) {
           unawaited(
-            _applyAndroidEqualizerWithOutputGuard(playTicket: playTicket),
+            _observeOutputTask(
+              _applyAndroidEqualizerWithOutputGuard(playTicket: playTicket),
+              player,
+              playTicket,
+            ),
           );
         }
         await playFuture;
       } catch (e) {
         if (canStart != null && !canStart()) return;
+        if (!_isCurrentPlayTicket(player, playTicket)) return;
         // 使已排队的 deferred output 失效，避免 play() 失败后仍对白跑的
         // ticket 执行 EQ/apply/fade。
         if (_isCurrentPlayTicket(player, playTicket)) {
@@ -777,6 +812,24 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     await _applyAndroidEqualizerIfReady();
   }
 
+  Future<void> _observeOutputTask(
+    Future<void> task,
+    ja.AudioPlayer player,
+    int playTicket,
+  ) async {
+    try {
+      await task;
+    } catch (error) {
+      if (!_isCurrentPlayTicket(player, playTicket)) return;
+      StructuredLogService.event(
+        'audio_engine.deferred_output_failed',
+        level: LogLevel.warning,
+        fields: {'engine': 'just_audio'},
+        error: error,
+      );
+    }
+  }
+
   Future<void> _completeDeferredOutputAfterPlaybackKickoff(
     ja.AudioPlayer player,
     int playTicket,
@@ -792,7 +845,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
     if (!_isCurrentPlayTicket(player, playTicket)) return;
     _needsDeferredVolumeRestore = false;
-    await player.setVolume(_currentVolume);
+    await player.setVolume(_currentVolume).timeout(_nativeOperationTimeout);
   }
 
   Future<void> _waitForAndroidAudioSessionReady({
@@ -896,7 +949,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       if (playTicket != null && !_isCurrentPlayTicket(player, playTicket)) {
         return;
       }
-      await player.setVolume(clampedTarget);
+      await player.setVolume(clampedTarget).timeout(_nativeOperationTimeout);
       return;
     }
 
@@ -907,27 +960,76 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       if (_player != player) return;
       final t = step / _eqVolumeFadeSteps;
       final nextVolume = startVolume + ((clampedTarget - startVolume) * t);
-      await player.setVolume(nextVolume.clamp(0.0, 1.0));
+      await player
+          .setVolume(nextVolume.clamp(0.0, 1.0))
+          .timeout(_nativeOperationTimeout);
       await Future.delayed(_eqVolumeFadeStepDelay);
     }
   }
 
   Future<void> _recreatePlayer() async {
     await _disposePlayerOnly();
-    await _ensurePlayer();
+    // Initialize lazily on the next request; recovery itself must be bounded.
+  }
+
+  Duration _remainingOperationTime(Duration limit) {
+    final budget = _operationBudget;
+    final remaining = budget == null ? null : budget - _operationClock.elapsed;
+    if (remaining == null || remaining > limit) return limit;
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  Future<T> _awaitNative<T>(
+    Future<T> operation, {
+    required String stage,
+    Duration? timeout,
+  }) async {
+    try {
+      return await operation.timeout(
+        _remainingOperationTime(timeout ?? _nativeOperationTimeout),
+      );
+    } on TimeoutException catch (cause) {
+      final error = EngineError(
+        type: EngineErrorType.networkTimeout,
+        message: '播放器操作超时，请重试播放',
+        cause: cause,
+        retriable: true,
+        epoch: _dispatchEpoch,
+      );
+      StructuredLogService.event(
+        'audio_engine.native_operation_timeout',
+        level: LogLevel.warning,
+        fields: {
+          'engine': 'just_audio',
+          'stage': stage,
+          'epoch': _dispatchEpoch,
+        },
+      );
+      _epochGate.abandonArm(_dispatchEpoch);
+      _epochGate.beginStop();
+      await _disposePlayerOnly();
+      _emitError(error);
+      throw EngineReportedException(error);
+    }
   }
 
   Future<void> _disposePlayerOnly() async {
     _resumeRevision++;
+    _playTicket++;
     _equalizerRevision++;
     _clearBufferingObservation();
-    await _positionSub?.cancel();
-    await _durationSub?.cancel();
-    await _bufferedPositionSub?.cancel();
-    await _playerStateSub?.cancel();
-    await _eventSub?.cancel();
-    await _currentIndexSub?.cancel();
-    await _androidSessionSub?.cancel();
+    // Detach first, so late callbacks and output preparation cannot revive it.
+    final player = _player;
+    _player = null;
+    final subscriptions = <StreamSubscription<dynamic>>[
+      ?_positionSub,
+      ?_durationSub,
+      ?_bufferedPositionSub,
+      ?_playerStateSub,
+      ?_eventSub,
+      ?_currentIndexSub,
+      ?_androidSessionSub,
+    ];
     _positionSub = null;
     _durationSub = null;
     _bufferedPositionSub = null;
@@ -935,17 +1037,6 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     _eventSub = null;
     _currentIndexSub = null;
     _androidSessionSub = null;
-
-    final player = _player;
-    _player = null;
-    if (player != null) {
-      try {
-        await player.stop();
-      } catch (_) {}
-      try {
-        await player.dispose();
-      } catch (_) {}
-    }
 
     _hasSource = false;
     _loadedAudioSource = null;
@@ -959,8 +1050,33 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     _androidAudioSessionId = null;
     _androidEqualizerDirty = true;
     _needsDeferredVolumeRestore = false;
-    if (Platform.isAndroid) {
-      await AndroidEqualizerService().release(sessionId: androidAudioSessionId);
+    final cleanup = Future.wait([
+      for (final subscription in subscriptions) subscription.cancel(),
+      () async {
+        if (player != null) {
+          try {
+            await player.stop().timeout(_nativeCleanupTimeout ~/ 2);
+          } catch (_) {}
+          try {
+            await player.dispose().timeout(_nativeCleanupTimeout ~/ 2);
+          } catch (_) {}
+        }
+        if (Platform.isAndroid && androidAudioSessionId != null) {
+          await AndroidEqualizerService().release(
+            sessionId: androidAudioSessionId,
+          );
+        }
+      }(),
+    ]);
+    try {
+      await cleanup.timeout(_nativeCleanupTimeout);
+    } catch (error) {
+      StructuredLogService.event(
+        'audio_engine.native_cleanup_failed',
+        level: LogLevel.warning,
+        fields: {'engine': 'just_audio'},
+        error: error,
+      );
     }
   }
 
@@ -1048,87 +1164,91 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     // 期间旧源的迟到事件被错误地送入新会话。
     _epochGate.beginArm(generation);
     _dispatchEpoch = generation;
-    final ensurePlayerSw = Stopwatch()..start();
-    await _ensurePlayer();
-    ensurePlayerMs = ensurePlayerSw.elapsedMilliseconds;
-    final player = _player!;
-    final muteSw = Stopwatch()..start();
-    await player.setVolume(0);
-    muteMs = muteSw.elapsedMilliseconds;
-
-    // setAudioSource 会在同一个 AudioPlayer 内替换旧源。显式 stop 会让
-    // ExoPlayer 额外经历一次 idle/decoder 重建，缓存切歌尤其明显。
-    // 仍然先打开 stop 窗口，使替换期间旧源事件继续由纪元闸门抑制。
-    if (_isPlaying || _hasSource) {
-      _epochGate.beginStop();
-    }
-    _hasSource = false;
-    _loadedAudioSource = null;
-    _preparedSlots.clear();
-    _lastCurrentSourceKey = null;
-
+    _operationBudget = loadTimeout ?? const Duration(seconds: 15);
+    _operationClock
+      ..reset()
+      ..start();
     try {
+      final ensurePlayerSw = Stopwatch()..start();
+      await _ensurePlayer();
+      ensurePlayerMs = ensurePlayerSw.elapsedMilliseconds;
+      final player = _player!;
+      final muteSw = Stopwatch()..start();
+      await _awaitNative(player.setVolume(0), stage: 'mute');
+      muteMs = muteSw.elapsedMilliseconds;
+
+      // setAudioSource 会在同一个 AudioPlayer 内替换旧源。显式 stop 会让
+      // ExoPlayer 额外经历一次 idle/decoder 重建，缓存切歌尤其明显。
+      // 仍然先打开 stop 窗口，使替换期间旧源事件继续由纪元闸门抑制。
+      if (_isPlaying || _hasSource) {
+        _epochGate.beginStop();
+      }
+      _hasSource = false;
+      _loadedAudioSource = null;
+      _preparedSlots.clear();
+      _lastCurrentSourceKey = null;
+
       final setSourceSw = Stopwatch()..start();
-      await player
-          .setAudioSource(
-            source,
-            initialPosition: initialPosition,
-            preload: preload,
-          )
-          .timeout(loadTimeout ?? const Duration(seconds: 15));
+      await _awaitNative(
+        player.setAudioSource(
+          source,
+          initialPosition: initialPosition,
+          preload: preload,
+        ),
+        stage: 'load_source',
+        timeout: loadTimeout ?? const Duration(seconds: 15),
+      );
       setSourceMs = setSourceSw.elapsedMilliseconds;
       _hasSource = true;
       _loadedAudioSource = source;
-    } on TimeoutException catch (e) {
-      final mapped = _mapJustAudioError(
-        e,
-        sourceUrl: sourceUrl,
-        retriable: true,
+
+      // 装载成功：纪元翻转，窗口关闭。此后流事件按新纪元分发。
+      _epochGate.commitArm(generation);
+      _emitCurrentSourceKey();
+
+      _duration = player.duration ?? Duration.zero;
+      if (_duration > Duration.zero) {
+        _durationController.add(_duration);
+      }
+
+      _position = initialPosition ?? Duration.zero;
+      _positionController.add(_position);
+      _androidEqualizerDirty = Platform.isAndroid;
+      _needsDeferredVolumeRestore = !autoPlay;
+      await _awaitNative(player.setSpeed(_playbackSpeed), stage: 'set_speed');
+      if (autoPlay) {
+        final playReadySw = Stopwatch()..start();
+        _fireAndForgetPlay();
+        await _waitForStartup(player);
+        // The deferred output task is intentionally best-effort because it also
+        // coordinates Android EQ. Once playback is confirmed, restore the
+        // volume synchronously so a stale play ticket cannot leave the source
+        // permanently muted.
+        await _awaitNative(
+          player.setVolume(_currentVolume),
+          stage: 'restore_volume',
+        );
+        _needsDeferredVolumeRestore = false;
+        playToReadyMs = playReadySw.elapsedMilliseconds;
+      }
+      _lastStartupTiming = EngineStartupTiming(
+        ensurePlayerMs: ensurePlayerMs,
+        muteMs: muteMs,
+        setSourceMs: setSourceMs,
+        playToReadyMs: playToReadyMs,
       );
-      _epochGate.abandonArm(generation);
-      _emitError(mapped, epoch: generation);
-      await _recreatePlayer();
-      throw EngineReportedException(mapped);
+    } on EngineReportedException {
+      rethrow;
     } catch (e) {
       final mapped = _mapJustAudioError(e, sourceUrl: sourceUrl);
       _epochGate.abandonArm(generation);
-      _emitError(mapped, epoch: generation);
       await _recreatePlayer();
+      _emitError(mapped, epoch: generation);
       throw EngineReportedException(mapped);
+    } finally {
+      _operationBudget = null;
+      _operationClock.stop();
     }
-
-    // 装载成功：纪元翻转，窗口关闭。此后流事件按新纪元分发。
-    _epochGate.commitArm(generation);
-    _emitCurrentSourceKey();
-
-    _duration = player.duration ?? Duration.zero;
-    if (_duration > Duration.zero) {
-      _durationController.add(_duration);
-    }
-
-    _position = initialPosition ?? Duration.zero;
-    _positionController.add(_position);
-    _androidEqualizerDirty = Platform.isAndroid;
-    _needsDeferredVolumeRestore = !autoPlay;
-    await player.setSpeed(_playbackSpeed);
-    if (autoPlay) {
-      final playReadySw = Stopwatch()..start();
-      _fireAndForgetPlay();
-      await _waitForStartup(player);
-      // The deferred output task is intentionally best-effort because it also
-      // coordinates Android EQ. Once playback is confirmed, restore the
-      // volume synchronously so a stale play ticket cannot leave the source
-      // permanently muted.
-      await player.setVolume(_currentVolume);
-      _needsDeferredVolumeRestore = false;
-      playToReadyMs = playReadySw.elapsedMilliseconds;
-    }
-    _lastStartupTiming = EngineStartupTiming(
-      ensurePlayerMs: ensurePlayerMs,
-      muteMs: muteMs,
-      setSourceMs: setSourceMs,
-      playToReadyMs: playToReadyMs,
-    );
   }
 
   @override
@@ -1167,14 +1287,20 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     final prepareSw = Stopwatch()..start();
     _preparedSlots[currentIndex].descriptor = window.current;
     final desiredNext = window.next;
-
+    _operationBudget = _nativeOperationTimeout;
+    _operationClock
+      ..reset()
+      ..start();
     try {
       // Keep the selected source fixed. A rolling window is rebuilt by
       // pruning every non-current item, then appending at most one next item.
       final currentEntry = _preparedSlots[currentIndex];
       for (var index = _preparedSlots.length - 1; index >= 0; index--) {
         if (identical(_preparedSlots[index], currentEntry)) continue;
-        await player.removeAudioSourceAt(index);
+        await _awaitNative(
+          player.removeAudioSourceAt(index),
+          stage: 'preload_remove',
+        );
         _preparedSlots.removeAt(index);
       }
 
@@ -1187,7 +1313,10 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         );
         final refreshedCurrentIndex = _preparedSlots.indexOf(currentEntry);
         final insertAt = refreshedCurrentIndex + 1;
-        await player.insertAudioSource(insertAt, source);
+        await _awaitNative(
+          player.insertAudioSource(insertAt, source),
+          stage: 'preload_insert',
+        );
         _preparedSlots.insert(
           insertAt,
           _PreparedEngineSlot(desiredNext, source),
@@ -1214,6 +1343,9 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         },
         error: error,
       );
+    } finally {
+      _operationBudget = null;
+      _operationClock.stop();
     }
   }
 
@@ -1224,6 +1356,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     required int queueRevision,
     bool autoPlay = true,
     Duration? initialPosition,
+    Duration? loadTimeout,
   }) async {
     final player = _player;
     final targetIndex = _preparedSlots.indexWhere(
@@ -1239,18 +1372,19 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     final sw = Stopwatch()..start();
     _epochGate.beginArm(generation);
     _dispatchEpoch = generation;
+    _operationBudget = loadTimeout ?? _engineStartupTimeout;
+    _operationClock
+      ..reset()
+      ..start();
     try {
-      await player.setVolume(0);
-      await player.seek(initialPosition ?? Duration.zero, index: targetIndex);
+      await _awaitNative(player.setVolume(0), stage: 'prepared_mute');
+      await _awaitNative(
+        player.seek(initialPosition ?? Duration.zero, index: targetIndex),
+        stage: 'prepared_seek',
+      );
       if (player.currentIndex != targetIndex ||
           player.processingState != ja.ProcessingState.ready) {
-        await player.playerStateStream
-            .firstWhere(
-              (state) =>
-                  player.currentIndex == targetIndex &&
-                  state.processingState == ja.ProcessingState.ready,
-            )
-            .timeout(_engineStartupTimeout);
+        await _waitForPreparedReady(player, targetIndex);
       }
 
       _loadedAudioSource = target.audioSource;
@@ -1265,17 +1399,23 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       _bufferedPositionController.add(_bufferedPosition);
       _androidEqualizerDirty = Platform.isAndroid;
       _needsDeferredVolumeRestore = !autoPlay;
-      await player.setSpeed(_playbackSpeed);
+      await _awaitNative(
+        player.setSpeed(_playbackSpeed),
+        stage: 'prepared_speed',
+      );
       var playToReadyMs = 0;
       if (autoPlay) {
         final playSw = Stopwatch()..start();
         _fireAndForgetPlay();
         await _waitForStartup(player);
-        await player.setVolume(_currentVolume);
+        await _awaitNative(
+          player.setVolume(_currentVolume),
+          stage: 'prepared_restore_volume',
+        );
         _needsDeferredVolumeRestore = false;
         playToReadyMs = playSw.elapsedMilliseconds;
       } else {
-        await player.pause();
+        await _awaitNative(player.pause(), stage: 'prepared_pause');
       }
       _isPlaying = player.playing;
       _stateController.add(
@@ -1298,9 +1438,14 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       return true;
     } catch (error) {
       _epochGate.abandonArm(generation);
-      try {
-        await player.setVolume(_currentVolume);
-      } catch (_) {}
+      if (identical(_player, player)) {
+        try {
+          await _awaitNative(
+            player.setVolume(_currentVolume),
+            stage: 'prepared_failure_volume',
+          );
+        } catch (_) {}
+      }
       StructuredLogService.event(
         'audio_engine.prepared_slot_failed',
         level: LogLevel.warning,
@@ -1308,6 +1453,9 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         error: error,
       );
       return false;
+    } finally {
+      _operationBudget = null;
+      _operationClock.stop();
     }
   }
 
@@ -1321,8 +1469,45 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     }
     for (var index = _preparedSlots.length - 1; index >= 0; index--) {
       if (index == currentIndex) continue;
-      await player.removeAudioSourceAt(index);
+      await _awaitNative(
+        player.removeAudioSourceAt(index),
+        stage: 'invalidate_preload',
+      );
       _preparedSlots.removeAt(index);
+    }
+  }
+
+  Future<void> _waitForPreparedReady(ja.AudioPlayer player, int index) async {
+    final ready = Completer<void>();
+    void checkReady() {
+      if (!ready.isCompleted &&
+          player.currentIndex == index &&
+          player.processingState == ja.ProcessingState.ready) {
+        ready.complete();
+      }
+    }
+
+    final subscription = player.playerStateStream.listen(
+      (_) => checkReady(),
+      onError: (Object error, StackTrace stack) {
+        if (!ready.isCompleted) ready.completeError(error, stack);
+      },
+      onDone: () {
+        if (!ready.isCompleted) {
+          ready.completeError(StateError('播放器状态流已关闭'));
+        }
+      },
+    );
+    try {
+      // Ready can change between the caller's snapshot and subscription setup.
+      checkReady();
+      await _awaitNative(
+        ready.future,
+        stage: 'prepared_ready',
+        timeout: _engineStartupTimeout,
+      );
+    } finally {
+      await subscription.cancel();
     }
   }
 
@@ -1364,7 +1549,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         .listen((error) {
           if (!completer.isCompleted) completer.completeError(error);
         });
-    timeoutTimer = Timer(_engineStartupTimeout, () {
+    timeoutTimer = Timer(_remainingOperationTime(_engineStartupTimeout), () {
       if (!completer.isCompleted) {
         completer.completeError(TimeoutException('音频流启动超时'));
       }
@@ -1375,9 +1560,6 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     } on EngineError catch (error) {
       _playTicket++;
       _epochGate.beginStop();
-      try {
-        await player.stop().timeout(const Duration(seconds: 2));
-      } catch (_) {}
       await _recreatePlayer();
       throw EngineReportedException(error);
     } on TimeoutException catch (error) {
@@ -1390,9 +1572,6 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       );
       _playTicket++;
       _epochGate.beginStop();
-      try {
-        await player.stop().timeout(const Duration(seconds: 2));
-      } catch (_) {}
       await _recreatePlayer();
       _emitError(mapped);
       throw EngineReportedException(mapped);
@@ -1408,7 +1587,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   @override
   Future<void> pause() async {
     _resumeRevision++;
-    await _player?.pause();
+    final player = _player;
+    if (player != null) await _awaitNative(player.pause(), stage: 'pause');
   }
 
   @override
@@ -1445,7 +1625,10 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
   @override
   Future<void> seek(Duration position) async {
-    await _player?.seek(position);
+    final player = _player;
+    if (player != null) {
+      await _awaitNative(player.seek(position), stage: 'seek');
+    }
     _position = position;
   }
 
@@ -1455,7 +1638,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     // stop 属于源头操作：其后的流事件（idle/completed）归属被停止的纪元，
     // 在下一次 arm 前不会污染新歌。
     _epochGate.beginStop();
-    await _player?.stop();
+    final player = _player;
+    if (player != null) await _awaitNative(player.stop(), stage: 'stop');
     _hasSource = false;
     _loadedAudioSource = null;
     _preparedSlots.clear();
@@ -1468,14 +1652,21 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
   @override
   Future<void> setVolume(double volume) async {
+    _volumeInitialized = true;
     _currentVolume = volume.clamp(0.0, 1.0);
-    await _player?.setVolume(_currentVolume);
+    final player = _player;
+    if (player != null) {
+      await _awaitNative(player.setVolume(_currentVolume), stage: 'volume');
+    }
   }
 
   @override
   Future<void> setPlaybackSpeed(double speed) async {
     _playbackSpeed = speed.clamp(0.5, 2.0);
-    await _player?.setSpeed(_playbackSpeed);
+    final player = _player;
+    if (player != null) {
+      await _awaitNative(player.setSpeed(_playbackSpeed), stage: 'speed');
+    }
   }
 
   @override
@@ -1569,6 +1760,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     required int queueRevision,
     bool autoPlay = true,
     Duration? initialPosition,
+    Duration? loadTimeout,
   }) async => false;
 
   @override

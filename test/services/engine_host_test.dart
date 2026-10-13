@@ -99,7 +99,11 @@ void main() {
       loadTimeout: const Duration(seconds: 4),
     );
 
-    expect(engine.loadTimeouts, [const Duration(seconds: 4)]);
+    expect(engine.loadTimeouts.single, greaterThan(Duration.zero));
+    expect(
+      engine.loadTimeouts.single,
+      lessThanOrEqualTo(const Duration(seconds: 4)),
+    );
     await host.dispose();
   });
 
@@ -118,6 +122,47 @@ void main() {
     await Future.wait([play, firstVolume, lastVolume]);
 
     expect(engine.volumeWrites, [0.8]);
+    await host.dispose();
+  });
+
+  test(
+    'queued load consumes its budget while waiting for native writes',
+    () async {
+      final engine = FakeEngine();
+      final host = EngineHost(engineFactory: () => engine);
+      final gate = Completer<void>();
+      engine.playGate = gate;
+      final first = host.play('a', generation: 1);
+      final second = host.play(
+        'b',
+        generation: 2,
+        loadTimeout: const Duration(milliseconds: 20),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      gate.complete();
+      await Future.wait([first, second]);
+      expect(engine.loadTimeouts.last, Duration.zero);
+      await host.dispose();
+    },
+  );
+
+  test('a newer manual load discards queued obsolete preloading', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+    final first = host.play('a', generation: 1);
+    final preload = host.preparePlaybackWindow(
+      PreparedPlaybackWindow(
+        current: _slot('current', 1),
+        next: _slot('next', 1),
+      ),
+    );
+    final second = host.play('b', generation: 2);
+    gate.complete();
+    await Future.wait([first, preload, second]);
+    expect(engine.preparedWindows, isEmpty);
+    expect(engine.playedUrls, ['a', 'b']);
     await host.dispose();
   });
 
@@ -407,6 +452,7 @@ class FakeEngine implements AudioEngine {
     required int queueRevision,
     bool autoPlay = true,
     Duration? initialPosition,
+    Duration? loadTimeout,
   }) async {
     activatedKeys.add(key);
     if (activationResult) activeGeneration = generation;

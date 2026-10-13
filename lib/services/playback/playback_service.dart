@@ -2165,6 +2165,18 @@ class PlaybackService extends ChangeNotifier {
     _pendingIntent = null;
   }
 
+  void _finishPendingFailure() {
+    _lastFailedTrack = _pendingTrack ?? _lastFailedTrack;
+    _lastFailedQueueEntryId = _pendingQueueEntryId ?? _lastFailedQueueEntryId;
+    _desiredPlaying = false;
+    _controlIntent.invalidate();
+    _engineStateCommitGate.discard();
+    _updateSessionPhase(PlaybackPhase.failed);
+    _currentSwitchTx = null;
+    _deferredEngineRetryGeneration = null;
+    _clearPendingTrack();
+  }
+
   void _commitActivePresentation(
     Track track, {
     required int? queueEntryId,
@@ -3588,7 +3600,17 @@ class PlaybackService extends ChangeNotifier {
       allowActiveFallback: allowActiveFallback,
     );
     if (tx == null) {
-      return _candidateFailureResult(allowActiveFallback: allowActiveFallback);
+      final result = _candidateFailureResult(
+        allowActiveFallback: allowActiveFallback,
+      );
+      final epoch = requestEpoch ?? _requestRouter.currentEpoch;
+      if (_requestRouter.isCurrent(epoch) &&
+          _scanningRequestEpoch != epoch &&
+          _state == PBState.error) {
+        _finishPendingFailure();
+        notifyListeners();
+      }
+      return result;
     }
     if (!preserveDesiredPlaying) _desiredPlaying = autoPlay;
     notifyListeners();
@@ -3800,6 +3822,15 @@ class PlaybackService extends ChangeNotifier {
       _reportPlaybackFailure(tx.track, _errorMessage!);
       trace.mark('failed', level: LogLevel.error, error: e);
       return _candidateFailureResult(transaction: tx);
+    } finally {
+      // Candidate scanning owns its final cleanup. Direct selections/retries
+      // must finish here, but an old attempt must never clear a newer target.
+      if (!isStale() &&
+          _state == PBState.error &&
+          _scanningRequestEpoch != tx.requestEpoch) {
+        _finishPendingFailure();
+        notifyListeners();
+      }
     }
   }
 
@@ -3814,6 +3845,7 @@ class PlaybackService extends ChangeNotifier {
     int? candidateEntryId,
     List<int>? navigationOrder,
     bool preserveDesiredPlaying = false,
+    PlaybackTransitionBudget? budget,
   }) async {
     if (requestEpoch != null && !_requestRouter.isCurrent(requestEpoch)) {
       return false;
@@ -3844,6 +3876,7 @@ class PlaybackService extends ChangeNotifier {
       navigationOrder: navigationOrder,
       generation: slot.generation,
       preservePreloadState: true,
+      budget: budget,
     );
     if (tx == null || tx.queueEntryId != entryId) return false;
     _stagePendingPlanPresentation(
@@ -3859,6 +3892,7 @@ class PlaybackService extends ChangeNotifier {
       generation: tx.token,
       queueRevision: _queueController.structureRevision,
       autoPlay: _desiredPlaying,
+      loadTimeout: budget?.remaining(),
     );
     if (!activated) {
       _nativePreparedPlans.remove(nativeKey);
@@ -3946,52 +3980,69 @@ class PlaybackService extends ChangeNotifier {
         : null;
     _scanningRequestEpoch = requestEpoch;
 
-    final result = await _transitionCoordinator.run(
-      plan: plan,
-      budget: budget,
-      isCurrent: () => _requestRouter.isCurrent(requestEpoch),
-      attempt: (candidate, transitionBudget, isCurrent) async {
-        if (!isCurrent()) return PlaybackCandidateAttemptResult.cancelled;
-        if (_queueController.indexOfEntryId(candidate.entryId) < 0) {
-          return const PlaybackCandidateAttemptResult(
-            PlaybackCandidateAttemptStatus.trackFailure,
-            message: '歌曲已从播放队列移除',
+    late final PlaybackTransitionResult result;
+    try {
+      result = await _transitionCoordinator.run(
+        plan: plan,
+        budget: budget,
+        isCurrent: () => _requestRouter.isCurrent(requestEpoch),
+        attempt: (candidate, transitionBudget, isCurrent) async {
+          if (!isCurrent()) return PlaybackCandidateAttemptResult.cancelled;
+          if (_queueController.indexOfEntryId(candidate.entryId) < 0) {
+            return const PlaybackCandidateAttemptResult(
+              PlaybackCandidateAttemptStatus.trackFailure,
+              message: '歌曲已从播放队列移除',
+            );
+          }
+
+          final activated = await _tryActivatePreparedTrack(
+            candidate.track,
+            requestEpoch,
+            playbackIntent,
+            candidateEntryId: candidate.entryId,
+            navigationOrder: navigationOrder,
+            preserveDesiredPlaying: true,
+            budget: transitionBudget,
           );
-        }
+          if (activated) {
+            return _activeQueueEntryId == candidate.entryId
+                ? PlaybackCandidateAttemptResult.committed
+                : const PlaybackCandidateAttemptResult(
+                    PlaybackCandidateAttemptStatus.engineFailure,
+                  );
+          }
+          if (!isCurrent()) return PlaybackCandidateAttemptResult.cancelled;
 
-        final activated = await _tryActivatePreparedTrack(
-          candidate.track,
-          requestEpoch,
-          playbackIntent,
-          candidateEntryId: candidate.entryId,
-          navigationOrder: navigationOrder,
-          preserveDesiredPlaying: true,
-        );
-        if (activated) {
-          return _activeQueueEntryId == candidate.entryId
-              ? PlaybackCandidateAttemptResult.committed
-              : const PlaybackCandidateAttemptResult(
-                  PlaybackCandidateAttemptStatus.engineFailure,
-                );
-        }
-        if (!isCurrent()) return PlaybackCandidateAttemptResult.cancelled;
-
-        return _attemptTrackSwitch(
-          reason: reason,
-          intent: playbackIntent,
-          requestEpoch: requestEpoch,
-          candidateTrack: candidate.track,
-          candidateEntryId: candidate.entryId,
-          budget: transitionBudget,
-          navigationOrder: navigationOrder,
-          preserveDesiredPlaying: true,
-          allowActiveFallback: intent == PlaybackTransitionIntent.manualAdvance,
-        );
-      },
-    );
-
-    if (_scanningRequestEpoch == requestEpoch) {
-      _scanningRequestEpoch = null;
+          return _attemptTrackSwitch(
+            reason: reason,
+            intent: playbackIntent,
+            requestEpoch: requestEpoch,
+            candidateTrack: candidate.track,
+            candidateEntryId: candidate.entryId,
+            budget: transitionBudget,
+            navigationOrder: navigationOrder,
+            preserveDesiredPlaying: true,
+            allowActiveFallback:
+                intent == PlaybackTransitionIntent.manualAdvance,
+          );
+        },
+      );
+    } catch (error) {
+      if (!_requestRouter.isCurrent(requestEpoch)) return;
+      _state = PBState.error;
+      _errorMessage = '切歌失败，请重试';
+      _finishPendingFailure();
+      StructuredLogService.event(
+        'playback.navigation_exception',
+        level: LogLevel.error,
+        error: error,
+      );
+      notifyListeners();
+      return;
+    } finally {
+      if (_scanningRequestEpoch == requestEpoch) {
+        _scanningRequestEpoch = null;
+      }
     }
     if (!_requestRouter.isCurrent(requestEpoch) ||
         result.status == PlaybackTransitionResultStatus.cancelled) {
@@ -4070,6 +4121,7 @@ class PlaybackService extends ChangeNotifier {
       _desiredPlaying = false;
       _controlIntent.invalidate();
       _state = PBState.error;
+      _finishPendingFailure();
     }
     StructuredLogService.event(
       'playback.navigation_failed',

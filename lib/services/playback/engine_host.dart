@@ -196,6 +196,12 @@ class EngineHost implements AudioEngine {
     return _writes.enqueue(action);
   }
 
+  Duration? _remainingLoadTime(Duration? timeout, Stopwatch clock) {
+    if (timeout == null) return null;
+    final remaining = timeout - clock.elapsed;
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
   @override
   Future<void> play(
     String url, {
@@ -208,6 +214,7 @@ class EngineHost implements AudioEngine {
     Duration? loadTimeout,
   }) {
     final loadRevision = ++_loadRevision;
+    final clock = Stopwatch()..start();
     _desiredPlaying = autoPlay;
     _latestRequestedGeneration = generation;
     return _write(() async {
@@ -224,7 +231,7 @@ class EngineHost implements AudioEngine {
         autoPlay: autoPlay && _desiredPlaying,
         initialPosition: initialPosition,
         preload: preload,
-        loadTimeout: loadTimeout,
+        loadTimeout: _remainingLoadTime(loadTimeout, clock),
       );
       if (!_desiredPlaying && (_active?.isPlaying ?? false)) {
         await _active?.pause();
@@ -242,6 +249,7 @@ class EngineHost implements AudioEngine {
     Duration? loadTimeout,
   }) {
     final loadRevision = ++_loadRevision;
+    final clock = Stopwatch()..start();
     _desiredPlaying = autoPlay;
     _latestRequestedGeneration = generation;
     return _write(() async {
@@ -256,7 +264,7 @@ class EngineHost implements AudioEngine {
         autoPlay: autoPlay && _desiredPlaying,
         initialPosition: initialPosition,
         preload: preload,
-        loadTimeout: loadTimeout,
+        loadTimeout: _remainingLoadTime(loadTimeout, clock),
       );
       if (!_desiredPlaying && (_active?.isPlaying ?? false)) {
         await _active?.pause();
@@ -275,6 +283,7 @@ class EngineHost implements AudioEngine {
     Duration? loadTimeout,
   }) {
     final loadRevision = ++_loadRevision;
+    final clock = Stopwatch()..start();
     _desiredPlaying = autoPlay;
     _latestRequestedGeneration = generation;
     return _write(() async {
@@ -290,7 +299,7 @@ class EngineHost implements AudioEngine {
         autoPlay: autoPlay && _desiredPlaying,
         initialPosition: initialPosition,
         preload: preload,
-        loadTimeout: loadTimeout,
+        loadTimeout: _remainingLoadTime(loadTimeout, clock),
       );
       if (!_desiredPlaying && (_active?.isPlaying ?? false)) {
         await _active?.pause();
@@ -303,8 +312,13 @@ class EngineHost implements AudioEngine {
       _write(() => _active?.bindCurrentPreparedSlot(slot) ?? Future.value());
 
   @override
-  Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) =>
-      _write(() => _active?.preparePlaybackWindow(window) ?? Future.value());
+  Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) {
+    final revision = _loadRevision;
+    return _write(() async {
+      if (revision != _loadRevision) return;
+      await _active?.preparePlaybackWindow(window);
+    });
+  }
 
   @override
   Future<bool> activatePreparedSlot(
@@ -313,8 +327,10 @@ class EngineHost implements AudioEngine {
     required int queueRevision,
     bool autoPlay = true,
     Duration? initialPosition,
+    Duration? loadTimeout,
   }) {
     final loadRevision = ++_loadRevision;
+    final clock = Stopwatch()..start();
     _desiredPlaying = autoPlay;
     _latestRequestedGeneration = generation;
     return _write(() async {
@@ -329,8 +345,9 @@ class EngineHost implements AudioEngine {
             key,
             generation: generation,
             queueRevision: queueRevision,
-            autoPlay: autoPlay,
+            autoPlay: autoPlay && _desiredPlaying,
             initialPosition: initialPosition,
+            loadTimeout: _remainingLoadTime(loadTimeout, clock),
           ) ??
           false;
       if (!activated || generation != _latestRequestedGeneration) {
@@ -341,6 +358,10 @@ class EngineHost implements AudioEngine {
         return activated;
       }
       _isPlaying = _active?.isPlaying ?? false;
+      if (!_desiredPlaying && _isPlaying) {
+        await _active?.pause();
+        _isPlaying = false;
+      }
       _position = _active?.position ?? Duration.zero;
       _duration = _active?.duration ?? Duration.zero;
       _bufferedPosition = _active?.bufferedPosition ?? Duration.zero;
