@@ -6,6 +6,8 @@ import 'audio_engine.dart';
 import 'command_queue.dart';
 import 'engine_event.dart';
 import 'playable_source.dart';
+import 'playback_transition.dart';
+import '../structured_log_service.dart';
 
 /// Owns the native player boundary.
 ///
@@ -13,6 +15,7 @@ import 'playable_source.dart';
 /// serialized here; source attribution is handled by the engine's epoch gate.
 class EngineHost implements AudioEngine {
   final AudioEngine Function() _engineFactory;
+  final Duration minimumSourceLoadTime;
   final CommandQueue _writes = CommandQueue();
   final _positionController = StreamController<Duration>.broadcast();
   final _durationController = StreamController<Duration>.broadcast();
@@ -37,8 +40,10 @@ class EngineHost implements AudioEngine {
   bool _desiredPlaying = false;
   int _volumeRevision = 0;
 
-  EngineHost({AudioEngine Function()? engineFactory})
-    : _engineFactory = engineFactory ?? createEngine {
+  EngineHost({
+    AudioEngine Function()? engineFactory,
+    this.minimumSourceLoadTime = PlaybackTransitionBudget.minimumNativeLoadTime,
+  }) : _engineFactory = engineFactory ?? createEngine {
     _installInitialHandle();
   }
 
@@ -53,6 +58,12 @@ class EngineHost implements AudioEngine {
 
   @override
   bool get isPlaying => _isPlaying;
+
+  @override
+  bool canResumeSource(int generation) =>
+      generation == _activeEpoch &&
+      generation == _latestRequestedGeneration &&
+      (_active?.canResumeSource(generation) ?? false);
 
   @override
   double get playbackSpeed => _active?.playbackSpeed ?? 1.0;
@@ -156,6 +167,11 @@ class EngineHost implements AudioEngine {
       engine.errorStream.listen((error) {
         if (!current()) return;
         final eventError = _withEpoch(error, _activeEpoch);
+        if (eventError.epoch == _activeEpoch) {
+          // Native cleanup can detach the player without a final state event.
+          // Never reconcile a newer source from a late old-source failure.
+          _isPlaying = engine.isPlaying;
+        }
         _errorController.add(eventError);
         _eventController.add(EngineFailureEvent(eventError.epoch, eventError));
       }),
@@ -202,6 +218,40 @@ class EngineHost implements AudioEngine {
     return remaining.isNegative ? Duration.zero : remaining;
   }
 
+  void _checkLoadBudget(Duration? remaining, int generation) {
+    if (remaining == null ||
+        (remaining > Duration.zero && remaining >= minimumSourceLoadTime)) {
+      return;
+    }
+    // No native operation has started: preserve the existing source/epoch.
+    if (_latestRequestedGeneration == generation) {
+      _latestRequestedGeneration = _activeEpoch;
+    }
+    final error = EngineError(
+      type: EngineErrorType.networkTimeout,
+      message: '切歌等待超时，请重试播放',
+      cause: NativePlaybackTimeout(
+        'queue_deadline',
+        TimeoutException(
+          'Insufficient source load budget before native loading',
+        ),
+      ),
+      retriable: true,
+      epoch: generation,
+    );
+    StructuredLogService.event(
+      'audio_engine.load_budget_exhausted',
+      fields: {
+        'epoch': generation,
+        'stage': 'queue',
+        'remaining_ms': remaining.inMilliseconds,
+      },
+    );
+    _errorController.add(error);
+    _eventController.add(EngineFailureEvent(generation, error));
+    throw EngineReportedException(error);
+  }
+
   @override
   Future<void> play(
     String url, {
@@ -222,6 +272,8 @@ class EngineHost implements AudioEngine {
           loadRevision != _loadRevision) {
         return;
       }
+      final remaining = _remainingLoadTime(loadTimeout, clock);
+      _checkLoadBudget(remaining, generation);
       _beginEpoch(generation);
       await _active!.play(
         url,
@@ -231,7 +283,7 @@ class EngineHost implements AudioEngine {
         autoPlay: autoPlay && _desiredPlaying,
         initialPosition: initialPosition,
         preload: preload,
-        loadTimeout: _remainingLoadTime(loadTimeout, clock),
+        loadTimeout: remaining,
       );
       if (!_desiredPlaying && (_active?.isPlaying ?? false)) {
         await _active?.pause();
@@ -257,6 +309,8 @@ class EngineHost implements AudioEngine {
           loadRevision != _loadRevision) {
         return;
       }
+      final remaining = _remainingLoadTime(loadTimeout, clock);
+      _checkLoadBudget(remaining, generation);
       _beginEpoch(generation);
       await _active!.playSource(
         source,
@@ -264,7 +318,7 @@ class EngineHost implements AudioEngine {
         autoPlay: autoPlay && _desiredPlaying,
         initialPosition: initialPosition,
         preload: preload,
-        loadTimeout: _remainingLoadTime(loadTimeout, clock),
+        loadTimeout: remaining,
       );
       if (!_desiredPlaying && (_active?.isPlaying ?? false)) {
         await _active?.pause();
@@ -291,6 +345,8 @@ class EngineHost implements AudioEngine {
           loadRevision != _loadRevision) {
         return;
       }
+      final remaining = _remainingLoadTime(loadTimeout, clock);
+      _checkLoadBudget(remaining, generation);
       _beginEpoch(generation);
       await _active!.playAudioSource(
         source,
@@ -299,7 +355,7 @@ class EngineHost implements AudioEngine {
         autoPlay: autoPlay && _desiredPlaying,
         initialPosition: initialPosition,
         preload: preload,
-        loadTimeout: _remainingLoadTime(loadTimeout, clock),
+        loadTimeout: remaining,
       );
       if (!_desiredPlaying && (_active?.isPlaying ?? false)) {
         await _active?.pause();
@@ -339,6 +395,15 @@ class EngineHost implements AudioEngine {
         return false;
       }
       final previousEpoch = _activeEpoch;
+      final remaining = _remainingLoadTime(loadTimeout, clock);
+      if (remaining != null && remaining <= Duration.zero) {
+        _latestRequestedGeneration = previousEpoch;
+        StructuredLogService.event(
+          'audio_engine.load_budget_exhausted',
+          fields: {'epoch': generation, 'stage': 'prepared_queue'},
+        );
+        return false;
+      }
       _activeEpoch = generation;
       final activated =
           await _active?.activatePreparedSlot(
@@ -347,7 +412,7 @@ class EngineHost implements AudioEngine {
             queueRevision: queueRevision,
             autoPlay: autoPlay && _desiredPlaying,
             initialPosition: initialPosition,
-            loadTimeout: _remainingLoadTime(loadTimeout, clock),
+            loadTimeout: remaining,
           ) ??
           false;
       if (!activated || generation != _latestRequestedGeneration) {
@@ -355,6 +420,12 @@ class EngineHost implements AudioEngine {
         if (_latestRequestedGeneration == generation) {
           _latestRequestedGeneration = previousEpoch;
         }
+        // Failed activation may have disposed the player. Restoring attribution
+        // does not restore a native source or its old playing snapshot.
+        _isPlaying = _active?.isPlaying ?? false;
+        _position = _active?.position ?? Duration.zero;
+        _duration = _active?.duration ?? Duration.zero;
+        _bufferedPosition = _active?.bufferedPosition ?? Duration.zero;
         return activated;
       }
       _isPlaying = _active?.isPlaying ?? false;

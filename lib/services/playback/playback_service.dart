@@ -307,6 +307,8 @@ class PlaybackService extends ChangeNotifier {
   double _playbackSpeed = 1.0;
   bool _isAudioSourceNotConfigured = false;
   String? _retriedTrackKey;
+  String? _rejectedPlaybackUrl;
+  PlaybackFailureCause? _rejectedPlaybackCause;
   PlaybackFailureEvidence? _lastFailureEvidence;
   String? _lastPreloadedTargetKey;
   bool _preloadingNext = false;
@@ -951,6 +953,12 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _onEngineError(EngineError error) {
+    final cause = error.cause;
+    if (cause is NativePlaybackTimeout && cause.stage == 'queue_deadline') {
+      // The awaiting transaction owns this pre-load failure. The old native
+      // source is intact; an error event must not interrupt its session.
+      return;
+    }
     // 纪元守卫：错误携带引擎源头纪元，属于旧纪元的迟到错误直接丢弃，
     // 避免旧歌错误触发新歌的重试/跳歌/报错。
     final belongsToCurrentTransition = error.epoch == _playGeneration;
@@ -972,18 +980,33 @@ class PlaybackService extends ChangeNotifier {
     final trackKey = _buildTrackIdentity(track);
     final cacheQuality = _currentCachedFileInfo?.metadata.quality;
     final shouldRetryWithoutCache =
-        cacheQuality != null && _retriedTrackKey != trackKey;
+        cacheQuality != null &&
+        error.cause is! NativePlaybackTimeout &&
+        _retriedTrackKey != trackKey;
     final navigatingCandidate =
         failedDuringArming &&
         _scanningRequestEpoch == _currentSession?.requestEpoch;
     final canRetry =
-        !navigatingCandidate &&
+        (!navigatingCandidate ||
+            error.type == EngineErrorType.accessDenied ||
+            error.isSourceReadFailure) &&
+        (_currentSwitchTx?.budget == null ||
+            !failedDuringArming ||
+            _currentSwitchTx!.budget!.canStartRemoteRequest) &&
         (shouldRetryWithoutCache ||
             (_canRetryOnError(error) && _retriedTrackKey != trackKey));
 
     if (canRetry) {
       _performanceMetrics.recordEngineRetry();
       _retriedTrackKey = trackKey;
+      if (error.type == EngineErrorType.accessDenied ||
+          error.isSourceReadFailure) {
+        _rejectedPlaybackUrl =
+            (_pendingSong ?? _activeSong)?.url ?? error.sourceUrl;
+        _rejectedPlaybackCause = error.isSourceReadFailure
+            ? PlaybackFailureCause.sourceLoad
+            : PlaybackFailureCause.accessDenied;
+      }
       if (cacheQuality != null) {
         StructuredLogService.log('[PlaybackService] 缓存流播放失败，绕过当前缓存后重试: $error');
       } else {
@@ -1010,15 +1033,15 @@ class PlaybackService extends ChangeNotifier {
       final stall = error.cause is PlaybackStallEvidence
           ? error.cause as PlaybackStallEvidence
           : null;
-      // 强制远端重解析：预取/缓存的 URL 已被证明失败（常见为 CDN
-      // 直链过期），复用只会再次失败。forceRemoteResolution 同时
-      // 会丢弃同曲预取计划。
+      // Refresh only when the failure concerns the network stream. Ordinary
+      // native failures do not justify another request to the script server.
       unawaited(
         _playCurrentTrack(
           reason: 'engine-retry',
           intent: failureIntent,
           requestEpoch: requestEpoch,
-          forceRemoteResolution: true,
+          forceRemoteResolution:
+              shouldRetryWithoutCache || _shouldRefreshUrlOnError(error),
           initialPosition: stall == null
               ? null
               : _clampRecoveryPosition(stall.position),
@@ -1150,6 +1173,7 @@ class PlaybackService extends ChangeNotifier {
         mayRestoreActive &&
         _activeTrack != null &&
         _engine.isPlaying &&
+        _engine.canResumeSource(_activePlaybackToken) &&
         (_pendingTrack == null ||
             !_matchesTrackIdentity(
               _activeTrack,
@@ -1451,20 +1475,37 @@ class PlaybackService extends ChangeNotifier {
   }
 
   bool _canRetryOnError(EngineError error) {
+    // A hung native load/control call is not evidence that the URL expired.
+    // Keep manual retry available without automatically re-querying the source.
+    if (error.cause is NativePlaybackTimeout) return false;
+    if (error.isSourceReadFailure) {
+      return (_pendingTrack ?? currentTrack)?.source != MusicSource.local;
+    }
     switch (error.type) {
       case EngineErrorType.networkTimeout:
         return true;
       case EngineErrorType.accessDenied:
+        return (_pendingTrack ?? currentTrack)?.source != MusicSource.local;
       case EngineErrorType.sourceLoad:
       case EngineErrorType.playback:
       case EngineErrorType.unknown:
-        return error.retriable;
+        return error.retriable &&
+            (_pendingTrack ?? currentTrack)?.source == MusicSource.local;
       case EngineErrorType.unsupportedFormat:
         return false;
     }
   }
 
+  bool _shouldRefreshUrlOnError(EngineError error) =>
+      error.cause is! NativePlaybackTimeout &&
+      (error.type == EngineErrorType.accessDenied ||
+          error.type == EngineErrorType.networkTimeout ||
+          error.isSourceReadFailure);
+
   String _buildErrorMessage(EngineError error) {
+    if (error.cause is NativePlaybackTimeout) {
+      return '播放失败: ${error.message}';
+    }
     switch (error.type) {
       case EngineErrorType.unsupportedFormat:
         return '播放失败: 当前格式不受支持';
@@ -1832,16 +1873,26 @@ class PlaybackService extends ChangeNotifier {
     if (_pendingTrack != null || _manualRetryInFlight) {
       return;
     }
-    // 预载态：播放器尚未初始化，走完整播放
-    if (_state == PBState.idle && currentTrack != null) {
+    // A cancelled/failed load can leave old artwork paused with no matching
+    // native source. Reload the displayed track instead of resuming an empty
+    // player (or a different generation).
+    if (currentTrack != null &&
+        (_state == PBState.idle ||
+            !_engine.canResumeSource(_activePlaybackToken))) {
       if (_queue.isNotEmpty && _currentIndex >= 0) {
         final requestEpoch = _requestRouter.begin();
         final restorePosition = _takePendingRestorePosition();
-        await _playCurrentTrack(
+        final recoverTrack = currentTrack;
+        final recoverEntryId = _activeQueueEntryId;
+        final recoveringSource = _state != PBState.idle;
+        await _attemptTrackSwitch(
           reason: 'resume',
           requestEpoch: requestEpoch,
+          candidateTrack: recoverTrack,
+          candidateEntryId: recoverEntryId,
           autoPlay: true,
-          initialPosition: restorePosition,
+          initialPosition:
+              restorePosition ?? (recoveringSource ? _position : null),
         );
         // Loading may outlive a pause/stop or a different source request.
         // Never restore the old intent after that asynchronous boundary.
@@ -1871,6 +1922,11 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> pause() async {
+    if (_currentSession?.phase == PlaybackPhase.resolving) {
+      _cancelPendingTrackTransition();
+    } else {
+      _trackResolver.cancelPending();
+    }
     final revision = _controlIntent.begin(false);
     _desiredPlaying = false;
     notifyListeners();
@@ -2287,6 +2343,8 @@ class PlaybackService extends ChangeNotifier {
     _livenessMonitor.suspend();
     if (reason != 'engine-retry') {
       _retriedTrackKey = null;
+      _rejectedPlaybackUrl = null;
+      _rejectedPlaybackCause = null;
     }
     final track = candidateTrack ?? _trackAtQueuePointer() ?? _activeTrack;
     if (track == null) return null;
@@ -2449,6 +2507,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _invalidateCurrentPlayback() {
+    _trackResolver.cancelPending();
     _livenessMonitor.suspend();
     _lastFailedTrack = null;
     _lastFailedQueueEntryId = null;
@@ -2466,6 +2525,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _cancelPendingTrackTransition() {
+    _trackResolver.cancelPending();
     if (_pendingTrack == null && _scanningRequestEpoch == null) return;
     _requestRouter.begin();
     _transactionGuard.begin();
@@ -2477,7 +2537,24 @@ class PlaybackService extends ChangeNotifier {
       _state = PBState.playing;
       _transactionGuard.activate(_activePlaybackToken);
       _restartLivenessForActivePlayback();
+    } else {
+      _state = _activeTrack == null ? PBState.idle : PBState.paused;
     }
+    final activeTrack = _activeTrack;
+    if (activeTrack != null) {
+      _transactionGuard.activate(_activePlaybackToken);
+      _currentSession = PlaybackSession(
+        epoch: _activePlaybackToken,
+        requestEpoch: _requestRouter.currentEpoch,
+        trackKey: _buildTrackIdentity(activeTrack),
+        phase: _engine.isPlaying ? PlaybackPhase.playing : PlaybackPhase.paused,
+      );
+    } else {
+      _updateSessionPhase(PlaybackPhase.idle);
+    }
+    _currentSwitchTx = null;
+    _deferredEngineRetryGeneration = null;
+    _errorMessage = null;
   }
 
   void _restartLivenessForActivePlayback() {
@@ -2554,6 +2631,27 @@ class PlaybackService extends ChangeNotifier {
 
     final lxSourceFingerprint = _activeLxSourceFingerprint();
     final resolverFingerprint = _resolverFingerprintFor(track);
+    final memoryHit = tx.forceRemoteResolution
+        ? null
+        : _trackResolver.peekResolved(
+            songId: track.id,
+            quality: tx.selectedQuality,
+            source: track.source,
+            resolverFingerprint: resolverFingerprint,
+          );
+    if (memoryHit?.detail case final SongDetail detail) {
+      // A valid cached URL needs no remote-request allowance. It must remain
+      // available after request-cap exhaustion or while source health is open.
+      tx.timing.l1MemoryCached = true;
+      return _ResolvedTrackSwitchSong(
+        songDetail: _normalizeSongDetailForPlayback(track, detail),
+        cacheInfo: cacheInfo,
+        isCached: lookup.isCached,
+        shouldRefreshCachedMetadata: false,
+        shouldRefreshExistingCacheMetadata:
+            cacheInfo != null && needsCachedMetadataRefresh(cacheInfo.metadata),
+      );
+    }
     if (lxSourceFingerprint != null &&
         tx.intent == PlaybackRequestIntent.retry &&
         _sourceHealthTracker.snapshot(lxSourceFingerprint).isCircuitOpen) {
@@ -2625,9 +2723,7 @@ class PlaybackService extends ChangeNotifier {
       }
       final resolveTimeout = transitionBudget == null
           ? _playSongDetailTimeout
-          : (transitionBudget.remaining() < _playSongDetailTimeout
-                ? transitionBudget.remaining()
-                : _playSongDetailTimeout);
+          : transitionBudget.resolutionTimeout(_playSongDetailTimeout);
       if (resolveTimeout <= Duration.zero) {
         tx.budgetExhausted = true;
         break;
@@ -2680,7 +2776,12 @@ class PlaybackService extends ChangeNotifier {
       }
 
       if (attempt + 1 < maxResolutionAttempts &&
-          _shouldRetryResolutionFailure(resolution.lxFailure)) {
+          _shouldRetryResolutionFailure(resolution.lxFailure) &&
+          (transitionBudget == null ||
+              (transitionBudget.canStartRemoteRequest &&
+                  transitionBudget.resolutionTimeRemaining -
+                          _resolutionRetryDelay >=
+                      PlaybackTransitionBudget.minimumResolutionTime))) {
         _trackResolver.invalidateTrack(
           track,
           quality: tx.selectedQuality,
@@ -2744,6 +2845,31 @@ class PlaybackService extends ChangeNotifier {
     }
 
     final normalizedSong = _normalizeSongDetailForPlayback(track, songDetail);
+    if (_rejectedPlaybackUrl != null &&
+        normalizedSong.url == _rejectedPlaybackUrl) {
+      // Refreshing an access-denied URL must not load the same rejected stream
+      // a second time. Keep this evidence separate from script/API rejection.
+      tx.failureEvidence = PlaybackFailureEvidence(
+        cause: _rejectedPlaybackCause ?? PlaybackFailureCause.sourceLoad,
+        scope: PlaybackFailureScope.engine,
+      );
+      _lastFailureEvidence = tx.failureEvidence;
+      _state = PBState.error;
+      _errorMessage = '播放链接仍然无法访问，请重试或切换音源';
+      _trackResolver.invalidateTrack(
+        track,
+        quality: tx.selectedQuality,
+        resolverFingerprint: resolverFingerprint,
+      );
+      _reportPlaybackFailure(
+        track,
+        _errorMessage!,
+        kind: PlaybackProblemKind.resourceUnavailable,
+        recoveryActions: const {PlaybackRecoveryAction.retry},
+      );
+      notifyListeners();
+      return null;
+    }
     return _ResolvedTrackSwitchSong(
       songDetail: normalizedSong,
       cacheInfo: cacheInfo,
@@ -2895,6 +3021,19 @@ class PlaybackService extends ChangeNotifier {
   }) async {
     var committedPlan = plan;
     if (isStale()) return null;
+    if (tx.budget != null &&
+        tx.budget!.remaining() <
+            PlaybackTransitionBudget.minimumNativeLoadTime) {
+      tx.budgetExhausted = true;
+      StructuredLogService.event(
+        'playback.load_budget_exhausted',
+        fields: {
+          'transaction_id': tx.token,
+          'remaining_ms': tx.budget!.remaining().inMilliseconds,
+        },
+      );
+      return null;
+    }
 
     if (plan.usesCachedFile && plan.resolvedSong.cacheInfo != null) {
       final playedFromStream = await _playCachedFileSource(
@@ -3663,6 +3802,14 @@ class PlaybackService extends ChangeNotifier {
       return result;
     }
     if (!preserveDesiredPlaying) _desiredPlaying = autoPlay;
+    _trackResolver.prioritize(
+      songId: tx.track.id,
+      source: tx.track.source,
+      quality: tx.selectedQuality,
+      resolverFingerprint: PlaybackResolverRegistry().fingerprintFor(
+        tx.track.source,
+      ),
+    );
     notifyListeners();
     tx.timing.settleMs = settleMs;
     final trace = OperationTrace(
@@ -3713,7 +3860,10 @@ class PlaybackService extends ChangeNotifier {
         if (committedPlan == null) {
           return isStale()
               ? PlaybackCandidateAttemptResult.cancelled
-              : _candidateFailureResult(transaction: tx, engineFailure: true);
+              : _candidateFailureResult(
+                  transaction: tx,
+                  engineFailure: !tx.budgetExhausted,
+                );
         }
         await _enforceDesiredPlaybackIntent(tx, isStale, engineAutoPlay);
         if (isStale()) return PlaybackCandidateAttemptResult.cancelled;
@@ -3782,7 +3932,10 @@ class PlaybackService extends ChangeNotifier {
       if (committedPlan == null) {
         return isStale()
             ? PlaybackCandidateAttemptResult.cancelled
-            : _candidateFailureResult(transaction: tx, engineFailure: true);
+            : _candidateFailureResult(
+                transaction: tx,
+                engineFailure: !tx.budgetExhausted,
+              );
       }
       await _enforceDesiredPlaybackIntent(tx, isStale, engineAutoPlay);
       if (isStale()) return PlaybackCandidateAttemptResult.cancelled;
@@ -3799,6 +3952,13 @@ class PlaybackService extends ChangeNotifier {
       return PlaybackCandidateAttemptResult.committed;
     } on EngineReportedException catch (exception) {
       if (isStale()) return PlaybackCandidateAttemptResult.cancelled;
+      final cause = exception.error.cause;
+      if (cause is NativePlaybackTimeout && cause.stage == 'queue_deadline') {
+        // No native source was replaced. This is scheduling exhaustion, not a
+        // failed audio stream, and the preserved source may still be playing.
+        tx.budgetExhausted = true;
+        return _candidateFailureResult(transaction: tx);
+      }
       final evidence = PlaybackFailureEvidence(
         cause: switch (exception.error.type) {
           EngineErrorType.networkTimeout => PlaybackFailureCause.timeout,
@@ -3830,7 +3990,7 @@ class PlaybackService extends ChangeNotifier {
           autoPlay: autoPlay,
           initialPosition: initialPosition,
           preload: preload,
-          forceRemoteResolution: true,
+          forceRemoteResolution: _shouldRefreshUrlOnError(exception.error),
           candidateTrack: tx.track,
           candidateEntryId: tx.queueEntryId,
           budget: tx.budget,
@@ -4095,6 +4255,13 @@ class PlaybackService extends ChangeNotifier {
           }
           if (!isCurrent()) return PlaybackCandidateAttemptResult.cancelled;
 
+          if (!transitionBudget.hasTimeRemaining) {
+            return PlaybackCandidateAttemptResult(
+              PlaybackCandidateAttemptStatus.budgetExhausted,
+              message: _errorMessage ?? '切歌等待超时，请重试播放',
+            );
+          }
+
           final outcome = await _attemptTrackSwitch(
             reason: reason,
             intent: playbackIntent,
@@ -4210,7 +4377,10 @@ class PlaybackService extends ChangeNotifier {
       _lastFailedQueueEntryId = candidate.entryId;
     }
     final activeStillPlaying =
-        allowActiveFallback && _activeTrack != null && _engine.isPlaying;
+        allowActiveFallback &&
+        _activeTrack != null &&
+        _engine.isPlaying &&
+        _engine.canResumeSource(_activePlaybackToken);
     if (activeStillPlaying) {
       _state = PBState.playing;
       _errorMessage = null;
@@ -4560,6 +4730,12 @@ class PlaybackService extends ChangeNotifier {
     required String purpose,
     bool fetchLyrics = true,
   }) async {
+    if (purpose == 'preload' &&
+        (_pendingTrack != null ||
+            !_desiredPlaying ||
+            _state != PBState.playing)) {
+      return null;
+    }
     final result = await _trackResolver.resolve(
       songId: songId,
       quality: quality,

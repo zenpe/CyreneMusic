@@ -98,7 +98,7 @@ class NeteaseDiscoverService extends ChangeNotifier {
     try {
       final result = await ApiClient().getJson(
         '/playlist',
-        queryParameters: {'id': id},
+        queryParameters: {'id': id, 'limit': 0},
         timeout: const Duration(seconds: 15),
         cancelToken: cancelToken,
         cacheTtl: const Duration(seconds: 10),

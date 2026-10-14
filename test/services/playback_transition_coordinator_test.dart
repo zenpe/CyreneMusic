@@ -13,6 +13,48 @@ void main() {
   );
 
   test(
+    'resolution retries leave a native load window instead of spending the deadline',
+    () {
+      var elapsed = Duration.zero;
+      final budget = PlaybackTransitionBudget(
+        maxDuration: const Duration(seconds: 10),
+        elapsed: () => elapsed,
+      );
+      expect(
+        budget.resolutionTimeout(const Duration(seconds: 6)),
+        const Duration(seconds: 6),
+      );
+      expect(budget.consumeRemoteRequest(), isTrue);
+      elapsed = const Duration(seconds: 6);
+      expect(budget.resolutionTimeRemaining, const Duration(seconds: 1));
+      expect(budget.consumeRemoteRequest(), isFalse);
+      expect(budget.remoteRequests, 1);
+      expect(budget.remaining(), const Duration(seconds: 4));
+    },
+  );
+
+  test('local failures also obey the candidate limit', () async {
+    final attempted = <int>[];
+    final result = await coordinator.run(
+      plan: PlaybackCandidatePlan(
+        candidates: List.generate(20, (i) => entry(i)),
+        stopsAtQueueEnd: false,
+      ),
+      budget: fixedBudget(),
+      isCurrent: () => true,
+      attempt: (candidate, budget, isCurrent) async {
+        attempted.add(candidate.entryId);
+        return const PlaybackCandidateAttemptResult(
+          PlaybackCandidateAttemptStatus.trackFailure,
+        );
+      },
+    );
+    expect(attempted, [0, 1, 2]);
+    expect(result.status, PlaybackTransitionResultStatus.exhausted);
+    expect(result.skippedCount, 3);
+  });
+
+  test(
     'continues track failures and commits the first playable candidate',
     () async {
       final attempted = <int>[];
@@ -148,9 +190,12 @@ void main() {
 
     expect(budget.remaining(), const Duration(seconds: 10));
     expect(budget.consumeRemoteRequest(), isTrue);
+    elapsed = const Duration(seconds: 5);
+    expect(budget.remaining(), const Duration(seconds: 5));
+    expect(budget.consumeRemoteRequest(), isTrue);
+    expect(budget.consumeRemoteRequest(), isFalse);
     elapsed = const Duration(seconds: 6);
     expect(budget.remaining(), const Duration(seconds: 4));
-    expect(budget.consumeRemoteRequest(), isTrue);
     expect(budget.consumeRemoteRequest(), isFalse);
     elapsed = const Duration(seconds: 11);
     expect(budget.remaining(), Duration.zero);

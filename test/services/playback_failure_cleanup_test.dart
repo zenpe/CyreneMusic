@@ -76,8 +76,10 @@ void main() {
         await playback.pause();
         expect(playback.viewState.desiredPlaying, isFalse);
         await recovering;
-        expectFinished();
-        expect(failures, [failedTrack]);
+        expect(playback.state, PBState.idle);
+        expect(playback.isTrackSwitchPending, isFalse);
+        expect(playback.viewState.isSwitching, isFalse);
+        expect(failures, isEmpty);
         // Both lookups are asynchronous. The first request becomes stale before
         // it returns and must not clear or report failure for the newer target.
         failures.clear();

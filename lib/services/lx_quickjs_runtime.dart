@@ -6,6 +6,7 @@ import 'package:flutter_js/flutter_js.dart';
 import 'lx_http_bridge.dart';
 import 'lx_runtime_interface.dart';
 import 'lx_sandbox_js.dart';
+import 'resolution_request.dart';
 
 class _LxRuntimeContext {
   _LxRuntimeContext(this.generation, this.runtime);
@@ -41,7 +42,10 @@ class LxQuickJsRuntime implements LxRuntime {
 
   Future<void> _evalQueue = Future.value();
   Future<void> _operationQueue = Future.value();
-  DateTime? _activeDeadline;
+  final Map<String, ResolutionRequest> _owners = {};
+  final Map<String, DateTime> _deadlines = {};
+  final Map<String, ResolutionRequest> _httpRequests = {};
+  bool _needsContextReset = false;
 
   void _debug(String message) {
     if (kDebugMode) {
@@ -114,6 +118,9 @@ class LxQuickJsRuntime implements LxRuntime {
 
   @override
   Future<LxScriptInfo?> loadScript(String scriptContent) {
+    for (final owner in _owners.values.toList()) {
+      owner.cancel();
+    }
     return _enqueueOperation(() => _loadScriptInternal(scriptContent));
   }
 
@@ -217,28 +224,53 @@ class LxQuickJsRuntime implements LxRuntime {
   }) {
     final effectiveTimeout = timeout ?? _defaultMusicUrlTimeout;
     final deadline = DateTime.now().add(effectiveTimeout);
+    final owner = ResolutionRequest();
+    final parent = ResolutionRequest.current;
+    final unlink = parent?.onCancel(owner.cancel);
+    final queueClock = Stopwatch()..start();
     return _enqueueOperation(() async {
+      owner.check();
+      if (_needsContextReset && _currentScript != null) {
+        final script = _currentScript!.script;
+        _needsContextReset = false;
+        await _loadScriptInternal(script);
+        owner.check();
+      }
       final remaining = deadline.difference(DateTime.now());
+      StructuredLogService.event(
+        'lx.resolution_dequeued',
+        fields: {
+          'source': source,
+          'quality': quality,
+          'queue_wait_ms': queueClock.elapsedMilliseconds,
+          'remaining_ms': remaining.inMilliseconds,
+          'queue_expired': remaining <= Duration.zero,
+        },
+      );
       if (remaining <= Duration.zero) {
         _lastFailure = const LxRuntimeFailure(
           kind: LxRuntimeFailureKind.timeout,
           message: '获取播放地址前请求已过期',
         );
+        parent?.failure = _lastFailure;
         return null;
       }
-      _activeDeadline = deadline;
       try {
-        return await _getMusicUrlInternal(
+        final result = await _getMusicUrlInternal(
           source: source,
           songId: songId,
           quality: quality,
           musicInfo: musicInfo,
           deadline: deadline,
+          owner: owner,
         );
+        parent?.check();
+        parent?.failure = _lastFailure;
+        return result;
       } finally {
-        if (_activeDeadline == deadline) _activeDeadline = null;
+        unlink?.call();
       }
-    });
+    }).whenComplete(() => unlink?.call());
   }
 
   Future<String?> _getMusicUrlInternal({
@@ -247,6 +279,7 @@ class LxQuickJsRuntime implements LxRuntime {
     required String quality,
     Map<String, dynamic>? musicInfo,
     required DateTime deadline,
+    required ResolutionRequest owner,
   }) async {
     _lastFailure = null;
     if (!_isInitialized || !_isScriptReady) {
@@ -270,7 +303,18 @@ class LxQuickJsRuntime implements LxRuntime {
     }
     final completer = Completer<String>();
     _pendingRequests[requestKey] = _PendingLxRequest(context, completer);
+    _owners[requestKey] = owner;
+    _deadlines[requestKey] = deadline;
     final requestClock = Stopwatch()..start();
+    StructuredLogService.event(
+      'lx.music_url_started',
+      fields: {
+        'request_id': requestKey,
+        'source': source,
+        'quality': quality,
+        'budget_ms': deadline.difference(DateTime.now()).inMilliseconds,
+      },
+    );
 
     try {
       final info =
@@ -299,20 +343,27 @@ class LxQuickJsRuntime implements LxRuntime {
 
       final responseTimeout = deadline.difference(DateTime.now());
       if (responseTimeout <= Duration.zero) {
-        _pendingRequests.remove(requestKey);
         throw TimeoutException('请求超时');
       }
-      final result = await completer.future.timeout(
-        responseTimeout,
-        onTimeout: () {
-          _pendingRequests.remove(requestKey);
-          throw TimeoutException('请求超时');
+      final result = await owner
+          .bind(completer.future)
+          .timeout(
+            responseTimeout,
+            onTimeout: () {
+              throw TimeoutException('请求超时');
+            },
+          );
+
+      StructuredLogService.event(
+        'lx.music_url_completed',
+        fields: {
+          'request_id': requestKey,
+          'elapsed_ms': requestClock.elapsedMilliseconds,
         },
       );
-
-      _pendingRequests.remove(requestKey);
       return result;
     } catch (e) {
+      if (e is ResolutionCancelled) rethrow;
       _lastFailure = classifyLxRuntimeFailure(e);
       StructuredLogService.event(
         'lx.music_url_failed',
@@ -328,8 +379,21 @@ class LxQuickJsRuntime implements LxRuntime {
         error: e,
       );
       _error('❌ [LxQuickJsRuntime] 获取 URL 失败: $e');
-      _pendingRequests.remove(requestKey);
       return null;
+    } finally {
+      owner.cancel();
+      _owners.remove(requestKey);
+      _deadlines.remove(requestKey);
+      if (!context.disposed && identical(context, _context)) {
+        await _evaluate(
+          'globalThis.__lx_cancelRequest__(${jsonEncode(requestKey)});',
+          context: context,
+        );
+        // A script may await its own unresolved promise after HTTP abort.
+        // Reuse the context only if its top-level operation has settled.
+        if (!completer.isCompleted) _needsContextReset = true;
+      }
+      _pendingRequests.remove(requestKey);
     }
   }
 
@@ -343,6 +407,9 @@ class LxQuickJsRuntime implements LxRuntime {
   }
 
   Future<void> _resetRuntimeContext() async {
+    for (final request in _httpRequests.values.toList()) {
+      request.cancel();
+    }
     final oldContext = _context;
     final oldRuntime = oldContext?.runtime ?? _runtime;
     if (oldContext != null) oldContext.disposed = true;
@@ -351,6 +418,7 @@ class LxQuickJsRuntime implements LxRuntime {
     _runtimeGeneration++;
     _isInitialized = false;
     _isScriptReady = false;
+    _needsContextReset = false;
     _currentScript = null;
     for (final entry in _pendingRequests.entries) {
       if (!entry.value.completer.isCompleted) {
@@ -365,6 +433,12 @@ class LxQuickJsRuntime implements LxRuntime {
 
   @override
   Future<void> dispose() async {
+    for (final request in _httpRequests.values.toList()) {
+      request.cancel();
+    }
+    for (final owner in _owners.values.toList()) {
+      owner.cancel();
+    }
     final context = _context;
     if (context != null) context.disposed = true;
     _runtime?.dispose();
@@ -453,6 +527,9 @@ class LxQuickJsRuntime implements LxRuntime {
       case 'lxRequest':
         _handleRequest(context, data);
         break;
+      case 'lxCancelHttp':
+        if (data is Map) _httpRequests[data['requestId']]?.cancel();
+        break;
       case 'lxOnResponse':
         _handleResponse(context, data);
         break;
@@ -538,8 +615,29 @@ class LxQuickJsRuntime implements LxRuntime {
         : <String, dynamic>{};
 
     if (requestId == null || url == null) return;
+    final ownerKey = data['ownerKey']?.toString();
+    final owner = ownerKey == null ? null : _owners[ownerKey];
+    if (ownerKey != null && (owner == null || owner.isCancelled)) return;
     _debug('🌐 [LxQuickJsRuntime] HTTP 请求: $url');
-    _executeHttpRequest(context, requestId, url, options, _activeDeadline);
+    final httpOwner = ResolutionRequest();
+    final unlink = owner?.onCancel(httpOwner.cancel);
+    _httpRequests[requestId] = httpOwner;
+    unawaited(
+      _executeHttpRequest(
+        context,
+        requestId,
+        url,
+        options,
+        ownerKey == null ? null : _deadlines[ownerKey],
+        httpOwner,
+        ownerKey,
+      ).whenComplete(() {
+        unlink?.call();
+        if (identical(_httpRequests[requestId], httpOwner)) {
+          _httpRequests.remove(requestId);
+        }
+      }),
+    );
   }
 
   void _handleResponse(_LxRuntimeContext context, dynamic data) {
@@ -556,6 +654,7 @@ class LxQuickJsRuntime implements LxRuntime {
     final pending = _pendingRequests[requestKey]!;
     if (!identical(pending.context, context)) return;
     final completer = pending.completer;
+    if (completer.isCompleted) return;
     if (success && url != null) {
       completer.complete(url);
     } else {
@@ -563,15 +662,25 @@ class LxQuickJsRuntime implements LxRuntime {
     }
   }
 
-  void _executeHttpRequest(
+  Future<void> _executeHttpRequest(
     _LxRuntimeContext context,
     String requestId,
     String url,
     Map<String, dynamic> options,
     DateTime? deadline,
+    ResolutionRequest? owner,
+    String? ownerKey,
   ) async {
     if (context.disposed || !identical(context, _context)) return;
     final httpClock = Stopwatch()..start();
+    StructuredLogService.event(
+      'lx.http_started',
+      fields: {
+        'request_id': requestId,
+        'resolution_id': ownerKey,
+        'budget_ms': deadline?.difference(DateTime.now()).inMilliseconds,
+      },
+    );
     try {
       final remaining = deadline?.difference(DateTime.now());
       if (remaining != null && remaining <= Duration.zero) {
@@ -581,19 +690,23 @@ class LxQuickJsRuntime implements LxRuntime {
         url,
         options,
         timeout: remaining ?? const Duration(seconds: 30),
+        request: owner,
+        requestId: requestId,
+        resolutionId: ownerKey,
       );
       final responseBody = result['body'];
       final endpoint = Uri.tryParse(url);
       StructuredLogService.event(
         'lx.http_response',
-        level: LogLevel.warning,
+        level: (result['statusCode'] as int) >= 400
+            ? LogLevel.warning
+            : LogLevel.info,
         fields: {
           'request_id': requestId,
+          'resolution_id': ownerKey,
           'host': endpoint?.host,
-          'path': endpoint?.path,
           'status': result['statusCode'],
           'business_code': responseBody is Map ? responseBody['code'] : null,
-          'business_message': responseBody is Map ? responseBody['message'] : null,
           'elapsed_ms': httpClock.elapsedMilliseconds,
         },
       );
@@ -620,6 +733,7 @@ class LxQuickJsRuntime implements LxRuntime {
       _debug('📤 [LxQuickJsRuntime] 调用 __lx_handleHttpResponse__');
       _debug('   responseData length: ${responseData.length}');
       if (context.disposed ||
+          owner?.isCancelled == true ||
           !identical(context, _context) ||
           (deadline != null && !DateTime.now().isBefore(deadline))) {
         return;
@@ -631,11 +745,23 @@ class LxQuickJsRuntime implements LxRuntime {
       );
       _debug('✅ [LxQuickJsRuntime] __lx_handleHttpResponse__ 调用完成');
     } catch (e, st) {
+      if (owner?.isCancelled == true) {
+        StructuredLogService.event(
+          'lx.http_cancelled',
+          fields: {
+            'request_id': requestId,
+            'resolution_id': ownerKey,
+            'elapsed_ms': httpClock.elapsedMilliseconds,
+          },
+        );
+        return;
+      }
       StructuredLogService.event(
         'lx.http_failed',
         level: LogLevel.warning,
         fields: {
           'request_id': requestId,
+          'resolution_id': ownerKey,
           'elapsed_ms': httpClock.elapsedMilliseconds,
           'deadline_exceeded':
               deadline != null && !DateTime.now().isBefore(deadline),

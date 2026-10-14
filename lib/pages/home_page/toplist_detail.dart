@@ -14,6 +14,7 @@ import 'package:cyrene_music/services/playlist_queue_service.dart';
 import 'package:cyrene_music/pages/auth/auth_page.dart';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
+import 'toplist_detail_loader.dart';
 
 /// 显示榜单详情
 void showToplistDetail(BuildContext context, Toplist toplist) {
@@ -94,7 +95,11 @@ void _showToplistDetailSidebarFluent(BuildContext context, Toplist toplist) {
                       ),
                     ),
                   ),
-                  child: _ToplistDetailContentFluent(toplist: toplist),
+                  child: ToplistDetailLoader(
+                    preview: toplist,
+                    builder: (detail) =>
+                        _ToplistDetailContentFluent(toplist: detail),
+                  ),
                 ),
               ),
             ),
@@ -217,7 +222,11 @@ void _showToplistDetailSidebar(BuildContext context, Toplist toplist) {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12), // 裁剪内容，与主窗口一致
-                        child: _ToplistDetailContent(toplist: toplist),
+                        child: ToplistDetailLoader(
+                          preview: toplist,
+                          builder: (detail) =>
+                              _ToplistDetailContent(toplist: detail),
+                        ),
                       ),
                     ),
                   ),
@@ -287,9 +296,12 @@ void _showToplistDetailBottomSheet(BuildContext context, Toplist toplist) {
                   ),
                   // 榜单内容
                   Expanded(
-                    child: _ToplistDetailContent(
-                      toplist: toplist,
-                      scrollController: scrollController,
+                    child: ToplistDetailLoader(
+                      preview: toplist,
+                      builder: (detail) => _ToplistDetailContent(
+                        toplist: detail,
+                        scrollController: scrollController,
+                      ),
                     ),
                   ),
                 ],

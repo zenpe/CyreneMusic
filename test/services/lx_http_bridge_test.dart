@@ -1,11 +1,102 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cyrene_music/services/lx_http_bridge.dart';
+import 'package:cyrene_music/services/structured_log_service.dart';
 
 void main() {
+  test('GET and POST retain headers, JSON, form and byte bodies', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final received = <Map<String, Object?>>[];
+    final subscription = server.listen((request) async {
+      received.add({
+        'method': request.method,
+        'query': request.uri.query,
+        'type': request.headers.contentType?.mimeType,
+        'body': await utf8.decoder.bind(request).join(),
+        'custom': request.headers.value('x-test'),
+      });
+      request.response.headers.contentType = ContentType.json;
+      request.response.write('{"code":200}');
+      await request.response.close();
+    });
+    addTearDown(() async {
+      await subscription.cancel();
+      await server.close(force: true);
+    });
+    final address = 'http://127.0.0.1:${server.port}/api?q=ok';
+    final get = await LxHttpBridge.performHttpRequest(address, {
+      'headers': {'X-Test': 'ok', 'Content-Type': 'application/json'},
+    });
+    expect(get['body'], {'code': 200});
+    await LxHttpBridge.performHttpRequest(address, {
+      'method': 'POST',
+      'body': {'a': 1},
+    });
+    await LxHttpBridge.performHttpRequest(address, {
+      'method': 'POST',
+      'form': {'a': 'a b'},
+    });
+    await LxHttpBridge.performHttpRequest(address, {
+      'method': 'POST',
+      'body': [65, 66],
+    });
+    expect(received[0], {
+      'method': 'GET',
+      'query': 'q=ok',
+      'type': null,
+      'body': '',
+      'custom': 'ok',
+    });
+    expect(received[1]['body'], '{"a":1}');
+    expect(received[1]['type'], 'application/json');
+    expect(received[2]['body'], 'a=a%20b');
+    expect(received[2]['type'], 'application/x-www-form-urlencoded');
+    expect(received[3]['body'], 'AB');
+  });
+
+  test(
+    'partial response records body timeout within shared deadline',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final records = <Map<String, dynamic>>[];
+      StructuredLogService.sink = (line) => records.add(jsonDecode(line));
+      final subscription = server.listen((request) {
+        request.response.headers.contentType = ContentType.json;
+        request.response.contentLength = 100;
+        request.response.write('{"code":');
+        unawaited(request.response.flush().catchError((Object _) {}));
+      });
+      addTearDown(() async {
+        StructuredLogService.sink = null;
+        await subscription.cancel();
+        await server.close(force: true);
+      });
+      await expectLater(
+        LxHttpBridge.performHttpRequest(
+          'http://127.0.0.1:${server.port}/partial',
+          {},
+          timeout: const Duration(milliseconds: 200),
+          requestId: 'test-http',
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      final headers = records.singleWhere(
+        (e) => e['event'] == 'lx.http_headers_received',
+      );
+      final ended = records.singleWhere(
+        (e) => e['event'] == 'lx.http_transport_ended',
+      );
+      expect(headers['status'], 200);
+      expect(headers['content_length'], 100);
+      expect(ended['stage'], 'body');
+      expect(ended['request_id'], 'test-http');
+    },
+  );
+
   test('closes a slow request at the caller deadline', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final requestSeen = Completer<void>();

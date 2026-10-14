@@ -92,6 +92,8 @@ void main() {
 }
 
 class _FailingEngine extends Fake implements AudioEngine {
+  @override
+  bool canResumeSource(int generation) => false;
   _FailingEngine(this.retriable);
   final bool retriable;
   int loads = 0;

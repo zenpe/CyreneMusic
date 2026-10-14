@@ -9,6 +9,7 @@ import '../cache_service.dart';
 import '../local_library_service.dart';
 import '../lx_runtime_interface.dart';
 import '../music_service.dart';
+import '../resolution_request.dart';
 import '../structured_log_service.dart';
 
 class TrackResolutionResult {
@@ -16,12 +17,14 @@ class TrackResolutionResult {
   final LxRuntimeFailure? lxFailure;
   final bool timedOut;
   final bool isL1CacheHit;
+  final bool cancelled;
 
   const TrackResolutionResult({
     required this.detail,
     this.lxFailure,
     this.timedOut = false,
     this.isL1CacheHit = false,
+    this.cancelled = false,
   });
 
   bool get isPlayable => detail != null && detail!.url.isNotEmpty;
@@ -36,6 +39,7 @@ class TrackResolutionResult {
     lxFailure: lxFailure ?? this.lxFailure,
     timedOut: timedOut ?? this.timedOut,
     isL1CacheHit: isL1CacheHit ?? this.isL1CacheHit,
+    cancelled: cancelled,
   );
 }
 
@@ -70,19 +74,22 @@ class _RequestEntry {
   final DateTime hardDeadline;
   final DateTime requestDeadline;
   final Future<TrackResolutionResult> future;
+  final ResolutionRequest request;
   _RequestState state = _RequestState.running;
 
   _RequestEntry({
     required this.hardDeadline,
     required this.requestDeadline,
     required this.future,
+    required this.request,
   });
 
   bool isReusableFor(Duration callerTimeout) {
     final now = DateTime.now();
     return state == _RequestState.running &&
         now.isBefore(hardDeadline) &&
-        requestDeadline.difference(now) >= callerTimeout;
+        now.isBefore(requestDeadline) &&
+        !request.isCancelled;
   }
 }
 
@@ -216,6 +223,35 @@ class TrackResolver {
     );
   }
 
+  /// Lookup only: never joins a pending task or starts a network request.
+  TrackResolutionResult? peekResolved({
+    required dynamic songId,
+    required AudioQuality quality,
+    required MusicSource source,
+    bool fetchLyrics = false,
+    String? resolverFingerprint,
+  }) {
+    final cached = _getResolvedCache(
+      _requestKey(
+        songId,
+        source,
+        quality,
+        fetchLyrics,
+        resolverFingerprint: resolverFingerprint,
+      ),
+    );
+    if (cached != null || fetchLyrics) return cached;
+    return _getResolvedCache(
+      _requestKey(
+        songId,
+        source,
+        quality,
+        true,
+        resolverFingerprint: resolverFingerprint,
+      ),
+    );
+  }
+
   Future<TrackResolutionResult> resolve({
     required dynamic songId,
     required AudioQuality quality,
@@ -244,18 +280,13 @@ class TrackResolver {
     );
 
     if (!skipMemoryCache) {
-      var cached = _getResolvedCache(key);
-      if (cached == null && !fetchLyrics) {
-        // 若当前不需要歌词，已缓存的带歌词解析结果同样有效
-        final keyWithLyrics = _requestKey(
-          songId,
-          source,
-          quality,
-          true,
-          resolverFingerprint: resolverFingerprint,
-        );
-        cached = _getResolvedCache(keyWithLyrics);
-      }
+      final cached = peekResolved(
+        songId: songId,
+        quality: quality,
+        source: source,
+        fetchLyrics: fetchLyrics,
+        resolverFingerprint: resolverFingerprint,
+      );
       if (cached != null) {
         return cached;
       }
@@ -288,6 +319,14 @@ class TrackResolver {
       final result = await request.timeout(
         timeout,
         onTimeout: () {
+          final entry = _pending[key];
+          if (entry != null && identical(entry.future, request)) {
+            entry.request.failure = const LxRuntimeFailure(
+              kind: LxRuntimeFailureKind.timeout,
+              message: '获取歌曲详情超时',
+            );
+            entry.request.cancel();
+          }
           trace.mark('timeout', level: LogLevel.warning);
           return const TrackResolutionResult(
             detail: null,
@@ -300,8 +339,14 @@ class TrackResolver {
         },
       );
       trace.mark(
-        result.isPlayable ? 'success' : 'unplayable',
-        level: result.isPlayable ? LogLevel.info : LogLevel.warning,
+        result.cancelled
+            ? 'cancelled'
+            : result.isPlayable
+            ? 'success'
+            : 'unplayable',
+        level: result.cancelled || result.isPlayable
+            ? LogLevel.info
+            : LogLevel.warning,
         fields: {
           'timed_out': result.timedOut,
           'failure_kind': result.lxFailure?.kind.name,
@@ -346,6 +391,7 @@ class TrackResolver {
       return existing!.future;
     }
     if (existing != null) {
+      existing.request.cancel();
       existing.state = _RequestState.expired;
       _pending.remove(key);
     }
@@ -353,10 +399,12 @@ class TrackResolver {
     final completer = Completer<TrackResolutionResult>();
     late final _RequestEntry entry;
     final requestStartedAt = DateTime.now();
+    final ownership = ResolutionRequest();
     entry = _RequestEntry(
       hardDeadline: requestStartedAt.add(hardTimeout),
       requestDeadline: requestStartedAt.add(effectiveRequestTimeout),
       future: completer.future,
+      request: ownership,
     );
     _pending[key] = entry;
 
@@ -364,23 +412,33 @@ class TrackResolver {
       LxRuntimeFailure? requestFailure;
       var hardTimedOut = false;
       try {
-        final detail =
-            await Future<SongDetail?>.value(
-              _fetcher(
-                songId: songId,
-                quality: quality,
-                source: source,
-                title: title,
-                artist: artist,
-                sourceIds: sourceIds,
-                fetchLyrics: fetchLyrics,
-                onLxFailure: (failure) => requestFailure = failure,
-                requestTimeout: effectiveRequestTimeout,
+        final detail = await ownership
+            .bind(
+              Future<SongDetail?>.value(
+                ownership.run(
+                  () => _fetcher(
+                    songId: songId,
+                    quality: quality,
+                    source: source,
+                    title: title,
+                    artist: artist,
+                    sourceIds: sourceIds,
+                    fetchLyrics: fetchLyrics,
+                    onLxFailure: (failure) => requestFailure = failure,
+                    requestTimeout: effectiveRequestTimeout,
+                  ),
+                ),
               ),
-            ).timeout(
+            )
+            .timeout(
               hardTimeout,
               onTimeout: () {
                 hardTimedOut = true;
+                ownership.failure = const LxRuntimeFailure(
+                  kind: LxRuntimeFailureKind.timeout,
+                  message: '歌曲详情请求超时',
+                );
+                ownership.cancel();
                 return null;
               },
             );
@@ -404,6 +462,19 @@ class TrackResolver {
       } on AudioSourceNotConfiguredException catch (error, stack) {
         entry.state = _RequestState.failed;
         if (!completer.isCompleted) completer.completeError(error, stack);
+      } on ResolutionCancelled {
+        entry.state = _RequestState.expired;
+        if (!completer.isCompleted) {
+          completer.complete(
+            TrackResolutionResult(
+              detail: null,
+              cancelled:
+                  ownership.failure?.kind != LxRuntimeFailureKind.timeout,
+              timedOut: ownership.failure?.kind == LxRuntimeFailureKind.timeout,
+              lxFailure: ownership.failure,
+            ),
+          );
+        }
       } catch (error) {
         entry.state = _RequestState.failed;
         if (!completer.isCompleted) {
@@ -484,8 +555,36 @@ class TrackResolver {
 
   void clear() {
     _cacheEpoch++;
+    cancelPending();
     _pending.clear();
     _resolvedCache.clear();
+  }
+
+  void cancelPending({String? exceptKey}) {
+    for (final entry in _pending.entries.toList()) {
+      if (entry.key == exceptKey) continue;
+      entry.value.request.cancel();
+      if (identical(_pending[entry.key], entry.value)) {
+        _pending.remove(entry.key);
+      }
+    }
+  }
+
+  void prioritize({
+    required dynamic songId,
+    required MusicSource source,
+    required AudioQuality quality,
+    String? resolverFingerprint,
+  }) {
+    cancelPending(
+      exceptKey: _requestKey(
+        songId,
+        source,
+        quality,
+        false,
+        resolverFingerprint: resolverFingerprint,
+      ),
+    );
   }
 }
 

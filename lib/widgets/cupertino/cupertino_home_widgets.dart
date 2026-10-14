@@ -585,8 +585,8 @@ class CupertinoGuessYouLikeSection extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              SizedBox(
-                height: 64,
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 64),
                 child: guessYouLikeFuture != null
                     ? _buildGuessYouLikeContent(context, isDark)
                     : _buildGuessYouLikePlaceholder(context, isDark),
@@ -603,14 +603,17 @@ class CupertinoGuessYouLikeSection extends StatelessWidget {
       future: guessYouLikeFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const GuessYouLikeShimmerSkeleton();
+          return const SizedBox(
+            height: 64,
+            child: GuessYouLikeShimmerSkeleton(),
+          );
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
           return _buildGuessYouLikePlaceholder(context, isDark, isError: snapshot.hasError);
         }
 
-        final sampleTracks = snapshot.data!;
+        final sampleTracks = snapshot.data!.take(3).toList();
 
         return Row(
           children: [

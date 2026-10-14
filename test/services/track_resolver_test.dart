@@ -125,7 +125,7 @@ void main() {
   });
 
   test(
-    'does not let a short shared deadline constrain a longer caller',
+    'adopts a valid shorter request without extending its deadline',
     () async {
       final completers = <Completer<SongDetail?>>[];
       final observedTimeouts = <Duration?>[];
@@ -166,12 +166,8 @@ void main() {
         timeout: const Duration(seconds: 8),
       );
 
-      expect(observedTimeouts, const [
-        Duration(seconds: 1),
-        Duration(seconds: 8),
-      ]);
+      expect(observedTimeouts, const [Duration(seconds: 1)]);
       completers[0].complete(_detail(2));
-      completers[1].complete(_detail(2));
 
       expect((await shortRequest).isPlayable, isTrue);
       expect((await longRequest).isPlayable, isTrue);
@@ -314,6 +310,23 @@ void main() {
       expect(calls, 1);
       expect(first.isPlayable, isTrue);
       expect(first.isL1CacheHit, isFalse);
+
+      final peek = resolver.peekResolved(
+        songId: 101,
+        quality: AudioQuality.exhigh,
+        source: MusicSource.netease,
+      );
+      expect(peek?.detail?.url, first.detail?.url);
+      expect(peek?.isL1CacheHit, isTrue);
+      expect(
+        resolver.peekResolved(
+          songId: 101,
+          quality: AudioQuality.standard,
+          source: MusicSource.netease,
+        ),
+        isNull,
+      );
+      expect(calls, 1);
 
       // Second call should hit L1 memory pool without calling fetcher
       final second = await resolver.resolve(

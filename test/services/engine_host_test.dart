@@ -9,6 +9,161 @@ import 'package:cyrene_music/services/playback/engine_host.dart';
 import 'package:cyrene_music/services/playback/playable_source.dart';
 
 void main() {
+  test(
+    'failed prepared activation reconciles a disposed native player',
+    () async {
+      final engine = FakeEngine();
+      final host = EngineHost(engineFactory: () => engine);
+      try {
+        await host.play('a', generation: 1);
+        engine.isPlaying = true;
+        engine.emitState(EngineState.playing);
+        await Future<void>.delayed(Duration.zero);
+        expect(host.isPlaying, isTrue);
+        engine.activationResult = false;
+        engine.stopOnFailedActivation = true;
+        expect(
+          await host.activatePreparedSlot(
+            'next',
+            generation: 2,
+            queueRevision: 1,
+          ),
+          isFalse,
+        );
+        expect(host.isPlaying, isFalse);
+        expect(host.canResumeSource(1), isFalse);
+      } finally {
+        await host.dispose();
+      }
+    },
+  );
+  for (final milliseconds in [486, 1320]) {
+    test(
+      'short nonzero load budget preserves the old source ($milliseconds)',
+      () async {
+        final engine = FakeEngine();
+        final host = EngineHost(engineFactory: () => engine);
+        try {
+          await host.play('a', generation: 1);
+          final wasPlaying = host.isPlaying;
+          await expectLater(
+            host.playSource(
+              const DirectHttpPlayableSource('https://example.test/b.mp3'),
+              generation: 2,
+              loadTimeout: Duration(milliseconds: milliseconds),
+            ),
+            throwsA(isA<EngineReportedException>()),
+          );
+          expect(engine.playedUrls, ['a']);
+          expect(host.canResumeSource(1), isTrue);
+          expect(host.isPlaying, wasPlaying);
+        } finally {
+          await host.dispose();
+        }
+      },
+    );
+  }
+  test(
+    'expired prepared activation does not touch the existing source',
+    () async {
+      final engine = FakeEngine();
+      final host = EngineHost(engineFactory: () => engine);
+      await host.play('a', generation: 1);
+      expect(
+        await host.activatePreparedSlot(
+          'b',
+          generation: 2,
+          queueRevision: 1,
+          loadTimeout: Duration.zero,
+        ),
+        isFalse,
+      );
+      expect(engine.activatedKeys, isEmpty);
+      expect(host.canResumeSource(1), isTrue);
+      await host.dispose();
+    },
+  );
+  test('expired load budget leaves the existing source resumable', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    await host.play('a', generation: 1);
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+    await expectLater(
+      host.play('b', generation: 2, loadTimeout: Duration.zero),
+      throwsA(isA<EngineReportedException>()),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(engine.playedUrls, ['a']);
+    expect(host.canResumeSource(1), isTrue);
+    expect(host.canResumeSource(2), isFalse);
+    expect(events.whereType<EngineFailureEvent>().single.epoch, 2);
+    await subscription.cancel();
+    await host.dispose();
+  });
+
+  test(
+    'queue expiry never starts native loading or discards the old source',
+    () async {
+      final engine = FakeEngine();
+      final host = EngineHost(engineFactory: () => engine);
+      final gate = Completer<void>();
+      engine.playGate = gate;
+      final first = host.play('a', generation: 1);
+      await Future<void>.delayed(Duration.zero);
+      final queued = host.play(
+        'b',
+        generation: 2,
+        loadTimeout: const Duration(milliseconds: 10),
+      );
+      final result = expectLater(
+        queued,
+        throwsA(isA<EngineReportedException>()),
+      );
+      expect(host.canResumeSource(1), isFalse);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      gate.complete();
+      await first;
+      await result;
+      expect(engine.playedUrls, ['a']);
+      expect(host.canResumeSource(1), isTrue);
+      await host.dispose();
+    },
+  );
+
+  test(
+    'current failure reconciles playing snapshot; old failure cannot',
+    () async {
+      final engine = FakeEngine();
+      final host = EngineHost(engineFactory: () => engine);
+      await host.play('a', generation: 2);
+      engine.isPlaying = true;
+      engine.emitState(EngineState.playing);
+      await Future<void>.delayed(Duration.zero);
+      expect(host.isPlaying, isTrue);
+      engine.isPlaying = false;
+      engine.emitError(
+        const EngineError(
+          type: EngineErrorType.networkTimeout,
+          message: 'old timeout',
+          epoch: 1,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(host.isPlaying, isTrue);
+      engine.emitError(
+        const EngineError(
+          type: EngineErrorType.networkTimeout,
+          message: 'current timeout',
+          epoch: 2,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(host.isPlaying, isFalse);
+      await host.dispose();
+    },
+  );
+
   test('单一 engine 的错误保留源头 epoch，供协调器丢弃旧事件', () async {
     final engines = <FakeEngine>[];
     final host = EngineHost(
@@ -138,10 +293,15 @@ void main() {
         generation: 2,
         loadTimeout: const Duration(milliseconds: 20),
       );
+      final failed = expectLater(
+        second,
+        throwsA(isA<EngineReportedException>()),
+      );
       await Future<void>.delayed(const Duration(milliseconds: 40));
       gate.complete();
-      await Future.wait([first, second]);
-      expect(engine.loadTimeouts.last, Duration.zero);
+      await first;
+      await failed;
+      expect(engine.playedUrls, ['a']);
       await host.dispose();
     },
   );
@@ -344,6 +504,8 @@ PreparedPlaybackSlot _slot(String key, int queueRevision) =>
 
 class FakeEngine implements AudioEngine {
   @override
+  bool canResumeSource(int generation) => generation == activeGeneration;
+  @override
   Stream<EngineSourceCommit> get sourceCommitStream => _sourceKeys.stream;
   final _position = StreamController<Duration>.broadcast();
   final _duration = StreamController<Duration>.broadcast();
@@ -360,6 +522,7 @@ class FakeEngine implements AudioEngine {
   final List<String> activatedKeys = <String>[];
   Completer<void>? playGate;
   bool activationResult = true;
+  bool stopOnFailedActivation = false;
   String? sourceKeyOnActivation;
   int activeGeneration = 0;
   int stopCount = 0;
@@ -456,6 +619,10 @@ class FakeEngine implements AudioEngine {
   }) async {
     activatedKeys.add(key);
     if (activationResult) activeGeneration = generation;
+    if (!activationResult && stopOnFailedActivation) {
+      isPlaying = false;
+      activeGeneration = 0;
+    }
     final sourceKey = sourceKeyOnActivation;
     if (sourceKey != null) {
       _sourceKeys.add(
@@ -496,6 +663,7 @@ class FakeEngine implements AudioEngine {
   }
 
   void emitError(EngineError error) => _errors.add(error);
+  void emitState(EngineState state) => _state.add(state);
 
   void emitCurrentSourceKey(String key, {int? generation}) => _sourceKeys.add(
     EngineSourceCommit(key: key, generation: generation ?? activeGeneration),

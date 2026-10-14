@@ -1,6 +1,8 @@
 import 'structured_log_service.dart';
 import 'dart:convert';
+import 'resolution_request.dart';
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/toplist.dart';
 import '../models/track.dart';
@@ -237,6 +239,39 @@ class MusicService extends ChangeNotifier {
     return '获取榜单失败：HTTP $statusCode';
   }
 
+  /// 按需获取完整榜单；首页缓存仅包含预览曲目。
+  Future<Toplist> fetchToplistDetail(
+    Toplist preview, {
+    CancelToken? cancelToken,
+    bool forceRefresh = false,
+  }) async {
+    final result = await ApiClient().getJson(
+      '/playlist',
+      queryParameters: {'id': preview.id, 'limit': 0},
+      headers: forceRefresh ? const {'Cache-Control': 'no-cache'} : null,
+      cancelToken: cancelToken,
+      timeout: const Duration(seconds: 15),
+    );
+    if (!result.ok) {
+      throw Exception('榜单详情加载失败，请稍后重试');
+    }
+    final data = result.data as Map<String, dynamic>;
+    if (data['status'] != 200) {
+      throw Exception('榜单详情加载失败，请稍后重试');
+    }
+    final playlist =
+        (data['data'] as Map<String, dynamic>)['playlist']
+            as Map<String, dynamic>;
+    // A failed upstream batch must not be presented as the complete chart.
+    if (playlist['complete'] == false) {
+      throw Exception('榜单曲目未加载完整，请重试');
+    }
+    return Toplist.fromJson({
+      ...playlist,
+      'name_en': preview.nameEn,
+    }, source: preview.source);
+  }
+
   /// 刷新榜单（强制重新加载）
   Future<void> refreshToplists({
     MusicSource source = MusicSource.netease,
@@ -403,6 +438,8 @@ class MusicService extends ChangeNotifier {
         requestTimeout: requestTimeout,
       );
     } on AudioSourceNotConfiguredException {
+      rethrow;
+    } on ResolutionCancelled {
       rethrow;
     } catch (e) {
       StructuredLogService.log('❌ [MusicService] 获取歌曲详情异常: $e');
@@ -582,7 +619,10 @@ class MusicService extends ChangeNotifier {
       }
 
       if (audioUrl == null || audioUrl.isEmpty) {
-        _lastLxFailure = runtime.lastFailure;
+        final request = ResolutionRequest.current;
+        _lastLxFailure = request == null
+            ? runtime.lastFailure
+            : request.failure;
         onFailure?.call(_lastLxFailure);
         // Playback resolution errors belong to PlaybackService. Do not write
         // them into the toplist error state, otherwise returning to the home
@@ -660,8 +700,9 @@ class MusicService extends ChangeNotifier {
       );
     } catch (e) {
       if (e is UnsupportedError) rethrow;
+      if (e is ResolutionCancelled) rethrow;
       _lastLxFailure =
-          LxMusicRuntimeService().lastFailure ?? classifyLxRuntimeFailure(e);
+          ResolutionRequest.current?.failure ?? classifyLxRuntimeFailure(e);
       onFailure?.call(_lastLxFailure);
       StructuredLogService.log('❌ [MusicService] 洛雪音源异常: $e');
       DeveloperModeService().addLog('❌ [MusicService] 异常: $e');

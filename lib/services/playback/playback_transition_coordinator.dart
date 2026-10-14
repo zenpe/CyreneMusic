@@ -123,6 +123,14 @@ class PlaybackTransitionCoordinator {
           message: outcome.message,
         );
       }
+      if (skippedCount >= budget.maxCandidateAttempts) {
+        return _result(
+          PlaybackTransitionResultStatus.exhausted,
+          lastFailed: lastFailed,
+          skippedCount: skippedCount,
+          message: outcome.message,
+        );
+      }
       if (!budget.hasTimeRemaining) {
         return _result(
           PlaybackTransitionResultStatus.budgetExhausted,

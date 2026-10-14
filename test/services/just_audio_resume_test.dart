@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:cyrene_music/services/structured_log_service.dart';
 import 'package:cyrene_music/services/playback/audio_engine.dart';
 import 'package:cyrene_music/services/playback/engine_host.dart';
+import 'package:cyrene_music/services/playback/engine_event.dart';
 import 'package:cyrene_music/services/playback/playable_source.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_audio/just_audio.dart' as ja;
@@ -18,6 +19,9 @@ void main() {
     player = ControlledAudioPlayer();
     players = [player];
     host = EngineHost(
+      // These tests intentionally exercise native deadlines in milliseconds,
+      // independently of the production pre-load admission policy.
+      minimumSourceLoadTime: Duration.zero,
       engineFactory: () => JustAudioEngine(
         playerFactory: () {
           if (player.disposed) {
@@ -43,6 +47,7 @@ void main() {
     await host.dispose();
     for (final handle in players) {
       await handle.states.close();
+      await handle.indices.close();
     }
   });
 
@@ -57,6 +62,152 @@ void main() {
     expect(player.playCalls, 0);
     expect(player.playing, isFalse);
   });
+
+  test(
+    'position seek waits for native readiness beyond control timeout',
+    () async {
+      player.seekDelay = const Duration(milliseconds: 150);
+      await host
+          .seek(const Duration(seconds: 10))
+          .timeout(const Duration(seconds: 1));
+      expect(player.disposed, isFalse);
+    },
+  );
+
+  test(
+    'natural prepared advancement publishes state after source commit',
+    () async {
+      await host.resume();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      final current = _currentPreparedSlot();
+      await host.bindCurrentPreparedSlot(current);
+      await host.preparePlaybackWindow(
+        PreparedPlaybackWindow(current: current, next: _nextPreparedSlot()),
+      );
+      final events = <EngineEvent>[];
+      final subscription = host.events.listen(events.add);
+      player.currentIndexValue = 1;
+      player.indices.add(1);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final commitIndex = events.indexWhere(
+        (event) => event is EngineSourceCommittedEvent && event.epoch == 2,
+      );
+      final stateIndex = events.indexWhere(
+        (event) =>
+            event is EngineStateEvent &&
+            event.epoch == 2 &&
+            event.state == EngineState.playing,
+      );
+      expect(commitIndex, greaterThanOrEqualTo(0));
+      expect(stateIndex, greaterThan(commitIndex));
+      expect(host.isPlaying, isTrue);
+      await subscription.cancel();
+    },
+  );
+
+  test('prepared seek uses load budget beyond control timeout', () async {
+    final current = _currentPreparedSlot();
+    await host.bindCurrentPreparedSlot(current);
+    await host.preparePlaybackWindow(
+      PreparedPlaybackWindow(current: current, next: _nextPreparedSlot()),
+    );
+    player.seekDelay = const Duration(milliseconds: 150);
+    expect(
+      await host.activatePreparedSlot(
+        'next',
+        generation: 2,
+        queueRevision: 1,
+        autoPlay: false,
+        loadTimeout: const Duration(seconds: 1),
+      ),
+      isTrue,
+    );
+    expect(player.disposed, isFalse);
+  });
+
+  test('prepared seek remains bounded by total load deadline', () async {
+    final current = _currentPreparedSlot();
+    await host.bindCurrentPreparedSlot(current);
+    await host.preparePlaybackWindow(
+      PreparedPlaybackWindow(current: current, next: _nextPreparedSlot()),
+    );
+    player.seekDelay = const Duration(milliseconds: 150);
+    expect(
+      await host.activatePreparedSlot(
+        'next',
+        generation: 2,
+        queueRevision: 1,
+        autoPlay: false,
+        loadTimeout: const Duration(milliseconds: 40),
+      ),
+      isFalse,
+    );
+    expect(player.disposed, isTrue);
+    expect(host.canResumeSource(1), isFalse);
+    expect(host.canResumeSource(2), isFalse);
+    await expectLater(
+      host.play(
+        'https://example.test/expired.mp3',
+        generation: 3,
+        loadTimeout: Duration.zero,
+      ),
+      throwsA(isA<EngineReportedException>()),
+    );
+    expect(players, hasLength(1));
+    await host.play('https://example.test/recovery.mp3', generation: 3);
+    expect(player.playing, isTrue);
+    expect(host.canResumeSource(3), isTrue);
+  });
+
+  test(
+    'retained playing state is published after replacement commits',
+    () async {
+      await host.play('https://example.test/first.mp3', generation: 2);
+      await Future<void>.delayed(Duration.zero);
+      expect(host.isPlaying, isTrue);
+      player.suppressRepeatedPlayEvent = true;
+      final states = <EngineState>[];
+      final subscription = host.stateStream.listen(states.add);
+      await host.play('https://example.test/replacement.mp3', generation: 3);
+      await Future<void>.delayed(Duration.zero);
+      expect(player.playing, isTrue);
+      expect(host.isPlaying, isTrue);
+      expect(states.last, EngineState.playing);
+      await subscription.cancel();
+    },
+  );
+
+  test('non-autoplay replacement pauses a retained playing player', () async {
+    await host.play('https://example.test/first.mp3', generation: 2);
+    player.suppressRepeatedPlayEvent = true;
+    await host.play(
+      'https://example.test/paused.mp3',
+      generation: 3,
+      autoPlay: false,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(player.playing, isFalse);
+    expect(host.isPlaying, isFalse);
+  });
+
+  test(
+    'pause during a successful load wins over final playing snapshot',
+    () async {
+      await host.play('https://example.test/first.mp3', generation: 2);
+      final started = Completer<void>();
+      final release = Completer<void>();
+      player.nextSourceLoadStarted = started;
+      player.nextSourceLoad = release;
+      final load = host.play('https://example.test/next.mp3', generation: 3);
+      await started.future;
+      final pause = host.pause();
+      release.complete();
+      await Future.wait([load, pause]);
+      await Future<void>.delayed(Duration.zero);
+      expect(player.playing, isFalse);
+      expect(host.isPlaying, isFalse);
+    },
+  );
 
   test(
     'hung load and cleanup release the queue and isolate late callbacks',
@@ -85,6 +236,11 @@ void main() {
       expect(player.speed, 1.25);
       expect(errors, hasLength(1));
       expect(errors.single.epoch, 2);
+      expect(errors.single.cause, isA<NativePlaybackTimeout>());
+      expect(
+        (errors.single.cause as NativePlaybackTimeout).stage,
+        'load_source',
+      );
       load.complete();
       old.states.add(ja.PlayerState(true, ja.ProcessingState.completed));
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -178,6 +334,7 @@ void main() {
   });
 
   test('all source startup stages share one deadline', () async {
+    player.speed = 0.75;
     player.sourceLoadDelay = const Duration(milliseconds: 60);
     player.speedDelay = const Duration(milliseconds: 60);
     await expectLater(
@@ -191,6 +348,18 @@ void main() {
     await host.play('https://example.test/next.mp3', generation: 3);
     expect(player.playCalls, 1);
   });
+
+  test(
+    'source replacement does not reapply unchanged playback speed',
+    () async {
+      player.speedDelay = const Duration(seconds: 2);
+      await host
+          .play('https://example.test/same-speed.mp3', generation: 2)
+          .timeout(const Duration(seconds: 1));
+      expect(player.playing, isTrue);
+      expect(player.speed, 1.0);
+    },
+  );
 
   test('failed prepared activation allows a normal source load', () async {
     final slot = PreparedPlaybackSlot(
@@ -383,6 +552,27 @@ void main() {
   );
 
   test(
+    'buffered playing flag alone does not complete startup while buffering',
+    () async {
+      player.processingState = ja.ProcessingState.buffering;
+      var finished = false;
+      final load = host
+          .play('https://example.test/buffering.mp3', generation: 2)
+          .then((_) => finished = true);
+      for (var i = 0; i < 50 && player.playCalls == 0; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      expect(player.playCalls, 1);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      expect(finished, isFalse);
+      player.processingState = ja.ProcessingState.ready;
+      player.states.add(ja.PlayerState(true, ja.ProcessingState.ready));
+      await load.timeout(const Duration(seconds: 1));
+      expect(finished, isTrue);
+    },
+  );
+
+  test(
     'buffering diagnostics close the observation without recovery',
     () async {
       final lines = <String>[];
@@ -488,10 +678,25 @@ PreparedPlaybackSlot _currentPreparedSlot() => PreparedPlaybackSlot(
   nonce: 1,
 );
 
+PreparedPlaybackSlot _nextPreparedSlot() => PreparedPlaybackSlot(
+  key: 'next',
+  source: const DirectHttpPlayableSource('https://example.test/b.mp3'),
+  expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+  queueRevision: 1,
+  generation: 2,
+  preparedFromGeneration: 1,
+  queueEntryId: 2,
+  trackKey: 'b',
+  nonce: 2,
+);
+
 /// Only the native player is replaced. Tests execute the production engine,
 /// deferred output preparation and EngineHost command queue.
 class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
   final states = StreamController<ja.PlayerState>.broadcast();
+  final indices = StreamController<int?>.broadcast();
+  int currentIndexValue = 0;
+  Duration seekDelay = Duration.zero;
   int stateListeners = 0;
   Completer<void>? nextStateListener;
   late final Stream<ja.PlayerState> trackedStates = Stream.multi((controller) {
@@ -513,6 +718,7 @@ class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
   Completer<void>? nextSourceLoad;
   Completer<void>? _playLifetime;
   int playCalls = 0;
+  bool suppressRepeatedPlayEvent = false;
   bool disposed = false;
   @override
   double speed = 1;
@@ -535,7 +741,7 @@ class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
   @override
   Duration? get duration => const Duration(minutes: 3);
   @override
-  int? get currentIndex => 0;
+  int? get currentIndex => currentIndexValue;
   @override
   List<ja.IndexedAudioSource> sequence = [];
   @override
@@ -545,7 +751,7 @@ class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
   @override
   Stream<Duration> get bufferedPositionStream => const Stream.empty();
   @override
-  Stream<int?> get currentIndexStream => const Stream.empty();
+  Stream<int?> get currentIndexStream => indices.stream;
   @override
   Stream<ja.PlaybackEvent> get playbackEventStream => const Stream.empty();
   @override
@@ -585,12 +791,19 @@ class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
   }
 
   @override
-  Future<void> seek(Duration? position, {int? index}) async {}
+  Future<void> seek(Duration? position, {int? index}) async {
+    await Future<void>.delayed(seekDelay);
+    if (index != null) currentIndexValue = index;
+  }
+
   @override
   Future<void> play() {
     playCalls++;
+    final wasPlaying = playing;
     playing = true;
-    states.add(ja.PlayerState(true, processingState));
+    if (!wasPlaying || !suppressRepeatedPlayEvent) {
+      states.add(ja.PlayerState(true, processingState));
+    }
     return (_playLifetime ??= Completer<void>()).future;
   }
 

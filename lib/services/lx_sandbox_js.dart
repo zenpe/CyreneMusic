@@ -126,6 +126,35 @@ const String lxSandboxJs = r'''
   let currentScriptInfo = null;
   const pendingHttpRequests = new Map();
   let httpRequestCounter = 0;
+  let requestOwner = null;
+  let activeOwner = null;
+  const httpOwners = new Map();
+  const nativeSetTimeout = _global.setTimeout;
+  _global.setTimeout = function(callback, delay) {
+    const owner = requestOwner;
+    const args = Array.prototype.slice.call(arguments, 2);
+    return nativeSetTimeout(function() {
+      if (owner !== null && owner !== activeOwner) return;
+      requestOwner = owner;
+      callback.apply(null, args);
+    }, delay);
+  };
+
+  window.__lx_cancelRequest__ = function(owner) {
+    if (activeOwner === owner) activeOwner = null;
+    requestOwner = owner;
+    httpOwners.forEach(function(value, id) {
+      if (value === owner) {
+        const callback = pendingHttpRequests.get(id);
+        pendingHttpRequests.delete(id);
+        httpOwners.delete(id);
+        if (callback) {
+          try { callback(new Error('Resolution cancelled'), null, null); }
+          catch (_) { /* one callback must not prevent remaining cleanup */ }
+        }
+      }
+    });
+  };
   
   // ==================== 工具函数 ====================
   
@@ -146,7 +175,11 @@ const String lxSandboxJs = r'''
   
   // HTTP 请求实现 - 支持回调和 Promise 两种形式
   function request(url, options, callback) {
+    if (requestOwner !== null && requestOwner !== activeOwner) {
+      throw new Error('Resolution cancelled');
+    }
     const requestId = 'http_' + (++httpRequestCounter) + '_' + Date.now();
+    httpOwners.set(requestId, requestOwner);
 
     console.log('[LxMusic] request called, url: ' + url);
     console.log('[LxMusic] request options type: ' + typeof options + ', callback type: ' + typeof callback);
@@ -170,6 +203,7 @@ const String lxSandboxJs = r'''
 
         sendToFlutter('lxRequest', {
           requestId: requestId,
+          ownerKey: requestOwner,
           url: url,
           options: options || {},
         });
@@ -180,6 +214,7 @@ const String lxSandboxJs = r'''
 
     sendToFlutter('lxRequest', {
       requestId: requestId,
+      ownerKey: requestOwner,
       url: url,
       options: options || {},
     });
@@ -187,6 +222,8 @@ const String lxSandboxJs = r'''
     // 返回取消函数
     return function() {
       pendingHttpRequests.delete(requestId);
+      httpOwners.delete(requestId);
+      sendToFlutter('lxCancelHttp', { requestId: requestId });
     };
   }
   
@@ -473,6 +510,8 @@ const String lxSandboxJs = r'''
   
   // 发送请求到脚本
   window.__lx_sendRequest__ = function(data) {
+    activeOwner = data.requestKey;
+    requestOwner = data.requestKey;
     console.log('[LxMusic] __lx_sendRequest__ called, data:', JSON.stringify(data));
     console.log('[LxMusic] requestHandler type:', typeof requestHandler);
 
@@ -554,6 +593,11 @@ const String lxSandboxJs = r'''
   
   // 处理 HTTP 响应
   window.__lx_handleHttpResponse__ = function(data) {
+    if (!pendingHttpRequests.has(data.requestId)) return;
+    const owner = httpOwners.get(data.requestId);
+    if (owner !== undefined && owner !== null && owner !== activeOwner) return;
+    requestOwner = owner === undefined ? null : owner;
+    httpOwners.delete(data.requestId);
     console.log('[LxMusic] __lx_handleHttpResponse__ called, requestId: ' + data.requestId);
 
     const callback = pendingHttpRequests.get(data.requestId);
