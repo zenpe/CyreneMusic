@@ -6,6 +6,16 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class LxHttpBridge {
+  // Reuse idle connections; cancellation belongs to each HTTP request rather
+  // than the client, which can also be serving another resolution.
+  static http.Client? _client;
+
+  /// Only for transport shutdown, never for cancelling a single resolution.
+  static void close() {
+    _client?.close();
+    _client = null;
+  }
+
   static Future<Map<String, dynamic>> performHttpRequest(
     String url,
     Map<String, dynamic> options, {
@@ -16,8 +26,13 @@ class LxHttpBridge {
   }) async {
     request ??= ResolutionRequest.current;
     request?.check();
-    final client = http.Client();
-    final unsubscribe = request?.onCancel(client.close);
+    final client = _client ??= http.Client();
+    final aborted = Completer<void>();
+    void abort() {
+      if (!aborted.isCompleted) aborted.complete();
+    }
+
+    final unsubscribe = request?.onCancel(abort);
     final clock = Stopwatch()..start();
     var stage = 'headers';
     Future<http.Response> sendAndRead(http.Request message) async {
@@ -26,6 +41,7 @@ class LxHttpBridge {
         return value.isNegative ? Duration.zero : value;
       }
 
+      request?.check();
       final streamed = await client.send(message).timeout(remaining());
       StructuredLogService.event(
         'lx.http_headers_received',
@@ -102,8 +118,11 @@ class LxHttpBridge {
 
       if (method == 'GET') {
         response = await sendAndRead(
-          http.Request('GET', Uri.parse(url))
-            ..headers.addAll(normalizedHeaders),
+          http.AbortableRequest(
+            'GET',
+            Uri.parse(url),
+            abortTrigger: aborted.future,
+          )..headers.addAll(normalizedHeaders),
         );
       } else if (method == 'POST') {
         dynamic body;
@@ -133,8 +152,11 @@ class LxHttpBridge {
           normalizedHeaders['content-type'] = contentType;
         }
 
-        final message = http.Request('POST', Uri.parse(url))
-          ..headers.addAll(normalizedHeaders);
+        final message = http.AbortableRequest(
+          'POST',
+          Uri.parse(url),
+          abortTrigger: aborted.future,
+        )..headers.addAll(normalizedHeaders);
         if (body is String) {
           message.body = body;
         } else if (body is List) {
@@ -149,6 +171,7 @@ class LxHttpBridge {
         throw Exception('Unsupported HTTP method: $method');
       }
 
+      request?.check();
       if (debug) {
         StructuredLogService.log('📥 [HTTP] Status: ${response.statusCode}');
       }
@@ -186,7 +209,10 @@ class LxHttpBridge {
       rethrow;
     } finally {
       unsubscribe?.call();
-      client.close();
+      // Future.timeout does not cancel its input. Abort on every exit so a
+      // timed-out send/body cannot continue occupying a pooled connection.
+      // Aborting an already completed response has no effect.
+      abort();
     }
   }
 }

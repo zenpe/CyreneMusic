@@ -1198,6 +1198,21 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     if (pathOrUrl == null || pathOrUrl.isEmpty) {
       throw StateError('PlayableSource has no playable path or url');
     }
+    if (Platform.isAndroid && source.androidStreamCache != null) {
+      final uri = Uri.parse(pathOrUrl);
+      final extension = uri.path.toLowerCase();
+      if ((uri.scheme == 'https' || uri.scheme == 'http') &&
+          !extension.endsWith('.m3u8') &&
+          !extension.endsWith('.mpd') &&
+          !extension.endsWith('.ism')) {
+        return ja.ProgressiveAudioSource(
+          uri,
+          headers: source.headers,
+          tag: tag,
+          androidStreamCache: source.androidStreamCache,
+        );
+      }
+    }
     return source.isLocal
         ? ja.AudioSource.file(pathOrUrl, tag: tag)
         : ja.AudioSource.uri(

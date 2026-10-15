@@ -15,6 +15,7 @@ import 'package:path/path.dart' as path;
 import 'audio_quality_service.dart';
 import 'developer_mode_service.dart';
 import 'structured_log_service.dart';
+import 'android_stream_cache.dart';
 
 /// 缓存元数据模型
 class CacheMetadata {
@@ -322,9 +323,11 @@ class CacheService extends ChangeNotifier {
   final Map<String, String> _pendingDeletionPaths = <String, String>{};
   Future<void> _checksumVerificationTail = Future<void>.value();
   int _checksumVerificationEpoch = 0;
+  int _androidCachedCount = 0;
 
   bool get isInitialized => _isInitialized;
-  int get cachedCount => _cacheIndex.length;
+  int get cachedCount =>
+      Platform.isAndroid ? _androidCachedCount : _cacheIndex.length;
   bool get cacheEnabled => _cacheEnabled;
   String? get customCacheDir => _customCacheDir;
   String? get currentCacheDir => _cacheDir?.path;
@@ -454,6 +457,24 @@ class CacheService extends ChangeNotifier {
         _logCacheDebug('✅ [CacheService] 缓存目录已存在: ${_cacheDir!.path}');
       }
 
+      if (Platform.isAndroid) {
+        try {
+          await _removeAndroidLegacyAudioCache();
+        } catch (_) {
+          _logCacheDebug('⚠️ [CacheService] 部分旧音频缓存未能清理，已停止使用');
+        }
+        try {
+          await _configureAndroidCache();
+        } catch (_) {
+          // Optional cache failure must not prevent app startup or playback.
+          // Keep management available even if initialization finishes late.
+          _logCacheDebug('⚠️ [CacheService] 原生缓存暂不可用，播放将直连网络');
+        }
+        _isInitialized = true;
+        notifyListeners();
+        return;
+      }
+
       await Directory(
         path.join(_cacheDir!.path, 'audio'),
       ).create(recursive: true);
@@ -495,6 +516,51 @@ class CacheService extends ChangeNotifier {
       _logCacheDebug('❌ [CacheService] 初始化失败: $e');
       _logCacheDebug('❌ [CacheService] 错误堆栈: $stackTrace');
       _isInitialized = false;
+    }
+  }
+
+  Future<void> _configureAndroidCache() => AndroidStreamCache.configure(
+    directory: path.join(_cacheDir!.path, 'media3'),
+    enabled: _cacheEnabled,
+    maxBytes: _maxCacheSizeBytes,
+  );
+
+  /// Delete only files matching our former automatic-store layout. Do not
+  /// recursively delete a custom root, which may also contain user downloads.
+  Future<void> _removeAndroidLegacyAudioCache() async {
+    final root = _cacheDir!;
+    for (final folder in ['audio', 'staging']) {
+      final directory = Directory(path.join(root.path, folder));
+      if (await FileSystemEntity.type(directory.path, followLinks: false) !=
+          FileSystemEntityType.directory) {
+        continue;
+      }
+      await for (final file in directory.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (file is! File) continue;
+        final name = path.basename(file.path);
+        if (RegExp(
+              r'^[a-f0-9]{64}\.(mp3|flac|m4a|aac|ogg|wav|bin|part)(\.(part|bak|payload\.part))?$',
+            ).hasMatch(name) ||
+            name.endsWith('.cyrene') ||
+            name.endsWith('.cyrene.part') ||
+            name.endsWith('.payload.part')) {
+          await file.delete();
+        }
+      }
+    }
+    for (final name in [
+      'cache_manifest_v3.json',
+      'cache_manifest_v3.json.part',
+      'cache_manifest_v3.json.bak',
+    ]) {
+      final file = File(path.join(root.path, name));
+      if (await FileSystemEntity.type(file.path, followLinks: false) ==
+          FileSystemEntityType.file) {
+        await file.delete();
+      }
     }
   }
 
@@ -1447,6 +1513,9 @@ class CacheService extends ChangeNotifier {
     SongDetail songDetail,
     String quality,
   ) async {
+    // Android's playback DataSource writes only the bytes actually consumed.
+    // Never launch the legacy second whole-file HTTP request on Android.
+    if (Platform.isAndroid) return false;
     final sw = Stopwatch()..start();
     if (!_isInitialized) {
       _logCacheDebug(
@@ -1710,6 +1779,19 @@ class CacheService extends ChangeNotifier {
 
   /// 获取缓存统计信息
   Future<CacheStats> getCacheStats() async {
+    if (Platform.isAndroid) {
+      final data = await AndroidStreamCache.stats();
+      _androidCachedCount = data['totalFiles'] as int? ?? 0;
+      return CacheStats(
+        totalFiles: _androidCachedCount,
+        totalSize: data['totalSize'] as int? ?? 0,
+        neteaseCount: data['netease'] as int? ?? 0,
+        appleCount: 0,
+        qqCount: data['qq'] as int? ?? 0,
+        kugouCount: data['kugou'] as int? ?? 0,
+        kuwoCount: data['kuwo'] as int? ?? 0,
+      );
+    }
     int totalSize = 0;
     int neteaseCount = 0;
     int appleCount = 0;
@@ -1753,6 +1835,12 @@ class CacheService extends ChangeNotifier {
   /// 清除所有缓存
   Future<void> clearAllCache() async {
     if (!_isInitialized) return;
+    if (Platform.isAndroid) {
+      await AndroidStreamCache.clear();
+      _androidCachedCount = 0;
+      notifyListeners();
+      return;
+    }
 
     try {
       _logCacheDebug('🗑️ [CacheService] 清除所有缓存...');
@@ -1779,6 +1867,16 @@ class CacheService extends ChangeNotifier {
   /// 删除单个缓存
   Future<void> deleteCache(Track track, {String? quality}) async {
     if (!_isInitialized) return;
+    if (Platform.isAndroid) {
+      await AndroidStreamCache.delete(
+        track.source.name,
+        track.id.toString(),
+        quality == null ? null : _qualityKey(quality),
+      );
+      await getCacheStats();
+      notifyListeners();
+      return;
+    }
 
     try {
       final cacheKeys = _matchingCacheKeysForTrack(track, quality: quality);
@@ -1938,8 +2036,11 @@ class CacheService extends ChangeNotifier {
     if (_cacheEnabled != enabled) {
       _cacheEnabled = enabled;
       await _saveCacheEnabled();
+      if (Platform.isAndroid && _cacheDir != null) {
+        await _configureAndroidCache();
+      }
       _logCacheDebug('🔧 [CacheService] 缓存功能${enabled ? "已启用" : "已禁用"}');
-      if (enabled) {
+      if (enabled && !Platform.isAndroid) {
         _scheduleMaintenance();
       }
       notifyListeners();
@@ -1962,6 +2063,10 @@ class CacheService extends ChangeNotifier {
     notifyListeners();
 
     if (_isInitialized && _cacheDir != null) {
+      if (Platform.isAndroid) {
+        await _configureAndroidCache();
+        return;
+      }
       if (_maintenanceRunning) {
         _scheduleMaintenance();
       } else {

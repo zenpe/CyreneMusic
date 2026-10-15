@@ -24,13 +24,13 @@ loading and URL/lyric prefetch while disabling native next-item preparation.
 This flag does not downgrade Media3. iOS retains its upstream playlist behavior
 and receives no Android preload configuration; desktop continues using MediaKit.
 
-The previous isolated DefaultPreloadManager, incremental SimpleCache bridge,
+The previous isolated DefaultPreloadManager, custom incremental cache bridge,
 custom source UUID/error details and append experiment required a local plugin
 fork. They are retired. Next-link readiness is not native sample-buffer readiness;
 do not compare previous prepared-slot timings as if the same path still exists.
 The iOS playlist path continues to use official playlist APIs.
 
-## Failure ownership and complete-file cache
+## Failure ownership and persistent cache
 
 A native next item can fail after selection but before reaching ready. Such an
 error carries the selected prepared generation, without publishing a successful
@@ -40,13 +40,15 @@ that target; a terminal error remembers it and clears pending state. Late errors
 and ready events cannot replace a newer selection. Error indices alone do not
 identify a background failing source and are not a reason to suppress errors.
 
-Android complete-file caching uses the same bounded CacheService download path
-as desktop. The retired native stream-cache bridge no longer writes audio bytes,
-so metadata-only refresh cannot create missing cache files. The shared cache path
-retains the cache preference, same-track request sharing and single-download
-limit; Media3 playlist buffers remain separate from persistent file caching.
+Android now uses standard Media3 SimpleCache/CacheDataSource for registered HTTP
+progressive sources. Playback and playlist preloading share this byte store;
+Android no longer starts CacheService's independent whole-song background
+download. Fragments never become complete-file cache hits or downloadable files.
+Explicit user downloads stay separate; desktop/iOS retain the complete-file path.
+See [cache lifecycle and validation](android-stream-cache.md).
 
-Review-fix verification (2026-10-15): 373 tests passed, six opt-in native
+Historical review-fix verification (before native stream cache, 2026-10-15):
+373 tests passed, six opt-in native
 QuickJS tests skipped; analyzer clean; debug APK rebuilt and installed with
 `adb install -r`. Regression tests cover next-item failure before ready, retrying
 the correct target, terminal pending cleanup, late events, and actual background

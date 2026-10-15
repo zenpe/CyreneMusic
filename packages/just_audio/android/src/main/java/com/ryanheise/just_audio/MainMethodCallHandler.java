@@ -26,6 +26,7 @@ public class MainMethodCallHandler implements MethodCallHandler {
 
     @Override
     public void onMethodCall(MethodCall call, @NonNull Result result) {
+        if (StreamCacheManager.get().handle(applicationContext, call, result)) return;
         switch (call.method) {
         case "init": {
             String id = call.argument("id");

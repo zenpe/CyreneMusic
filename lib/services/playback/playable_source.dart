@@ -7,6 +7,7 @@ abstract class PlayableSource {
   String? get sourceUrl;
   bool get isLocal;
   Map<String, String>? get headers => null;
+  Map<String, String>? get androidStreamCache => null;
   ja.AudioSource? get audioSource => null;
 }
 
@@ -58,8 +59,14 @@ class PreparedPlaybackWindow {
 class DirectHttpPlayableSource extends PlayableSource {
   final String url;
   final Map<String, String>? requestHeaders;
+  @override
+  final Map<String, String>? androidStreamCache;
 
-  const DirectHttpPlayableSource(this.url, {this.requestHeaders});
+  const DirectHttpPlayableSource(
+    this.url, {
+    this.requestHeaders,
+    this.androidStreamCache,
+  });
 
   @override
   String get playbackPathOrUrl => url;

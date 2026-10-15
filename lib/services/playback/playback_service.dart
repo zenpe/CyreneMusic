@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:http/http.dart' as http;
@@ -329,7 +331,7 @@ class PlaybackService extends ChangeNotifier {
 
   static const Duration _resolutionRetryDelay = Duration(milliseconds: 300);
   static const Duration _trackSwitchSettleDelay = Duration(milliseconds: 80);
-  static const Duration _preloadTriggerDelay = Duration(milliseconds: 2500);
+  static const Duration _preloadTriggerDelay = Duration(milliseconds: 500);
   static const Duration _manualResolutionDebounce = Duration(milliseconds: 200);
   int? _debouncedRequestEpoch;
   // Share the engine's construction-time switch. Native preparation uses the
@@ -3025,7 +3027,11 @@ class PlaybackService extends ChangeNotifier {
       );
     }
 
-    final source = await _buildNetworkPlayableSource(track, songDetail.url);
+    final source = await _buildNetworkPlayableSource(
+      track,
+      songDetail.url,
+      tx.qualityStr,
+    );
     if (isStale()) return null;
 
     return _TrackSwitchPlaybackPlan(
@@ -5385,7 +5391,7 @@ class PlaybackService extends ChangeNotifier {
     return _TrackSwitchPlaybackPlan(
       resolvedSong: resolvedSong,
       usesCachedFile: false,
-      source: await _buildNetworkPlayableSource(track, detail.url),
+      source: await _buildNetworkPlayableSource(track, detail.url, qualityStr),
       retainedTempFilePath: null,
       coverRefreshUrl: detail.pic,
       themeImageUrl: detail.pic,
@@ -5419,12 +5425,28 @@ class PlaybackService extends ChangeNotifier {
   Future<PlayableSource> _buildNetworkPlayableSource(
     Track track,
     String url,
+    String quality,
   ) async {
     final needsHeaders =
         track.source == MusicSource.qq || track.source == MusicSource.kugou;
     if (!needsHeaders || Platform.isAndroid || Platform.isIOS) {
       return DirectHttpPlayableSource(
         url,
+        androidStreamCache: Platform.isAndroid
+            ? {
+                'source': track.source.name,
+                'songId': track.id.toString(),
+                'quality': quality,
+                'scope': sha256
+                    .convert(
+                      utf8.encode(
+                        '${AuthService().currentUser?.id ?? "anonymous"}:'
+                        '${PlaybackResolverRegistry().fingerprintFor(track.source)}',
+                      ),
+                    )
+                    .toString(),
+              }
+            : null,
         requestHeaders: needsHeaders
             ? _buildPlaybackHeaders(track.source)
             : null,
@@ -5484,6 +5506,7 @@ class PlaybackService extends ChangeNotifier {
     SongDetail detail,
     String quality,
   ) async {
+    if (Platform.isAndroid) return false;
     final key = _trackLogKey(track, quality);
     try {
       _logPlaybackDebug(

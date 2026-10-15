@@ -2841,13 +2841,34 @@ abstract class UriAudioSource extends IndexedAudioSource {
 class ProgressiveAudioSource extends UriAudioSource {
   final ProgressiveAudioSourceOptions? options;
 
+  /// Cyrene adapter: identity metadata for Android's progressive stream cache.
+  /// This never changes the upstream URL or request headers.
+  final Map<String, String>? androidStreamCache;
+
   ProgressiveAudioSource(
     super.uri, {
     super.headers,
     super.tag,
     super.duration,
     this.options,
+    this.androidStreamCache,
   });
+
+  @override
+  Future<void> _onLoad() async {
+    await super._onLoad();
+    if (!kIsWeb && Platform.isAndroid && androidStreamCache != null) {
+      try {
+        await const MethodChannel('com.ryanheise.just_audio.methods')
+            .invokeMethod<void>('streamCache.register', {
+          'id': _id,
+          'metadata': androidStreamCache,
+        }).timeout(const Duration(seconds: 1));
+      } catch (_) {
+        // Cache registration is optional; playback must still work without it.
+      }
+    }
+  }
 
   @override
   AudioSourceMessage _toMessage() => ProgressiveAudioSourceMessage(
