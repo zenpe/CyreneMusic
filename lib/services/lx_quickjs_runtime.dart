@@ -13,7 +13,15 @@ class _LxRuntimeContext {
 
   final int generation;
   final JavascriptRuntime runtime;
+  final Map<int, Timer> timers = {};
   bool disposed = false;
+
+  void cancelTimers() {
+    for (final timer in timers.values) {
+      timer.cancel();
+    }
+    timers.clear();
+  }
 }
 
 class _PendingLxRequest {
@@ -25,6 +33,7 @@ class _PendingLxRequest {
 
 class LxQuickJsRuntime implements LxRuntime {
   static const Duration _defaultMusicUrlTimeout = Duration(seconds: 6);
+  static const int _maxActiveResolutions = 4;
   JavascriptRuntime? _runtime;
   _LxRuntimeContext? _context;
   int _runtimeGeneration = 0;
@@ -45,7 +54,6 @@ class LxQuickJsRuntime implements LxRuntime {
   final Map<String, ResolutionRequest> _owners = {};
   final Map<String, DateTime> _deadlines = {};
   final Map<String, ResolutionRequest> _httpRequests = {};
-  bool _needsContextReset = false;
 
   void _debug(String message) {
     if (kDebugMode) {
@@ -228,49 +236,57 @@ class LxQuickJsRuntime implements LxRuntime {
     final parent = ResolutionRequest.current;
     final unlink = parent?.onCancel(owner.cancel);
     final queueClock = Stopwatch()..start();
+    Future<String?>? response;
     return _enqueueOperation(() async {
-      owner.check();
-      if (_needsContextReset && _currentScript != null) {
-        final script = _currentScript!.script;
-        _needsContextReset = false;
-        await _loadScriptInternal(script);
-        owner.check();
-      }
-      final remaining = deadline.difference(DateTime.now());
-      StructuredLogService.event(
-        'lx.resolution_dequeued',
-        fields: {
-          'source': source,
-          'quality': quality,
-          'queue_wait_ms': queueClock.elapsedMilliseconds,
-          'remaining_ms': remaining.inMilliseconds,
-          'queue_expired': remaining <= Duration.zero,
-        },
-      );
-      if (remaining <= Duration.zero) {
-        _lastFailure = const LxRuntimeFailure(
-          kind: LxRuntimeFailureKind.timeout,
-          message: '获取播放地址前请求已过期',
-        );
-        parent?.failure = _lastFailure;
-        return null;
-      }
-      try {
-        final result = await _getMusicUrlInternal(
-          source: source,
-          songId: songId,
-          quality: quality,
-          musicInfo: musicInfo,
-          deadline: deadline,
-          owner: owner,
-        );
-        parent?.check();
-        parent?.failure = _lastFailure;
-        return result;
-      } finally {
-        unlink?.call();
-      }
-    }).whenComplete(() => unlink?.call());
+          owner.check();
+          final remaining = deadline.difference(DateTime.now());
+          StructuredLogService.event(
+            'lx.resolution_dequeued',
+            fields: {
+              'source': source,
+              'quality': quality,
+              'queue_wait_ms': queueClock.elapsedMilliseconds,
+              'remaining_ms': remaining.inMilliseconds,
+              'queue_expired': remaining <= Duration.zero,
+            },
+          );
+          if (remaining <= Duration.zero) {
+            owner.failure = _lastFailure = const LxRuntimeFailure(
+              kind: LxRuntimeFailureKind.timeout,
+              message: '获取播放地址前请求已过期',
+            );
+            parent?.failure = _lastFailure;
+            return;
+          }
+          if (_owners.values.where((request) => !request.isCancelled).length >=
+              _maxActiveResolutions) {
+            const failure = LxRuntimeFailure(
+              kind: LxRuntimeFailureKind.notReady,
+              message: '音源解析通道繁忙，请重试',
+            );
+            owner.failure = failure;
+            parent?.failure = failure;
+            _lastFailure = failure;
+            return;
+          }
+          // Serialize admission/context changes, not the HTTP round trip.
+          // Every JS turn still runs exclusively through _evalQueue.
+          response = _getMusicUrlInternal(
+            source: source,
+            songId: songId,
+            quality: quality,
+            musicInfo: musicInfo,
+            deadline: deadline,
+            owner: owner,
+          );
+        })
+        .then((_) async {
+          final result = await response;
+          parent?.check();
+          parent?.failure = owner.failure;
+          return result;
+        })
+        .whenComplete(() => unlink?.call());
   }
 
   Future<String?> _getMusicUrlInternal({
@@ -283,7 +299,7 @@ class LxQuickJsRuntime implements LxRuntime {
   }) async {
     _lastFailure = null;
     if (!_isInitialized || !_isScriptReady) {
-      _lastFailure = const LxRuntimeFailure(
+      owner.failure = _lastFailure = const LxRuntimeFailure(
         kind: LxRuntimeFailureKind.notReady,
         message: '洛雪音源脚本未就绪',
       );
@@ -295,7 +311,7 @@ class LxQuickJsRuntime implements LxRuntime {
         'req_${++_requestCounter}_${DateTime.now().millisecondsSinceEpoch}';
     final context = _context;
     if (context == null || context.disposed) {
-      _lastFailure = const LxRuntimeFailure(
+      owner.failure = _lastFailure = const LxRuntimeFailure(
         kind: LxRuntimeFailureKind.notReady,
         message: '洛雪音源运行时已被替换',
       );
@@ -363,8 +379,12 @@ class LxQuickJsRuntime implements LxRuntime {
       );
       return result;
     } catch (e) {
-      if (e is ResolutionCancelled) rethrow;
-      _lastFailure = classifyLxRuntimeFailure(e);
+      if (e is ResolutionCancelled || owner.isCancelled) {
+        throw const ResolutionCancelled();
+      }
+      final failure = classifyLxRuntimeFailure(e);
+      owner.failure = failure;
+      _lastFailure = failure;
       StructuredLogService.event(
         'lx.music_url_failed',
         level: LogLevel.warning,
@@ -372,7 +392,7 @@ class LxQuickJsRuntime implements LxRuntime {
           'request_id': requestKey,
           'source': source,
           'quality': quality,
-          'failure_kind': _lastFailure!.kind.name,
+          'failure_kind': failure.kind.name,
           'elapsed_ms': requestClock.elapsedMilliseconds,
           'deadline_exceeded': !DateTime.now().isBefore(deadline),
         },
@@ -385,21 +405,27 @@ class LxQuickJsRuntime implements LxRuntime {
       _owners.remove(requestKey);
       _deadlines.remove(requestKey);
       if (!context.disposed && identical(context, _context)) {
-        await _evaluate(
-          'globalThis.__lx_cancelRequest__(${jsonEncode(requestKey)});',
-          context: context,
-        );
-        // A script may await its own unresolved promise after HTTP abort.
-        // Reuse the context only if its top-level operation has settled.
-        if (!completer.isCompleted) _needsContextReset = true;
+        try {
+          await _evaluate(
+            'globalThis.__lx_cancelRequest__(${jsonEncode(requestKey)});',
+            context: context,
+          );
+        } catch (error) {
+          // Source replacement can dispose this context after cleanup queued.
+          // Cleanup must not replace the original cancellation/result.
+          if (!context.disposed && identical(context, _context)) {
+            _error('❌ [LxQuickJsRuntime] 请求清理失败: $error');
+          }
+        }
+        // Abandoned promises lose their request-scoped HTTP/timer callbacks.
+        // Do not reset the shared context underneath another live resolution.
       }
       _pendingRequests.remove(requestKey);
     }
   }
 
-  /// QuickJS scripts are not required to be re-entrant. Serialize the whole
-  /// script operation, including its asynchronous HTTP round trip, so a
-  /// second request cannot overwrite script-level state used by the first.
+  /// Serialize context replacement and request admission. Network responses
+  /// remain independent; _evaluate serializes each synchronous JavaScript turn.
   Future<T> _enqueueOperation<T>(Future<T> Function() operation) {
     final result = _operationQueue.then<T>((_) => operation());
     _operationQueue = result.then<void>((_) {}, onError: (_, _) {});
@@ -412,13 +438,15 @@ class LxQuickJsRuntime implements LxRuntime {
     }
     final oldContext = _context;
     final oldRuntime = oldContext?.runtime ?? _runtime;
-    if (oldContext != null) oldContext.disposed = true;
+    if (oldContext != null) {
+      oldContext.disposed = true;
+      oldContext.cancelTimers();
+    }
     _runtime = null;
     _context = null;
     _runtimeGeneration++;
     _isInitialized = false;
     _isScriptReady = false;
-    _needsContextReset = false;
     _currentScript = null;
     for (final entry in _pendingRequests.entries) {
       if (!entry.value.completer.isCompleted) {
@@ -440,7 +468,10 @@ class LxQuickJsRuntime implements LxRuntime {
       owner.cancel();
     }
     final context = _context;
-    if (context != null) context.disposed = true;
+    if (context != null) {
+      context.disposed = true;
+      context.cancelTimers();
+    }
     _runtime?.dispose();
     _runtime = null;
     _context = null;
@@ -530,6 +561,12 @@ class LxQuickJsRuntime implements LxRuntime {
       case 'lxCancelHttp':
         if (data is Map) _httpRequests[data['requestId']]?.cancel();
         break;
+      case 'lxSetTimeout':
+        _handleTimer(context, data);
+        break;
+      case 'lxClearTimeout':
+        if (data is Map) context.timers.remove(data['timerId'])?.cancel();
+        break;
       case 'lxOnResponse':
         _handleResponse(context, data);
         break;
@@ -539,6 +576,37 @@ class LxQuickJsRuntime implements LxRuntime {
       default:
         break;
     }
+  }
+
+  void _handleTimer(_LxRuntimeContext context, dynamic data) {
+    if (data is! Map || data['timerId'] is! int) return;
+    final timerId = data['timerId'] as int;
+    final ownerKey = data['ownerKey']?.toString();
+    final owner = ownerKey == null ? null : _owners[ownerKey];
+    if (ownerKey != null && (owner == null || owner.isCancelled)) return;
+    final delay = data['delay'];
+    final milliseconds = delay is num ? delay.toInt().clamp(0, 2147483647) : 0;
+    context.timers[timerId] = Timer(
+      Duration(milliseconds: milliseconds),
+      () async {
+        context.timers.remove(timerId);
+        if (context.disposed ||
+            !identical(context, _context) ||
+            owner?.isCancelled == true) {
+          return;
+        }
+        try {
+          await _evaluate(
+            'globalThis.__lx_fireTimer__($timerId);',
+            context: context,
+          );
+        } catch (error) {
+          if (!context.disposed && owner?.isCancelled != true) {
+            _error('❌ [LxQuickJsRuntime] 脚本定时器失败: $error');
+          }
+        }
+      },
+    );
   }
 
   Map<String, dynamic>? _normalizePayload(dynamic args) {

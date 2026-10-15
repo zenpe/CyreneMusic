@@ -48,19 +48,69 @@ void main() {
     for (final handle in players) {
       await handle.states.close();
       await handle.indices.close();
+      await handle.errors.close();
     }
   });
 
-  test('pause cancels a resume waiting for output preparation', () async {
-    final preparation = Completer<void>();
-    player.nextMute = preparation;
+  test(
+    'official HTTP error code preserves status and playback epoch',
+    () async {
+      final received = <EngineError>[];
+      final subscription = host.errorStream.listen(received.add);
+      player.errors.add(ja.PlayerException(429, 'Source error', 0));
+      await Future<void>.delayed(Duration.zero);
+      expect(received, hasLength(1));
+      expect(received.single.httpStatus, 429);
+      expect(received.single.epoch, 1);
+      await subscription.cancel();
+    },
+  );
+
+  test('disabled playlist trial retains the single-source fallback', () async {
+    final baselinePlayer = ControlledAudioPlayer();
+    final baseline = EngineHost(
+      engineFactory: () => JustAudioEngine(
+        playerFactory: () => baselinePlayer,
+        allowPlaylistPreload: false,
+      ),
+    );
+    try {
+      await baseline.play('https://example.test/a.mp3', generation: 1);
+      final current = _currentPreparedSlot();
+      await baseline.bindCurrentPreparedSlot(current);
+      await baseline.preparePlaybackWindow(
+        PreparedPlaybackWindow(current: current, next: _nextPreparedSlot()),
+      );
+      expect(baselinePlayer.insertCalls, 0);
+      expect(baselinePlayer.sequence, hasLength(1));
+      expect(
+        await baseline.activatePreparedSlot(
+          'next',
+          generation: 2,
+          queueRevision: 1,
+        ),
+        isFalse,
+      );
+      await baseline.play('https://example.test/b.mp3', generation: 2);
+      expect(baselinePlayer.sequence, hasLength(1));
+      expect(baselinePlayer.playing, isTrue);
+    } finally {
+      await baseline.dispose();
+      await baselinePlayer.states.close();
+      await baselinePlayer.indices.close();
+      await baselinePlayer.errors.close();
+    }
+  });
+
+  test('pause after resume stays paused without delayed output work', () async {
+    final writes = player.volumeWrites.length;
     await host.resume();
     await host.pause();
-    preparation.complete();
     await Future<void>.delayed(const Duration(milliseconds: 100));
 
-    expect(player.playCalls, 0);
+    expect(player.playCalls, 1);
     expect(player.playing, isFalse);
+    expect(player.volumeWrites.length, writes);
   });
 
   test(
@@ -105,6 +155,41 @@ void main() {
     },
   );
 
+  test(
+    'natural next failure before ready belongs to next without commit',
+    () async {
+      final current = _currentPreparedSlot();
+      await host.bindCurrentPreparedSlot(current);
+      await host.preparePlaybackWindow(
+        PreparedPlaybackWindow(current: current, next: _nextPreparedSlot()),
+      );
+      final events = <EngineEvent>[];
+      final subscription = host.events.listen(events.add);
+      player.currentIndexValue = 1;
+      player.processingState = ja.ProcessingState.buffering;
+      player.indices.add(1);
+      player.errors.add(ja.PlayerException(403, 'Source error', 1));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(events.whereType<EngineFailureEvent>().single.epoch, 2);
+      expect(events.whereType<EngineSourceCommittedEvent>(), isEmpty);
+      await subscription.cancel();
+    },
+  );
+
+  test('error index alone cannot adopt an unselected prepared song', () async {
+    final current = _currentPreparedSlot();
+    await host.bindCurrentPreparedSlot(current);
+    await host.preparePlaybackWindow(
+      PreparedPlaybackWindow(current: current, next: _nextPreparedSlot()),
+    );
+    final failures = <EngineError>[];
+    final subscription = host.errorStream.listen(failures.add);
+    player.errors.add(ja.PlayerException(403, 'Source error', 1));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(failures.single.epoch, 1);
+    await subscription.cancel();
+  });
+
   test('prepared seek uses load budget beyond control timeout', () async {
     final current = _currentPreparedSlot();
     await host.bindCurrentPreparedSlot(current);
@@ -123,6 +208,8 @@ void main() {
       isTrue,
     );
     expect(player.disposed, isFalse);
+    expect(host.lastStartupTiming?.preparedActivation, isTrue);
+    expect(host.lastStartupTiming?.setSourceMs, greaterThanOrEqualTo(150));
   });
 
   test('prepared seek remains bounded by total load deadline', () async {
@@ -191,6 +278,27 @@ void main() {
   });
 
   test(
+    'paused replacement stops output before native loading begins',
+    () async {
+      await host.resume();
+      final started = Completer<void>();
+      final release = Completer<void>();
+      player.nextSourceLoadStarted = started;
+      player.nextSourceLoad = release;
+      final replacement = host.play(
+        'https://example.test/paused.mp3',
+        generation: 2,
+        autoPlay: false,
+      );
+      await started.future;
+      expect(player.playing, isFalse);
+      release.complete();
+      await replacement;
+      expect(player.playing, isFalse);
+    },
+  );
+
+  test(
     'pause during a successful load wins over final playing snapshot',
     () async {
       await host.play('https://example.test/first.mp3', generation: 2);
@@ -252,23 +360,16 @@ void main() {
     },
   );
 
-  test('mute timeout does not block the next source or late resume', () async {
-    final old = player;
-    final resumeMute = Completer<void>();
-    old.nextMute = resumeMute;
+  test('ordinary source switching and resume do not write volume', () async {
+    final writes = player.volumeWrites.length;
     await host.resume();
-    final loadMute = Completer<void>();
-    old.nextMute = loadMute;
-    await expectLater(
-      host.play('https://example.test/stuck.mp3', generation: 2),
-      throwsA(isA<EngineReportedException>()),
-    );
+    await host.play('https://example.test/second.mp3', generation: 2);
     await host.play('https://example.test/next.mp3', generation: 3);
-    resumeMute.complete();
-    loadMute.complete();
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    expect(old.playCalls, 0);
-    expect(player.playCalls, 1);
+    expect(player.volumeWrites.length, writes);
+    expect(player.volume, 0.6);
+    expect(player.disposed, isFalse);
+    expect(player.playing, isTrue);
   });
 
   test(
@@ -333,6 +434,87 @@ void main() {
     expect(host.isPlaying, isTrue);
   });
 
+  test(
+    'background insert timeout preserves current audio and controls',
+    () async {
+      await host.resume();
+      final current = _currentPreparedSlot();
+      await host.bindCurrentPreparedSlot(current);
+      final old = player;
+      old.insertGate = Completer<void>();
+      final failures = <EngineError>[];
+      final subscription = host.errorStream.listen(failures.add);
+      await host.preparePlaybackWindow(
+        PreparedPlaybackWindow(current: current, next: _nextPreparedSlot()),
+      );
+      expect(old.disposed, isFalse);
+      expect(old.playing, isTrue);
+      expect(failures, isEmpty);
+      await host.pause();
+      expect(old.playing, isFalse);
+      await host.resume();
+      expect(old.playing, isTrue);
+      old.insertGate!.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        await host.activatePreparedSlot(
+          'next',
+          generation: 2,
+          queueRevision: 1,
+        ),
+        isTrue,
+      );
+      expect(player, same(old));
+      expect(failures, isEmpty);
+      await subscription.cancel();
+    },
+  );
+
+  test(
+    'late rejected preload is contained and replacement still plays',
+    () async {
+      await host.resume();
+      final current = _currentPreparedSlot();
+      await host.bindCurrentPreparedSlot(current);
+      final old = player;
+      old.insertGate = Completer<void>();
+      await host.preparePlaybackWindow(
+        PreparedPlaybackWindow(current: current, next: _nextPreparedSlot()),
+      );
+      old.insertGate!.completeError(StateError('insert rejected'));
+      await Future<void>.delayed(Duration.zero);
+      expect(old.playing, isTrue);
+      await host.play('https://example.test/replacement.mp3', generation: 3);
+      expect(player, same(old));
+      expect(player.playing, isTrue);
+    },
+  );
+
+  test(
+    'preparing the same valid next slot retains its native source',
+    () async {
+      final current = _currentPreparedSlot();
+      final next = _nextPreparedSlot();
+      await host.bindCurrentPreparedSlot(current);
+      await host.preparePlaybackWindow(
+        PreparedPlaybackWindow(current: current, next: next),
+      );
+      await host.preparePlaybackWindow(
+        PreparedPlaybackWindow(current: current, next: _nextPreparedSlot()),
+      );
+      expect(player.insertCalls, 1);
+      expect(player.removeCalls, 0);
+      expect(
+        await host.activatePreparedSlot(
+          'next',
+          generation: 2,
+          queueRevision: 1,
+        ),
+        isTrue,
+      );
+    },
+  );
+
   test('all source startup stages share one deadline', () async {
     player.speed = 0.75;
     player.sourceLoadDelay = const Duration(milliseconds: 60);
@@ -375,7 +557,7 @@ void main() {
     );
     await host.bindCurrentPreparedSlot(slot);
     final old = player;
-    old.nextMute = Completer<void>();
+    old.seekDelay = const Duration(milliseconds: 150);
     expect(
       await host.activatePreparedSlot(
         'current',
@@ -470,16 +652,13 @@ void main() {
   );
 
   test('cancelled resume can resume again at the latest user volume', () async {
-    final preparation = Completer<void>();
-    player.nextMute = preparation;
     await host.resume();
     await host.pause();
     await host.setVolume(0.35);
     await host.resume();
-    preparation.complete();
     await Future<void>.delayed(const Duration(milliseconds: 100));
 
-    expect(player.playCalls, 1);
+    expect(player.playCalls, 2);
     expect(player.playing, isTrue);
     expect(player.volume, 0.35);
   });
@@ -487,35 +666,32 @@ void main() {
   test(
     'stop invalidates an outstanding resume without restarting audio',
     () async {
-      final preparation = Completer<void>();
-      player.nextMute = preparation;
       await host.resume();
       await host.stop();
-      preparation.complete();
       await Future<void>.delayed(const Duration(milliseconds: 100));
-      expect(player.playCalls, 0);
+      expect(player.playCalls, 1);
+      expect(player.playing, isFalse);
     },
   );
 
   test('source replacement invalidates old resume', () async {
-    final preparation = Completer<void>();
-    player.nextMute = preparation;
     await host.resume();
     await host.play(
       'https://example.test/b.mp3',
       generation: 2,
       autoPlay: false,
     );
-    preparation.complete();
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    expect(player.playCalls, 0);
+    expect(player.playCalls, 1);
+    expect(player.playing, isFalse);
     await host.resume();
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(player.playing, isTrue);
     expect(player.volume, 0.6);
   });
 
-  test('prepared activation completes startup and restores volume', () async {
+  test('prepared activation starts without additional volume writes', () async {
+    final writes = player.volumeWrites.length;
     final current = PreparedPlaybackSlot(
       key: 'current',
       source: const DirectHttpPlayableSource('https://example.test/a.mp3'),
@@ -534,6 +710,7 @@ void main() {
     expect(activated, isTrue);
     expect(player.playing, isTrue);
     expect(player.volume, 0.6);
+    expect(player.volumeWrites.length, writes);
     await Future<void>.delayed(const Duration(milliseconds: 100));
   });
 
@@ -602,6 +779,154 @@ void main() {
       expect(events[1]['stall_kind'], 'buffer_starved');
       expect(events[2]['outcome'], 'ready');
       expect(player.playCalls, 0);
+    },
+  );
+
+  Future<void> enableSingleSource() async {
+    await host.dispose();
+    player = ControlledAudioPlayer();
+    players.add(player);
+    host = EngineHost(
+      minimumSourceLoadTime: Duration.zero,
+      engineFactory: () => JustAudioEngine(
+        playerFactory: () {
+          if (player.disposed) {
+            player = ControlledAudioPlayer();
+            players.add(player);
+          }
+          return player;
+        },
+        allowPlaylistPreload: false,
+        nativeOperationTimeout: const Duration(milliseconds: 100),
+      ),
+    );
+    await host.play(
+      'https://example.test/a.mp3',
+      generation: 1,
+      autoPlay: false,
+    );
+  }
+
+  test(
+    'single-source prefetch never loads the next item into the player',
+    () async {
+      await enableSingleSource();
+      await host.resume();
+      final active = player.sequence.single;
+      await host.bindCurrentPreparedSlot(_currentPreparedSlot());
+      await host.preparePlaybackWindow(
+        PreparedPlaybackWindow(
+          current: _currentPreparedSlot(),
+          next: _nextPreparedSlot(),
+        ),
+      );
+      expect(player.insertCalls, 0);
+      expect(player.sequence, hasLength(1));
+      expect(identical(player.sequence.single, active), isTrue);
+      expect(player.playing, isTrue);
+      expect(
+        await host.activatePreparedSlot(
+          'next',
+          generation: 2,
+          queueRevision: 1,
+        ),
+        isFalse,
+      );
+      expect(player.disposed, isFalse);
+    },
+  );
+
+  test('single-source invalidation leaves current playback intact', () async {
+    await enableSingleSource();
+    await host.resume();
+    await host.bindCurrentPreparedSlot(_currentPreparedSlot());
+    final active = player.sequence.single;
+    await host.invalidatePreparedSlots();
+    expect(identical(player.sequence.single, active), isTrue);
+    expect(player.playing, isTrue);
+    expect(player.removeCalls, 0);
+  });
+
+  test(
+    'official source replacement retains one item and paused intent',
+    () async {
+      await enableSingleSource();
+      final original = player;
+      for (var generation = 2; generation <= 4; generation++) {
+        await host.play(
+          'https://example.test/$generation.mp3',
+          generation: generation,
+          autoPlay: false,
+        );
+        expect(identical(player, original), isTrue);
+        expect(player.sequence, hasLength(1));
+        expect(player.currentIndex, 0);
+        expect(player.playing, isFalse);
+      }
+      expect(player.insertCalls, 0);
+      expect(player.removeCalls, 0);
+    },
+  );
+
+  test(
+    'official source rejection releases the player and allows recovery',
+    () async {
+      await enableSingleSource();
+      final failed = player;
+      player.nextSourceError = ja.PlayerException(403, 'Forbidden', 0);
+      await expectLater(
+        host.play(
+          'https://example.test/bad.mp3',
+          generation: 2,
+          autoPlay: false,
+        ),
+        throwsA(
+          isA<EngineReportedException>().having(
+            (e) => e.error.type,
+            'type',
+            EngineErrorType.accessDenied,
+          ),
+        ),
+      );
+      expect(failed.disposed, isTrue);
+      await host.play(
+        'https://example.test/recover.mp3',
+        generation: 3,
+        autoPlay: false,
+      );
+      expect(identical(player, failed), isFalse);
+      expect(player.sequence, hasLength(1));
+      expect(player.playing, isFalse);
+    },
+  );
+
+  test(
+    'official source timeout isolates late completion from the new player',
+    () async {
+      await enableSingleSource();
+      final failed = player;
+      final loading = Completer<void>();
+      player.nextSourceLoad = loading;
+      await expectLater(
+        host.play(
+          'https://example.test/slow.mp3',
+          generation: 2,
+          autoPlay: false,
+          loadTimeout: const Duration(milliseconds: 25),
+        ),
+        throwsA(isA<EngineReportedException>()),
+      );
+      expect(failed.disposed, isTrue);
+      await host.play(
+        'https://example.test/recover.mp3',
+        generation: 3,
+        autoPlay: false,
+      );
+      loading.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(identical(player, failed), isFalse);
+      expect(player.sequence, hasLength(1));
+      expect(player.playing, isFalse);
     },
   );
 
@@ -693,6 +1018,7 @@ PreparedPlaybackSlot _nextPreparedSlot() => PreparedPlaybackSlot(
 /// Only the native player is replaced. Tests execute the production engine,
 /// deferred output preparation and EngineHost command queue.
 class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
+  Object? nextSourceError;
   final states = StreamController<ja.PlayerState>.broadcast();
   final indices = StreamController<int?>.broadcast();
   int currentIndexValue = 0;
@@ -713,7 +1039,7 @@ class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
       return subscription.cancel();
     };
   }, isBroadcast: true);
-  Completer<void>? nextMute;
+  final volumeWrites = <double>[];
   Completer<void>? nextSourceLoadStarted;
   Completer<void>? nextSourceLoad;
   Completer<void>? _playLifetime;
@@ -727,6 +1053,10 @@ class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
   Completer<void>? stopGate;
   Completer<void>? disposeGate;
   Completer<void>? insertGate;
+  int insertCalls = 0;
+  int removeCalls = 0;
+  Object? removeError;
+  ja.PlayerException? nextSeekError;
   @override
   bool playing = false;
   @override
@@ -754,16 +1084,15 @@ class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
   Stream<int?> get currentIndexStream => indices.stream;
   @override
   Stream<ja.PlaybackEvent> get playbackEventStream => const Stream.empty();
+  final errors = StreamController<ja.PlayerException>.broadcast();
+  @override
+  Stream<ja.PlayerException> get errorStream => errors.stream;
   @override
   Stream<ja.PlayerState> get playerStateStream => trackedStates;
   @override
   Future<void> setVolume(double value) async {
+    volumeWrites.add(value);
     volume = value;
-    if (value == 0 && nextMute != null) {
-      final gate = nextMute!;
-      nextMute = null;
-      await gate.future;
-    }
   }
 
   @override
@@ -779,6 +1108,9 @@ class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
     int? initialIndex,
     Duration? initialPosition,
   }) async {
+    final error = nextSourceError;
+    nextSourceError = null;
+    if (error != null) throw error;
     final started = nextSourceLoadStarted;
     nextSourceLoadStarted = null;
     if (started != null && !started.isCompleted) started.complete();
@@ -792,6 +1124,12 @@ class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
 
   @override
   Future<void> seek(Duration? position, {int? index}) async {
+    final error = nextSeekError;
+    nextSeekError = null;
+    if (error != null) {
+      errors.add(error);
+      return Completer<void>().future;
+    }
     await Future<void>.delayed(seekDelay);
     if (index != null) currentIndexValue = index;
   }
@@ -829,6 +1167,16 @@ class ControlledAudioPlayer extends Fake implements ja.AudioPlayer {
 
   @override
   Future<void> insertAudioSource(int index, ja.AudioSource source) async {
+    insertCalls++;
     await insertGate?.future;
+    sequence.insert(index, source as ja.IndexedAudioSource);
+  }
+
+  @override
+  Future<void> removeAudioSourceAt(int index) async {
+    removeCalls++;
+    if (removeError != null) throw removeError!;
+    sequence.removeAt(index);
+    if (index < currentIndexValue) currentIndexValue--;
   }
 }

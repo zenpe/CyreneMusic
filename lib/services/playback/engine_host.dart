@@ -212,6 +212,21 @@ class EngineHost implements AudioEngine {
     return _writes.enqueue(action);
   }
 
+  void _recordSourceQueueWait(
+    String operation,
+    int generation,
+    Stopwatch clock,
+  ) {
+    StructuredLogService.event(
+      'audio_engine.source_queue_started',
+      fields: {
+        'operation': operation,
+        'generation': generation,
+        'queue_wait_ms': clock.elapsedMilliseconds,
+      },
+    );
+  }
+
   Duration? _remainingLoadTime(Duration? timeout, Stopwatch clock) {
     if (timeout == null) return null;
     final remaining = timeout - clock.elapsed;
@@ -274,6 +289,7 @@ class EngineHost implements AudioEngine {
       }
       final remaining = _remainingLoadTime(loadTimeout, clock);
       _checkLoadBudget(remaining, generation);
+      _recordSourceQueueWait('play', generation, clock);
       _beginEpoch(generation);
       await _active!.play(
         url,
@@ -311,6 +327,7 @@ class EngineHost implements AudioEngine {
       }
       final remaining = _remainingLoadTime(loadTimeout, clock);
       _checkLoadBudget(remaining, generation);
+      _recordSourceQueueWait('play_source', generation, clock);
       _beginEpoch(generation);
       await _active!.playSource(
         source,
@@ -347,6 +364,7 @@ class EngineHost implements AudioEngine {
       }
       final remaining = _remainingLoadTime(loadTimeout, clock);
       _checkLoadBudget(remaining, generation);
+      _recordSourceQueueWait('play_audio_source', generation, clock);
       _beginEpoch(generation);
       await _active!.playAudioSource(
         source,
@@ -364,8 +382,16 @@ class EngineHost implements AudioEngine {
   }
 
   @override
-  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) =>
-      _write(() => _active?.bindCurrentPreparedSlot(slot) ?? Future.value());
+  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) {
+    final revision = _loadRevision;
+    return _write(() async {
+      if (revision != _loadRevision ||
+          slot.preparedFromGeneration != _activeEpoch) {
+        return;
+      }
+      await _active?.bindCurrentPreparedSlot(slot);
+    });
+  }
 
   @override
   Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) {
@@ -395,6 +421,7 @@ class EngineHost implements AudioEngine {
         return false;
       }
       final previousEpoch = _activeEpoch;
+      _recordSourceQueueWait('activate_prepared', generation, clock);
       final remaining = _remainingLoadTime(loadTimeout, clock);
       if (remaining != null && remaining <= Duration.zero) {
         _latestRequestedGeneration = previousEpoch;
@@ -447,8 +474,13 @@ class EngineHost implements AudioEngine {
   }
 
   @override
-  Future<void> invalidatePreparedSlots() =>
-      _write(() => _active?.invalidatePreparedSlots() ?? Future.value());
+  Future<void> invalidatePreparedSlots() {
+    final revision = _loadRevision;
+    return _write(() async {
+      if (revision != _loadRevision) return;
+      await _active?.invalidatePreparedSlots();
+    });
+  }
 
   @override
   Future<void> pause() {

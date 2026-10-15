@@ -99,6 +99,7 @@ class TrackSwitchTiming {
   int engineSetSourceMs = 0;
   int enginePlayToReadyMs = 0;
   int preparedActivationMs = 0;
+  Stopwatch? preparedActivationClock;
   int remoteResolutionAttempts = 0;
   bool audioCacheHit = false;
   bool prefetched = false;
@@ -317,6 +318,7 @@ class PlaybackService extends ChangeNotifier {
   final Map<String, _NativePreparedPlanEntry> _nativePreparedPlans = {};
   int _preparedSlotNonce = 0;
   Timer? _preloadTriggerTimer;
+  (int, int, int)? _scheduledPreloadIdentity;
   bool _preloadDependencyListenersBound = false;
   bool _autoNextInFlight = false;
   int _autoNextFlightId = 0;
@@ -327,7 +329,25 @@ class PlaybackService extends ChangeNotifier {
 
   static const Duration _resolutionRetryDelay = Duration(milliseconds: 300);
   static const Duration _trackSwitchSettleDelay = Duration(milliseconds: 80);
-  static const Duration _preloadTriggerDelay = Duration(milliseconds: 600);
+  static const Duration _preloadTriggerDelay = Duration(milliseconds: 2500);
+  static const Duration _manualResolutionDebounce = Duration(milliseconds: 200);
+  int? _debouncedRequestEpoch;
+  // Share the engine's construction-time switch. Native preparation uses the
+  // rolling current/next playlist; URL/lyric prefetch also works when disabled.
+  bool _nativePreloadEnabled =
+      !Platform.isAndroid || androidPlaylistPreloadEnabled;
+
+  /// Debug-only comparison of URL prefetch versus native playlist preparation.
+  @visibleForTesting
+  void setNativePreloadForTesting(bool enabled) {
+    assert(() {
+      _nativePreloadEnabled = enabled;
+      _resetPreloadState();
+      _invalidatePreparedWindow(reschedule: true);
+      return true;
+    }());
+  }
+
   static const Duration _prefetchedSongDetailTtl = Duration(minutes: 5);
   static const Duration _playSongDetailTimeout = Duration(seconds: 6);
   static const Duration _preloadSongDetailTimeout = Duration(seconds: 8);
@@ -621,6 +641,10 @@ class PlaybackService extends ChangeNotifier {
   void _onEngineEvent(EngineEvent event) {
     if (event is EngineSourceCommittedEvent) {
       _onNativeSourceCommitted(event.epoch, event.key);
+      return;
+    }
+    if (event is EngineFailureEvent) {
+      _onEngineError(event.error);
       return;
     }
     if (event.epoch != _playGeneration) {
@@ -959,6 +983,7 @@ class PlaybackService extends ChangeNotifier {
       // source is intact; an error event must not interrupt its session.
       return;
     }
+    final naturalPreparedFailure = _stageNaturalPreparedFailure(error.epoch);
     // 纪元守卫：错误携带引擎源头纪元，属于旧纪元的迟到错误直接丢弃，
     // 避免旧歌错误触发新歌的重试/跳歌/报错。
     final belongsToCurrentTransition = error.epoch == _playGeneration;
@@ -999,8 +1024,7 @@ class PlaybackService extends ChangeNotifier {
     if (canRetry) {
       _performanceMetrics.recordEngineRetry();
       _retriedTrackKey = trackKey;
-      if (error.type == EngineErrorType.accessDenied ||
-          error.isSourceReadFailure) {
+      if (_shouldRefreshUrlOnError(error)) {
         _rejectedPlaybackUrl =
             (_pendingSong ?? _activeSong)?.url ?? error.sourceUrl;
         _rejectedPlaybackCause = error.isSourceReadFailure
@@ -1039,6 +1063,9 @@ class PlaybackService extends ChangeNotifier {
         _playCurrentTrack(
           reason: 'engine-retry',
           intent: failureIntent,
+          candidateTrack: track,
+          candidateEntryId: _pendingQueueEntryId ?? _activeQueueEntryId,
+          allowActiveFallback: !naturalPreparedFailure,
           requestEpoch: requestEpoch,
           forceRemoteResolution:
               shouldRetryWithoutCache || _shouldRefreshUrlOnError(error),
@@ -1060,6 +1087,7 @@ class PlaybackService extends ChangeNotifier {
     _state = PBState.error;
     _errorMessage = _buildErrorMessage(error);
     _isAudioSourceNotConfigured = false;
+    if (naturalPreparedFailure) _finishPendingFailure();
     notifyListeners();
     _reportPlaybackFailure(
       track,
@@ -1069,6 +1097,41 @@ class PlaybackService extends ChangeNotifier {
           ? const {}
           : const {PlaybackRecoveryAction.retry},
     );
+  }
+
+  bool _stageNaturalPreparedFailure(int generation) {
+    // Never let an old native selection take over a newer explicit request.
+    if (_pendingTrack != null ||
+        _playGeneration != _activePlaybackToken ||
+        generation <= _activePlaybackToken) {
+      return false;
+    }
+    for (final prepared in _nativePreparedPlans.values) {
+      final slot = prepared.slot;
+      if (slot.generation != generation) continue;
+      final index = _queueController.indexOfEntryId(slot.queueEntryId);
+      if (index < 0 ||
+          slot.queueRevision != _queueController.structureRevision ||
+          slot.preparedFromGeneration != _activePlaybackToken ||
+          slot.trackKey != _buildTrackIdentity(_queue[index])) {
+        return false;
+      }
+      final tx = _prepareTrackSwitchTransaction(
+        reason: 'native-prepared-failure',
+        intent: PlaybackRequestIntent.automatic,
+        candidateTrack: _queue[index],
+        candidateEntryId: slot.queueEntryId,
+        generation: generation,
+        preservePreloadState: true,
+        allowActiveFallback: false,
+      );
+      if (tx == null) return false;
+      _pendingSong = prepared.plan.resolvedSong.songDetail;
+      _setCurrentCachedFileInfo(prepared.plan.resolvedSong.cacheInfo);
+      _nativePreparedPlans.remove(slot.key);
+      return true;
+    }
+    return false;
   }
 
   Duration _clampRecoveryPosition(Duration position) {
@@ -1478,6 +1541,7 @@ class PlaybackService extends ChangeNotifier {
     // A hung native load/control call is not evidence that the URL expired.
     // Keep manual retry available without automatically re-querying the source.
     if (error.cause is NativePlaybackTimeout) return false;
+    if (error.httpStatus == 400 || error.httpStatus == 429) return false;
     if (error.isSourceReadFailure) {
       return (_pendingTrack ?? currentTrack)?.source != MusicSource.local;
     }
@@ -1499,8 +1563,10 @@ class PlaybackService extends ChangeNotifier {
   bool _shouldRefreshUrlOnError(EngineError error) =>
       error.cause is! NativePlaybackTimeout &&
       (error.type == EngineErrorType.accessDenied ||
-          error.type == EngineErrorType.networkTimeout ||
-          error.isSourceReadFailure);
+          error.httpStatus == 404 ||
+          error.httpStatus == 410 ||
+          // Retain fallback evidence for platforms using the upstream bridge.
+          (!Platform.isAndroid && error.isSourceReadFailure));
 
   String _buildErrorMessage(EngineError error) {
     if (error.cause is NativePlaybackTimeout) {
@@ -1565,6 +1631,15 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
 
+    final pendingTx = _currentSwitchTx;
+    if (pendingEntryId != null && pendingTx != null) {
+      // An old commit must not replace a newer request for the same entry.
+      if (pendingTx.token != generation) return;
+      // Explicit activation owns its success/failure and timing. Native source
+      // events can arrive before that future has finished startup validation.
+      if (pendingTx.timing.preparedActivationClock?.isRunning ?? false) return;
+    }
+
     final prepared = key == null ? null : _nativePreparedPlans.remove(key);
     if (prepared == null) {
       StructuredLogService.log('[PlaybackService] 原生播放源缺少预取计划，忽略切歌事件: $key');
@@ -1612,6 +1687,8 @@ class PlaybackService extends ChangeNotifier {
       );
     }
     final committedTx = tx;
+    committedTx.timing.preparedEngineHit = true;
+    committedTx.timing.prefetched = true;
 
     _autoNextFlightId++;
     _autoNextInFlight = false;
@@ -2652,6 +2729,7 @@ class PlaybackService extends ChangeNotifier {
             cacheInfo != null && needsCachedMetadataRefresh(cacheInfo.metadata),
       );
     }
+    if (!await _waitForManualSelection(tx, isStale)) return null;
     if (lxSourceFingerprint != null &&
         tx.intent == PlaybackRequestIntent.retry &&
         _sourceHealthTracker.snapshot(lxSourceFingerprint).isCircuitOpen) {
@@ -2947,55 +3025,13 @@ class PlaybackService extends ChangeNotifier {
       );
     }
 
-    if (track.source == MusicSource.qq || track.source == MusicSource.kugou) {
-      final platform = track.source == MusicSource.qq ? 'qq' : 'kugou';
-      final mobileDirect = Platform.isAndroid || Platform.isIOS;
-      PlayableSource? source;
-      String? retainedTempFilePath;
-
-      if (mobileDirect) {
-        source = DirectHttpPlayableSource(
-          songDetail.url,
-          requestHeaders: _buildPlaybackHeaders(track.source),
-        );
-      } else {
-        final proxyReady = await _ensureLocalProxyRunning(platform);
-        if (isStale()) return null;
-        if (proxyReady) {
-          source = ProxyHttpPlayableSource(
-            ProxyService().getProxyUrl(songDetail.url, platform),
-            originalUrl: songDetail.url,
-          );
-        } else {
-          throw Exception('桌面代理不可用，已禁用切歌下载回退');
-        }
-      }
-
-      return _TrackSwitchPlaybackPlan(
-        resolvedSong: resolvedSong,
-        usesCachedFile: false,
-        source: source,
-        retainedTempFilePath: retainedTempFilePath,
-        coverRefreshUrl: songDetail.pic,
-        themeImageUrl: songDetail.pic,
-        themeReason: 'network-playback',
-        shouldWriteBackgroundCache:
-            !resolvedSong.isCached &&
-            songDetail.source != MusicSource.apple &&
-            !songDetail.url.toLowerCase().contains('.m3u8'),
-        cacheMetadataRefreshReason:
-            resolvedSong.shouldRefreshExistingCacheMetadata
-            ? 'network-fallback'
-            : null,
-      );
-    }
-
+    final source = await _buildNetworkPlayableSource(track, songDetail.url);
     if (isStale()) return null;
 
     return _TrackSwitchPlaybackPlan(
       resolvedSong: resolvedSong,
       usesCachedFile: false,
-      source: DirectHttpPlayableSource(songDetail.url),
+      source: source,
       retainedTempFilePath: null,
       coverRefreshUrl: songDetail.pic,
       themeImageUrl: songDetail.pic,
@@ -3011,6 +3047,21 @@ class PlaybackService extends ChangeNotifier {
     );
   }
 
+  Future<bool> _waitForManualSelection(
+    TrackSwitchTransaction tx,
+    bool Function() isStale,
+  ) async {
+    if (tx.track.source != MusicSource.local &&
+        tx.intent == PlaybackRequestIntent.manual &&
+        _debouncedRequestEpoch != tx.requestEpoch) {
+      _debouncedRequestEpoch = tx.requestEpoch;
+      final clock = Stopwatch()..start();
+      await Future<void>.delayed(_manualResolutionDebounce);
+      tx.timing.settleMs += clock.elapsedMilliseconds;
+    }
+    return !isStale();
+  }
+
   Future<_TrackSwitchPlaybackPlan?> _commitPlaybackStage(
     TrackSwitchTransaction tx,
     _TrackSwitchPlaybackPlan plan,
@@ -3021,6 +3072,9 @@ class PlaybackService extends ChangeNotifier {
   }) async {
     var committedPlan = plan;
     if (isStale()) return null;
+    // A cached URL still requires native source loading. Coalesce those loads
+    // too; genuinely prepared native slots activate through the separate path.
+    if (!await _waitForManualSelection(tx, isStale)) return null;
     if (tx.budget != null &&
         tx.budget!.remaining() <
             PlaybackTransitionBudget.minimumNativeLoadTime) {
@@ -3108,6 +3162,25 @@ class PlaybackService extends ChangeNotifier {
     );
     final timing = tx.timing;
     timing.audioCacheHit = plan.usesCachedFile;
+    StructuredLogService.event(
+      'playback.switch.timing',
+      fields: {
+        'generation': tx.token,
+        'request_epoch': tx.requestEpoch,
+        'queue_entry_id': tx.queueEntryId,
+        'total_ms': timing.totalSw.elapsedMilliseconds,
+        'resolve_ms': timing.remoteResolveMs,
+        'settle_ms': timing.settleMs,
+        'lookup_ms': timing.lookupMs,
+        'plan_prepare_ms': timing.planPrepareMs,
+        'engine_set_source_ms': timing.engineSetSourceMs,
+        'engine_play_to_ready_ms': timing.enginePlayToReadyMs,
+        'prefetched': timing.prefetched,
+        'engine_load_ms': timing.engineStartupMs,
+        'prepared_engine_hit': timing.preparedEngineHit,
+        'activation_ms': timing.preparedActivationMs,
+      },
+    );
     _performanceMetrics.recordSwitch(
       PlaybackTimingSample(
         totalMs: timing.totalSw.elapsedMilliseconds,
@@ -3737,6 +3810,9 @@ class PlaybackService extends ChangeNotifier {
     bool forceRemoteResolution = false,
     int settleMs = 0,
     PlaybackTransitionBudget? budget,
+    Track? candidateTrack,
+    int? candidateEntryId,
+    bool allowActiveFallback = true,
   }) async {
     await _attemptTrackSwitch(
       reason: reason,
@@ -3748,6 +3824,9 @@ class PlaybackService extends ChangeNotifier {
       forceRemoteResolution: forceRemoteResolution,
       settleMs: settleMs,
       budget: budget,
+      candidateTrack: candidateTrack,
+      candidateEntryId: candidateEntryId,
+      allowActiveFallback: allowActiveFallback,
     );
   }
 
@@ -3839,6 +3918,9 @@ class PlaybackService extends ChangeNotifier {
           ? null
           : _takePrefetchedPlayablePlan(tx.track, tx.selectedQuality);
       if (prefetchedPlan != null) {
+        if (!await _waitForManualSelection(tx, isStale)) {
+          return PlaybackCandidateAttemptResult.cancelled;
+        }
         tx.timing.prefetched = true;
         trace.mark(
           'prefetch_hit',
@@ -3897,6 +3979,9 @@ class PlaybackService extends ChangeNotifier {
       );
 
       // 3. resolvePlayableSource
+      if (!await _waitForManualSelection(tx, isStale)) {
+        return PlaybackCandidateAttemptResult.cancelled;
+      }
       final prepSw = Stopwatch()..start();
       final playbackPlan = await _resolvePlayableSourceStage(
         tx,
@@ -4119,17 +4204,32 @@ class PlaybackService extends ChangeNotifier {
 
     if (!preserveDesiredPlaying) _desiredPlaying = true;
     _nativeActivationIntent = intent;
-    final activated = await _engine.activatePreparedSlot(
-      nativeKey,
-      generation: tx.token,
-      queueRevision: _queueController.structureRevision,
-      autoPlay: _desiredPlaying,
-      loadTimeout: budget?.remaining(),
-    );
+    final activationClock = Stopwatch()..start();
+    tx.timing.preparedActivationClock = activationClock;
+    final bool activated;
+    try {
+      activated = await _engine.activatePreparedSlot(
+        nativeKey,
+        generation: tx.token,
+        queueRevision: _queueController.structureRevision,
+        autoPlay: _desiredPlaying,
+        loadTimeout: budget?.remaining(),
+      );
+    } finally {
+      activationClock.stop();
+    }
+    if (_isTrackSwitchTransactionStale(tx)) return false;
     if (!activated) {
       _nativePreparedPlans.remove(nativeKey);
       _nativeActivationIntent = PlaybackRequestIntent.automatic;
       return false;
+    }
+    tx.timing.preparedActivationMs = activationClock.elapsedMilliseconds;
+    tx.timing.engineStartupMs = activationClock.elapsedMilliseconds;
+    final engineTiming = _engine.lastStartupTiming;
+    if (engineTiming?.preparedActivation ?? false) {
+      tx.timing.engineSetSourceMs = engineTiming!.setSourceMs;
+      tx.timing.enginePlayToReadyMs = engineTiming.playToReadyMs;
     }
     _onNativeSourceCommitted(slot.generation, nativeKey);
     return requestEpoch == null || _requestRouter.isCurrent(requestEpoch);
@@ -4329,6 +4429,7 @@ class PlaybackService extends ChangeNotifier {
     }
     _finishFailedNavigation(
       result,
+      requestEpoch: requestEpoch,
       reason: reason,
       allowActiveFallback: intent == PlaybackTransitionIntent.manualAdvance,
     );
@@ -4369,9 +4470,11 @@ class PlaybackService extends ChangeNotifier {
 
   void _finishFailedNavigation(
     PlaybackTransitionResult result, {
+    required int requestEpoch,
     required String reason,
     required bool allowActiveFallback,
   }) {
+    if (!_requestRouter.isCurrent(requestEpoch)) return;
     if (result.lastFailedCandidate case final candidate?) {
       _lastFailedTrack = candidate.track;
       _lastFailedQueueEntryId = candidate.entryId;
@@ -4388,6 +4491,27 @@ class PlaybackService extends ChangeNotifier {
       _transactionGuard.activate(_activePlaybackToken);
       _restartLivenessForActivePlayback();
     } else {
+      final failedTrack =
+          result.lastFailedCandidate?.track ??
+          _pendingTrack ??
+          _lastFailedTrack ??
+          _activeTrack;
+      final problem = _problemStore.current;
+      final currentProblem =
+          problem != null &&
+              problem.transactionId == _playGeneration &&
+              failedTrack != null &&
+              _matchesTrackIdentity(
+                problem.track,
+                _buildTrackIdentity(failedTrack),
+              )
+          ? problem
+          : null;
+      final message = [currentProblem?.message, result.message, _errorMessage]
+          .whereType<String>()
+          .where((value) => value.trim().isNotEmpty)
+          .firstOrNull;
+      _errorMessage = message ?? '播放失败，请重试或播放下一首';
       _desiredPlaying = false;
       _controlIntent.invalidate();
       _state = PBState.error;
@@ -4395,6 +4519,14 @@ class PlaybackService extends ChangeNotifier {
       // Preserve the coordinator's last actual failure as the retry target.
       _clearPendingTrack();
       _finishPendingFailure();
+      if (currentProblem == null && failedTrack != null) {
+        _reportPlaybackFailure(
+          failedTrack,
+          _errorMessage!,
+          kind: PlaybackProblemKind.engineFailure,
+          emitEffect: false,
+        );
+      }
     }
     StructuredLogService.event(
       'playback.navigation_failed',
@@ -4582,8 +4714,15 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _cancelScheduledPreload() {
+    if (_preloadTriggerTimer != null) {
+      StructuredLogService.event(
+        'playback.preload_schedule_cancelled',
+        fields: {'generation': _activePlaybackToken, 'preload_op': _preloadOp},
+      );
+    }
     _preloadTriggerTimer?.cancel();
     _preloadTriggerTimer = null;
+    _scheduledPreloadIdentity = null;
   }
 
   void _resetPreloadState({bool clearPrefetchedDetails = true}) {
@@ -4852,9 +4991,27 @@ class PlaybackService extends ChangeNotifier {
     final scheduledEntryId = _activeQueueEntryId;
     if (scheduledEntryId == null) return;
     final scheduledOp = _preloadOp;
+    final identity = (_activePlaybackToken, scheduledEntryId, scheduledOp);
+    // Repeated playing notifications must not push the same preload deadline
+    // forward indefinitely. Explicit invalidation/pausing still cancels it.
+    if (_preloadTriggerTimer != null && _scheduledPreloadIdentity == identity) {
+      return;
+    }
     _cancelScheduledPreload();
+    _scheduledPreloadIdentity = identity;
+    final scheduledClock = Stopwatch()..start();
+    StructuredLogService.event(
+      'playback.preload_scheduled',
+      fields: {
+        'generation': _activePlaybackToken,
+        'queue_entry_id': scheduledEntryId,
+        'preload_op': scheduledOp,
+        'delay_ms': _preloadTriggerDelay.inMilliseconds,
+      },
+    );
     _preloadTriggerTimer = Timer(_preloadTriggerDelay, () {
       _preloadTriggerTimer = null;
+      _scheduledPreloadIdentity = null;
       final playingTrack = currentTrack;
       if (scheduledOp != _preloadOp ||
           _state != PBState.playing ||
@@ -4862,6 +5019,15 @@ class PlaybackService extends ChangeNotifier {
           _activeQueueEntryId != scheduledEntryId) {
         return;
       }
+      StructuredLogService.event(
+        'playback.preload_triggered',
+        fields: {
+          'generation': _activePlaybackToken,
+          'queue_entry_id': scheduledEntryId,
+          'preload_op': scheduledOp,
+          'elapsed_ms': scheduledClock.elapsedMilliseconds,
+        },
+      );
       unawaited(_preloadAdjacentTracks());
     });
   }
@@ -4887,6 +5053,16 @@ class PlaybackService extends ChangeNotifier {
 
     _preloadingNext = true;
     final op = ++_preloadOp;
+    final preloadClock = Stopwatch()..start();
+    StructuredLogService.event(
+      'playback.preload_started',
+      fields: {
+        'generation': _activePlaybackToken,
+        'preload_op': op,
+        'track': nextTrack == null ? null : _buildTrackIdentity(nextTrack),
+        'queue_revision': queueRevision,
+      },
+    );
     try {
       // 1. 优先预加载下一首 (Next)
       if (nextTrack != null) {
@@ -4927,11 +5103,14 @@ class PlaybackService extends ChangeNotifier {
           'playback.preload_plan_ready',
           fields: {
             'track': _buildTrackIdentity(nextTrack),
+            'generation': _activePlaybackToken,
+            'preload_op': op,
+            'elapsed_ms': preloadClock.elapsedMilliseconds,
             'queue_revision': queueRevision,
             'has_next_plan': _prefetchedPlayablePlans.containsKey(
               _buildPrefetchCacheKey(nextTrack, selectedQuality),
             ),
-            'native_playlist_preload': true,
+            'native_playlist_preload': _nativePreloadEnabled,
           },
         );
       }
@@ -4946,6 +5125,7 @@ class PlaybackService extends ChangeNotifier {
           _activeQueueEntryId != currentEntryId) {
         return;
       }
+      if (!_nativePreloadEnabled) return;
       await _prepareNativePlaybackWindow(
         next: nextTrack,
         currentEntryId: currentEntryId,
@@ -4956,7 +5136,7 @@ class PlaybackService extends ChangeNotifier {
     } catch (e) {
       StructuredLogService.log('[PlaybackService] 预加载邻近曲目失败: $e');
     } finally {
-      _preloadingNext = false;
+      if (op == _preloadOp) _preloadingNext = false;
     }
   }
 
@@ -4988,18 +5168,28 @@ class PlaybackService extends ChangeNotifier {
     if (nextPlan != null &&
         nextEntryId != null &&
         nextEntryId != currentEntryId) {
-      final generation = _transactionGuard.allocate();
-      nextSlot = PreparedPlaybackSlot(
-        key: _nativeSourceKeyForEntry(nextEntryId),
-        source: nextPlan.source,
-        expiresAt: DateTime.now().add(_prefetchedSongDetailTtl),
-        queueRevision: queueRevision,
-        generation: generation,
-        preparedFromGeneration: _activePlaybackToken,
-        queueEntryId: nextEntryId,
-        trackKey: _buildTrackIdentity(next!),
-        nonce: ++_preparedSlotNonce,
-      );
+      final existing =
+          _nativePreparedPlans[_nativeSourceKeyForEntry(nextEntryId)];
+      final canReuse =
+          existing != null &&
+          !existing.slot.isExpired &&
+          existing.slot.queueRevision == queueRevision &&
+          existing.slot.preparedFromGeneration == _activePlaybackToken &&
+          existing.slot.trackKey == _buildTrackIdentity(next!) &&
+          identical(existing.plan, nextPlan);
+      nextSlot = canReuse
+          ? existing.slot
+          : PreparedPlaybackSlot(
+              key: _nativeSourceKeyForEntry(nextEntryId),
+              source: nextPlan.source,
+              expiresAt: DateTime.now().add(_prefetchedSongDetailTtl),
+              queueRevision: queueRevision,
+              generation: _transactionGuard.allocate(),
+              preparedFromGeneration: _activePlaybackToken,
+              queueEntryId: nextEntryId,
+              trackKey: _buildTrackIdentity(next!),
+              nonce: ++_preparedSlotNonce,
+            );
       _nativePreparedPlans[nextSlot.key] = _NativePreparedPlanEntry(
         plan: nextPlan,
         slot: nextSlot,
@@ -5192,57 +5382,10 @@ class PlaybackService extends ChangeNotifier {
       );
     }
 
-    if (track.source == MusicSource.qq || track.source == MusicSource.kugou) {
-      if (Platform.isAndroid || Platform.isIOS) {
-        return _TrackSwitchPlaybackPlan(
-          resolvedSong: resolvedSong,
-          usesCachedFile: false,
-          source: DirectHttpPlayableSource(
-            detail.url,
-            requestHeaders: _buildPlaybackHeaders(track.source),
-          ),
-          retainedTempFilePath: null,
-          coverRefreshUrl: detail.pic,
-          themeImageUrl: detail.pic,
-          themeReason: 'network-playback',
-          shouldWriteBackgroundCache:
-              !resolvedSong.isCached &&
-              !detail.url.toLowerCase().contains('.m3u8'),
-          cacheMetadataRefreshReason:
-              resolvedSong.shouldRefreshExistingCacheMetadata
-              ? 'network-fallback'
-              : null,
-        );
-      }
-
-      final platform = track.source == MusicSource.qq ? 'qq' : 'kugou';
-      final proxyReady = await _ensureLocalProxyRunning(platform);
-      if (!proxyReady) return null;
-      return _TrackSwitchPlaybackPlan(
-        resolvedSong: resolvedSong,
-        usesCachedFile: false,
-        source: ProxyHttpPlayableSource(
-          ProxyService().getProxyUrl(detail.url, platform),
-          originalUrl: detail.url,
-        ),
-        retainedTempFilePath: null,
-        coverRefreshUrl: detail.pic,
-        themeImageUrl: detail.pic,
-        themeReason: 'network-playback',
-        shouldWriteBackgroundCache:
-            !resolvedSong.isCached &&
-            !detail.url.toLowerCase().contains('.m3u8'),
-        cacheMetadataRefreshReason:
-            resolvedSong.shouldRefreshExistingCacheMetadata
-            ? 'network-fallback'
-            : null,
-      );
-    }
-
     return _TrackSwitchPlaybackPlan(
       resolvedSong: resolvedSong,
       usesCachedFile: false,
-      source: DirectHttpPlayableSource(detail.url),
+      source: await _buildNetworkPlayableSource(track, detail.url),
       retainedTempFilePath: null,
       coverRefreshUrl: detail.pic,
       themeImageUrl: detail.pic,
@@ -5269,6 +5412,32 @@ class PlaybackService extends ChangeNotifier {
 
   Map<String, String> _buildPlaybackHeaders(MusicSource source) {
     return buildAudioRequestHeaders(source);
+  }
+
+  /// Foreground loading and next-item preparation use exactly the same source
+  /// policy. Android's engine sends these headers natively through Media3.
+  Future<PlayableSource> _buildNetworkPlayableSource(
+    Track track,
+    String url,
+  ) async {
+    final needsHeaders =
+        track.source == MusicSource.qq || track.source == MusicSource.kugou;
+    if (!needsHeaders || Platform.isAndroid || Platform.isIOS) {
+      return DirectHttpPlayableSource(
+        url,
+        requestHeaders: needsHeaders
+            ? _buildPlaybackHeaders(track.source)
+            : null,
+      );
+    }
+    final platform = track.source == MusicSource.qq ? 'qq' : 'kugou';
+    if (!await _ensureLocalProxyRunning(platform)) {
+      throw StateError('桌面代理不可用，已禁用切歌下载回退');
+    }
+    return ProxyHttpPlayableSource(
+      ProxyService().getProxyUrl(url, platform),
+      originalUrl: url,
+    );
   }
 
   Future<bool> _ensureLocalProxyRunning(String platform) async {

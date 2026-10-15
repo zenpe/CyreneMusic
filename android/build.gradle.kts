@@ -18,6 +18,15 @@ val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build"
 rootProject.layout.buildDirectory.value(newBuildDir)
 
 subprojects {
+    // Apply the same repositories to plugin buildscript dependencies. Hosted
+    // plugins may declare their own AGP classpath before project repositories
+    // apply; keep those downloads on the existing mirror-first policy too.
+    buildscript.repositories {
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
+        google()
+        mavenCentral()
+    }
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 

@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test(
-    'real QuickJS abort releases serialization and isolates late responses',
+    'real QuickJS abort isolates late responses and abandoned promises',
     () async {
       final overrides = HttpOverrides.current;
       HttpOverrides.global = null;
@@ -65,7 +65,7 @@ void main() {
       expect(url, 'https://example.com/new.mp3');
       expect(requests, ['/slow', '/new']);
       // A black-box script that ignores cancellation must not poison the next
-      // operation. This exercises the actual context-rebuild fallback.
+      // operation or require resetting the shared context.
       final stubbornOwner = ResolutionRequest();
       final stubborn = stubbornOwner.run(
         () => runtime.getMusicUrl(
@@ -90,6 +90,210 @@ void main() {
       );
       await stubbornCancelled;
       expect(runtime.isScriptReady, isTrue);
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
+
+  test(
+    'real QuickJS slow HTTP does not block another resolution',
+    () async {
+      final overrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = overrides);
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final slowSeen = Completer<void>();
+      final releaseSlow = Completer<void>();
+      final paths = <String>[];
+      final subscription = server.listen((request) async {
+        paths.add(request.uri.path);
+        if (request.uri.path == '/slow') {
+          slowSeen.complete();
+          await releaseSlow.future;
+        }
+        request.response.write(
+          jsonEncode({'url': 'https://example.com${request.uri.path}.mp3'}),
+        );
+        await request.response.close();
+      });
+      final runtime = LxQuickJsRuntime();
+      addTearDown(() async {
+        if (!releaseSlow.isCompleted) releaseSlow.complete();
+        await runtime.dispose();
+        await subscription.cancel();
+        await server.close(force: true);
+      });
+      await runtime.loadScript('''
+      lx.on(lx.EVENT_NAMES.request, async ({info}) => {
+        const id = info.musicInfo.songmid;
+        const response = await lx.request('http://127.0.0.1:${server.port}/' + id, {});
+        // Exercise a second HTTP request after a Promise/timer continuation.
+        await new Promise(resolve => setTimeout(resolve, 20));
+        return lx.request('http://127.0.0.1:${server.port}/' + id + '-final', {}).then(response => JSON.parse(response.body).url);
+      });
+      lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
+    ''');
+      final slow = runtime.getMusicUrl(
+        source: 'tx',
+        songId: 'slow',
+        quality: '128k',
+      );
+      await slowSeen.future.timeout(const Duration(seconds: 2));
+      final fast = await runtime
+          .getMusicUrl(source: 'tx', songId: 'fast', quality: '128k')
+          .timeout(const Duration(seconds: 2));
+      expect(fast, 'https://example.com/fast-final.mp3');
+      expect(paths, ['/slow', '/fast', '/fast-final']);
+      releaseSlow.complete();
+      expect(await slow, 'https://example.com/slow-final.mp3');
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
+
+  test(
+    'real QuickJS failures stay with their request owner',
+    () async {
+      final runtime = LxQuickJsRuntime();
+      addTearDown(runtime.dispose);
+      await runtime.loadScript('''
+      lx.on(lx.EVENT_NAMES.request, ({info}) => new Promise((resolve, reject) => {
+        setTimeout(() => {
+          if (info.musicInfo.songmid === 'bad') reject(new Error('bad track'));
+          else resolve('https://example.com/good.mp3');
+        }, info.musicInfo.songmid === 'bad' ? 50 : 80);
+      }));
+      lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
+    ''');
+      final badOwner = ResolutionRequest();
+      final goodOwner = ResolutionRequest();
+      final results = await Future.wait([
+        badOwner.run(
+          () =>
+              runtime.getMusicUrl(source: 'tx', songId: 'bad', quality: '128k'),
+        ),
+        goodOwner.run(
+          () => runtime.getMusicUrl(
+            source: 'tx',
+            songId: 'good',
+            quality: '128k',
+          ),
+        ),
+      ]);
+      expect(results, [null, 'https://example.com/good.mp3']);
+      expect(badOwner.failure?.message, contains('bad track'));
+      expect(goodOwner.failure, isNull);
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
+  test(
+    'real QuickJS cancelling one timer does not cancel another resolution',
+    () async {
+      final runtime = LxQuickJsRuntime();
+      addTearDown(runtime.dispose);
+      await runtime.loadScript('''
+        lx.on(lx.EVENT_NAMES.request, ({info}) => new Promise(resolve => {
+          setTimeout(() => resolve('https://example.com/' + info.musicInfo.songmid + '.mp3'), 100);
+        }));
+        lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
+      ''');
+      final owner = ResolutionRequest();
+      final old = owner.run(
+        () => runtime.getMusicUrl(source: 'tx', songId: 'old', quality: '128k'),
+      );
+      final cancelled = expectLater(old, throwsA(isA<ResolutionCancelled>()));
+      final current = runtime.getMusicUrl(
+        source: 'tx',
+        songId: 'current',
+        quality: '128k',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      owner.cancel();
+      expect(await current, 'https://example.com/current.mp3');
+      await cancelled;
+      expect(runtime.isScriptReady, isTrue);
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
+
+  test(
+    'real QuickJS source replacement cancels all old resolutions',
+    () async {
+      final runtime = LxQuickJsRuntime();
+      addTearDown(runtime.dispose);
+      await runtime.loadScript('''
+      lx.on(lx.EVENT_NAMES.request, () => new Promise(resolve => {
+        setTimeout(() => resolve('https://example.com/old.mp3'), 1000);
+      }));
+      lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
+    ''');
+      final first = runtime.getMusicUrl(
+        source: 'tx',
+        songId: '1',
+        quality: '128k',
+      );
+      final second = runtime.getMusicUrl(
+        source: 'tx',
+        songId: '2',
+        quality: '128k',
+      );
+      final checks = [
+        expectLater(first, throwsA(isA<ResolutionCancelled>())),
+        expectLater(second, throwsA(isA<ResolutionCancelled>())),
+      ];
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await runtime.loadScript('''
+      lx.on(lx.EVENT_NAMES.request, () => 'https://example.com/replaced.mp3');
+      lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
+    ''');
+      await Future.wait(checks);
+      expect(
+        await runtime.getMusicUrl(source: 'tx', songId: '3', quality: '128k'),
+        'https://example.com/replaced.mp3',
+      );
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
+
+  test(
+    'real QuickJS admission is bounded and capacity returns after completion',
+    () async {
+      final runtime = LxQuickJsRuntime();
+      addTearDown(runtime.dispose);
+      await runtime.loadScript('''
+        let calls = 0;
+        lx.on(lx.EVENT_NAMES.request, () => new Promise(resolve => {
+          const call = ++calls;
+          setTimeout(() => resolve('https://example.com/' + call + '.mp3'), 100);
+        }));
+        lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
+      ''');
+      final active = List.generate(
+        4,
+        (i) => runtime.getMusicUrl(source: 'tx', songId: '$i', quality: '128k'),
+      );
+      final excessOwner = ResolutionRequest();
+      expect(
+        await excessOwner.run(
+          () => runtime.getMusicUrl(
+            source: 'tx',
+            songId: 'excess',
+            quality: '128k',
+          ),
+        ),
+        isNull,
+      );
+      expect(excessOwner.failure?.message, contains('通道繁忙'));
+      expect(
+        await Future.wait(active),
+        List.generate(4, (i) => 'https://example.com/${i + 1}.mp3'),
+      );
+      expect(
+        await runtime.getMusicUrl(
+          source: 'tx',
+          songId: 'retry',
+          quality: '128k',
+        ),
+        'https://example.com/5.mp3',
+      );
     },
     skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
   );

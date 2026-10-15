@@ -7,6 +7,7 @@ import 'package:cyrene_music/models/audio_source_config.dart';
 import 'package:cyrene_music/services/audio_source_service.dart';
 import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/services/auth_service.dart';
+import 'package:cyrene_music/services/cache_service.dart';
 import 'package:cyrene_music/services/lx_runtime_interface.dart';
 import 'package:cyrene_music/services/playback/audio_engine.dart';
 import 'package:cyrene_music/services/playback/engine_host.dart';
@@ -14,14 +15,25 @@ import 'package:cyrene_music/services/playback/playable_source.dart';
 import 'package:cyrene_music/services/playback/playback_service.dart';
 import 'package:cyrene_music/services/playback/queue_controller.dart';
 import 'package:cyrene_music/services/playback/track_resolver.dart';
+import 'package:cyrene_music/services/structured_log_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart' as ja;
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  late Directory testDirectory;
   setUpAll(() async {
+    testDirectory = await Directory.systemTemp.createTemp('cyrene-navigation-');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (_) async => testDirectory.path,
+        );
     SharedPreferences.setMockInitialValues({
+      'cache_enabled': false,
+      'custom_cache_dir': testDirectory.path,
       'auth_token': 'test-token',
       'current_user': jsonEncode({
         'id': 1,
@@ -34,6 +46,357 @@ void main() {
   tearDownAll(() async {
     AuthService().onSessionEnded = null;
     await AuthService().logout();
+    await testDirectory.delete(recursive: true);
+  });
+
+  test(
+    'remote playback writes an uncached song through background cache',
+    () async {
+      await configureTestSource();
+      final cache = CacheService();
+      await cache.initialize();
+      await cache.setCacheEnabled(true);
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      var downloads = 0;
+      server.listen((request) async {
+        downloads++;
+        request.response.headers.contentType = ContentType('audio', 'mpeg');
+        request.response.add([0x49, 0x44, 0x33, 0, 0, 0, 0, 0]);
+        await request.response.close();
+      });
+      final resolver = _Resolver()
+        ..playable.add('0')
+        ..urlOverride = 'http://127.0.0.1:${server.port}/cache.mp3';
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      final target = _remoteTracks(1).single;
+      final realHttp = _RealHttpOverrides();
+      await HttpOverrides.runZoned(() async {
+        try {
+          await playback.playNow([target], 0, QueueSource.none);
+          expect(cache.isCached(target), isFalse);
+          expect(downloads, 0);
+          engine.positionValue = const Duration(seconds: 1);
+          engine._positions.add(engine.positionValue);
+          for (var i = 0; i < 100 && !cache.isCached(target); i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+          }
+          expect(cache.isCached(target), isTrue);
+          expect(downloads, 1);
+          expect(playback.state, PBState.playing);
+        } finally {
+          playback.dispose();
+          await server.close(force: true);
+          await cache.clearAllCache();
+          await cache.setCacheEnabled(false);
+          await AudioSourceService().removeSource('playback-test-source');
+        }
+      }, createHttpClient: realHttp.createHttpClient);
+    },
+  );
+
+  test(
+    'repeated playing events do not starve next-track preparation',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()..playable.addAll(['0', '1']);
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      Timer? repeated;
+      try {
+        await playback.playNow(_remoteTracks(2), 0, QueueSource.none);
+        repeated = Timer.periodic(const Duration(milliseconds: 200), (_) {
+          engine._states.add(EngineState.playing);
+        });
+        await engine.prepared.future.timeout(const Duration(seconds: 4));
+        expect(playback.currentTrack?.id, '0');
+        expect(playback.state, PBState.playing);
+      } finally {
+        repeated?.cancel();
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
+
+  test(
+    'prepared success waits for activation and records one timing sample',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()..playable.addAll(['0', '1']);
+      final engine = _Engine()..emitEarlyCommit = true;
+      final playback = _createPlayback(resolver, engine: engine);
+      final gate = Completer<bool>();
+      engine.activationGate = gate;
+      final logs = <String>[];
+      StructuredLogService.sink = logs.add;
+      try {
+        await playback.playNow(_remoteTracks(2), 0, QueueSource.none);
+        await engine.prepared.future.timeout(const Duration(seconds: 5));
+        final baseline = playback.performanceSnapshot.completedSwitches;
+        final next = playback.next();
+        await engine.activationStarted.future;
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+        expect(playback.currentTrack?.id, '0');
+        expect(playback.performanceSnapshot.completedSwitches, baseline);
+        gate.complete(true);
+        await next;
+        expect(playback.currentTrack?.id, '1');
+        expect(playback.performanceSnapshot.completedSwitches, baseline + 1);
+        expect(playback.performanceSnapshot.preparedEngineHits, 1);
+        expect(playback.performanceSnapshot.preparedActivation.count, 1);
+        expect(
+          playback.performanceSnapshot.preparedActivation.minMs,
+          greaterThanOrEqualTo(25),
+        );
+        // A duplicate/late source event cannot count another switch.
+        engine.commitPrepared();
+        await Future<void>.delayed(Duration.zero);
+        expect(playback.performanceSnapshot.completedSwitches, baseline + 1);
+        final timing = logs
+            .map(jsonDecode)
+            .where(
+              (e) =>
+                  e['event'] == 'playback.switch.timing' &&
+                  e['prepared_engine_hit'] == true,
+            )
+            .single;
+        expect(timing['activation_ms'], greaterThanOrEqualTo(25));
+        expect(timing['generation'], engine.loadedGeneration);
+      } finally {
+        if (!gate.isCompleted) gate.complete(false);
+        StructuredLogService.sink = null;
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
+
+  for (final retryable in [false, true]) {
+    test(
+      'natural next failure targets next and releases pending (retry=$retryable)',
+      () async {
+        await configureTestSource();
+        final resolver = _Resolver()
+          ..refreshUrl = true
+          ..playable.addAll(['0', '1', '2']);
+        final engine = _Engine();
+        final playback = _createPlayback(resolver, engine: engine);
+        try {
+          await playback.playNow(_remoteTracks(3), 0, QueueSource.none);
+          await engine.prepared.future.timeout(const Duration(seconds: 5));
+          final failedSlot = engine.preparedSlot!;
+          final previousLoadCount = engine.loadedUrls.length;
+          engine._playing = false;
+          engine._errors.add(
+            EngineError(
+              type: retryable
+                  ? EngineErrorType.accessDenied
+                  : EngineErrorType.unsupportedFormat,
+              message: 'selected next failed before ready',
+              epoch: failedSlot.generation,
+              retriable: retryable,
+            ),
+          );
+          if (retryable) {
+            await waitUntil(() => playback.currentTrack?.id == '1');
+            expect(playback.state, PBState.playing);
+            expect(engine.loadedUrls.skip(previousLoadCount), isNotEmpty);
+            expect(
+              engine.loadedUrls
+                  .skip(previousLoadCount)
+                  .every((url) => url!.contains('/1-')),
+              isTrue,
+            );
+          } else {
+            await waitUntil(() => playback.state == PBState.error);
+            expectFinished(playback);
+            expect(playback.currentTrack?.id, '0');
+            expect(playback.currentProblem?.track.id, '1');
+            // A late ready event must not turn this failed item into success.
+            engine.commitPrepared();
+            await Future<void>.delayed(Duration.zero);
+            expect(playback.state, PBState.error);
+            await playback.jumpTo(2);
+            expect(playback.currentTrack?.id, '2');
+            expect(playback.state, PBState.playing);
+          }
+          expect(playback.isTrackSwitchPending, isFalse);
+          final latestTrack = playback.currentTrack;
+          // The failed native epoch cannot undo a newer manual/successful load.
+          engine._errors.add(
+            EngineError(
+              type: EngineErrorType.unsupportedFormat,
+              message: 'late failure',
+              epoch: failedSlot.generation,
+            ),
+          );
+          await Future<void>.delayed(Duration.zero);
+          expect(playback.currentTrack, latestTrack);
+          expect(playback.state, PBState.playing);
+        } finally {
+          playback.dispose();
+          await AudioSourceService().removeSource('playback-test-source');
+        }
+      },
+    );
+  }
+
+  for (final originalError in [false, true]) {
+    test(
+      'prepared timeout finishes with recoverable error (original=$originalError)',
+      () async {
+        await configureTestSource();
+        final resolver = _Resolver()..playable.addAll(['0', '1']);
+        final engine = _Engine()
+          ..failActivation = true
+          ..activationDelay = const Duration(milliseconds: 10100)
+          ..activationError = originalError
+              ? EngineError(
+                  type: EngineErrorType.unsupportedFormat,
+                  message: 'prepared codec rejected',
+                  retriable: false,
+                )
+              : null;
+        final playback = _createPlayback(resolver, engine: engine);
+        try {
+          await playback.playNow(_remoteTracks(2), 0, QueueSource.none);
+          await engine.prepared.future.timeout(const Duration(seconds: 5));
+          await playback.next();
+          expectFinished(playback);
+          expect(playback.errorMessage, isNotEmpty);
+          expect(playback.currentProblem?.message, playback.errorMessage);
+          expect(playback.currentProblem?.track.id, '1');
+          expect(playback.performanceSnapshot.preparedEngineHits, 0);
+          if (originalError) {
+            expect(playback.errorMessage, '播放失败: 当前格式不受支持');
+            expect(playback.currentProblem?.canRetry, isFalse);
+            await playback.playNow([track(2)], 0, QueueSource.none);
+            expectFinished(playback);
+            // The next action executes and reports its own failure.
+            expect(playback.errorMessage, isNot('播放失败: 当前格式不受支持'));
+          } else {
+            expect(playback.currentProblem?.canRetry, isTrue);
+            await playback.retryCurrentTrack();
+            expect(playback.state, PBState.playing);
+            expect(playback.currentTrack?.id, '1');
+            expect(playback.errorMessage, isNull);
+          }
+        } finally {
+          playback.dispose();
+          await AudioSourceService().removeSource('playback-test-source');
+        }
+      },
+    );
+  }
+
+  for (final accepted in [false, true]) {
+    test(
+      'cancelled prepared activation cannot fail or count a newer selection (success=$accepted)',
+      () async {
+        await configureTestSource();
+        final resolver = _Resolver()..playable.addAll(['0', '1', '2']);
+        final engine = _Engine();
+        final playback = _createPlayback(resolver, engine: engine);
+        final gate = Completer<bool>();
+        engine.activationGate = gate;
+        try {
+          await playback.playNow(_remoteTracks(3), 0, QueueSource.none);
+          await engine.prepared.future.timeout(const Duration(seconds: 5));
+          final old = playback.next();
+          await engine.activationStarted.future;
+          final latest = playback.jumpTo(2);
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          gate.complete(accepted);
+          await Future.wait([old, latest]);
+          expect(playback.currentTrack?.id, '2');
+          expect(playback.state, PBState.playing);
+          expect(playback.errorMessage, isNull);
+          expect(playback.isTrackSwitchPending, isFalse);
+          expect(playback.performanceSnapshot.preparedEngineHits, 0);
+        } finally {
+          if (!gate.isCompleted) gate.complete(false);
+          playback.dispose();
+          await AudioSourceService().removeSource('playback-test-source');
+        }
+      },
+    );
+  }
+
+  test('rapid remote selections only resolve the latest target', () async {
+    await configureTestSource();
+    final resolver = _Resolver()..playable.addAll(['0', '1', '2']);
+    final playback = _createPlayback(resolver);
+    final tracks = List.generate(
+      3,
+      (i) => track(i, source: MusicSource.netease),
+    );
+    try {
+      final first = playback.playNow(tracks, 0, QueueSource.none);
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      final second = playback.jumpTo(1);
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      final last = playback.jumpTo(2);
+      await Future.wait([first, second, last]);
+      expect(resolver.requests, ['2']);
+      expect(playback.currentTrack?.id, '2');
+      expect(playback.isTrackSwitchPending, isFalse);
+      expect(playback.state, PBState.playing);
+    } finally {
+      playback.dispose();
+      await AudioSourceService().removeSource('playback-test-source');
+    }
+  });
+
+  test(
+    'rapid cached URL selections only load the latest native source',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()..memoryPlayable.addAll(['0', '1', '2']);
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      final tracks = List.generate(
+        3,
+        (i) => track(i, source: MusicSource.netease),
+      );
+      try {
+        final first = playback.playNow(tracks, 0, QueueSource.none);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        final second = playback.jumpTo(1);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        final last = playback.jumpTo(2);
+        await Future.wait([first, second, last]);
+        expect(resolver.urlRequests, isEmpty);
+        expect(engine.loadedUrls, hasLength(1));
+        expect(playback.currentTrack?.id, '2');
+        expect(playback.state, PBState.playing);
+      } finally {
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
+
+  test('stop during selection debounce sends no remote request', () async {
+    await configureTestSource();
+    final resolver = _Resolver()..playable.add('0');
+    final playback = _createPlayback(resolver);
+    try {
+      final selection = playback.playNow(
+        [track(0, source: MusicSource.netease)],
+        0,
+        QueueSource.none,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      await playback.stop();
+      await selection;
+      expect(resolver.requests, isEmpty);
+      expect(playback.state, PBState.idle);
+      expect(playback.isTrackSwitchPending, isFalse);
+    } finally {
+      playback.dispose();
+      await AudioSourceService().removeSource('playback-test-source');
+    }
   });
 
   test(
@@ -372,6 +735,9 @@ PlaybackService _createPlayback(_Resolver resolver, {_Engine? engine}) =>
       resolver: resolver,
     );
 
+List<Track> _remoteTracks(int count) =>
+    List.generate(count, (i) => track(i, source: MusicSource.netease));
+
 Future<void> configureTestSource() => AudioSourceService().addSource(
   AudioSourceConfig(
     id: 'playback-test-source',
@@ -399,13 +765,31 @@ void expectFinished(PlaybackService playback) {
 }
 
 Future<void> waitUntil(bool Function() ready) async {
-  for (var i = 0; i < 100 && !ready(); i++) {
-    await Future<void>.delayed(const Duration(milliseconds: 1));
+  final clock = Stopwatch()..start();
+  while (!ready() && clock.elapsed < const Duration(seconds: 2)) {
+    await Future<void>.delayed(const Duration(milliseconds: 5));
   }
   expect(ready(), isTrue);
 }
 
+class _RealHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    final client = super.createHttpClient(context);
+    // This integration fixture may download only from its local server.
+    // History/auth side effects must never contact a real backend.
+    client.connectionFactory = (uri, proxyHost, proxyPort) {
+      if (uri.host != '127.0.0.1') {
+        throw const SocketException('External network disabled in test');
+      }
+      return Socket.startConnect(uri.host, uri.port);
+    };
+    return client;
+  }
+}
+
 class _Resolver extends TrackResolver {
+  String? urlOverride;
   bool refreshUrl = false;
   final memoryPlayable = <String>{};
 
@@ -435,6 +819,7 @@ class _Resolver extends TrackResolver {
         )
       : null;
   final requests = <String>[];
+  final urlRequests = <String>[];
   final playable = <String>{};
   final gates = <String, Completer<TrackResolutionResult>>{};
   static const failure = TrackResolutionResult(
@@ -475,6 +860,7 @@ class _Resolver extends TrackResolver {
   }) async {
     final id = songId.toString();
     requests.add(id);
+    if (!fetchLyrics) urlRequests.add(id);
     final gate = gates.remove(id);
     if (gate != null) return gate.future;
     if (!playable.contains(id)) return failure;
@@ -487,9 +873,11 @@ class _Resolver extends TrackResolver {
         alName: '',
         level: 'standard',
         size: '',
-        url: source == MusicSource.local
-            ? File('pubspec.yaml').absolute.path
-            : 'https://example.test/$id-${refreshUrl ? requests.length : 0}.mp3',
+        url:
+            urlOverride ??
+            (source == MusicSource.local
+                ? File('pubspec.yaml').absolute.path
+                : 'https://example.test/$id-${refreshUrl ? requests.length : 0}.mp3'),
         lyric: '',
         tlyric: '',
         source: source,
@@ -499,6 +887,25 @@ class _Resolver extends TrackResolver {
 }
 
 class _Engine extends Fake implements AudioEngine {
+  Duration positionValue = Duration.zero;
+  final _positions = StreamController<Duration>.broadcast();
+  final prepared = Completer<void>();
+  final activationStarted = Completer<void>();
+  PreparedPlaybackSlot? preparedSlot;
+  Completer<bool>? activationGate;
+  Duration activationDelay = Duration.zero;
+  bool emitEarlyCommit = false;
+  bool failActivation = false;
+  EngineError? activationError;
+  final _commits = StreamController<EngineSourceCommit>.broadcast();
+  final _errors = StreamController<EngineError>.broadcast();
+  void commitPrepared() {
+    final slot = preparedSlot!;
+    _commits.add(
+      EngineSourceCommit(key: slot.key, generation: slot.generation),
+    );
+  }
+
   EngineErrorType? nextError;
   Object? nextErrorCause;
   final loadedUrls = <String?>[];
@@ -519,13 +926,13 @@ class _Engine extends Fake implements AudioEngine {
   @override
   bool get isPlaying => _playing;
   @override
-  Duration get position => Duration.zero;
+  Duration get position => positionValue;
   @override
   Duration get duration => const Duration(minutes: 3);
   @override
   Duration get bufferedPosition => Duration.zero;
   @override
-  Stream<Duration> get positionStream => const Stream.empty();
+  Stream<Duration> get positionStream => _positions.stream;
   @override
   Stream<Duration> get durationStream => const Stream.empty();
   @override
@@ -535,9 +942,9 @@ class _Engine extends Fake implements AudioEngine {
   @override
   Stream<bool> get completionStream => _completed.stream;
   @override
-  Stream<EngineError> get errorStream => const Stream.empty();
+  Stream<EngineError> get errorStream => _errors.stream;
   @override
-  Stream<EngineSourceCommit> get sourceCommitStream => const Stream.empty();
+  Stream<EngineSourceCommit> get sourceCommitStream => _commits.stream;
   @override
   EngineStartupTiming? get lastStartupTiming => null;
   @override
@@ -589,6 +996,43 @@ class _Engine extends Fake implements AudioEngine {
   @override
   Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) async {}
   @override
+  Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) async {
+    if (window.next != null) {
+      preparedSlot = window.next;
+      if (!prepared.isCompleted) prepared.complete();
+    }
+  }
+
+  @override
+  Future<bool> activatePreparedSlot(
+    String key, {
+    required int generation,
+    required int queueRevision,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    Duration? loadTimeout,
+  }) async {
+    if (!activationStarted.isCompleted) activationStarted.complete();
+    if (emitEarlyCommit) commitPrepared();
+    await Future<void>.delayed(activationDelay);
+    final accepted = activationGate == null
+        ? !failActivation
+        : await activationGate!.future;
+    if (accepted) {
+      loadedGeneration = generation;
+      _playing = autoPlay;
+      _states.add(autoPlay ? EngineState.playing : EngineState.paused);
+    } else {
+      loadedGeneration = null;
+      _playing = false;
+      final error = activationError;
+      if (error != null) _errors.add(error);
+      await Future<void>.delayed(Duration.zero);
+    }
+    return accepted;
+  }
+
+  @override
   Future<void> stop() async {
     loadedGeneration = null;
     _playing = false;
@@ -609,6 +1053,9 @@ class _Engine extends Fake implements AudioEngine {
 
   @override
   Future<void> dispose() async {
+    await _positions.close();
+    await _commits.close();
+    await _errors.close();
     await _states.close();
     await _completed.close();
   }

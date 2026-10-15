@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/netease_discover.dart';
 import '../../utils/image_utils.dart';
 import '../../utils/theme_manager.dart';
+import '../discover_playlist_card_layout.dart';
 
 /// iOS 风格的歌单卡片
 class CupertinoDiscoverPlaylistCard extends StatelessWidget {
@@ -98,11 +99,8 @@ class CupertinoDiscoverPlaylistCard extends StatelessWidget {
                       summary.name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                      style: DiscoverPlaylistCardLayout.cupertinoTitle.copyWith(
                         color: isDark ? CupertinoColors.white : CupertinoColors.black,
-                        height: 1.2,
                       ),
                     ),
                     const Spacer(),
@@ -110,8 +108,7 @@ class CupertinoDiscoverPlaylistCard extends StatelessWidget {
                       summary.creatorNickname,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
+                      style: DiscoverPlaylistCardLayout.cupertinoCreator.copyWith(
                         color: CupertinoColors.systemGrey,
                       ),
                     ),

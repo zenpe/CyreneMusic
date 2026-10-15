@@ -389,6 +389,43 @@ class BannerSection extends StatelessWidget {
   }
 }
 
+class _HistoryCover extends StatelessWidget {
+  final String url;
+  final double size;
+
+  const _HistoryCover({required this.url, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final placeholder = ColoredBox(
+      color: colors.surfaceContainerHighest,
+      child: Center(
+        child: Icon(Icons.music_note_rounded, color: colors.onSurfaceVariant),
+      ),
+    );
+    final imageUrl = url.trim();
+    final uri = Uri.tryParse(imageUrl);
+    final valid = uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host.isNotEmpty;
+    return SizedBox.square(
+      dimension: size,
+      child: valid
+          ? CachedNetworkImage(
+              imageUrl: imageUrl,
+              httpHeaders: getImageHeaders(imageUrl),
+              fit: BoxFit.cover,
+              memCacheWidth: 280,
+              memCacheHeight: 280,
+              placeholder: (context, url) => placeholder,
+              errorWidget: (context, url, error) => placeholder,
+            )
+          : placeholder,
+    );
+  }
+}
+
 class HistorySection extends StatelessWidget {
   const HistorySection({super.key});
 
@@ -469,15 +506,7 @@ class HistorySection extends StatelessWidget {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child: CachedNetworkImage(
-                            imageUrl: history.first.picUrl,
-                            httpHeaders: getImageHeaders(history.first.picUrl),
-                            width: 88,
-                            height: 88,
-                            fit: BoxFit.cover,
-                            memCacheWidth: 280,
-                            memCacheHeight: 280,
-                          ),
+                          child: _HistoryCover(url: history.first.picUrl, size: 88),
                         ),
                       ),
                     ),
@@ -579,15 +608,7 @@ class HistorySection extends StatelessWidget {
                   // 封面
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: CachedNetworkImage(
-                      imageUrl: history.first.picUrl,
-                      httpHeaders: getImageHeaders(history.first.picUrl),
-                      width: 64,
-                      height: 64,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 280,
-                      memCacheHeight: 280,
-                    ),
+                    child: _HistoryCover(url: history.first.picUrl, size: 64),
                   ),
                   const SizedBox(width: 12),
                   // 歌曲列表

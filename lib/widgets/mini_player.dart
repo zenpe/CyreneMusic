@@ -528,10 +528,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                     : Duration.zero;
                                 final totalOrRemainingStr =
                                     duration.inSeconds > 0
-                                        ? (_showRemainingTime
-                                              ? '-${_formatDuration(remaining)}'
-                                              : _formatDuration(duration))
-                                        : '--:--';
+                                    ? (_showRemainingTime
+                                          ? '-${_formatDuration(remaining)}'
+                                          : _formatDuration(duration))
+                                    : '--:--';
 
                                 return Text(
                                   '$currentStr / $totalOrRemainingStr',
@@ -714,49 +714,47 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
       return Container(
         key: const ValueKey('mini_expanded'),
-        height: 66,
+        constraints: const BoxConstraints(minHeight: 66),
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
         decoration: decoration,
         child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 5, 12, 0),
-                child: Row(
-                  children: [
-                    _buildCover(song, track, colorScheme, size: 40),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildSongInfo(context)),
-                    _buildAdaptiveControls(
-                      player,
-                      context,
-                      colorScheme,
-                      hideSkip: true,
-                      compact: true,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 5, 12, 0),
+              child: Row(
+                children: [
+                  _buildCover(song, track, colorScheme, size: 40),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildSongInfo(context)),
+                  _buildAdaptiveControls(
+                    player,
+                    context,
+                    colorScheme,
+                    hideSkip: true,
+                    compact: true,
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.skip_next_rounded,
+                      color: player.hasNext
+                          ? colorScheme.onSurface
+                          : colorScheme.onSurface.withValues(alpha: 0.4),
+                      size: 24,
                     ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.skip_next_rounded,
-                        color: player.hasNext
-                            ? colorScheme.onSurface
-                            : colorScheme.onSurface.withValues(alpha: 0.4),
-                        size: 24,
-                      ),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 34,
-                        height: 34,
-                      ),
-                      onPressed: player.hasNext
-                          ? () => player.playNext()
-                          : null,
-                      tooltip: '下一首',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 34,
+                      height: 34,
                     ),
-                    const SizedBox(width: 2),
-                    _buildQueueButton(context, colorScheme, compact: true),
-                  ],
-                ),
+                    onPressed: player.hasNext ? () => player.playNext() : null,
+                    tooltip: '下一首',
+                  ),
+                  const SizedBox(width: 2),
+                  _buildQueueButton(context, colorScheme, compact: true),
+                ],
               ),
             ),
             // Middle divider progress line with total duration on the far right
@@ -793,43 +791,70 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     fontWeight: FontWeight.w600,
                     color: dynamicAccent,
                   );
-                  return Row(
-                    children: [
-                      Text(currentStr, style: timeStyle),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildSeekableProgressBar(
-                          player: player,
-                          hitHeight: 12,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(1.5),
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              minHeight: 2.5,
-                              backgroundColor: colorScheme.onSurface.withValues(
-                                alpha: 0.08,
-                              ),
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                progressBarActiveColor,
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      // Keep the progress control available even when the two
+                      // time labels grow beyond the width of a narrow phone.
+                      final maxTimeWidth = ((constraints.maxWidth - 42) / 2)
+                          .clamp(0.0, double.infinity);
+                      return Row(
+                        children: [
+                          ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: maxTimeWidth),
+                            child: Text(
+                              currentStr,
+                              style: timeStyle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildSeekableProgressBar(
+                              player: player,
+                              hitHeight: 12,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(1.5),
+                                child: LinearProgressIndicator(
+                                  value: progress,
+                                  minHeight: 2.5,
+                                  backgroundColor: colorScheme.onSurface
+                                      .withValues(alpha: 0.08),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    progressBarActiveColor,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          setState(() {
-                            _showRemainingTime = !_showRemainingTime;
-                          });
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 2),
-                          child: Text(totalOrRemainingStr, style: timeStyle),
-                        ),
-                      ),
-                    ],
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              setState(() {
+                                _showRemainingTime = !_showRemainingTime;
+                              });
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: maxTimeWidth,
+                                ),
+                                child: Text(
+                                  totalOrRemainingStr,
+                                  style: timeStyle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
               ),
@@ -1666,6 +1691,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     if (isFluent) {
       final fluentTheme = fluent.FluentTheme.of(context);
       return Column(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1698,6 +1724,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     // iOS Cupertino 风格
     if (_isCupertino) {
       return Column(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1724,6 +1751,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
     // Material Design 主题
     return Column(
+      mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2323,8 +2351,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                       ? const Center(child: Text('播放列表为空'))
                       : ListView.separated(
                           itemCount: displayListNow.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: 8),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             final Track t = displayListNow[i] as Track;
                             final isCurrent = isHighlightedTrack(t);

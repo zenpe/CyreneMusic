@@ -326,6 +326,25 @@ void main() {
     await host.dispose();
   });
 
+  test('new source discards stale queued binding and invalidation', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+    final first = host.play('a', generation: 1);
+    final binding = host.bindCurrentPreparedSlot(_slot('current', 1));
+    final invalidation = host.invalidatePreparedSlots();
+    final latest = host.play('b', generation: 2);
+    gate.complete();
+    await Future.wait([first, binding, invalidation, latest]);
+    expect(engine.boundSlots, isEmpty);
+    expect(engine.invalidations, 0);
+    expect(engine.playedUrls, ['a', 'b']);
+    await host.invalidatePreparedSlots();
+    expect(engine.invalidations, 1);
+    await host.dispose();
+  });
+
   test('预备窗口通过 EngineHost 写队列串行执行', () async {
     final engine = FakeEngine();
     final host = EngineHost(engineFactory: () => engine);
@@ -520,6 +539,8 @@ class FakeEngine implements AudioEngine {
   final List<PreparedPlaybackWindow> preparedWindows =
       <PreparedPlaybackWindow>[];
   final List<String> activatedKeys = <String>[];
+  final List<PreparedPlaybackSlot> boundSlots = [];
+  int invalidations = 0;
   Completer<void>? playGate;
   bool activationResult = true;
   bool stopOnFailedActivation = false;
@@ -633,10 +654,14 @@ class FakeEngine implements AudioEngine {
   }
 
   @override
-  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) async {}
+  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) async {
+    boundSlots.add(slot);
+  }
 
   @override
-  Future<void> invalidatePreparedSlots() async {}
+  Future<void> invalidatePreparedSlots() async {
+    invalidations++;
+  }
 
   @override
   Future<void> pause() async {}

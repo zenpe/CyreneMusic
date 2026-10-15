@@ -13,6 +13,7 @@ import '../utils/theme_manager.dart';
 import 'discover_playlist_detail_page.dart';
 import 'discover_page/discover_breadcrumbs.dart';
 import '../widgets/cupertino/cupertino_discover_widgets.dart';
+import '../widgets/discover_playlist_card_layout.dart';
 import '../widgets/skeleton_loader.dart';
 import '../widgets/login_prompt.dart';
 import '../widgets/audio_source_prompt.dart';
@@ -332,11 +333,13 @@ class _DiscoverPageState extends State<DiscoverPage> {
             if (width >= 1200) crossAxisCount = 5;
 
             return SliverGrid(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: crossAxisCount,
+              gridDelegate: DiscoverPlaylistCardLayout.gridDelegate(
+                context,
+                width: width,
+                columns: crossAxisCount,
+                cupertino: true,
                 mainAxisSpacing: 16,
                 crossAxisSpacing: 16,
-                childAspectRatio: 0.75,
               ),
               delegate: SliverChildBuilderDelegate((context, index) {
                 return CupertinoDiscoverPlaylistCard(
@@ -776,11 +779,13 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
+                  gridDelegate: DiscoverPlaylistCardLayout.gridDelegate(
+                    context,
+                    width: width,
+                    columns: crossAxisCount,
+                    cupertino: false,
                     mainAxisSpacing: 18,
                     crossAxisSpacing: 14,
-                    childAspectRatio: 0.72,
                   ),
                   itemCount: items.length,
                   itemBuilder: (context, index) => _MaterialPlaylistCard(
@@ -1632,12 +1637,8 @@ class _MaterialPlaylistCard extends StatelessWidget {
               summary.name,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+              style: DiscoverPlaylistCardLayout.materialTitle.copyWith(
                 color: colorScheme.onSurface,
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                height: 1.25,
-                letterSpacing: -0.1,
               ),
             ),
             const SizedBox(height: 3),
@@ -1646,10 +1647,8 @@ class _MaterialPlaylistCard extends StatelessWidget {
               'by ${summary.creatorNickname}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+              style: DiscoverPlaylistCardLayout.materialCreator.copyWith(
                 color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                fontSize: 11.5,
-                fontWeight: FontWeight.w500,
               ),
             ),
           ],

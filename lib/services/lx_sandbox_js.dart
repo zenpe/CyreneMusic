@@ -127,22 +127,57 @@ const String lxSandboxJs = r'''
   const pendingHttpRequests = new Map();
   let httpRequestCounter = 0;
   let requestOwner = null;
-  let activeOwner = null;
+  const activeOwners = new Set();
   const httpOwners = new Map();
-  const nativeSetTimeout = _global.setTimeout;
+  const timerOwners = new Map();
+  let timerCounter = 0;
   _global.setTimeout = function(callback, delay) {
     const owner = requestOwner;
+    if (owner !== null && !activeOwners.has(owner)) throw new Error('Resolution cancelled');
+    if (typeof callback !== 'function') throw new TypeError('Timer callback must be a function');
     const args = Array.prototype.slice.call(arguments, 2);
-    return nativeSetTimeout(function() {
-      if (owner !== null && owner !== activeOwner) return;
-      requestOwner = owner;
-      callback.apply(null, args);
-    }, delay);
+    const timer = ++timerCounter;
+    timerOwners.set(timer, {owner: owner, callback: callback, args: args});
+    sendToFlutter('lxSetTimeout', {timerId: timer, ownerKey: owner, delay: Math.max(0, Number(delay) || 0)});
+    return timer;
+  };
+  _global.clearTimeout = function(timer) {
+    timerOwners.delete(timer);
+    sendToFlutter('lxClearTimeout', {timerId: timer});
+  };
+  window.__lx_fireTimer__ = function(timer) {
+    const entry = timerOwners.get(timer);
+    if (!entry) return;
+    timerOwners.delete(timer);
+    if (entry.owner !== null && !activeOwners.has(entry.owner)) return;
+    requestOwner = entry.owner;
+    entry.callback.apply(null, entry.args);
+  };
+
+  // Preserve ownership through explicit Promise chains as well as HTTP and
+  // timer callbacks. Async/await continuations run during their JS event turn.
+  const nativeThen = Promise.prototype.then;
+  Promise.prototype.then = function(onResolved, onRejected) {
+    const owner = requestOwner;
+    function bind(callback) {
+      if (typeof callback !== 'function') return callback;
+      return function(value) {
+        requestOwner = owner;
+        return callback(value);
+      };
+    }
+    return nativeThen.call(this, bind(onResolved), bind(onRejected));
   };
 
   window.__lx_cancelRequest__ = function(owner) {
-    if (activeOwner === owner) activeOwner = null;
+    activeOwners.delete(owner);
     requestOwner = owner;
+    timerOwners.forEach(function(value, timer) {
+      if (value.owner === owner) {
+        sendToFlutter('lxClearTimeout', {timerId: timer});
+        timerOwners.delete(timer);
+      }
+    });
     httpOwners.forEach(function(value, id) {
       if (value === owner) {
         const callback = pendingHttpRequests.get(id);
@@ -175,7 +210,7 @@ const String lxSandboxJs = r'''
   
   // HTTP 请求实现 - 支持回调和 Promise 两种形式
   function request(url, options, callback) {
-    if (requestOwner !== null && requestOwner !== activeOwner) {
+    if (requestOwner !== null && !activeOwners.has(requestOwner)) {
       throw new Error('Resolution cancelled');
     }
     const requestId = 'http_' + (++httpRequestCounter) + '_' + Date.now();
@@ -510,7 +545,7 @@ const String lxSandboxJs = r'''
   
   // 发送请求到脚本
   window.__lx_sendRequest__ = function(data) {
-    activeOwner = data.requestKey;
+    activeOwners.add(data.requestKey);
     requestOwner = data.requestKey;
     console.log('[LxMusic] __lx_sendRequest__ called, data:', JSON.stringify(data));
     console.log('[LxMusic] requestHandler type:', typeof requestHandler);
@@ -567,7 +602,7 @@ const String lxSandboxJs = r'''
             url: url,
           });
         }).catch(function(err) {
-          const errMsg = err && err.stack ? String(err.stack) : (err.message || String(err));
+          const errMsg = String(err && err.message || err) + (err && err.stack ? '\n' + String(err.stack) : '');
           sendToFlutter('lxOnResponse', {
             requestKey: data.requestKey,
             success: false,
@@ -582,7 +617,7 @@ const String lxSandboxJs = r'''
         });
       }
     } catch (err) {
-      const errMsg = err && err.stack ? String(err.stack) : (err.message || String(err));
+      const errMsg = String(err && err.message || err) + (err && err.stack ? '\n' + String(err.stack) : '');
       sendToFlutter('lxOnResponse', {
         requestKey: data.requestKey,
         success: false,
@@ -595,7 +630,7 @@ const String lxSandboxJs = r'''
   window.__lx_handleHttpResponse__ = function(data) {
     if (!pendingHttpRequests.has(data.requestId)) return;
     const owner = httpOwners.get(data.requestId);
-    if (owner !== undefined && owner !== null && owner !== activeOwner) return;
+    if (owner !== undefined && owner !== null && !activeOwners.has(owner)) return;
     requestOwner = owner === undefined ? null : owner;
     httpOwners.delete(data.requestId);
     console.log('[LxMusic] __lx_handleHttpResponse__ called, requestId: ' + data.requestId);

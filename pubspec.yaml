@@ -44,7 +44,9 @@ dependencies:
   dio: ^5.4.0
   
   # Audio player
-  just_audio: ^0.10.5
+  # Official 0.10.6 snapshot with the documented Android playlist-preload API.
+  just_audio:
+    path: packages/just_audio
   
   # System media controls (Android only, Windows uses native C++ implementation)
   audio_service: ^0.18.12

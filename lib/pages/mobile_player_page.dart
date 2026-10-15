@@ -41,6 +41,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage>
   bool _showTranslation = true;
   AnimationController? _controlCenterAnimationController;
   Animation<double>? _controlCenterFadeAnimation;
+  SystemUiMode? _appliedSystemUiMode;
 
   @override
   void initState() {
@@ -50,6 +51,26 @@ class _MobilePlayerPageState extends State<MobilePlayerPage>
     _initializeData();
     // 初始检查：如果当前已经是沉浸模式，强制横屏
     _checkAndForceOrientation();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncSystemUiMode();
+  }
+
+  void _syncSystemUiMode() {
+    final style = LyricStyleService().currentStyle;
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final mode =
+        style == LyricStyle.immersive ||
+            (style == LyricStyle.fluidCloud && landscape)
+        ? SystemUiMode.immersiveSticky
+        : SystemUiMode.edgeToEdge;
+    if (_appliedSystemUiMode == mode) return;
+    _appliedSystemUiMode = mode;
+    SystemChrome.setEnabledSystemUIMode(mode);
   }
 
   /// 根据当前歌词样式检查并强制设置屏幕方向
@@ -62,8 +83,6 @@ class _MobilePlayerPageState extends State<MobilePlayerPage>
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
-      // 进入全屏沉浸模式，隐藏状态栏和虚拟按键
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     } else {
       // 恢复系统默认（跟随重力感应或恢复到原本的设置，这里设为所有方向以解除锁定）
       SystemChrome.setPreferredOrientations([
@@ -72,8 +91,6 @@ class _MobilePlayerPageState extends State<MobilePlayerPage>
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
-      // 恢复状态栏和虚拟按键显示
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
   }
 
@@ -136,6 +153,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage>
   void _onLyricStyleChanged() {
     if (mounted) {
       _checkAndForceOrientation();
+      _syncSystemUiMode();
       setState(() {});
     }
   }
@@ -304,20 +322,10 @@ class _MobilePlayerPageState extends State<MobilePlayerPage>
     final useFluidCloudLayout =
         lyricStyleService.currentStyle == LyricStyle.fluidCloud;
 
-    // 动态处理状态栏：如果是沉浸模式，或者在流体云样式下的横屏，则隐藏状态栏
-    final isImmersive = lyricStyleService.currentStyle == LyricStyle.immersive;
-    final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
     final experiencePolicy = ExperienceProfileService().policy(
       width: MediaQuery.of(context).size.width,
       height: MediaQuery.of(context).size.height,
     );
-
-    if (isImmersive || (useFluidCloudLayout && isLandscape)) {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    } else {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    }
 
     final scaffoldWidget = AnnotatedRegion<SystemUiOverlayStyle>(
       value: playerOverlayStyle,

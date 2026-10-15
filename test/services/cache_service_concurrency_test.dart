@@ -81,6 +81,23 @@ void main() {
           expect(requestCount, 1);
           expect(cache.isCached(firstTrack, quality: 'standard'), isTrue);
           expect(cache.isCached(competingTrack, quality: 'standard'), isFalse);
+          expect(
+            await cache.refreshCachedMetadata(
+              competingTrack,
+              competingDetail,
+              'standard',
+            ),
+            isFalse,
+          );
+          expect(
+            await cache.refreshCachedMetadata(
+              firstTrack,
+              firstDetail,
+              'standard',
+            ),
+            isTrue,
+          );
+          expect(requestCount, 1, reason: 'metadata refresh must not download');
         } finally {
           if (!releaseFirstRequest.isCompleted) {
             releaseFirstRequest.complete();

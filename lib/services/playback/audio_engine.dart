@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart' as ja;
 import 'package:media_kit/media_kit.dart' as mk;
 
@@ -15,6 +16,14 @@ import 'playable_source.dart';
 enum EngineState { idle, playing, paused }
 
 const _engineStartupTimeout = Duration(seconds: 8);
+const _androidPlaylistPreloadDuration = Duration(seconds: 3);
+
+// Official Media3 playlist preloading, exposed by the minimal plugin adapter.
+// Disable at build time to retain the single-source comparison/fallback path.
+const androidPlaylistPreloadEnabled = bool.fromEnvironment(
+  'CYRENE_ANDROID_PLAYLIST_PRELOAD',
+  defaultValue: true,
+);
 
 /// A bounded native operation failed; this does not establish URL expiry.
 class NativePlaybackTimeout extends TimeoutException {
@@ -54,9 +63,14 @@ enum EngineErrorType {
 
 /// 引擎错误事件
 class EngineError {
-  // just_audio's Android bridge reports ExoPlayer TYPE_SOURCE as code 0 and
-  // drops the nested HTTP status. Preserve this as source-read evidence,
-  // without claiming that it was specifically a 403 or an expired URL.
+  int? get httpStatus {
+    final error = cause;
+    if (error is! ja.PlayerException) return null;
+    return error.code >= 400 && error.code <= 599 ? error.code : null;
+  }
+
+  // Legacy bridges report ExoPlayer TYPE_SOURCE as code 0 without a nested
+  // HTTP status. Keep this weaker evidence separate from an explicit status.
   bool get isSourceReadFailure =>
       type == EngineErrorType.sourceLoad &&
       cause is ja.PlayerException &&
@@ -253,10 +267,14 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
   JustAudioEngine({
     ja.AudioPlayer Function()? playerFactory,
+    bool? allowPlaylistPreload,
     Duration bufferingStallThreshold = const Duration(seconds: 10),
     Duration nativeOperationTimeout = const Duration(seconds: 3),
     Duration nativeCleanupTimeout = const Duration(seconds: 2),
   }) : _playerFactory = playerFactory,
+       _allowPlaylistPreload =
+           allowPlaylistPreload ??
+           (!Platform.isAndroid || androidPlaylistPreloadEnabled),
        _nativeOperationTimeout = nativeOperationTimeout,
        _nativeCleanupTimeout = nativeCleanupTimeout,
        _bufferingStallThreshold = bufferingStallThreshold,
@@ -267,6 +285,10 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   }
 
   final ja.AudioPlayer Function()? _playerFactory;
+  // Both paths use upstream APIs. Keep a construction-time switch so native
+  // playlist preloading can be compared with the single-source baseline.
+  final bool _allowPlaylistPreload;
+
   final Duration _bufferingStallThreshold;
   final Duration _nativeOperationTimeout;
   final Duration _nativeCleanupTimeout;
@@ -282,7 +304,8 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   int? _androidAudioSessionId;
   bool _androidEqualizerDirty = true;
   int _equalizerRevision = 0;
-  bool _needsDeferredVolumeRestore = false;
+  Future<void>? _equalizerUpdate;
+  Future<void>? _pendingPreparedMutation;
   ja.AudioSource? _loadedAudioSource;
   final List<_PreparedEngineSlot> _preparedSlots = <_PreparedEngineSlot>[];
 
@@ -294,12 +317,6 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   bool _equalizerEnabled = true;
   List<double> _equalizerGains = List.filled(10, 0.0);
   List<int> _equalizerFrequencies = EqualizerService.kEqualizerFrequencies;
-  static const int _eqVolumeFadeSteps = 4;
-  static const Duration _eqVolumeFadeStepDelay = Duration(milliseconds: 12);
-  // play() 前只做一次短等待，避免为等 session 过度拉长首播启动时延。
-  // 如果这次没等到，真正的兜底会在播放 kick-off 后、仍保持静音时重试。
-  static const Duration _prePlayEqWaitTimeout = Duration(milliseconds: 120);
-  static const Duration _postPlayRestoreDelay = Duration(milliseconds: 70);
   int _playTicket = 0;
   // Resume cancellation is separate from the ticket owning output restoration.
   // Pausing must not cancel restoration and leave the next play muted.
@@ -316,7 +333,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   StreamSubscription<Duration?>? _durationSub;
   StreamSubscription<Duration>? _bufferedPositionSub;
   StreamSubscription<ja.PlayerState>? _playerStateSub;
-  StreamSubscription<ja.PlaybackEvent>? _eventSub;
+  StreamSubscription<ja.PlayerException>? _eventSub;
   StreamSubscription<int?>? _currentIndexSub;
   StreamSubscription<int?>? _androidSessionSub;
 
@@ -385,7 +402,15 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         _playerFactory?.call() ??
         ja.AudioPlayer(
           audioLoadConfiguration: _audioLoadConfiguration,
-          useLazyPreparation: true,
+          useLazyPreparation: !(Platform.isAndroid && _allowPlaylistPreload),
+          androidPlaylistPreloadDuration: Platform.isAndroid
+              ? (_allowPlaylistPreload
+                    ? _androidPlaylistPreloadDuration
+                    : Duration.zero)
+              : null,
+          // Android sends headers directly through the official Media3 path.
+          // iOS retains just_audio's header compatibility.
+          useProxyForRequestHeaders: !Platform.isAndroid,
         );
     _player = player;
 
@@ -394,7 +419,10 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       _currentVolume = (savedVolume ?? 0.7).clamp(0.0, 1.0);
       _volumeInitialized = true;
     }
-    await _awaitNative(player.setVolume(0), stage: 'initialize_volume');
+    await _awaitNative(
+      player.setVolume(_currentVolume),
+      stage: 'initialize_volume',
+    );
     await _awaitNative(
       player.setSpeed(_playbackSpeed),
       stage: 'initialize_speed',
@@ -463,32 +491,48 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       _scheduleCurrentSourceCommit(player);
     });
 
-    _eventSub = player.playbackEventStream.listen(
-      (_) {},
-      onError: (Object e, StackTrace st) {
-        if (!identical(_player, player)) return;
-        final mapped = _mapJustAudioError(e);
-        // 纪元闸门：arm/stop 窗口内的流事件归属旧纪元，直接抑制，
-        // 避免旧歌的迟到错误触发新歌的错误处理/自动跳歌。
-        if (_epochGate.streamEventEpoch != _dispatchEpoch) {
-          StructuredLogService.event(
-            'audio_engine.stale_event_suppressed',
-            level: LogLevel.debug,
-            fields: {
-              'engine': 'just_audio',
-              'event_epoch': _epochGate.streamEventEpoch,
-              'dispatch_epoch': _dispatchEpoch,
-              'failure_kind': mapped.type.name,
-            },
-          );
-          return;
-        }
-        _emitError(mapped);
-        if (!_stateController.isClosed) {
-          _stateController.add(EngineState.idle);
-        }
-      },
-    );
+    _eventSub = player.errorStream.listen((e) {
+      if (!identical(_player, player)) return;
+      final mapped = _mapJustAudioError(e);
+      // 纪元闸门：arm/stop 窗口内的流事件归属旧纪元，直接抑制，
+      // 避免旧歌的迟到错误触发新歌的错误处理/自动跳歌。
+      if (_epochGate.streamEventEpoch != _dispatchEpoch) {
+        StructuredLogService.event(
+          'audio_engine.stale_event_suppressed',
+          level: LogLevel.debug,
+          fields: {
+            'engine': 'just_audio',
+            'event_epoch': _epochGate.streamEventEpoch,
+            'dispatch_epoch': _dispatchEpoch,
+            'failure_kind': mapped.type.name,
+          },
+        );
+        return;
+      }
+      // A naturally selected item can fail before ready (and thus before its
+      // presentation commit). Attribute that failure to its prepared epoch,
+      // without announcing a successful source commit or changing the gate.
+      final index = player.currentIndex;
+      final selected =
+          !_epochGate.armInFlight &&
+              (e.index == null || e.index == index) &&
+              index != null &&
+              index >= 0 &&
+              index < _preparedSlots.length
+          ? _preparedSlots[index].descriptor
+          : null;
+      final failedEpoch =
+          selected != null &&
+              selected.key == _currentSourceKey(player) &&
+              selected.preparedFromGeneration == _dispatchEpoch &&
+              selected.generation > _dispatchEpoch
+          ? selected.generation
+          : _dispatchEpoch;
+      _emitError(mapped, epoch: failedEpoch);
+      if (!_stateController.isClosed) {
+        _stateController.add(EngineState.idle);
+      }
+    });
 
     if (Platform.isAndroid) {
       _androidSessionSub = player.androidAudioSessionIdStream.listen((id) {
@@ -672,15 +716,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       _equalizerRevision++;
       _androidEqualizerDirty = true;
     }
-    if (id == null || id <= 0) return;
-    if (!_androidEqualizerDirty) return;
-
-    if (_isPlaying) {
-      unawaited(_applyAndroidEqualizerWithOutputGuard(playTicket: _playTicket));
-      return;
-    }
-
-    unawaited(_applyAndroidEqualizerIfReady());
+    _scheduleEqualizerUpdate();
   }
 
   void _emitError(EngineError error, {int? epoch}) {
@@ -784,51 +820,20 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     );
   }
 
-  void _fireAndForgetPlay({
-    bool restoreVolumeAfterStart = true,
-    bool Function()? canStart,
-  }) {
+  void _fireAndForgetPlay({bool Function()? canStart}) {
     final player = _player;
     if (player == null) return;
     final playTicket = ++_playTicket;
     unawaited(() async {
       try {
         if (canStart != null && !canStart()) return;
-        if (restoreVolumeAfterStart) {
-          _needsDeferredVolumeRestore = true;
-          if (player.volume > 0.001) {
-            await player.setVolume(0).timeout(_nativeOperationTimeout);
-          }
-          if (canStart != null && !canStart()) return;
-          if (!_isCurrentPlayTicket(player, playTicket)) return;
-          await _primeAndroidEqualizerBeforePlaybackStart();
-        }
-        if (canStart != null && !canStart()) return;
         if (!_isCurrentPlayTicket(player, playTicket)) return;
         final playFuture = player.play();
-        if (restoreVolumeAfterStart) {
-          unawaited(
-            _observeOutputTask(
-              _completeDeferredOutputAfterPlaybackKickoff(player, playTicket),
-              player,
-              playTicket,
-            ),
-          );
-        } else if (Platform.isAndroid && _androidEqualizerDirty) {
-          unawaited(
-            _observeOutputTask(
-              _applyAndroidEqualizerWithOutputGuard(playTicket: playTicket),
-              player,
-              playTicket,
-            ),
-          );
-        }
+        _scheduleEqualizerUpdate();
         await playFuture;
       } catch (e) {
         if (canStart != null && !canStart()) return;
         if (!_isCurrentPlayTicket(player, playTicket)) return;
-        // 使已排队的 deferred output 失效，避免 play() 失败后仍对白跑的
-        // ticket 执行 EQ/apply/fade。
         if (_isCurrentPlayTicket(player, playTicket)) {
           _playTicket++;
         }
@@ -842,72 +847,39 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     }());
   }
 
-  Future<void> _primeAndroidEqualizerBeforePlaybackStart() async {
-    if (!Platform.isAndroid || !_androidEqualizerDirty) return;
-    await _waitForAndroidAudioSessionReady(timeout: _prePlayEqWaitTimeout);
-    await _applyAndroidEqualizerIfReady();
-  }
-
-  Future<void> _observeOutputTask(
-    Future<void> task,
-    ja.AudioPlayer player,
-    int playTicket,
-  ) async {
-    try {
-      await task;
-    } catch (error) {
-      if (!_isCurrentPlayTicket(player, playTicket)) return;
-      StructuredLogService.event(
-        'audio_engine.deferred_output_failed',
-        level: LogLevel.warning,
-        fields: {'engine': 'just_audio'},
-        error: error,
-      );
+  // Effects follow the audio session/configuration, not each track. Coalesce
+  // updates and keep all effect work out of playback's startup deadline.
+  void _scheduleEqualizerUpdate() {
+    if (!Platform.isAndroid ||
+        _player == null ||
+        !_androidEqualizerDirty ||
+        _equalizerUpdate != null) {
+      return;
     }
-  }
-
-  Future<void> _completeDeferredOutputAfterPlaybackKickoff(
-    ja.AudioPlayer player,
-    int playTicket,
-  ) async {
-    await Future.delayed(_postPlayRestoreDelay);
-    if (!_isCurrentPlayTicket(player, playTicket)) return;
-
-    if (Platform.isAndroid && _androidEqualizerDirty) {
-      await _waitForAndroidAudioSessionReady(timeout: _prePlayEqWaitTimeout);
-      if (!_isCurrentPlayTicket(player, playTicket)) return;
-      await _applyAndroidEqualizerIfReady();
-    }
-
-    if (!_isCurrentPlayTicket(player, playTicket)) return;
-    _needsDeferredVolumeRestore = false;
-    await player.setVolume(_currentVolume).timeout(_nativeOperationTimeout);
-  }
-
-  Future<void> _waitForAndroidAudioSessionReady({
-    Duration timeout = const Duration(milliseconds: 400),
-  }) async {
-    if (!Platform.isAndroid) return;
-    final deadline = DateTime.now().add(timeout);
-    while (DateTime.now().isBefore(deadline)) {
-      final sessionId = _androidAudioSessionId;
-      if (sessionId != null && sessionId > 0) {
-        return;
+    _equalizerUpdate = () async {
+      try {
+        int revision;
+        do {
+          revision = _equalizerRevision;
+          await _applyAndroidEqualizerIfReady();
+        } while (_player != null && revision != _equalizerRevision);
+      } catch (error) {
+        StructuredLogService.event(
+          'audio_engine.equalizer_update_failed',
+          level: LogLevel.warning,
+          error: error,
+        );
+      } finally {
+        _equalizerUpdate = null;
       }
-      await Future.delayed(const Duration(milliseconds: 20));
-    }
-    StructuredLogService.event(
-      'audio_engine.session_timeout',
-      level: LogLevel.warning,
-      fields: {'engine': 'just_audio', 'timeout_ms': timeout.inMilliseconds},
-    );
+    }();
   }
 
   Future<bool> _applyAndroidEqualizerIfReady() async {
     if (!Platform.isAndroid) return false;
     final player = _player;
     final sessionId = _androidAudioSessionId;
-    if (player == null || sessionId == null || sessionId <= 0) return false;
+    if (player == null) return false;
     final revision = _equalizerRevision;
     final enabled = _equalizerEnabled;
     final gains = List<double>.from(_equalizerGains);
@@ -924,11 +896,16 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       );
       if (released && isCurrent()) {
         _androidEqualizerDirty = false;
+        StructuredLogService.event(
+          'audio_engine.equalizer_applied',
+          fields: {'enabled': false, 'revision': revision},
+        );
         return true;
       }
       return false;
     }
 
+    if (sessionId == null || sessionId <= 0) return false;
     final attached = await AndroidEqualizerService().attachToSession(sessionId);
     if (!attached || !isCurrent()) return false;
     final applied = await AndroidEqualizerService().apply(
@@ -939,6 +916,14 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     );
     if (applied && isCurrent()) {
       _androidEqualizerDirty = false;
+      StructuredLogService.event(
+        'audio_engine.equalizer_applied',
+        fields: {
+          'enabled': true,
+          'revision': revision,
+          'session_id': sessionId,
+        },
+      );
       return true;
     }
     return false;
@@ -948,64 +933,76 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     return identical(_player, player) && _playTicket == playTicket;
   }
 
-  Future<void> _applyAndroidEqualizerWithOutputGuard({int? playTicket}) async {
-    final player = _player;
-    if (player == null || !Platform.isAndroid) return;
-    if (playTicket != null && !_isCurrentPlayTicket(player, playTicket)) return;
-    // 播放中补应用 EQ 可以接受更长的等待窗口，因为此时优先保证最终效果完整，
-    // 不需要像首播前那样严格压缩首响时延。
-    if (_androidAudioSessionId == null || _androidAudioSessionId! <= 0) {
-      await _waitForAndroidAudioSessionReady();
-    }
-    if (_androidAudioSessionId == null || _androidAudioSessionId! <= 0) return;
-    if (playTicket != null && !_isCurrentPlayTicket(player, playTicket)) return;
-
-    final shouldDuck = _isPlaying && _currentVolume > 0;
-    if (shouldDuck) {
-      await _fadePlayerVolume(player, 0, playTicket: playTicket);
-    }
-    try {
-      await _applyAndroidEqualizerIfReady();
-    } finally {
-      if ((playTicket == null || _isCurrentPlayTicket(player, playTicket)) &&
-          shouldDuck) {
-        await _fadePlayerVolume(player, _currentVolume, playTicket: playTicket);
-      }
-    }
-  }
-
-  Future<void> _fadePlayerVolume(
-    ja.AudioPlayer player,
-    double targetVolume, {
-    int? playTicket,
-  }) async {
-    final clampedTarget = targetVolume.clamp(0.0, 1.0);
-    final startVolume = player.volume.clamp(0.0, 1.0);
-    if ((startVolume - clampedTarget).abs() < 0.001) {
-      if (playTicket != null && !_isCurrentPlayTicket(player, playTicket)) {
-        return;
-      }
-      await player.setVolume(clampedTarget).timeout(_nativeOperationTimeout);
-      return;
-    }
-
-    for (int step = 1; step <= _eqVolumeFadeSteps; step++) {
-      if (playTicket != null && !_isCurrentPlayTicket(player, playTicket)) {
-        return;
-      }
-      if (_player != player) return;
-      final t = step / _eqVolumeFadeSteps;
-      final nextVolume = startVolume + ((clampedTarget - startVolume) * t);
-      await player
-          .setVolume(nextVolume.clamp(0.0, 1.0))
-          .timeout(_nativeOperationTimeout);
-      await Future.delayed(_eqVolumeFadeStepDelay);
-    }
-  }
-
   Future<void> _recreatePlayer() async {
     await _disposePlayerOnly();
     // Initialize lazily on the next request; recovery itself must be bounded.
+  }
+
+  Future<void> _awaitPreparedMutation(
+    ja.AudioPlayer player,
+    Future<void> Function() mutation, {
+    required String stage,
+  }) async {
+    late final Future<void> pending;
+    pending = () async {
+      try {
+        await mutation();
+      } finally {
+        if (identical(_pendingPreparedMutation, pending)) {
+          _pendingPreparedMutation = null;
+        }
+      }
+    }();
+    _pendingPreparedMutation = pending;
+    try {
+      await pending.timeout(_remainingOperationTime(_nativeOperationTimeout));
+    } on TimeoutException {
+      // A background deadline is not proof that the currently audible source
+      // is broken. Retain the mutation until native completion; foreground
+      // source changes drain it with a bounded deadline before touching the list.
+      StructuredLogService.event(
+        'audio_engine.preload_mutation_pending',
+        level: LogLevel.warning,
+        fields: {'stage': stage, 'engine': 'just_audio'},
+      );
+      unawaited(
+        pending.catchError((Object error, StackTrace stack) {
+          if (!identical(_player, player)) return;
+          StructuredLogService.event(
+            'audio_engine.preload_mutation_failed',
+            level: LogLevel.warning,
+            fields: {'stage': stage},
+            error: error,
+          );
+        }),
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> _settlePreparedMutation() async {
+    final pending = _pendingPreparedMutation;
+    if (pending == null) return;
+    try {
+      await pending.timeout(_remainingOperationTime(_nativeOperationTimeout));
+    } on TimeoutException {
+      StructuredLogService.event(
+        'audio_engine.preload_player_isolated',
+        level: LogLevel.warning,
+        fields: {'engine': 'just_audio', 'epoch': _dispatchEpoch},
+      );
+      // Recovery belongs to this foreground operation. Do not publish an
+      // intermediate fatal error and cause a second resolver request/recovery.
+      await _disposePlayerOnly();
+    } catch (error) {
+      // A rejected mutation has completed. A full source replacement below
+      // establishes a fresh list without tearing down the active player.
+      StructuredLogService.event(
+        'audio_engine.preload_settle_failed',
+        level: LogLevel.warning,
+        error: error,
+      );
+    }
   }
 
   Duration _remainingOperationTime(Duration limit) {
@@ -1116,7 +1113,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     final androidAudioSessionId = _androidAudioSessionId;
     _androidAudioSessionId = null;
     _androidEqualizerDirty = true;
-    _needsDeferredVolumeRestore = false;
+    _pendingPreparedMutation = null;
     final cleanup = Future.wait([
       for (final subscription in subscriptions) subscription.cancel(),
       () async {
@@ -1222,9 +1219,9 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   }) async {
     _finishBufferingObservation('source_replaced');
     _resumeRevision++;
+    _playTicket++;
     _lastStartupTiming = null;
     var ensurePlayerMs = 0;
-    var muteMs = 0;
     var setSourceMs = 0;
     var playToReadyMs = 0;
     // 必须在第一个 await 之前打开 arm 窗口，避免 ensurePlayer/setVolume
@@ -1236,17 +1233,19 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       ..reset()
       ..start();
     try {
+      await _settlePreparedMutation();
       final ensurePlayerSw = Stopwatch()..start();
       await _ensurePlayer();
       ensurePlayerMs = ensurePlayerSw.elapsedMilliseconds;
       final player = _player!;
-      final muteSw = Stopwatch()..start();
-      await _awaitNative(player.setVolume(0), stage: 'mute');
-      muteMs = muteSw.elapsedMilliseconds;
+      // Source replacement retains playWhenReady. A paused load must not
+      // briefly become audible before its final paused snapshot is published.
+      if (!autoPlay && player.playing) {
+        await _awaitNative(player.pause(), stage: 'load_pause');
+      }
 
-      // setAudioSource 会在同一个 AudioPlayer 内替换旧源。显式 stop 会让
-      // ExoPlayer 额外经历一次 idle/decoder 重建，缓存切歌尤其明显。
-      // 仍然先打开 stop 窗口，使替换期间旧源事件继续由纪元闸门抑制。
+      // Keep event isolation around the official plugin's source replacement.
+      // Native stop/prepare behavior belongs to upstream just_audio.
       if (_isPlaying || _hasSource) {
         _epochGate.beginStop();
       }
@@ -1256,6 +1255,15 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       _lastCurrentSourceKey = null;
 
       final setSourceSw = Stopwatch()..start();
+      StructuredLogService.event(
+        'audio_engine.source_load_started',
+        fields: {
+          'generation': generation,
+          'source_id': identityHashCode(source),
+          'prepared': false,
+          'source_switch': 'replace',
+        },
+      );
       await _awaitNative(
         player.setAudioSource(
           source,
@@ -1280,8 +1288,6 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
       _position = initialPosition ?? Duration.zero;
       _positionController.add(_position);
-      _androidEqualizerDirty = Platform.isAndroid;
-      _needsDeferredVolumeRestore = !autoPlay;
       // just_audio retains speed across source replacements. Reapplying an
       // unchanged value adds an unnecessary platform call to the deadline.
       if (player.speed != _playbackSpeed) {
@@ -1291,23 +1297,13 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         final playReadySw = Stopwatch()..start();
         _fireAndForgetPlay();
         await _waitForStartup(player);
-        // The deferred output task is intentionally best-effort because it also
-        // coordinates Android EQ. Once playback is confirmed, restore the
-        // volume synchronously so a stale play ticket cannot leave the source
-        // permanently muted.
-        await _awaitNative(
-          player.setVolume(_currentVolume),
-          stage: 'restore_volume',
-        );
-        _needsDeferredVolumeRestore = false;
         playToReadyMs = playReadySw.elapsedMilliseconds;
-      } else {
+      } else if (player.playing) {
         await _awaitNative(player.pause(), stage: 'load_pause');
       }
       _publishLoadedState(player, generation);
       _lastStartupTiming = EngineStartupTiming(
         ensurePlayerMs: ensurePlayerMs,
-        muteMs: muteMs,
         setSourceMs: setSourceMs,
         playToReadyMs: playToReadyMs,
       );
@@ -1363,8 +1359,14 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
   @override
   Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) async {
+    if (!_allowPlaylistPreload) return;
     final player = _player;
-    if (player == null || !_hasSource || window.current.isExpired) return;
+    if (player == null ||
+        !_hasSource ||
+        window.current.isExpired ||
+        _pendingPreparedMutation != null) {
+      return;
+    }
     final currentIndex = player.currentIndex;
     if (currentIndex == null ||
         currentIndex < 0 ||
@@ -1381,35 +1383,54 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       ..reset()
       ..start();
     try {
-      // Keep the selected source fixed. A rolling window is rebuilt by
-      // pruning every non-current item, then appending at most one next item.
       final currentEntry = _preparedSlots[currentIndex];
+      final retainedNext = desiredNext == null || desiredNext.isExpired
+          ? null
+          : _preparedSlots
+                .where(
+                  (entry) =>
+                      entry.descriptor.key == desiredNext.key &&
+                      !entry.descriptor.isExpired &&
+                      entry.descriptor.queueRevision ==
+                          desiredNext.queueRevision &&
+                      entry.descriptor.preparedFromGeneration ==
+                          desiredNext.preparedFromGeneration &&
+                      entry.descriptor.source == desiredNext.source &&
+                      !identical(entry, currentEntry),
+                )
+                .firstOrNull;
       for (var index = _preparedSlots.length - 1; index >= 0; index--) {
-        if (identical(_preparedSlots[index], currentEntry)) continue;
-        await _awaitNative(
-          player.removeAudioSourceAt(index),
-          stage: 'preload_remove',
-        );
-        _preparedSlots.removeAt(index);
+        if (identical(_preparedSlots[index], currentEntry) ||
+            identical(_preparedSlots[index], retainedNext)) {
+          continue;
+        }
+        await _awaitPreparedMutation(player, () async {
+          await player.removeAudioSourceAt(index);
+          if (identical(_player, player)) _preparedSlots.removeAt(index);
+        }, stage: 'preload_remove');
       }
+
+      if (retainedNext != null) retainedNext.descriptor = desiredNext!;
 
       if (desiredNext != null &&
           !desiredNext.isExpired &&
-          desiredNext.key != window.current.key) {
+          desiredNext.key != window.current.key &&
+          retainedNext == null) {
         final source = _buildAudioSource(
           desiredNext.source,
           tag: desiredNext.key,
         );
         final refreshedCurrentIndex = _preparedSlots.indexOf(currentEntry);
         final insertAt = refreshedCurrentIndex + 1;
-        await _awaitNative(
-          player.insertAudioSource(insertAt, source),
-          stage: 'preload_insert',
-        );
-        _preparedSlots.insert(
-          insertAt,
-          _PreparedEngineSlot(desiredNext, source),
-        );
+        await _awaitPreparedMutation(player, () async {
+          await player.insertAudioSource(insertAt, source);
+          if (!identical(_player, player)) return;
+          _preparedSlots.insert(
+            insertAt,
+            _PreparedEngineSlot(desiredNext, source),
+          );
+          _scheduleCurrentSourceCommit(player);
+        }, stage: 'preload_insert');
       }
       StructuredLogService.event(
         'audio_engine.prepared_window_ready',
@@ -1418,6 +1439,15 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
           'prepare_ms': prepareSw.elapsedMilliseconds,
           'slot_count': _preparedSlots.length,
           'has_next': desiredNext != null,
+          'next_reused': retainedNext != null,
+          'preparation_stage': 'playlist_inserted',
+          'native_preload_target_ms': Platform.isAndroid
+              ? _androidPlaylistPreloadDuration.inMilliseconds
+              : null,
+          'next_generation': desiredNext?.generation,
+          'next_source_id': _preparedSlots.length > 1
+              ? identityHashCode(_preparedSlots[1].audioSource)
+              : null,
           'queue_revision': window.current.queueRevision,
         },
       );
@@ -1447,6 +1477,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     Duration? initialPosition,
     Duration? loadTimeout,
   }) async {
+    if (!_allowPlaylistPreload) return false;
     final player = _player;
     final targetIndex = _preparedSlots.indexWhere(
       (entry) =>
@@ -1454,9 +1485,15 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
           entry.descriptor.queueRevision == queueRevision &&
           !entry.descriptor.isExpired,
     );
-    if (player == null || targetIndex < 0 || !_hasSource) return false;
+    if (player == null ||
+        targetIndex < 0 ||
+        !_hasSource ||
+        _pendingPreparedMutation != null) {
+      return false;
+    }
 
     _resumeRevision++;
+    _playTicket++;
     final target = _preparedSlots[targetIndex];
     final sw = Stopwatch()..start();
     _epochGate.beginArm(generation);
@@ -1466,18 +1503,29 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       ..reset()
       ..start();
     try {
-      await _awaitNative(player.setVolume(0), stage: 'prepared_mute');
+      if (!autoPlay && player.playing) {
+        await _awaitNative(player.pause(), stage: 'prepared_pause');
+      }
+      final nativeIndex = targetIndex;
+      StructuredLogService.event(
+        'audio_engine.source_load_started',
+        fields: {
+          'generation': generation,
+          'source_id': identityHashCode(target.audioSource),
+          'prepared': true,
+        },
+      );
+      final sourceClock = Stopwatch()..start();
       await _awaitNative(
         player.seek(initialPosition ?? Duration.zero, index: targetIndex),
         stage: 'prepared_seek',
-        // On Android seek completes at STATE_READY, including network loading.
-        // It shares the source deadline, not the short control-operation cap.
         timeout: _engineStartupTimeout,
       );
-      if (player.currentIndex != targetIndex ||
+      if (player.currentIndex != nativeIndex ||
           player.processingState != ja.ProcessingState.ready) {
-        await _waitForPreparedReady(player, targetIndex);
+        await _waitForPreparedReady(player, nativeIndex);
       }
+      sourceClock.stop();
 
       _loadedAudioSource = target.audioSource;
       _hasSource = true;
@@ -1489,8 +1537,6 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       _durationController.add(_duration);
       _positionController.add(_position);
       _bufferedPositionController.add(_bufferedPosition);
-      _androidEqualizerDirty = Platform.isAndroid;
-      _needsDeferredVolumeRestore = !autoPlay;
       if (player.speed != _playbackSpeed) {
         await _awaitNative(
           player.setSpeed(_playbackSpeed),
@@ -1502,19 +1548,14 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         final playSw = Stopwatch()..start();
         _fireAndForgetPlay();
         await _waitForStartup(player);
-        await _awaitNative(
-          player.setVolume(_currentVolume),
-          stage: 'prepared_restore_volume',
-        );
-        _needsDeferredVolumeRestore = false;
         playToReadyMs = playSw.elapsedMilliseconds;
-      } else {
+      } else if (player.playing) {
         await _awaitNative(player.pause(), stage: 'prepared_pause');
       }
       _publishLoadedState(player, generation);
       _lastStartupTiming = EngineStartupTiming(
         muteMs: 0,
-        setSourceMs: 0,
+        setSourceMs: sourceClock.elapsedMilliseconds,
         playToReadyMs: playToReadyMs,
         preparedActivation: true,
       );
@@ -1523,20 +1564,15 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         fields: {
           'engine': 'just_audio',
           'activation_ms': sw.elapsedMilliseconds,
+          'source_switch': 'playlist_seek',
+          'generation': generation,
+          'source_id': identityHashCode(target.audioSource),
           'queue_revision': queueRevision,
         },
       );
       return true;
     } catch (error) {
       _epochGate.abandonArm(generation);
-      if (identical(_player, player)) {
-        try {
-          await _awaitNative(
-            player.setVolume(_currentVolume),
-            stage: 'prepared_failure_volume',
-          );
-        } catch (_) {}
-      }
       StructuredLogService.event(
         'audio_engine.prepared_slot_failed',
         level: LogLevel.warning,
@@ -1552,6 +1588,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
   @override
   Future<void> invalidatePreparedSlots() async {
+    await _settlePreparedMutation();
     final player = _player;
     final currentIndex = player?.currentIndex;
     if (player == null || currentIndex == null || _preparedSlots.isEmpty) {
@@ -1706,13 +1743,9 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       return;
     }
     if (_isPlaying) return;
-    final needsVolumeRestore =
-        _needsDeferredVolumeRestore ||
-        (Platform.isAndroid && _androidEqualizerDirty);
     final player = _player;
     final epoch = _dispatchEpoch;
     _fireAndForgetPlay(
-      restoreVolumeAfterStart: needsVolumeRestore,
       canStart: () =>
           revision == _resumeRevision &&
           identical(player, _player) &&
@@ -1736,6 +1769,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
   @override
   Future<void> stop() async {
+    await _settlePreparedMutation();
     _resumeRevision++;
     // stop 属于源头操作：其后的流事件（idle/completed）归属被停止的纪元，
     // 在下一次 arm 前不会污染新歌。
@@ -1793,6 +1827,12 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     List<double> gains,
     List<int> frequencies,
   ) async {
+    if (_equalizerEnabled == enabled &&
+        listEquals(_equalizerGains, gains) &&
+        listEquals(_equalizerFrequencies, frequencies)) {
+      _scheduleEqualizerUpdate();
+      return;
+    }
     _equalizerEnabled = enabled;
     _equalizerGains = List<double>.from(gains);
     _equalizerFrequencies = List<int>.from(frequencies);
@@ -1800,9 +1840,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
 
     if (!Platform.isAndroid) return;
     _androidEqualizerDirty = true;
-    if (_isPlaying) {
-      await _applyAndroidEqualizerWithOutputGuard();
-    }
+    _scheduleEqualizerUpdate();
   }
 }
 

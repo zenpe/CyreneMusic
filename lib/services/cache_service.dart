@@ -1362,6 +1362,27 @@ class CacheService extends ChangeNotifier {
     return true;
   }
 
+  /// Metadata-only refresh; never starts an audio download on a cache miss.
+  Future<bool> refreshCachedMetadata(
+    Track track,
+    SongDetail songDetail,
+    String quality,
+  ) async {
+    if (!_isInitialized || !_cacheEnabled) return false;
+    final normalizedQuality = normalizeQualityValue(quality);
+    final resolved = _resolveCacheEntry(track, quality: normalizedQuality);
+    if (resolved == null || resolved.metadata.quality != normalizedQuality) {
+      return false;
+    }
+    return _refreshExistingCacheMetadata(
+      resolved.key,
+      resolved.metadata,
+      track,
+      songDetail,
+      normalizedQuality: normalizedQuality,
+    );
+  }
+
   Future<CachedAudioFileInfo?> getCachedAudioFileInfo(
     Track track, {
     String? quality,

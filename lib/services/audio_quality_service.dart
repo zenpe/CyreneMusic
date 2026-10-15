@@ -13,7 +13,8 @@ class AudioQualityService extends ChangeNotifier {
     _loadQuality();
   }
 
-  AudioQuality _currentQuality = AudioQuality.exhigh; // 默认极高音质
+  static const AudioQuality _defaultQuality = AudioQuality.standard; // 128k
+  AudioQuality _currentQuality = _defaultQuality;
   AudioQuality get currentQuality => _currentQuality;
 
   static const String _qualityKey = 'audio_quality';
@@ -119,7 +120,7 @@ class AudioQualityService extends ChangeNotifier {
   AudioQuality getEffectiveQuality(AudioQuality selectedQuality, List<AudioQuality> supportedQualities) {
     // 如果支持的音质列表为空，返回默认音质
     if (supportedQualities.isEmpty) {
-      return AudioQuality.exhigh;
+      return _defaultQuality;
     }
 
     // 如果选择的音质被支持，直接返回
@@ -152,14 +153,14 @@ class AudioQualityService extends ChangeNotifier {
       if (qualityString != null) {
         _currentQuality = AudioQuality.values.firstWhere(
           (e) => e.toString() == qualityString,
-          orElse: () => AudioQuality.exhigh,
+          orElse: () => _defaultQuality,
         );
       }
 
       StructuredLogService.log('🎵 [AudioQualityService] 加载音质设置: ${getQualityName()}');
     } catch (e) {
       StructuredLogService.log('❌ [AudioQualityService] 加载音质设置失败: $e');
-      _currentQuality = AudioQuality.exhigh;
+      _currentQuality = _defaultQuality;
     }
     notifyListeners();
   }

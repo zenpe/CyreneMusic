@@ -142,15 +142,12 @@ class MainActivity : AudioServiceFragmentActivity() {
             val minLevel = bandLevelRange[0].toInt()
             val maxLevel = bandLevelRange[1].toInt()
 
-            eq.enabled = false
-            for (band in 0 until eq.numberOfBands.toInt()) {
-                eq.setBandLevel(band.toShort(), 0)
-            }
-
             if (!enabled || gains.isEmpty()) {
+                eq.enabled = false
                 return true
             }
 
+            val targetLevels = ShortArray(eq.numberOfBands.toInt())
             if (frequencies.isNotEmpty()) {
                 val count = minOf(gains.size, frequencies.size)
                 for (i in 0 until count) {
@@ -158,7 +155,9 @@ class MainActivity : AudioServiceFragmentActivity() {
                     val level = (gains[i] * 100.0).roundToInt()
                         .coerceIn(minLevel, maxLevel)
                         .toShort()
-                    eq.setBandLevel(targetBand, level)
+                    if (targetBand.toInt() in targetLevels.indices) {
+                        targetLevels[targetBand.toInt()] = level
+                    }
                 }
             } else {
                 val bandCount = minOf(gains.size, eq.numberOfBands.toInt())
@@ -166,10 +165,15 @@ class MainActivity : AudioServiceFragmentActivity() {
                     val level = (gains[i] * 100.0).roundToInt()
                         .coerceIn(minLevel, maxLevel)
                         .toShort()
-                    eq.setBandLevel(i.toShort(), level)
+                    targetLevels[i] = level
                 }
             }
-            eq.enabled = true
+            for (band in targetLevels.indices) {
+                if (eq.getBandLevel(band.toShort()) != targetLevels[band]) {
+                    eq.setBandLevel(band.toShort(), targetLevels[band])
+                }
+            }
+            if (!eq.enabled) eq.enabled = true
             true
         } catch (e: Exception) {
             Log.e("MainActivity", "❌ Android EQ apply 失败: ${e.message}", e)
