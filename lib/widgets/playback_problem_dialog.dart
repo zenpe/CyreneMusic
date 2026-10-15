@@ -99,6 +99,8 @@ String _titleFor(PlaybackProblemKind kind) {
       return '音源不可用';
     case PlaybackProblemKind.networkTimeout:
       return '连接超时';
+    case PlaybackProblemKind.networkUnavailable:
+      return '网络未连接';
     case PlaybackProblemKind.localFileMissing:
       return '文件不存在';
     case PlaybackProblemKind.unsupportedFormat:

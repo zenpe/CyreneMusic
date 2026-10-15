@@ -9,12 +9,15 @@ import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/services/auth_service.dart';
 import 'package:cyrene_music/services/cache_service.dart';
 import 'package:cyrene_music/services/lx_runtime_interface.dart';
+import 'package:cyrene_music/services/lyric/lyric_cache_service.dart';
 import 'package:cyrene_music/services/playback/audio_engine.dart';
 import 'package:cyrene_music/services/playback/engine_host.dart';
 import 'package:cyrene_music/services/playback/playable_source.dart';
 import 'package:cyrene_music/services/playback/playback_service.dart';
 import 'package:cyrene_music/services/playback/queue_controller.dart';
 import 'package:cyrene_music/services/playback/track_resolver.dart';
+import 'package:cyrene_music/services/playback/startup_network_gate.dart';
+import 'package:cyrene_music/services/playback/playback_transition.dart';
 import 'package:cyrene_music/services/structured_log_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
@@ -42,6 +45,7 @@ void main() {
       }),
     });
     await AuthService().ensureInitialized();
+    await LyricCacheService().initialize();
   });
   tearDownAll(() async {
     AuthService().onSessionEnded = null;
@@ -687,6 +691,270 @@ void main() {
     },
   );
 
+  for (final cancelAction in ['pause', 'next', 'source']) {
+    test('startup offline wait yields to $cancelAction', () async {
+      await configureTestSource();
+      final events = StreamController<StartupNetworkStatus>.broadcast();
+      final resolver = _Resolver()..playable.addAll(['0', '1']);
+      final engine = _Engine();
+      final playback = _createPlayback(
+        resolver,
+        engine: engine,
+        startupNetworkGateFactory: () => StartupNetworkGate(
+          check: () async => StartupNetworkStatus.unavailable,
+          changes: events.stream,
+          cancellationInterval: const Duration(milliseconds: 5),
+        ),
+      );
+      try {
+        final restoring = playback.playNow(
+          _remoteTracks(2),
+          0,
+          QueueSource.none,
+          intent: PlaybackRequestIntent.restore,
+        );
+        await waitUntil(() => playback.errorMessage == '等待网络连接…');
+        expect(resolver.requests, isEmpty);
+        final observedPending = <bool>[];
+        playback.addListener(
+          () => observedPending.add(playback.isTrackSwitchPending),
+        );
+        switch (cancelAction) {
+          case 'pause':
+            await playback.pause();
+          case 'next':
+            await playback.next();
+          case 'source':
+            AudioSourceService().refresh();
+        }
+        await restoring.timeout(const Duration(seconds: 2));
+        expect(playback.isTrackSwitchPending, isFalse);
+        expect(playback.errorMessage, isNull);
+        expect(observedPending, contains(false));
+        events.add(StartupNetworkStatus.available);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(resolver.urlRequests, cancelAction == 'next' ? ['1'] : isEmpty);
+        expect(
+          engine.loadedUrls,
+          cancelAction == 'next' ? hasLength(1) : isEmpty,
+        );
+        expect(events.hasListener, isFalse);
+      } finally {
+        playback.dispose();
+        await events.close();
+      }
+    });
+  }
+
+  test(
+    'startup offline deadline releases UI without calling the source',
+    () async {
+      await configureTestSource();
+      final events = StreamController<StartupNetworkStatus>.broadcast();
+      final resolver = _Resolver();
+      final playback = _createPlayback(
+        resolver,
+        startupNetworkGateFactory: () => StartupNetworkGate(
+          check: () async => StartupNetworkStatus.unavailable,
+          changes: events.stream,
+          maxWait: const Duration(milliseconds: 30),
+        ),
+      );
+      try {
+        await playback.playNow(
+          _remoteTracks(1),
+          0,
+          QueueSource.none,
+          intent: PlaybackRequestIntent.restore,
+        );
+        expectFinished(playback);
+        expect(resolver.requests, isEmpty);
+        expect(playback.errorMessage, '网络尚未连接，请联网后重试');
+        expect(playback.currentTrack, isNull);
+        expect(playback.viewState.track?.id, '0');
+        expect(playback.displayTitle, 'Track 0');
+        expect(playback.viewState.effectivePlaying, isFalse);
+        expect(
+          playback.sourceHealthNotifier.value?.consecutiveTransientFailures,
+          0,
+        );
+        expect(
+          playback.sourceHealthNotifier.value?.consecutiveSystemicFailures,
+          0,
+        );
+        events.add(StartupNetworkStatus.available);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(resolver.requests, isEmpty);
+        expect(playback.state, PBState.error);
+        expect(events.hasListener, isFalse);
+      } finally {
+        playback.dispose();
+        await events.close();
+      }
+    },
+  );
+
+  test('startup resumes exactly once when connectivity returns', () async {
+    await configureTestSource();
+    final events = StreamController<StartupNetworkStatus>.broadcast();
+    final resolver = _Resolver()..playable.add('0');
+    final engine = _Engine();
+    final playback = _createPlayback(
+      resolver,
+      engine: engine,
+      startupNetworkGateFactory: () => StartupNetworkGate(
+        check: () async => StartupNetworkStatus.unavailable,
+        changes: events.stream,
+      ),
+    );
+    try {
+      final restoring = playback.playNow(
+        _remoteTracks(1),
+        0,
+        QueueSource.none,
+        intent: PlaybackRequestIntent.restore,
+      );
+      await waitUntil(() => playback.errorMessage == '等待网络连接…');
+      expect(resolver.requests, isEmpty);
+      events.add(StartupNetworkStatus.available);
+      events.add(StartupNetworkStatus.available);
+      await restoring;
+      expect(resolver.urlRequests, ['0']);
+      expect(engine.loadedUrls, hasLength(1));
+      expect(playback.state, PBState.playing);
+      expect(playback.errorMessage, isNull);
+      expect(playback.isTrackSwitchPending, isFalse);
+      expect(events.hasListener, isFalse);
+    } finally {
+      playback.dispose();
+      await events.close();
+    }
+  });
+
+  test('startup retries an unreachable network only once', () async {
+    await configureTestSource();
+    final first = Completer<TrackResolutionResult>();
+    final resolver = _Resolver()..gates['0'] = first;
+    final playback = _createPlayback(
+      resolver,
+      startupNetworkGateFactory: () => StartupNetworkGate(
+        check: () async => StartupNetworkStatus.available,
+        changes: const Stream.empty(),
+      ),
+    );
+    try {
+      final restoring = playback.playNow(
+        _remoteTracks(1),
+        0,
+        QueueSource.none,
+        intent: PlaybackRequestIntent.restore,
+      );
+      await waitUntil(() => resolver.requests.isNotEmpty);
+      first.complete(
+        const TrackResolutionResult(
+          detail: null,
+          lxFailure: LxRuntimeFailure(
+            kind: LxRuntimeFailureKind.networkUnavailable,
+            message: 'Network is unreachable',
+          ),
+        ),
+      );
+      await restoring;
+      // The second fixture response is a timeout, which cannot cause a third request.
+      expect(resolver.requests, ['0', '0']);
+      expectFinished(playback);
+      expect(playback.errorMessage, contains('超时'));
+    } finally {
+      playback.dispose();
+    }
+  });
+
+  test('startup does not repeat ordinary source failures', () async {
+    await configureTestSource();
+    final resolver = _Resolver();
+    final playback = _createPlayback(
+      resolver,
+      startupNetworkGateFactory: () => StartupNetworkGate(
+        check: () async => StartupNetworkStatus.available,
+        changes: const Stream.empty(),
+      ),
+    );
+    try {
+      await playback.playNow(
+        _remoteTracks(1),
+        0,
+        QueueSource.none,
+        intent: PlaybackRequestIntent.restore,
+      );
+      expect(resolver.requests, ['0']);
+      expectFinished(playback);
+    } finally {
+      playback.dispose();
+    }
+  });
+
+  test('unreachable startup retry does not penalize source health', () async {
+    await configureTestSource();
+    final resolver = _Resolver()
+      ..failureResponse = const TrackResolutionResult(
+        detail: null,
+        lxFailure: LxRuntimeFailure(
+          kind: LxRuntimeFailureKind.networkUnavailable,
+          message: 'Network is unreachable',
+        ),
+      );
+    final playback = _createPlayback(
+      resolver,
+      startupNetworkGateFactory: () => StartupNetworkGate(
+        check: () async => StartupNetworkStatus.available,
+        changes: const Stream.empty(),
+      ),
+    );
+    try {
+      await playback.playNow(
+        _remoteTracks(1),
+        0,
+        QueueSource.none,
+        intent: PlaybackRequestIntent.restore,
+      );
+      expect(resolver.urlRequests, ['0', '0']);
+      expectFinished(playback);
+      expect(playback.errorMessage, '网络尚未连接，请联网后重试');
+      expect(
+        playback.sourceHealthNotifier.value?.consecutiveTransientFailures,
+        0,
+      );
+      expect(
+        playback.sourceHealthNotifier.value?.consecutiveSystemicFailures,
+        0,
+      );
+    } finally {
+      playback.dispose();
+    }
+  });
+
+  test('startup with cached detail never waits for connectivity', () async {
+    await configureTestSource();
+    final resolver = _Resolver()..memoryPlayable.add('0');
+    final playback = _createPlayback(
+      resolver,
+      startupNetworkGateFactory: () => throw StateError('must use cached URL'),
+    );
+    try {
+      await playback.playNow(
+        _remoteTracks(1),
+        0,
+        QueueSource.none,
+        intent: PlaybackRequestIntent.restore,
+      );
+      expect(resolver.requests, isEmpty);
+      expect(playback.currentTrack?.id, '0');
+      expect(playback.state, PBState.playing);
+    } finally {
+      playback.dispose();
+    }
+  });
+
   test('valid paused source resumes without resolving again', () async {
     final resolver = _Resolver()..playable.add('0');
     final engine = _Engine();
@@ -704,6 +972,60 @@ void main() {
       playback.dispose();
     }
   });
+
+  for (final count in [1, 2]) {
+    test(
+      'removing first failed track clears presentation and retry ($count tracks)',
+      () async {
+        await configureTestSource();
+        final resolver = _Resolver();
+        final playback = _createPlayback(resolver);
+        try {
+          await playback.playNow(_remoteTracks(count), 0, QueueSource.none);
+          final staleProblem = playback.currentProblem!;
+          expect(playback.viewState.track?.id, '0');
+          await playback.removeAt(0);
+          expect(playback.viewState.track, isNull);
+          expect(playback.displayTitle, isEmpty);
+          expect(playback.errorMessage, isNull);
+          expect(playback.currentProblem, isNull);
+          expect(playback.state, PBState.idle);
+          expect(playback.isTrackSwitchPending, isFalse);
+          resolver.requests.clear();
+          await playback.retryCurrentTrack(expectedProblem: staleProblem);
+          await playback.retryCurrentTrack();
+          expect(resolver.requests, isEmpty);
+          if (count > 1) {
+            resolver.playable.add('1');
+            await playback.next();
+            expect(playback.currentTrack?.id, '1');
+            expect(playback.state, PBState.playing);
+          }
+        } finally {
+          playback.dispose();
+        }
+      },
+    );
+  }
+
+  test(
+    'removing a duplicate entry preserves the actual failed target',
+    () async {
+      await configureTestSource();
+      final playback = _createPlayback(_Resolver());
+      try {
+        final target = _remoteTracks(1).single;
+        await playback.playNow([target, target], 0, QueueSource.none);
+        final problem = playback.currentProblem;
+        await playback.removeAt(1);
+        expect(playback.viewState.track?.id, '0');
+        expect(playback.currentProblem, same(problem));
+        expect(playback.state, PBState.error);
+      } finally {
+        playback.dispose();
+      }
+    },
+  );
 
   test(
     'removing a failed entry falls back to the current queue and replacement clears failure target',
@@ -727,13 +1049,56 @@ void main() {
       }
     },
   );
+
+  test(
+    'late retry cannot restore a deleted failed entry over the next track',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver();
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      final lateResponse = Completer<TrackResolutionResult>();
+      try {
+        await playback.playNow(_remoteTracks(2), 0, QueueSource.none);
+        resolver.requests.clear();
+        resolver.gates['0'] = lateResponse;
+        final retrying = playback.retryCurrentTrack();
+        await waitUntil(() => resolver.requests.contains('0'));
+        await playback.removeAt(0);
+        expect(playback.isTrackSwitchPending, isFalse);
+        expect(playback.currentProblem, isNull);
+        resolver.playable.add('1');
+        await playback.next();
+        resolver.memoryPlayable.add('0');
+        lateResponse.complete(
+          resolver.peekResolved(
+            songId: '0',
+            quality: AudioQuality.standard,
+            source: MusicSource.netease,
+          ),
+        );
+        await retrying;
+        expect(playback.currentTrack?.id, '1');
+        expect(playback.state, PBState.playing);
+        expect(playback.errorMessage, isNull);
+        expect(engine.loadedUrls, hasLength(1));
+      } finally {
+        if (!lateResponse.isCompleted) lateResponse.complete(_Resolver.failure);
+        playback.dispose();
+      }
+    },
+  );
 }
 
-PlaybackService _createPlayback(_Resolver resolver, {_Engine? engine}) =>
-    PlaybackService.forTesting(
-      engine: EngineHost(engineFactory: () => engine ?? _Engine()),
-      resolver: resolver,
-    );
+PlaybackService _createPlayback(
+  _Resolver resolver, {
+  _Engine? engine,
+  StartupNetworkGate Function()? startupNetworkGateFactory,
+}) => PlaybackService.forTesting(
+  engine: EngineHost(engineFactory: () => engine ?? _Engine()),
+  resolver: resolver,
+  startupNetworkGateFactory: startupNetworkGateFactory,
+);
 
 List<Track> _remoteTracks(int count) =>
     List.generate(count, (i) => track(i, source: MusicSource.netease));
@@ -822,6 +1187,7 @@ class _Resolver extends TrackResolver {
   final urlRequests = <String>[];
   final playable = <String>{};
   final gates = <String, Completer<TrackResolutionResult>>{};
+  TrackResolutionResult failureResponse = failure;
   static const failure = TrackResolutionResult(
     detail: null,
     lxFailure: LxRuntimeFailure(
@@ -863,7 +1229,7 @@ class _Resolver extends TrackResolver {
     if (!fetchLyrics) urlRequests.add(id);
     final gate = gates.remove(id);
     if (gate != null) return gate.future;
-    if (!playable.contains(id)) return failure;
+    if (!playable.contains(id)) return failureResponse;
     return TrackResolutionResult(
       detail: SongDetail(
         id: id,

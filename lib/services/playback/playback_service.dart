@@ -64,6 +64,7 @@ import 'queue_controller.dart';
 import 'playable_source.dart';
 import 'source_health_tracker.dart';
 import 'track_resolver.dart';
+import 'startup_network_gate.dart';
 
 /// 播放状态枚举（复用 PlayerService 的定义）
 enum PBState { idle, loading, playing, paused, error }
@@ -210,7 +211,12 @@ class PlaybackService extends ChangeNotifier {
   PlaybackService.forTesting({
     required EngineHost engine,
     TrackResolver? resolver,
-  }) : this._internal(engine: engine, resolver: resolver);
+    StartupNetworkGate Function()? startupNetworkGateFactory,
+  }) : this._internal(
+         engine: engine,
+         resolver: resolver,
+         startupNetworkGateFactory: startupNetworkGateFactory,
+       );
 
   // ══════════════════════════════════════════════════════
   // 队列状态（原 PlaylistQueueService）
@@ -372,6 +378,7 @@ class PlaybackService extends ChangeNotifier {
   // 播放状态保存
   Duration? _pendingRestorePosition;
   bool _hasRestoredSessionOnStartup = false;
+  int? _startupNetworkWaitToken;
 
   // 桌面/悬浮歌词
   List<LyricLine> _lyrics = [];
@@ -396,7 +403,14 @@ class PlaybackService extends ChangeNotifier {
   String? get pendingReason => _pendingReason;
 
   Track? get currentTrack => _activeTrack;
-  Track? get displayTrack => _activeTrack ?? _pendingTrack;
+  // A failed first selection has no active audio. Keep its metadata available
+  // to the player UI so users can retry without pretending a source committed.
+  Track? get _failedPresentationTrack =>
+      _state == PBState.error && _activeTrack == null && _pendingTrack == null
+      ? _lastFailedTrack
+      : null;
+  Track? get displayTrack =>
+      _activeTrack ?? _pendingTrack ?? _failedPresentationTrack;
 
   List<Track> get queue => _queueController.tracks;
   int get currentIndex => _queueController.currentIndex;
@@ -417,7 +431,7 @@ class PlaybackService extends ChangeNotifier {
     if (songName != null && songName.isNotEmpty) return songName;
     final pendingName = _pendingTrack?.name;
     if (pendingName != null && pendingName.isNotEmpty) return pendingName;
-    return '';
+    return _failedPresentationTrack?.name ?? '';
   }
 
   String get displayArtist {
@@ -427,7 +441,7 @@ class PlaybackService extends ChangeNotifier {
     if (songArtist != null && songArtist.isNotEmpty) return songArtist;
     final pendingArtist = _pendingTrack?.artists;
     if (pendingArtist != null && pendingArtist.isNotEmpty) return pendingArtist;
-    return '';
+    return _failedPresentationTrack?.artists ?? '';
   }
 
   String get displayAlbum {
@@ -437,7 +451,7 @@ class PlaybackService extends ChangeNotifier {
     if (songAlbum != null && songAlbum.isNotEmpty) return songAlbum;
     final pendingAlbum = _pendingTrack?.album;
     if (pendingAlbum != null && pendingAlbum.isNotEmpty) return pendingAlbum;
-    return '';
+    return _failedPresentationTrack?.album ?? '';
   }
 
   String? get currentCoverUrl {
@@ -451,6 +465,9 @@ class PlaybackService extends ChangeNotifier {
   }
 
   String? get displayCoverUrl {
+    if (_failedPresentationTrack case final failedTrack?) {
+      return failedTrack.picUrl.isEmpty ? null : failedTrack.picUrl;
+    }
     if (_activeTrack == null &&
         _pendingTrack != null &&
         _pendingTrack!.picUrl.isNotEmpty) {
@@ -495,7 +512,7 @@ class PlaybackService extends ChangeNotifier {
   Duration get bufferedPosition => _presentationBufferedPosition;
   PlaybackViewState get viewState {
     final switching = _pendingTrack != null;
-    final track = _activeTrack ?? _pendingTrack;
+    final track = displayTrack;
     final generation = _activeTrack != null
         ? _activePlaybackToken
         : _playGeneration;
@@ -594,8 +611,15 @@ class PlaybackService extends ChangeNotifier {
   // ══════════════════════════════════════════════════════
   // 初始化
   // ══════════════════════════════════════════════════════
-  PlaybackService._internal({EngineHost? engine, TrackResolver? resolver})
-    : _trackResolver = resolver ?? TrackResolver() {
+  final StartupNetworkGate Function() _startupNetworkGateFactory;
+
+  PlaybackService._internal({
+    EngineHost? engine,
+    TrackResolver? resolver,
+    StartupNetworkGate Function()? startupNetworkGateFactory,
+  }) : _trackResolver = resolver ?? TrackResolver(),
+       _startupNetworkGateFactory =
+           startupNetworkGateFactory ?? StartupNetworkGate.system {
     _sessionManager = PlaybackSessionManager(
       snapshotBuilder: _buildSessionSnapshot,
     );
@@ -736,10 +760,16 @@ class PlaybackService extends ChangeNotifier {
   }) async {
     if (_hasRestoredSessionOnStartup) return currentTrack != null;
     _hasRestoredSessionOnStartup = true;
+    final restoreEpoch = _requestRouter.currentEpoch;
+    final controlRevision = _controlIntent.revision;
 
     try {
       final snapshot = await _sessionManager.load();
       if (snapshot == null || !snapshot.isValid) return false;
+      if (!_requestRouter.isCurrent(restoreEpoch) ||
+          !_controlIntent.isCurrent(controlRevision)) {
+        return false;
+      }
 
       await _restoreFromSnapshot(
         snapshot,
@@ -795,7 +825,13 @@ class PlaybackService extends ChangeNotifier {
     final restorePosition = snapshot.position > Duration.zero
         ? snapshot.position
         : null;
+    final startingEpoch = _requestRouter.currentEpoch;
+    final startingControlRevision = _controlIntent.revision;
     await PlaybackModeService().setMode(snapshot.playbackMode);
+    if (!_requestRouter.isCurrent(startingEpoch) ||
+        !_controlIntent.isCurrent(startingControlRevision)) {
+      return;
+    }
 
     _pendingRestorePosition = restorePosition;
 
@@ -803,7 +839,7 @@ class PlaybackService extends ChangeNotifier {
       // Android 启动恢复链路需要 staged autoplay：先挂 source，再在 resume 前完成
       // media service 等附属初始化，避免首次出声附近的时序扰动。
       final shouldStageStartupAutoPlay = Platform.isAndroid;
-      await playNow(
+      final restoring = playNow(
         snapshot.queue,
         snapshot.currentIndex,
         snapshot.source,
@@ -812,6 +848,21 @@ class PlaybackService extends ChangeNotifier {
         initialPosition: restorePosition,
         preload: !shouldStageStartupAutoPlay,
       );
+      final restoreEpoch = _requestRouter.currentEpoch;
+      final controlRevision = _controlIntent.revision;
+      final resolverFingerprint = _resolverFingerprintFor(
+        snapshot.queue[snapshot.currentIndex],
+      );
+      bool isCurrentRestore() =>
+          _requestRouter.isCurrent(restoreEpoch) &&
+          _controlIntent.isCurrent(controlRevision) &&
+          AuthService().isLoggedIn &&
+          _resolverFingerprintFor(snapshot.queue[snapshot.currentIndex]) ==
+              resolverFingerprint;
+      await restoring;
+      // Failed/cancelled restoration must not become an implicit manual retry,
+      // or resume after a newer pause, selection or source change.
+      if (!isCurrentRestore() || _state == PBState.error) return;
       if (restorePosition != null) {
         _position = restorePosition;
         positionNotifier.value = restorePosition;
@@ -821,6 +872,7 @@ class PlaybackService extends ChangeNotifier {
         if (beforeDeferredAutoPlay != null) {
           await beforeDeferredAutoPlay();
         }
+        if (!isCurrentRestore() || _state == PBState.error) return;
         await resume();
       }
       return;
@@ -1349,6 +1401,8 @@ class PlaybackService extends ChangeNotifier {
         return PlaybackProblemKind.resourceUnavailable;
       case LxRuntimeFailureKind.timeout:
         return PlaybackProblemKind.networkTimeout;
+      case LxRuntimeFailureKind.networkUnavailable:
+        return PlaybackProblemKind.networkUnavailable;
       case LxRuntimeFailureKind.requestFailed:
       case null:
         return PlaybackProblemKind.resourceUnavailable;
@@ -1380,6 +1434,10 @@ class PlaybackService extends ChangeNotifier {
         cause: PlaybackFailureCause.timeout,
         scope: PlaybackFailureScope.network,
       ),
+      LxRuntimeFailureKind.networkUnavailable => const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.networkUnavailable,
+        scope: PlaybackFailureScope.network,
+      ),
       LxRuntimeFailureKind.requestFailed => const PlaybackFailureEvidence(
         cause: PlaybackFailureCause.requestFailed,
         scope: PlaybackFailureScope.network,
@@ -1402,6 +1460,8 @@ class PlaybackService extends ChangeNotifier {
         PlaybackFailureCause.sourceRejected,
       LxRuntimeFailureKind.notReady => PlaybackFailureCause.sourceNotReady,
       LxRuntimeFailureKind.timeout => PlaybackFailureCause.timeout,
+      LxRuntimeFailureKind.networkUnavailable =>
+        PlaybackFailureCause.networkUnavailable,
       LxRuntimeFailureKind.requestFailed => PlaybackFailureCause.requestFailed,
       LxRuntimeFailureKind.invalidTrackIdentifier =>
         PlaybackFailureCause.invalidTrackIdentifier,
@@ -1420,6 +1480,8 @@ class PlaybackService extends ChangeNotifier {
         };
       case LxRuntimeFailureKind.invalidTrackIdentifier:
         return const {};
+      case LxRuntimeFailureKind.networkUnavailable:
+        return const {PlaybackRecoveryAction.retry};
       case LxRuntimeFailureKind.timeout:
       case LxRuntimeFailureKind.requestFailed:
       case null:
@@ -1438,10 +1500,12 @@ class PlaybackService extends ChangeNotifier {
         return '当前音源尚未就绪，请稍后重试或重新导入音源';
       case LxRuntimeFailureKind.timeout:
         return '获取播放链接超时，请检查网络后重试';
+      case LxRuntimeFailureKind.networkUnavailable:
+        return '网络尚未连接，请联网后重试';
       case LxRuntimeFailureKind.invalidTrackIdentifier:
         return failure?.message ?? '歌曲标识不完整，请重新搜索或同步';
       case LxRuntimeFailureKind.requestFailed:
-        return '音源请求失败，未返回可播放链接，请切换音源后重试';
+        return '音源请求失败，请重试或切换音源';
       case null:
         return '音源未返回可播放链接，请切换音源后重试';
     }
@@ -1469,8 +1533,15 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _onAudioSourceConfigChanged() {
+    final cancelledStartupWait =
+        _startupNetworkWaitToken != null &&
+        _startupNetworkWaitToken == _currentSwitchTx?.token;
+    if (cancelledStartupWait) {
+      _cancelPendingTrackTransition();
+    }
     _syncActiveSourceHealth();
     _trackResolver.clear();
+    if (cancelledStartupWait) notifyListeners();
   }
 
   void _syncActiveSourceHealth() {
@@ -1486,6 +1557,8 @@ class PlaybackService extends ChangeNotifier {
         return SourceHealthFailureKind.systemicRejection;
       case LxRuntimeFailureKind.timeout:
         return SourceHealthFailureKind.transientTimeout;
+      case LxRuntimeFailureKind.networkUnavailable:
+        return SourceHealthFailureKind.trackSpecific;
       case LxRuntimeFailureKind.notReady:
         return SourceHealthFailureKind.runtimeNotReady;
       case LxRuntimeFailureKind.invalidTrackIdentifier:
@@ -1513,6 +1586,13 @@ class PlaybackService extends ChangeNotifier {
     String fingerprint,
     LxRuntimeFailure? failure,
   ) {
+    if (failure?.kind == LxRuntimeFailureKind.networkUnavailable) {
+      // Offline devices say nothing about source health; release probe ownership
+      // without increasing failure counters or degrading a healthy source.
+      _sourceHealthTracker.cancelRequest(fingerprint);
+      _syncActiveSourceHealth();
+      return _sourceHealthTracker.snapshot(fingerprint);
+    }
     final snapshot = _sourceHealthTracker.recordFailure(
       fingerprint,
       _sourceHealthFailureKind(failure),
@@ -1838,8 +1918,28 @@ class PlaybackService extends ChangeNotifier {
     final removal = await _commands.enqueue(() async {
       _resetPreloadState();
       _pendingRestorePosition = null;
+      final entryToRemove = _queueController.entryIdAt(index);
       final removal = _queueController.removeAt(index);
       if (!removal.removed) return removal;
+      if (entryToRemove != null && entryToRemove == _lastFailedQueueEntryId) {
+        // Match queue entry identity: another occurrence of the same song is
+        // still a valid failure/retry target. An in-flight retry of the removed
+        // entry must also lose ownership before it can commit a late result.
+        if (_pendingQueueEntryId == entryToRemove) {
+          _cancelPendingTrackTransition();
+        }
+        _lastFailedTrack = null;
+        _lastFailedQueueEntryId = null;
+        _lastFailureEvidence = null;
+        _errorMessage = null;
+        _isAudioSourceNotConfigured = false;
+        if (_state == PBState.error && _pendingTrack == null) {
+          _state = _activeTrack == null
+              ? PBState.idle
+              : (_engine.isPlaying ? PBState.playing : PBState.paused);
+        }
+        _clearPlaybackProblem();
+      }
       _invalidatePreparedWindow(reschedule: !removal.removedCurrent);
       if (removal.becameEmpty) {
         await _engine.stop();
@@ -2732,6 +2832,13 @@ class PlaybackService extends ChangeNotifier {
       );
     }
     if (!await _waitForManualSelection(tx, isStale)) return null;
+    final startupNetwork = tx.intent == PlaybackRequestIntent.restore
+        ? _startupNetworkGateFactory()
+        : null;
+    if (startupNetwork != null &&
+        !await _waitForStartupNetwork(tx, startupNetwork, isStale)) {
+      return null;
+    }
     if (lxSourceFingerprint != null &&
         tx.intent == PlaybackRequestIntent.retry &&
         _sourceHealthTracker.snapshot(lxSourceFingerprint).isCircuitOpen) {
@@ -2769,7 +2876,9 @@ class PlaybackService extends ChangeNotifier {
     }
 
     TrackResolutionResult? resolution;
-    final maxResolutionAttempts = _retriedTrackKey == _buildTrackIdentity(track)
+    final maxResolutionAttempts = tx.intent == PlaybackRequestIntent.restore
+        ? 2
+        : _retriedTrackKey == _buildTrackIdentity(track)
         ? 1
         : (tx.budget?.maxResolutionAttemptsPerTrack ?? 2);
     var isSameLxSource =
@@ -2777,6 +2886,13 @@ class PlaybackService extends ChangeNotifier {
         _activeLxSourceFingerprint() == lxSourceFingerprint;
 
     for (var attempt = 0; attempt < maxResolutionAttempts; attempt++) {
+      if (isStale()) {
+        if (lxSourceFingerprint != null) {
+          _sourceHealthTracker.cancelRequest(lxSourceFingerprint);
+          _syncActiveSourceHealth();
+        }
+        return null;
+      }
       if (attempt > 0 && lxSourceFingerprint != null) {
         final retryAllowed = _sourceHealthTracker.allowRequest(
           lxSourceFingerprint,
@@ -2855,8 +2971,12 @@ class PlaybackService extends ChangeNotifier {
         break;
       }
 
+      final retryable = startupNetwork != null
+          ? resolution.lxFailure?.kind ==
+                LxRuntimeFailureKind.networkUnavailable
+          : _shouldRetryResolutionFailure(resolution.lxFailure);
       if (attempt + 1 < maxResolutionAttempts &&
-          _shouldRetryResolutionFailure(resolution.lxFailure) &&
+          retryable &&
           (transitionBudget == null ||
               (transitionBudget.canStartRemoteRequest &&
                   transitionBudget.resolutionTimeRemaining -
@@ -2867,8 +2987,17 @@ class PlaybackService extends ChangeNotifier {
           quality: tx.selectedQuality,
           resolverFingerprint: resolverFingerprint,
         );
+        if (startupNetwork != null) {
+          if (lxSourceFingerprint != null) {
+            _sourceHealthTracker.cancelRequest(lxSourceFingerprint);
+            _syncActiveSourceHealth();
+          }
+          if (!await _waitForStartupNetwork(tx, startupNetwork, isStale)) {
+            return null;
+          }
+        }
         _state = PBState.loading;
-        _errorMessage = '播放地址无效，正在重新获取...';
+        _errorMessage = startupNetwork != null ? null : '播放地址无效，正在重新获取...';
         _logPlaybackDebug(
           '[PlaybackService] 解析失败，执行一次重试: ${_trackLogKey(track)} '
           'failure=${resolution.lxFailure?.kind.name ?? 'unknown'}',
@@ -2890,37 +3019,17 @@ class PlaybackService extends ChangeNotifier {
       return null;
     }
     if (songDetail == null || songDetail.url.isEmpty) {
-      final lxFailure = isSameLxSource ? resolution.lxFailure : null;
+      final lxFailure = resolution.lxFailure;
       if (isSameLxSource) {
         _recordSourceResolutionFailure(lxSourceFingerprint!, lxFailure);
       }
       final sourceHealth = !isSameLxSource
           ? null
           : _sourceHealthTracker.snapshot(lxSourceFingerprint!);
-      final circuitOpen = sourceHealth?.isCircuitOpen ?? false;
-      final evidence = _resolutionFailureEvidence(
-        lxFailure,
-        circuitOpen: circuitOpen,
-      );
-      tx.failureEvidence = evidence;
-      _lastFailureEvidence = evidence;
-      _controlIntent.invalidate();
-      _state = PBState.error;
-      _errorMessage = _resolutionFailureMessage(lxFailure);
-      notifyListeners();
-      _reportPlaybackFailure(
-        track,
-        circuitOpen ? '当前音源连续解析失败，请重新导入或切换音源' : _errorMessage!,
-        kind: circuitOpen
-            ? PlaybackProblemKind.sourceInvalid
-            : _problemKindForResolutionFailure(lxFailure),
-        recoveryActions: circuitOpen
-            ? const {
-                PlaybackRecoveryAction.switchSource,
-                PlaybackRecoveryAction.reimportSource,
-              }
-            : _recoveryActionsForResolutionFailure(lxFailure),
-      );
+      final circuitOpen =
+          lxFailure?.kind != LxRuntimeFailureKind.networkUnavailable &&
+          (sourceHealth?.isCircuitOpen ?? false);
+      _reportResolutionFailure(tx, lxFailure, circuitOpen: circuitOpen);
       return null;
     }
 
@@ -2957,6 +3066,81 @@ class PlaybackService extends ChangeNotifier {
       shouldRefreshCachedMetadata: false,
       shouldRefreshExistingCacheMetadata:
           cacheInfo != null && needsCachedMetadataRefresh(cacheInfo.metadata),
+    );
+  }
+
+  Future<bool> _waitForStartupNetwork(
+    TrackSwitchTransaction tx,
+    StartupNetworkGate gate,
+    bool Function() isStale,
+  ) async {
+    _startupNetworkWaitToken = tx.token;
+    final waitingClock = Stopwatch()..start();
+    try {
+      final result = await gate.wait(
+        isCurrent: () => !isStale() && AuthService().isLoggedIn,
+        onWaiting: () {
+          _errorMessage = '等待网络连接…';
+          notifyListeners();
+        },
+      );
+      if (isStale()) return false;
+      if (!AuthService().isLoggedIn) {
+        _cancelPendingTrackTransition();
+        return false;
+      }
+      switch (result) {
+        case StartupNetworkWaitResult.ready:
+          _errorMessage = null;
+          notifyListeners();
+          return true;
+        case StartupNetworkWaitResult.timedOut:
+          _reportResolutionFailure(
+            tx,
+            const LxRuntimeFailure(
+              kind: LxRuntimeFailureKind.networkUnavailable,
+              message: '启动等待网络连接超时',
+            ),
+          );
+          return false;
+        case StartupNetworkWaitResult.cancelled:
+          return false;
+      }
+    } finally {
+      tx.budget?.excludeElapsed(waitingClock.elapsed);
+      if (_startupNetworkWaitToken == tx.token) {
+        _startupNetworkWaitToken = null;
+      }
+    }
+  }
+
+  void _reportResolutionFailure(
+    TrackSwitchTransaction tx,
+    LxRuntimeFailure? failure, {
+    bool circuitOpen = false,
+  }) {
+    final evidence = _resolutionFailureEvidence(
+      failure,
+      circuitOpen: circuitOpen,
+    );
+    tx.failureEvidence = evidence;
+    _lastFailureEvidence = evidence;
+    _controlIntent.invalidate();
+    _state = PBState.error;
+    _errorMessage = _resolutionFailureMessage(failure);
+    notifyListeners();
+    _reportPlaybackFailure(
+      tx.track,
+      circuitOpen ? '当前音源连续解析失败，请重新导入或切换音源' : _errorMessage!,
+      kind: circuitOpen
+          ? PlaybackProblemKind.sourceInvalid
+          : _problemKindForResolutionFailure(failure),
+      recoveryActions: circuitOpen
+          ? const {
+              PlaybackRecoveryAction.switchSource,
+              PlaybackRecoveryAction.reimportSource,
+            }
+          : _recoveryActionsForResolutionFailure(failure),
     );
   }
 

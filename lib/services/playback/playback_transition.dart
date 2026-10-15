@@ -27,6 +27,7 @@ class PlaybackTransitionBudget {
   final Duration Function()? _elapsedOverride;
   final Set<int> _visitedEntryIds = <int>{};
   int _remoteRequests = 0;
+  Duration _excludedElapsed = Duration.zero;
 
   PlaybackTransitionBudget({
     this.maxDuration = const Duration(seconds: 12),
@@ -41,9 +42,16 @@ class PlaybackTransitionBudget {
   Set<int> get visitedEntryIds => Set.unmodifiable(_visitedEntryIds);
 
   Duration remaining() {
-    final elapsed = _elapsedOverride?.call() ?? _stopwatch.elapsed;
+    final elapsed =
+        (_elapsedOverride?.call() ?? _stopwatch.elapsed) - _excludedElapsed;
     final value = maxDuration - elapsed;
     return value.isNegative ? Duration.zero : value;
+  }
+
+  /// A separately bounded startup network wait must not consume the budget
+  /// reserved for actual resolution and native loading.
+  void excludeElapsed(Duration elapsed) {
+    if (elapsed > Duration.zero) _excludedElapsed += elapsed;
   }
 
   bool get hasTimeRemaining => remaining() > Duration.zero;

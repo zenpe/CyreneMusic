@@ -12,6 +12,7 @@ enum PlaybackFailureCause {
   sourceRejected,
   sourceNotReady,
   timeout,
+  networkUnavailable,
   requestFailed,
   emptyUrl,
   invalidTrackIdentifier,

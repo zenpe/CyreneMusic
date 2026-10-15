@@ -5,6 +5,7 @@ enum PlaybackProblemKind {
   sourceInvalid,
   resourceUnavailable,
   networkTimeout,
+  networkUnavailable,
   accessDenied,
   unsupportedFormat,
   localFileMissing,

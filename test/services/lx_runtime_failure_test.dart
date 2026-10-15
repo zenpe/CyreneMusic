@@ -23,6 +23,30 @@ void main() {
     expect(failure.kind, LxRuntimeFailureKind.requestFailed);
   });
 
+  test('classifies native and JS-bridged unreachable network errors', () {
+    for (final message in [
+      'SocketException: Network is unreachable (OS Error, errno = 101)',
+      'Error: ClientException with SocketException: No route to host',
+      'SocketException: Network is down',
+    ]) {
+      expect(
+        classifyLxRuntimeFailure(message).kind,
+        LxRuntimeFailureKind.networkUnavailable,
+      );
+    }
+    for (final message in [
+      'HTTP 403',
+      'HTTP 429',
+      'empty URL',
+      'Connection refused',
+    ]) {
+      expect(
+        classifyLxRuntimeFailure(message).kind,
+        LxRuntimeFailureKind.requestFailed,
+      );
+    }
+  });
+
   test('classifies runtime readiness failures separately', () {
     final failure = classifyLxRuntimeFailure(Exception('洛雪音源脚本未就绪'));
 

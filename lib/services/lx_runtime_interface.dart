@@ -7,6 +7,7 @@ import '../models/track.dart';
 enum LxRuntimeFailureKind {
   notReady,
   timeout,
+  networkUnavailable,
   scriptRejected,
   invalidTrackIdentifier,
   requestFailed,
@@ -25,6 +26,11 @@ LxRuntimeFailure classifyLxRuntimeFailure(Object error) {
       ? LxRuntimeFailureKind.timeout
       : error is MissingTrackSourceIdentifierException
       ? LxRuntimeFailureKind.invalidTrackIdentifier
+      : RegExp(
+          r'network is unreachable|network is down|no route to host|network unreachable',
+          caseSensitive: false,
+        ).hasMatch(message)
+      ? LxRuntimeFailureKind.networkUnavailable
       : message.contains('完整性验证失败')
       ? LxRuntimeFailureKind.scriptRejected
       : message.contains('未就绪') || message.contains('无法初始化')

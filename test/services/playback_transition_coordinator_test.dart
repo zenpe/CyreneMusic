@@ -6,6 +6,26 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   const coordinator = PlaybackTransitionCoordinator();
+
+  test(
+    'bounded startup network wait does not spend resolution/load budget',
+    () {
+      var elapsed = const Duration(seconds: 9);
+      final budget = PlaybackTransitionBudget(
+        maxDuration: const Duration(seconds: 10),
+        elapsed: () => elapsed,
+      );
+      budget.excludeElapsed(const Duration(seconds: 8));
+      expect(budget.remaining(), const Duration(seconds: 9));
+      expect(
+        budget.resolutionTimeout(const Duration(seconds: 6)),
+        const Duration(seconds: 6),
+      );
+      elapsed = const Duration(seconds: 15);
+      expect(budget.remaining(), const Duration(seconds: 3));
+      expect(budget.consumeRemoteRequest(), isFalse);
+    },
+  );
   final candidates = [entry(1), entry(2), entry(3)];
   final plan = PlaybackCandidatePlan(
     candidates: candidates,

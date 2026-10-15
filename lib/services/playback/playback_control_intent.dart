@@ -5,6 +5,7 @@ class PlaybackControlIntent {
   bool? _pendingPlaying;
 
   bool? get pendingPlaying => _pendingPlaying;
+  int get revision => _revision;
 
   int begin(bool playing) {
     _pendingPlaying = playing;
