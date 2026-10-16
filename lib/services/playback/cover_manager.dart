@@ -6,7 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../color_extraction_service.dart';
 import '../player_background_service.dart';
 import '../../utils/image_utils.dart';
-import 'dart:ui' as ui;
+import '../../utils/image_stream_utils.dart';
 import 'dart:async';
 
 /// 封面管理器
@@ -18,12 +18,14 @@ class CoverManager extends ChangeNotifier {
   final ValueNotifier<Color?> themeColorNotifier = ValueNotifier<Color?>(null);
   int _coverRequestId = 0;
   int _themeRequestId = 0;
+  bool _disposed = false;
 
   ImageProvider? get currentCover => _currentCover;
   String? get currentUrl => _currentUrl;
 
   /// 设置封面（由外部直接提供 provider）
   void setCover(ImageProvider? provider, {String? url, bool notify = true}) {
+    if (_disposed) return;
     _currentCover = provider;
     if (provider == null) {
       _currentUrl = null;
@@ -36,7 +38,12 @@ class CoverManager extends ChangeNotifier {
   }
 
   /// 直接设置封面，并使之前未完成的封面请求失效。
-  void setCoverImmediate(ImageProvider? provider, {String? url, bool notify = true}) {
+  void setCoverImmediate(
+    ImageProvider? provider, {
+    String? url,
+    bool notify = true,
+  }) {
+    if (_disposed) return;
     _coverRequestId++;
     setCover(provider, url: url, notify: notify);
   }
@@ -48,6 +55,7 @@ class CoverManager extends ChangeNotifier {
     bool force = false,
     bool warmUp = true,
   }) async {
+    if (_disposed) return;
     final requestId = ++_coverRequestId;
     if (imageUrl == null || imageUrl.isEmpty) {
       if (requestId == _coverRequestId && _currentCover != null) {
@@ -65,6 +73,7 @@ class CoverManager extends ChangeNotifier {
 
     try {
       final provider = await _createProvider(imageUrl);
+      if (_disposed || requestId != _coverRequestId) return;
       if (provider == null) {
         if (requestId == _coverRequestId) {
           setCover(null, notify: notify);
@@ -107,12 +116,7 @@ class CoverManager extends ChangeNotifier {
     bool force = false,
   }) {
     unawaited(
-      updateCover(
-        imageUrl,
-        notify: notify,
-        force: force,
-        warmUp: false,
-      ),
+      updateCover(imageUrl, notify: notify, force: force, warmUp: false),
     );
   }
 
@@ -134,34 +138,22 @@ class CoverManager extends ChangeNotifier {
   }
 
   Future<void> _warmUpProvider(ImageProvider provider) async {
-    final completer = Completer<void>();
-    final stream = provider.resolve(const ImageConfiguration());
-    late ImageStreamListener listener;
-    listener = ImageStreamListener(
-      (_, _) {
-        if (!completer.isCompleted) {
-          completer.complete();
-        }
-        stream.removeListener(listener);
-      },
-      onError: (error, stackTrace) {
-        if (!completer.isCompleted) {
-          completer.completeError(error, stackTrace);
-        }
-        stream.removeListener(listener);
-      },
+    final info = await loadFirstImage(
+      provider,
+      timeout: const Duration(seconds: 5),
     );
-    stream.addListener(listener);
-    await completer.future.timeout(const Duration(seconds: 5));
+    info.dispose();
   }
 
   void resetThemeColor([Color? fallback]) {
+    if (_disposed) return;
     _themeRequestId++;
     themeColorNotifier.value = fallback ?? Colors.grey[700]!;
   }
 
   /// 后台提取主题色
   Future<void> extractThemeColor(String imageUrl) async {
+    if (_disposed) return;
     final requestId = ++_themeRequestId;
     if (imageUrl.isEmpty) {
       if (requestId == _themeRequestId) {
@@ -185,19 +177,24 @@ class CoverManager extends ChangeNotifier {
       }
 
       // 跳过后台提取
-      final isAppInBackground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused ||
+      final isAppInBackground =
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused ||
           WidgetsBinding.instance.lifecycleState == AppLifecycleState.inactive;
       if (isAppInBackground) return;
 
-      final isMobileGradientMode = Platform.isAndroid &&
+      final isMobileGradientMode =
+          Platform.isAndroid &&
           PlayerBackgroundService().enableGradient &&
-          PlayerBackgroundService().backgroundType == PlayerBackgroundType.adaptive;
+          PlayerBackgroundService().backgroundType ==
+              PlayerBackgroundType.adaptive;
 
       Color? themeColor;
       if (isMobileGradientMode) {
         themeColor = await _extractColorFromBottomRegion(imageUrl);
       } else {
-        final result = await ColorExtractionService().extractColorsFromUrl(imageUrl);
+        final result = await ColorExtractionService().extractColorsFromUrl(
+          imageUrl,
+        );
         themeColor = result?.themeColor;
       }
 
@@ -216,15 +213,17 @@ class CoverManager extends ChangeNotifier {
 
   /// 预缓存下一首封面的主题色
   Future<void> precacheThemeColor(String imageUrl) async {
+    if (_disposed) return;
     if (_themeColorCache.containsKey(imageUrl)) return;
 
     try {
-      final result = await ColorExtractionService().extractColorsFromCachedImage(
-        imageUrl,
-        sampleSize: 64,
-        timeout: const Duration(seconds: 3),
-      );
-      if (result?.themeColor != null) {
+      final result = await ColorExtractionService()
+          .extractColorsFromCachedImage(
+            imageUrl,
+            sampleSize: 64,
+            timeout: const Duration(seconds: 3),
+          );
+      if (!_disposed && result?.themeColor != null) {
         _themeColorCache[imageUrl] = result!.themeColor!;
       }
     } catch (e) {
@@ -241,20 +240,23 @@ class CoverManager extends ChangeNotifier {
             )
           : FileImage(File(imageUrl));
 
-      final Completer<ui.Image> completer = Completer();
-      final ImageStream stream = imageProvider.resolve(const ImageConfiguration());
-      late ImageStreamListener listener;
-      listener = ImageStreamListener((info, _) {
-        completer.complete(info.image);
-        stream.removeListener(listener);
-      }, onError: (e, s) {
-        completer.completeError(e, s);
-        stream.removeListener(listener);
-      });
-      stream.addListener(listener);
-
-      final image = await completer.future.timeout(const Duration(seconds: 3));
-      final region = Rect.fromLTWH(0, image.height * 0.7, image.width.toDouble(), image.height * 0.3);
+      final info = await loadFirstImage(
+        imageProvider,
+        timeout: const Duration(seconds: 3),
+      );
+      late final Rect region;
+      try {
+        final image = info.image;
+        region = Rect.fromLTWH(
+          0,
+          image.height * 0.7,
+          image.width.toDouble(),
+          image.height * 0.3,
+        );
+      } finally {
+        info.dispose();
+      }
+      if (_disposed) return null;
 
       final result = await ColorExtractionService().extractColorsFromRegion(
         imageUrl,
@@ -270,6 +272,9 @@ class CoverManager extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _coverRequestId++;
+    _themeRequestId++;
     themeColorNotifier.dispose();
     super.dispose();
   }

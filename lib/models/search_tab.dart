@@ -1,7 +1,7 @@
 import 'track.dart';
 import '../services/search_provider_catalog.dart';
 
-enum SearchTabKind { platform, songs, artists }
+enum SearchTabKind { platform, artists }
 
 /// Shared identity for tab headers, selected content and search routing.
 class SearchTab {
@@ -11,11 +11,9 @@ class SearchTab {
   const SearchTab.platform(MusicSource source)
     : kind = SearchTabKind.platform,
       platform = source;
-  const SearchTab.songs() : kind = SearchTabKind.songs, platform = null;
   const SearchTab.artists() : kind = SearchTabKind.artists, platform = null;
 
   String get label => switch (kind) {
-    SearchTabKind.songs => '歌曲',
     SearchTabKind.artists => '歌手',
     SearchTabKind.platform => switch (platform!) {
       MusicSource.netease => '网易云',
@@ -28,32 +26,28 @@ class SearchTab {
 
   String get key => platform?.name ?? kind.name;
 
-  static List<SearchTab> tabs({required bool merged}) => merged
-      ? const [SearchTab.songs(), SearchTab.artists()]
-      : [
-          ...SearchProviderCatalog.defaultPlatforms.map(SearchTab.platform),
-          const SearchTab.artists(),
-        ];
+  static List<SearchTab> tabs() => [
+    ...SearchProviderCatalog.defaultPlatforms.map(SearchTab.platform),
+    const SearchTab.artists(),
+  ];
 }
 
-/// Page-local selection survives theme and merged-mode changes by identity.
+/// Page-local selection keeps platform identity across theme changes.
 class SearchTabSelection {
   MusicSource _lastPlatform = SearchProviderCatalog.defaultPlatforms.first;
   bool _artistsSelected = false;
 
-  SearchTab active({required bool merged}) => _artistsSelected
+  SearchTab active() => _artistsSelected
       ? const SearchTab.artists()
-      : merged
-      ? const SearchTab.songs()
       : SearchTab.platform(_lastPlatform);
 
-  int index({required bool merged}) {
-    final key = active(merged: merged).key;
-    return SearchTab.tabs(merged: merged).indexWhere((tab) => tab.key == key);
+  int index() {
+    final key = active().key;
+    return SearchTab.tabs().indexWhere((tab) => tab.key == key);
   }
 
-  void select(int index, {required bool merged}) {
-    final tabs = SearchTab.tabs(merged: merged);
+  void select(int index) {
+    final tabs = SearchTab.tabs();
     if (index < 0 || index >= tabs.length) return;
     final tab = tabs[index];
     _artistsSelected = tab.kind == SearchTabKind.artists;

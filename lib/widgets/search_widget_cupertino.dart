@@ -179,151 +179,21 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
     SearchResult searchResult,
     bool isDark,
   ) {
-    final isMergeEnabled = DeveloperModeService().isSearchResultMergeEnabled;
+    final tabs = _searchTabs;
 
-    if (isMergeEnabled) {
-      if (_currentTabIndex == 0) {
-        return Container(
-          key: const ValueKey('cupertino_songs_tab'),
-          child: _buildCupertinoSongResults(searchResult, isDark),
-        );
-      }
+    // 如果 _currentTabIndex 在平台范围内，显示对应平台的结果
+    if (tabs[_currentTabIndex].platform != null) {
+      final platform = tabs[_currentTabIndex].platform!;
       return Container(
-        key: const ValueKey('cupertino_artists_tab'),
-        child: _buildCupertinoArtistResults(isDark),
-      );
-    } else {
-      // 分平台模式：根据当前音源支持的平台动态显示
-      final tabs = _searchTabs;
-
-      // 如果 _currentTabIndex 在平台范围内，显示对应平台的结果
-      if (tabs[_currentTabIndex].platform != null) {
-        final platform = tabs[_currentTabIndex].platform!;
-        return Container(
-          key: ValueKey('cupertino_${platform.name}_tab'),
-          child: _buildCupertinoSinglePlatformList(
-            searchResult.resultsFor(platform),
-            searchResult.loadingFor(platform),
-            isDark,
-            searchResult.errorFor(platform),
-          ),
-        );
-      }
-
-      // 最后一个 tab 是歌手
-      return Container(
-        key: const ValueKey('cupertino_artists_tab'),
-        child: _buildCupertinoArtistResults(isDark),
-      );
-    }
-  }
-
-  /// iOS 风格单平台歌曲列表
-  Widget _buildCupertinoSinglePlatformList(
-    List<Track> tracks,
-    bool isLoading,
-    bool isDark,
-    String? error,
-  ) {
-    if (_searchService.currentKeyword.isEmpty) {
-      return _buildCupertinoSearchHistory(isDark);
-    }
-
-    if (!isLoading && error != null) return _buildSearchFailure();
-
-    if (!isLoading && tracks.isEmpty) {
-      return _buildCupertinoEmptyState(
-        icon: CupertinoIcons.music_note,
-        title: '没有找到相关歌曲',
-        subtitle: '试试其他关键词吧',
-        isDark: isDark,
+        key: ValueKey('cupertino_${platform.name}_tab'),
+        child: _buildPlatformResults(platform, cupertino: true, isDark: isDark),
       );
     }
 
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      children: [
-        // 搜索统计
-        _buildCupertinoSearchHeader(tracks.length, isDark),
-        const SizedBox(height: 12),
-        // 加载提示
-        if (isLoading)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const CupertinoActivityIndicator(),
-                const SizedBox(width: 12),
-                Text(
-                  '搜索中...',
-                  style: TextStyle(
-                    color: CupertinoColors.systemGrey,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        // 歌曲列表
-        _buildCupertinoTrackSection(tracks, isDark),
-      ],
-    );
-  }
-
-  /// iOS 风格歌曲结果
-  Widget _buildCupertinoSongResults(SearchResult result, bool isDark) {
-    if (_searchService.currentKeyword.isEmpty) {
-      return _buildCupertinoSearchHistory(isDark);
-    }
-
-    final isLoading =
-        result.neteaseLoading ||
-        result.appleLoading ||
-        result.qqLoading ||
-        result.kugouLoading ||
-        result.kuwoLoading ||
-        result.spotifyLoading;
-    final mergedResults = _searchService.getMergedResults();
-
-    if (result.allCompleted && mergedResults.isEmpty && result.hasError) {
-      return _buildSearchFailure();
-    }
-    if (result.allCompleted && mergedResults.isEmpty) {
-      return _buildCupertinoEmptyState(
-        icon: CupertinoIcons.music_note,
-        title: '没有找到相关歌曲',
-        subtitle: '试试其他关键词吧',
-        isDark: isDark,
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      children: [
-        _buildCupertinoSearchHeader(mergedResults.length, isDark),
-        if (result.hasError) _buildSearchFailure(partial: true),
-        const SizedBox(height: 12),
-        if (isLoading)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const CupertinoActivityIndicator(),
-                const SizedBox(width: 12),
-                Text(
-                  '搜索中...',
-                  style: TextStyle(
-                    color: CupertinoColors.systemGrey,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        _buildCupertinoMergedTrackSection(mergedResults, isDark),
-      ],
+    // 最后一个 tab 是歌手
+    return Container(
+      key: const ValueKey('cupertino_artists_tab'),
+      child: _buildCupertinoArtistResults(isDark),
     );
   }
 
@@ -344,66 +214,13 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
           ),
           const SizedBox(width: 8),
           Text(
-            '找到 $count 首歌曲',
+            '已加载 $count 首歌曲',
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
               color: isDark ? CupertinoColors.white : CupertinoColors.black,
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  /// iOS 风格歌曲卡片区域
-  Widget _buildCupertinoTrackSection(List<Track> tracks, bool isDark) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        children: [
-          for (int i = 0; i < tracks.length; i++) ...[
-            _buildCupertinoTrackTile(tracks[i], isDark),
-            if (i < tracks.length - 1)
-              Padding(
-                padding: const EdgeInsets.only(left: 72),
-                child: Container(
-                  height: 0.5,
-                  color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
-                ),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// iOS 风格合并歌曲卡片区域
-  Widget _buildCupertinoMergedTrackSection(
-    List<MergedTrack> tracks,
-    bool isDark,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        children: [
-          for (int i = 0; i < tracks.length; i++) ...[
-            _buildCupertinoMergedTrackTile(tracks[i], isDark),
-            if (i < tracks.length - 1)
-              Padding(
-                padding: const EdgeInsets.only(left: 72),
-                child: Container(
-                  height: 0.5,
-                  color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
-                ),
-              ),
-          ],
         ],
       ),
     );
@@ -490,95 +307,6 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
               size: 36,
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  /// iOS 风格合并歌曲项
-  Widget _buildCupertinoMergedTrackTile(MergedTrack mergedTrack, bool isDark) {
-    final bestTrack = mergedTrack.getBestTrack();
-
-    return GestureDetector(
-      onLongPress: () => _showCupertinoPlatformSelector(mergedTrack),
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
-        onPressed: () => _playMergedTrack(mergedTrack),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: CachedNetworkImage(
-                  imageUrl: mergedTrack.picUrl,
-                  httpHeaders: getImageHeaders(mergedTrack.picUrl),
-                  width: 48,
-                  height: 48,
-                  fit: BoxFit.cover,
-                  memCacheWidth: 128,
-                  memCacheHeight: 128,
-                  placeholder: (context, url) => Container(
-                    width: 48,
-                    height: 48,
-                    color: isDark
-                        ? const Color(0xFF2C2C2E)
-                        : CupertinoColors.systemGrey5,
-                    child: const Center(
-                      child: CupertinoActivityIndicator(radius: 10),
-                    ),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    width: 48,
-                    height: 48,
-                    color: isDark
-                        ? const Color(0xFF2C2C2E)
-                        : CupertinoColors.systemGrey5,
-                    child: Icon(
-                      CupertinoIcons.music_note,
-                      color: CupertinoColors.systemGrey,
-                      size: 24,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      mergedTrack.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: isDark
-                            ? CupertinoColors.white
-                            : CupertinoColors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${mergedTrack.artists} • ${mergedTrack.album}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: CupertinoColors.systemGrey,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // 更多按钮
-              TrackMoreButton(
-                track: bestTrack,
-                onPlay: () => _playMergedTrack(mergedTrack),
-                size: 36,
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -743,7 +471,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
         icon: CupertinoIcons.search,
         title: '搜索音乐',
         subtitle:
-            '支持${SearchTab.tabs(merged: false).where((tab) => tab.platform != null).map((tab) => tab.label).join('、')}',
+            '支持${SearchTab.tabs().where((tab) => tab.platform != null).map((tab) => tab.label).join('、')}',
         isDark: isDark,
       );
     }
@@ -935,141 +663,6 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
           ),
         );
       },
-    );
-  }
-
-  /// iOS 风格平台选择器
-  void _showCupertinoPlatformSelector(MergedTrack mergedTrack) {
-    showCupertinoModalPopup<void>(
-      context: context,
-      builder: (context) => Material(
-        type: MaterialType.transparency,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: CupertinoTheme.of(context).barBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 拖动条
-                Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: CupertinoColors.systemGrey,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                // 标题
-                Text(
-                  '选择播放平台',
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  mergedTrack.name,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: CupertinoColors.systemGrey,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 16),
-                // 平台列表
-                ...mergedTrack.tracks.map(
-                  (track) => CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    onPressed: () async {
-                      Navigator.pop(context);
-                      final isLoggedIn = await _checkLoginStatus();
-                      if (isLoggedIn && mounted) {
-                        if (track.picUrl.isNotEmpty) {
-                          final provider = CachedNetworkImageProvider(
-                            track.picUrl,
-                            headers: getImageHeaders(track.picUrl),
-                          );
-                          PlayerService().setCurrentCoverImageProvider(
-                            provider,
-                          );
-                          PlayerService().playTrack(
-                            track,
-                            coverProvider: provider,
-                          );
-                        } else {
-                          PlayerService().playTrack(track);
-                        }
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            track.getSourceIcon(),
-                            style: const TextStyle(fontSize: 24),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  track.getSourceName(),
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                                Text(
-                                  track.album,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: CupertinoColors.systemGrey,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(
-                            CupertinoIcons.play_fill,
-                            color: CupertinoColors.activeBlue,
-                            size: 20,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // 取消按钮
-                SizedBox(
-                  width: double.infinity,
-                  child: CupertinoButton(
-                    color: CupertinoColors.systemGrey5,
-                    borderRadius: BorderRadius.circular(10),
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text(
-                      '取消',
-                      style: TextStyle(color: CupertinoColors.activeBlue),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

@@ -2,12 +2,15 @@ part of 'search_widget.dart';
 
 extension _SearchWidgetShared on _SearchWidgetState {
   Future<void> _retrySearch() async {
+    final platform = _selectedTab.platform;
+    final session = _searchService.sessionId;
+    if (platform == null) return;
     if (!await _checkLoginStatus() || !mounted) return;
-    _runSearch(_searchService.currentKeyword, saveHistory: false, force: true);
+    if (session != _searchService.sessionId) return;
+    await _searchService.retryPlatform(platform);
   }
 
-  Widget _buildSearchFailure({bool partial = false}) {
-    final message = partial ? '部分平台搜索失败，已显示其他结果' : '搜索失败，请稍后重试';
+  Widget _buildSearchFailure() {
     final button = _isFluent
         ? fluent.Button(onPressed: _retrySearch, child: const Text('重试'))
         : _isCupertino
@@ -18,12 +21,12 @@ extension _SearchWidgetShared on _SearchWidgetState {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(message, textAlign: TextAlign.center),
+          const Text('搜索失败，请稍后重试', textAlign: TextAlign.center),
           button,
         ],
       ),
     );
-    return partial ? content : Center(child: content);
+    return Center(child: content);
   }
 
   // ─── Secondary overlay ─────────────────────────────────────────────
@@ -196,49 +199,26 @@ extension _SearchWidgetShared on _SearchWidgetState {
               materialTheme.colorScheme.surface)
         : materialTheme.colorScheme.surface;
 
-    final isMergeEnabled = DeveloperModeService().isSearchResultMergeEnabled;
+    final tabs = _searchTabs;
 
-    if (isMergeEnabled) {
-      // 合并模式：['歌曲', '歌手']
-      if (tabIndex == 0) {
-        return Container(
-          key: const ValueKey('songs_tab'),
-          color: backgroundColor,
-          child: _buildSongResults(searchResult),
-        );
-      }
+    // 如果 tabIndex 在平台范围内，显示对应平台的结果
+    if (tabIndex >= 0 &&
+        tabIndex < tabs.length &&
+        tabs[tabIndex].platform != null) {
+      final platform = tabs[tabIndex].platform!;
       return Container(
-        key: const ValueKey('artists_tab'),
+        key: ValueKey('${platform.name}_tab'),
         color: backgroundColor,
-        child: _isFluent ? _buildFluentArtistResults() : _buildArtistResults(),
-      );
-    } else {
-      // 分平台模式：根据当前音源支持的平台动态显示
-      final tabs = _searchTabs;
-
-      // 如果 tabIndex 在平台范围内，显示对应平台的结果
-      if (tabIndex >= 0 &&
-          tabIndex < tabs.length &&
-          tabs[tabIndex].platform != null) {
-        final platform = tabs[tabIndex].platform!;
-        return Container(
-          key: ValueKey('${platform.name}_tab'),
-          color: backgroundColor,
-          child: _buildSinglePlatformList(
-            searchResult.resultsFor(platform),
-            searchResult.loadingFor(platform),
-            searchResult.errorFor(platform),
-          ),
-        );
-      }
-
-      // 最后一个 tab 是歌手
-      return Container(
-        key: const ValueKey('artists_tab'),
-        color: backgroundColor,
-        child: _isFluent ? _buildFluentArtistResults() : _buildArtistResults(),
+        child: _buildPlatformResults(platform),
       );
     }
+
+    // 最后一个 tab 是歌手
+    return Container(
+      key: const ValueKey('artists_tab'),
+      color: backgroundColor,
+      child: _isFluent ? _buildFluentArtistResults() : _buildArtistResults(),
+    );
   }
 
   // ─── Card / ListTile helpers ───────────────────────────────────────
@@ -299,58 +279,152 @@ extension _SearchWidgetShared on _SearchWidgetState {
 
   // ─── Single-platform list ──────────────────────────────────────────
 
-  Widget _buildSinglePlatformList(
-    List<Track> tracks,
-    bool isLoading,
-    String? error,
-  ) {
-    // 如果没有搜索或搜索结果为空，显示搜索历史
+  Widget _buildPlatformResults(
+    MusicSource platform, {
+    bool cupertino = false,
+    bool isDark = false,
+  }) {
+    final result = _searchService.searchResult;
+    final tracks = result.resultsFor(platform);
+    final loading = result.loadingFor(platform);
+    final state = _searchService.pageFor(platform);
     if (_searchService.currentKeyword.isEmpty) {
-      return _buildSearchHistory();
+      return cupertino
+          ? _buildCupertinoSearchHistory(isDark)
+          : _buildSearchHistory();
     }
-
-    if (!isLoading && error != null) return _buildSearchFailure();
-
-    // 如果加载完成且没有结果
-    if (!isLoading && tracks.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.music_off,
-        title: '没有找到相关歌曲',
-        subtitle: '试试其他关键词吧',
-      );
+    if (!loading && result.errorFor(platform) != null) {
+      return _buildSearchFailure();
     }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // 搜索统计
-        _buildSearchHeader(tracks.length, _searchService.searchResult),
-
-        const SizedBox(height: 16),
-
-        // 加载提示
-        if (isLoading)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 16),
-            child: Center(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+    // A filtered page may be empty while the raw upstream page still has more.
+    if (!loading && tracks.isEmpty && !state.hasMore && !state.blocked) {
+      return cupertino
+          ? _buildCupertinoEmptyState(
+              icon: CupertinoIcons.music_note,
+              title: '没有找到相关歌曲',
+              subtitle: '试试其他关键词吧',
+              isDark: isDark,
+            )
+          : _buildEmptyState(
+              icon: Icons.music_off,
+              title: '没有找到相关歌曲',
+              subtitle: '试试其他关键词吧',
+            );
+    }
+    final notice = result.noticeFor(platform);
+    return ListView.builder(
+      key: PageStorageKey(
+        'search_${_searchService.sessionId}_${platform.name}',
+      ),
+      primary: false,
+      padding: cupertino
+          ? const EdgeInsets.symmetric(horizontal: 16, vertical: 8)
+          : const EdgeInsets.all(16),
+      itemCount: tracks.length + 2,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              cupertino
+                  ? _buildCupertinoSearchHeader(tracks.length, isDark)
+                  : _buildSearchHeader(tracks.length),
+              if (notice != null) _buildSearchNotice(notice),
+              if (loading)
+                Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: cupertino
+                            ? const CupertinoActivityIndicator()
+                            : _isFluent
+                            ? const fluent.ProgressRing(strokeWidth: 2)
+                            : const CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text('搜索中...'),
+                    ],
                   ),
-                  SizedBox(width: 12),
-                  Text('搜索中...'),
-                ],
-              ),
+                ),
+              SizedBox(height: cupertino ? 12 : 16),
+            ],
+          );
+        }
+        if (index == tracks.length + 1) {
+          return loading ? const SizedBox.shrink() : _buildPageFooter(platform);
+        }
+        final track = tracks[index - 1];
+        if (!cupertino) return _buildSingleTrackItem(track);
+        final first = index == 1;
+        final last = index == tracks.length;
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
+            borderRadius: BorderRadius.vertical(
+              top: first ? const Radius.circular(10) : Radius.zero,
+              bottom: last ? const Radius.circular(10) : Radius.zero,
             ),
           ),
+          child: Column(
+            children: [
+              _buildCupertinoTrackTile(track, isDark),
+              if (!last)
+                Padding(
+                  padding: const EdgeInsets.only(left: 72),
+                  child: Container(
+                    height: 0.5,
+                    color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
-        // 歌曲列表
-        ...tracks.map((track) => _buildSingleTrackItem(track)),
-      ],
+  Future<void> _requestMore(MusicSource platform) async {
+    final session = _searchService.sessionId;
+    if (!await _checkLoginStatus() ||
+        !mounted ||
+        session != _searchService.sessionId) {
+      return;
+    }
+    await _searchService.loadMore(platform);
+  }
+
+  Widget _buildPageFooter(MusicSource platform) {
+    final state = _searchService.pageFor(platform);
+    if (state.blocked) return _buildSearchNotice(state.error!);
+    if (state.page == 0 ||
+        (platform == MusicSource.qq &&
+            _searchService.searchResult.qqSuggestions)) {
+      return const SizedBox.shrink();
+    }
+    if (!state.hasMore) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(child: Text('已全部加载')),
+      );
+    }
+    final label = state.loadingMore
+        ? '加载中...'
+        : state.error != null
+        ? '加载失败，重试'
+        : '加载更多';
+    final callback = state.loadingMore ? null : () => _requestMore(platform);
+    final Widget button = _isFluent
+        ? fluent.Button(onPressed: callback, child: Text(label))
+        : _isCupertino
+        ? CupertinoButton(onPressed: callback, child: Text(label))
+        : TextButton(onPressed: callback, child: Text(label));
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Center(child: button),
     );
   }
 
@@ -574,75 +648,6 @@ extension _SearchWidgetShared on _SearchWidgetState {
     PlayerService().playTrack(track, coverProvider: provider);
   }
 
-  // ─── Song results (merged mode) ───────────────────────────────────
-
-  Widget _buildSongResults(SearchResult result) {
-    // 如果没有搜索或搜索结果为空，显示搜索历史
-    if (_searchService.currentKeyword.isEmpty) {
-      return _buildSearchHistory();
-    }
-
-    // 显示加载状态
-    final isLoading =
-        result.neteaseLoading ||
-        result.appleLoading ||
-        result.qqLoading ||
-        result.kugouLoading ||
-        result.kuwoLoading ||
-        result.spotifyLoading;
-
-    // 获取合并后的结果
-    final mergedResults = _searchService.getMergedResults();
-
-    // 如果所有平台都加载完成且没有结果
-    if (result.allCompleted && mergedResults.isEmpty && result.hasError) {
-      return _buildSearchFailure();
-    }
-    if (result.allCompleted && mergedResults.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.music_off,
-        title: '没有找到相关歌曲',
-        subtitle: '试试其他关键词吧',
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // 搜索统计
-        _buildSearchHeader(mergedResults.length, result),
-        if (result.hasError) _buildSearchFailure(partial: true),
-
-        const SizedBox(height: 16),
-
-        // 加载提示
-        if (isLoading)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 16),
-            child: Center(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  SizedBox(width: 12),
-                  Text('搜索中...'),
-                ],
-              ),
-            ),
-          ),
-
-        // 合并后的歌曲列表
-        ...mergedResults.map(
-          (mergedTrack) => _buildMergedTrackItem(mergedTrack),
-        ),
-      ],
-    );
-  }
-
   // ─── Artist results ────────────────────────────────────────────────
 
   Widget _buildArtistResults() {
@@ -776,8 +781,23 @@ extension _SearchWidgetShared on _SearchWidgetState {
 
   // ─── Search header ─────────────────────────────────────────────────
 
+  Widget _buildSearchNotice(String notice) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Text(
+      notice,
+      style: TextStyle(
+        fontSize: 13,
+        color: _isFluent
+            ? fluent.FluentTheme.of(context).resources.textFillColorSecondary
+            : _isCupertino
+            ? CupertinoColors.secondaryLabel.resolveFrom(context)
+            : Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
+
   /// 构建搜索头部（统计信息）
-  Widget _buildSearchHeader(int totalCount, SearchResult result) {
+  Widget _buildSearchHeader(int totalCount) {
     if (_isFluent) {
       final textStyle = Theme.of(
         context,
@@ -788,7 +808,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
           children: [
             const Icon(Icons.music_note, size: 20),
             const SizedBox(width: 8),
-            Text('找到 $totalCount 首歌曲', style: textStyle),
+            Text('已加载 $totalCount 首歌曲', style: textStyle),
           ],
         ),
       );
@@ -803,7 +823,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
         textBaseline: TextBaseline.alphabetic,
         children: [
           Text(
-            '找到',
+            '已加载',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -830,342 +850,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
             ),
           ),
           const Spacer(),
-          // 如果有多个来源，可以在这里显示一个小徽章
         ],
-      ),
-    );
-  }
-
-  // ─── Merged track item ─────────────────────────────────────────────
-
-  /// 构建合并后的歌曲项
-  Widget _buildMergedTrackItem(MergedTrack mergedTrack) {
-    if (_isFluent) {
-      final theme = fluent.FluentTheme.of(context);
-      final resources = theme.resources;
-      final bestTrack = mergedTrack.getBestTrack();
-
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: fluent.Card(
-          borderRadius: BorderRadius.circular(12),
-          padding: EdgeInsets.zero,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _playMergedTrack(mergedTrack),
-            onLongPress: () => _showPlatformSelector(mergedTrack),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // 封面
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: CachedNetworkImage(
-                      imageUrl: mergedTrack.picUrl,
-                      httpHeaders: getImageHeaders(mergedTrack.picUrl),
-                      width: 64,
-                      height: 64,
-                      memCacheWidth: 128,
-                      memCacheHeight: 128,
-                      fit: BoxFit.cover,
-                      placeholder: (_, _) => Container(
-                        width: 64,
-                        height: 64,
-                        color: resources.controlAltFillColorSecondary,
-                        alignment: Alignment.center,
-                        child: const fluent.ProgressRing(strokeWidth: 2),
-                      ),
-                      errorWidget: (_, _, _) => Container(
-                        width: 64,
-                        height: 64,
-                        color: resources.controlAltFillColorSecondary,
-                        alignment: Alignment.center,
-                        child: Icon(
-                          fluent.FluentIcons.music_in_collection,
-                          color: resources.textFillColorTertiary,
-                          size: 24,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  // 歌曲信息
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          mergedTrack.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${mergedTrack.artists} • ${mergedTrack.album}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: resources.textFillColorSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // 操作按钮
-                  TrackMoreButton(
-                    track: bestTrack,
-                    onPlay: () => _playMergedTrack(mergedTrack),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Material Expressive Style
-    final cs = Theme.of(context).colorScheme;
-    final bestTrack = mergedTrack.getBestTrack();
-
-    return InkWell(
-      onTap: () => _playMergedTrack(mergedTrack),
-      onLongPress: () => _showPlatformSelector(mergedTrack),
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        child: Row(
-          children: [
-            // 大尺寸高圆角封面
-            Hero(
-              tag: 'search_merged_${bestTrack.id}_${bestTrack.source}',
-              child: Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: CachedNetworkImage(
-                    imageUrl: mergedTrack.picUrl,
-                    httpHeaders: getImageHeaders(mergedTrack.picUrl),
-                    fit: BoxFit.cover,
-                    memCacheWidth: 128,
-                    memCacheHeight: 128,
-                    placeholder: (context, url) => Container(
-                      color: cs.surfaceContainerHighest,
-                      child: const Center(
-                        child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      color: cs.surfaceContainerHighest,
-                      child: Icon(
-                        Icons.music_note,
-                        color: cs.primary.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            // 文字内容
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    mergedTrack.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurface,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${mergedTrack.artists} · ${mergedTrack.album}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.8),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // 操作按钮
-            TrackMoreButton(
-              track: bestTrack,
-              onPlay: () => _playMergedTrack(mergedTrack),
-              // Note: TrackMoreButton will need to be visually consistent too.
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── Play merged track ─────────────────────────────────────────────
-
-  /// 播放合并后的歌曲（按优先级选择平台）
-  void _playMergedTrack(MergedTrack mergedTrack) async {
-    // 检查登录状态
-    final isLoggedIn = await _checkLoginStatus();
-    if (!isLoggedIn) return;
-
-    final bestTrack = mergedTrack.getBestTrack();
-    // 播放前注入封面 Provider，避免播放器再次请求
-    ImageProvider? provider;
-    if (bestTrack.picUrl.isNotEmpty) {
-      provider = CachedNetworkImageProvider(
-        bestTrack.picUrl,
-        headers: getImageHeaders(bestTrack.picUrl),
-      );
-      PlayerService().setCurrentCoverImageProvider(provider);
-    }
-    PlayerService().playTrack(bestTrack, coverProvider: provider);
-  }
-
-  // ─── Platform selector (long press) ────────────────────────────────
-
-  /// 显示平台选择器（长按时）
-  void _showPlatformSelector(MergedTrack mergedTrack) {
-    if (_isFluent) {
-      fluent.showDialog(
-        context: context,
-        builder: (context) => fluent.ContentDialog(
-          title: const Text('选择播放平台'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  mergedTrack.name,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ...mergedTrack.tracks.map(
-                (track) => fluent.ListTile(
-                  leading: Text(
-                    track.getSourceIcon(),
-                    style: const TextStyle(fontSize: 20),
-                  ),
-                  title: Text(track.getSourceName()),
-                  subtitle: Text(track.album, overflow: TextOverflow.ellipsis),
-                  trailing: const Icon(fluent.FluentIcons.play),
-                  onPressed: () async {
-                    Navigator.pop(context);
-                    final isLoggedIn = await _checkLoginStatus();
-                    if (isLoggedIn && mounted) {
-                      if (track.picUrl.isNotEmpty) {
-                        final provider = CachedNetworkImageProvider(
-                          track.picUrl,
-                          headers: getImageHeaders(track.picUrl),
-                        );
-                        PlayerService().setCurrentCoverImageProvider(provider);
-                        PlayerService().playTrack(
-                          track,
-                          coverProvider: provider,
-                        );
-                      } else {
-                        PlayerService().playTrack(track);
-                      }
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            fluent.Button(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '选择播放平台',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              mergedTrack.name,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            ...mergedTrack.tracks.map(
-              (track) => ListTile(
-                leading: Text(
-                  track.getSourceIcon(),
-                  style: const TextStyle(fontSize: 24),
-                ),
-                title: Text(track.getSourceName()),
-                subtitle: Text(track.album),
-                trailing: const Icon(Icons.play_arrow),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final isLoggedIn = await _checkLoginStatus();
-                  if (isLoggedIn && mounted) {
-                    if (track.picUrl.isNotEmpty) {
-                      final provider = CachedNetworkImageProvider(
-                        track.picUrl,
-                        headers: getImageHeaders(track.picUrl),
-                      );
-                      PlayerService().setCurrentCoverImageProvider(provider);
-                      PlayerService().playTrack(track, coverProvider: provider);
-                    } else {
-                      PlayerService().playTrack(track);
-                    }
-                  }
-                },
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1184,7 +869,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
         icon: Icons.search,
         title: '搜索音乐',
         subtitle:
-            '支持${SearchTab.tabs(merged: false).where((tab) => tab.platform != null).map((tab) => tab.label).join('、')}',
+            '支持${SearchTab.tabs().where((tab) => tab.platform != null).map((tab) => tab.label).join('、')}',
       );
     }
 

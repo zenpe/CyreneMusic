@@ -127,10 +127,7 @@ extension _DeveloperPageFluent on _DeveloperPageState {
     fluent.displayInfoBar(
       context,
       builder: (context, close) {
-        return fluent.InfoBar(
-          title: Text(message),
-          onClose: close,
-        );
+        return fluent.InfoBar(title: Text(message), onClose: close);
       },
     );
   }
@@ -203,7 +200,9 @@ extension _DeveloperPageFluent on _DeveloperPageState {
                         onPressed: AdminService().isLoading
                             ? null
                             : () async {
-                                await _handleAdminLogin(passwordController.text);
+                                await _handleAdminLogin(
+                                  passwordController.text,
+                                );
                                 passwordController.clear();
                               },
                         child: AdminService().isLoading
@@ -215,9 +214,7 @@ extension _DeveloperPageFluent on _DeveloperPageState {
                       const SizedBox(height: 16),
                       Text(
                         AdminService().errorMessage!,
-                        style: TextStyle(
-                          color: fluent.Colors.red,
-                        ),
+                        style: TextStyle(color: fluent.Colors.red),
                       ),
                     ],
                   ],
@@ -241,14 +238,16 @@ extension _DeveloperPageFluent on _DeveloperPageState {
               fluent.CommandBarButton(
                 icon: const Icon(fluent.FluentIcons.refresh),
                 label: const Text('刷新'),
-                onPressed: AdminService().isLoading ? null : () async {
-                  try {
-                    await AdminService().fetchUsers();
-                    await AdminService().fetchStats();
-                  } catch (e) {
-                    if (mounted) _showFluentSnackbar('刷新失败: $e');
-                  }
-                },
+                onPressed: AdminService().isLoading
+                    ? null
+                    : () async {
+                        try {
+                          await AdminService().fetchUsers();
+                          await AdminService().fetchStats();
+                        } catch (e) {
+                          if (mounted) _showFluentSnackbar('刷新失败: $e');
+                        }
+                      },
               ),
               fluent.CommandBarButton(
                 icon: const Icon(fluent.FluentIcons.sign_out),
@@ -282,7 +281,8 @@ extension _DeveloperPageFluent on _DeveloperPageState {
         Expanded(
           child: fluent.TabView(
             currentIndex: adminTabIndex,
-            onChanged: (index) => _refreshState(() => _fluentAdminTabIndex = index),
+            onChanged: (index) =>
+                _refreshState(() => _fluentAdminTabIndex = index),
             tabs: [
               fluent.Tab(
                 text: const Text('用户列表'),
@@ -310,15 +310,21 @@ extension _DeveloperPageFluent on _DeveloperPageState {
         AdminService().errorMessage!.contains('令牌验证失败')) {
       return LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 220;
-          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          final compact =
+              constraints.hasBoundedHeight && constraints.maxHeight < 220;
+          final minHeight = constraints.hasBoundedHeight
+              ? constraints.maxHeight
+              : 0.0;
           return SingleChildScrollView(
             physics: const ClampingScrollPhysics(),
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: minHeight),
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -380,13 +386,23 @@ extension _DeveloperPageFluent on _DeveloperPageState {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(user.username, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    Text(user.email, style: fluent.FluentTheme.of(context).typography.caption),
+                    Text(
+                      user.username,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      user.email,
+                      style: fluent.FluentTheme.of(context).typography.caption,
+                    ),
                   ],
                 ),
                 const Spacer(),
                 if (user.isVerified)
-                  Icon(fluent.FluentIcons.verified_brand, color: fluent.Colors.green, size: 16),
+                  Icon(
+                    fluent.FluentIcons.verified_brand,
+                    color: fluent.Colors.green,
+                    size: 16,
+                  ),
               ],
             ),
             content: Column(
@@ -397,13 +413,18 @@ extension _DeveloperPageFluent on _DeveloperPageState {
                 _buildUserInfoRow('最后登录', _formatDateTime(user.lastLogin)),
                 _buildUserInfoRow('IP地址', user.lastIp ?? '未知'),
                 _buildUserInfoRow('IP归属地', user.lastIpLocation ?? '未知'),
-                _buildUserInfoRow('IP更新时间', _formatDateTime(user.lastIpUpdatedAt)),
+                _buildUserInfoRow(
+                  'IP更新时间',
+                  _formatDateTime(user.lastIpUpdatedAt),
+                ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
                     fluent.Button(
                       style: fluent.ButtonStyle(
-                        foregroundColor: WidgetStatePropertyAll(fluent.Colors.red),
+                        foregroundColor: WidgetStatePropertyAll(
+                          fluent.Colors.red,
+                        ),
                       ),
                       onPressed: () => _confirmFluentDeleteUser(user),
                       child: const Text('删除用户'),
@@ -464,14 +485,29 @@ extension _DeveloperPageFluent on _DeveloperPageState {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('用户概览', style: fluent.FluentTheme.of(context).typography.subtitle),
+              Text(
+                '用户概览',
+                style: fluent.FluentTheme.of(context).typography.subtitle,
+              ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildFluentStatCard('总用户', stats.totalUsers.toString(), fluent.FluentIcons.people),
-                  _buildFluentStatCard('已验证', stats.verifiedUsers.toString(), fluent.FluentIcons.verified_brand),
-                  _buildFluentStatCard('未验证', stats.unverifiedUsers.toString(), fluent.FluentIcons.unknown),
+                  _buildFluentStatCard(
+                    '总用户',
+                    stats.totalUsers.toString(),
+                    fluent.FluentIcons.people,
+                  ),
+                  _buildFluentStatCard(
+                    '已验证',
+                    stats.verifiedUsers.toString(),
+                    fluent.FluentIcons.verified_brand,
+                  ),
+                  _buildFluentStatCard(
+                    '未验证',
+                    stats.unverifiedUsers.toString(),
+                    fluent.FluentIcons.unknown,
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -480,9 +516,21 @@ extension _DeveloperPageFluent on _DeveloperPageState {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildFluentStatCard('今日新增', stats.todayUsers.toString(), fluent.FluentIcons.add_friend),
-                  _buildFluentStatCard('今日活跃', stats.todayActiveUsers.toString(), fluent.FluentIcons.trending12),
-                  _buildFluentStatCard('本周新增', stats.last7DaysUsers.toString(), fluent.FluentIcons.calendar),
+                  _buildFluentStatCard(
+                    '今日新增',
+                    stats.todayUsers.toString(),
+                    fluent.FluentIcons.add_friend,
+                  ),
+                  _buildFluentStatCard(
+                    '今日活跃',
+                    stats.todayActiveUsers.toString(),
+                    fluent.FluentIcons.trending12,
+                  ),
+                  _buildFluentStatCard(
+                    '本周新增',
+                    stats.last7DaysUsers.toString(),
+                    fluent.FluentIcons.calendar,
+                  ),
                 ],
               ),
             ],
@@ -494,24 +542,29 @@ extension _DeveloperPageFluent on _DeveloperPageState {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('地区分布 Top 10', style: fluent.FluentTheme.of(context).typography.subtitle),
+                Text(
+                  '地区分布 Top 10',
+                  style: fluent.FluentTheme.of(context).typography.subtitle,
+                ),
                 const SizedBox(height: 16),
-                ...stats.topLocations.map((loc) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      Expanded(flex: 3, child: Text(loc.location)),
-                      Expanded(
-                        flex: 7,
-                        child: fluent.ProgressBar(
-                          value: (loc.count / stats.totalUsers) * 100,
+                ...stats.topLocations.map(
+                  (loc) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(flex: 3, child: Text(loc.location)),
+                        Expanded(
+                          flex: 7,
+                          child: fluent.ProgressBar(
+                            value: (loc.count / stats.totalUsers) * 100,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text('${loc.count} 人'),
-                    ],
+                        const SizedBox(width: 8),
+                        Text('${loc.count} 人'),
+                      ],
+                    ),
                   ),
-                )),
+                ),
               ],
             ),
           ),
@@ -559,22 +612,6 @@ extension _DeveloperPageFluent on _DeveloperPageState {
             leading: const Icon(fluent.FluentIcons.cell_phone),
             title: const Text('平台'),
             subtitle: Text(_getPlatformName()),
-          ),
-        ),
-        const SizedBox(height: 8),
-        fluent.Card(
-          child: fluent.ListTile(
-            leading: const Icon(fluent.FluentIcons.merge),
-            title: const Text('合并搜索结果'),
-            subtitle: const Text('关闭后将分平台显示搜索结果（网易云/QQ/酷狗/酷我）'),
-            trailing: fluent.ToggleSwitch(
-              checked: DeveloperModeService().isSearchResultMergeEnabled,
-              onChanged: (value) {
-                _refreshState(() {
-                  DeveloperModeService().toggleSearchResultMerge(value);
-                });
-              },
-            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -699,7 +736,9 @@ extension _DeveloperPageFluent on _DeveloperPageState {
         const SizedBox(height: 8),
         fluent.FilledButton(
           style: fluent.ButtonStyle(
-            backgroundColor: fluent.WidgetStateProperty.all(fluent.Colors.purple),
+            backgroundColor: fluent.WidgetStateProperty.all(
+              fluent.Colors.purple,
+            ),
           ),
           onPressed: () => _showFluentQuickLoginDialog(),
           child: const Row(
@@ -730,7 +769,10 @@ extension _DeveloperPageFluent on _DeveloperPageState {
           return fluent.ContentDialog(
             title: Row(
               children: [
-                Icon(fluent.FluentIcons.signin, color: fluent.FluentTheme.of(context).accentColor),
+                Icon(
+                  fluent.FluentIcons.signin,
+                  color: fluent.FluentTheme.of(context).accentColor,
+                ),
                 const SizedBox(width: 8),
                 const Text('快速登录'),
               ],
@@ -771,10 +813,16 @@ extension _DeveloperPageFluent on _DeveloperPageState {
                       setState(() => obscurePassword = !obscurePassword);
                     },
                   ),
-                  onSubmitted: isLoading ? null : (_) async {
-                    setState(() => isLoading = true);
-                    await _performQuickLogin(accountController.text, passwordController.text, context);
-                  },
+                  onSubmitted: isLoading
+                      ? null
+                      : (_) async {
+                          setState(() => isLoading = true);
+                          await _performQuickLogin(
+                            accountController.text,
+                            passwordController.text,
+                            context,
+                          );
+                        },
                 ),
               ],
             ),
@@ -788,7 +836,11 @@ extension _DeveloperPageFluent on _DeveloperPageState {
                     ? null
                     : () async {
                         setState(() => isLoading = true);
-                        await _performQuickLogin(accountController.text, passwordController.text, context);
+                        await _performQuickLogin(
+                          accountController.text,
+                          passwordController.text,
+                          context,
+                        );
                       },
                 child: isLoading
                     ? const SizedBox(

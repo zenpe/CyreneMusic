@@ -14,7 +14,6 @@ import '../services/audio_quality_service.dart';
 import '../services/player_background_service.dart';
 import '../services/player_service.dart';
 import '../services/audio_source_service.dart';
-import '../services/developer_mode_service.dart';
 import '../services/version_service.dart';
 import '../services/global_back_handler_service.dart';
 import '../models/song_detail.dart';
@@ -23,7 +22,6 @@ import 'settings_page/third_party_accounts.dart';
 import 'settings_page/appearance_settings.dart';
 import 'settings_page/lyric_settings.dart';
 import 'settings_page/playback_settings.dart';
-import 'settings_page/search_settings.dart';
 import 'settings_page/network_settings.dart';
 import 'settings_page/storage_settings.dart';
 import 'settings_page/about_settings.dart';
@@ -140,7 +138,6 @@ class _SettingsPageState extends State<SettingsPage> {
     _maybeAutoOpenSubPage();
   }
 
-
   @override
   void dispose() {
     ThemeManager().removeListener(_onThemeChanged);
@@ -202,10 +199,11 @@ class _SettingsPageState extends State<SettingsPage> {
     _scheduleRebuild();
   }
 
-
   /// 打开子页面
   void openSubPage(SettingsSubPage subPage) {
-    final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
+    final isCupertinoUI =
+        (Platform.isIOS || Platform.isAndroid) &&
+        ThemeManager().isCupertinoFramework;
 
     if (isCupertinoUI) {
       // iOS 使用原生 Navigator 动画
@@ -238,32 +236,55 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 构建 Cupertino 子页面 Widget（带完整导航栏）
   Widget _buildCupertinoSubPageWidget(SettingsSubPage subPage) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = isDark ? CupertinoColors.black : CupertinoColors.systemGroupedBackground;
+    final backgroundColor = isDark
+        ? CupertinoColors.black
+        : CupertinoColors.systemGroupedBackground;
 
     Widget content;
     String title;
 
     switch (subPage) {
       case SettingsSubPage.appearance:
-        content = AppearanceSettingsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = AppearanceSettingsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '外观';
       case SettingsSubPage.thirdPartyAccounts:
-        content = ThirdPartyAccountsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = ThirdPartyAccountsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '第三方账号';
       case SettingsSubPage.lyric:
-        content = LyricSettingsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = LyricSettingsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '歌词';
       case SettingsSubPage.audioSource:
-        content = AudioSourceSettingsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = AudioSourceSettingsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '音源设置';
       case SettingsSubPage.about:
-        content = AboutSettingsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = AboutSettingsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '关于';
       case SettingsSubPage.labFunctions:
-        content = LabFunctionsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = LabFunctionsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '实验室功能';
       case SettingsSubPage.other:
-        content = OtherSettingsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = OtherSettingsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '其它设置';
       case SettingsSubPage.none:
         return const SizedBox.shrink();
@@ -307,7 +328,9 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     // 检查是否使用 Fluent UI
     final isFluentUI = ThemeManager().isDesktopFluentUI;
-    final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
+    final isCupertinoUI =
+        (Platform.isIOS || Platform.isAndroid) &&
+        ThemeManager().isCupertinoFramework;
 
     if (isFluentUI) {
       return _buildFluentUI(context);
@@ -324,13 +347,16 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildMaterialUI(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         final accent = themeColor ?? colorScheme.primary;
-        final bgBase = isDark ? const Color(0xFF0F0F13) : const Color(0xFFF7F8FA);
+        final bgBase = isDark
+            ? const Color(0xFF0F0F13)
+            : const Color(0xFFF7F8FA);
 
         return Scaffold(
           backgroundColor: bgBase,
@@ -389,22 +415,27 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
-                  transitionBuilder: (Widget child, Animation<double> animation) {
-                    final offset = child.key == const ValueKey('main_settings')
-                        ? const Offset(-1.0, 0.0)
-                        : const Offset(1.0, 0.0);
+                  transitionBuilder:
+                      (Widget child, Animation<double> animation) {
+                        final offset =
+                            child.key == const ValueKey('main_settings')
+                            ? const Offset(-1.0, 0.0)
+                            : const Offset(1.0, 0.0);
 
-                    return SlideTransition(
-                      position: Tween<Offset>(
-                        begin: offset,
-                        end: Offset.zero,
-                      ).animate(CurvedAnimation(
-                        parent: animation,
-                        curve: Curves.easeInOutCubic,
-                      )),
-                      child: child,
-                    );
-                  },
+                        return SlideTransition(
+                          position:
+                              Tween<Offset>(
+                                begin: offset,
+                                end: Offset.zero,
+                              ).animate(
+                                CurvedAnimation(
+                                  parent: animation,
+                                  curve: Curves.easeInOutCubic,
+                                ),
+                              ),
+                          child: child,
+                        );
+                      },
                   child: _currentSubPage != SettingsSubPage.none
                       ? KeyedSubtree(
                           key: ValueKey('sub_settings_${_currentSubPage.name}'),
@@ -501,7 +532,10 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildAccountGroup(BuildContext context, {EdgeInsetsGeometry? margin}) {
+  Widget _buildAccountGroup(
+    BuildContext context, {
+    EdgeInsetsGeometry? margin,
+  }) {
     return _buildMaterialSettingsGroup(
       context,
       header: '账号与功能',
@@ -527,7 +561,10 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildAppearanceGroup(BuildContext context, {EdgeInsetsGeometry? margin}) {
+  Widget _buildAppearanceGroup(
+    BuildContext context, {
+    EdgeInsetsGeometry? margin,
+  }) {
     return _buildMaterialSettingsGroup(
       context,
       header: '个性化与显示',
@@ -553,7 +590,10 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildPlaybackGroup(BuildContext context, {EdgeInsetsGeometry? margin}) {
+  Widget _buildPlaybackGroup(
+    BuildContext context, {
+    EdgeInsetsGeometry? margin,
+  }) {
     return _buildMaterialSettingsGroup(
       context,
       header: '播放与音源',
@@ -566,27 +606,9 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.high_quality_outlined,
             iconColor: const Color(0xFF007AFF),
             title: '音质选择',
-            subtitle: '${AudioQualityService().getQualityName()} - ${AudioQualityService().getQualityDescription()}',
+            subtitle:
+                '${AudioQualityService().getQualityName()} - ${AudioQualityService().getQualityDescription()}',
             onTap: () => _showAudioQualityDialogMaterial(context),
-          ),
-        ),
-        ListenableBuilder(
-          listenable: DeveloperModeService(),
-          builder: (context, _) => _buildMaterialSettingsItem(
-            context,
-            icon: Icons.merge_type_rounded,
-            iconColor: const Color(0xFF00BCD4),
-            title: '合并搜索结果',
-            subtitle: DeveloperModeService().isSearchResultMergeEnabled
-                ? '开启：聚合多平台相同歌曲'
-                : '关闭：分平台独立展示',
-            trailing: Switch(
-              value: DeveloperModeService().isSearchResultMergeEnabled,
-              onChanged: (v) => DeveloperModeService().toggleSearchResultMerge(v),
-            ),
-            onTap: () => DeveloperModeService().toggleSearchResultMerge(
-              !DeveloperModeService().isSearchResultMergeEnabled,
-            ),
           ),
         ),
         _buildMaterialSettingsItem(
@@ -601,14 +623,15 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildStorageGroup(BuildContext context, {EdgeInsetsGeometry? margin}) {
+  Widget _buildStorageGroup(
+    BuildContext context, {
+    EdgeInsetsGeometry? margin,
+  }) {
     return _buildMaterialSettingsGroup(
       context,
       header: '存储空间',
       margin: margin ?? const EdgeInsets.symmetric(horizontal: 16),
-      children: [
-        const StorageSettings(cardWrapped: false),
-      ],
+      children: [const StorageSettings(cardWrapped: false)],
     );
   }
 
@@ -647,14 +670,20 @@ class _SettingsPageState extends State<SettingsPage> {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final headerLeftPadding = margin is EdgeInsets ? (margin.left > 0 ? margin.left + 12 : 12.0) : 28.0;
+    final headerLeftPadding = margin is EdgeInsets
+        ? (margin.left > 0 ? margin.left + 12 : 12.0)
+        : 28.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (header != null)
           Padding(
-            padding: EdgeInsets.only(left: headerLeftPadding, top: 4, bottom: 8),
+            padding: EdgeInsets.only(
+              left: headerLeftPadding,
+              top: 4,
+              bottom: 8,
+            ),
             child: Text(
               header,
               style: TextStyle(
@@ -680,7 +709,11 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
-            children: _buildMaterialChildrenWithDividers(context, children, isDark),
+            children: _buildMaterialChildrenWithDividers(
+              context,
+              children,
+              isDark,
+            ),
           ),
         ),
       ],
@@ -703,7 +736,9 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Divider(
               height: 1,
               thickness: 0.5,
-              color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.06),
+              color: isDark
+                  ? Colors.white12
+                  : Colors.black.withValues(alpha: 0.06),
             ),
           ),
         );
@@ -737,11 +772,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 color: iconColor.withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(
-                icon,
-                color: iconColor,
-                size: 20,
-              ),
+              child: Icon(icon, color: iconColor, size: 20),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -787,7 +818,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final currentQuality = qualityService.currentQuality;
     final sourceType = AudioSourceService().sourceType;
     final supportedQualities = qualityService.getSupportedQualities(sourceType);
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     final colorScheme = Theme.of(context).colorScheme;
 
     Widget buildQualityOption(AudioQuality quality) {
@@ -817,15 +849,21 @@ class _SettingsPageState extends State<SettingsPage> {
                   : colorScheme.surfaceContainerLow,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.4),
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.outlineVariant.withValues(alpha: 0.4),
                 width: isSelected ? 1.5 : 1.0,
               ),
             ),
             child: Row(
               children: [
                 Icon(
-                  isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                  color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                  isSelected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  color: isSelected
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
                   size: 20,
                 ),
                 const SizedBox(width: 10),
@@ -838,8 +876,12 @@ class _SettingsPageState extends State<SettingsPage> {
                         qualityService.getQualityName(quality),
                         style: TextStyle(
                           fontSize: 15,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                          color: isSelected ? colorScheme.primary : colorScheme.onSurface,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.w600,
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -886,7 +928,8 @@ class _SettingsPageState extends State<SettingsPage> {
                           children: [
                             for (int i = 0; i < leftList.length; i++) ...[
                               buildQualityOption(leftList[i]),
-                              if (i < leftList.length - 1) const SizedBox(height: 8),
+                              if (i < leftList.length - 1)
+                                const SizedBox(height: 8),
                             ],
                           ],
                         ),
@@ -898,7 +941,8 @@ class _SettingsPageState extends State<SettingsPage> {
                           children: [
                             for (int i = 0; i < rightList.length; i++) ...[
                               buildQualityOption(rightList[i]),
-                              if (i < rightList.length - 1) const SizedBox(height: 8),
+                              if (i < rightList.length - 1)
+                                const SizedBox(height: 8),
                             ],
                           ],
                         ),
@@ -910,7 +954,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     children: [
                       for (int i = 0; i < supportedQualities.length; i++) ...[
                         buildQualityOption(supportedQualities[i]),
-                        if (i < supportedQualities.length - 1) const SizedBox(height: 8),
+                        if (i < supportedQualities.length - 1)
+                          const SizedBox(height: 8),
                       ],
                     ],
                   ),
@@ -975,7 +1020,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return const SizedBox.shrink();
     }
 
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     if (isLandscape) {
       return Center(
         child: ConstrainedBox(
@@ -991,7 +1037,9 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 注意：子页面现在通过 Navigator.push + CupertinoPageRoute 实现原生动画
   Widget _buildCupertinoUI(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = isDark ? CupertinoColors.black : CupertinoColors.systemGroupedBackground;
+    final backgroundColor = isDark
+        ? CupertinoColors.black
+        : CupertinoColors.systemGroupedBackground;
 
     // 主设置页面使用大标题导航栏 (iOS 26 风格)
     return CupertinoPageScaffold(
@@ -1001,7 +1049,11 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// 构建 Cupertino 主设置页面内容
-  Widget _buildCupertinoMainContent(BuildContext context, bool isDark, Color backgroundColor) {
+  Widget _buildCupertinoMainContent(
+    BuildContext context,
+    bool isDark,
+    Color backgroundColor,
+  ) {
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
@@ -1019,129 +1071,120 @@ class _SettingsPageState extends State<SettingsPage> {
             top: false,
             child: Column(
               children: [
-              const SizedBox(height: 8),
+                const SizedBox(height: 8),
 
-              // 用户卡片 - iOS 26 风格
-              _buildCupertinoUserSection(context, isDark),
+                // 用户卡片 - iOS 26 风格
+                _buildCupertinoUserSection(context, isDark),
 
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
+                // 账号设置分组
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '账号',
+                  children: [
+                    _buildCupertinoSettingsItem(
+                      context,
+                      isDark: isDark,
+                      icon: CupertinoIcons.link,
+                      iconColor: const Color(0xFF5856D6),
+                      title: '第三方账号',
+                      subtitle: '网易云音乐等',
+                      onTap: () =>
+                          openSubPage(SettingsSubPage.thirdPartyAccounts),
+                    ),
+                  ],
+                ),
 
-              // 账号设置分组
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '账号',
-                children: [
-                  _buildCupertinoSettingsItem(
-                    context,
-                    isDark: isDark,
-                    icon: CupertinoIcons.link,
-                    iconColor: const Color(0xFF5856D6),
-                    title: '第三方账号',
-                    subtitle: '网易云音乐等',
-                    onTap: () => openSubPage(SettingsSubPage.thirdPartyAccounts),
-                  ),
-                ],
-              ),
+                const SizedBox(height: 24),
 
-              const SizedBox(height: 24),
+                // 外观与显示分组
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '外观与显示',
+                  children: [
+                    _buildCupertinoSettingsItem(
+                      context,
+                      isDark: isDark,
+                      icon: CupertinoIcons.paintbrush,
+                      iconColor: const Color(0xFFFF9500),
+                      title: '外观',
+                      subtitle: '主题、颜色、界面',
+                      onTap: () => openSubPage(SettingsSubPage.appearance),
+                    ),
+                    _buildCupertinoSettingsItem(
+                      context,
+                      isDark: isDark,
+                      icon: CupertinoIcons.text_quote,
+                      iconColor: const Color(0xFF34C759),
+                      title: '歌词',
+                      subtitle: '歌词显示设置',
+                      onTap: () => openSubPage(SettingsSubPage.lyric),
+                    ),
+                  ],
+                ),
 
-              // 外观与显示分组
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '外观与显示',
-                children: [
-                  _buildCupertinoSettingsItem(
-                    context,
-                    isDark: isDark,
-                    icon: CupertinoIcons.paintbrush,
-                    iconColor: const Color(0xFFFF9500),
-                    title: '外观',
-                    subtitle: '主题、颜色、界面',
-                    onTap: () => openSubPage(SettingsSubPage.appearance),
-                  ),
-                  _buildCupertinoSettingsItem(
-                    context,
-                    isDark: isDark,
-                    icon: CupertinoIcons.text_quote,
-                    iconColor: const Color(0xFF34C759),
-                    title: '歌词',
-                    subtitle: '歌词显示设置',
-                    onTap: () => openSubPage(SettingsSubPage.lyric),
-                  ),
-                ],
-              ),
+                const SizedBox(height: 24),
 
-              const SizedBox(height: 24),
+                // 网络设置分组
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '网络',
+                  children: [
+                    NetworkSettings(
+                      onAudioSourceTap: () =>
+                          openSubPage(SettingsSubPage.audioSource),
+                    ),
+                  ],
+                ),
 
-              // 播放设置分组
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '播放',
-                children: [
-                  const SearchSettings(),
-                ],
-              ),
+                const SizedBox(height: 24),
 
-              const SizedBox(height: 24),
+                // 存储设置分组
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '存储',
+                  children: const [StorageSettings()],
+                ),
 
-              // 网络设置分组
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '网络',
-                children: [
-                  NetworkSettings(onAudioSourceTap: () => openSubPage(SettingsSubPage.audioSource)),
-                ],
-              ),
+                const SizedBox(height: 24),
 
-              const SizedBox(height: 24),
+                // 其它设置分组
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '其它',
+                  children: [
+                    _buildCupertinoSettingsItem(
+                      context,
+                      isDark: isDark,
+                      icon: CupertinoIcons.ellipsis,
+                      iconColor: CupertinoColors.systemGrey,
+                      title: '其它设置',
+                      subtitle: '启动提示、更新提示',
+                      onTap: () => openSubPage(SettingsSubPage.other),
+                    ),
+                  ],
+                ),
 
-              // 存储设置分组
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '存储',
-                children: const [
-                  StorageSettings(),
-                ],
-              ),
+                const SizedBox(height: 24),
 
-              const SizedBox(height: 24),
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '关于',
+                  children: [
+                    AboutSettings(
+                      onTap: () => openSubPage(SettingsSubPage.about),
+                    ),
+                  ],
+                ),
 
-              // 其它设置分组
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '其它',
-                children: [
-                  _buildCupertinoSettingsItem(
-                    context,
-                    isDark: isDark,
-                    icon: CupertinoIcons.ellipsis,
-                    iconColor: CupertinoColors.systemGrey,
-                    title: '其它设置',
-                    subtitle: '启动提示、更新提示',
-                    onTap: () => openSubPage(SettingsSubPage.other),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '关于',
-                children: [
-                  AboutSettings(onTap: () => openSubPage(SettingsSubPage.about)),
-                ],
-              ),
-
-              const SizedBox(height: 100), // 底部留白
+                const SizedBox(height: 100), // 底部留白
               ],
             ),
           ),
@@ -1210,7 +1253,11 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// 构建带分隔线的子项列表
-  List<Widget> _buildChildrenWithDividers(BuildContext context, List<Widget> children, bool isDark) {
+  List<Widget> _buildChildrenWithDividers(
+    BuildContext context,
+    List<Widget> children,
+    bool isDark,
+  ) {
     final List<Widget> result = [];
 
     for (int i = 0; i < children.length; i++) {
@@ -1258,11 +1305,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 color: iconColor,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(
-                icon,
-                color: CupertinoColors.white,
-                size: 18,
-              ),
+              child: Icon(icon, color: CupertinoColors.white, size: 18),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -1273,7 +1316,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     title,
                     style: TextStyle(
                       fontSize: 17,
-                      color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                      color: isDark
+                          ? CupertinoColors.white
+                          : CupertinoColors.black,
                     ),
                   ),
                   if (subtitle != null) ...[
@@ -1300,7 +1345,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-
   /// 构建 Fluent UI 版本（Windows 11 风格）
   Widget _buildFluentUI(BuildContext context) {
     return fluent_ui.ScaffoldPage(
@@ -1314,22 +1358,25 @@ class _SettingsPageState extends State<SettingsPage> {
         transitionBuilder: (Widget child, Animation<double> animation) {
           // 简单的左右滑动效果
           final isMain = child.key == const ValueKey('main_settings');
-          final isSub = child.key is ValueKey<String> && (child.key as ValueKey<String>).value.startsWith('sub_settings_');
+          final isSub =
+              child.key is ValueKey<String> &&
+              (child.key as ValueKey<String>).value.startsWith('sub_settings_');
 
           final offset = isMain
               ? const Offset(-0.2, 0.0) // 主页面移出时略微向左
-              : (isSub ? const Offset(0.2, 0.0) : const Offset(1.0, 0.0)); // 子页面进入时从右侧拉入
+              : (isSub
+                    ? const Offset(0.2, 0.0)
+                    : const Offset(1.0, 0.0)); // 子页面进入时从右侧拉入
 
           return FadeTransition(
             opacity: animation,
             child: SlideTransition(
-              position: Tween<Offset>(
-                begin: offset,
-                end: Offset.zero,
-              ).animate(CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeInOutCubic,
-              )),
+              position: Tween<Offset>(begin: offset, end: Offset.zero).animate(
+                CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeInOutCubic,
+                ),
+              ),
               child: child,
             ),
           );
@@ -1361,10 +1408,14 @@ class _SettingsPageState extends State<SettingsPage> {
         const SizedBox(height: 16),
 
         // 分组设置
-        ThirdPartyAccounts(onTap: () => openSubPage(SettingsSubPage.thirdPartyAccounts)),
+        ThirdPartyAccounts(
+          onTap: () => openSubPage(SettingsSubPage.thirdPartyAccounts),
+        ),
         const SizedBox(height: 16),
 
-        AppearanceSettings(onTap: () => openSubPage(SettingsSubPage.appearance)),
+        AppearanceSettings(
+          onTap: () => openSubPage(SettingsSubPage.appearance),
+        ),
         const SizedBox(height: 16),
 
         LyricSettings(onTap: () => openSubPage(SettingsSubPage.lyric)),
@@ -1373,10 +1424,9 @@ class _SettingsPageState extends State<SettingsPage> {
         const PlaybackSettings(),
         const SizedBox(height: 16),
 
-        const SearchSettings(),
-        const SizedBox(height: 16),
-
-        NetworkSettings(onAudioSourceTap: () => openSubPage(SettingsSubPage.audioSource)),
+        NetworkSettings(
+          onAudioSourceTap: () => openSubPage(SettingsSubPage.audioSource),
+        ),
         const SizedBox(height: 16),
 
         const StorageSettings(),
@@ -1418,14 +1468,29 @@ class _SettingsPageState extends State<SettingsPage> {
 
     String pageName = '';
     switch (_currentSubPage) {
-      case SettingsSubPage.appearance: pageName = '外观'; break;
-      case SettingsSubPage.thirdPartyAccounts: pageName = '第三方账号'; break;
-      case SettingsSubPage.lyric: pageName = '歌词'; break;
-      case SettingsSubPage.audioSource: pageName = '音源设置'; break;
-      case SettingsSubPage.about: pageName = '关于'; break;
-      case SettingsSubPage.labFunctions: pageName = '实验室功能'; break;
-      case SettingsSubPage.other: pageName = '其它设置'; break;
-      case SettingsSubPage.none: return const Text('设置');
+      case SettingsSubPage.appearance:
+        pageName = '外观';
+        break;
+      case SettingsSubPage.thirdPartyAccounts:
+        pageName = '第三方账号';
+        break;
+      case SettingsSubPage.lyric:
+        pageName = '歌词';
+        break;
+      case SettingsSubPage.audioSource:
+        pageName = '音源设置';
+        break;
+      case SettingsSubPage.about:
+        pageName = '关于';
+        break;
+      case SettingsSubPage.labFunctions:
+        pageName = '实验室功能';
+        break;
+      case SettingsSubPage.other:
+        pageName = '其它设置';
+        break;
+      case SettingsSubPage.none:
+        return const Text('设置');
     }
 
     return Row(
@@ -1459,10 +1524,7 @@ class _SettingsPageState extends State<SettingsPage> {
             color: theme.resources.textFillColorSecondary,
           ),
         ),
-        Text(
-          pageName,
-          style: theme.typography.title?.copyWith(fontSize: 20),
-        ),
+        Text(pageName, style: theme.typography.title?.copyWith(fontSize: 20)),
       ],
     );
   }

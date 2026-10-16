@@ -3,9 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/track.dart';
-import '../models/merged_track.dart';
+import '../models/search_page_state.dart';
 import 'api/api_client.dart';
 import 'search_provider_catalog.dart';
+import 'search_request.dart';
 
 /// 搜索结果模型
 class SearchResult {
@@ -58,6 +59,10 @@ class SearchResult {
   final String? kugouError;
   final String? kuwoError;
   final String? spotifyError;
+  final bool qqSuggestions;
+
+  String? noticeFor(MusicSource source) =>
+      source == MusicSource.qq && qqSuggestions ? 'QQ音乐当前显示联想结果，结果可能不完整' : null;
 
   SearchResult({
     this.neteaseResults = const [],
@@ -78,6 +83,7 @@ class SearchResult {
     this.kugouError,
     this.kuwoError,
     this.spotifyError,
+    this.qqSuggestions = false,
   });
 
   /// 获取所有结果的总数
@@ -121,6 +127,7 @@ class SearchResult {
     bool? kugouLoading,
     bool? kuwoLoading,
     bool? spotifyLoading,
+    bool? qqSuggestions,
     Object? neteaseError = _unchanged,
     Object? appleError = _unchanged,
     Object? qqError = _unchanged,
@@ -141,6 +148,7 @@ class SearchResult {
       kugouLoading: kugouLoading ?? this.kugouLoading,
       kuwoLoading: kuwoLoading ?? this.kuwoLoading,
       spotifyLoading: spotifyLoading ?? this.spotifyLoading,
+      qqSuggestions: qqSuggestions ?? this.qqSuggestions,
       neteaseError: identical(neteaseError, _unchanged)
           ? this.neteaseError
           : neteaseError as String?,
@@ -177,7 +185,11 @@ class SearchService extends ChangeNotifier {
   String _currentKeyword = '';
   String get currentKeyword => _currentKeyword;
   int _activeSearchSession = 0;
-  CancelToken? _activeSearchCancelToken;
+  final Map<MusicSource, CancelToken> _requests = {};
+  final Map<MusicSource, SearchPageState> _pages = {};
+  int get sessionId => _activeSearchSession;
+  SearchPageState pageFor(MusicSource platform) =>
+      _pages[platform] ?? const SearchPageState();
 
   // 搜索历史记录
   List<String> _searchHistory = [];
@@ -187,380 +199,249 @@ class SearchService extends ChangeNotifier {
   static const int _maxHistoryCount = 20; // 最多保存20条历史记录
   static const SearchProviderCatalog _providerCatalog = SearchProviderCatalog();
 
-  /// 搜索歌曲（根据后端搜索目录的平台并行搜索）。
+  /// First pages remain independent and concurrent.
   Future<void> search(String keyword, {bool saveHistory = true}) async {
-    final normalizedKeyword = keyword.trim();
-    if (normalizedKeyword.isEmpty) {
+    final normalized = keyword.trim();
+    if (normalized.isEmpty) return;
+    final session = ++_activeSearchSession;
+    _cancelActiveSearchRequests('新的搜索请求');
+    _currentKeyword = normalized;
+    _pages.clear();
+    _searchResult = SearchResult();
+    for (final platform in SearchProviderCatalog.defaultPlatforms) {
+      _updatePlatform(platform, loading: true, error: null);
+    }
+    notifyListeners();
+    if (saveHistory) {
+      await _addToSearchHistory(normalized);
+      if (!_isSessionActive(session, normalized)) return;
+    }
+    await Future.wait(
+      SearchProviderCatalog.defaultPlatforms.map(
+        (platform) => _fetchPlatformPage(platform, 1, session, normalized),
+      ),
+    );
+  }
+
+  List<String> get currentSupportedPlatforms => _providerCatalog.platformKeys;
+
+  Future<void> retryPlatform(MusicSource platform) async {
+    if (!_providerCatalog.supports(platform) ||
+        _currentKeyword.isEmpty ||
+        _requests.containsKey(platform)) {
       return;
     }
+    if (pageFor(platform).page > 0) {
+      await loadMore(platform);
+    } else {
+      await _fetchPlatformPage(
+        platform,
+        1,
+        _activeSearchSession,
+        _currentKeyword,
+      );
+    }
+  }
 
-    final sessionId = ++_activeSearchSession;
-    _cancelActiveSearchRequests('新的搜索请求');
-    final cancelToken = CancelToken();
-    _activeSearchCancelToken = cancelToken;
-    _currentKeyword = normalizedKeyword;
+  Future<void> loadMore(MusicSource platform) async {
+    final state = pageFor(platform);
+    if (!_providerCatalog.supports(platform) ||
+        _currentKeyword.isEmpty ||
+        state.page < 1 ||
+        !state.hasMore ||
+        state.blocked ||
+        _requests.containsKey(platform)) {
+      return;
+    }
+    await _fetchPlatformPage(
+      platform,
+      state.page + 1,
+      _activeSearchSession,
+      _currentKeyword,
+    );
+  }
 
-    // 保存到搜索历史
-    if (saveHistory) {
-      await _addToSearchHistory(normalizedKeyword);
-      if (!_isSessionActive(sessionId, normalizedKeyword)) {
-        StructuredLogService.log(
-          '⏭️ [SearchService] 忽略过期搜索（历史保存后）: $normalizedKeyword',
+  Future<void> _fetchPlatformPage(
+    MusicSource platform,
+    int page,
+    int session,
+    String keyword,
+  ) async {
+    if (!_isSessionActive(session, keyword) ||
+        _requests.containsKey(platform)) {
+      return;
+    }
+    final token = CancelToken();
+    _requests[platform] = token;
+    final previous = pageFor(platform);
+    final append = page > 1;
+    _pages[platform] = SearchPageState(
+      page: previous.page,
+      hasMore: previous.hasMore,
+      loadingMore: append,
+      fingerprint: previous.fingerprint,
+    );
+    if (!append) _updatePlatform(platform, loading: true, error: null);
+    notifyListeners();
+    bool current() =>
+        _isSessionActive(session, keyword) &&
+        identical(_requests[platform], token) &&
+        !token.isCancelled;
+    try {
+      final params = <String, dynamic>{
+        'keywords': keyword,
+        'limit': 20,
+        'page': page,
+      };
+      final response = await runSearchRequest(
+        token,
+        (child) => platform == MusicSource.netease
+            ? ApiClient().postJson(
+                '/search',
+                data: params,
+                contentType: 'application/x-www-form-urlencoded',
+                timeout: const Duration(seconds: 15),
+                cancelToken: child,
+              )
+            : ApiClient().getJson(
+                platform == MusicSource.qq ? '/qq/search' : '/kugou/search',
+                queryParameters: params,
+                timeout: const Duration(seconds: 15),
+                cancelToken: child,
+              ),
+      );
+      if (!current()) return;
+      if (!response.ok) {
+        throw Exception(response.statusCode == 504 ? '搜索超时，请重试' : '搜索失败，请稍后重试');
+      }
+      final data = response.data;
+      if (data is! Map || data['status'] != 200 || data['result'] is! List) {
+        throw const FormatException('搜索结果格式异常');
+      }
+      if ((append && data['page'] != page) ||
+          (data['page'] != null && data['page'] != page)) {
+        throw const FormatException('搜索页码异常，请重试');
+      }
+      final suggestions = data['resultKind'] == 'suggestions';
+      if (append && suggestions) {
+        throw const FormatException('暂时无法获取完整搜索结果，请重试');
+      }
+      final fingerprint = data['pageFingerprint'] as String?;
+      if (append &&
+          fingerprint != null &&
+          fingerprint == previous.fingerprint) {
+        _pages[platform] = SearchPageState(
+          page: previous.page,
+          hasMore: false,
+          blocked: true,
+          error: '暂时无法加载更多，请重新搜索',
+          fingerprint: fingerprint,
         );
         return;
       }
-    }
-
-    // 搜索平台由后端搜索目录决定，与当前播放解析器解耦。
-    final supportedPlatforms = _providerCatalog.platformKeys;
-    StructuredLogService.log('🔍 [SearchService] 搜索平台: $supportedPlatforms');
-
-    // 根据支持的平台设置加载状态
-    _searchResult = SearchResult(
-      neteaseLoading: supportedPlatforms.contains('netease'),
-      appleLoading: supportedPlatforms.contains('apple'),
-      qqLoading: supportedPlatforms.contains('qq'),
-      kugouLoading: supportedPlatforms.contains('kugou'),
-      kuwoLoading: supportedPlatforms.contains('kuwo'),
-      spotifyLoading: supportedPlatforms.contains('spotify'),
-    );
-    notifyListeners();
-
-    StructuredLogService.log('🔍 [SearchService] 开始搜索: $normalizedKeyword');
-
-    // 只向支持的平台发送搜索请求
-    final futures = <Future<void>>[];
-    if (supportedPlatforms.contains('netease')) {
-      futures.add(_searchNetease(normalizedKeyword, sessionId, cancelToken));
-    }
-    if (supportedPlatforms.contains('apple')) {
-      futures.add(_searchApple(normalizedKeyword, sessionId, cancelToken));
-    }
-    if (supportedPlatforms.contains('qq')) {
-      futures.add(_searchQQ(normalizedKeyword, sessionId, cancelToken));
-    }
-    if (supportedPlatforms.contains('kugou')) {
-      futures.add(_searchKugou(normalizedKeyword, sessionId, cancelToken));
-    }
-    if (supportedPlatforms.contains('kuwo')) {
-      futures.add(_searchKuwo(normalizedKeyword, sessionId, cancelToken));
-    }
-    if (supportedPlatforms.contains('spotify')) {
-      futures.add(_searchSpotify(normalizedKeyword, sessionId, cancelToken));
-    }
-
-    await Future.wait(futures);
-
-    if (!_isSessionActive(sessionId, normalizedKeyword)) {
+      final tracks = (data['result'] as List)
+          .whereType<Map>()
+          .map((item) => _mapSearchTrack(platform, item))
+          .whereType<Track>();
+      final existing = append ? _searchResult.resultsFor(platform) : <Track>[];
+      final seen = existing.map((track) => track.id.toString()).toSet();
+      final combined = [
+        ...existing,
+        ...tracks.where((track) => seen.add(track.id.toString())),
+      ];
+      _pages[platform] = SearchPageState(
+        page: page,
+        hasMore:
+            !suggestions && data['page'] == page && data['hasMore'] == true,
+        fingerprint: fingerprint,
+      );
+      _updatePlatform(platform, tracks: combined, loading: false, error: null);
+      if (platform == MusicSource.qq) {
+        _searchResult = _searchResult.copyWith(qqSuggestions: suggestions);
+      }
+    } catch (error) {
+      if (!current()) return;
       StructuredLogService.log(
-        '⏭️ [SearchService] 忽略过期搜索（全部返回后）: $normalizedKeyword',
+        '[SearchService] ${platform.name} page=$page failed: $error',
       );
-      return;
+      _pages[platform] = SearchPageState(
+        page: previous.page,
+        hasMore: previous.hasMore,
+        fingerprint: previous.fingerprint,
+        error: append ? '加载失败，请重试' : null,
+      );
+      if (!append) {
+        _updatePlatform(platform, loading: false, error: error.toString());
+      }
+    } finally {
+      if (identical(_requests[platform], token)) {
+        _requests.remove(platform);
+        if (_isSessionActive(session, keyword)) notifyListeners();
+      }
     }
+  }
 
-    if (identical(_activeSearchCancelToken, cancelToken)) {
-      _activeSearchCancelToken = null;
+  Track? _mapSearchTrack(MusicSource platform, Map item) {
+    if (platform == MusicSource.kugou) {
+      final hash = _nonEmptyString(item['hash']);
+      if (hash == null) return null;
+      final emix = _nonEmptyString(item['emixsongid']);
+      return Track(
+        id: emix ?? hash,
+        name: item['name']?.toString() ?? '',
+        artists: item['singer']?.toString() ?? '',
+        album: item['album']?.toString() ?? '',
+        picUrl: item['pic']?.toString() ?? '',
+        source: platform,
+        sourceIds: TrackSourceIds(
+          fileHash: hash,
+          emixSongId: emix,
+          albumAudioId: _nonEmptyString(item['album_audio_id']),
+        ),
+      );
     }
-
-    StructuredLogService.log(
-      '✅ [SearchService] 搜索完成，共 ${_searchResult.totalCount} 条结果',
+    final id = platform == MusicSource.qq ? item['mid'] : item['id'];
+    if (id == null || id.toString().isEmpty) return null;
+    return Track(
+      id: id,
+      name: item['name']?.toString() ?? '',
+      artists:
+          (platform == MusicSource.qq ? item['singer'] : item['artists'])
+              ?.toString() ??
+          '',
+      album: item['album']?.toString() ?? '',
+      picUrl:
+          (platform == MusicSource.qq ? item['pic'] : item['picUrl'])
+              ?.toString() ??
+          '',
+      source: platform,
     );
   }
 
-  /// 获取后端搜索目录支持的平台列表。
-  List<String> get currentSupportedPlatforms => _providerCatalog.platformKeys;
-
-  /// 搜索网易云音乐
-  Future<void> _searchNetease(
-    String keyword,
-    int sessionId,
-    CancelToken cancelToken,
-  ) async {
-    try {
-      StructuredLogService.log('🎵 [SearchService] 网易云搜索: $keyword');
-
-      final result = await ApiClient().postJson(
-        '/search',
-        data: {'keywords': keyword, 'limit': '20'},
-        contentType: 'application/x-www-form-urlencoded',
-        timeout: const Duration(seconds: 10),
-        cancelToken: cancelToken,
-      );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          final results = (data['result'] as List<dynamic>)
-              .map(
-                (item) => Track(
-                  id: item['id'] as int,
-                  name: item['name'] as String,
-                  artists: item['artists'] as String,
-                  album: item['album'] as String,
-                  picUrl: item['picUrl'] as String,
-                  source: MusicSource.netease,
-                ),
-              )
-              .toList();
-
-          if (!_isSessionActive(sessionId, keyword)) {
-            StructuredLogService.log('⏭️ [SearchService] 丢弃过期网易云结果: $keyword');
-            return;
-          }
-
-          _searchResult = _searchResult.copyWith(
-            neteaseResults: results,
-            neteaseLoading: false,
-          );
-
-          StructuredLogService.log(
-            '✅ [SearchService] 网易云搜索完成: ${results.length} 条结果',
-          );
-        } else {
-          throw Exception('服务器返回状态 ${data['status']}');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [SearchService] 网易云搜索失败: $e');
-      if (!_isSessionActive(sessionId, keyword)) {
-        StructuredLogService.log('⏭️ [SearchService] 丢弃过期网易云错误: $keyword');
-        return;
-      }
-      _searchResult = _searchResult.copyWith(
-        neteaseLoading: false,
-        neteaseError: e.toString(),
-      );
-    }
-    if (!_isSessionActive(sessionId, keyword)) {
-      StructuredLogService.log('⏭️ [SearchService] 跳过过期网易云刷新: $keyword');
-      return;
-    }
-    notifyListeners();
-  }
-
-  /// 搜索 Apple Music
-  Future<void> _searchApple(
-    String keyword,
-    int sessionId,
-    CancelToken cancelToken,
-  ) async {
-    try {
-      StructuredLogService.log('🍎 [SearchService] Apple Music 搜索: $keyword');
-
-      final result = await ApiClient().getJson(
-        '/apple/search',
-        queryParameters: {'keywords': keyword, 'limit': 20},
-        timeout: const Duration(seconds: 10),
-        cancelToken: cancelToken,
-      );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          final results = (data['result'] as List<dynamic>)
-              .map(
-                (item) => Track(
-                  id: item['id'],
-                  name: item['name'] as String,
-                  artists: item['artists'] as String,
-                  album: item['album'] as String,
-                  picUrl: item['picUrl'] as String,
-                  source: MusicSource.apple,
-                ),
-              )
-              .toList();
-
-          if (!_isSessionActive(sessionId, keyword)) {
-            StructuredLogService.log(
-              '⏭️ [SearchService] 丢弃过期 Apple 结果: $keyword',
-            );
-            return;
-          }
-
-          _searchResult = _searchResult.copyWith(
-            appleResults: results,
-            appleLoading: false,
-          );
-
-          StructuredLogService.log(
-            '✅ [SearchService] Apple Music 搜索完成: ${results.length} 条结果',
-          );
-        } else {
-          throw Exception('服务器返回状态 ${data['status']}');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [SearchService] Apple Music 搜索失败: $e');
-      if (!_isSessionActive(sessionId, keyword)) {
-        StructuredLogService.log('⏭️ [SearchService] 丢弃过期 Apple 错误: $keyword');
-        return;
-      }
-      _searchResult = _searchResult.copyWith(
-        appleLoading: false,
-        appleError: e.toString(),
-      );
-    }
-    if (!_isSessionActive(sessionId, keyword)) {
-      StructuredLogService.log('⏭️ [SearchService] 跳过过期 Apple 刷新: $keyword');
-      return;
-    }
-    notifyListeners();
-  }
-
-  /// 搜索QQ音乐
-  Future<void> _searchQQ(
-    String keyword,
-    int sessionId,
-    CancelToken cancelToken,
-  ) async {
-    try {
-      StructuredLogService.log('🎶 [SearchService] QQ音乐搜索: $keyword');
-
-      final result = await ApiClient().getJson(
-        '/qq/search',
-        queryParameters: {'keywords': keyword, 'limit': 10},
-        timeout: const Duration(seconds: 10),
-        cancelToken: cancelToken,
-      );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          final results = (data['result'] as List<dynamic>)
-              .map(
-                (item) => Track(
-                  id: item['mid'] as String, // QQ音乐使用 mid
-                  name: item['name'] as String,
-                  artists: item['singer'] as String,
-                  album: item['album'] as String,
-                  picUrl: item['pic'] as String,
-                  source: MusicSource.qq,
-                ),
-              )
-              .toList();
-
-          if (!_isSessionActive(sessionId, keyword)) {
-            StructuredLogService.log('⏭️ [SearchService] 丢弃过期 QQ 结果: $keyword');
-            return;
-          }
-
-          _searchResult = _searchResult.copyWith(
-            qqResults: results,
-            qqLoading: false,
-          );
-
-          StructuredLogService.log(
-            '✅ [SearchService] QQ音乐搜索完成: ${results.length} 条结果',
-          );
-        } else {
-          throw Exception('服务器返回状态 ${data['status']}');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [SearchService] QQ音乐搜索失败: $e');
-      if (!_isSessionActive(sessionId, keyword)) {
-        StructuredLogService.log('⏭️ [SearchService] 丢弃过期 QQ 错误: $keyword');
-        return;
-      }
-      _searchResult = _searchResult.copyWith(
-        qqLoading: false,
-        qqError: e.toString(),
-      );
-    }
-    if (!_isSessionActive(sessionId, keyword)) {
-      StructuredLogService.log('⏭️ [SearchService] 跳过过期 QQ 刷新: $keyword');
-      return;
-    }
-    notifyListeners();
-  }
-
-  /// 搜索酷狗音乐
-  Future<void> _searchKugou(
-    String keyword,
-    int sessionId,
-    CancelToken cancelToken,
-  ) async {
-    try {
-      StructuredLogService.log('🎼 [SearchService] 酷狗音乐搜索: $keyword');
-
-      final result = await ApiClient().getJson(
-        '/kugou/search',
-        queryParameters: {'keywords': keyword},
-        timeout: const Duration(seconds: 10),
-        cancelToken: cancelToken,
-      );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          final results = (data['result'] as List<dynamic>)
-              .whereType<Map>()
-              .map((item) => Map<String, dynamic>.from(item))
-              .where((item) => _nonEmptyString(item['hash']) != null)
-              .map((item) {
-                final emixSongId = _nonEmptyString(item['emixsongid']);
-                final fileHash = _nonEmptyString(item['hash'])!;
-                return Track(
-                  id: emixSongId ?? fileHash,
-                  name: item['name']?.toString() ?? '',
-                  artists: item['singer']?.toString() ?? '',
-                  album: item['album']?.toString() ?? '',
-                  picUrl: item['pic']?.toString() ?? '',
-                  source: MusicSource.kugou,
-                  sourceIds: TrackSourceIds(
-                    fileHash: fileHash,
-                    emixSongId: emixSongId,
-                    albumAudioId: _nonEmptyString(item['album_audio_id']),
-                  ),
-                );
-              })
-              .toList();
-
-          if (!_isSessionActive(sessionId, keyword)) {
-            StructuredLogService.log('⏭️ [SearchService] 丢弃过期酷狗结果: $keyword');
-            return;
-          }
-
-          _searchResult = _searchResult.copyWith(
-            kugouResults: results,
-            kugouLoading: false,
-          );
-
-          StructuredLogService.log(
-            '✅ [SearchService] 酷狗音乐搜索完成: ${results.length} 条结果',
-          );
-        } else {
-          throw Exception('服务器返回状态 ${data['status']}');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [SearchService] 酷狗音乐搜索失败: $e');
-      if (!_isSessionActive(sessionId, keyword)) {
-        StructuredLogService.log('⏭️ [SearchService] 丢弃过期酷狗错误: $keyword');
-        return;
-      }
-      _searchResult = _searchResult.copyWith(
-        kugouLoading: false,
-        kugouError: e.toString(),
-      );
-    }
-    if (!_isSessionActive(sessionId, keyword)) {
-      StructuredLogService.log('⏭️ [SearchService] 跳过过期酷狗刷新: $keyword');
-      return;
-    }
-    notifyListeners();
+  void _updatePlatform(
+    MusicSource platform, {
+    List<Track>? tracks,
+    bool? loading,
+    String? error,
+  }) {
+    _searchResult = switch (platform) {
+      MusicSource.netease => _searchResult.copyWith(
+        neteaseResults: tracks,
+        neteaseLoading: loading,
+        neteaseError: error,
+      ),
+      MusicSource.qq => _searchResult.copyWith(
+        qqResults: tracks,
+        qqLoading: loading,
+        qqError: error,
+      ),
+      MusicSource.kugou => _searchResult.copyWith(
+        kugouResults: tracks,
+        kugouLoading: loading,
+        kugouError: error,
+      ),
+      _ => _searchResult,
+    };
   }
 
   static String? _nonEmptyString(dynamic value) {
@@ -568,352 +449,28 @@ class SearchService extends ChangeNotifier {
     return text == null || text.isEmpty ? null : text;
   }
 
-  /// 搜索酷我音乐
-  Future<void> _searchKuwo(
-    String keyword,
-    int sessionId,
-    CancelToken cancelToken,
-  ) async {
-    try {
-      StructuredLogService.log('🎸 [SearchService] 酷我音乐搜索: $keyword');
-
-      final result = await ApiClient().getJson(
-        '/kuwo/search',
-        queryParameters: {'keywords': keyword},
-        timeout: const Duration(seconds: 10),
-        cancelToken: cancelToken,
-      );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          final songsData = data['data']?['songs'] as List<dynamic>? ?? [];
-          final results = songsData
-              .map(
-                (item) => Track(
-                  id: item['rid'] as int, // 酷我使用 rid
-                  name: item['name'] as String,
-                  artists: item['artist'] as String,
-                  album: item['album'] as String? ?? '',
-                  picUrl: item['pic'] as String? ?? '',
-                  source: MusicSource.kuwo,
-                ),
-              )
-              .toList();
-
-          if (!_isSessionActive(sessionId, keyword)) {
-            StructuredLogService.log('⏭️ [SearchService] 丢弃过期酷我结果: $keyword');
-            return;
-          }
-
-          _searchResult = _searchResult.copyWith(
-            kuwoResults: results,
-            kuwoLoading: false,
-          );
-
-          StructuredLogService.log(
-            '✅ [SearchService] 酷我音乐搜索完成: ${results.length} 条结果',
-          );
-        } else {
-          throw Exception('服务器返回状态 ${data['status']}');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [SearchService] 酷我音乐搜索失败: $e');
-      if (!_isSessionActive(sessionId, keyword)) {
-        StructuredLogService.log('⏭️ [SearchService] 丢弃过期酷我错误: $keyword');
-        return;
-      }
-      _searchResult = _searchResult.copyWith(
-        kuwoLoading: false,
-        kuwoError: e.toString(),
-      );
-    }
-    if (!_isSessionActive(sessionId, keyword)) {
-      StructuredLogService.log('⏭️ [SearchService] 跳过过期酷我刷新: $keyword');
-      return;
-    }
-    notifyListeners();
-  }
-
-  /// 搜索 Spotify
-  Future<void> _searchSpotify(
-    String keyword,
-    int sessionId,
-    CancelToken cancelToken,
-  ) async {
-    try {
-      StructuredLogService.log('🟢 [SearchService] Spotify 搜索: $keyword');
-
-      final result = await ApiClient().getJson(
-        '/spotify/search',
-        queryParameters: {'keywords': keyword},
-        timeout: const Duration(seconds: 10),
-        cancelToken: cancelToken,
-      );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>;
-
-        if (data['status'] == 200) {
-          final tracksData = data['result']?['tracks'] as List<dynamic>? ?? [];
-          final results = tracksData.map((item) {
-            final artistsList = item['artists'] as List<dynamic>? ?? [];
-            final artistsNames = artistsList
-                .map((a) => a['name'] as String)
-                .join(', ');
-            final albumData = item['album'] as Map<String, dynamic>? ?? {};
-
-            return Track(
-              id: item['id'] as String,
-              name: item['name'] as String,
-              artists: artistsNames,
-              album: albumData['name'] as String? ?? '',
-              picUrl: albumData['coverArt'] as String? ?? '',
-              source: MusicSource.spotify,
-            );
-          }).toList();
-
-          if (!_isSessionActive(sessionId, keyword)) {
-            StructuredLogService.log(
-              '⏭️ [SearchService] 丢弃过期 Spotify 结果: $keyword',
-            );
-            return;
-          }
-
-          _searchResult = _searchResult.copyWith(
-            spotifyResults: results,
-            spotifyLoading: false,
-          );
-
-          StructuredLogService.log(
-            '✅ [SearchService] Spotify 搜索完成: ${results.length} 条结果',
-          );
-        } else {
-          throw Exception('服务器返回状态 ${data['status']}');
-        }
-      } else {
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [SearchService] Spotify 搜索失败: $e');
-      if (!_isSessionActive(sessionId, keyword)) {
-        StructuredLogService.log(
-          '⏭️ [SearchService] 丢弃过期 Spotify 错误: $keyword',
-        );
-        return;
-      }
-      _searchResult = _searchResult.copyWith(
-        spotifyLoading: false,
-        spotifyError: e.toString(),
-      );
-    }
-    if (!_isSessionActive(sessionId, keyword)) {
-      StructuredLogService.log('⏭️ [SearchService] 跳过过期 Spotify 刷新: $keyword');
-      return;
-    }
-    notifyListeners();
-  }
-
-  /// 获取合并后的搜索结果（跨平台去重）
-  List<MergedTrack> getMergedResults() {
-    // 收集所有平台的歌曲
-    // 注意：Apple Music 放在最后，因为其 DRM 加密流目前无法直接播放
-    final allTracks = <Track>[
-      ...(_searchResult.neteaseResults),
-      ...(_searchResult.qqResults),
-      ...(_searchResult.kugouResults),
-      ...(_searchResult.kuwoResults),
-      ...(_searchResult.spotifyResults),
-      ...(_searchResult.appleResults), // Apple Music 优先级最低
-    ];
-
-    if (allTracks.isEmpty) {
-      return [];
-    }
-
-    // 合并相同的歌曲
-    final mergedMap = <String, List<Track>>{};
-
-    for (final track in allTracks) {
-      // 生成唯一键（标准化后的歌曲名+歌手名）
-      final key = _generateKey(track.name, track.artists);
-
-      if (mergedMap.containsKey(key)) {
-        mergedMap[key]!.add(track);
-      } else {
-        mergedMap[key] = [track];
+  /// Cancels IO when the UI closes, retaining completed pages.
+  void cancelPendingRequests() {
+    _activeSearchSession++;
+    final pending = {
+      ..._requests.keys,
+      ...SearchProviderCatalog.defaultPlatforms.where(_searchResult.loadingFor),
+    };
+    _cancelActiveSearchRequests('搜索页面已关闭');
+    for (final platform in pending) {
+      _pages[platform] = pageFor(platform).stopLoading();
+      if (_searchResult.loadingFor(platform)) {
+        _updatePlatform(platform, loading: false, error: '搜索已取消，请重试');
       }
     }
-
-    // 转换为 MergedTrack 列表
-    final mergedTracks = mergedMap.values
-        .map((tracks) => MergedTrack.fromTracks(tracks))
-        .toList();
-
-    StructuredLogService.log(
-      '🔍 [SearchService] 合并结果: ${allTracks.length} 首 → ${mergedTracks.length} 首',
-    );
-
-    if (_currentKeyword.trim().isNotEmpty) {
-      final keyword = _currentKeyword;
-      mergedTracks.sort((a, b) {
-        final scoreB = _calculateTrackRelevance(b, keyword);
-        final scoreA = _calculateTrackRelevance(a, keyword);
-        if (scoreB.compareTo(scoreA) != 0) {
-          return scoreB.compareTo(scoreA);
-        }
-        // 如果相关度相同，则按名称字典序排序（保持稳定性）
-        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-      });
-    }
-
-    return mergedTracks;
-  }
-
-  /// 生成歌曲的唯一键（用于合并判断）
-  String _generateKey(String name, String artists) {
-    return '${_normalize(name)}|${_normalize(artists)}';
-  }
-
-  /// 标准化字符串
-  String _normalize(String str) {
-    return str
-        .trim()
-        .toLowerCase()
-        .replaceAll(' ', '')
-        .replaceAll('、', ',')
-        .replaceAll('/', ',')
-        .replaceAll('&', ',')
-        .replaceAll('，', ',');
-  }
-
-  double _calculateTrackRelevance(MergedTrack track, String keyword) {
-    final normalizedKeyword = _normalizeForScoring(keyword);
-    if (normalizedKeyword.isEmpty) {
-      return 0;
-    }
-
-    final keywordTokens = _tokenizeForScoring(keyword);
-    final strippedKeyword = _stripForLcs(keyword);
-
-    double bestScore = 0;
-    for (final candidate in track.tracks) {
-      final score = _calculateNameScore(
-        candidate.name,
-        normalizedKeyword: normalizedKeyword,
-        keywordTokens: keywordTokens,
-        strippedKeyword: strippedKeyword,
-      );
-      if (score > bestScore) {
-        bestScore = score;
-      }
-    }
-
-    return bestScore;
-  }
-
-  double _calculateNameScore(
-    String name, {
-    required String normalizedKeyword,
-    required List<String> keywordTokens,
-    required String strippedKeyword,
-  }) {
-    final normalizedName = _normalizeForScoring(name);
-    if (normalizedName.isEmpty) {
-      return 0;
-    }
-
-    if (normalizedName == normalizedKeyword) {
-      return 1.0;
-    }
-
-    if (normalizedName.startsWith(normalizedKeyword)) {
-      final ratio = normalizedKeyword.length / normalizedName.length;
-      return (0.9 + ratio * 0.1).clamp(0.0, 1.0);
-    }
-
-    if (normalizedName.contains(normalizedKeyword)) {
-      final ratio = normalizedKeyword.length / normalizedName.length;
-      return (0.75 + ratio * 0.15).clamp(0.0, 1.0);
-    }
-
-    final nameTokens = _tokenizeForScoring(name);
-    double tokenScore = 0;
-    if (keywordTokens.isNotEmpty && nameTokens.isNotEmpty) {
-      final keywordSet = keywordTokens.toSet();
-      final nameSet = nameTokens.toSet();
-      final intersectionCount = keywordSet
-          .where((token) => nameSet.contains(token))
-          .length;
-      tokenScore = intersectionCount / keywordSet.length;
-    }
-
-    double lcsScore = 0;
-    if (strippedKeyword.isNotEmpty) {
-      final strippedName = _stripForLcs(name);
-      if (strippedName.isNotEmpty) {
-        final lcsLength = _longestCommonSubsequenceLength(
-          strippedName,
-          strippedKeyword,
-        );
-        lcsScore = lcsLength / strippedKeyword.length;
-      }
-    }
-
-    return (tokenScore * 0.6 + lcsScore * 0.4).clamp(0.0, 1.0);
-  }
-
-  String _normalizeForScoring(String input) {
-    return input
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^\w\u4e00-\u9fa5]+'), ' ')
-        .trim()
-        .replaceAll(RegExp(r'\s+'), ' ');
-  }
-
-  List<String> _tokenizeForScoring(String input) {
-    final normalized = _normalizeForScoring(input);
-    if (normalized.isEmpty) {
-      return const [];
-    }
-    return normalized.split(' ').where((token) => token.isNotEmpty).toList();
-  }
-
-  String _stripForLcs(String input) {
-    return input.toLowerCase().replaceAll(RegExp(r'[^\w\u4e00-\u9fa5]+'), '');
-  }
-
-  int _longestCommonSubsequenceLength(String a, String b) {
-    final m = a.length;
-    final n = b.length;
-    if (m == 0 || n == 0) {
-      return 0;
-    }
-
-    final dp = List.generate(m + 1, (_) => List<int>.filled(n + 1, 0));
-
-    for (var i = 1; i <= m; i++) {
-      for (var j = 1; j <= n; j++) {
-        if (a[i - 1] == b[j - 1]) {
-          dp[i][j] = dp[i - 1][j - 1] + 1;
-        } else {
-          dp[i][j] = dp[i - 1][j] > dp[i][j - 1] ? dp[i - 1][j] : dp[i][j - 1];
-        }
-      }
-    }
-
-    return dp[m][n];
+    if (pending.isNotEmpty) notifyListeners();
   }
 
   /// 清空搜索结果
   void clear() {
     _activeSearchSession++;
     _cancelActiveSearchRequests('搜索已清空');
-    _activeSearchCancelToken = null;
+    _pages.clear();
     _searchResult = SearchResult();
     _currentKeyword = '';
     notifyListeners();
@@ -924,18 +481,18 @@ class SearchService extends ChangeNotifier {
   }
 
   void _cancelActiveSearchRequests(String reason) {
-    final token = _activeSearchCancelToken;
-    if (token == null || token.isCancelled) {
-      return;
+    final tokens = _requests.values.toList();
+    _requests.clear();
+    for (final token in tokens) {
+      token.cancel(reason);
     }
-    token.cancel(reason);
   }
 
   @override
   void dispose() {
     _activeSearchSession++;
     _cancelActiveSearchRequests('SearchService disposed');
-    _activeSearchCancelToken = null;
+    _pages.clear();
     super.dispose();
   }
 

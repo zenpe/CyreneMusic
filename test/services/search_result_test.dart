@@ -3,6 +3,18 @@ import 'package:cyrene_music/services/search_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('suggestion notice belongs to QQ and survives other completions', () {
+    var result = SearchResult(qqSuggestions: true);
+    result = result.copyWith(neteaseLoading: false, neteaseResults: []);
+    expect(result.noticeFor(MusicSource.qq), contains('联想结果'));
+    expect(result.noticeFor(MusicSource.kugou), isNull);
+    expect(
+      result.copyWith(qqSuggestions: false).noticeFor(MusicSource.qq),
+      isNull,
+    );
+    expect(SearchResult().noticeFor(MusicSource.qq), isNull);
+  });
+
   test('platform identity selects matching results, loading and error', () {
     Track track(MusicSource source) => Track(
       id: source.name,

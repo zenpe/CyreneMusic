@@ -65,6 +65,70 @@ void main() {
   }
 
   group('LyricService regressions', () {
+    for (final outcome in ['null', 'empty', 'failed']) {
+      test(
+        'lyric-only $outcome never resolves audio and can recover',
+        () async {
+          final track = buildTrack(source: MusicSource.kugou);
+          var currentSong = buildSongDetail(track);
+          final originalUrl = currentSong.url;
+          var lyricCalls = 0;
+          var fullCalls = 0;
+
+          Future<void> request(int token) async {
+            service.bindCurrentTrack(
+              track: track,
+              playbackToken: token,
+              song: currentSong,
+              state: LyricLoadState.idle,
+              notify: false,
+            );
+            await service.requestLyrics(
+              track: track,
+              playbackToken: token,
+              quality: 'standard',
+              refreshKey: 'lyric_only_${track.id}',
+              adapter: _buildRequestAdapter(
+                currentSong: () => currentSong,
+                applyResolvedSongDetail: (detail) => currentSong = detail,
+                useLyricOnlyFetch: true,
+                allowFullDetailFallback: false,
+                fetchLyricOnlyDetail: () async {
+                  lyricCalls++;
+                  if (lyricCalls > 1) {
+                    return buildSongDetail(track, lyric: '[00:00.00]Recovered');
+                  }
+                  if (outcome == 'failed') throw TimeoutException('lyrics');
+                  return outcome == 'null' ? null : buildSongDetail(track);
+                },
+                fetchFullDetail: () async {
+                  fullCalls++;
+                  throw StateError('must not resolve audio for lyrics');
+                },
+              ),
+            );
+          }
+
+          await request(1);
+          expect(fullCalls, 0);
+          expect(currentSong.url, originalUrl);
+          expect(
+            service.currentState,
+            outcome == 'failed'
+                ? LyricLoadState.failed
+                : LyricLoadState.transientMiss,
+          );
+
+          await request(2);
+          expect(lyricCalls, 2);
+          expect(fullCalls, 0);
+          expect(service.currentState, LyricLoadState.ready);
+          expect(service.currentSnapshot?.lines.first.text, 'Recovered');
+          expect(currentSong.url, originalUrl);
+        },
+      );
+    }
+
     for (final outcome in ['ready', 'miss', 'failed']) {
       test('cache read failure settles remote $outcome result', () async {
         final isolated = LyricService.forTesting(
@@ -554,13 +618,17 @@ LyricRequestAdapter _buildRequestAdapter({
   required SongDetail? Function() currentSong,
   required void Function(SongDetail detail) applyResolvedSongDetail,
   required Future<SongDetail?> Function() fetchFullDetail,
+  bool useLyricOnlyFetch = false,
+  bool allowFullDetailFallback = true,
+  Future<SongDetail?> Function()? fetchLyricOnlyDetail,
   bool emptyResultIsAuthoritative = false,
 }) {
   return LyricRequestAdapter(
     fetch: LyricRequestFetchAdapter(
-      useLyricOnlyFetch: false,
+      useLyricOnlyFetch: useLyricOnlyFetch,
+      allowFullDetailFallback: allowFullDetailFallback,
       emptyResultIsAuthoritative: emptyResultIsAuthoritative,
-      fetchLyricOnlyDetail: () async => null,
+      fetchLyricOnlyDetail: fetchLyricOnlyDetail ?? () async => null,
       fetchFullDetail: fetchFullDetail,
       normalizeSongDetail: (detail) => detail,
     ),

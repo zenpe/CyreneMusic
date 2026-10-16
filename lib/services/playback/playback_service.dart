@@ -3700,8 +3700,9 @@ class PlaybackService extends ChangeNotifier {
   }
 
   bool _shouldAllowFullDetailFallbackForLyricOnlyFetch(Track track) {
-    // Navidrome 歌词补全只走 getLyricsBySongId，不再回退完整详情二次请求。
-    return track.source != MusicSource.navidrome;
+    // LX 完整详情只会重新解析播放 URL，然后访问同一个歌词接口；
+    // Navidrome 也使用独立歌词接口，两者均不回退完整详情。
+    return !_shouldUseLyricOnlySupplementalFetch(track);
   }
 
   String _trackLogKey(Track track, [String? quality]) {

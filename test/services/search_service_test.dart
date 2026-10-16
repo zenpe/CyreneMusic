@@ -52,9 +52,11 @@ void main() {
     () async {
       var failQQ = true;
       var qqCalls = 0;
+      final requestedUris = <Uri>[];
       final failedQQ = Completer<void>();
       await withServer(
         (request) async {
+          requestedUris.add(request.uri);
           if (request.uri.path == '/qq/search') {
             qqCalls++;
             await reply(request, status: failQQ ? 503 : 200);
@@ -75,6 +77,13 @@ void main() {
           await service.search('same', saveHistory: false);
           expect(qqCalls, 2);
           expect(service.searchResult.hasError, false);
+          expect(requestedUris.any((uri) => uri.path == '/kuwo/search'), false);
+          expect(
+            requestedUris
+                .where((uri) => uri.path == '/qq/search')
+                .every((uri) => uri.queryParameters['limit'] == '20'),
+            true,
+          );
         },
       );
     },
@@ -106,4 +115,36 @@ void main() {
       },
     );
   });
+
+  test(
+    'QQ degradation survives other results and resets on new search',
+    () async {
+      await withServer(
+        (request) async {
+          if (request.uri.path != '/qq/search') {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            await reply(request);
+            return;
+          }
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(
+            jsonEncode({
+              'status': 200,
+              'result': [],
+              if (request.uri.queryParameters['keywords'] == 'suggestions')
+                'resultKind': 'suggestions',
+            }),
+          );
+          await request.response.close();
+        },
+        (service) async {
+          await service.search('suggestions', saveHistory: false);
+          expect(service.searchResult.qqSuggestions, true);
+          expect(service.searchResult.hasError, false);
+          await service.search('full', saveHistory: false);
+          expect(service.searchResult.qqSuggestions, false);
+        },
+      );
+    },
+  );
 }

@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/image_utils.dart';
+import '../utils/image_stream_utils.dart';
 
 /// 颜色提取结果
 class ColorExtractionResult {
@@ -49,7 +50,7 @@ class ColorExtractionResult {
         colors.add(c);
       }
     }
-    
+
     // 如果色彩不足 5 个，会在 MeshGradientBackground 的逻辑中进行生成/补偿
     // 这里仅保证尽可能多地提供原始色彩
     return colors;
@@ -58,16 +59,17 @@ class ColorExtractionResult {
 
 /// 颜色提取服务 - 使用 isolate 避免阻塞主线程
 class ColorExtractionService {
-  static final ColorExtractionService _instance = ColorExtractionService._internal();
+  static final ColorExtractionService _instance =
+      ColorExtractionService._internal();
   factory ColorExtractionService() => _instance;
   ColorExtractionService._internal();
 
   // 缓存已提取的颜色
   final Map<String, ColorExtractionResult> _cache = {};
-  
+
   // 正在提取的 URL 集合
   final Set<String> _extractingUrls = {};
-  
+
   // 缓存大小限制
   static const int _maxCacheSize = 50;
 
@@ -103,16 +105,16 @@ class ColorExtractionService {
 
     try {
       Uint8List imageBytes;
-      
+
       // 判断是网络 URL 还是本地文件路径
-      final isNetwork = imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
-      
+      final isNetwork =
+          imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
+
       if (isNetwork) {
         // 1. 下载网络图片数据（在主线程，但使用 http 异步）
-        final response = await http.get(
-          Uri.parse(imageUrl),
-          headers: getImageHeaders(imageUrl),
-        ).timeout(timeout);
+        final response = await http
+            .get(Uri.parse(imageUrl), headers: getImageHeaders(imageUrl))
+            .timeout(timeout);
         if (response.statusCode != 200) {
           debugPrint('⚠️ [ColorExtraction] 图片下载失败: ${response.statusCode}');
           return null;
@@ -131,10 +133,7 @@ class ColorExtractionService {
       // 2. 在 isolate 中解码图片并提取颜色（使用纯 Dart 的 image 包）
       final result = await compute(
         _extractColorsInIsolate,
-        _ColorExtractionParams(
-          imageBytes: imageBytes,
-          sampleSize: sampleSize,
-        ),
+        _ColorExtractionParams(imageBytes: imageBytes, sampleSize: sampleSize),
       );
 
       if (result != null) {
@@ -164,8 +163,9 @@ class ColorExtractionService {
   }) async {
     if (imageUrl.isEmpty) return null;
 
-    final cacheKey = '${imageUrl}_region_${region.left}_${region.top}_${region.width}_${region.height}';
-    
+    final cacheKey =
+        '${imageUrl}_region_${region.left}_${region.top}_${region.width}_${region.height}';
+
     // 检查缓存
     if (_cache.containsKey(cacheKey)) {
       return _cache[cacheKey];
@@ -173,26 +173,26 @@ class ColorExtractionService {
 
     try {
       Uint8List imageBytes;
-      
+
       // 判断是网络 URL 还是本地文件路径
-      final isNetwork = imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
-      
+      final isNetwork =
+          imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
+
       if (isNetwork) {
         // 尝试从 CachedNetworkImageProvider 获取已加载的图片，避免重新下载
         // 这对于已经显示的封面非常有效
         final result = await extractColorsFromCachedImage(
-          imageUrl, 
-          sampleSize: sampleSize, 
+          imageUrl,
+          sampleSize: sampleSize,
           timeout: timeout,
           region: region,
         );
         if (result != null) return result;
 
         // 如果缓存获取失败，降级到下载
-        final response = await http.get(
-          Uri.parse(imageUrl),
-          headers: getImageHeaders(imageUrl),
-        ).timeout(timeout);
+        final response = await http
+            .get(Uri.parse(imageUrl), headers: getImageHeaders(imageUrl))
+            .timeout(timeout);
         if (response.statusCode != 200) return null;
         imageBytes = response.bodyBytes;
       } else {
@@ -226,7 +226,9 @@ class ColorExtractionService {
   void _cacheResult(String url, ColorExtractionResult result) {
     // 限制缓存大小
     if (_cache.length >= _maxCacheSize) {
-      final keysToRemove = _cache.keys.take(_cache.length - _maxCacheSize + 1).toList();
+      final keysToRemove = _cache.keys
+          .take(_cache.length - _maxCacheSize + 1)
+          .toList();
       for (final key in keysToRemove) {
         _cache.remove(key);
       }
@@ -254,8 +256,8 @@ class ColorExtractionService {
   }) async {
     if (imageUrl.isEmpty) return null;
 
-    final cacheKey = region == null 
-        ? imageUrl 
+    final cacheKey = region == null
+        ? imageUrl
         : '${imageUrl}_region_${region.left}_${region.top}_${region.width}_${region.height}';
 
     // 1. 检查颜色缓存
@@ -264,10 +266,15 @@ class ColorExtractionService {
     }
 
     // 判断是否是网络 URL
-    final isNetwork = imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
+    final isNetwork =
+        imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
     if (!isNetwork) {
       // 本地文件直接使用原方法
-      return extractColorsFromUrl(imageUrl, sampleSize: sampleSize, timeout: timeout);
+      return extractColorsFromUrl(
+        imageUrl,
+        sampleSize: sampleSize,
+        timeout: timeout,
+      );
     }
 
     try {
@@ -277,19 +284,28 @@ class ColorExtractionService {
         headers: getImageHeaders(imageUrl),
       );
       final imageInfo = await _loadImageFromProvider(provider, timeout);
-      
+
       if (imageInfo != null) {
         // 🔧 性能优化：使用 rawRgba 格式避免主线程 PNG 编码，速度快数倍
-        final byteData = await imageInfo.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        final imageWidth = imageInfo.image.width;
+        final imageHeight = imageInfo.image.height;
+        late final ByteData? byteData;
+        try {
+          byteData = await imageInfo.image.toByteData(
+            format: ui.ImageByteFormat.rawRgba,
+          );
+        } finally {
+          imageInfo.dispose();
+        }
         if (byteData == null) {
           debugPrint('⚠️ [ColorExtraction] 无法转换图片为字节数据');
           return null;
         }
 
         final imageBytes = byteData.buffer.asUint8List();
-        final imageWidth = imageInfo.image.width;
-        final imageHeight = imageInfo.image.height;
-        debugPrint('🎨 [ColorExtraction] 从 ImageProvider 提取颜色 (${imageWidth}x$imageHeight, ${imageBytes.length} bytes RGBA)');
+        debugPrint(
+          '🎨 [ColorExtraction] 从 ImageProvider 提取颜色 (${imageWidth}x$imageHeight, ${imageBytes.length} bytes RGBA)',
+        );
 
         final result = await compute(
           _extractColorsInIsolate,
@@ -320,37 +336,15 @@ class ColorExtractionService {
   }
 
   /// 从 ImageProvider 加载图片
-  Future<ImageInfo?> _loadImageFromProvider(ImageProvider provider, Duration timeout) async {
-    final completer = Completer<ImageInfo?>();
-    
-    final stream = provider.resolve(const ImageConfiguration());
-    late ImageStreamListener listener;
-    
-    listener = ImageStreamListener(
-      (image, synchronousCall) {
-        if (!completer.isCompleted) {
-          completer.complete(image);
-        }
-        stream.removeListener(listener);
-      },
-      onError: (exception, stackTrace) {
-        if (!completer.isCompleted) {
-          completer.complete(null);
-        }
-        stream.removeListener(listener);
-      },
-    );
-    
-    stream.addListener(listener);
-    
-    // 添加超时
-    return completer.future.timeout(
-      timeout,
-      onTimeout: () {
-        stream.removeListener(listener);
-        return null;
-      },
-    );
+  Future<ImageInfo?> _loadImageFromProvider(
+    ImageProvider provider,
+    Duration timeout,
+  ) async {
+    try {
+      return await loadFirstImage(provider, timeout: timeout);
+    } catch (_) {
+      return null;
+    }
   }
 }
 
@@ -359,8 +353,10 @@ class _ColorExtractionParams {
   final Uint8List imageBytes;
   final int sampleSize;
   final Rect? region;
+
   /// 当数据为 rawRgba 格式时的图片宽度（非空表示 RGBA 原始数据）
   final int? rawRgbaWidth;
+
   /// 当数据为 rawRgba 格式时的图片高度
   final int? rawRgbaHeight;
 
@@ -438,7 +434,8 @@ ColorExtractionResult? _extractColorsInIsolate(_ColorExtractionParams params) {
         final quantizedR = (r ~/ 8) * 8;
         final quantizedG = (g ~/ 8) * 8;
         final quantizedB = (b ~/ 8) * 8;
-        final colorValue = (255 << 24) | (quantizedR << 16) | (quantizedG << 8) | quantizedB;
+        final colorValue =
+            (255 << 24) | (quantizedR << 16) | (quantizedG << 8) | quantizedB;
 
         colorCounts[colorValue] = (colorCounts[colorValue] ?? 0) + 1;
 
@@ -446,13 +443,14 @@ ColorExtractionResult? _extractColorsInIsolate(_ColorExtractionParams params) {
         final maxVal = [r, g, b].reduce((a, b) => a > b ? a : b);
         final minVal = [r, g, b].reduce((a, b) => a < b ? a : b);
         final lightness = (maxVal + minVal) / 2 / 255;
-        final saturation = maxVal == minVal 
-            ? 0.0 
+        final saturation = maxVal == minVal
+            ? 0.0
             : (maxVal - minVal) / (255 - (2 * lightness * 255 - 255).abs());
 
         // 分类颜色
         if (saturation > 0.35 && lightness > 0.2 && lightness < 0.8) {
-          vibrantCandidates[colorValue] = (vibrantCandidates[colorValue] ?? 0) + 1;
+          vibrantCandidates[colorValue] =
+              (vibrantCandidates[colorValue] ?? 0) + 1;
         } else if (saturation < 0.35 && lightness > 0.2 && lightness < 0.8) {
           mutedCandidates[colorValue] = (mutedCandidates[colorValue] ?? 0) + 1;
         }
@@ -478,7 +476,7 @@ ColorExtractionResult? _extractColorsInIsolate(_ColorExtractionParams params) {
       final sortedVibrant = vibrantCandidates.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
       vibrantColorValue = sortedVibrant.first.key;
-      
+
       // 找 light 和 dark vibrant
       for (final entry in sortedVibrant) {
         final colorVal = entry.key;
@@ -488,7 +486,9 @@ ColorExtractionResult? _extractColorsInIsolate(_ColorExtractionParams params) {
         } else if (lightness < 0.4 && darkVibrantColorValue == null) {
           darkVibrantColorValue = colorVal;
         }
-        if (lightVibrantColorValue != null && darkVibrantColorValue != null) break;
+        if (lightVibrantColorValue != null && darkVibrantColorValue != null) {
+          break;
+        }
       }
     }
 
@@ -496,7 +496,7 @@ ColorExtractionResult? _extractColorsInIsolate(_ColorExtractionParams params) {
       final sortedMuted = mutedCandidates.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
       mutedColorValue = sortedMuted.first.key;
-      
+
       // 找 light 和 dark muted
       for (final entry in sortedMuted) {
         final colorVal = entry.key;
@@ -513,11 +513,21 @@ ColorExtractionResult? _extractColorsInIsolate(_ColorExtractionParams params) {
     return ColorExtractionResult(
       vibrantColor: vibrantColorValue != null ? Color(vibrantColorValue) : null,
       mutedColor: mutedColorValue != null ? Color(mutedColorValue) : null,
-      dominantColor: dominantColorValue != null ? Color(dominantColorValue) : null,
-      lightVibrantColor: lightVibrantColorValue != null ? Color(lightVibrantColorValue) : null,
-      darkVibrantColor: darkVibrantColorValue != null ? Color(darkVibrantColorValue) : null,
-      lightMutedColor: lightMutedColorValue != null ? Color(lightMutedColorValue) : null,
-      darkMutedColor: darkMutedColorValue != null ? Color(darkMutedColorValue) : null,
+      dominantColor: dominantColorValue != null
+          ? Color(dominantColorValue)
+          : null,
+      lightVibrantColor: lightVibrantColorValue != null
+          ? Color(lightVibrantColorValue)
+          : null,
+      darkVibrantColor: darkVibrantColorValue != null
+          ? Color(darkVibrantColorValue)
+          : null,
+      lightMutedColor: lightMutedColorValue != null
+          ? Color(lightMutedColorValue)
+          : null,
+      darkMutedColor: darkMutedColorValue != null
+          ? Color(darkMutedColorValue)
+          : null,
     );
   } catch (e) {
     // 在 isolate 中不能使用 debugPrint，直接返回 null

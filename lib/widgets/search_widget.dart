@@ -5,9 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/track.dart';
 import '../models/search_tab.dart';
-import '../models/merged_track.dart';
 import '../services/search_service.dart';
-import '../services/developer_mode_service.dart';
 import '../services/netease_artist_service.dart';
 import '../pages/artist_detail_page.dart';
 import '../pages/album_detail_page.dart';
@@ -188,10 +186,9 @@ class _SearchWidgetState extends State<SearchWidget> {
   final TextEditingController _searchController = TextEditingController();
   final SearchService _searchService = SearchService();
   final SearchTabSelection _tabSelection = SearchTabSelection();
-  bool get _mergeEnabled => DeveloperModeService().isSearchResultMergeEnabled;
-  List<SearchTab> get _searchTabs => SearchTab.tabs(merged: _mergeEnabled);
-  SearchTab get _selectedTab => _tabSelection.active(merged: _mergeEnabled);
-  int get _currentTabIndex => _tabSelection.index(merged: _mergeEnabled);
+  List<SearchTab> get _searchTabs => SearchTab.tabs();
+  SearchTab get _selectedTab => _tabSelection.active();
+  int get _currentTabIndex => _tabSelection.index();
   final ThemeManager _themeManager = ThemeManager();
 
   bool get _isFluent => _themeManager.isFluentFramework;
@@ -220,7 +217,6 @@ class _SearchWidgetState extends State<SearchWidget> {
   void initState() {
     super.initState();
     _searchService.addListener(_onSearchResultChanged);
-    DeveloperModeService().addListener(_onSearchResultChanged);
 
     // 如果有初始关键词，自动填充并搜索
     if (widget.initialKeyword != null && widget.initialKeyword!.isNotEmpty) {
@@ -240,7 +236,7 @@ class _SearchWidgetState extends State<SearchWidget> {
     _artistSearchCancelToken = null;
     _searchController.dispose();
     _searchService.removeListener(_onSearchResultChanged);
-    DeveloperModeService().removeListener(_onSearchResultChanged);
+    _searchService.cancelPendingRequests();
     super.dispose();
   }
 
@@ -339,7 +335,7 @@ class _SearchWidgetState extends State<SearchWidget> {
     final isLoggedIn = await _checkLoginStatus();
     if (!isLoggedIn) return;
 
-    _runSearch(_searchController.text, saveHistory: true);
+    _runSearch(_searchController.text, saveHistory: true, force: true);
   }
 
   void _onSearchInputChanged(String rawInput) {
@@ -419,7 +415,7 @@ class _SearchWidgetState extends State<SearchWidget> {
     }
 
     setState(() {
-      _tabSelection.select(index, merged: _mergeEnabled);
+      _tabSelection.select(index);
     });
 
     if (isArtistTab) {

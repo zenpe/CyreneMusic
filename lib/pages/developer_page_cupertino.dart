@@ -9,10 +9,14 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
     return Material(
       type: MaterialType.transparency,
       child: CupertinoPageScaffold(
-        backgroundColor: isDark ? CupertinoColors.black : CupertinoColors.systemGroupedBackground,
+        backgroundColor: isDark
+            ? CupertinoColors.black
+            : CupertinoColors.systemGroupedBackground,
         navigationBar: CupertinoNavigationBar(
           middle: const Text('开发者模式'),
-          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withValues(alpha: 0.9),
+          backgroundColor:
+              (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white)
+                  .withValues(alpha: 0.9),
           border: null,
           trailing: CupertinoButton(
             padding: EdgeInsets.zero,
@@ -130,7 +134,10 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
                   const Spacer(),
                   CupertinoButton(
                     padding: EdgeInsets.zero,
-                    child: const Icon(CupertinoIcons.doc_on_clipboard, size: 22),
+                    child: const Icon(
+                      CupertinoIcons.doc_on_clipboard,
+                      size: 22,
+                    ),
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: logs.join('\n')));
                       _showCupertinoToast('已复制到剪贴板');
@@ -147,7 +154,12 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
             // 日志列表
             Expanded(
               child: logs.isEmpty
-                  ? const Center(child: Text('暂无日志', style: TextStyle(color: CupertinoColors.systemGrey)))
+                  ? const Center(
+                      child: Text(
+                        '暂无日志',
+                        style: TextStyle(color: CupertinoColors.systemGrey),
+                      ),
+                    )
                   : ListView.builder(
                       controller: _logScrollController,
                       padding: const EdgeInsets.all(16),
@@ -161,7 +173,9 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
                             style: TextStyle(
                               fontFamily: 'Menlo',
                               fontSize: 12,
-                              color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                              color: isDark
+                                  ? CupertinoColors.white
+                                  : CupertinoColors.black,
                             ),
                           ),
                         );
@@ -223,13 +237,22 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
                 controller: passwordController,
                 obscureText: true,
                 placeholder: '管理员密码',
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
                 prefix: const Padding(
                   padding: EdgeInsets.only(left: 12),
-                  child: Icon(CupertinoIcons.lock_fill, color: CupertinoColors.systemGrey, size: 20),
+                  child: Icon(
+                    CupertinoIcons.lock_fill,
+                    color: CupertinoColors.systemGrey,
+                    size: 20,
+                  ),
                 ),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
+                  color: isDark
+                      ? const Color(0xFF1C1C1E)
+                      : CupertinoColors.white,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 onSubmitted: (_) async {
@@ -249,7 +272,9 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
                         passwordController.clear();
                       },
                 child: AdminService().isLoading
-                    ? const CupertinoActivityIndicator(color: CupertinoColors.white)
+                    ? const CupertinoActivityIndicator(
+                        color: CupertinoColors.white,
+                      )
                     : const Text('登录'),
               ),
             ),
@@ -327,42 +352,52 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
           child: AdminService().isLoading && AdminService().users.isEmpty
               ? const Center(child: CupertinoActivityIndicator())
               : AdminService().users.isEmpty
-                  ? const Center(child: Text('暂无用户数据', style: TextStyle(color: CupertinoColors.systemGrey)))
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: AdminService().users.length,
-                      itemBuilder: (context, index) {
-                        final user = AdminService().users[index];
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: CupertinoListTile(
-                            leading: CircleAvatar(
-                              backgroundImage: user.avatarUrl != null
-                                  ? NetworkImage(user.avatarUrl!)
-                                  : null,
-                              child: user.avatarUrl == null
-                                  ? Text(user.username[0].toUpperCase())
-                                  : null,
-                            ),
-                            title: Row(
-                              children: [
-                                Text(user.username),
-                                if (user.isVerified) ...[
-                                  const SizedBox(width: 4),
-                                  const Icon(CupertinoIcons.checkmark_seal_fill,
-                                    color: CupertinoColors.activeGreen, size: 14),
-                                ],
-                              ],
-                            ),
-                            subtitle: Text(user.email),
-                          ),
-                        );
-                      },
-                    ),
+              ? const Center(
+                  child: Text(
+                    '暂无用户数据',
+                    style: TextStyle(color: CupertinoColors.systemGrey),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: AdminService().users.length,
+                  itemBuilder: (context, index) {
+                    final user = AdminService().users[index];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? const Color(0xFF1C1C1E)
+                            : CupertinoColors.white,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: CupertinoListTile(
+                        leading: CircleAvatar(
+                          backgroundImage: user.avatarUrl != null
+                              ? NetworkImage(user.avatarUrl!)
+                              : null,
+                          child: user.avatarUrl == null
+                              ? Text(user.username[0].toUpperCase())
+                              : null,
+                        ),
+                        title: Row(
+                          children: [
+                            Text(user.username),
+                            if (user.isVerified) ...[
+                              const SizedBox(width: 4),
+                              const Icon(
+                                CupertinoIcons.checkmark_seal_fill,
+                                color: CupertinoColors.activeGreen,
+                                size: 14,
+                              ),
+                            ],
+                          ],
+                        ),
+                        subtitle: Text(user.email),
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -395,27 +430,6 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
           subtitle: _getPlatformName(),
         ),
         const SizedBox(height: 8),
-        // 合并搜索结果开关
-        Container(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: CupertinoListTile(
-            leading: const Icon(CupertinoIcons.arrow_merge, color: CupertinoColors.activeBlue),
-            title: const Text('合并搜索结果'),
-            subtitle: const Text('关闭后将分平台显示'),
-            trailing: CupertinoSwitch(
-              value: DeveloperModeService().isSearchResultMergeEnabled,
-              onChanged: (value) {
-                _refreshState(() {
-                  DeveloperModeService().toggleSearchResultMerge(value);
-                });
-              },
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
         // 性能叠加层开关
         Container(
           decoration: BoxDecoration(
@@ -423,7 +437,10 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
             borderRadius: BorderRadius.circular(10),
           ),
           child: CupertinoListTile(
-            leading: const Icon(CupertinoIcons.graph_square, color: CupertinoColors.activeBlue),
+            leading: const Icon(
+              CupertinoIcons.graph_square,
+              color: CupertinoColors.activeBlue,
+            ),
             title: const Text('性能叠加层'),
             subtitle: const Text('显示帧率和渲染监控曲线'),
             trailing: CupertinoSwitch(
@@ -549,7 +566,9 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
             bottom: MediaQuery.of(context).viewInsets.bottom,
           ),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemGroupedBackground,
+            color: isDark
+                ? const Color(0xFF1C1C1E)
+                : CupertinoColors.systemGroupedBackground,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           ),
           child: SafeArea(
@@ -580,7 +599,10 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
                   const SizedBox(height: 8),
                   Text(
                     '直接输入账号密码登录（用于 WSA 等环境）',
-                    style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 14),
+                    style: TextStyle(
+                      color: CupertinoColors.systemGrey,
+                      fontSize: 14,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
@@ -588,13 +610,22 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
                   CupertinoTextField(
                     controller: accountController,
                     placeholder: '邮箱 / 用户名',
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     prefix: const Padding(
                       padding: EdgeInsets.only(left: 12),
-                      child: Icon(CupertinoIcons.person_fill, color: CupertinoColors.systemGrey, size: 20),
+                      child: Icon(
+                        CupertinoIcons.person_fill,
+                        color: CupertinoColors.systemGrey,
+                        size: 20,
+                      ),
                     ),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.white,
+                      color: isDark
+                          ? const Color(0xFF2C2C2E)
+                          : CupertinoColors.white,
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
@@ -604,13 +635,22 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
                     controller: passwordController,
                     placeholder: '密码',
                     obscureText: true,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     prefix: const Padding(
                       padding: EdgeInsets.only(left: 12),
-                      child: Icon(CupertinoIcons.lock_fill, color: CupertinoColors.systemGrey, size: 20),
+                      child: Icon(
+                        CupertinoIcons.lock_fill,
+                        color: CupertinoColors.systemGrey,
+                        size: 20,
+                      ),
                     ),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.white,
+                      color: isDark
+                          ? const Color(0xFF2C2C2E)
+                          : CupertinoColors.white,
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
@@ -618,7 +658,8 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
                   // 登录按钮
                   CupertinoButton.filled(
                     onPressed: () async {
-                      if (accountController.text.trim().isEmpty || passwordController.text.isEmpty) {
+                      if (accountController.text.trim().isEmpty ||
+                          passwordController.text.isEmpty) {
                         _showCupertinoToast('请输入账号和密码');
                         return;
                       }

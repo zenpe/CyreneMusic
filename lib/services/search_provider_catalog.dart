@@ -1,13 +1,13 @@
 import '../models/track.dart';
 
 /// Search providers are independent from the active playback resolver.
-/// The current backend exposes a fixed set of platform search endpoints.
+/// Only platforms with an operational backend search are exposed.
 class SearchProviderCatalog {
   static const List<MusicSource> defaultPlatforms = <MusicSource>[
     MusicSource.netease,
     MusicSource.qq,
     MusicSource.kugou,
-    MusicSource.kuwo,
+    // Kuwo's backend currently returns a placeholder empty list.
   ];
 
   const SearchProviderCatalog();

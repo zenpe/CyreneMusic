@@ -25,9 +25,9 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                     tooltip: '复制全部',
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: logs.join('\n')));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('已复制到剪贴板')),
-                      );
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(const SnackBar(content: Text('已复制到剪贴板')));
                     },
                   ),
                   IconButton(
@@ -109,15 +109,15 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                   Text(
                     '管理员后台',
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     '需要验证管理员身份',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 48),
                   TextField(
@@ -153,7 +153,9 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                           },
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 48, vertical: 16),
+                        horizontal: 48,
+                        vertical: 16,
+                      ),
                     ),
                     child: AdminService().isLoading
                         ? const SizedBox(
@@ -194,9 +196,9 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
 
     if (mounted) {
       if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'])),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(result['message'])));
 
         // 登录成功后延迟加载数据，避免token时序问题
         Future.delayed(const Duration(milliseconds: 500), () async {
@@ -255,7 +257,9 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text('刷新失败: ${e.toString()}'),
-                                        backgroundColor: Theme.of(context).colorScheme.error,
+                                        backgroundColor: Theme.of(
+                                          context,
+                                        ).colorScheme.error,
                                       ),
                                     );
                                   }
@@ -296,12 +300,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
             ),
           ),
           Expanded(
-            child: TabBarView(
-              children: [
-                _buildUsersTab(),
-                _buildStatsTab(),
-              ],
-            ),
+            child: TabBarView(children: [_buildUsersTab(), _buildStatsTab()]),
           ),
         ],
       ),
@@ -319,15 +318,21 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
         AdminService().errorMessage!.contains('令牌验证失败')) {
       return LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 220;
-          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          final compact =
+              constraints.hasBoundedHeight && constraints.maxHeight < 220;
+          final minHeight = constraints.hasBoundedHeight
+              ? constraints.maxHeight
+              : 0.0;
           return SingleChildScrollView(
             physics: const ClampingScrollPhysics(),
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: minHeight),
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -422,10 +427,16 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                     _buildUserInfoRow('最后登录', _formatDateTime(user.lastLogin)),
                     _buildUserInfoRow('IP地址', user.lastIp ?? '未知'),
                     _buildUserInfoRow('IP归属地', user.lastIpLocation ?? '未知'),
-                    _buildUserInfoRow('IP更新时间', _formatDateTime(user.lastIpUpdatedAt)),
+                    _buildUserInfoRow(
+                      'IP更新时间',
+                      _formatDateTime(user.lastIpUpdatedAt),
+                    ),
                     _buildUserInfoRow('验证状态', user.isVerified ? '已验证' : '未验证'),
                     if (user.verifiedAt != null)
-                      _buildUserInfoRow('验证时间', _formatDateTime(user.verifiedAt)),
+                      _buildUserInfoRow(
+                        '验证时间',
+                        _formatDateTime(user.verifiedAt),
+                      ),
                   ],
                 ),
               ),
@@ -447,15 +458,21 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
         AdminService().errorMessage!.contains('令牌验证失败')) {
       return LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.hasBoundedHeight && constraints.maxHeight < 260;
-          final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+          final compact =
+              constraints.hasBoundedHeight && constraints.maxHeight < 260;
+          final minHeight = constraints.hasBoundedHeight
+              ? constraints.maxHeight
+              : 0.0;
           return SingleChildScrollView(
             physics: const ClampingScrollPhysics(),
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: minHeight),
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -521,13 +538,16 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.dashboard, color: Theme.of(context).colorScheme.primary),
+                    Icon(
+                      Icons.dashboard,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       '用户概览',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
@@ -536,18 +556,42 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildStatCard('总用户', stats.totalUsers.toString(), Icons.people),
-                    _buildStatCard('已验证', stats.verifiedUsers.toString(), Icons.verified),
-                    _buildStatCard('未验证', stats.unverifiedUsers.toString(), Icons.pending),
+                    _buildStatCard(
+                      '总用户',
+                      stats.totalUsers.toString(),
+                      Icons.people,
+                    ),
+                    _buildStatCard(
+                      '已验证',
+                      stats.verifiedUsers.toString(),
+                      Icons.verified,
+                    ),
+                    _buildStatCard(
+                      '未验证',
+                      stats.unverifiedUsers.toString(),
+                      Icons.pending,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildStatCard('今日新增', stats.todayUsers.toString(), Icons.person_add),
-                    _buildStatCard('今日活跃', stats.todayActiveUsers.toString(), Icons.trending_up),
-                    _buildStatCard('本周新增', stats.last7DaysUsers.toString(), Icons.calendar_today),
+                    _buildStatCard(
+                      '今日新增',
+                      stats.todayUsers.toString(),
+                      Icons.person_add,
+                    ),
+                    _buildStatCard(
+                      '今日活跃',
+                      stats.todayActiveUsers.toString(),
+                      Icons.trending_up,
+                    ),
+                    _buildStatCard(
+                      '本周新增',
+                      stats.last7DaysUsers.toString(),
+                      Icons.calendar_today,
+                    ),
                   ],
                 ),
               ],
@@ -566,61 +610,63 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.location_on, color: Theme.of(context).colorScheme.primary),
+                      Icon(
+                        Icons.location_on,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         '地区分布 Top 10',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
                   const Divider(),
-                  ...stats.topLocations.map((loc) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: Text(loc.location),
-                            ),
-                            Expanded(
-                              flex: 7,
-                              child: Stack(
-                                children: [
-                                  Container(
-                                    height: 24,
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primaryContainer,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    width: (loc.count / stats.totalUsers) *
-                                        MediaQuery.of(context).size.width *
-                                        0.6,
+                  ...stats.topLocations.map(
+                    (loc) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Expanded(flex: 3, child: Text(loc.location)),
+                          Expanded(
+                            flex: 7,
+                            child: Stack(
+                              children: [
+                                Container(
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primaryContainer,
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                  Positioned.fill(
-                                    child: Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(left: 8),
-                                        child: Text(
-                                          '${loc.count} 人',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
+                                  width:
+                                      (loc.count / stats.totalUsers) *
+                                      MediaQuery.of(context).size.width *
+                                      0.6,
+                                ),
+                                Positioned.fill(
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 8),
+                                      child: Text(
+                                        '${loc.count} 人',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      )),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -638,13 +684,15 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.trending_up, color: Theme.of(context).colorScheme.primary),
+                      Icon(
+                        Icons.trending_up,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         '30天注册趋势',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -671,14 +719,11 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
         const SizedBox(height: 8),
         Text(
           value,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
         ),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
       ],
     );
   }
@@ -788,22 +833,6 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
         const SizedBox(height: 8),
         Card(
           child: ListTile(
-            leading: const Icon(Icons.merge_type),
-            title: const Text('合并搜索结果'),
-            subtitle: const Text('关闭后将分平台显示搜索结果（网易云/QQ/酷狗/酷我）'),
-            trailing: Switch.adaptive(
-              value: DeveloperModeService().isSearchResultMergeEnabled,
-              onChanged: (value) {
-                _refreshState(() {
-                  DeveloperModeService().toggleSearchResultMerge(value);
-                });
-              },
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Card(
-          child: ListTile(
             leading: const Icon(Icons.show_chart),
             title: const Text('性能叠加层'),
             subtitle: const Text('开启后在界面顶部显示帧率和渲染监控曲线'),
@@ -844,9 +873,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
           },
           icon: const Icon(Icons.delete_outline),
           label: const Text('清除播放状态'),
-          style: FilledButton.styleFrom(
-            backgroundColor: Colors.orange,
-          ),
+          style: FilledButton.styleFrom(backgroundColor: Colors.orange),
         ),
         const SizedBox(height: 16),
         const Divider(),
@@ -869,9 +896,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
           },
           icon: const Icon(Icons.science),
           label: const Text('洛雪音源运行时测试'),
-          style: FilledButton.styleFrom(
-            backgroundColor: Colors.teal,
-          ),
+          style: FilledButton.styleFrom(backgroundColor: Colors.teal),
         ),
         const SizedBox(height: 16),
         const Divider(),
@@ -887,9 +912,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
           onPressed: () => _showQuickLoginDialog(),
           icon: const Icon(Icons.login),
           label: const Text('快速登录'),
-          style: FilledButton.styleFrom(
-            backgroundColor: Colors.deepPurple,
-          ),
+          style: FilledButton.styleFrom(backgroundColor: Colors.deepPurple),
         ),
       ],
     );
@@ -951,10 +974,16 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                       },
                     ),
                   ),
-                  onSubmitted: isLoading ? null : (_) async {
-                    setState(() => isLoading = true);
-                    await _performQuickLogin(accountController.text, passwordController.text, context);
-                  },
+                  onSubmitted: isLoading
+                      ? null
+                      : (_) async {
+                          setState(() => isLoading = true);
+                          await _performQuickLogin(
+                            accountController.text,
+                            passwordController.text,
+                            context,
+                          );
+                        },
                 ),
               ],
             ),
@@ -968,7 +997,11 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                     ? null
                     : () async {
                         setState(() => isLoading = true);
-                        await _performQuickLogin(accountController.text, passwordController.text, context);
+                        await _performQuickLogin(
+                          accountController.text,
+                          passwordController.text,
+                          context,
+                        );
                       },
                 child: isLoading
                     ? const SizedBox(
@@ -989,11 +1022,15 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
   }
 
   /// 执行快速登录
-  Future<void> _performQuickLogin(String account, String password, BuildContext dialogContext) async {
+  Future<void> _performQuickLogin(
+    String account,
+    String password,
+    BuildContext dialogContext,
+  ) async {
     if (account.trim().isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入账号和密码')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请输入账号和密码')));
       return;
     }
 
@@ -1016,7 +1053,9 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
         // 登录成功后上报IP归属地
         _authFacade.updateLocation().then((locationResult) {
           if (locationResult['success']) {
-            DeveloperModeService().addLog('✅ IP归属地已更新: ${locationResult['data']?['location']}');
+            DeveloperModeService().addLog(
+              '✅ IP归属地已更新: ${locationResult['data']?['location']}',
+            );
           }
         });
       } else {
@@ -1053,17 +1092,17 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
       DeveloperModeService().addLog('✅ 播放恢复通知已发送');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('播放恢复通知已发送')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('播放恢复通知已发送')));
       }
     } catch (e) {
       DeveloperModeService().addLog('❌ 发送播放恢复通知失败: $e');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('发送失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('发送失败: $e')));
       }
     }
   }
