@@ -1,8 +1,9 @@
 import 'structured_log_service.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'lx_http_client.dart';
+import 'lx_runtime_interface.dart';
 import 'resolution_request.dart';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class LxHttpBridge {
@@ -26,7 +27,7 @@ class LxHttpBridge {
   }) async {
     request ??= ResolutionRequest.current;
     request?.check();
-    final client = _client ??= http.Client();
+    final client = _client ??= LxHttpClient();
     final aborted = Completer<void>();
     void abort() {
       if (!aborted.isCompleted) aborted.complete();
@@ -34,7 +35,37 @@ class LxHttpBridge {
 
     final unsubscribe = request?.onCancel(abort);
     final clock = Stopwatch()..start();
-    var stage = 'headers';
+    var stage = 'preparing';
+    var finished = false;
+    var outcome = 'success';
+    String? failureType;
+    int? sendStartedMs;
+    int? connectionReadyMs;
+    int? responseReceivedMs;
+    int? status;
+    String? transportHost;
+    String? transportMethod;
+    // The response wait includes sending the request and automatic redirects;
+    // it is not a measurement of server processing time alone.
+    Map<String, Object?> timingFields() {
+      final elapsed = clock.elapsedMilliseconds;
+      return {
+        'request_id': requestId,
+        'resolution_id': resolutionId,
+        'elapsed_ms': elapsed,
+        'connection_ready': connectionReadyMs != null,
+        'connection_ms': sendStartedMs == null
+            ? null
+            : (connectionReadyMs ?? elapsed) - sendStartedMs!,
+        'response_wait_ms': connectionReadyMs == null
+            ? null
+            : (responseReceivedMs ?? elapsed) - connectionReadyMs!,
+        'body_ms': responseReceivedMs == null
+            ? null
+            : elapsed - responseReceivedMs!,
+      };
+    }
+
     Future<http.Response> sendAndRead(http.Request message) async {
       Duration remaining() {
         final value = timeout - clock.elapsed;
@@ -42,13 +73,39 @@ class LxHttpBridge {
       }
 
       request?.check();
-      final streamed = await client.send(message).timeout(remaining());
+      stage = 'connection';
+      sendStartedMs = clock.elapsedMilliseconds;
+      transportHost = message.url.host;
+      transportMethod = message.method;
       StructuredLogService.event(
-        'lx.http_headers_received',
+        'lx.http_transport_started',
         fields: {
           'request_id': requestId,
           'resolution_id': resolutionId,
-          'elapsed_ms': clock.elapsedMilliseconds,
+          'host': message.url.host,
+          'method': message.method,
+        },
+      );
+      final streamed = await LxHttpClient.observeConnection(
+        () => client.send(message),
+        () {
+          // A timed-out openUrl may finish later. It must not modify the
+          // already-recorded terminal result or emit a late ready event.
+          if (finished) return;
+          connectionReadyMs = clock.elapsedMilliseconds;
+          stage = 'response_headers';
+          StructuredLogService.event(
+            'lx.http_connection_ready',
+            fields: timingFields(),
+          );
+        },
+      ).timeout(remaining());
+      responseReceivedMs = clock.elapsedMilliseconds;
+      status = streamed.statusCode;
+      StructuredLogService.event(
+        'lx.http_headers_received',
+        fields: {
+          ...timingFields(),
           'status': streamed.statusCode,
           'content_length': streamed.contentLength,
           'content_type': streamed.headers['content-type'],
@@ -60,24 +117,6 @@ class LxHttpBridge {
     }
 
     try {
-      final debug = kDebugMode;
-      if (debug) {
-        StructuredLogService.log('========== [HTTP Request Debug] ==========');
-        StructuredLogService.log('🔍 [HTTP] 原始 URL: $url');
-        StructuredLogService.log('🔍 [HTTP] 原始 options: $options');
-        if (options['headers'] != null) {
-          StructuredLogService.log(
-            '🔍 [HTTP] 原始 headers: ${options['headers']}',
-          );
-          StructuredLogService.log(
-            '🔍 [HTTP] headers 类型: ${options['headers'].runtimeType}',
-          );
-        } else {
-          StructuredLogService.log('🔍 [HTTP] 原始 headers: (null - 脚本未传递请求头)');
-        }
-        StructuredLogService.log('==========================================');
-      }
-
       final method = (options['method'] as String?)?.toUpperCase() ?? 'GET';
       final headers = <String, String>{};
 
@@ -107,12 +146,6 @@ class LxHttpBridge {
       headers.forEach((key, value) {
         normalizedHeaders[key.toLowerCase()] = value;
       });
-
-      if (debug) {
-        StructuredLogService.log('🌐 [HTTP] $method $url');
-        StructuredLogService.log('   Headers (原始): $headers');
-        StructuredLogService.log('   Headers (规范化): $normalizedHeaders');
-      }
 
       http.Response response;
 
@@ -172,10 +205,6 @@ class LxHttpBridge {
       }
 
       request?.check();
-      if (debug) {
-        StructuredLogService.log('📥 [HTTP] Status: ${response.statusCode}');
-      }
-
       dynamic responseBody = response.body;
       try {
         responseBody = jsonDecode(response.body);
@@ -192,27 +221,39 @@ class LxHttpBridge {
         'bytes': response.bodyBytes.length,
       };
     } catch (e) {
-      StructuredLogService.event(
-        'lx.http_transport_ended',
-        level: request?.isCancelled == true ? LogLevel.info : LogLevel.warning,
-        fields: {
-          'request_id': requestId,
-          'resolution_id': resolutionId,
-          'stage': stage,
-          'elapsed_ms': clock.elapsedMilliseconds,
-          'cancelled': request?.isCancelled == true,
-          'failure_type': e.runtimeType.toString(),
-        },
-      );
+      failureType = e.runtimeType.toString();
+      outcome =
+          e is TimeoutException ||
+              request?.failure?.kind == LxRuntimeFailureKind.timeout
+          ? 'timeout'
+          : request?.isCancelled == true
+          ? 'cancelled'
+          : 'failure';
       if (request?.isCancelled == true) throw const ResolutionCancelled();
-      StructuredLogService.log('❌ [HTTP] Error: $e');
       rethrow;
     } finally {
+      finished = true;
       unsubscribe?.call();
       // Future.timeout does not cancel its input. Abort on every exit so a
       // timed-out send/body cannot continue occupying a pooled connection.
       // Aborting an already completed response has no effect.
       abort();
+      StructuredLogService.event(
+        'lx.http_transport_ended',
+        level: outcome == 'success' || outcome == 'cancelled'
+            ? LogLevel.info
+            : LogLevel.warning,
+        fields: {
+          ...timingFields(),
+          'host': transportHost,
+          'method': transportMethod,
+          'stage': stage,
+          'outcome': outcome,
+          'status': status,
+          'cancelled': request?.isCancelled == true,
+          'failure_type': failureType,
+        },
+      );
     }
   }
 }

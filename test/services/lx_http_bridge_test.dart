@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cyrene_music/services/lx_http_bridge.dart';
+import 'package:cyrene_music/services/lx_runtime_interface.dart';
 import 'package:cyrene_music/services/resolution_request.dart';
 import 'package:cyrene_music/services/structured_log_service.dart';
 
@@ -75,6 +76,8 @@ void main() {
       'abort isolates an active peer (body=$partialBody, timeout=$deadline)',
       () async {
         final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final records = <Map<String, dynamic>>[];
+        StructuredLogService.sink = (line) => records.add(jsonDecode(line));
         final slowStarted = Completer<void>();
         final peerStarted = Completer<void>();
         final releasePeer = Completer<void>();
@@ -98,6 +101,7 @@ void main() {
           await request.response.close();
         });
         addTearDown(() async {
+          StructuredLogService.sink = null;
           if (!releasePeer.isCompleted) releasePeer.complete();
           LxHttpBridge.close();
           await subscription.cancel();
@@ -110,13 +114,18 @@ void main() {
             '$base/slow',
             {},
             request: owner,
+            requestId: 'slow',
             timeout: Duration(seconds: deadline ? 1 : 5),
           ),
           throwsA(
             deadline ? isA<TimeoutException>() : isA<ResolutionCancelled>(),
           ),
         );
-        final peer = LxHttpBridge.performHttpRequest('$base/peer', {});
+        final peer = LxHttpBridge.performHttpRequest(
+          '$base/peer',
+          {},
+          requestId: 'peer',
+        );
         await Future.wait([
           slowStarted.future,
           peerStarted.future,
@@ -125,6 +134,16 @@ void main() {
         await cancelled.timeout(const Duration(seconds: 3));
         releasePeer.complete();
         expect((await peer)['body'], {'ok': true});
+        final endings = records.where(
+          (e) => e['event'] == 'lx.http_transport_ended',
+        );
+        final slowEnd = endings.singleWhere((e) => e['request_id'] == 'slow');
+        final peerEnd = endings.singleWhere((e) => e['request_id'] == 'peer');
+        expect(slowEnd['outcome'], deadline ? 'timeout' : 'cancelled');
+        expect(slowEnd['connection_ready'], isTrue);
+        expect(peerEnd['outcome'], 'success');
+        expect(peerEnd['connection_ready'], isTrue);
+        expect(peerEnd['status'], 200);
         expect(
           (await LxHttpBridge.performHttpRequest('$base/after', {}))['body'],
           {'ok': true},
@@ -200,4 +219,166 @@ void main() {
     await serverTask;
     await server.close(force: true);
   });
+
+  test('reuses a connection after the previous 15 second idle limit', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final ports = <int>[];
+    final subscription = server.listen((request) async {
+      ports.add(request.connectionInfo!.remotePort);
+      request.response.write('{}');
+      await request.response.close();
+    });
+    addTearDown(() async {
+      await subscription.cancel();
+      await server.close(force: true);
+    });
+    final address = 'http://127.0.0.1:${server.port}/idle';
+    await LxHttpBridge.performHttpRequest(address, {});
+    await Future<void>.delayed(const Duration(seconds: 16));
+    await LxHttpBridge.performHttpRequest(address, {});
+    expect(ports, hasLength(2));
+    expect(ports[1], ports[0], reason: 'keep the idle connection beyond 15s');
+  });
+
+  test(
+    'server-closed connections, redirects and gzip remain supported',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final ports = <int>[];
+      final subscription = server.listen((request) async {
+        ports.add(request.connectionInfo!.remotePort);
+        if (request.uri.path == '/redirect') {
+          request.response.statusCode = HttpStatus.found;
+          request.response.headers.set('location', '/gzip');
+        } else if (request.uri.path == '/gzip') {
+          request.response.headers.set('content-encoding', 'gzip');
+          request.response.add(gzip.encode(utf8.encode('{"ok":true}')));
+        } else {
+          request.response.persistentConnection = false;
+          request.response.write('{}');
+        }
+        await request.response.close();
+      });
+      addTearDown(() async {
+        await subscription.cancel();
+        await server.close(force: true);
+      });
+      final base = 'http://127.0.0.1:${server.port}';
+      await LxHttpBridge.performHttpRequest('$base/close', {});
+      final result = await LxHttpBridge.performHttpRequest(
+        '$base/redirect',
+        {},
+      );
+      expect(result['body'], {'ok': true});
+      expect(ports, hasLength(3));
+      expect(ports[1], isNot(ports[0]));
+    },
+  );
+
+  test(
+    'records response wait and preserves timeout cancellation reason',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final seen = Completer<void>();
+      final records = <Map<String, dynamic>>[];
+      StructuredLogService.sink = (line) => records.add(jsonDecode(line));
+      final subscription = server.listen((request) {
+        seen.complete(); // Connected, but the server never sends response headers.
+      });
+      addTearDown(() async {
+        StructuredLogService.sink = null;
+        await subscription.cancel();
+        await server.close(force: true);
+      });
+      final owner = ResolutionRequest();
+      final failure = expectLater(
+        LxHttpBridge.performHttpRequest(
+          'http://127.0.0.1:${server.port}/secret-path?token=secret-query',
+          {
+            'headers': {'Authorization': 'secret-header'},
+          },
+          request: owner,
+          requestId: 'waiting-response',
+        ),
+        throwsA(isA<ResolutionCancelled>()),
+      );
+      await seen.future;
+      owner.failure = const LxRuntimeFailure(
+        kind: LxRuntimeFailureKind.timeout,
+        message: 'deadline exceeded',
+      );
+      owner.cancel();
+      await failure;
+      final ended = records.singleWhere(
+        (e) => e['event'] == 'lx.http_transport_ended',
+      );
+      expect(ended['connection_ready'], isTrue);
+      expect(ended['stage'], 'response_headers');
+      expect(ended['outcome'], 'timeout');
+      expect(ended['level'], 'warning');
+      expect(ended['connection_ms'], isNonNegative);
+      expect(ended['response_wait_ms'], isNonNegative);
+      expect(ended['body_ms'], isNull);
+      expect(jsonEncode(records), isNot(contains('secret-query')));
+      expect(jsonEncode(records), isNot(contains('secret-header')));
+      expect(jsonEncode(records), isNot(contains('secret-path')));
+    },
+  );
+
+  test('connection timeout cannot emit a late ready event', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final release = Completer<void>();
+    final connected = Completer<void>();
+    final records = <Map<String, dynamic>>[];
+    StructuredLogService.sink = (line) => records.add(jsonDecode(line));
+    final real = _RealHttpOverrides();
+    addTearDown(() async {
+      if (!release.isCompleted) release.complete();
+      StructuredLogService.sink = null;
+      LxHttpBridge.close();
+      await server.close(force: true);
+    });
+    await HttpOverrides.runZoned(
+      () async {
+        await expectLater(
+          LxHttpBridge.performHttpRequest(
+            'http://127.0.0.1:${server.port}/connect',
+            {},
+            timeout: const Duration(milliseconds: 100),
+          ),
+          throwsA(isA<TimeoutException>()),
+        );
+        final ended = records.singleWhere(
+          (e) => e['event'] == 'lx.http_transport_ended',
+        );
+        expect(ended['stage'], 'connection');
+        expect(ended['connection_ready'], isFalse);
+        expect(ended['outcome'], 'timeout');
+        expect(ended['connection_ms'], isNonNegative);
+        expect(ended['response_wait_ms'], isNull);
+        release.complete();
+        await connected.future.timeout(const Duration(seconds: 2));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(
+          records.where((e) => e['event'] == 'lx.http_connection_ready'),
+          isEmpty,
+        );
+        expect(
+          records.where((e) => e['event'] == 'lx.http_transport_ended'),
+          hasLength(1),
+        );
+      },
+      createHttpClient: (context) {
+        return real.createHttpClient(context)
+          ..connectionFactory = (uri, proxyHost, proxyPort) async {
+            await release.future;
+            final task = await Socket.startConnect(uri.host, uri.port);
+            unawaited(task.socket.then((_) => connected.complete()));
+            return task;
+          };
+      },
+    );
+  });
 }
+
+class _RealHttpOverrides extends HttpOverrides {}

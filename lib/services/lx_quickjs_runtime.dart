@@ -234,7 +234,12 @@ class LxQuickJsRuntime implements LxRuntime {
     final deadline = DateTime.now().add(effectiveTimeout);
     final owner = ResolutionRequest();
     final parent = ResolutionRequest.current;
-    final unlink = parent?.onCancel(owner.cancel);
+    final unlink = parent?.onCancel(() {
+      // Preserve an outer deadline's reason for transport diagnostics. A
+      // deadline abort must not be logged as an ordinary user cancellation.
+      owner.failure ??= parent.failure;
+      owner.cancel();
+    });
     final queueClock = Stopwatch()..start();
     Future<String?>? response;
     return _enqueueOperation(() async {
@@ -688,7 +693,10 @@ class LxQuickJsRuntime implements LxRuntime {
     if (ownerKey != null && (owner == null || owner.isCancelled)) return;
     _debug('🌐 [LxQuickJsRuntime] HTTP 请求: $url');
     final httpOwner = ResolutionRequest();
-    final unlink = owner?.onCancel(httpOwner.cancel);
+    final unlink = owner?.onCancel(() {
+      httpOwner.failure ??= owner.failure;
+      httpOwner.cancel();
+    });
     _httpRequests[requestId] = httpOwner;
     unawaited(
       _executeHttpRequest(

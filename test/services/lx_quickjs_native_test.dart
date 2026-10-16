@@ -3,12 +3,71 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cyrene_music/services/lx_quickjs_runtime.dart';
+import 'package:cyrene_music/services/lx_runtime_interface.dart';
 import 'package:cyrene_music/services/resolution_request.dart';
+import 'package:cyrene_music/services/structured_log_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // Requires the flutter_js native library on PATH; opted into by native CI.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test(
+    'outer deadline abort retains HTTP phase and warning diagnostics',
+    () async {
+      final overrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = overrides);
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final seen = Completer<void>();
+      final ended = Completer<Map<String, dynamic>>();
+      StructuredLogService.sink = (line) {
+        final event = jsonDecode(line) as Map<String, dynamic>;
+        if (event['event'] == 'lx.http_transport_ended' && !ended.isCompleted) {
+          ended.complete(event);
+        }
+      };
+      final subscription = server.listen((request) => seen.complete());
+      final runtime = LxQuickJsRuntime();
+      addTearDown(() async {
+        StructuredLogService.sink = null;
+        await runtime.dispose();
+        await subscription.cancel();
+        await server.close(force: true);
+      });
+      await runtime.loadScript('''
+        lx.on(lx.EVENT_NAMES.request, async () => {
+          const response = await lx.request('http://127.0.0.1:${server.port}/slow', {});
+          return JSON.parse(response.body).url;
+        });
+        lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
+      ''');
+      final owner = ResolutionRequest();
+      final cancelled = expectLater(
+        owner.run(
+          () => runtime.getMusicUrl(
+            source: 'tx',
+            songId: 'slow',
+            quality: '128k',
+          ),
+        ),
+        throwsA(isA<ResolutionCancelled>()),
+      );
+      await seen.future.timeout(const Duration(seconds: 2));
+      owner.failure = const LxRuntimeFailure(
+        kind: LxRuntimeFailureKind.timeout,
+        message: 'outer deadline',
+      );
+      owner.cancel();
+      await cancelled;
+      final event = await ended.future.timeout(const Duration(seconds: 2));
+      expect(event['outcome'], 'timeout');
+      expect(event['level'], 'warning');
+      expect(event['stage'], 'response_headers');
+      expect(event['connection_ready'], isTrue);
+      expect(event['response_wait_ms'], isNonNegative);
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
   test(
     'real QuickJS abort isolates late responses and abandoned promises',
     () async {
