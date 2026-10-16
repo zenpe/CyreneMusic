@@ -1,6 +1,39 @@
 part of 'search_widget.dart';
 
 extension _SearchWidgetShared on _SearchWidgetState {
+  Future<void> _retryArtistSearch() async {
+    final keyword = _lastTrackSearchKeyword;
+    final session = _searchService.sessionId;
+    if (keyword.isEmpty || _artistLoading) return;
+    if (!await _checkLoginStatus() || !mounted) return;
+    if (session != _searchService.sessionId ||
+        keyword != _lastTrackSearchKeyword) {
+      return;
+    }
+    await _searchArtists(keyword);
+  }
+
+  Widget _buildArtistSearchFailure() {
+    final button = _isFluent
+        ? fluent.Button(onPressed: _retryArtistSearch, child: const Text('重试'))
+        : _isCupertino
+        ? CupertinoButton(onPressed: _retryArtistSearch, child: const Text('重试'))
+        : TextButton(onPressed: _retryArtistSearch, child: const Text('重试'));
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_artistError!, textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            button,
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _retrySearch() async {
     final platform = _selectedTab.platform;
     final session = _searchService.sessionId;
@@ -668,7 +701,7 @@ extension _SearchWidgetShared on _SearchWidgetState {
     if (_artistError != null &&
         _secondaryArtistId == null &&
         _secondaryAlbumId == null) {
-      return Center(child: Text('搜索失败: $_artistError'));
+      return _buildArtistSearchFailure();
     }
     if (_artistResults.isEmpty &&
         _secondaryArtistId == null &&

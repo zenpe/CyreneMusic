@@ -25,6 +25,15 @@ class UrlService extends ChangeNotifier {
 
   /// 是否已初始化
   bool _isInitialized = false;
+  int _backendRevision = 0;
+
+  /// Changes only when the effective backend URL changes, including A → B → A.
+  int get backendRevision => _backendRevision;
+
+  void _notifySettingsChanged(String previousBaseUrl) {
+    if (previousBaseUrl != baseUrl) _backendRevision++;
+    notifyListeners();
+  }
 
   /// 初始化服务（必须在应用启动时调用）
   Future<void> initialize() async {
@@ -40,6 +49,7 @@ class UrlService extends ChangeNotifier {
 
   /// 从本地存储加载设置
   Future<void> _loadSettings() async {
+    final previousBaseUrl = baseUrl;
     try {
       final prefs = await SharedPreferences.getInstance();
 
@@ -68,7 +78,7 @@ class UrlService extends ChangeNotifier {
       }
 
       StructuredLogService.log('🌐 [UrlService] 从本地加载配置: ${_sourceType.name}, 自定义源: $_customBaseUrl');
-      notifyListeners();
+      _notifySettingsChanged(previousBaseUrl);
     } catch (e) {
       StructuredLogService.log('❌ [UrlService] 加载配置失败: $e');
     }
@@ -118,9 +128,10 @@ class UrlService extends ChangeNotifier {
   /// 设置后端源类型
   void setSourceType(BackendSourceType type) {
     if (_sourceType != type) {
+      final previousBaseUrl = baseUrl;
       _sourceType = type;
       _saveSourceType();
-      notifyListeners();
+      _notifySettingsChanged(previousBaseUrl);
     }
   }
 
@@ -132,9 +143,10 @@ class UrlService extends ChangeNotifier {
         : url.trim();
 
     if (_customBaseUrl != cleanUrl) {
+      final previousBaseUrl = baseUrl;
       _customBaseUrl = cleanUrl;
       _saveCustomBaseUrl();
-      notifyListeners();
+      _notifySettingsChanged(previousBaseUrl);
     }
   }
 

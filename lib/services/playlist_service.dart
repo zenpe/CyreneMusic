@@ -7,6 +7,7 @@ import '../models/track.dart';
 import 'api/api_client.dart';
 import 'auth_service.dart';
 import 'structured_log_service.dart';
+import 'url_service.dart';
 
 class PlaylistSyncResult {
   final bool succeeded;
@@ -51,8 +52,13 @@ class PlaylistTrackMatch {
 class TrackInPlaylistResult {
   final bool known;
   final List<PlaylistTrackMatch> matches;
+  final bool complete;
 
-  const TrackInPlaylistResult({required this.known, required this.matches});
+  const TrackInPlaylistResult({
+    required this.known,
+    required this.matches,
+    this.complete = true,
+  });
 
   bool get inPlaylist => matches.isNotEmpty;
   List<int> get playlistIds =>
@@ -68,6 +74,19 @@ class TrackInPlaylistResult {
   }
 }
 
+class _MembershipEntry {
+  final TrackInPlaylistResult result;
+  final DateTime expiresAt;
+  _MembershipEntry(this.result, {DateTime? expiresAt})
+    : expiresAt = expiresAt ?? DateTime.now().add(const Duration(seconds: 60));
+}
+
+class _MembershipRead {
+  late final Future<TrackInPlaylistResult> future;
+  final Map<int, PlaylistTrackMatch?> changes = {};
+  bool invalidated = false;
+}
+
 class PlaylistService extends ChangeNotifier {
   static final PlaylistService _instance = PlaylistService._internal();
   factory PlaylistService() => _instance;
@@ -76,11 +95,18 @@ class PlaylistService extends ChangeNotifier {
     final auth = AuthService();
     _observedSessionIdentity = _sessionIdentity();
     auth.addListener(_onAuthChanged);
+    UrlService().addListener(_onAuthChanged);
   }
 
   final Random _secureRandom = Random.secure();
   final Map<int, List<PlaylistTrack>> _tracksByPlaylist = {};
   final Map<int, int> _trackLoadGenerations = {};
+  final Map<int, DateTime> _tracksLoadedAt = {};
+  final Map<String, _MembershipEntry> _membership = {};
+  final Map<String, _MembershipRead> _membershipReads = {};
+  int _membershipEpoch = 0;
+  int get membershipEpoch => _membershipEpoch;
+  String? get membershipContext => _sessionIdentity();
   int _playlistLoadGeneration = 0;
   String? _observedSessionIdentity;
   List<Playlist> _playlists = [];
@@ -112,7 +138,7 @@ class PlaylistService extends ChangeNotifier {
     if (!auth.isLoggedIn || token == null || token.isEmpty || userId == null) {
       return null;
     }
-    return '$userId:$token';
+    return '${UrlService().backendRevision}:$userId:$token';
   }
 
   bool _isCurrentSession(String session) => _sessionIdentity() == session;
@@ -141,6 +167,13 @@ class PlaylistService extends ChangeNotifier {
     _currentPlaylistId = null;
     _tracksByPlaylist.clear();
     _trackLoadGenerations.clear();
+    _tracksLoadedAt.clear();
+    _membership.clear();
+    for (final read in _membershipReads.values) {
+      read.invalidated = true;
+    }
+    _membershipReads.clear();
+    _membershipEpoch++;
     _isLoading = false;
     _isLoadingTracks = false;
     notifyListeners();
@@ -154,6 +187,133 @@ class PlaylistService extends ChangeNotifier {
   }
 
   bool _isWritable(int playlistId) => _playlist(playlistId)?.isLocal == true;
+
+  String _membershipKey(Track track) => '${track.source.name}:${track.id}';
+
+  /// A local positive is useful immediately, but does not prove there are no
+  /// matches in other playlists. Only a complete server read proves absence.
+  TrackInPlaylistResult cachedTrackMembership(Track track) {
+    if (_sessionIdentity() == null) {
+      return const TrackInPlaylistResult(known: true, matches: []);
+    }
+    final key = _membershipKey(track);
+    final entry = _membership[key];
+    if (entry != null && DateTime.now().isBefore(entry.expiresAt)) {
+      return entry.result;
+    }
+    _membership.remove(key);
+    final matches = <PlaylistTrackMatch>[];
+    for (final playlist in _playlists.where((p) => p.isLocal)) {
+      final loadedAt = _tracksLoadedAt[playlist.id];
+      if (loadedAt == null ||
+          DateTime.now().difference(loadedAt) >= const Duration(seconds: 60)) {
+        continue;
+      }
+      for (final item in _tracksByPlaylist[playlist.id] ?? <PlaylistTrack>[]) {
+        if (item.trackId == track.id.toString() &&
+            item.source == track.source &&
+            item.itemId != null) {
+          matches.add(
+            PlaylistTrackMatch(
+              playlistId: playlist.id,
+              playlistName: playlist.name,
+              itemId: item.itemId!,
+            ),
+          );
+        }
+      }
+    }
+    return TrackInPlaylistResult(
+      known: matches.isNotEmpty,
+      matches: List.unmodifiable(matches),
+      complete: false,
+    );
+  }
+
+  void _cacheMembership(String key, TrackInPlaylistResult result) {
+    _membership.removeWhere(
+      (_, entry) => !DateTime.now().isBefore(entry.expiresAt),
+    );
+    _membership.remove(key);
+    if (_membership.length >= 256) _membership.remove(_membership.keys.first);
+    _membership[key] = _MembershipEntry(result);
+  }
+
+  void _rewriteMembership(
+    TrackInPlaylistResult Function(String, TrackInPlaylistResult) update,
+  ) {
+    _membership.removeWhere(
+      (_, entry) => !DateTime.now().isBefore(entry.expiresAt),
+    );
+    for (final entry in _membership.entries.toList()) {
+      _membership[entry.key] = _MembershipEntry(
+        update(entry.key, entry.value.result),
+        expiresAt: entry.value.expiresAt,
+      );
+    }
+  }
+
+  void _changeMembership(
+    Track track,
+    int playlistId,
+    PlaylistTrackMatch? match,
+  ) {
+    final key = _membershipKey(track);
+    final previous = cachedTrackMembership(track);
+    final matches = previous.matches
+        .where((m) => m.playlistId != playlistId)
+        .toList();
+    if (match != null) matches.add(match);
+    _cacheMembership(
+      key,
+      TrackInPlaylistResult(
+        known: previous.complete || matches.isNotEmpty,
+        matches: List.unmodifiable(matches),
+        complete: previous.complete,
+      ),
+    );
+    _membershipReads[key]?.changes[playlistId] = match;
+  }
+
+  // Operations without per-track item IDs cannot safely patch membership.
+  void _invalidateMembership() {
+    _membershipEpoch++;
+    _membership.clear();
+    _tracksLoadedAt.clear();
+    for (final read in _membershipReads.values) {
+      read.invalidated = true;
+    }
+    _membershipReads.clear();
+  }
+
+  void _reconcileMembership(int playlistId, List<PlaylistTrack> tracks) {
+    final playlist = _playlist(playlistId);
+    if (playlist == null || !playlist.isLocal) return;
+    final matches = <String, PlaylistTrackMatch>{
+      for (final track in tracks)
+        if (track.itemId != null)
+          '${track.source.name}:${track.trackId}': PlaylistTrackMatch(
+            playlistId: playlistId,
+            playlistName: playlist.name,
+            itemId: track.itemId!,
+          ),
+    };
+    _rewriteMembership((key, previous) {
+      final remaining = previous.matches
+          .where((m) => m.playlistId != playlistId)
+          .toList();
+      final match = matches[key];
+      if (match != null) remaining.add(match);
+      return TrackInPlaylistResult(
+        known: previous.complete || remaining.isNotEmpty,
+        complete: previous.complete,
+        matches: List.unmodifiable(remaining),
+      );
+    });
+    for (final pending in _membershipReads.entries) {
+      pending.value.changes[playlistId] = matches[pending.key];
+    }
+  }
 
   void _invalidateLoadsForMutation([int? playlistId]) {
     _playlistLoadGeneration++;
@@ -253,6 +413,14 @@ class PlaylistService extends ChangeNotifier {
             ? incoming
             : mergePlaylistState(current, incoming);
       }).toList();
+      if (_playlists.length != currentById.length ||
+          _playlists.any(
+            (p) =>
+                currentById[p.id]?.contentRevision != p.contentRevision ||
+                currentById[p.id]?.name != p.name,
+          )) {
+        _invalidateMembership();
+      }
     } catch (error) {
       StructuredLogService.log('[PlaylistService] 加载歌单失败: $error');
     } finally {
@@ -330,6 +498,7 @@ class PlaylistService extends ChangeNotifier {
       if (!result.ok || !_isCurrentSession(session)) return null;
       _invalidateLoadsForMutation();
       final playlist = _playlistFromResponse(result.data);
+      _invalidateMembership();
       notifyListeners();
       return playlist;
     } catch (error) {
@@ -351,6 +520,23 @@ class PlaylistService extends ChangeNotifier {
       if (!result.ok || !_isCurrentSession(session)) return false;
       _invalidateLoadsForMutation(playlistId);
       if (_playlistFromResponse(result.data) == null) return false;
+      _rewriteMembership((key, previous) {
+        return TrackInPlaylistResult(
+          known: previous.known,
+          complete: previous.complete,
+          matches: List.unmodifiable(
+            previous.matches.map(
+              (m) => m.playlistId == playlistId
+                  ? PlaylistTrackMatch(
+                      playlistId: playlistId,
+                      playlistName: name.trim(),
+                      itemId: m.itemId,
+                    )
+                  : m,
+            ),
+          ),
+        );
+      });
       notifyListeners();
       return true;
     } catch (error) {
@@ -373,6 +559,20 @@ class PlaylistService extends ChangeNotifier {
       _invalidateLoadsForMutation(playlistId);
       _playlists.removeWhere((item) => item.id == playlistId);
       _tracksByPlaylist.remove(playlistId);
+      _tracksLoadedAt.remove(playlistId);
+      _rewriteMembership((key, previous) {
+        final matches = previous.matches
+            .where((m) => m.playlistId != playlistId)
+            .toList();
+        return TrackInPlaylistResult(
+          known: previous.complete || matches.isNotEmpty,
+          complete: previous.complete,
+          matches: List.unmodifiable(matches),
+        );
+      });
+      for (final read in _membershipReads.values) {
+        read.changes[playlistId] = null;
+      }
       if (_currentPlaylistId == playlistId) _currentPlaylistId = null;
       notifyListeners();
       return true;
@@ -398,6 +598,23 @@ class PlaylistService extends ChangeNotifier {
       if (!result.ok || !_isCurrentSession(session)) return false;
       _invalidateLoadsForMutation(playlistId);
       _playlistFromResponse(result.data);
+      final itemId = result.data is Map
+          ? (result.data['itemId'] as num?)?.toInt()
+          : null;
+      if (itemId != null) {
+        _changeMembership(
+          track,
+          playlistId,
+          PlaylistTrackMatch(
+            playlistId: playlistId,
+            playlistName: _playlist(playlistId)!.name,
+            itemId: itemId,
+          ),
+        );
+      } else {
+        _invalidateMembership();
+      }
+      notifyListeners();
       await _refreshCurrentTracks(playlistId);
       if (!_isCurrentSession(session)) return false;
       notifyListeners();
@@ -437,6 +654,8 @@ class PlaylistService extends ChangeNotifier {
       _invalidateLoadsForMutation(playlistId);
       final added = (data['addedCount'] as num?)?.toInt() ?? 0;
       _playlistFromResponse(data);
+      _invalidateMembership();
+      notifyListeners();
       await _refreshCurrentTracks(playlistId);
       if (!_isCurrentSession(session)) {
         return {'successCount': 0, 'skipCount': 0, 'failCount': tracks.length};
@@ -482,6 +701,8 @@ class PlaylistService extends ChangeNotifier {
           .map((item) => PlaylistTrack.fromJson(item as Map<String, dynamic>))
           .toList();
       _tracksByPlaylist[playlistId] = tracks;
+      _tracksLoadedAt[playlistId] = DateTime.now();
+      _reconcileMembership(playlistId, tracks);
       final current = _playlist(playlistId);
       if (current != null) {
         _upsertPlaylist(
@@ -527,6 +748,7 @@ class PlaylistService extends ChangeNotifier {
       _tracksByPlaylist[playlistId]?.removeWhere(
         (item) => item.itemId == itemId,
       );
+      _changeMembership(track.toTrack(), playlistId, null);
       notifyListeners();
       return true;
     } catch (error) {
@@ -585,6 +807,9 @@ class PlaylistService extends ChangeNotifier {
       _tracksByPlaylist[playlistId]?.removeWhere(
         (track) => itemIds.contains(track.itemId),
       );
+      for (final track in tracks.where((t) => itemIds.contains(t.itemId))) {
+        _changeMembership(track.toTrack(), playlistId, null);
+      }
       notifyListeners();
       return removed;
     } catch (error) {
@@ -615,6 +840,8 @@ class PlaylistService extends ChangeNotifier {
       if (!result.ok || !_isCurrentSession(session)) return false;
       _invalidateLoadsForMutation(playlistId);
       _playlistFromResponse(result.data);
+      _invalidateMembership();
+      notifyListeners();
       await _refreshCurrentTracks(playlistId);
       if (!_isCurrentSession(session)) return false;
       notifyListeners();
@@ -711,6 +938,25 @@ class PlaylistService extends ChangeNotifier {
   }
 
   Future<TrackInPlaylistResult> isTrackInAnyPlaylist(Track track) async {
+    final cached = cachedTrackMembership(track);
+    if (cached.known && cached.complete) return cached;
+    final key = _membershipKey(track);
+    final pending = _membershipReads[key];
+    if (pending != null) return pending.future;
+    final read = _MembershipRead();
+    _membershipReads[key] = read;
+    read.future = _readMembership(track, read);
+    try {
+      return await read.future;
+    } finally {
+      if (identical(_membershipReads[key], read)) _membershipReads.remove(key);
+    }
+  }
+
+  Future<TrackInPlaylistResult> _readMembership(
+    Track track,
+    _MembershipRead read,
+  ) async {
     final session = _sessionIdentity();
     if (session == null) {
       return const TrackInPlaylistResult(known: true, matches: []);
@@ -723,11 +969,15 @@ class PlaylistService extends ChangeNotifier {
           'source': track.source.name,
         },
         timeout: const Duration(seconds: 10),
+        dedupe: false,
       );
       final data = result.data;
       if (!result.ok ||
           data is! Map<String, dynamic> ||
-          !_isCurrentSession(session)) {
+          data['status'] != 200 ||
+          data['matches'] is! List ||
+          !_isCurrentSession(session) ||
+          read.invalidated) {
         return const TrackInPlaylistResult(known: false, matches: []);
       }
       final matches = (data['matches'] as List<dynamic>? ?? const [])
@@ -735,7 +985,24 @@ class PlaylistService extends ChangeNotifier {
             (item) => PlaylistTrackMatch.fromJson(item as Map<String, dynamic>),
           )
           .toList();
-      return TrackInPlaylistResult(known: true, matches: matches);
+      for (final change in read.changes.entries) {
+        matches.removeWhere((m) => m.playlistId == change.key);
+        if (change.value != null) matches.add(change.value!);
+      }
+      final value = TrackInPlaylistResult(
+        known: true,
+        matches: List.unmodifiable(
+          matches.map(
+            (m) => PlaylistTrackMatch(
+              playlistId: m.playlistId,
+              playlistName: _playlist(m.playlistId)?.name ?? m.playlistName,
+              itemId: m.itemId,
+            ),
+          ),
+        ),
+      );
+      _cacheMembership(_membershipKey(track), value);
+      return value;
     } catch (error) {
       StructuredLogService.log('[PlaylistService] 查询收藏状态失败: $error');
       return const TrackInPlaylistResult(known: false, matches: []);

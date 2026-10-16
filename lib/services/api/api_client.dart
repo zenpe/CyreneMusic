@@ -34,13 +34,19 @@ class ApiClient {
   }
 
   Options _buildOptions({
+    required String path,
     required String method,
     Map<String, String>? headers,
     String? contentType,
     required ResponseType responseType,
     required bool auth,
     Duration? timeout,
+    String? backendUrl,
+    int? backendRevision,
   }) {
+    backendUrl ??= UrlService().baseUrl;
+    backendRevision ??= UrlService().backendRevision;
+    final managedBackend = _usesConfiguredBackend(path, backendUrl);
     var options = Options(
       method: method,
       headers: headers,
@@ -48,6 +54,8 @@ class ApiClient {
       responseType: responseType,
       extra: <String, dynamic>{
         'auth': auth,
+        'backendBaseUrl': backendUrl,
+        if (managedBackend) 'backendRevision': backendRevision,
         if (auth) 'authTokenSnapshot': AuthTokenStore.token,
       },
     );
@@ -74,6 +82,9 @@ class ApiClient {
     bool dedupe = true,
     Duration? cacheTtl,
   }) async {
+    final backendUrl = UrlService().baseUrl;
+    final backendRevision = UrlService().backendRevision;
+    final managedBackend = _usesConfiguredBackend(path, backendUrl);
     final normalizedMethod = method.toUpperCase();
     final isGetRequest = normalizedMethod == 'GET' && data == null;
     final shouldCache = isGetRequest && _isCacheTtlEnabled(cacheTtl);
@@ -82,6 +93,8 @@ class ApiClient {
     final getRequestKey = (shouldCache || shouldDedupe)
         ? _buildGetJsonRequestKey(
             path: path,
+            backendUrl: backendUrl,
+            backendRevision: managedBackend ? backendRevision : null,
             queryParameters: queryParameters,
             headers: headers,
             auth: auth,
@@ -114,7 +127,17 @@ class ApiClient {
           timeout: timeout,
           contentType: contentType,
           cancelToken: cancelToken,
+          backendUrl: backendUrl,
+          backendRevision: backendRevision,
         ).then((result) {
+          if (managedBackend &&
+              backendRevision != UrlService().backendRevision) {
+            return ApiResult<dynamic>(
+              statusCode: 0,
+              isNetworkError: true,
+              text: '后端已切换，旧请求已失效',
+            );
+          }
           if (shouldCache && getRequestKey != null && result.ok) {
             _writeGetJsonCache(getRequestKey, result, cacheTtl!);
           }
@@ -124,7 +147,9 @@ class ApiClient {
     if (shouldDedupe && getRequestKey != null) {
       _inFlightGetJsonRequests[getRequestKey] = requestFuture;
       requestFuture.whenComplete(() {
-        _inFlightGetJsonRequests.remove(getRequestKey);
+        if (identical(_inFlightGetJsonRequests[getRequestKey], requestFuture)) {
+          _inFlightGetJsonRequests.remove(getRequestKey);
+        }
       });
     }
 
@@ -141,9 +166,14 @@ class ApiClient {
     Duration? timeout,
     String? contentType,
     CancelToken? cancelToken,
+    required String backendUrl,
+    required int backendRevision,
   }) async {
     try {
       final options = _buildOptions(
+        path: path,
+        backendUrl: backendUrl,
+        backendRevision: backendRevision,
         method: method,
         headers: headers,
         contentType: contentType,
@@ -204,6 +234,7 @@ class ApiClient {
   }) async {
     try {
       final options = _buildOptions(
+        path: path,
         method: method,
         headers: headers,
         contentType: contentType,
@@ -250,6 +281,7 @@ class ApiClient {
   }) async {
     try {
       final options = _buildOptions(
+        path: path,
         method: method,
         headers: headers,
         contentType: contentType,
@@ -425,6 +457,8 @@ class ApiClient {
 
   String _buildGetJsonRequestKey({
     required String path,
+    required String backendUrl,
+    int? backendRevision,
     Map<String, dynamic>? queryParameters,
     Map<String, String>? headers,
     required bool auth,
@@ -432,6 +466,8 @@ class ApiClient {
   }) {
     final payload = <String, dynamic>{
       'path': path,
+      if (backendRevision != null) 'backendUrl': backendUrl,
+      'backendRevision': ?backendRevision,
       'query': _normalizeCacheKeyValue(
         queryParameters ?? const <String, dynamic>{},
       ),
@@ -481,11 +517,49 @@ class _BaseUrlInterceptor extends Interceptor {
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     if (!options.path.startsWith('http://') &&
         !options.path.startsWith('https://')) {
-      options.baseUrl = UrlService().baseUrl;
+      options.baseUrl = options.extra['backendBaseUrl'] as String;
+    }
+    if (_isStaleBackendRequest(options)) {
+      handler.reject(_backendChangedError(options));
+      return;
     }
     handler.next(options);
   }
+
+  @override
+  void onResponse(Response response, ResponseInterceptorHandler handler) {
+    if (_isStaleBackendRequest(response.requestOptions)) {
+      handler.reject(_backendChangedError(response.requestOptions));
+      return;
+    }
+    handler.next(response);
+  }
+
+  @override
+  void onError(DioException error, ErrorInterceptorHandler handler) {
+    handler.next(
+      _isStaleBackendRequest(error.requestOptions)
+          ? _backendChangedError(error.requestOptions)
+          : error,
+    );
+  }
 }
+
+bool _usesConfiguredBackend(String path, String backendUrl) =>
+    (!path.startsWith('http://') && !path.startsWith('https://')) ||
+    path == backendUrl ||
+    path.startsWith('$backendUrl/');
+
+bool _isStaleBackendRequest(RequestOptions options) {
+  final revision = options.extra['backendRevision'];
+  return revision is int && revision != UrlService().backendRevision;
+}
+
+DioException _backendChangedError(RequestOptions options) => DioException(
+  requestOptions: options,
+  type: DioExceptionType.cancel,
+  message: '后端已切换，旧请求已失效',
+);
 
 class _AuthInterceptor extends Interceptor {
   @override
@@ -542,6 +616,7 @@ class _LogInterceptor extends Interceptor {
 
 class _UnauthorizedInterceptor extends Interceptor {
   bool _shouldHandleUnauthorized(RequestOptions options) {
+    if (_isStaleBackendRequest(options)) return false;
     final authEnabled = options.extra['auth'] != false;
     if (!authEnabled) return false;
 

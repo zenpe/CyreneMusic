@@ -333,12 +333,7 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
     if (_artistError != null &&
         _secondaryArtistId == null &&
         _secondaryAlbumId == null) {
-      return Center(
-        child: Text(
-          '搜索失败: $_artistError',
-          style: TextStyle(color: CupertinoColors.systemGrey),
-        ),
-      );
+      return _buildArtistSearchFailure();
     }
 
     if (_artistResults.isEmpty &&

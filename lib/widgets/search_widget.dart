@@ -447,6 +447,7 @@ class _SearchWidgetState extends State<SearchWidget> {
       );
       if (!mounted ||
           requestId != _artistSearchRequestId ||
+          cancelToken.isCancelled ||
           normalizedKeyword != _lastTrackSearchKeyword) {
         return;
       }
@@ -457,6 +458,7 @@ class _SearchWidgetState extends State<SearchWidget> {
     } catch (e) {
       if (!mounted ||
           requestId != _artistSearchRequestId ||
+          cancelToken.isCancelled ||
           normalizedKeyword != _lastTrackSearchKeyword) {
         return;
       }

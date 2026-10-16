@@ -22,6 +22,7 @@ class AuthFacade {
   User? get currentUser => _authService.currentUser;
 
   String? get token => _authService.token;
+  String? get sessionIdentity => _authService.sessionIdentity;
 
   void addAuthStateListener(VoidCallback listener) {
     _authService.addListener(listener);

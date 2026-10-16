@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/player_service.dart';
 import '../../services/playlist_service.dart';
+import '../../widgets/playlist_membership_state.dart';
 import '../../services/download_service.dart';
 import '../../services/music_service.dart';
 import '../../models/lyric_line.dart';
@@ -1547,56 +1548,29 @@ class _FavoriteButton extends StatefulWidget {
   State<_FavoriteButton> createState() => _FavoriteButtonState();
 }
 
-class _FavoriteButtonState extends State<_FavoriteButton> {
-  bool _isInPlaylist = false;
-  bool _isLoading = true;
-  List<String> _playlistNames = [];
-  List<int> _playlistIds = [];
-  List<PlaylistTrackMatch> _playlistMatches = [];
-  int _checkGeneration = 0;
-
+class _FavoriteButtonState extends State<_FavoriteButton>
+    with PlaylistMembershipState<_FavoriteButton> {
   @override
-  void initState() {
-    super.initState();
-    _checkIfInPlaylist();
-  }
+  Track get membershipTrack => widget.track;
+  bool get _isInPlaylist => membershipResult.inPlaylist;
+  bool get _isLoading => membershipLoading;
+  List<String> get _playlistNames => membershipResult.playlistNames;
+  List<int> get _playlistIds => membershipResult.playlistIds;
 
-  @override
-  void didUpdateWidget(_FavoriteButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.track.id != widget.track.id ||
-        oldWidget.track.source != widget.track.source) {
-      _checkIfInPlaylist();
-    }
-  }
-
-  Future<void> _checkIfInPlaylist() async {
-    final generation = ++_checkGeneration;
-    setState(() => _isLoading = true);
-
-    final playlistService = PlaylistService();
-    final result = await playlistService.isTrackInAnyPlaylist(widget.track);
-
-    if (mounted && generation == _checkGeneration) {
-      setState(() {
-        if (result.known) {
-          _isInPlaylist = result.inPlaylist;
-          _playlistNames = result.playlistNames;
-          _playlistIds = result.playlistIds;
-          _playlistMatches = result.matches;
-        }
-        _isLoading = false;
-      });
-    }
-  }
+  Future<void> _checkIfInPlaylist() => refreshMembership();
 
   Future<void> _removeFromPlaylists() async {
     if (_playlistIds.isEmpty) return;
 
     final playlistService = PlaylistService();
 
-    for (final match in _playlistMatches) {
-      await playlistService.removeTrackMatch(match, widget.track);
+    final track = widget.track;
+    final contextIdentity = playlistService.membershipContext;
+    final membership = await playlistService.isTrackInAnyPlaylist(track);
+    if (!mounted || !membership.known || !membership.complete) return;
+    for (final match in membership.matches) {
+      if (playlistService.membershipContext != contextIdentity) return;
+      await playlistService.removeTrackMatch(match, track);
     }
 
     // 刷新状态
@@ -1620,8 +1594,9 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
             decoration: BoxDecoration(
               color: (isDark ? const Color(0xFF141418) : Colors.white)
                   .withValues(alpha: 0.92),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(28)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(28),
+              ),
               border: Border(
                 top: BorderSide(
                   color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.4),
@@ -1650,12 +1625,16 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
                     ),
                   ),
                   Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
                     child: Text(
                       '已收藏到: ${_playlistNames.join(", ")}',
                       style: TextStyle(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.75,
+                        ),
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                       ),
@@ -1719,7 +1698,9 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
                     onTap: () {
                       Navigator.pop(context);
                       MobilePlayerDialogs.showAddToPlaylist(
-                          context, widget.track);
+                        context,
+                        widget.track,
+                      );
                     },
                   ),
                   const SizedBox(height: 16),
@@ -1748,6 +1729,7 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
       );
     }
 
+    if (!membershipResult.known) return buildUnknownMembershipButton();
     final tooltip = _isInPlaylist
         ? '已收藏到: ${_playlistNames.join(", ")}'
         : '添加到歌单';
@@ -1755,7 +1737,9 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
     return IconButton(
       icon: Icon(
         _isInPlaylist ? Icons.favorite : Icons.favorite_border,
-        color: _isInPlaylist ? Colors.redAccent : Colors.white.withValues(alpha: 0.8),
+        color: _isInPlaylist
+            ? Colors.redAccent
+            : Colors.white.withValues(alpha: 0.8),
       ),
       onPressed: () {
         HapticFeedback.mediumImpact();

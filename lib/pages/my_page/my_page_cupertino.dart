@@ -40,7 +40,7 @@ extension _MyPageCupertinoUI on _MyPageState {
       child: SafeArea(
         child: CustomScrollView(
           slivers: [
-            CupertinoSliverRefreshControl(onRefresh: () async { await _playlistService.loadPlaylists(); await _loadStats(); }),
+            CupertinoSliverRefreshControl(onRefresh: () async { await _playlistService.loadPlaylists(); await _loadStats(forceRefresh: true); }),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -50,6 +50,7 @@ extension _MyPageCupertinoUI on _MyPageState {
                     _buildCupertinoUserCard(isDark),
                     const SizedBox(height: 16),
                     _buildCupertinoStatsCard(isDark),
+                    if (_statsError != null) _buildStatsError(),
                     const SizedBox(height: 24),
                     _buildCupertinoSectionHeader('我的歌单', isDark, actions: [
                       CupertinoButton(padding: EdgeInsets.zero, onPressed: _showMusicTasteDialog, child: const Icon(CupertinoIcons.sparkles, size: 22)),
@@ -128,6 +129,7 @@ extension _MyPageCupertinoUI on _MyPageState {
       return Container(padding: const EdgeInsets.all(32), decoration: BoxDecoration(color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white, borderRadius: BorderRadius.circular(12)), child: const Center(child: CupertinoActivityIndicator()));
     }
     if (_statsData == null) {
+      if (_statsError != null) return const SizedBox.shrink();
       return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white, borderRadius: BorderRadius.circular(12)), child: Text('暂无统计数据', style: TextStyle(color: CupertinoColors.systemGrey)));
     }
 

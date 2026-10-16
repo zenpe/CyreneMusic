@@ -11,6 +11,8 @@ import '../models/song_detail.dart';
 import 'cache_service.dart';
 import 'notification_service.dart';
 import 'audio_quality_service.dart';
+import 'download_file_writer.dart';
+import '../utils/audio_request_headers.dart';
 
 /// 下载进度回调
 typedef DownloadProgressCallback = void Function(double progress);
@@ -46,9 +48,17 @@ class DownloadService extends ChangeNotifier {
 
   String? _downloadPath;
   final Map<String, DownloadTask> _downloadTasks = {};
+  final Set<String> _activeDownloads = {};
+  final DownloadFileWriter _fileWriter = DownloadFileWriter();
 
   String? get downloadPath => _downloadPath;
   Map<String, DownloadTask> get downloadTasks => _downloadTasks;
+
+  bool isDownloading(Track track) =>
+      _activeDownloads.contains('${track.source.name}_${track.id}') &&
+      !(_downloadTasks['${track.source.name}_${track.id}']?.isCompleted ??
+          false) &&
+      !(_downloadTasks['${track.source.name}_${track.id}']?.isFailed ?? false);
 
   /// 加载下载路径
   Future<void> _loadDownloadPath() async {
@@ -211,48 +221,6 @@ class DownloadService extends ChangeNotifier {
     }
   }
 
-  /// 直接下载音频文件
-  Future<bool> _downloadFromUrl(
-    String url,
-    String outputPath,
-    DownloadProgressCallback? onProgress,
-  ) async {
-    try {
-      StructuredLogService.log('🌐 [DownloadService] 从网络下载: $url');
-
-      final request = http.Request('GET', Uri.parse(url));
-      final response = await request.send();
-
-      if (response.statusCode != 200) {
-        throw Exception('HTTP ${response.statusCode}');
-      }
-
-      final contentLength = response.contentLength ?? 0;
-      final outputFile = File(outputPath);
-      final sink = outputFile.openWrite();
-
-      int downloaded = 0;
-
-      await for (final chunk in response.stream) {
-        sink.add(chunk);
-        downloaded += chunk.length;
-
-        if (contentLength > 0 && onProgress != null) {
-          final progress = downloaded / contentLength;
-          onProgress(progress);
-        }
-      }
-
-      await sink.close();
-
-      StructuredLogService.log('✅ [DownloadService] 从网络下载成功: $outputPath');
-      return true;
-    } catch (e) {
-      StructuredLogService.log('❌ [DownloadService] 从网络下载失败: $e');
-      return false;
-    }
-  }
-
   /// 下载歌曲
   Future<bool> downloadSong(
     Track track,
@@ -264,93 +232,84 @@ class DownloadService extends ChangeNotifier {
       return false;
     }
 
+    final trackId = '${track.source.name}_${track.id}';
+    // Acquire before the first await, including while checking existing files.
+    if (!_activeDownloads.add(trackId)) return false;
+    DownloadTask? task;
     try {
       final fileName = _generateSafeFileName(track, songDetail.level);
       final outputPath = '$_downloadPath${Platform.pathSeparator}$fileName';
-      final trackId = '${track.source.name}_${track.id}';
-
-      // 检查文件是否已存在
-      if (await File(outputPath).exists()) {
-        StructuredLogService.log('⚠️ [DownloadService] 文件已存在: $outputPath');
-        return false;
-      }
-
-      // 创建下载任务
-      final task = DownloadTask(track: track, fileName: fileName);
-      _downloadTasks[trackId] = task;
+      if (await File(outputPath).exists()) return false;
+      final currentTask = DownloadTask(track: track, fileName: fileName);
+      task = currentTask;
+      _downloadTasks[trackId] = currentTask;
       notifyListeners();
 
-      StructuredLogService.log('🎵 [DownloadService] 开始下载: ${track.name}');
-
-      bool success = false;
-
-      // 优先从缓存下载
-      final cacheQuality = _resolveCacheQualityKey(songDetail.level);
-      if (CacheService().isCached(track, quality: cacheQuality)) {
-        StructuredLogService.log('📦 [DownloadService] 尝试从缓存下载');
-        success = await _downloadFromCache(
-          track,
-          outputPath,
-          quality: cacheQuality,
-        );
-      }
-
-      // 如果缓存下载失败或没有缓存，从网络下载
-      if (!success) {
-        StructuredLogService.log('🌐 [DownloadService] 从网络下载');
-        success = await _downloadFromUrl(songDetail.url, outputPath, (
-          progress,
-        ) {
-          task.progress = progress;
-          notifyListeners();
-          onProgress?.call(progress);
-        });
-      }
-
-      // 更新任务状态
-      if (success) {
-        task.isCompleted = true;
-        task.progress = 1.0;
-        StructuredLogService.log('✅ [DownloadService] 下载完成: $fileName');
-
-        // 启动元数据嵌入服务 (封面 & 歌词)
-        final coverUrl = songDetail.pic.isNotEmpty
-            ? songDetail.pic
-            : track.picUrl;
+      final coverUrl = songDetail.pic.isNotEmpty
+          ? songDetail.pic
+          : track.picUrl;
+      await _fileWriter.write(outputPath, (stagedFile) async {
+        final cacheQuality = _resolveCacheQualityKey(songDetail.level);
+        var copied = false;
+        if (CacheService().isCached(track, quality: cacheQuality)) {
+          copied = await _downloadFromCache(
+            track,
+            stagedFile.path,
+            quality: cacheQuality,
+          );
+        }
+        if (!copied) {
+          await _fileWriter.download(
+            Uri.parse(songDetail.url),
+            stagedFile,
+            headers: buildAudioRequestHeaders(track.source),
+            onProgress: (progress) {
+              currentTask.progress = progress;
+              notifyListeners();
+              onProgress?.call(progress);
+            },
+          );
+        }
+        // Metadata is prepared before publishing the completed download.
         await _embedMetadata(
-          outputPath,
+          stagedFile.path,
           coverUrl: coverUrl,
           lyrics: songDetail.lyric,
           title: track.name,
           artist: track.artists,
           album: track.album,
         );
-
-        // 发送下载完成通知
-        await _showDownloadCompleteNotification(
-          trackName: track.name,
-          artist: track.artists,
-          filePath: outputPath,
-          coverUrl: coverUrl,
-        );
-      } else {
-        task.isFailed = true;
-        task.errorMessage = '下载失败';
-        StructuredLogService.log('❌ [DownloadService] 下载失败: $fileName');
-      }
-
-      notifyListeners();
-
-      // 5秒后移除任务
-      Future.delayed(const Duration(seconds: 5), () {
-        _downloadTasks.remove(trackId);
-        notifyListeners();
       });
-
-      return success;
+      currentTask.isCompleted = true;
+      currentTask.progress = 1;
+      notifyListeners();
+      await _showDownloadCompleteNotification(
+        trackName: track.name,
+        artist: track.artists,
+        filePath: outputPath,
+        coverUrl: coverUrl,
+      );
+      return true;
     } catch (e) {
+      if (task != null) {
+        task.isFailed = true;
+        task.errorMessage = '下载失败，请重试';
+        notifyListeners();
+      }
       StructuredLogService.log('❌ [DownloadService] 下载歌曲失败: $e');
       return false;
+    } finally {
+      _activeDownloads.remove(trackId);
+      final finishedTask = task;
+      if (finishedTask != null) {
+        Future.delayed(const Duration(seconds: 5), () {
+          // A previous attempt's timer must not remove a newer retry.
+          if (identical(_downloadTasks[trackId], finishedTask)) {
+            _downloadTasks.remove(trackId);
+            notifyListeners();
+          }
+        });
+      }
     }
   }
 
@@ -361,6 +320,7 @@ class DownloadService extends ChangeNotifier {
     try {
       final fileName = _generateSafeFileName(track, level);
       final filePath = '$_downloadPath${Platform.pathSeparator}$fileName';
+      if (_fileWriter.isWriting(filePath)) return false;
       return await File(filePath).exists();
     } catch (e) {
       return false;
@@ -374,6 +334,7 @@ class DownloadService extends ChangeNotifier {
     try {
       final fileName = _generateSafeFileName(track, level);
       final filePath = '$_downloadPath${Platform.pathSeparator}$fileName';
+      if (_fileWriter.isWriting(filePath)) return null;
 
       if (await File(filePath).exists()) {
         return filePath;
@@ -394,6 +355,7 @@ class DownloadService extends ChangeNotifier {
     required String artist,
     String? album,
   }) async {
+    final metadataFile = File('$filePath.metadata');
     try {
       final isMp3 = filePath.toLowerCase().endsWith('.mp3');
       final isFlac = filePath.toLowerCase().endsWith('.flac');
@@ -406,10 +368,15 @@ class DownloadService extends ChangeNotifier {
 
       Uint8List? coverData;
       if (coverUrl != null && coverUrl.isNotEmpty) {
-        final resp = await http
-            .get(Uri.parse(coverUrl))
-            .timeout(const Duration(seconds: 10));
-        if (resp.statusCode == 200) coverData = resp.bodyBytes;
+        final client = http.Client();
+        try {
+          final resp = await client
+              .get(Uri.parse(coverUrl))
+              .timeout(const Duration(seconds: 10));
+          if (resp.statusCode == 200) coverData = resp.bodyBytes;
+        } finally {
+          client.close();
+        }
       }
 
       final audioFile = File(filePath);
@@ -417,7 +384,7 @@ class DownloadService extends ChangeNotifier {
 
       if (isMp3) {
         await _embedMp3Metadata(
-          filePath,
+          metadataFile.path,
           originalData,
           coverData,
           lyrics,
@@ -427,7 +394,7 @@ class DownloadService extends ChangeNotifier {
         );
       } else if (isFlac) {
         await _embedFlacMetadata(
-          filePath,
+          metadataFile.path,
           originalData,
           coverData,
           lyrics,
@@ -436,8 +403,15 @@ class DownloadService extends ChangeNotifier {
           album,
         );
       }
+      await metadataFile.rename(filePath);
     } catch (e) {
       StructuredLogService.log('❌ [DownloadService] 元数据嵌入失败: $e');
+    } finally {
+      try {
+        if (await metadataFile.exists()) await metadataFile.delete();
+      } on FileSystemException catch (e) {
+        StructuredLogService.log('⚠️ [DownloadService] 元数据临时文件清理失败: $e');
+      }
     }
   }
 

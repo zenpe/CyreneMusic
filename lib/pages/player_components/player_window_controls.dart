@@ -1113,9 +1113,7 @@ class _DownloadButton extends StatelessWidget {
       animation: DownloadService(),
       builder: (context, child) {
         final downloadService = DownloadService();
-        final isDownloading = downloadService.downloadTasks.containsKey(
-          '${track.source.name}_${track.id}'
-        );
+        final isDownloading = downloadService.isDownloading(track);
 
         return Tooltip(
           message: isDownloading ? '下载中...' : '下载',

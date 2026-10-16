@@ -133,7 +133,7 @@ extension _MyPageMaterialUI on _MyPageState {
           RefreshIndicator(
             onRefresh: () async {
               await _playlistService.loadPlaylists();
-              await _loadStats();
+              await _loadStats(forceRefresh: true);
             },
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(),
@@ -170,6 +170,9 @@ extension _MyPageMaterialUI on _MyPageState {
                     ),
                   ),
                 ],
+
+                if (_statsError != null)
+                  SliverToBoxAdapter(child: _buildStatsError()),
 
                 // 歌单标题与操作栏
                 SliverToBoxAdapter(

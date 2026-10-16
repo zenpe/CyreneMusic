@@ -119,7 +119,6 @@ extension _SearchWidgetFluent on _SearchWidgetState {
 
   /// Fluent UI 风格歌手结果
   Widget _buildFluentArtistResults() {
-    final fluentTheme = fluent.FluentTheme.of(context);
     final keyword = _searchService.currentKeyword;
 
     if (keyword.isEmpty) {
@@ -139,12 +138,7 @@ extension _SearchWidgetFluent on _SearchWidgetState {
     if (_artistError != null &&
         _secondaryArtistId == null &&
         _secondaryAlbumId == null) {
-      return Center(
-        child: Text(
-          '搜索失败: $_artistError',
-          style: TextStyle(color: fluentTheme.resources.textFillColorSecondary),
-        ),
-      );
+      return _buildArtistSearchFailure();
     }
 
     if (_artistResults.isEmpty &&

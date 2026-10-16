@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../../services/player_service.dart';
 import '../../services/playlist_service.dart';
+import '../../widgets/playlist_membership_state.dart';
 import '../../services/lyric_style_service.dart';
 import '../../services/lyric_font_service.dart';
 import '../../services/playback_mode_service.dart';
@@ -678,59 +679,29 @@ class _ImmersiveFavoriteButton extends StatefulWidget {
       _ImmersiveFavoriteButtonState();
 }
 
-class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
-  bool _isInPlaylist = false;
-  bool _isLoading = true;
-  List<String> _playlistNames = [];
-  List<int> _playlistIds = [];
-  List<PlaylistTrackMatch> _playlistMatches = [];
-  int _checkGeneration = 0;
-
+class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton>
+    with PlaylistMembershipState<_ImmersiveFavoriteButton> {
   @override
-  void initState() {
-    super.initState();
-    _checkIfInPlaylist();
-  }
+  Track get membershipTrack => widget.track;
+  bool get _isInPlaylist => membershipResult.inPlaylist;
+  bool get _isLoading => membershipLoading;
+  List<String> get _playlistNames => membershipResult.playlistNames;
+  List<int> get _playlistIds => membershipResult.playlistIds;
 
-  @override
-  void didUpdateWidget(_ImmersiveFavoriteButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // 当歌曲变化时重新检查
-    if (oldWidget.track.id != widget.track.id ||
-        oldWidget.track.source != widget.track.source) {
-      _checkIfInPlaylist();
-    }
-  }
-
-  Future<void> _checkIfInPlaylist() async {
-    final generation = ++_checkGeneration;
-    setState(() => _isLoading = true);
-
-    final playlistService = PlaylistService();
-
-    // 调用后端 API 检查歌曲是否在任何歌单中
-    final result = await playlistService.isTrackInAnyPlaylist(widget.track);
-
-    if (mounted && generation == _checkGeneration) {
-      setState(() {
-        if (result.known) {
-          _isInPlaylist = result.inPlaylist;
-          _playlistNames = result.playlistNames;
-          _playlistIds = result.playlistIds;
-          _playlistMatches = result.matches;
-        }
-        _isLoading = false;
-      });
-    }
-  }
+  Future<void> _checkIfInPlaylist() => refreshMembership();
 
   Future<void> _removeFromPlaylists() async {
     if (_playlistIds.isEmpty) return;
 
     final playlistService = PlaylistService();
 
-    for (final match in _playlistMatches) {
-      await playlistService.removeTrackMatch(match, widget.track);
+    final track = widget.track;
+    final contextIdentity = playlistService.membershipContext;
+    final membership = await playlistService.isTrackInAnyPlaylist(track);
+    if (!mounted || !membership.known || !membership.complete) return;
+    for (final match in membership.matches) {
+      if (playlistService.membershipContext != contextIdentity) return;
+      await playlistService.removeTrackMatch(match, track);
     }
 
     // 刷新状态
@@ -793,10 +764,6 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
       } else if (value == 'add') {
         if (!context.mounted) return;
         PlayerDialogs.showAddToPlaylist(context, widget.track);
-        // 添加后刷新
-        // 由于 dialog 是异步的，这里可能无法立即刷新，需要监听 PlaylistService 或回调
-        // 简单处理：延迟一点刷新
-        Future.delayed(const Duration(seconds: 1), _checkIfInPlaylist);
       }
     });
   }
@@ -817,6 +784,7 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
       );
     }
 
+    if (!membershipResult.known) return buildUnknownMembershipButton();
     final tooltip = _isInPlaylist
         ? '已收藏到: ${_playlistNames.join(", ")}'
         : '添加到歌单';
@@ -826,13 +794,7 @@ class _ImmersiveFavoriteButtonState extends State<_ImmersiveFavoriteButton> {
         if (_isInPlaylist) {
           _showManageMenu(context, details.globalPosition);
         } else {
-          PlayerDialogs.showAddToPlaylist(context, widget.track).then((_) {
-            // 简单处理：延迟一点刷新，确保添加完成
-            Future.delayed(
-              const Duration(milliseconds: 500),
-              _checkIfInPlaylist,
-            );
-          });
+          PlayerDialogs.showAddToPlaylist(context, widget.track);
         }
       },
       child: Tooltip(

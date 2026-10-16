@@ -18,15 +18,44 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _isLoading = true;
   ListeningStatsData? _statsData;
   String? _errorMessage;
+  final List<PlayCountItem> _records = [];
+  int _recordsPage = 0;
+  bool _hasMoreRecords = true;
+  bool _loadingRecords = false;
+  String? _recordsError;
+  bool _recordsNeedRefresh = false;
+  String? _session;
+  int _generation = 0;
 
   @override
   void initState() {
     super.initState();
+    _session = ListeningStatsService().contextIdentity;
+    ListeningStatsService().addListener(_onAuthChanged);
+    _loadStats();
+  }
+
+  @override
+  void dispose() {
+    ListeningStatsService().removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    if (!mounted || _session == ListeningStatsService().contextIdentity) return;
+    _session = ListeningStatsService().contextIdentity;
+    _generation++;
+    _statsData = null;
+    _records.clear();
+    _recordsPage = 0;
+    _hasMoreRecords = true;
     _loadStats();
   }
 
   /// 加载统计数据
-  Future<void> _loadStats() async {
+  Future<void> _loadStats({bool forceRefresh = false}) async {
+    final generation = ++_generation;
+    final session = ListeningStatsService().contextIdentity;
     if (!_authFacade.isLoggedIn) {
       setState(() {
         _isLoading = false;
@@ -36,25 +65,73 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     setState(() {
-      _isLoading = true;
+      _statsData = ListeningStatsService().statsData;
+      _isLoading = _statsData == null;
       _errorMessage = null;
+      _loadingRecords = true;
+      _recordsError = null;
     });
 
     try {
-      // 先同步当前待同步的数据
-      await ListeningStatsService().syncNow();
-
-      // 然后获取最新统计数据
-      final stats = await ListeningStatsService().fetchStats();
+      final service = ListeningStatsService();
+      final results = await Future.wait<Object?>([
+        service.fetchStats(forceRefresh: forceRefresh),
+        service.fetchRecords().then<PlayCountPage?>((page) => page,
+          onError: (Object _) => null),
+      ]);
+      if (!mounted || generation != _generation ||
+          session != ListeningStatsService().contextIdentity) {
+        return;
+      }
+      final stats = results[0] as ListeningStatsData?;
+      final records = results[1] as PlayCountPage?;
       setState(() {
-        _statsData = stats;
+        _statsData = stats ?? service.statsData;
+        _errorMessage = service.lastError;
+        if (records != null) {
+          _records..clear()..addAll(records.records);
+          _recordsPage = records.page;
+          _hasMoreRecords = records.hasMore;
+          _recordsNeedRefresh = false;
+        } else {
+          _recordsError = '播放记录加载失败';
+          _recordsNeedRefresh = true;
+        }
+        _loadingRecords = false;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted || generation != _generation ||
+          session != ListeningStatsService().contextIdentity) {
+        return;
+      }
       setState(() {
-        _errorMessage = '加载统计数据失败: $e';
+        _errorMessage = '加载统计数据失败，请重试';
+        _loadingRecords = false;
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _loadMoreRecords() async {
+    if (_loadingRecords || !_hasMoreRecords) return;
+    final generation = _generation;
+    final session = ListeningStatsService().contextIdentity;
+    setState(() { _loadingRecords = true; _recordsError = null; });
+    try {
+      final page = await ListeningStatsService().fetchRecords(page: _recordsPage + 1);
+      if (!mounted || generation != _generation || session != ListeningStatsService().contextIdentity) return;
+      setState(() {
+        final keys = _records.map((r) => (r.source, r.trackId)).toSet();
+        final added = page.records.where((r) => keys.add((r.source, r.trackId))).toList();
+        _records.addAll(added);
+        _recordsPage = page.page;
+        _hasMoreRecords = page.hasMore && added.isNotEmpty;
+        _loadingRecords = false;
+      });
+    } catch (_) {
+      if (!mounted || generation != _generation || session != ListeningStatsService().contextIdentity) return;
+      setState(() { _loadingRecords = false; _recordsError = '播放记录加载失败，请重试'; });
     }
   }
 
@@ -92,7 +169,7 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
+          : _errorMessage != null && _statsData == null
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -109,7 +186,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       const SizedBox(height: 16),
                       FilledButton.icon(
-                        onPressed: _loadStats,
+                        onPressed: () => _loadStats(forceRefresh: true),
                         icon: const Icon(Icons.refresh),
                         label: const Text('重试'),
                       ),
@@ -117,7 +194,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 )
               : RefreshIndicator(
-                  onRefresh: _loadStats,
+                  onRefresh: () => _loadStats(forceRefresh: true),
                   child: ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
@@ -128,6 +205,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
                       // 统计卡片
                       _buildStatsCard(colorScheme),
+                      if (_errorMessage != null)
+                        TextButton(onPressed: () => _loadStats(forceRefresh: true),
+                          child: const Text('统计更新失败，点击重试')),
 
                       const SizedBox(height: 16),
 
@@ -278,7 +358,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   /// 构建播放排行榜
   Widget _buildPlayCountsSection(ColorScheme colorScheme) {
-    if (_statsData == null || _statsData!.playCounts.isEmpty) {
+    if (_records.isEmpty && _recordsError == null && !_loadingRecords) {
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -321,14 +401,21 @@ class _ProfilePageState extends State<ProfilePage> {
           child: ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: _statsData!.playCounts.length,
+            itemCount: _records.length,
             separatorBuilder: (context, index) => const Divider(height: 1),
             itemBuilder: (context, index) {
-              final item = _statsData!.playCounts[index];
+              final item = _records[index];
               return _buildPlayCountItem(item, index + 1, colorScheme);
             },
           ),
         ),
+        if (_recordsError != null) Text(_recordsError!),
+        if (_loadingRecords)
+          const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())
+        else if (_hasMoreRecords || _recordsError != null)
+          TextButton(onPressed: _recordsNeedRefresh
+              ? () => _loadStats(forceRefresh: true) : _loadMoreRecords,
+            child: Text(_recordsError == null ? '加载更多' : '重试')),
       ],
     );
   }

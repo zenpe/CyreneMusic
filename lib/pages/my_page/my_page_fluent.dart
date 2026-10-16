@@ -70,7 +70,7 @@ extension _MyPageFluentUI on _MyPageState {
                 child: RefreshIndicator(
                   onRefresh: () async {
                     await _playlistService.loadPlaylists();
-                    await _loadStats();
+                    await _loadStats(forceRefresh: true);
                   },
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
@@ -83,12 +83,13 @@ extension _MyPageFluentUI on _MyPageState {
                           const fluent.Card(
                               padding: EdgeInsets.all(16),
                               child: Center(child: fluent.ProgressRing()))
-                        else if (_statsData == null)
+                        else if (_statsData == null && _statsError == null)
                           fluent.InfoBar(
                               title: const Text('暂无统计数据'),
                               severity: fluent.InfoBarSeverity.info)
-                        else
+                        else if (_statsData != null)
                           _buildFluentStatsCard(),
+                        if (_statsError != null) _buildStatsError(),
                         const SizedBox(height: 24),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,

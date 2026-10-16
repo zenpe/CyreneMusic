@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../../services/player_service.dart';
 import '../../services/playlist_service.dart';
+import '../../widgets/playlist_membership_state.dart';
 import '../../services/netease_artist_service.dart';
 import '../../utils/theme_manager.dart';
 import '../../utils/image_utils.dart';
@@ -1401,59 +1402,29 @@ class _FavoriteButton extends StatefulWidget {
   State<_FavoriteButton> createState() => _FavoriteButtonState();
 }
 
-class _FavoriteButtonState extends State<_FavoriteButton> {
-  bool _isInPlaylist = false;
-  bool _isLoading = true;
-  List<String> _playlistNames = [];
-  List<int> _playlistIds = [];
-  List<PlaylistTrackMatch> _playlistMatches = [];
-  int _checkGeneration = 0;
-
+class _FavoriteButtonState extends State<_FavoriteButton>
+    with PlaylistMembershipState<_FavoriteButton> {
   @override
-  void initState() {
-    super.initState();
-    _checkIfInPlaylist();
-  }
+  Track get membershipTrack => widget.track;
+  bool get _isInPlaylist => membershipResult.inPlaylist;
+  bool get _isLoading => membershipLoading;
+  List<String> get _playlistNames => membershipResult.playlistNames;
+  List<int> get _playlistIds => membershipResult.playlistIds;
 
-  @override
-  void didUpdateWidget(_FavoriteButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // 当歌曲变化时重新检查
-    if (oldWidget.track.id != widget.track.id ||
-        oldWidget.track.source != widget.track.source) {
-      _checkIfInPlaylist();
-    }
-  }
-
-  Future<void> _checkIfInPlaylist() async {
-    final generation = ++_checkGeneration;
-    setState(() => _isLoading = true);
-
-    final playlistService = PlaylistService();
-
-    // 调用后端 API 检查歌曲是否在任何歌单中
-    final result = await playlistService.isTrackInAnyPlaylist(widget.track);
-
-    if (mounted && generation == _checkGeneration) {
-      setState(() {
-        if (result.known) {
-          _isInPlaylist = result.inPlaylist;
-          _playlistNames = result.playlistNames;
-          _playlistIds = result.playlistIds;
-          _playlistMatches = result.matches;
-        }
-        _isLoading = false;
-      });
-    }
-  }
+  Future<void> _checkIfInPlaylist() => refreshMembership();
 
   Future<void> _removeFromPlaylists() async {
     if (_playlistIds.isEmpty) return;
 
     final playlistService = PlaylistService();
 
-    for (final match in _playlistMatches) {
-      await playlistService.removeTrackMatch(match, widget.track);
+    final track = widget.track;
+    final contextIdentity = playlistService.membershipContext;
+    final membership = await playlistService.isTrackInAnyPlaylist(track);
+    if (!mounted || !membership.known || !membership.complete) return;
+    for (final match in membership.matches) {
+      if (playlistService.membershipContext != contextIdentity) return;
+      await playlistService.removeTrackMatch(match, track);
     }
 
     // 刷新状态
@@ -1536,6 +1507,7 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
       );
     }
 
+    if (!membershipResult.known) return buildUnknownMembershipButton();
     final tooltip = _isInPlaylist
         ? '已收藏到: ${_playlistNames.join(", ")}'
         : '添加到歌单';

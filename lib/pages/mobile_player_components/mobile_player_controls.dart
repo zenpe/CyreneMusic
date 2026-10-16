@@ -354,9 +354,7 @@ class MobilePlayerControls extends StatelessWidget {
                 animation: DownloadService(),
                 builder: (context, child) {
                   final downloadService = DownloadService();
-                  final trackId = '${track.source.name}_${track.id}';
-                  final isDownloading = downloadService.downloadTasks
-                      .containsKey(trackId);
+                  final isDownloading = downloadService.isDownloading(track);
 
                   return IconButton(
                     icon: Icon(

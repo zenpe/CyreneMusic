@@ -43,6 +43,9 @@ class _MyPageState extends State<MyPage> {
   final ThemeManager _themeManager = ThemeManager();
   ListeningStatsData? _statsData;
   bool _isLoadingStats = true;
+  String? _statsError;
+  String? _statsSession;
+  int _statsGeneration = 0;
   Playlist? _selectedPlaylist;
   bool _isEditMode = false;
   bool _renameDialogOpen = false;
@@ -62,6 +65,9 @@ class _MyPageState extends State<MyPage> {
   void initState() {
     super.initState();
     _playlistService.addListener(_onPlaylistsChanged);
+    _statsSession = ListeningStatsService().contextIdentity;
+    _statsData = ListeningStatsService().statsData;
+    ListeningStatsService().addListener(_onStatsAuthChanged);
 
     if (_authFacade.isLoggedIn) {
       _playlistService.loadPlaylists();
@@ -76,6 +82,7 @@ class _MyPageState extends State<MyPage> {
   @override
   void dispose() {
     _playlistService.removeListener(_onPlaylistsChanged);
+    ListeningStatsService().removeListener(_onStatsAuthChanged);
     _searchController.dispose();
     GlobalBackHandlerService().unregister('my_page_overlay');
     super.dispose();
@@ -99,18 +106,58 @@ class _MyPageState extends State<MyPage> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _loadStats() async {
-    setState(() => _isLoadingStats = true);
-    try {
-      await ListeningStatsService().syncNow();
-      final stats = await ListeningStatsService().fetchStats();
-      setState(() {
-        _statsData = stats;
-        _isLoadingStats = false;
-      });
-    } catch (e) {
-      setState(() => _isLoadingStats = false);
+  void _onStatsAuthChanged() {
+    final session = ListeningStatsService().contextIdentity;
+    if (!mounted || session == _statsSession) return;
+    _statsSession = session;
+    _statsGeneration++;
+    setState(() {
+      _statsData = null;
+      _statsError = null;
+      _isLoadingStats = session != null;
+    });
+    if (session != null) _loadStats();
+  }
+
+  Future<void> _loadStats({bool forceRefresh = false}) async {
+    if (!mounted) return;
+    final session = ListeningStatsService().contextIdentity;
+    final generation = ++_statsGeneration;
+    final service = ListeningStatsService();
+    setState(() {
+      _statsData = service.statsData;
+      _isLoadingStats = _statsData == null;
+      _statsError = null;
+    });
+    final stats = await service.fetchStats(forceRefresh: forceRefresh);
+    if (!mounted || generation != _statsGeneration ||
+        session != service.contextIdentity) {
+      return;
     }
+    setState(() {
+      _statsData = stats ?? service.statsData;
+      _isLoadingStats = false;
+      _statsError = service.lastError;
+    });
+  }
+
+  Widget _buildStatsError() {
+    if (_statsError == null) return const SizedBox.shrink();
+    final label = Text(_statsData == null ? '统计加载失败' : '统计更新失败，已保留上次数据');
+    final Widget button;
+    void retry() => _loadStats(forceRefresh: true);
+    if (_themeManager.isFluentFramework) {
+      button = fluent.Button(onPressed: retry, child: const Text('重试'));
+    } else if (_themeManager.isCupertinoFramework) {
+      button = CupertinoButton(onPressed: retry, child: const Text('重试'));
+    } else {
+      button = TextButton(onPressed: retry, child: const Text('重试'));
+    }
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Wrap(spacing: 12, crossAxisAlignment: WrapCrossAlignment.center,
+        children: [label, button]),
+    );
   }
 
   @override

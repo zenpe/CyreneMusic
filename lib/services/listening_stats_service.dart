@@ -1,9 +1,11 @@
 import 'structured_log_service.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 import '../models/track.dart';
 import 'auth_service.dart';
 import 'api/api_client.dart';
+import 'url_service.dart';
 
 /// 听歌统计数据模型
 class ListeningStatsData {
@@ -102,6 +104,18 @@ class PlayCountItem {
   }
 }
 
+class PlayCountPage {
+  final List<PlayCountItem> records;
+  final int page;
+  final bool hasMore;
+
+  PlayCountPage({
+    required this.records,
+    required this.page,
+    required this.hasMore,
+  });
+}
+
 /// 听歌统计服务
 class ListeningStatsService extends ChangeNotifier {
   static final ListeningStatsService _instance =
@@ -109,18 +123,31 @@ class ListeningStatsService extends ChangeNotifier {
   factory ListeningStatsService() => _instance;
   ListeningStatsService._internal() {
     _observedSession = AuthService().sessionIdentity;
+    _observedBackendRevision = UrlService().backendRevision;
     AuthService().addListener(_onAuthChanged);
+    UrlService().addListener(_onAuthChanged);
   }
 
   String? _observedSession;
+  int _observedBackendRevision = 0;
   String? _syncingSession;
 
   void _onAuthChanged() {
     final session = AuthService().sessionIdentity;
-    if (session == _observedSession) return;
+    final backendRevision = UrlService().backendRevision;
+    if (session == _observedSession &&
+        backendRevision == _observedBackendRevision) {
+      return;
+    }
     _observedSession = session;
+    _observedBackendRevision = backendRevision;
     _pendingSeconds = 0;
     _statsData = null;
+    _statsFetchedAt = null;
+    _lastError = null;
+    _statsRequest?.cancel('登录会话已改变');
+    _statsRequest = null;
+    _statsInFlight = null;
     _syncingSession = null;
     notifyListeners();
   }
@@ -130,8 +157,23 @@ class ListeningStatsService extends ChangeNotifier {
   Timer? _syncTimer;
   int _pendingSeconds = 0; // 待同步的秒数
   ListeningStatsData? _statsData;
+  DateTime? _statsFetchedAt;
+  String? _lastError;
+  CancelToken? _statsRequest;
+  Future<ListeningStatsData?>? _statsInFlight;
 
-  ListeningStatsData? get statsData => _statsData;
+  /// Includes backend generation so even A → B → A invalidates old operations.
+  String? get contextIdentity {
+    final session = AuthService().sessionIdentity;
+    return session == null ? null : '${UrlService().backendRevision}:$session';
+  }
+
+  ListeningStatsData? get statsData =>
+      _observedSession == AuthService().sessionIdentity &&
+          _observedBackendRevision == UrlService().backendRevision
+      ? _statsData
+      : null;
+  String? get lastError => _lastError;
 
   /// 初始化服务
   void initialize() {
@@ -153,7 +195,7 @@ class ListeningStatsService extends ChangeNotifier {
   /// 同步听歌时长到服务器
   Future<void> _syncListeningTime() async {
     _onAuthChanged();
-    final session = AuthService().sessionIdentity;
+    final session = contextIdentity;
     if (session == null || _syncingSession == session) return;
     if (_pendingSeconds <= 0) {
       StructuredLogService.log(
@@ -171,25 +213,22 @@ class ListeningStatsService extends ChangeNotifier {
     _syncingSession = session;
     _pendingSeconds = 0; // 重置待同步秒数
 
-    StructuredLogService.log(
-      '📤 [ListeningStatsService] 准备同步听歌时长: $seconds秒',
-    );
+    StructuredLogService.log('📤 [ListeningStatsService] 准备同步听歌时长: $seconds秒');
 
     try {
       final result = await _api.postJson(
         '/stats/listening-time',
         data: {'seconds': seconds},
       );
-      if (session != AuthService().sessionIdentity) return;
+      if (session != contextIdentity) return;
 
       StructuredLogService.log(
         '📥 [ListeningStatsService] 同步响应状态: ${result.statusCode}',
       );
 
       if (result.ok) {
-        final data = result.data as Map<String, dynamic>?;
         StructuredLogService.log(
-          '✅ [ListeningStatsService] 听歌时长已同步: +$seconds秒, 总计: ${data?['data']?['totalListeningTime']}秒',
+          '✅ [ListeningStatsService] 听歌时长已同步: +$seconds秒',
         );
       } else {
         StructuredLogService.log(
@@ -201,7 +240,7 @@ class ListeningStatsService extends ChangeNotifier {
     } catch (e) {
       StructuredLogService.log('❌ [ListeningStatsService] 同步听歌时长异常: $e');
       // 异常时将秒数加回待同步队列
-      if (session == AuthService().sessionIdentity) _pendingSeconds += seconds;
+      if (session == contextIdentity) _pendingSeconds += seconds;
     } finally {
       if (_syncingSession == session) _syncingSession = null;
     }
@@ -247,35 +286,103 @@ class ListeningStatsService extends ChangeNotifier {
   }
 
   /// 获取统计数据
-  Future<ListeningStatsData?> fetchStats() async {
+  Future<ListeningStatsData?> fetchStats({bool forceRefresh = false}) async {
     _onAuthChanged();
-    final session = AuthService().sessionIdentity;
+    final session = contextIdentity;
     if (session == null) {
       StructuredLogService.log('⚠️ [ListeningStatsService] 用户未登录');
       return null;
     }
 
+    final pending = _statsInFlight;
+    if (pending != null) return pending;
+    final fetchedAt = _statsFetchedAt;
+    if (!forceRefresh &&
+        _statsData != null &&
+        fetchedAt != null &&
+        DateTime.now().difference(fetchedAt) < const Duration(seconds: 60)) {
+      return _statsData;
+    }
+    final request = _fetchStats(session);
+    _statsInFlight = request;
     try {
-      final result = await _api.getJson('/stats');
-      if (session != AuthService().sessionIdentity) return null;
+      return await request;
+    } finally {
+      if (identical(_statsInFlight, request)) _statsInFlight = null;
+    }
+  }
+
+  Future<ListeningStatsData?> _fetchStats(String session) async {
+    final token = CancelToken();
+    _statsRequest = token;
+    _lastError = null;
+    try {
+      final result = await _api.getJson('/stats', cancelToken: token);
+      if (session != contextIdentity) return null;
 
       if (result.ok) {
+        if (result.data is! Map ||
+            result.data['status'] != 200 ||
+            result.bodyData is! Map<String, dynamic>) {
+          throw const FormatException('统计数据格式错误');
+        }
+        final body = result.bodyData as Map<String, dynamic>;
+        if (body['totalListeningTime'] is! int ||
+            body['totalPlayCount'] is! int ||
+            body['playCounts'] is! List) {
+          throw const FormatException('统计数据字段缺失');
+        }
         _statsData = ListeningStatsData.fromJson(
           result.bodyData as Map<String, dynamic>,
         );
+        _statsFetchedAt = DateTime.now();
         notifyListeners();
         StructuredLogService.log('✅ [ListeningStatsService] 统计数据已获取');
         return _statsData;
       } else {
+        _lastError = '统计更新失败，请重试';
         StructuredLogService.log(
           '❌ [ListeningStatsService] 获取统计数据失败: ${result.statusCode}',
         );
         return null;
       }
     } catch (e) {
+      if (session != contextIdentity) return null;
+      _lastError = '统计更新失败，请重试';
       StructuredLogService.log('❌ [ListeningStatsService] 获取统计数据异常: $e');
       return null;
+    } finally {
+      if (identical(_statsRequest, token)) _statsRequest = null;
     }
+  }
+
+  /// 完整排行榜按需分页，不使用首页的 Top 10 快照。
+  Future<PlayCountPage> fetchRecords({int page = 1}) async {
+    final session = contextIdentity;
+    if (session == null) throw StateError('请先登录');
+    final result = await _api.getJson(
+      '/stats/records',
+      queryParameters: {'page': page, 'limit': 20},
+      dedupe: false,
+    );
+    if (session != contextIdentity) throw StateError('登录会话或后端已改变');
+    final data = result.bodyData;
+    if (!result.ok ||
+        result.data is! Map ||
+        result.data['status'] != 200 ||
+        data is! Map ||
+        data['page'] != page ||
+        data['records'] is! List ||
+        data['hasMore'] is! bool) {
+      throw StateError('播放记录加载失败，请重试');
+    }
+    return PlayCountPage(
+      records: (data['records'] as List)
+          .map((item) => PlayCountItem.fromJson(item as Map<String, dynamic>))
+          .toList(),
+      page: page,
+      hasMore: data['hasMore'] as bool,
+    );
   }
 
   /// 格式化时长（秒转为时分秒）
@@ -305,6 +412,8 @@ class ListeningStatsService extends ChangeNotifier {
   @override
   void dispose() {
     AuthService().removeListener(_onAuthChanged);
+    UrlService().removeListener(_onAuthChanged);
+    _statsRequest?.cancel('统计服务已释放');
     _syncTimer?.cancel();
     StructuredLogService.log('🗑️ [ListeningStatsService] 服务已释放');
     super.dispose();

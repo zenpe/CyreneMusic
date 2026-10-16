@@ -425,9 +425,7 @@ class PlayerControls extends StatelessWidget {
       animation: DownloadService(),
       builder: (context, child) {
         final downloadService = DownloadService();
-        final isDownloading = downloadService.downloadTasks.containsKey(
-          '${currentTrack.source.name}_${currentTrack.id}',
-        );
+        final isDownloading = downloadService.isDownloading(currentTrack);
 
         return IconButton(
           icon: Icon(

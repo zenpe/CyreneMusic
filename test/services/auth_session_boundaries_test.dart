@@ -406,7 +406,7 @@ void main() {
           await release.future;
         }
         await reply(request, {
-          'code': 200,
+          'status': 200,
           'data': {
             'totalListeningTime': first ? 30 : 5,
             'totalPlayCount': 0,
