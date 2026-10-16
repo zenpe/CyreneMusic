@@ -174,7 +174,13 @@ class LyricCacheStats {
 class LyricCacheService extends ChangeNotifier {
   static final LyricCacheService _instance = LyricCacheService._internal();
   factory LyricCacheService() => _instance;
-  LyricCacheService._internal();
+  LyricCacheService._internal() : _directoryOverride = null;
+
+  @visibleForTesting
+  LyricCacheService.forTesting(Directory directory)
+    : _directoryOverride = directory;
+
+  final Directory? _directoryOverride;
 
   static const Map<String, int> _completenessRank = <String, int>{
     'timed-translated': 4,
@@ -254,6 +260,20 @@ class LyricCacheService extends ChangeNotifier {
   Directory? _cacheDir;
   bool _isInitialized = false;
   bool _indexDirty = false;
+  Future<void>? _initialization;
+  Future<void> _cacheAccess = Future<void>.value();
+
+  // Includes reads: sidecar recovery and index maintenance also mutate files.
+  // Keep this queue limited to local cache work, never network requests.
+  Future<T> _withCacheAccess<T>(Future<T> Function() operation) {
+    final result = _cacheAccess.then((_) => operation());
+    _cacheAccess = result.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {},
+    );
+    return result;
+  }
+
   final Map<String, Map<String, dynamic>> _index =
       <String, Map<String, dynamic>>{};
   final Map<String, Set<String>> _trackCacheKeys = <String, Set<String>>{};
@@ -266,11 +286,11 @@ class LyricCacheService extends ChangeNotifier {
   static String _backupPathFor(String targetPath) => '$targetPath.bak';
 
   /// 如果 index 有未持久化的变更，立即写盘。
-  Future<void> flushIndex() async {
+  Future<void> flushIndex() => _withCacheAccess(() async {
     if (_indexDirty) {
       await _saveIndex();
     }
-  }
+  });
 
   void _log(String message, {bool toDeveloperPanel = false}) {
     if (kDebugMode) {
@@ -281,14 +301,21 @@ class LyricCacheService extends ChangeNotifier {
     }
   }
 
-  Future<void> initialize() async {
+  Future<void> initialize() {
     if (_isInitialized) {
-      return;
+      return Future<void>.value();
     }
+    return _initialization ??= _withCacheAccess(_initialize).whenComplete(() {
+      _initialization = null;
+    });
+  }
 
+  Future<void> _initialize() async {
     try {
       final musicCacheDir = CacheService().currentCacheDir;
-      if (musicCacheDir != null && musicCacheDir.isNotEmpty) {
+      if (_directoryOverride != null) {
+        _cacheDir = _directoryOverride;
+      } else if (musicCacheDir != null && musicCacheDir.isNotEmpty) {
         final parentDir = path.dirname(musicCacheDir);
         _cacheDir = Directory(path.join(parentDir, 'lyrics_cache'));
       } else if (Platform.isWindows) {
@@ -303,7 +330,7 @@ class LyricCacheService extends ChangeNotifier {
         await _cacheDir!.create(recursive: true);
       }
 
-      if (Platform.isWindows) {
+      if (_directoryOverride == null && Platform.isWindows) {
         final defaultMusicCacheDir = await CacheService().getDefaultCacheDir();
         final currentMusicCacheDir = CacheService().currentCacheDir;
         if (currentMusicCacheDir == null ||
@@ -317,7 +344,7 @@ class LyricCacheService extends ChangeNotifier {
       await _loadIndex();
       await _migrateLegacyTrackScopedKeys();
       _isInitialized = true;
-      unawaited(_cleanupExpiredEntries());
+      unawaited(_withCacheAccess(_cleanupExpiredEntries));
       _log(
         '📝 [LyricCacheService] 歌词缓存已初始化: ${_cacheDir!.path}',
         toDeveloperPanel: true,
@@ -366,6 +393,10 @@ class LyricCacheService extends ChangeNotifier {
 
   Future<LyricCacheEntry?> readEntry(String cacheKey) async {
     await initialize();
+    return _withCacheAccess(() => _readEntry(cacheKey));
+  }
+
+  Future<LyricCacheEntry?> _readEntry(String cacheKey) async {
     if (!_isInitialized || _cacheDir == null) return null;
 
     final targetPath = _entryPath(cacheKey);
@@ -406,6 +437,10 @@ class LyricCacheService extends ChangeNotifier {
 
   Future<void> writeEntry(String cacheKey, LyricCacheEntry entry) async {
     await initialize();
+    return _withCacheAccess(() => _writeEntry(cacheKey, entry));
+  }
+
+  Future<void> _writeEntry(String cacheKey, LyricCacheEntry entry) async {
     if (!_isInitialized || _cacheDir == null) return;
 
     final targetPath = _entryPath(cacheKey);
@@ -421,6 +456,10 @@ class LyricCacheService extends ChangeNotifier {
 
   Future<void> deleteEntry(String cacheKey) async {
     await initialize();
+    return _withCacheAccess(() => _deleteEntry(cacheKey));
+  }
+
+  Future<void> _deleteEntry(String cacheKey) async {
     if (!_isInitialized || _cacheDir == null) return;
 
     await _deleteTargetArtifacts(_entryPath(cacheKey));
@@ -431,6 +470,10 @@ class LyricCacheService extends ChangeNotifier {
 
   Future<LyricCacheStats> getCacheStats() async {
     await initialize();
+    return _withCacheAccess(_getCacheStats);
+  }
+
+  Future<LyricCacheStats> _getCacheStats() async {
     if (!_isInitialized || _cacheDir == null) {
       return const LyricCacheStats(
         totalFiles: 0,
@@ -480,6 +523,10 @@ class LyricCacheService extends ChangeNotifier {
 
   Future<void> clearAllCache() async {
     await initialize();
+    return _withCacheAccess(_clearAllCache);
+  }
+
+  Future<void> _clearAllCache() async {
     if (!_isInitialized || _cacheDir == null) return;
 
     try {
@@ -504,6 +551,10 @@ class LyricCacheService extends ChangeNotifier {
 
   Future<void> deleteTrackCache(Track track, {String? quality}) async {
     await initialize();
+    return _withCacheAccess(() => _deleteTrackCache(track, quality: quality));
+  }
+
+  Future<void> _deleteTrackCache(Track track, {String? quality}) async {
     if (!_isInitialized || _cacheDir == null) return;
 
     final targetTrackKey = '${track.source.name}_${track.id}';

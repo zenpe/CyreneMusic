@@ -95,6 +95,7 @@ void main() {
       }
     }
     expect(heights.first, greaterThanOrEqualTo(66));
+    expect(find.text('SQ'), findsNothing);
     expect(heights.last, greaterThan(heights.first));
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));

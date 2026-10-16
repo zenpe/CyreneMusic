@@ -20,8 +20,7 @@ part 'search_widget_fluent.dart';
 part 'search_widget_cupertino.dart';
 part 'search_widget_shared.dart';
 
-/// 平台配色映射 - 使用品牌相关色系的小球代替文字
-/// 用于规避直接显示平台名称的风险
+/// 平台配色，用于选中标签的指示器。
 Color _getPlatformDotColor(String platformCode, Brightness brightness) {
   switch (platformCode) {
     case 'netease':
@@ -53,7 +52,7 @@ class SearchWidget extends StatefulWidget {
 }
 
 /// Material Design Expressive 风格的 Tab 栏
-/// 平台tab使用彩色小球，功能tab（如歌手）保留文字
+/// 平台与功能标签均显示名称。
 class _SearchExpressiveTabs extends StatelessWidget {
   final List<SearchTab> tabs;
   final int currentIndex;
@@ -114,58 +113,38 @@ class _SearchExpressiveTabs extends StatelessWidget {
               Row(
                 children: List.generate(count, (i) {
                   final selected = i == currentIndex;
-                  final platformColor = getPlatformColor(tabs[i]);
-                  final isPlatform = tabs[i].platform != null;
 
                   return Expanded(
                     child: GestureDetector(
                       onTap: () => onChanged(i),
                       behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        alignment: Alignment.center,
-                        child: isPlatform
-                            // 平台tab：显示彩色小球
-                            ? AnimatedContainer(
-                                duration: const Duration(milliseconds: 250),
-                                curve: Curves.easeOutCubic,
-                                width: selected ? 20 : 14,
-                                height: selected ? 20 : 14,
-                                decoration: BoxDecoration(
-                                  color: platformColor.withValues(
-                                    alpha: selected ? 1.0 : 0.5,
-                                  ),
-                                  shape: BoxShape.circle,
-                                  boxShadow: selected
-                                      ? [
-                                          BoxShadow(
-                                            color: platformColor.withValues(
-                                              alpha: 0.4,
-                                            ),
-                                            blurRadius: 8,
-                                            spreadRadius: 1,
-                                          ),
-                                        ]
-                                      : null,
-                                ),
-                              )
-                            // 功能tab（如歌手）：显示文字
-                            : AnimatedDefaultTextStyle(
-                                duration: const Duration(milliseconds: 250),
-                                curve: Curves.easeOutCubic,
-                                style: TextStyle(
-                                  color: selected
-                                      ? (brightness == Brightness.dark
-                                            ? Colors.white
-                                            : Colors.black87)
-                                      : cs.onSurface.withValues(alpha: 0.5),
-                                  fontSize: selected ? 19 : 15,
-                                  fontWeight: selected
-                                      ? FontWeight.w900
-                                      : FontWeight.w600,
-                                  letterSpacing: selected ? -0.2 : 0,
-                                ),
-                                child: Text(tabs[i].label),
-                              ),
+                      child: Semantics(
+                        button: true,
+                        selected: selected,
+                        child: Container(
+                          alignment: Alignment.center,
+                          child: AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeOutCubic,
+                            style: TextStyle(
+                              color: selected
+                                  ? (brightness == Brightness.dark
+                                        ? Colors.white
+                                        : Colors.black87)
+                                  : cs.onSurface.withValues(alpha: 0.5),
+                              fontSize: 14,
+                              fontWeight: selected
+                                  ? FontWeight.w900
+                                  : FontWeight.w600,
+                              letterSpacing: selected ? -0.2 : 0,
+                            ),
+                            child: Text(
+                              tabs[i].label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   );

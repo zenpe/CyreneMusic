@@ -23,6 +23,23 @@ class MiniPlayer extends StatefulWidget {
   final bool transparent;
   const MiniPlayer({super.key, this.transparent = false});
 
+  /// Use the resolved song's level, never the user's requested quality.
+  /// Unknown/local metadata must not imply lossless playback.
+  @visibleForTesting
+  static String? qualityLabel(String? level) =>
+      switch (level?.trim().toLowerCase()) {
+        '128k' || '128kbps' => '128kbps',
+        '320k' || '320kbps' => '320kbps',
+        'standard' || '标准音质' => '标准',
+        'exhigh' || '极高音质' || '高品质' => '高品质',
+        'lossless' || 'flac' || '无损音质' => '无损',
+        'hires' || 'hi-res' => 'Hi-Res',
+        'jyeffect' || 'audio vivid' => 'Vivid',
+        'sky' || '沉浸环绕声' => '沉浸环绕声',
+        'jymaster' || '超清母带' => '母带',
+        _ => null,
+      };
+
   /// Shared by the floating layout and its content so accessibility text fits.
   static double cupertinoHeight(BuildContext context) {
     double lineHeight(double fontSize) {
@@ -1607,6 +1624,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
   /// 构建歌曲信息
   Widget _buildSongInfo(BuildContext context, {bool singleLine = false}) {
     final player = PlayerService();
+    final qualityLabel = player.isTrackSwitchPending
+        ? null
+        : MiniPlayer.qualityLabel(player.currentSong?.level);
     final name = player.displayTitle.isNotEmpty ? player.displayTitle : '未知歌曲';
     final artist = player.displayArtist.isNotEmpty
         ? player.displayArtist
@@ -1768,34 +1788,35 @@ class _MiniPlayerState extends State<MiniPlayer> {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 3.5,
-                vertical: 0.5,
-              ),
-              margin: const EdgeInsets.only(right: 5),
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(3),
-                border: Border.all(
+            if (qualityLabel != null)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 3.5,
+                  vertical: 0.5,
+                ),
+                margin: const EdgeInsets.only(right: 5),
+                decoration: BoxDecoration(
                   color: Theme.of(
                     context,
-                  ).colorScheme.primary.withValues(alpha: 0.28),
-                  width: 0.6,
+                  ).colorScheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(3),
+                  border: Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.28),
+                    width: 0.6,
+                  ),
+                ),
+                child: Text(
+                  qualityLabel,
+                  style: TextStyle(
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w800,
+                    color: Theme.of(context).colorScheme.primary,
+                    height: 1.1,
+                  ),
                 ),
               ),
-              child: Text(
-                'SQ',
-                style: TextStyle(
-                  fontSize: 8.5,
-                  fontWeight: FontWeight.w800,
-                  color: Theme.of(context).colorScheme.primary,
-                  height: 1.1,
-                ),
-              ),
-            ),
             Flexible(
               child: Text(
                 artist,

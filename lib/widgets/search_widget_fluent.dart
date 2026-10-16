@@ -89,31 +89,6 @@ extension _SearchWidgetFluent on _SearchWidgetState {
   }
 
   Widget _buildFluentTabHeader(SearchTab tab) {
-    if (tab.platform != null) {
-      final platformCode = tab.platform!.name;
-      final brightness = fluent.FluentTheme.of(context).brightness;
-      final dotColor = _getPlatformDotColor(platformCode, brightness);
-
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: dotColor,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: dotColor.withValues(alpha: 0.3),
-                blurRadius: 4,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
     return Text(tab.label);
   }
 

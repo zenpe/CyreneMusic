@@ -30,6 +30,10 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('netease_tab')), findsOneWidget);
         expect(find.text('歌手'), findsOneWidget);
+        for (final label in ['网易云', 'QQ音乐', '酷狗']) {
+          expect(find.text(label), findsOneWidget);
+          expect(find.bySemanticsLabel(label), findsWidgets);
+        }
         expect(find.byKey(const ValueKey('songs_tab')), findsNothing);
 
         final tabs = find.byWidgetPredicate(

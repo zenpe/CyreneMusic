@@ -113,7 +113,6 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
     bool isDark,
   ) {
     final tabs = _searchTabs;
-    final brightness = isDark ? Brightness.dark : Brightness.light;
 
     return Column(
       children: [
@@ -128,27 +127,15 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
                 for (int i = 0; i < tabs.length; i++)
                   i: Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
+                      horizontal: 4,
                       vertical: 6,
                     ),
-                    child: tabs[i].platform != null
-                        // 平台tab：显示彩色小球
-                        ? Container(
-                            width: 14,
-                            height: 14,
-                            decoration: BoxDecoration(
-                              color: _getPlatformDotColor(
-                                tabs[i].platform!.name,
-                                brightness,
-                              ),
-                              shape: BoxShape.circle,
-                            ),
-                          )
-                        // 功能tab：显示文字
-                        : Text(
-                            tabs[i].label,
-                            style: const TextStyle(fontSize: 13),
-                          ),
+                    child: Text(
+                      tabs[i].label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13),
+                    ),
                   ),
               },
               onValueChanged: (value) {
