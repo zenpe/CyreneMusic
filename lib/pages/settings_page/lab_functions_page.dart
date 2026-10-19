@@ -48,7 +48,8 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
     if (ThemeManager().isCupertinoFramework) {
       return _buildCupertinoUI(context);
     }
-    if ((Platform.isWindows || Platform.isMacOS || Platform.isLinux) && ThemeManager().isFluentFramework) {
+    if ((Platform.isWindows || Platform.isMacOS || Platform.isLinux) &&
+        ThemeManager().isFluentFramework) {
       return _buildFluentUI(context);
     }
     return _buildMaterialUI(context);
@@ -57,7 +58,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
   /// 构建 Material UI 版本
   Widget _buildMaterialUI(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final eqAvailable = PlayerService().isEqualizerAvailable;
+    final eqAvailable = PlayerService().canConfigureEqualizer;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(0, 8, 0, 120),
@@ -75,9 +76,9 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
               trailing: const Icon(Icons.chevron_right),
               onTap: eqAvailable
                   ? () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const EqualizerPage()),
-                      )
+                      context,
+                      MaterialPageRoute(builder: (_) => const EqualizerPage()),
+                    )
                   : null,
             ),
             if (Platform.isAndroid) ...[
@@ -88,7 +89,8 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                 enabled: true,
                 trailing: Switch(
                   value: _labService.enableAndroidWidget,
-                  onChanged: (value) => _labService.setEnableAndroidWidget(value),
+                  onChanged: (value) =>
+                      _labService.setEnableAndroidWidget(value),
                 ),
               ),
             ],
@@ -146,7 +148,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
 
   /// 构建 Cupertino UI 版本
   Widget _buildCupertinoUI(BuildContext context) {
-    final eqAvailable = PlayerService().isEqualizerAvailable;
+    final eqAvailable = PlayerService().canConfigureEqualizer;
 
     return ListView(
       children: [
@@ -166,25 +168,36 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
           header: const Text('实验性功能'),
           children: [
             CupertinoListTile(
-              leading: const Icon(CupertinoIcons.waveform, color: CupertinoColors.systemBlue),
+              leading: const Icon(
+                CupertinoIcons.waveform,
+                color: CupertinoColors.systemBlue,
+              ),
               title: const Text('均衡器'),
               subtitle: Text(eqAvailable ? '调节音频效果' : '当前平台暂不支持'),
-              trailing: const Icon(CupertinoIcons.chevron_forward, size: 18, color: CupertinoColors.systemGrey),
+              trailing: const Icon(
+                CupertinoIcons.chevron_forward,
+                size: 18,
+                color: CupertinoColors.systemGrey,
+              ),
               onTap: eqAvailable
                   ? () => Navigator.push(
-                        context,
-                        CupertinoPageRoute(builder: (_) => const EqualizerPage()),
-                      )
+                      context,
+                      CupertinoPageRoute(builder: (_) => const EqualizerPage()),
+                    )
                   : null,
             ),
             if (Platform.isAndroid) ...[
               CupertinoListTile(
-                leading: const Icon(CupertinoIcons.square_grid_2x2, color: CupertinoColors.systemBlue),
+                leading: const Icon(
+                  CupertinoIcons.square_grid_2x2,
+                  color: CupertinoColors.systemBlue,
+                ),
                 title: const Text('安卓桌面小部件'),
                 subtitle: const Text('开启安卓主屏幕音乐控制小部件'),
                 trailing: CupertinoSwitch(
                   value: _labService.enableAndroidWidget,
-                  onChanged: (value) => _labService.setEnableAndroidWidget(value),
+                  onChanged: (value) =>
+                      _labService.setEnableAndroidWidget(value),
                 ),
               ),
             ],
@@ -197,7 +210,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
   /// 构建 Fluent UI 版本
   Widget _buildFluentUI(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
-    final eqAvailable = PlayerService().isEqualizerAvailable;
+    final eqAvailable = PlayerService().canConfigureEqualizer;
 
     // 构建核心列表内容
     final content = Column(
@@ -220,9 +233,11 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
             trailing: const Icon(fluent_ui.FluentIcons.chevron_right, size: 12),
             onPressed: eqAvailable
                 ? () => Navigator.push(
-                      context,
-                      fluent_ui.FluentPageRoute(builder: (_) => const EqualizerPage()),
-                    )
+                    context,
+                    fluent_ui.FluentPageRoute(
+                      builder: (_) => const EqualizerPage(),
+                    ),
+                  )
                 : null,
           ),
         ),
@@ -244,13 +259,13 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                 ),
                 fluent_ui.ToggleSwitch(
                   checked: _labService.enableAndroidWidget,
-                  onChanged: (value) => _labService.setEnableAndroidWidget(value),
+                  onChanged: (value) =>
+                      _labService.setEnableAndroidWidget(value),
                 ),
               ],
             ),
           ),
-        ]
-        else
+        ] else
           fluent_ui.Card(
             child: Row(
               children: [
@@ -312,10 +327,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                 color: theme.resources.textFillColorSecondary,
               ),
             ),
-            const Text(
-              '实验室功能',
-              style: TextStyle(fontSize: 20),
-            ),
+            const Text('实验室功能', style: TextStyle(fontSize: 20)),
           ],
         ),
       ),

@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart' as ja;
 import 'package:media_kit/media_kit.dart' as mk;
 
 import '../android_equalizer_service.dart';
 import 'engine_epoch_gate.dart';
 import '../equalizer_service.dart';
+import '../../models/equalizer_state.dart';
 import '../persistent_storage_service.dart';
 import '../structured_log_service.dart';
 import 'playable_source.dart';
@@ -281,7 +281,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
        assert(nativeOperationTimeout > Duration.zero),
        assert(nativeCleanupTimeout > Duration.zero),
        assert(bufferingStallThreshold > Duration.zero) {
-    EqualizerService().setBackend(this);
+    EqualizerService().setBackend(this, capabilities: null);
   }
 
   final ja.AudioPlayer Function()? _playerFactory;
@@ -304,6 +304,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
   int? _androidAudioSessionId;
   bool _androidEqualizerDirty = true;
   int _equalizerRevision = 0;
+  int _equalizerIntentRevision = 0;
   Future<void>? _equalizerUpdate;
   Future<void>? _pendingPreparedMutation;
   ja.AudioSource? _loadedAudioSource;
@@ -396,7 +397,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     if (_player != null) return;
 
     // 移动端不使用 MediaKit 均衡器实现，避免 native EQ 路径影响播放稳定性。
-    EqualizerService().setBackend(this);
+    EqualizerService().setBackend(this, capabilities: null);
 
     final player =
         _playerFactory?.call() ??
@@ -715,6 +716,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     if (isNewSession) {
       _equalizerRevision++;
       _androidEqualizerDirty = true;
+      EqualizerService().report(this, EqualizerStatus.waiting);
     }
     _scheduleEqualizerUpdate();
   }
@@ -861,9 +863,11 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
         int revision;
         do {
           revision = _equalizerRevision;
-          await _applyAndroidEqualizerIfReady();
+          final applied = await _applyAndroidEqualizerIfReady();
+          if (!applied && revision == _equalizerRevision) break;
         } while (_player != null && revision != _equalizerRevision);
       } catch (error) {
+        EqualizerService().report(this, EqualizerStatus.failed);
         StructuredLogService.event(
           'audio_engine.equalizer_update_failed',
           level: LogLevel.warning,
@@ -881,6 +885,7 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     final sessionId = _androidAudioSessionId;
     if (player == null) return false;
     final revision = _equalizerRevision;
+    final intentRevision = _equalizerIntentRevision;
     final enabled = _equalizerEnabled;
     final gains = List<double>.from(_equalizerGains);
     final frequencies = List<int>.from(_equalizerFrequencies);
@@ -896,25 +901,39 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
       );
       if (released && isCurrent()) {
         _androidEqualizerDirty = false;
+        EqualizerService().report(
+          this,
+          EqualizerStatus.disabled,
+          revision: intentRevision,
+        );
         StructuredLogService.event(
           'audio_engine.equalizer_applied',
           fields: {'enabled': false, 'revision': revision},
         );
         return true;
       }
+      if (isCurrent()) EqualizerService().report(this, EqualizerStatus.failed);
       return false;
     }
 
-    if (sessionId == null || sessionId <= 0) return false;
-    final attached = await AndroidEqualizerService().attachToSession(sessionId);
-    if (!attached || !isCurrent()) return false;
-    final applied = await AndroidEqualizerService().apply(
+    if (sessionId == null || sessionId <= 0) {
+      EqualizerService().report(this, EqualizerStatus.waiting);
+      return false;
+    }
+    final result = await AndroidEqualizerService().configure(
       sessionId: sessionId,
       enabled: enabled,
       gains: gains,
       frequencies: frequencies,
     );
-    if (applied && isCurrent()) {
+    if (!isCurrent()) return true;
+    EqualizerService().report(
+      this,
+      result.status,
+      capabilities: result.capabilities,
+      revision: intentRevision,
+    );
+    if (result.status != EqualizerStatus.failed) {
       _androidEqualizerDirty = false;
       StructuredLogService.event(
         'audio_engine.equalizer_applied',
@@ -1842,11 +1861,12 @@ class JustAudioEngine implements AudioEngine, EqualizerCapable {
     List<double> gains,
     List<int> frequencies,
   ) async {
-    if (_equalizerEnabled == enabled &&
-        listEquals(_equalizerGains, gains) &&
-        listEquals(_equalizerFrequencies, frequencies)) {
-      _scheduleEqualizerUpdate();
-      return;
+    _equalizerIntentRevision = EqualizerService().revision;
+    if (_player == null) {
+      EqualizerService().report(
+        this,
+        enabled ? EqualizerStatus.waiting : EqualizerStatus.disabled,
+      );
     }
     _equalizerEnabled = enabled;
     _equalizerGains = List<double>.from(gains);
@@ -2065,7 +2085,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
 
     // 注入桌面端均衡器
     EqualizerService().setBackend(this);
-    await EqualizerService().applyEqualizer();
+    unawaited(EqualizerService().applyEqualizer());
 
     final savedVolume = PersistentStorageService().getDouble('player_volume');
     if (savedVolume != null) {
@@ -2472,25 +2492,53 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     List<int> frequencies,
   ) async {
     final player = _player;
-    if (player == null) return;
+    if (player == null) {
+      EqualizerService().report(
+        this,
+        enabled ? EqualizerStatus.waiting : EqualizerStatus.disabled,
+      );
+      return;
+    }
 
+    final intentRevision = EqualizerService().revision;
     if (!enabled) {
       await (player.platform as dynamic)?.setProperty('af', '');
+      if (identical(_player, player)) {
+        EqualizerService().report(
+          this,
+          EqualizerStatus.disabled,
+          revision: intentRevision,
+        );
+      }
       return;
     }
 
     final filterBuffer = StringBuffer();
-    for (int i = 0; i < gains.length && i < frequencies.length; i++) {
-      final gain = gains[i];
+    final mapped = mapEqualizerCurve(
+      frequencies,
+      gains,
+      EqualizerCapabilities.standard,
+    );
+    for (int i = 0; i < mapped.length; i++) {
+      final gain = mapped[i];
       if (gain.abs() <= 0.1) continue;
 
       if (filterBuffer.isNotEmpty) filterBuffer.write(',');
       filterBuffer.write(
-        'equalizer=f=${frequencies[i]}:width_type=o:width=1:g=${gain.toStringAsFixed(1)}',
+        'equalizer=f=${EqualizerCapabilities.standard.frequencies[i]}:width_type=o:width=1:g=${gain.toStringAsFixed(1)}',
       );
     }
 
     final filterString = filterBuffer.toString();
     await (player.platform as dynamic)?.setProperty('af', filterString);
+    if (identical(_player, player)) {
+      EqualizerService().report(
+        this,
+        filterString.isEmpty
+            ? EqualizerStatus.bypassed
+            : EqualizerStatus.applied,
+        revision: intentRevision,
+      );
+    }
   }
 }

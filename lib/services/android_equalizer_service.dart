@@ -1,104 +1,75 @@
 import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/services.dart';
-import 'playback/command_queue.dart';
+import '../models/equalizer_state.dart';
+
+class AndroidEqualizerResult {
+  final EqualizerStatus status;
+  final EqualizerCapabilities? capabilities;
+  const AndroidEqualizerResult(this.status, [this.capabilities]);
+}
 
 class AndroidEqualizerService {
-  static final AndroidEqualizerService _instance =
-      AndroidEqualizerService._internal();
+  static final AndroidEqualizerService _instance = AndroidEqualizerService._();
   factory AndroidEqualizerService() => _instance;
-  AndroidEqualizerService._internal();
+  AndroidEqualizerService._();
+  static const _channel = MethodChannel('com.cyrene.music/android_equalizer');
+  static const _timeout = Duration(milliseconds: 500);
+  int _requestId = 0;
 
-  static const MethodChannel _channel = MethodChannel(
-    'com.cyrene.music/android_equalizer',
-  );
-  static const Duration _platformCallTimeout = Duration(milliseconds: 500);
-
-  int? _attachedSessionId;
-  int? _requestedSessionId;
-  final CommandQueue _operations = CommandQueue();
-
-  Future<bool> attachToSession(int sessionId) =>
-      _operations.enqueue(() => _attachToSession(sessionId));
-
-  Future<bool> _attachToSession(int sessionId) async {
-    if (!Platform.isAndroid || sessionId <= 0) return false;
-    if (_attachedSessionId == sessionId) return true;
-    _attachedSessionId = null;
-    _requestedSessionId = sessionId;
-
-    try {
-      final ok =
-          await _channel
-              .invokeMethod<bool>('attach', {'sessionId': sessionId})
-              .timeout(_platformCallTimeout) ??
-          false;
-      if (ok) {
-        _attachedSessionId = sessionId;
-      }
-      return ok;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<bool> apply({
-    required int sessionId,
-    required bool enabled,
-    required List<double> gains,
-    required List<int> frequencies,
-  }) => _operations.enqueue(
-    () => _apply(
-      sessionId: sessionId,
-      enabled: enabled,
-      gains: List.of(gains),
-      frequencies: List.of(frequencies),
-    ),
-  );
-
-  Future<bool> _apply({
+  Future<AndroidEqualizerResult> configure({
     required int sessionId,
     required bool enabled,
     required List<double> gains,
     required List<int> frequencies,
   }) async {
-    if (!Platform.isAndroid || _attachedSessionId != sessionId) return false;
+    final requestId = ++_requestId;
     try {
-      return await _channel
-              .invokeMethod<bool>('apply', {
-                'sessionId': sessionId,
-                'enabled': enabled,
-                'gains': gains,
-                'frequencies': frequencies,
-              })
-              .timeout(_platformCallTimeout) ??
-          false;
+      final result = await _channel
+          .invokeMapMethod<String, dynamic>('configure', {
+            'sessionId': sessionId,
+            'requestId': requestId,
+            'enabled': enabled,
+            'gains': gains,
+            'frequencies': frequencies,
+          })
+          .timeout(_timeout);
+      final status = switch (result?['status']) {
+        'applied' => EqualizerStatus.applied,
+        'bypassed' => EqualizerStatus.bypassed,
+        'disabled' => EqualizerStatus.disabled,
+        _ => EqualizerStatus.failed,
+      };
+      return AndroidEqualizerResult(
+        status,
+        result?.containsKey('frequencies') == true
+            ? EqualizerCapabilities.fromMap(result!)
+            : null,
+      );
+    } on TimeoutException {
+      // Invalidates queued/late work; does not claim to interrupt a native call.
+      unawaited(_invalidate(sessionId, requestId));
+      return const AndroidEqualizerResult(EqualizerStatus.failed);
     } catch (_) {
-      return false;
+      return const AndroidEqualizerResult(EqualizerStatus.failed);
     }
   }
 
-  Future<bool> release({int? sessionId}) =>
-      _operations.enqueue(() => _release(sessionId: sessionId));
-
-  Future<bool> _release({int? sessionId}) async {
-    if (!Platform.isAndroid) return true;
-    final releasedSessionId = _attachedSessionId ?? _requestedSessionId;
-    if (releasedSessionId == null ||
-        (sessionId != null && releasedSessionId != sessionId)) {
-      return true;
-    }
-    if (sessionId == null || releasedSessionId == sessionId) {
-      _attachedSessionId = null;
-      _requestedSessionId = null;
-    }
+  Future<void> _invalidate(int sessionId, int requestId) async {
     try {
       await _channel
-          .invokeMethod('release', {
-            'sessionId': sessionId ?? releasedSessionId,
+          .invokeMethod('invalidate', {
+            'sessionId': sessionId,
+            'requestId': requestId,
           })
-          .timeout(_platformCallTimeout);
+          .timeout(_timeout);
+    } catch (_) {}
+  }
+
+  Future<bool> release({int? sessionId}) async {
+    try {
+      await _channel
+          .invokeMethod('release', {'sessionId': sessionId})
+          .timeout(_timeout);
       return true;
     } catch (_) {
       return false;

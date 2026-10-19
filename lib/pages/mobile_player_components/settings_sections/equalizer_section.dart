@@ -14,7 +14,7 @@ class EqualizerSection extends StatelessWidget {
     return ListenableBuilder(
       listenable: playerService,
       builder: (context, _) {
-        final available = playerService.isEqualizerAvailable;
+        final available = playerService.canConfigureEqualizer;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -31,9 +31,12 @@ class EqualizerSection extends StatelessWidget {
             ),
             ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 24),
-              leading: Icon(Icons.graphic_eq, color: colorScheme.onSurfaceVariant),
+              leading: Icon(
+                Icons.graphic_eq,
+                color: colorScheme.onSurfaceVariant,
+              ),
               title: const Text('均衡器'),
-              subtitle: Text(available ? '自定义音频频率响应' : '当前平台暂不支持'),
+              subtitle: Text(playerService.equalizerStatusText),
               trailing: const Icon(Icons.chevron_right),
               enabled: available,
               onTap: !available
@@ -44,7 +47,9 @@ class EqualizerSection extends StatelessWidget {
                       // 跳转到均衡器页面
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const EqualizerPage()),
+                        MaterialPageRoute(
+                          builder: (_) => const EqualizerPage(),
+                        ),
                       );
                     },
             ),

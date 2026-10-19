@@ -2,7 +2,6 @@ package com.cyrene.music
 
 import android.content.Context
 import android.media.AudioManager
-import android.media.audiofx.Equalizer
 import android.os.Bundle
 import android.util.Log
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -12,8 +11,6 @@ import io.flutter.plugin.common.MethodChannel
 import kotlin.math.roundToInt
 
 class MainActivity : AudioServiceFragmentActivity() {
-    private var androidEqualizer: Equalizer? = null
-    private var equalizerSessionId: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // 必须在 super.onCreate() 之前调用 installSplashScreen()
@@ -23,6 +20,9 @@ class MainActivity : AudioServiceFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        if (!flutterEngine.plugins.has(AndroidEqualizerPlugin::class.java)) {
+            flutterEngine.plugins.add(AndroidEqualizerPlugin())
+        }
 
         Log.d("MainActivity", "🔧 开始配置 Flutter Engine")
 
@@ -87,109 +87,6 @@ class MainActivity : AudioServiceFragmentActivity() {
                 }
             }
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.cyrene.music/android_equalizer")
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "attach" -> {
-                        val sessionId = call.argument<Int>("sessionId") ?: -1
-                        result.success(attachAndroidEqualizer(sessionId))
-                    }
-                    "apply" -> {
-                        val sessionId = call.argument<Int>("sessionId") ?: -1
-                        val enabled = call.argument<Boolean>("enabled") ?: false
-                        val gains = call.argument<List<Double>>("gains") ?: emptyList()
-                        val frequencies = call.argument<List<Int>>("frequencies") ?: emptyList()
-                        result.success(applyAndroidEqualizer(sessionId, enabled, gains, frequencies))
-                    }
-                    "release" -> {
-                        val sessionId = call.argument<Int>("sessionId")
-                        if (sessionId == null || equalizerSessionId == sessionId) {
-                            releaseAndroidEqualizer()
-                        }
-                        result.success(null)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-    }
-
-    private fun attachAndroidEqualizer(sessionId: Int): Boolean {
-        if (sessionId <= 0) return false
-        if (equalizerSessionId == sessionId && androidEqualizer != null) return true
-
-        releaseAndroidEqualizer()
-        return try {
-            androidEqualizer = Equalizer(0, sessionId)
-            equalizerSessionId = sessionId
-            true
-        } catch (e: Exception) {
-            Log.e("MainActivity", "❌ Android EQ attach 失败: ${e.message}", e)
-            false
-        }
-    }
-
-    private fun applyAndroidEqualizer(
-        expectedSessionId: Int,
-        enabled: Boolean,
-        gains: List<Double>,
-        frequencies: List<Int>,
-    ): Boolean {
-        if (expectedSessionId <= 0 || equalizerSessionId != expectedSessionId) return false
-        val eq = androidEqualizer ?: return false
-
-        return try {
-            val bandLevelRange = eq.bandLevelRange
-            val minLevel = bandLevelRange[0].toInt()
-            val maxLevel = bandLevelRange[1].toInt()
-
-            if (!enabled || gains.isEmpty()) {
-                eq.enabled = false
-                return true
-            }
-
-            val targetLevels = ShortArray(eq.numberOfBands.toInt())
-            if (frequencies.isNotEmpty()) {
-                val count = minOf(gains.size, frequencies.size)
-                for (i in 0 until count) {
-                    val targetBand = eq.getBand((frequencies[i] * 1000))
-                    val level = (gains[i] * 100.0).roundToInt()
-                        .coerceIn(minLevel, maxLevel)
-                        .toShort()
-                    if (targetBand.toInt() in targetLevels.indices) {
-                        targetLevels[targetBand.toInt()] = level
-                    }
-                }
-            } else {
-                val bandCount = minOf(gains.size, eq.numberOfBands.toInt())
-                for (i in 0 until bandCount) {
-                    val level = (gains[i] * 100.0).roundToInt()
-                        .coerceIn(minLevel, maxLevel)
-                        .toShort()
-                    targetLevels[i] = level
-                }
-            }
-            for (band in targetLevels.indices) {
-                if (eq.getBandLevel(band.toShort()) != targetLevels[band]) {
-                    eq.setBandLevel(band.toShort(), targetLevels[band])
-                }
-            }
-            if (!eq.enabled) eq.enabled = true
-            true
-        } catch (e: Exception) {
-            Log.e("MainActivity", "❌ Android EQ apply 失败: ${e.message}", e)
-            false
-        }
-    }
-
-    private fun releaseAndroidEqualizer() {
-        try {
-            androidEqualizer?.release()
-        } catch (e: Exception) {
-            Log.w("MainActivity", "⚠️ Android EQ release 异常: ${e.message}")
-        } finally {
-            androidEqualizer = null
-            equalizerSessionId = null
-        }
     }
 
     private val sleepTimerReceiver = object : android.content.BroadcastReceiver() {
@@ -205,7 +102,6 @@ class MainActivity : AudioServiceFragmentActivity() {
     }
 
     override fun onDestroy() {
-        releaseAndroidEqualizer()
         try {
             unregisterReceiver(sleepTimerReceiver)
         } catch (e: Exception) {

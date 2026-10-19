@@ -40,6 +40,7 @@ class PlayerService extends ChangeNotifier {
     // 转发 PlaybackService 的变更通知
     _pb.addListener(_scheduleNotify);
     _pb.coverManager.addListener(_scheduleNotify);
+    EqualizerService().addListener(_scheduleNotify);
   }
 
   /// 将同一微任务内的多次通知合并为一次
@@ -138,6 +139,17 @@ class PlayerService extends ChangeNotifier {
   List<double> get equalizerGains => _pb.equalizerGains;
   bool get equalizerEnabled => _pb.equalizerEnabled;
   bool get isEqualizerAvailable => _pb.isEqualizerAvailable;
+  List<int> get equalizerFrequencies => EqualizerService().frequencies;
+  double get equalizerMinGain => EqualizerService().minGain;
+  double get equalizerMaxGain => EqualizerService().maxGain;
+  String get equalizerStatusText => EqualizerService().statusText;
+  bool get canRetryEqualizer => EqualizerService().canRetry;
+  bool get canConfigureEqualizer => EqualizerService().canConfigure;
+  Future<void> retryEqualizer() => EqualizerService().applyEqualizer();
+  List<double> mapEqualizerPreset(List<double> gains) =>
+      EqualizerService().mapPreset(gains);
+  Future<void> applyEqualizerPreset(List<double> gains) =>
+      EqualizerService().applyPreset(gains);
 
   // 音源配置回调
   void Function()? get onAudioSourceNotConfigured =>
