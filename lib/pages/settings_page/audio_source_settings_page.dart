@@ -9,6 +9,7 @@ import '../../services/player_service.dart';
 import '../../services/lx_source_catalog_service.dart';
 import '../../services/url_service.dart';
 import '../../models/lx_source_candidate.dart';
+import '../../widgets/lx_source_filters.dart';
 
 import '../../services/navidrome_session_service.dart';
 import '../../models/audio_source_config.dart';
@@ -82,9 +83,11 @@ class _AudioSourceSettingsContentState
   String? _candidateError;
   String? _candidateNotice;
   String? _usingCandidateUrl;
+  String _candidateQuery = '';
+  String? _candidateDirectory;
 
   List<AudioSourceConfig> get _localSources {
-    final urls = _candidates.map((source) => source.url).toSet();
+    final urls = _candidates.map((source) => source.downloadUrl).toSet();
     return _audioSourceReadController.sources
         .where((source) => !urls.contains(source.scriptSource))
         .toList();
@@ -137,6 +140,7 @@ class _AudioSourceSettingsContentState
     setState(() {
       _candidates = _catalog.candidates;
       _candidateNotice = null;
+      _candidateDirectory = null;
     });
     _loadCandidates();
   }
@@ -150,7 +154,16 @@ class _AudioSourceSettingsContentState
     try {
       final sources = await _catalog.refresh();
       if (!mounted || request != _catalogRequest) return;
-      setState(() => _candidates = sources);
+      setState(() {
+        _candidates = sources;
+        if (_candidateDirectory != null &&
+            _candidateDirectory!.isNotEmpty &&
+            !LxSourceCandidate.directories(
+              sources,
+            ).contains(_candidateDirectory)) {
+          _candidateDirectory = null;
+        }
+      });
     } catch (error) {
       if (!mounted || request != _catalogRequest) return;
       setState(
@@ -167,16 +180,17 @@ class _AudioSourceSettingsContentState
   Future<void> _useCandidate(LxSourceCandidate candidate) async {
     if (_isSourceActionBusy) return;
     final reloading =
-        _audioSourceReadController.activeSource?.scriptSource == candidate.url;
+        _audioSourceReadController.activeSource?.scriptSource ==
+        candidate.downloadUrl;
     await _runWithSourceActionLock(
       action: () async {
         setState(() {
-          _usingCandidateUrl = candidate.url;
+          _usingCandidateUrl = candidate.downloadUrl;
           _candidateNotice = null;
         });
         try {
           final result = await _audioSourceController.useLxSource(
-            candidate.url,
+            candidate.downloadUrl,
           );
           if (!mounted) return;
           if (!result.isSuccess) {
@@ -208,6 +222,14 @@ class _AudioSourceSettingsContentState
   }
 
   Widget _buildCandidateSection(BuildContext context) {
+    final visible = _candidates
+        .where(
+          (candidate) => candidate.matches(
+            query: _candidateQuery,
+            selectedDirectory: _candidateDirectory,
+          ),
+        )
+        .toList();
     final manager = ThemeManager();
     final isFluent = manager.isFluentFramework && Platform.isWindows;
     final isCupertino =
@@ -250,6 +272,14 @@ class _AudioSourceSettingsContentState
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text(_candidateError!),
               ),
+            LxSourceFilters(
+              directories: LxSourceCandidate.directories(_candidates),
+              selectedDirectory: _candidateDirectory,
+              onQueryChanged: (value) =>
+                  setState(() => _candidateQuery = value),
+              onDirectoryChanged: (value) =>
+                  setState(() => _candidateDirectory = value),
+            ),
             if (!_isLoadingCandidates &&
                 _candidateError == null &&
                 _candidates.isEmpty)
@@ -257,11 +287,16 @@ class _AudioSourceSettingsContentState
                 padding: EdgeInsets.symmetric(vertical: 12),
                 child: Text('暂无候选音源，可使用下方自定义导入'),
               ),
-            ..._candidates.map((candidate) {
+            if (_candidates.isNotEmpty && visible.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('没有匹配的音源，请调整搜索或目录筛选'),
+              ),
+            ...visible.map((candidate) {
               final active =
                   _audioSourceReadController.activeSource?.scriptSource ==
-                  candidate.url;
-              final busy = _usingCandidateUrl == candidate.url;
+                  candidate.downloadUrl;
+              final busy = _usingCandidateUrl == candidate.downloadUrl;
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(
@@ -274,6 +309,12 @@ class _AudioSourceSettingsContentState
                             candidate.name,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            candidate.directory.isEmpty
+                                ? '根目录'
+                                : candidate.directory.replaceAll('/', ' / '),
+                            style: const TextStyle(fontSize: 12),
                           ),
                           if (active)
                             const Text('当前使用', style: TextStyle(fontSize: 12)),

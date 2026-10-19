@@ -48,8 +48,8 @@ class LxSourceCatalogService {
       if (row is! Map) throw const FormatException('音源列表格式无效');
       return LxSourceCandidate.fromJson(Map<String, dynamic>.from(row));
     }).toList();
-    if (list.map((source) => source.id).toSet().length != list.length ||
-        list.map((source) => source.url).toSet().length != list.length) {
+    if (list.map((source) => source.path).toSet().length != list.length ||
+        list.map((source) => source.downloadUrl).toSet().length != list.length) {
       throw const FormatException('音源列表包含重复项目');
     }
     final sources = List<LxSourceCandidate>.unmodifiable(list);

@@ -91,6 +91,11 @@ class AuthService extends ChangeNotifier {
   String? get sessionIdentity =>
       !_isLoggedIn ? null : '${_currentUser?.id}:$_sessionRevision:$_authToken';
 
+  /// Data survives credential renewal, but never logout/re-login.
+  String? get dataSessionIdentity => !_isLoggedIn || _currentUser == null
+      ? null
+      : '${_currentUser!.id}:$_sessionRevision';
+
   // 用于跟踪 Linux Do OAuth 登录的本地服务器
   // 确保在启动新登录前关闭旧服务器，避免端口占用
   HttpServer? _oauthServer;

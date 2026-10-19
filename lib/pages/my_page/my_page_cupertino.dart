@@ -36,11 +36,12 @@ extension _MyPageCupertinoUI on _MyPageState {
   Widget _buildCupertinoMainView(BuildContext context, bool isDark) {
     return CupertinoPageScaffold(
       backgroundColor: isDark ? const Color(0xFF000000) : CupertinoColors.systemGroupedBackground,
-      navigationBar: CupertinoNavigationBar(middle: const Text('我的'), backgroundColor: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground),
+      navigationBar: CupertinoNavigationBar(middle: const Text('我的'), trailing: _buildRefreshButton(), backgroundColor: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground),
       child: SafeArea(
         child: CustomScrollView(
+          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
           slivers: [
-            CupertinoSliverRefreshControl(onRefresh: () async { await _playlistService.loadPlaylists(); await _loadStats(forceRefresh: true); }),
+            CupertinoSliverRefreshControl(onRefresh: () => _refreshAll()),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -59,6 +60,7 @@ extension _MyPageCupertinoUI on _MyPageState {
                       CupertinoButton(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), color: CupertinoColors.systemBlue, borderRadius: BorderRadius.circular(16), onPressed: _showCreatePlaylistDialog, child: const Text('新建', style: TextStyle(fontSize: 14, color: CupertinoColors.white))),
                     ]),
                     const SizedBox(height: 12),
+                    _buildPlaylistStatus(),
                     _buildCupertinoPlaylistsList(isDark),
                     const SizedBox(height: 24),
                     if (_statsData != null && _statsData!.playCounts.isNotEmpty) ...[
@@ -129,7 +131,12 @@ extension _MyPageCupertinoUI on _MyPageState {
       return Container(padding: const EdgeInsets.all(32), decoration: BoxDecoration(color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white, borderRadius: BorderRadius.circular(12)), child: const Center(child: CupertinoActivityIndicator()));
     }
     if (_statsData == null) {
-      if (_statsError != null) return const SizedBox.shrink();
+      if (_statsError != null) {
+        return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white, borderRadius: BorderRadius.circular(12)),
+        child: const Text('听歌统计暂不可用'));
+      }
       return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white, borderRadius: BorderRadius.circular(12)), child: Text('暂无统计数据', style: TextStyle(color: CupertinoColors.systemGrey)));
     }
 
@@ -172,6 +179,9 @@ extension _MyPageCupertinoUI on _MyPageState {
 
   Widget _buildCupertinoPlaylistsList(bool isDark) {
     final playlists = _playlistService.playlists;
+    if (playlists.isEmpty && !_playlistService.hasLoadedPlaylists) {
+      return const SizedBox.shrink();
+    }
     if (playlists.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(32),

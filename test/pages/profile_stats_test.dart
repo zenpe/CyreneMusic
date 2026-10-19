@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cyrene_music/pages/profile_page.dart';
+import 'package:cyrene_music/pages/my_page/my_page.dart';
+import 'package:cyrene_music/services/playlist_service.dart';
+import 'package:cyrene_music/utils/theme_manager.dart';
 import 'package:cyrene_music/services/auth_service.dart';
 import 'package:cyrene_music/services/listening_stats_service.dart';
 import 'package:cyrene_music/services/url_service.dart';
@@ -87,6 +90,98 @@ Future<void> settleIO(WidgetTester tester, bool Function() ready) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets(
+    'My page exposes failed playlist retry and refreshes both sections',
+    (tester) async {
+      var fail = true;
+      final paths = <String>[];
+      await setupServer(
+        tester,
+        (request) async {
+          paths.add(request.uri.path);
+          if (request.uri.path == '/playlists') {
+            request.response.statusCode = fail ? 503 : 200;
+            request.response.headers.contentType = ContentType.json;
+            request.response.write(
+              jsonEncode(
+                fail ? {'status': 503} : {'status': 200, 'playlists': []},
+              ),
+            );
+            await request.response.close();
+          } else {
+            await reply(request, fail: fail);
+          }
+        },
+        () async {
+          await tester.runAsync(() async {
+            await ThemeManager().ensureSettingsLoaded();
+            ThemeManager().setThemeFramework(ThemeFramework.material);
+          });
+          await tester.runAsync(
+            () => tester.pumpWidget(const MaterialApp(home: MyPage())),
+          );
+          await settleIO(
+            tester,
+            () =>
+                PlaylistService().loadError != null &&
+                ListeningStatsService().lastError != null,
+          );
+          expect(find.text('暂无歌单'), findsNothing);
+          expect(find.text('歌单加载失败'), findsOneWidget);
+          expect(find.text('统计加载失败'), findsOneWidget);
+          fail = false;
+          await tester.ensureVisible(find.text('刷新'));
+          await tester.runAsync(() => tester.tap(find.text('刷新')));
+          await tester.pump();
+          await settleIO(
+            tester,
+            () =>
+                PlaylistService().hasLoadedPlaylists &&
+                ListeningStatsService().statsData != null,
+          );
+          expect(find.text('歌单加载失败'), findsNothing);
+          expect(find.text('统计加载失败'), findsNothing);
+          expect(paths.where((path) => path == '/playlists').length, 2);
+          expect(paths.where((path) => path == '/stats').length, 2);
+          expect(paths.any((path) => path.contains('listening-time')), false);
+          fail = true;
+          await tester.runAsync(() => tester.tap(find.text('刷新')));
+          await tester.pump();
+          await settleIO(
+            tester,
+            () =>
+                PlaylistService().loadError != null &&
+                ListeningStatsService().lastError != null,
+          );
+          expect(ListeningStatsService().statsData?.totalPlayCount, 1);
+          expect(find.text('统计更新失败，已保留上次数据'), findsOneWidget);
+          fail = false;
+          await tester.runAsync(() async {
+            await AuthService().loginWithToken(
+              token: 'new-account',
+              userJson: {
+                'id': 2,
+                'email': 'second@example.invalid',
+                'username': 'second',
+                'isVerified': true,
+              },
+            );
+            await tester.pump();
+          });
+          await settleIO(
+            tester,
+            () =>
+                PlaylistService().hasLoadedPlaylists &&
+                ListeningStatsService().statsData != null,
+          );
+          expect(paths.where((path) => path == '/playlists').length, 4);
+          expect(paths.where((path) => path == '/stats').length, 4);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    },
+  );
 
   testWidgets(
     'statistics failure offers retry and recovers without forcing an upload',

@@ -131,12 +131,9 @@ extension _MyPageMaterialUI on _MyPageState {
 
           // 2. 页面可滚动主体
           RefreshIndicator(
-            onRefresh: () async {
-              await _playlistService.loadPlaylists();
-              await _loadStats(forceRefresh: true);
-            },
+            onRefresh: () => _refreshAll(),
             child: CustomScrollView(
-              physics: const BouncingScrollPhysics(),
+              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
               slivers: [
                 // 顶部安全区占位
                 SliverToBoxAdapter(
@@ -173,6 +170,8 @@ extension _MyPageMaterialUI on _MyPageState {
 
                 if (_statsError != null)
                   SliverToBoxAdapter(child: _buildStatsError()),
+                SliverToBoxAdapter(child: Align(alignment: Alignment.centerRight,
+                  child: Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: _buildRefreshButton()))),
 
                 // 歌单标题与操作栏
                 SliverToBoxAdapter(
@@ -183,6 +182,7 @@ extension _MyPageMaterialUI on _MyPageState {
                 ),
 
                 // 歌单列表
+                SliverToBoxAdapter(child: _buildPlaylistStatus()),
                 SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: _buildMaterialPlaylistsSliver(colorScheme),
@@ -622,7 +622,7 @@ extension _MyPageMaterialUI on _MyPageState {
     }
 
     if (_statsData == null) {
-      return const SizedBox.shrink();
+      return const Padding(padding: EdgeInsets.all(16), child: Text('听歌统计暂不可用'));
     }
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -869,6 +869,9 @@ extension _MyPageMaterialUI on _MyPageState {
 
   Widget _buildMaterialPlaylistsSliver(ColorScheme colorScheme) {
     final playlists = _playlistService.playlists;
+    if (playlists.isEmpty && !_playlistService.hasLoadedPlaylists) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 

@@ -1,21 +1,29 @@
 class LxSourceCandidate {
-  final String id;
+  final String path;
   final String name;
-  final String url;
+  final String directory;
+  final String downloadUrl;
 
   const LxSourceCandidate({
-    required this.id,
+    required this.path,
     required this.name,
-    required this.url,
+    required this.directory,
+    required this.downloadUrl,
   });
 
   factory LxSourceCandidate.fromJson(Map<String, dynamic> json) {
-    final id = json['id'];
+    final path = json['path'];
     final name = json['name'];
-    final url = json['url'];
+    final directory = json['directory'];
+    final url = json['downloadUrl'];
     final uri = url is String ? Uri.tryParse(url) : null;
-    if (id is! String ||
-        id.isEmpty ||
+    if (path is! String ||
+        !isScriptPath(path) ||
+        directory is! String ||
+        directory !=
+            (path.contains('/')
+                ? path.substring(0, path.lastIndexOf('/'))
+                : '') ||
         name is! String ||
         name.isEmpty ||
         uri == null ||
@@ -23,6 +31,45 @@ class LxSourceCandidate {
         (uri.scheme != 'https' && uri.scheme != 'http')) {
       throw const FormatException('音源列表格式无效');
     }
-    return LxSourceCandidate(id: id, name: name, url: uri.toString());
+    return LxSourceCandidate(
+      path: path,
+      name: name,
+      directory: directory,
+      downloadUrl: uri.toString(),
+    );
+  }
+
+  static bool isScriptPath(String path) {
+    final parts = path.split('/');
+    return !RegExp(r'[\\\x00-\x1f\x7f]').hasMatch(path) &&
+        parts.every((part) => part.isNotEmpty && part != '.' && part != '..') &&
+        !parts.first.contains(':') &&
+        parts.last.length > 3 &&
+        path.toLowerCase().endsWith('.js');
+  }
+
+  bool matches({String query = '', String? selectedDirectory}) {
+    final inDirectory =
+        selectedDirectory == null ||
+        directory == selectedDirectory ||
+        (selectedDirectory.isNotEmpty &&
+            directory.startsWith('$selectedDirectory/'));
+    final term = query.trim().toLowerCase();
+    return inDirectory &&
+        (term.isEmpty ||
+            name.toLowerCase().contains(term) ||
+            path.toLowerCase().contains(term));
+  }
+
+  static List<String> directories(Iterable<LxSourceCandidate> sources) {
+    final result = <String>{};
+    for (final source in sources) {
+      final parts = source.directory.split('/');
+      if (source.directory.isEmpty) continue;
+      for (var i = 1; i <= parts.length; i++) {
+        result.add(parts.take(i).join('/'));
+      }
+    }
+    return result.toList()..sort();
   }
 }

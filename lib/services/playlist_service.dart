@@ -1,6 +1,8 @@
 import 'dart:math';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 
 import '../models/playlist.dart';
 import '../models/track.dart';
@@ -113,6 +115,14 @@ class PlaylistService extends ChangeNotifier {
   int? _currentPlaylistId;
   bool _isLoading = false;
   bool _isLoadingTracks = false;
+  Future<void>? _playlistLoad;
+  CancelToken? _playlistRequest;
+  DateTime? _playlistsFetchedAt;
+  bool _hasLoadedPlaylists = false;
+  String? _loadError;
+  String? get loadError => _loadError;
+  bool get hasLoadedPlaylists => _hasLoadedPlaylists;
+  String? get contextIdentity => _sessionIdentity();
 
   List<Playlist> get playlists => List.unmodifiable(_playlists);
   int? get currentPlaylistId => _currentPlaylistId;
@@ -138,7 +148,7 @@ class PlaylistService extends ChangeNotifier {
     if (!auth.isLoggedIn || token == null || token.isEmpty || userId == null) {
       return null;
     }
-    return '${UrlService().backendRevision}:$userId:$token';
+    return '${UrlService().backendRevision}:${auth.dataSessionIdentity}';
   }
 
   bool _isCurrentSession(String session) => _sessionIdentity() == session;
@@ -163,6 +173,12 @@ class PlaylistService extends ChangeNotifier {
 
   void clear() {
     _playlistLoadGeneration++;
+    _playlistRequest?.cancel('会话已改变');
+    _playlistRequest = null;
+    _playlistLoad = null;
+    _playlistsFetchedAt = null;
+    _hasLoadedPlaylists = false;
+    _loadError = null;
     _playlists = [];
     _currentPlaylistId = null;
     _tracksByPlaylist.clear();
@@ -317,6 +333,10 @@ class PlaylistService extends ChangeNotifier {
 
   void _invalidateLoadsForMutation([int? playlistId]) {
     _playlistLoadGeneration++;
+    _playlistRequest?.cancel('歌单已修改');
+    _playlistRequest = null;
+    _playlistLoad = null;
+    _playlistsFetchedAt = null;
     var shouldNotify = _isLoading;
     _isLoading = false;
     if (playlistId != null) {
@@ -380,39 +400,71 @@ class PlaylistService extends ChangeNotifier {
     if (_currentPlaylistId == playlistId) await loadPlaylistTracks(playlistId);
   }
 
-  Future<void> loadPlaylists() async {
+  Future<void> loadPlaylists({bool forceRefresh = true}) async {
+    final pending = _playlistLoad;
+    if (pending != null) return pending;
+    if (!forceRefresh &&
+        _loadError == null &&
+        _playlistsFetchedAt != null &&
+        DateTime.now().difference(_playlistsFetchedAt!) <
+            const Duration(seconds: 60)) {
+      return;
+    }
+    final request = _loadPlaylists();
+    _playlistLoad = request;
+    try {
+      await request;
+    } finally {
+      if (identical(_playlistLoad, request)) _playlistLoad = null;
+    }
+  }
+
+  Future<void> _loadPlaylists() async {
     final session = _sessionIdentity();
     if (session == null) return;
     final generation = ++_playlistLoadGeneration;
     _isLoading = true;
+    _loadError = null;
     notifyListeners();
+    final cancelToken = CancelToken();
+    _playlistRequest = cancelToken;
+    final clock = Stopwatch()..start();
+    int? statusCode;
     try {
-      final result = await ApiClient().getJson(
-        '/playlists',
-        timeout: const Duration(seconds: 10),
-      );
+      final result = await ApiClient()
+          .getJson(
+            '/playlists',
+            timeout: const Duration(seconds: 10),
+            cancelToken: cancelToken,
+          )
+          .timeout(
+            const Duration(seconds: 12),
+            onTimeout: () {
+              cancelToken.cancel('歌单加载超时');
+              throw TimeoutException('歌单加载超时');
+            },
+          );
       final data = result.data;
+      statusCode = result.statusCode;
       if (!result.ok ||
           data is! Map<String, dynamic> ||
           data['status'] != 200) {
-        throw Exception(
-          data is Map ? data['message'] : 'HTTP ${result.statusCode}',
-        );
+        throw Exception('HTTP ${result.statusCode}; 歌单响应无效');
       }
       if (!_isCurrentSession(session) ||
           generation != _playlistLoadGeneration) {
         return;
       }
       final currentById = {for (final item in _playlists) item.id: item};
-      _playlists = (data['playlists'] as List<dynamic>? ?? const []).map((
-        item,
-      ) {
+      _playlists = (data['playlists'] as List<dynamic>).map((item) {
         final incoming = Playlist.fromJson(item as Map<String, dynamic>);
         final current = currentById[incoming.id];
         return current == null
             ? incoming
             : mergePlaylistState(current, incoming);
       }).toList();
+      _playlistsFetchedAt = DateTime.now();
+      _hasLoadedPlaylists = true;
       if (_playlists.length != currentById.length ||
           _playlists.any(
             (p) =>
@@ -422,8 +474,22 @@ class PlaylistService extends ChangeNotifier {
         _invalidateMembership();
       }
     } catch (error) {
-      StructuredLogService.log('[PlaylistService] 加载歌单失败: $error');
+      if (_isCurrentSession(session) && generation == _playlistLoadGeneration) {
+        _loadError = '歌单加载失败，请重试';
+        StructuredLogService.event(
+          'playlists.load_failed',
+          level: LogLevel.warning,
+          fields: {
+            'path': '/playlists',
+            'status': statusCode,
+            'failure_type': error.runtimeType.toString(),
+            'elapsed_ms': clock.elapsedMilliseconds,
+          },
+          error: error,
+        );
+      }
     } finally {
+      if (identical(_playlistRequest, cancelToken)) _playlistRequest = null;
       if (_isCurrentSession(session) && generation == _playlistLoadGeneration) {
         _isLoading = false;
         notifyListeners();

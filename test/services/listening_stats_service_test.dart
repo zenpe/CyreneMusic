@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/services/auth_service.dart';
 import 'package:cyrene_music/services/listening_stats_service.dart';
+import 'package:cyrene_music/services/playlist_service.dart';
 import 'package:cyrene_music/services/url_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -63,6 +64,119 @@ Future<void> withServer(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test(
+    'profile data survives credential renewal and failed refresh; same-account login isolates it',
+    () async {
+      var fail = false;
+      var playlistCalls = 0;
+      await withServer(
+        (request) async {
+          if (request.uri.path == '/auth/validate-token') {
+            await reply(request, {
+              'code': 200,
+              'data': {...user(1), 'token': 'renewed-token'},
+            });
+          } else if (request.uri.path == '/playlists') {
+            playlistCalls++;
+            await reply(
+              request,
+              fail
+                  ? {'status': 503}
+                  : {
+                      'status': 200,
+                      'playlists': [
+                        {
+                          'id': 10,
+                          'name': 'Saved playlist',
+                          'type': 'local',
+                          'isDefault': false,
+                          'trackCount': 0,
+                          'createdAt': '2026-10-19 00:00:00',
+                          'updatedAt': '2026-10-19 00:00:00',
+                        },
+                      ],
+                    },
+              status: fail ? 503 : 200,
+            );
+          } else {
+            await reply(
+              request,
+              fail ? {'status': 503} : summary(7),
+              status: fail ? 503 : 200,
+            );
+          }
+        },
+        (auth, stats) async {
+          final playlists = PlaylistService();
+          await Future.wait([
+            playlists.loadPlaylists(),
+            playlists.loadPlaylists(),
+            stats.fetchStats(),
+          ]);
+          expect(playlistCalls, 1);
+          final context = playlists.contextIdentity;
+          await auth.validateToken();
+          expect(auth.token, 'renewed-token');
+          expect(playlists.contextIdentity, context);
+          expect(playlists.playlists.single.name, 'Saved playlist');
+          expect(stats.statsData?.totalPlayCount, 7);
+          await playlists.loadPlaylists(forceRefresh: false);
+          expect(playlistCalls, 1);
+          fail = true;
+          await Future.wait([
+            playlists.loadPlaylists(),
+            stats.fetchStats(forceRefresh: true),
+          ]);
+          expect(playlists.playlists, hasLength(1));
+          expect(playlists.loadError, isNotNull);
+          expect(playlists.isLoading, false);
+          expect(stats.statsData?.totalPlayCount, 7);
+          expect(stats.lastError, isNotNull);
+          expect(stats.isLoading, false);
+          fail = false;
+          await Future.wait([
+            playlists.loadPlaylists(forceRefresh: false),
+            stats.fetchStats(),
+          ]);
+          expect(playlists.loadError, isNull);
+          expect(stats.lastError, isNull);
+          await auth.loginWithToken(token: 'another-login', userJson: user(1));
+          expect(playlists.contextIdentity, isNot(context));
+          expect(playlists.playlists, isEmpty);
+          expect(playlists.hasLoadedPlaylists, false);
+          expect(stats.statsData, isNull);
+        },
+      );
+    },
+  );
+
+  test(
+    'initial playlist failure is distinct from an empty successful response',
+    () async {
+      var malformed = true;
+      await withServer(
+        (request) async {
+          await reply(
+            request,
+            malformed ? {'status': 200} : {'status': 200, 'playlists': []},
+          );
+        },
+        (auth, stats) async {
+          final service = PlaylistService();
+          await service.loadPlaylists();
+          expect(service.loadError, isNotNull);
+          expect(service.hasLoadedPlaylists, false);
+          expect(service.isLoading, false);
+          malformed = false;
+          await service.loadPlaylists();
+          expect(service.loadError, isNull);
+          expect(service.hasLoadedPlaylists, true);
+          expect(service.playlists, isEmpty);
+        },
+      );
+    },
+  );
 
   test(
     'concurrent reads merge; repeated entry uses cache; explicit refresh reads again',

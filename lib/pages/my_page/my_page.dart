@@ -41,11 +41,12 @@ class _MyPageState extends State<MyPage> {
   final AuthFacade _authFacade = AuthFacade();
   final PlaylistService _playlistService = PlaylistService();
   final ThemeManager _themeManager = ThemeManager();
-  ListeningStatsData? _statsData;
-  bool _isLoadingStats = true;
-  String? _statsError;
-  String? _statsSession;
-  int _statsGeneration = 0;
+  final ListeningStatsService _statsService = ListeningStatsService();
+  ListeningStatsData? get _statsData => _statsService.statsData;
+  bool get _isLoadingStats => _statsService.isLoading && _statsData == null;
+  String? get _statsError => _statsService.lastError;
+  String? _pageContext;
+  bool get _refreshing => _playlistService.isLoading || _statsService.isLoading;
   Playlist? _selectedPlaylist;
   bool _isEditMode = false;
   bool _renameDialogOpen = false;
@@ -65,24 +66,19 @@ class _MyPageState extends State<MyPage> {
   void initState() {
     super.initState();
     _playlistService.addListener(_onPlaylistsChanged);
-    _statsSession = ListeningStatsService().contextIdentity;
-    _statsData = ListeningStatsService().statsData;
-    ListeningStatsService().addListener(_onStatsAuthChanged);
-
-    if (_authFacade.isLoggedIn) {
-      _playlistService.loadPlaylists();
-      _loadStats();
-    }
+    _pageContext = _playlistService.contextIdentity;
+    _statsService.addListener(_onStatsAuthChanged);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncGlobalBackHandler();
+      if (mounted) _refreshAll(forceRefresh: false);
     });
   }
 
   @override
   void dispose() {
     _playlistService.removeListener(_onPlaylistsChanged);
-    ListeningStatsService().removeListener(_onStatsAuthChanged);
+    _statsService.removeListener(_onStatsAuthChanged);
     _searchController.dispose();
     GlobalBackHandlerService().unregister('my_page_overlay');
     super.dispose();
@@ -90,6 +86,16 @@ class _MyPageState extends State<MyPage> {
 
   void _onPlaylistsChanged() {
     if (!mounted) return;
+    final context = _playlistService.contextIdentity;
+    if (context != _pageContext) {
+      _pageContext = context;
+      _selectedPlaylist = null;
+      _selectedTrackIds.clear();
+      _isEditMode = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _refreshAll(forceRefresh: false);
+      });
+    }
     setState(() {
       final selectedId = _selectedPlaylist?.id;
       for (final playlist in _playlistService.playlists) {
@@ -107,38 +113,55 @@ class _MyPageState extends State<MyPage> {
   }
 
   void _onStatsAuthChanged() {
-    final session = ListeningStatsService().contextIdentity;
-    if (!mounted || session == _statsSession) return;
-    _statsSession = session;
-    _statsGeneration++;
-    setState(() {
-      _statsData = null;
-      _statsError = null;
-      _isLoadingStats = session != null;
-    });
-    if (session != null) _loadStats();
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadStats({bool forceRefresh = false}) async {
-    if (!mounted) return;
-    final session = ListeningStatsService().contextIdentity;
-    final generation = ++_statsGeneration;
-    final service = ListeningStatsService();
-    setState(() {
-      _statsData = service.statsData;
-      _isLoadingStats = _statsData == null;
-      _statsError = null;
-    });
-    final stats = await service.fetchStats(forceRefresh: forceRefresh);
-    if (!mounted || generation != _statsGeneration ||
-        session != service.contextIdentity) {
-      return;
+    await _statsService.fetchStats(forceRefresh: forceRefresh);
+  }
+
+  Future<void> _refreshAll({bool forceRefresh = true}) async {
+    await Future.wait([
+      _playlistService.loadPlaylists(forceRefresh: forceRefresh),
+      _loadStats(forceRefresh: forceRefresh),
+    ]);
+  }
+
+  Widget _buildRefreshButton() => _actionButton(
+    _refreshing ? '刷新中…' : '刷新',
+    _refreshing ? null : () => _refreshAll(),
+  );
+
+  Widget _actionButton(String label, VoidCallback? action) {
+    if (_themeManager.isFluentFramework) {
+      return fluent.Button(onPressed: action, child: Text(label));
     }
-    setState(() {
-      _statsData = stats ?? service.statsData;
-      _isLoadingStats = false;
-      _statsError = service.lastError;
-    });
+    if (_themeManager.isCupertinoFramework) {
+      return CupertinoButton(onPressed: action, child: Text(label));
+    }
+    return TextButton(onPressed: action, child: Text(label));
+  }
+
+  Widget _buildPlaylistStatus() {
+    final empty = _playlistService.playlists.isEmpty;
+    if (_playlistService.isLoading) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(empty ? '正在加载歌单…' : '正在更新歌单…'),
+      );
+    }
+    if (_playlistService.loadError == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Wrap(
+        spacing: 12,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(empty ? '歌单加载失败' : '歌单更新失败，已保留上次数据'),
+          _actionButton('重试', () => _playlistService.loadPlaylists()),
+        ],
+      ),
+    );
   }
 
   Widget _buildStatsError() {
@@ -155,8 +178,11 @@ class _MyPageState extends State<MyPage> {
     }
     return Padding(
       padding: const EdgeInsets.all(12),
-      child: Wrap(spacing: 12, crossAxisAlignment: WrapCrossAlignment.center,
-        children: [label, button]),
+      child: Wrap(
+        spacing: 12,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [label, button],
+      ),
     );
   }
 
@@ -260,12 +286,20 @@ class _MyPageState extends State<MyPage> {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
-  String _getTrackDurationString(PlaylistTrack item, bool isCurrentPlaying, PlayerService player) {
+  String _getTrackDurationString(
+    PlaylistTrack item,
+    bool isCurrentPlaying,
+    PlayerService player,
+  ) {
     if (isCurrentPlaying) {
       Duration dur = player.duration;
-      if (dur.inSeconds <= 0 && player.lyricSnapshot != null && player.lyricSnapshot!.lines.isNotEmpty) {
+      if (dur.inSeconds <= 0 &&
+          player.lyricSnapshot != null &&
+          player.lyricSnapshot!.lines.isNotEmpty) {
         final lastLine = player.lyricSnapshot!.lines.last;
-        dur = lastLine.startTime + (lastLine.lineDuration ?? const Duration(seconds: 4));
+        dur =
+            lastLine.startTime +
+            (lastLine.lineDuration ?? const Duration(seconds: 4));
       }
       if (dur.inSeconds > 0) {
         return _formatDuration(dur);
@@ -306,7 +340,8 @@ class _MyPageState extends State<MyPage> {
   }
 
   void _syncGlobalBackHandler() {
-    if (!mounted || (_selectedPlaylist == null && !_isSearchMode && !_isEditMode)) {
+    if (!mounted ||
+        (_selectedPlaylist == null && !_isSearchMode && !_isEditMode)) {
       GlobalBackHandlerService().unregister('my_page_overlay');
       return;
     }
@@ -351,7 +386,6 @@ class _MyPageState extends State<MyPage> {
       }
     });
   }
-
 
   Future<void> _playTrack(PlayCountItem item) async {
     try {
@@ -487,7 +521,9 @@ class _MyPageState extends State<MyPage> {
                 final newPlaylist = await _playlistService.createPlaylist(name);
                 _showUserNotification(
                   newPlaylist != null ? '歌单「$name」创建成功' : '创建歌单失败',
-                  severity: newPlaylist != null ? fluent.InfoBarSeverity.success : fluent.InfoBarSeverity.error,
+                  severity: newPlaylist != null
+                      ? fluent.InfoBarSeverity.success
+                      : fluent.InfoBarSeverity.error,
                 );
               },
               child: const Text('创建'),
@@ -528,10 +564,14 @@ class _MyPageState extends State<MyPage> {
                   return;
                 }
                 Navigator.pop(context);
-                final newPlaylist = await _playlistService.createPlaylist(playlistName.trim());
+                final newPlaylist = await _playlistService.createPlaylist(
+                  playlistName.trim(),
+                );
                 _showUserNotification(
                   newPlaylist != null ? '歌单「$playlistName」创建成功' : '创建歌单失败',
-                  severity: newPlaylist != null ? fluent.InfoBarSeverity.success : fluent.InfoBarSeverity.error,
+                  severity: newPlaylist != null
+                      ? fluent.InfoBarSeverity.success
+                      : fluent.InfoBarSeverity.error,
                 );
               },
               child: const Text('创建'),
@@ -568,7 +608,9 @@ class _MyPageState extends State<MyPage> {
               if (name.isEmpty) return;
               Navigator.pop(context);
               final newPlaylist = await _playlistService.createPlaylist(name);
-              _showCupertinoToast(newPlaylist != null ? '歌单「$name」创建成功' : '创建歌单失败');
+              _showCupertinoToast(
+                newPlaylist != null ? '歌单「$name」创建成功' : '创建歌单失败',
+              );
             },
             child: const Text('创建'),
           ),
@@ -699,7 +741,9 @@ class _MyPageState extends State<MyPage> {
 
     _showUserNotification(
       success ? '已从歌单移除' : '移除失败',
-      severity: success ? fluent.InfoBarSeverity.success : fluent.InfoBarSeverity.error,
+      severity: success
+          ? fluent.InfoBarSeverity.success
+          : fluent.InfoBarSeverity.error,
       materialBackground: success ? null : Colors.red,
       duration: const Duration(seconds: 2),
     );
@@ -723,7 +767,9 @@ class _MyPageState extends State<MyPage> {
                   '该歌单包含 ${playlist.trackCount} 首歌曲，删除后将无法恢复。',
                   style: TextStyle(
                     fontSize: 12,
-                    color: fluent.FluentTheme.of(context).resources.textFillColorSecondary,
+                    color: fluent.FluentTheme.of(
+                      context,
+                    ).resources.textFillColorSecondary,
                   ),
                 ),
               ],
@@ -786,7 +832,9 @@ class _MyPageState extends State<MyPage> {
 
     _showUserNotification(
       success ? '歌单「${playlist.name}」已删除' : '删除失败',
-      severity: success ? fluent.InfoBarSeverity.success : fluent.InfoBarSeverity.error,
+      severity: success
+          ? fluent.InfoBarSeverity.success
+          : fluent.InfoBarSeverity.error,
       materialBackground: success ? null : Colors.red,
       duration: const Duration(seconds: 2),
     );
@@ -796,13 +844,19 @@ class _MyPageState extends State<MyPage> {
     }
   }
 
-  Future<void> _showSourceSwitchDialog(Playlist playlist, List<PlaylistTrack> tracks) async {
+  Future<void> _showSourceSwitchDialog(
+    Playlist playlist,
+    List<PlaylistTrack> tracks,
+  ) async {
     if (!playlist.isLocal) {
       _showUserNotification('同步歌单为只读，请先复制为本地歌单');
       return;
     }
     if (tracks.isEmpty) {
-      _showUserNotification('歌单为空，无法换源', severity: fluent.InfoBarSeverity.warning);
+      _showUserNotification(
+        '歌单为空，无法换源',
+        severity: fluent.InfoBarSeverity.warning,
+      );
       return;
     }
 
@@ -810,38 +864,53 @@ class _MyPageState extends State<MyPage> {
     for (final track in tracks) {
       sourceCounts[track.source] = (sourceCounts[track.source] ?? 0) + 1;
     }
-    final currentSource = sourceCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+    final currentSource = sourceCounts.entries
+        .reduce((a, b) => a.value > b.value ? a : b)
+        .key;
 
     Map<String, dynamic>? selectResult;
     if (_themeManager.isFluentFramework) {
       selectResult = await fluent.showDialog<Map<String, dynamic>>(
         context: context,
-        builder: (context) => SourceSwitchSelectDialog(tracks: tracks, currentSource: currentSource),
+        builder: (context) => SourceSwitchSelectDialog(
+          tracks: tracks,
+          currentSource: currentSource,
+        ),
       );
     } else {
       selectResult = await showDialog<Map<String, dynamic>>(
         context: context,
-        builder: (context) => SourceSwitchSelectDialog(tracks: tracks, currentSource: currentSource),
+        builder: (context) => SourceSwitchSelectDialog(
+          tracks: tracks,
+          currentSource: currentSource,
+        ),
       );
     }
 
     if (selectResult == null || !mounted) return;
 
     final targetSource = selectResult['targetSource'] as MusicSource;
-    final selectedTracks = selectResult['selectedTracks'] as List<PlaylistTrack>;
+    final selectedTracks =
+        selectResult['selectedTracks'] as List<PlaylistTrack>;
 
     bool? progressResult;
     if (_themeManager.isFluentFramework) {
       progressResult = await fluent.showDialog<bool>(
         context: context,
         barrierDismissible: false,
-        builder: (context) => SourceSwitchProgressDialog(tracks: selectedTracks, targetSource: targetSource),
+        builder: (context) => SourceSwitchProgressDialog(
+          tracks: selectedTracks,
+          targetSource: targetSource,
+        ),
       );
     } else {
       progressResult = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
-        builder: (context) => SourceSwitchProgressDialog(tracks: selectedTracks, targetSource: targetSource),
+        builder: (context) => SourceSwitchProgressDialog(
+          tracks: selectedTracks,
+          targetSource: targetSource,
+        ),
       );
     }
 
@@ -852,10 +921,11 @@ class _MyPageState extends State<MyPage> {
 
     List<MapEntry<PlaylistTrack, Track>>? confirmResult;
     if (_themeManager.isFluentFramework) {
-      confirmResult = await fluent.showDialog<List<MapEntry<PlaylistTrack, Track>>>(
-        context: context,
-        builder: (context) => const SourceSwitchResultDialog(),
-      );
+      confirmResult = await fluent
+          .showDialog<List<MapEntry<PlaylistTrack, Track>>>(
+            context: context,
+            builder: (context) => const SourceSwitchResultDialog(),
+          );
     } else {
       confirmResult = await showDialog<List<MapEntry<PlaylistTrack, Track>>>(
         context: context,
@@ -906,9 +976,15 @@ class _MyPageState extends State<MyPage> {
     if (!mounted) return;
 
     if (failCount == 0) {
-      _showUserNotification('换源完成，成功更新 $successCount 首歌曲', severity: fluent.InfoBarSeverity.success);
+      _showUserNotification(
+        '换源完成，成功更新 $successCount 首歌曲',
+        severity: fluent.InfoBarSeverity.success,
+      );
     } else {
-      _showUserNotification('换源完成，成功 $successCount 首，失败 $failCount 首', severity: fluent.InfoBarSeverity.warning);
+      _showUserNotification(
+        '换源完成，成功 $successCount 首，失败 $failCount 首',
+        severity: fluent.InfoBarSeverity.warning,
+      );
     }
   }
 
@@ -933,16 +1009,16 @@ class _MyPageState extends State<MyPage> {
             ),
             child: Text(
               message,
-              style: const TextStyle(color: CupertinoColors.white, fontSize: 14),
+              style: const TextStyle(
+                color: CupertinoColors.white,
+                fontSize: 14,
+              ),
             ),
           ),
         );
       },
     );
   }
-
-
-
 }
 
 /// Linux Do 头像组件 - Material 版本
@@ -1020,21 +1096,23 @@ class _LinuxDoAvatarMaterialState extends State<LinuxDoAvatarMaterial> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return widget.placeholder ??
-        SizedBox(
-          width: widget.size,
-          height: widget.size,
-          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        );
+          SizedBox(
+            width: widget.size,
+            height: widget.size,
+            child: const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
     }
 
     if (_hasFailed || _avatarData == null) {
       return widget.errorWidget ??
-        Container(
-          width: widget.size,
-          height: widget.size,
-          color: Theme.of(context).colorScheme.primaryContainer,
-          child: Icon(Icons.person, size: widget.size * 0.5),
-        );
+          Container(
+            width: widget.size,
+            height: widget.size,
+            color: Theme.of(context).colorScheme.primaryContainer,
+            child: Icon(Icons.person, size: widget.size * 0.5),
+          );
     }
 
     return Image.memory(
@@ -1044,12 +1122,12 @@ class _LinuxDoAvatarMaterialState extends State<LinuxDoAvatarMaterial> {
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) {
         return widget.errorWidget ??
-          Container(
-            width: widget.size,
-            height: widget.size,
-            color: Theme.of(context).colorScheme.primaryContainer,
-            child: Icon(Icons.person, size: widget.size * 0.5),
-          );
+            Container(
+              width: widget.size,
+              height: widget.size,
+              color: Theme.of(context).colorScheme.primaryContainer,
+              child: Icon(Icons.person, size: widget.size * 0.5),
+            );
       },
     );
   }

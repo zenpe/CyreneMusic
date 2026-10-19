@@ -62,17 +62,17 @@ extension _MyPageFluentUI on _MyPageState {
               ),
             ],
           ),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: _buildRefreshButton()),
           Expanded(
             child: Theme(
               data: materialTheme,
               child: Material(
                 color: Colors.transparent,
                 child: RefreshIndicator(
-                  onRefresh: () async {
-                    await _playlistService.loadPlaylists();
-                    await _loadStats(forceRefresh: true);
-                  },
+                  onRefresh: () => _refreshAll(),
                   child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -117,6 +117,7 @@ extension _MyPageFluentUI on _MyPageState {
                           ],
                         ),
                         const SizedBox(height: 8),
+                        _buildPlaylistStatus(),
                         _buildFluentPlaylistsList(),
                         const SizedBox(height: 24),
                         if (_statsData != null &&
@@ -559,6 +560,9 @@ extension _MyPageFluentUIComponents on _MyPageState {
 
   Widget _buildFluentPlaylistsList() {
     final playlists = _playlistService.playlists;
+    if (playlists.isEmpty && !_playlistService.hasLoadedPlaylists) {
+      return const SizedBox.shrink();
+    }
     final theme = fluent.FluentTheme.of(context);
 
     if (playlists.isEmpty) {

@@ -122,7 +122,7 @@ class ListeningStatsService extends ChangeNotifier {
       ListeningStatsService._internal();
   factory ListeningStatsService() => _instance;
   ListeningStatsService._internal() {
-    _observedSession = AuthService().sessionIdentity;
+    _observedSession = AuthService().dataSessionIdentity;
     _observedBackendRevision = UrlService().backendRevision;
     AuthService().addListener(_onAuthChanged);
     UrlService().addListener(_onAuthChanged);
@@ -133,7 +133,7 @@ class ListeningStatsService extends ChangeNotifier {
   String? _syncingSession;
 
   void _onAuthChanged() {
-    final session = AuthService().sessionIdentity;
+    final session = AuthService().dataSessionIdentity;
     final backendRevision = UrlService().backendRevision;
     if (session == _observedSession &&
         backendRevision == _observedBackendRevision) {
@@ -148,6 +148,7 @@ class ListeningStatsService extends ChangeNotifier {
     _statsRequest?.cancel('登录会话已改变');
     _statsRequest = null;
     _statsInFlight = null;
+    _isLoading = false;
     _syncingSession = null;
     notifyListeners();
   }
@@ -161,15 +162,17 @@ class ListeningStatsService extends ChangeNotifier {
   String? _lastError;
   CancelToken? _statsRequest;
   Future<ListeningStatsData?>? _statsInFlight;
+  bool _isLoading = false;
+  bool get isLoading => _isLoading;
 
   /// Includes backend generation so even A → B → A invalidates old operations.
   String? get contextIdentity {
-    final session = AuthService().sessionIdentity;
+    final session = AuthService().dataSessionIdentity;
     return session == null ? null : '${UrlService().backendRevision}:$session';
   }
 
   ListeningStatsData? get statsData =>
-      _observedSession == AuthService().sessionIdentity &&
+      _observedSession == AuthService().dataSessionIdentity &&
           _observedBackendRevision == UrlService().backendRevision
       ? _statsData
       : null;
@@ -298,6 +301,7 @@ class ListeningStatsService extends ChangeNotifier {
     if (pending != null) return pending;
     final fetchedAt = _statsFetchedAt;
     if (!forceRefresh &&
+        _lastError == null &&
         _statsData != null &&
         fetchedAt != null &&
         DateTime.now().difference(fetchedAt) < const Duration(seconds: 60)) {
@@ -314,11 +318,28 @@ class ListeningStatsService extends ChangeNotifier {
 
   Future<ListeningStatsData?> _fetchStats(String session) async {
     final token = CancelToken();
+    final clock = Stopwatch()..start();
+    int? statusCode;
     _statsRequest = token;
     _lastError = null;
+    _isLoading = true;
+    notifyListeners();
     try {
-      final result = await _api.getJson('/stats', cancelToken: token);
+      final result = await _api
+          .getJson(
+            '/stats',
+            cancelToken: token,
+            timeout: const Duration(seconds: 10),
+          )
+          .timeout(
+            const Duration(seconds: 12),
+            onTimeout: () {
+              token.cancel('统计加载超时');
+              throw TimeoutException('统计加载超时');
+            },
+          );
       if (session != contextIdentity) return null;
+      statusCode = result.statusCode;
 
       if (result.ok) {
         if (result.data is! Map ||
@@ -341,18 +362,37 @@ class ListeningStatsService extends ChangeNotifier {
         return _statsData;
       } else {
         _lastError = '统计更新失败，请重试';
-        StructuredLogService.log(
-          '❌ [ListeningStatsService] 获取统计数据失败: ${result.statusCode}',
+        StructuredLogService.event(
+          'stats.load_failed',
+          level: LogLevel.warning,
+          fields: {
+            'path': '/stats',
+            'status': statusCode,
+            'elapsed_ms': clock.elapsedMilliseconds,
+          },
         );
         return null;
       }
     } catch (e) {
       if (session != contextIdentity) return null;
       _lastError = '统计更新失败，请重试';
-      StructuredLogService.log('❌ [ListeningStatsService] 获取统计数据异常: $e');
+      StructuredLogService.event(
+        'stats.load_failed',
+        level: LogLevel.warning,
+        fields: {
+          'path': '/stats',
+          'status': statusCode,
+          'elapsed_ms': clock.elapsedMilliseconds,
+        },
+        error: e,
+      );
       return null;
     } finally {
-      if (identical(_statsRequest, token)) _statsRequest = null;
+      if (identical(_statsRequest, token)) {
+        _statsRequest = null;
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
