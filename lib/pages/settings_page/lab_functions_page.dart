@@ -85,7 +85,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
               MD3SettingsTile(
                 leading: const Icon(Icons.widgets_outlined),
                 title: '安卓桌面小部件',
-                subtitle: '开启安卓主屏幕音乐控制小部件',
+                subtitle: '支持横条与 2×2 样式，开启后长按手机桌面添加',
                 enabled: true,
                 trailing: Switch(
                   value: _labService.enableAndroidWidget,
@@ -193,7 +193,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                   color: CupertinoColors.systemBlue,
                 ),
                 title: const Text('安卓桌面小部件'),
-                subtitle: const Text('开启安卓主屏幕音乐控制小部件'),
+                subtitle: const Text('支持横条与 2×2 样式，开启后长按手机桌面添加'),
                 trailing: CupertinoSwitch(
                   value: _labService.enableAndroidWidget,
                   onChanged: (value) =>
@@ -253,7 +253,7 @@ class _LabFunctionsContentState extends State<LabFunctionsContent> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('安卓桌面小部件', style: theme.typography.bodyLarge),
-                      Text('开启安卓主屏幕音乐控制小部件', style: theme.typography.body),
+                      Text('支持横条与 2×2 样式，开启后长按手机桌面添加', style: theme.typography.body),
                     ],
                   ),
                 ),

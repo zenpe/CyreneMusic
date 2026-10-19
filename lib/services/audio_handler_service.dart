@@ -421,7 +421,7 @@ class CyreneAudioHandler extends BaseAudioHandler
         await Future.wait([
           HomeWidget.saveWidgetData<String>(
             'title',
-            '小部件功能权限未开启？\n请前往设置-实验室开启',
+            '桌面小部件未启用',
           ),
           HomeWidget.saveWidgetData<String>('artist', ''),
           HomeWidget.saveWidgetData<bool>('isPlaying', false),
@@ -436,7 +436,7 @@ class CyreneAudioHandler extends BaseAudioHandler
     }
 
     try {
-      final title = songOrTrack?.name ?? songOrTrack?.title ?? 'Not Playing';
+      final title = songOrTrack?.name ?? songOrTrack?.title ?? '未在播放';
       final artist =
           songOrTrack?.arName ?? songOrTrack?.artist ?? 'Cyrene Music';
       final isPlaying = state == PlayerState.playing;

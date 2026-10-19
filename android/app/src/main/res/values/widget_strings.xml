@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_enable_instructions">打开应用，在设置 → 实验室中开启</string>
+    <string name="widget_previous">上一首</string>
+    <string name="widget_next">下一首</string>
+    <string name="widget_play">播放</string>
+    <string name="widget_pause">暂停</string>
+</resources>
