@@ -1,3 +1,4 @@
+import '../widgets/floating_playback_insets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
@@ -339,7 +340,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       );
     }
 
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+    final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
     return ListView(
       padding: EdgeInsets.only(
         left: 16,

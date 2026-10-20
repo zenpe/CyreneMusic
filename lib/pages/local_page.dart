@@ -1,3 +1,4 @@
+import '../widgets/floating_playback_insets.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -492,7 +493,7 @@ class _LocalPageState extends State<LocalPage> {
                   itemCount: tracks.length + 1, // +1 for bottom padding
                   itemBuilder: (context, index) {
                     if (index == tracks.length) {
-                      return SizedBox(height: MediaQuery.of(context).padding.bottom + 80);
+                      return const FloatingPlaybackBottomSpacer(fallback: 80);
                     }
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),

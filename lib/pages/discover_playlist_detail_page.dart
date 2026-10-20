@@ -1,3 +1,4 @@
+import '../widgets/floating_playback_insets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:dio/dio.dart';
@@ -583,7 +584,7 @@ class _DiscoverPlaylistDetailContentState
             ),
           ),
           // 底部留白
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+          const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 100)),
         ],
       ),
     );
@@ -1363,7 +1364,7 @@ class _DiscoverPlaylistDetailContentState
               ),
             ),
             // 底部留白
-            const SliverToBoxAdapter(child: SizedBox(height: 100)),
+            const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 100)),
           ],
         ),
       ),

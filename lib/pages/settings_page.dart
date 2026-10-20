@@ -1,3 +1,4 @@
+import '../widgets/floating_playback_insets.dart';
 import '../services/structured_log_service.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -1184,7 +1185,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
 
-                const SizedBox(height: 100), // 底部留白
+                const FloatingPlaybackBottomSpacer(fallback: 100),
               ],
             ),
           ),

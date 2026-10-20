@@ -178,7 +178,7 @@ void main() {
 
   for (final retryable in [false, true]) {
     test(
-      'natural next failure targets next and releases pending (retry=$retryable)',
+      'natural next failure retries or skips within navigation (retry=$retryable)',
       () async {
         await configureTestSource();
         final resolver = _Resolver()
@@ -213,15 +213,12 @@ void main() {
               isTrue,
             );
           } else {
-            await waitUntil(() => playback.state == PBState.error);
-            expectFinished(playback);
-            expect(playback.currentTrack?.id, '0');
-            expect(playback.currentProblem?.track.id, '1');
+            await waitUntil(() => playback.currentTrack?.id == '2');
+            expect(playback.state, PBState.playing);
+            expect(playback.currentProblem, isNull);
             // A late ready event must not turn this failed item into success.
             engine.commitPrepared();
             await Future<void>.delayed(Duration.zero);
-            expect(playback.state, PBState.error);
-            await playback.jumpTo(2);
             expect(playback.currentTrack?.id, '2');
             expect(playback.state, PBState.playing);
           }
@@ -244,6 +241,170 @@ void main() {
         }
       },
     );
+  }
+
+  test(
+    'failed native URL refresh continues to the following song once',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()..playable.addAll(['0', '1', '2']);
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      try {
+        await playback.playNow(_remoteTracks(3), 0, QueueSource.none);
+        await engine.prepared.future.timeout(const Duration(seconds: 5));
+        final failedSlot = engine.preparedSlot!;
+        resolver.playable.remove('1');
+        resolver.requests.clear();
+        engine._playing = false;
+        final failure = EngineError(
+          type: EngineErrorType.accessDenied,
+          message: 'expired next URL',
+          epoch: failedSlot.generation,
+        );
+        engine._errors.add(failure);
+        engine._errors.add(failure);
+        await waitUntil(() => playback.currentTrack?.id == '2');
+        expect(resolver.requests, ['1', '2']);
+        expect(playback.state, PBState.playing);
+        expect(playback.isTrackSwitchPending, isFalse);
+        expect(playback.errorMessage, isNull);
+      } finally {
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
+
+  for (final interrupt in ['pause', 'selection', 'stop', 'source']) {
+    test(
+      'native recovery obeys $interrupt and ignores the late failure',
+      () async {
+        await configureTestSource();
+        final resolver = _Resolver()..playable.addAll(['0', '1', '2', '3']);
+        final engine = _Engine();
+        final playback = _createPlayback(resolver, engine: engine);
+        final response = Completer<TrackResolutionResult>();
+        try {
+          await playback.playNow(_remoteTracks(4), 0, QueueSource.none);
+          await engine.prepared.future.timeout(const Duration(seconds: 5));
+          resolver.requests.clear();
+          resolver.gates['1'] = response;
+          engine._playing = false;
+          engine._errors.add(
+            EngineError(
+              type: EngineErrorType.accessDenied,
+              message: 'expired next URL',
+              epoch: engine.preparedSlot!.generation,
+            ),
+          );
+          await waitUntil(() => resolver.requests.contains('1'));
+          if (interrupt == 'pause') {
+            await playback.pause();
+          } else if (interrupt == 'stop') {
+            await playback.stop();
+          } else if (interrupt == 'source') {
+            await AudioSourceService().removeSource('playback-test-source');
+          } else {
+            await playback.jumpTo(3);
+          }
+          response.complete(_Resolver.failure);
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          expect(resolver.requests.where((id) => id == '2'), isEmpty);
+          expect(playback.isTrackSwitchPending, isFalse);
+          expect(playback.errorMessage, isNull);
+          expect(
+            playback.currentTrack?.id,
+            interrupt == 'selection' ? '3' : '0',
+          );
+          expect(playback.state, switch (interrupt) {
+            'pause' || 'source' => PBState.paused,
+            'stop' => PBState.idle,
+            _ => PBState.playing,
+          });
+        } finally {
+          if (!response.isCompleted) response.complete(_Resolver.failure);
+          playback.dispose();
+          await AudioSourceService().removeSource('playback-test-source');
+        }
+      },
+    );
+  }
+
+  test('native failure counts toward the three-candidate limit', () async {
+    await configureTestSource();
+    final resolver = _Resolver()..playable.addAll(['0', '1', '4']);
+    final engine = _Engine();
+    final playback = _createPlayback(resolver, engine: engine);
+    try {
+      await playback.playNow(_remoteTracks(5), 0, QueueSource.none);
+      await engine.prepared.future.timeout(const Duration(seconds: 5));
+      resolver.requests.clear();
+      engine._playing = false;
+      engine._errors.add(
+        EngineError(
+          type: EngineErrorType.unsupportedFormat,
+          message: 'bad next format',
+          epoch: engine.preparedSlot!.generation,
+          retriable: false,
+        ),
+      );
+      await waitUntil(
+        () => playback.state == PBState.error && !playback.isTrackSwitchPending,
+      );
+      expect(resolver.requests, ['2', '3']);
+      expectFinished(playback);
+      expect(playback.currentProblem?.track.id, '3');
+      await playback.next();
+      expect(playback.currentTrack?.id, '4');
+      expect(playback.state, PBState.playing);
+    } finally {
+      playback.dispose();
+      await AudioSourceService().removeSource('playback-test-source');
+    }
+  });
+
+  for (final interrupt in ['pause', 'source']) {
+    test('native loading cannot autoplay after recovery $interrupt', () async {
+      await configureTestSource();
+      final resolver = _Resolver()..playable.addAll(['0', '1', '2', '3']);
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      final gate = Completer<void>();
+      try {
+        await playback.playNow(_remoteTracks(4), 0, QueueSource.none);
+        await engine.prepared.future.timeout(const Duration(seconds: 5));
+        resolver.requests.clear();
+        engine.loadGate = gate;
+        engine._playing = false;
+        engine._errors.add(
+          EngineError(
+            type: EngineErrorType.unsupportedFormat,
+            message: 'bad next format',
+            epoch: engine.preparedSlot!.generation,
+            retriable: false,
+          ),
+        );
+        await waitUntil(
+          () => engine.loadedUrls.any((url) => url!.contains('/2-')),
+        );
+        final interrupted = interrupt == 'pause'
+            ? playback.pause()
+            : AudioSourceService().removeSource('playback-test-source');
+        if (interrupt == 'source') await interrupted;
+        gate.complete();
+        await interrupted;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(engine.isPlaying, isFalse);
+        expect(playback.state, PBState.paused);
+        expect(playback.isTrackSwitchPending, isFalse);
+        expect(resolver.requests, ['2']);
+      } finally {
+        if (!gate.isCompleted) gate.complete();
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    });
   }
 
   for (final originalError in [false, true]) {
@@ -1275,6 +1436,7 @@ class _Engine extends Fake implements AudioEngine {
   EngineErrorType? nextError;
   Object? nextErrorCause;
   final loadedUrls = <String?>[];
+  Completer<void>? loadGate;
   bool failNextLoad = false;
   int resumeCount = 0;
   int? loadedGeneration;
@@ -1323,6 +1485,7 @@ class _Engine extends Fake implements AudioEngine {
     Duration? loadTimeout,
   }) async {
     loadedUrls.add(source.sourceUrl);
+    await loadGate?.future;
     final error = nextError;
     nextError = null;
     if (error != null) {

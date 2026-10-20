@@ -330,6 +330,8 @@ class PlaybackService extends ChangeNotifier {
   bool _preloadDependencyListenersBound = false;
   bool _autoNextInFlight = false;
   int _autoNextFlightId = 0;
+  ({int generation, int requestEpoch, String? sourceFingerprint})?
+  _naturalRecovery;
   PlaybackRequestIntent _nativeActivationIntent =
       PlaybackRequestIntent.automatic;
   Future<void>? _initializationFuture;
@@ -1031,6 +1033,9 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _onEngineError(EngineError error) {
+    // The coordinator owns this failed native selection until recovery ends.
+    // Repeated native callbacks must not start another retry or clear its state.
+    if (_naturalRecovery?.generation == error.epoch) return;
     final cause = error.cause;
     if (cause is NativePlaybackTimeout && cause.stage == 'queue_deadline') {
       // The awaiting transaction owns this pre-load failure. The old native
@@ -1066,6 +1071,7 @@ class PlaybackService extends ChangeNotifier {
         failedDuringArming &&
         _scanningRequestEpoch == _currentSession?.requestEpoch;
     final canRetry =
+        (!naturalPreparedFailure || _desiredPlaying) &&
         (!navigatingCandidate ||
             error.type == EngineErrorType.accessDenied ||
             error.isSourceReadFailure) &&
@@ -1098,6 +1104,17 @@ class PlaybackService extends ChangeNotifier {
           reason: 'engine-retry',
         );
         _setCurrentCachedFileInfo(null);
+      }
+      if (naturalPreparedFailure && _desiredPlaying) {
+        unawaited(
+          _recoverNaturalPreparedFailure(
+            error,
+            retry: true,
+            refreshUrl:
+                shouldRetryWithoutCache || _shouldRefreshUrlOnError(error),
+          ),
+        );
+        return;
       }
       final switchTx = _currentSwitchTx;
       if (switchTx != null &&
@@ -1137,6 +1154,10 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
 
+    if (naturalPreparedFailure && _desiredPlaying) {
+      unawaited(_recoverNaturalPreparedFailure(error, retry: false));
+      return;
+    }
     _controlIntent.invalidate();
     _state = PBState.error;
     _errorMessage = _buildErrorMessage(error);
@@ -1186,6 +1207,56 @@ class PlaybackService extends ChangeNotifier {
       return true;
     }
     return false;
+  }
+
+  Future<void> _recoverNaturalPreparedFailure(
+    EngineError error, {
+    required bool retry,
+    bool refreshUrl = false,
+  }) async {
+    final entryId = _pendingQueueEntryId;
+    final track = _pendingTrack;
+    if (entryId == null || track == null) return;
+    final requestEpoch = _requestRouter.begin();
+    _naturalRecovery = (
+      generation: error.epoch,
+      requestEpoch: requestEpoch,
+      sourceFingerprint: PlaybackResolverRegistry().activeResolver?.fingerprint,
+    );
+    _discardPrefetchedPlayablePlan(track, AudioQualityService().currentQuality);
+    // Pause during the handoff must cancel recovery just like URL resolution.
+    _updateSessionPhase(PlaybackPhase.resolving);
+    _state = PBState.loading;
+    try {
+      await _runNavigationTransition(
+        requestEpoch: requestEpoch,
+        intent: PlaybackTransitionIntent.automaticAdvance,
+        direction: PlaybackTransitionDirection.forward,
+        reason: 'native-prepared-recovery',
+        initialFailure: (
+          entryId: entryId,
+          error: error,
+          retry: retry,
+          refreshUrl: refreshUrl,
+        ),
+      );
+    } catch (failure) {
+      if (!_requestRouter.isCurrent(requestEpoch)) return;
+      _state = PBState.error;
+      _errorMessage = '自动切歌恢复失败，请重试';
+      _finishPendingFailure();
+      _reportPlaybackFailure(track, _errorMessage!);
+      notifyListeners();
+      StructuredLogService.event(
+        'playback.native_recovery_exception',
+        level: LogLevel.error,
+        error: failure,
+      );
+    } finally {
+      if (_naturalRecovery?.generation == error.epoch) {
+        _naturalRecovery = null;
+      }
+    }
   }
 
   Duration _clampRecoveryPosition(Duration position) {
@@ -1533,15 +1604,36 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _onAudioSourceConfigChanged() {
+    final recovery = _naturalRecovery;
+    final cancelledRecovery =
+        recovery != null &&
+        _pendingTrack != null &&
+        _requestRouter.isCurrent(recovery.requestEpoch) &&
+        recovery.sourceFingerprint !=
+            PlaybackResolverRegistry().activeResolver?.fingerprint;
     final cancelledStartupWait =
         _startupNetworkWaitToken != null &&
         _startupNetworkWaitToken == _currentSwitchTx?.token;
-    if (cancelledStartupWait) {
+    if (cancelledStartupWait || cancelledRecovery) {
       _cancelPendingTrackTransition();
+      if (cancelledRecovery) {
+        _desiredPlaying = false;
+        // Native loading may already be in flight. Update EngineHost's desired
+        // state synchronously so that load cannot autoplay after cancellation.
+        unawaited(
+          _engine.pause().catchError((Object error) {
+            StructuredLogService.event(
+              'playback.cancelled_recovery_pause_failed',
+              level: LogLevel.warning,
+              error: error,
+            );
+          }),
+        );
+      }
     }
     _syncActiveSourceHealth();
     _trackResolver.clear();
-    if (cancelledStartupWait) notifyListeners();
+    if (cancelledStartupWait || cancelledRecovery) notifyListeners();
   }
 
   void _syncActiveSourceHealth() {
@@ -4431,6 +4523,8 @@ class PlaybackService extends ChangeNotifier {
     required PlaybackTransitionIntent intent,
     required PlaybackTransitionDirection direction,
     required String reason,
+    ({int entryId, EngineError error, bool retry, bool refreshUrl})?
+    initialFailure,
   }) async {
     _desiredPlaying = true;
     notifyListeners();
@@ -4475,13 +4569,34 @@ class PlaybackService extends ChangeNotifier {
             activeEntryId: activeEntryId,
           )
         : const <int>[];
-    final plan = _candidatePlanner.plan(
+    var plan = _candidatePlanner.plan(
       queue: queueSnapshot,
       mode: mode,
       intent: intent,
       direction: direction,
       shuffleEntryOrder: shuffleOrder,
     );
+
+    if (initialFailure != null) {
+      // Count the already selected native item in the same candidate budget.
+      // In shuffle mode it must remain the first candidate, even if the queue's
+      // traversal order has not yet committed that native selection.
+      final index = _queueController.indexOfEntryId(initialFailure.entryId);
+      if (index >= 0) {
+        plan = PlaybackCandidatePlan(
+          candidates: [
+            PlaybackQueueEntry(
+              entryId: initialFailure.entryId,
+              track: _queue[index],
+            ),
+            ...plan.candidates.where(
+              (entry) => entry.entryId != initialFailure.entryId,
+            ),
+          ],
+          stopsAtQueueEnd: plan.stopsAtQueueEnd,
+        );
+      }
+    }
 
     if (plan.candidates.isEmpty) {
       if (intent == PlaybackTransitionIntent.automaticAdvance &&
@@ -4517,7 +4632,10 @@ class PlaybackService extends ChangeNotifier {
       result = await _transitionCoordinator.run(
         plan: plan,
         budget: budget,
-        isCurrent: () => _requestRouter.isCurrent(requestEpoch),
+        isCurrent: () =>
+            _requestRouter.isCurrent(requestEpoch) &&
+            (intent != PlaybackTransitionIntent.automaticAdvance ||
+                _desiredPlaying),
         attempt: (candidate, transitionBudget, isCurrent) async {
           if (!isCurrent()) return PlaybackCandidateAttemptResult.cancelled;
           if (_queueController.indexOfEntryId(candidate.entryId) < 0) {
@@ -4528,15 +4646,39 @@ class PlaybackService extends ChangeNotifier {
             );
           }
 
-          final activated = await _tryActivatePreparedTrack(
-            candidate.track,
-            requestEpoch,
-            playbackIntent,
-            candidateEntryId: candidate.entryId,
-            navigationOrder: navigationOrder,
-            preserveDesiredPlaying: true,
-            budget: transitionBudget,
-          );
+          final nativeFailure = initialFailure?.entryId == candidate.entryId
+              ? initialFailure
+              : null;
+          if (nativeFailure != null && !nativeFailure.retry) {
+            _errorMessage = _buildErrorMessage(nativeFailure.error);
+            _reportPlaybackFailure(
+              candidate.track,
+              _errorMessage!,
+              kind: _problemKindForEngineError(nativeFailure.error),
+              recoveryActions:
+                  nativeFailure.error.type == EngineErrorType.unsupportedFormat
+                  ? const {}
+                  : const {PlaybackRecoveryAction.retry},
+              emitEffect: false,
+            );
+            lastAttemptedProblem = _problemStore.current;
+            return PlaybackCandidateAttemptResult(
+              PlaybackCandidateAttemptStatus.engineFailure,
+              message: _errorMessage,
+            );
+          }
+
+          final activated =
+              nativeFailure == null &&
+              await _tryActivatePreparedTrack(
+                candidate.track,
+                requestEpoch,
+                playbackIntent,
+                candidateEntryId: candidate.entryId,
+                navigationOrder: navigationOrder,
+                preserveDesiredPlaying: true,
+                budget: transitionBudget,
+              );
           if (activated) {
             return _activeQueueEntryId == candidate.entryId
                 ? PlaybackCandidateAttemptResult.committed
@@ -4554,11 +4696,12 @@ class PlaybackService extends ChangeNotifier {
           }
 
           final outcome = await _attemptTrackSwitch(
-            reason: reason,
+            reason: nativeFailure == null ? reason : 'engine-retry',
             intent: playbackIntent,
             requestEpoch: requestEpoch,
             candidateTrack: candidate.track,
             candidateEntryId: candidate.entryId,
+            forceRemoteResolution: nativeFailure?.refreshUrl ?? false,
             budget: transitionBudget,
             navigationOrder: navigationOrder,
             preserveDesiredPlaying: true,
@@ -4588,8 +4731,12 @@ class PlaybackService extends ChangeNotifier {
         _scanningRequestEpoch = null;
       }
     }
-    if (!_requestRouter.isCurrent(requestEpoch) ||
-        result.status == PlaybackTransitionResultStatus.cancelled) {
+    if (!_requestRouter.isCurrent(requestEpoch)) return;
+    if (result.status == PlaybackTransitionResultStatus.cancelled) {
+      if (!_desiredPlaying && _pendingTrack != null) {
+        _cancelPendingTrackTransition();
+        notifyListeners();
+      }
       return;
     }
     if (result.status == PlaybackTransitionResultStatus.committed) {

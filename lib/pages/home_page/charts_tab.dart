@@ -1,3 +1,4 @@
+import '../../widgets/floating_playback_insets.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
@@ -117,7 +118,7 @@ class ChartsTab extends StatelessWidget {
               );
             }),
 
-             SizedBox(height: MediaQuery.of(context).padding.bottom + 100),
+             const FloatingPlaybackBottomSpacer(fallback: 100),
           ],
         );
       },

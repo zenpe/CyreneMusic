@@ -1,3 +1,4 @@
+import '../../widgets/floating_playback_insets.dart';
 import 'dart:io';
 import 'dart:ui';
 
@@ -870,7 +871,7 @@ class _ToplistDetailContent extends StatelessWidget {
                     controller: scrollController,
                     padding: EdgeInsets.only(
                       top: 4,
-                      bottom: MediaQuery.of(context).padding.bottom + 16,
+                      bottom: FloatingPlaybackInsets.bottomPadding(context),
                     ),
                     itemCount: toplist.tracks.length,
                     itemBuilder: (context, index) {

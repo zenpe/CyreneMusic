@@ -68,7 +68,7 @@ extension _MyPageCupertinoUI on _MyPageState {
                       const SizedBox(height: 12),
                       _buildCupertinoTopPlaysList(isDark),
                     ],
-                    const SizedBox(height: 40),
+                    const FloatingPlaybackBottomSpacer(fallback: 40),
                   ],
                 ),
               ),
@@ -383,7 +383,7 @@ extension _MyPageCupertinoUI on _MyPageState {
                                     return _buildCupertinoTrackItem(track, originalIndex, isDark);
                                   }, childCount: filteredTracks.length)),
                                 ),
-                                const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                                const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 40)),
                               ],
                             ),
             ),

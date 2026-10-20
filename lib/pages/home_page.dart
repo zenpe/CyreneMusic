@@ -1,3 +1,4 @@
+import '../widgets/floating_playback_insets.dart';
 import '../services/structured_log_service.dart';
 import 'dart:async';
 import 'dart:io';
@@ -1441,7 +1442,7 @@ class _HomePageState extends State<HomePage>
               ),
             ],
             // 底部安全区域
-            SizedBox(height: MediaQuery.of(context).padding.bottom + 100),
+            const FloatingPlaybackBottomSpacer(fallback: 100),
           ]),
         ),
       ),

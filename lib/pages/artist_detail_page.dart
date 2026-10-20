@@ -1,3 +1,4 @@
+import '../widgets/floating_playback_insets.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -371,7 +372,7 @@ class _SongsListView extends StatelessWidget {
 
     // iOS Cupertino 风格：使用圆角卡片容器
     if (isCupertino) {
-      final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+      final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
       return ListView(
         padding: EdgeInsets.only(left: 16, right: 16, top: 8, bottom: bottomPadding),
         children: [
@@ -400,7 +401,7 @@ class _SongsListView extends StatelessWidget {
       );
     }
 
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+    final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
     return ListView.builder(
       padding: EdgeInsets.only(left: 16, right: 16, bottom: bottomPadding),
       itemCount: songs.length,
@@ -651,7 +652,7 @@ class _AlbumsListView extends StatelessWidget {
 
     // iOS Cupertino 风格
     if (isCupertino) {
-      final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+      final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
       return ListView(
         padding: EdgeInsets.only(left: 16, right: 16, top: 8, bottom: bottomPadding),
         children: [
@@ -680,7 +681,7 @@ class _AlbumsListView extends StatelessWidget {
       );
     }
 
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+    final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
     return ListView.builder(
       padding: EdgeInsets.only(left: 16, right: 16, bottom: bottomPadding),
       itemCount: albums.length,
@@ -837,7 +838,7 @@ class _SongsThumbView extends StatelessWidget {
         ),
       );
     }
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+    final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
     return SingleChildScrollView(
       padding: EdgeInsets.only(left: 16, right: 16, top: 8, bottom: bottomPadding),
       child: Wrap(
@@ -965,7 +966,7 @@ class _AlbumsThumbView extends StatelessWidget {
         ),
       );
     }
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+    final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
     return SingleChildScrollView(
       padding: EdgeInsets.only(left: 16, right: 16, top: 8, bottom: bottomPadding),
       child: Wrap(
@@ -1247,7 +1248,7 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
 
     if (isExpressive) {
       final cs = Theme.of(context).colorScheme;
-      final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+      final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
 
       return CustomScrollView(
         physics: const BouncingScrollPhysics(),

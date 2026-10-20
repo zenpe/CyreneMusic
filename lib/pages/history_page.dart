@@ -1,3 +1,4 @@
+import '../widgets/floating_playback_insets.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -149,7 +150,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
 
           // 底部留白
           SliverToBoxAdapter(
-            child: SizedBox(height: MediaQuery.of(context).padding.bottom + 80),
+            child: const FloatingPlaybackBottomSpacer(fallback: 80),
           ),
         ],
       ),
@@ -257,7 +258,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                       );
                     }),
                     // 底部留白给迷你播放器
-                    SizedBox(height: MediaQuery.of(context).padding.bottom + 80),
+                    const FloatingPlaybackBottomSpacer(fallback: 80),
                   ],
                 ),
         ),

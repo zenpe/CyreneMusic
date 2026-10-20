@@ -9,6 +9,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../widgets/custom_title_bar.dart';
 import '../widgets/cupertino/cupertino_bottom_nav.dart';
 import '../widgets/mini_player.dart';
+import '../widgets/floating_playback_insets.dart';
 import '../widgets/liquid_glass_container.dart';
 import '../pages/home_page.dart';
 import '../pages/discover_page.dart';
@@ -301,10 +302,14 @@ class _MainLayoutState extends State<MainLayout>
     final orientation = MediaQuery.of(context).orientation;
     final isLandscape = orientation == Orientation.landscape;
     final double bottomPadding = MediaQuery.of(context).padding.bottom;
-    final double cupertinoDockBottom = bottomPadding > 0 ? bottomPadding : 16.0;
-    const double cupertinoTabBarHeight = 60.0;
-    const double cupertinoMiniPlayerGap = 6.0;
-    final double cupertinoMiniPlayerHeight = MiniPlayer.cupertinoHeight(context);
+    final double cupertinoDockBottom = FloatingPlaybackInsets.dockBottom(
+      bottomPadding,
+    );
+    const double cupertinoTabBarHeight = FloatingPlaybackInsets.dockHeight;
+    const double cupertinoMiniPlayerGap = FloatingPlaybackInsets.playerGap;
+    final double cupertinoMiniPlayerHeight = MiniPlayer.cupertinoHeight(
+      context,
+    );
     final double cupertinoMiniPlayerBottom =
         cupertinoDockBottom + cupertinoTabBarHeight + cupertinoMiniPlayerGap;
 
@@ -329,49 +334,65 @@ class _MainLayoutState extends State<MainLayout>
                       context: context,
                       removeLeft: true,
                       child: Stack(
-                      children: [
-                        // 主内容层 - 使用 RepaintBoundary 隔离，防止 BackdropFilter 导致滚动残影
-                        RepaintBoundary(
-                          child: Column(
-                            children: [
-                              if (Platform.isWindows) const CustomTitleBar(),
-                              Expanded(child: _pages[_selectedIndex]),
-                            ],
+                        children: [
+                          // 主内容层 - 使用 RepaintBoundary 隔离，防止 BackdropFilter 导致滚动残影
+                          RepaintBoundary(
+                            child: Column(
+                              children: [
+                                if (Platform.isWindows) const CustomTitleBar(),
+                                Expanded(child: _pages[_selectedIndex]),
+                              ],
+                            ),
                           ),
-                        ),
-                        // 悬浮迷你播放器（不占用布局空间）
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          child: AnimatedBuilder(
-                            animation: PlayerService(),
-                            builder: (context, child) {
-                              final hasMiniPlayer =
-                                  PlayerService().currentTrack != null ||
-                                  PlayerService().currentSong != null;
-                              if (!hasMiniPlayer) {
-                                return const SizedBox.shrink();
-                              }
-                              return const MiniPlayer();
-                            },
+                          // 悬浮迷你播放器（不占用布局空间）
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: AnimatedBuilder(
+                              animation: PlayerService(),
+                              builder: (context, child) {
+                                final hasMiniPlayer =
+                                    PlayerService().currentTrack != null ||
+                                    PlayerService().currentSong != null;
+                                if (!hasMiniPlayer) {
+                                  return const SizedBox.shrink();
+                                }
+                                return const MiniPlayer();
+                              },
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 ],
               )
             : Stack(
                 children: [
                   // 主内容层 - 使用 RepaintBoundary 隔离，防止 BackdropFilter 导致滚动残影
-                  RepaintBoundary(
-                    child: Column(
-                      children: [
-                        if (Platform.isWindows) const CustomTitleBar(),
-                        Expanded(child: _pages[_selectedIndex]),
-                      ],
+                  AnimatedBuilder(
+                    animation: PlayerService(),
+                    builder: (context, child) {
+                      if (!isCupertinoUI) return child!;
+                      final hasMiniPlayer =
+                          PlayerService().currentTrack != null ||
+                          PlayerService().currentSong != null;
+                      return FloatingPlaybackInsets.cupertino(
+                        systemBottom: bottomPadding,
+                        miniPlayerHeight: hasMiniPlayer
+                            ? cupertinoMiniPlayerHeight
+                            : null,
+                        child: child!,
+                      );
+                    },
+                    child: RepaintBoundary(
+                      child: Column(
+                        children: [
+                          if (Platform.isWindows) const CustomTitleBar(),
+                          Expanded(child: _pages[_selectedIndex]),
+                        ],
+                      ),
                     ),
                   ),
                   // 悬浮液态玻璃 Tab 栏与迷你播放器
@@ -795,11 +816,11 @@ class _MainLayoutState extends State<MainLayout>
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
-        bottom: bottomPadding > 0 ? bottomPadding : 16,
+        bottom: FloatingPlaybackInsets.dockBottom(bottomPadding),
       ),
       child: LiquidGlassContainer(
         borderRadius: 30,
-        height: 60,
+        height: FloatingPlaybackInsets.dockHeight,
         isDark: isDark,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,

@@ -1,3 +1,4 @@
+import '../widgets/floating_playback_insets.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -189,7 +190,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
             },
           ),
           ..._buildCupertinoSlivers(service),
-          const SliverToBoxAdapter(child: SizedBox(height: 80)),
+          const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 80)),
         ],
       ),
     );

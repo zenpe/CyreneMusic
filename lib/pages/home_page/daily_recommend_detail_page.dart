@@ -1,3 +1,4 @@
+import '../../widgets/floating_playback_insets.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
@@ -237,7 +238,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
                         ),
                       ),
                 // 底部留白
-                const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 100)),
               ],
             ),
           );

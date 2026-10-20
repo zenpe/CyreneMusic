@@ -15,6 +15,7 @@ import '../pages/auth/auth_page.dart';
 import '../utils/image_utils.dart';
 import '../utils/theme_manager.dart';
 import 'track_action_menu.dart';
+import 'floating_playback_insets.dart';
 
 part 'search_widget_fluent.dart';
 part 'search_widget_cupertino.dart';

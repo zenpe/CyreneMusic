@@ -339,7 +339,12 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
     }
 
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        8,
+        16,
+        FloatingPlaybackInsets.bottomPadding(context, fallback: 8),
+      ),
       children: [
         Container(
           decoration: BoxDecoration(
@@ -459,7 +464,12 @@ extension _SearchWidgetCupertino on _SearchWidgetState {
     }
 
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        8,
+        16,
+        FloatingPlaybackInsets.bottomPadding(context, fallback: 8),
+      ),
       children: [
         // 标题栏
         Row(

@@ -17,7 +17,10 @@ extension _SearchWidgetShared on _SearchWidgetState {
     final button = _isFluent
         ? fluent.Button(onPressed: _retryArtistSearch, child: const Text('重试'))
         : _isCupertino
-        ? CupertinoButton(onPressed: _retryArtistSearch, child: const Text('重试'))
+        ? CupertinoButton(
+            onPressed: _retryArtistSearch,
+            child: const Text('重试'),
+          )
         : TextButton(onPressed: _retryArtistSearch, child: const Text('重试'));
     return Center(
       child: Padding(
@@ -351,7 +354,12 @@ extension _SearchWidgetShared on _SearchWidgetState {
       ),
       primary: false,
       padding: cupertino
-          ? const EdgeInsets.symmetric(horizontal: 16, vertical: 8)
+          ? EdgeInsets.fromLTRB(
+              16,
+              8,
+              16,
+              FloatingPlaybackInsets.bottomPadding(context, fallback: 8),
+            )
           : const EdgeInsets.all(16),
       itemCount: tracks.length + 2,
       itemBuilder: (context, index) {
