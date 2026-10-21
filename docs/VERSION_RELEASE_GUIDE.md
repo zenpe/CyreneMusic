@@ -144,9 +144,58 @@ version: 1.0.1+2  # 1.0.0+1 → 1.0.1+2
 
 ### Step 3：构建应用
 
+Windows 和 Android 发行版统一使用 PowerShell 7 脚本：
+
+```powershell
+pwsh -File scripts/build_release.ps1
+# 仅构建 Android；当前代码已完成质量检查时才使用 SkipQualityChecks。
+pwsh -File scripts/build_release.ps1 -Target android -SkipQualityChecks
+```
+
+脚本使用项目固定的 Puro 环境与锁定依赖，Android 仅编译现有发行包支持的
+ARM64，保留 R8 和资源压缩。不会执行 `flutter clean`。
+每次运行输出独立目录 `build/releases/<UTC时间>/`，包含 APK / Windows ZIP、
+日志和 `build-info.json`（版本、提交、工作区是否有改动、步骤耗时、SHA256）。
+Android 的 `android-tasks.json` 记录各任务耗时及 `executed`、`up-to-date`、
+`from-cache` 等结果；任务可能并行，耗时之和不等于总墙钟时间。
+失败时也保留已完成的步骤记录，不能仅凭目录存在判断构建成功。
+
+Gradle 本地构建缓存已开启，Kotlin 默认增量编译；Windows 上源码与构建输出
+跨盘的插件单独禁用 Kotlin 增量缓存，避免跨盘相对路径异常。
+首次启用缓存/增量编译可能需要重新编译，应分别比较首次、无改动重复构建和
+代码修改后的构建耗时，不能将热缓存结果当作全量构建性能。
+
+2026-10-21 本机验证（Flutter 3.41.3，跳过已完成的质量检查）：
+
+| 场景 | 构建步骤耗时 | 观察 |
+| --- | --- | --- |
+| 启用新配置后的首轮 Android | 264.85 秒 | Flutter 132.3 秒、R8 67.0 秒；Kotlin 实际编译通过 |
+| 首轮 Windows 构建后切回 Android | 72.6 秒左右 | 曾重新执行 Flutter 约 55.6 秒，后续对照未稳定复现 |
+| 连续 Android、无代码变化 | 13 秒左右 | Flutter / Kotlin / R8 均为 up-to-date |
+| 首轮 Windows | 163.41 秒 | 完整 ZIP 打包另耗时 9.19 秒 |
+
+以上不包含依赖解析和质量检查耗时。首轮也复用了原有缓存和 Gradle daemon，
+不能作为纯冷构建基准；不同机器、改动范围及跨平台切换会影响结果。
+
+后续对照：记录 Android 的 3,585 项依赖输入/输出，再构建 Windows，文件内容
+没有变化；随后 Android 仅耗时 13.7 秒，Flutter / Kotlin / R8 均复用。因此
+不能将首轮额外的 55.6 秒归因于固定的跨平台缓存冲突，也不需要拆分构建目录。
+
+当前发行依赖图不含 `com.android.support` / `android.arch`，已关闭 Jetifier。
+关闭后的正式构建和签名检查通过，APK 的 SHA256 与开启时完全一致。
+这主要避免新依赖或冷缓存时的旧库转换，不保证热构建能再明显提速。
+将来引入旧 Android 库时，应重新核对兼容性。
+
+暂不启用 Gradle configuration cache：Flutter 3.41.3 的
+`:app:ReleaseMinSdkCheck` 在实测中因捕获不可序列化的 Android variant 对象而
+导致配置缓存保存失败。这与已启用的 Gradle build cache 是不同功能，不能
+通过忽略校验或修改 SDK 来强行启用。升级工具链后可重新验证。
+
+手动构建时也须明确 Android 架构：
+
 ```bash
 # Android
-flutter build apk --release
+flutter build apk --release --target-platform android-arm64
 
 # Windows
 flutter build windows --release
