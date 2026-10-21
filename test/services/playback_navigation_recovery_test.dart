@@ -1308,6 +1308,39 @@ void main() {
     }
   });
 
+  test('failed error presentation preserves offline failure and retry', () async {
+    await configureTestSource();
+    final resolver = _Resolver()
+      ..failureResponse = const TrackResolutionResult(
+        detail: null,
+        lxFailure: LxRuntimeFailure(
+          kind: LxRuntimeFailureKind.networkUnavailable,
+          message: 'Network is unreachable',
+        ),
+      );
+    final playback = _createPlayback(resolver);
+    var feedbackCalls = 0;
+    playback.onPlaybackFailure = (_) {
+      feedbackCalls++;
+      throw StateError('disposed feedback context');
+    };
+    try {
+      await playback.playNow(_remoteTracks(1), 0, QueueSource.none);
+      expectFinished(playback);
+      expect(playback.errorMessage, '网络尚未连接，请联网后重试');
+      expect(playback.currentProblem?.message, playback.errorMessage);
+      expect(feedbackCalls, 1);
+      expect(resolver.urlRequests, ['0']);
+      resolver.playable.add('0');
+      await playback.retryCurrentTrack();
+      expect(playback.state, PBState.playing);
+      expect(playback.isTrackSwitchPending, isFalse);
+      expect(playback.currentProblem, isNull);
+    } finally {
+      playback.dispose();
+    }
+  });
+
   test('startup with cached detail never waits for connectivity', () async {
     await configureTestSource();
     final resolver = _Resolver()..memoryPlayable.add('0');

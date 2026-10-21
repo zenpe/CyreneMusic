@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import '../developer_mode_service.dart';
+import '../structured_log_service.dart';
 import '../url_service.dart';
 import 'api_result.dart';
 import 'auth_token_store.dart';
@@ -610,6 +611,22 @@ class _LogInterceptor extends Interceptor {
     final status = err.response?.statusCode ?? 0;
     final line = '$method $uri $status ${duration}ms error=${err.type}';
     DeveloperModeService().addLog('[Network] $line');
+    if (err.type != DioExceptionType.cancel) {
+      StructuredLogService.event(
+        'api.transport_failed',
+        level: LogLevel.warning,
+        fields: {
+          'method': method,
+          'host': err.requestOptions.uri.host,
+          'path': err.requestOptions.uri.path,
+          'status': status,
+          'elapsed_ms': duration,
+          'failure_kind': err.type.name,
+          'cause_type': err.error?.runtimeType.toString(),
+        },
+        error: err.error,
+      );
+    }
     handler.next(err);
   }
 }

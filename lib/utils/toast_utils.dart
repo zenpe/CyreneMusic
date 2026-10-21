@@ -7,15 +7,20 @@ class ToastUtils {
   static FToast? _fToast;
 
   static void _ensureInitialized() {
-    if (_fToast != null) return;
-    
-    // 优先使用 GlobalContextHolder 提供的 context
-    final context = GlobalContextHolder.context ?? MyApp.navigatorKey.currentContext;
-    if (context != null) {
-      _fToast = FToast();
-      _fToast!.init(context);
-      debugPrint('🔧 [ToastUtils] FToast 已使用 ${GlobalContextHolder.context != null ? "GlobalContext" : "navigatorKey"} 初始化');
+    // Changing UI frameworks replaces the navigator and its overlay. FToast
+    // reads MediaQuery before checking mounted, so never reuse its old context.
+    final globalContext = GlobalContextHolder.context;
+    final navigatorContext = MyApp.navigatorKey.currentContext;
+    final context = globalContext?.mounted == true
+        ? globalContext
+        : navigatorContext?.mounted == true
+        ? navigatorContext
+        : null;
+    final toast = _fToast;
+    if (toast != null && !identical(toast.context, context)) {
+      toast.removeQueuedCustomToasts();
     }
+    _fToast = context == null ? null : (toast ?? FToast()).init(context);
   }
 
   /// 显示普通消息
@@ -39,7 +44,11 @@ class ToastUtils {
   }
 
   /// 显示带自定义图标和颜色的居中提示（如播放模式切换）
-  static void infoWithIcon(String message, {required IconData icon, Color? color}) {
+  static void infoWithIcon(
+    String message, {
+    required IconData icon,
+    Color? color,
+  }) {
     _ensureInitialized();
     if (_fToast == null) {
       Fluttertoast.showToast(msg: message);
@@ -62,10 +71,7 @@ class ToastUtils {
   static void success(String message) {
     _ensureInitialized();
     if (_fToast == null) {
-      Fluttertoast.showToast(
-        msg: message,
-        backgroundColor: Colors.green,
-      );
+      Fluttertoast.showToast(msg: message, backgroundColor: Colors.green);
       return;
     }
 
@@ -84,10 +90,7 @@ class ToastUtils {
   static void error(String message) {
     _ensureInitialized();
     if (_fToast == null) {
-      Fluttertoast.showToast(
-        msg: message,
-        backgroundColor: Colors.red,
-      );
+      Fluttertoast.showToast(msg: message, backgroundColor: Colors.red);
       return;
     }
 
@@ -120,7 +123,7 @@ class _ToastWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
       decoration: BoxDecoration(
@@ -138,16 +141,18 @@ class _ToastWidget extends StatelessWidget {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0), // 增加模糊强度
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 12.0,
+            ),
             decoration: BoxDecoration(
               // 进一步调低 alpha 以显示更通透的模糊背景
-              color: isDark 
-                  ? Colors.black.withValues(alpha: 0.55) 
+              color: isDark
+                  ? Colors.black.withValues(alpha: 0.55)
                   : Colors.white.withValues(alpha: 0.45),
-              border: showBorder ? Border.all(
-                color: color.withValues(alpha: 0.1),
-                width: 0.5,
-              ) : null,
+              border: showBorder
+                  ? Border.all(color: color.withValues(alpha: 0.1), width: 0.5)
+                  : null,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,

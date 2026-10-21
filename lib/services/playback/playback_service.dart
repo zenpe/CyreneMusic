@@ -1376,7 +1376,22 @@ class PlaybackService extends ChangeNotifier {
         _scanningRequestEpoch != null &&
         _currentSession?.requestEpoch == _scanningRequestEpoch;
     if (emitEffect && !isIntermediateScanFailure) {
+      _emitPlaybackFailureEffect(problem);
+    }
+  }
+
+  void _emitPlaybackFailureEffect(PlaybackProblem problem) {
+    // Presentation failures must not replace the real playback failure or
+    // interrupt transaction cleanup and recovery.
+    try {
       onPlaybackFailure?.call(problem);
+    } catch (error, stack) {
+      StructuredLogService.event(
+        'playback.failure_feedback_failed',
+        level: LogLevel.warning,
+        fields: {'stack': stack.toString()},
+        error: error,
+      );
     }
   }
 
@@ -3300,11 +3315,12 @@ class PlaybackService extends ChangeNotifier {
     _lastFailureEvidence = evidence;
     _controlIntent.invalidate();
     _state = PBState.error;
-    _errorMessage = _resolutionFailureMessage(failure);
+    final message = _resolutionFailureMessage(failure);
+    _errorMessage = message;
     notifyListeners();
     _reportPlaybackFailure(
       tx.track,
-      circuitOpen ? '当前音源连续解析失败，请重新导入或切换音源' : _errorMessage!,
+      circuitOpen ? '当前音源连续解析失败，请重新导入或切换音源' : message,
       kind: circuitOpen
           ? PlaybackProblemKind.sourceInvalid
           : _problemKindForResolutionFailure(failure),
@@ -4983,7 +4999,7 @@ class PlaybackService extends ChangeNotifier {
     final problem = _problemStore.current;
     if (problem != null &&
         problem.kind != PlaybackProblemKind.sourceNotConfigured) {
-      onPlaybackFailure?.call(problem);
+      _emitPlaybackFailureEffect(problem);
     }
     notifyListeners();
   }

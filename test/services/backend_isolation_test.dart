@@ -6,6 +6,7 @@ import 'package:cyrene_music/services/api/api_client.dart';
 import 'package:cyrene_music/services/api/auth_token_store.dart';
 import 'package:cyrene_music/services/auth_service.dart';
 import 'package:cyrene_music/services/listening_stats_service.dart';
+import 'package:cyrene_music/services/structured_log_service.dart';
 import 'package:cyrene_music/services/url_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,6 +69,43 @@ Future<void> withBackends(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test(
+    'transport failures retain their stage without logging credentials',
+    () async {
+      final lines = <String>[];
+      await withBackends(
+        (_, request) async {
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          await reply(request, {'status': 200});
+        },
+        (a, b, auth) async {
+          StructuredLogService.sink = lines.add;
+          try {
+            final result = await ApiClient().getJson(
+              '/probe?token=private-query',
+              timeout: const Duration(milliseconds: 50),
+            );
+            expect(result.isNetworkError, isTrue);
+            final events = lines.map(
+              (line) => jsonDecode(line) as Map<String, dynamic>,
+            );
+            final event = events.singleWhere(
+              (e) => e['event'] == 'api.transport_failed',
+            );
+            expect(event['failure_kind'], 'receiveTimeout');
+            expect(event['path'], '/probe');
+            expect(event['host'], '127.0.0.1');
+            expect(event['status'], 0);
+            expect(jsonEncode(event), isNot(contains('private-query')));
+            expect(jsonEncode(event), isNot(contains('test-token')));
+          } finally {
+            StructuredLogService.sink = null;
+          }
+        },
+      );
+    },
+  );
 
   test(
     'GET cache and deduplication are isolated across backend switches, including A-B-A',
