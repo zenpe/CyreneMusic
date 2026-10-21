@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 
-/// Android Media3 owns the fragment store. No fragment is exposed as a complete
-/// audio file to downloads or offline playback.
+/// Android owns both fragments and verified complete files. Only committed
+/// complete objects are exposed as independently playable paths.
 class AndroidStreamCache {
   static const channel = MethodChannel('com.ryanheise.just_audio.methods');
 
@@ -24,6 +24,17 @@ class AndroidStreamCache {
                 .timeout(const Duration(seconds: 10)) ??
             {},
       );
+
+  static Future<Map<String, dynamic>?> lookup(
+    Map<String, String> identity,
+  ) async {
+    final result = await channel
+        .invokeMapMethod<String, dynamic>('streamCache.lookup', {
+          'identity': identity,
+        })
+        .timeout(const Duration(seconds: 2));
+    return result == null ? null : Map<String, dynamic>.from(result);
+  }
 
   static Future<void> clear() => channel
       .invokeMethod<void>('streamCache.clear')

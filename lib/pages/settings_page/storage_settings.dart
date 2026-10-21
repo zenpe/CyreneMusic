@@ -14,9 +14,13 @@ import '../../utils/theme_manager.dart';
 import '../../widgets/material/material_settings_widgets.dart';
 
 String get _audioCacheDescription =>
-    Platform.isAndroid ? '随播放缓存音频片段，不保证整首离线可用' : '自动缓存播放过的歌曲';
+    Platform.isAndroid ? '完整缓存可直接播放；部分缓存仍可能需要网络，缓存会按容量自动清理' : '自动缓存播放过的歌曲';
 
-String get _audioCacheLabel => Platform.isAndroid ? '音频片段' : '音频缓存';
+String get _audioCacheLabel => '音频缓存';
+
+String _audioCacheSummary(CacheStats stats) => Platform.isAndroid
+    ? '完整缓存 ${stats.completeFiles ?? 0} 首 · 部分缓存 ${stats.partialFiles ?? 0} 首'
+    : '$_audioCacheLabel ${stats.totalFiles} 首歌曲';
 
 /// 存储设置组件
 class StorageSettings extends StatefulWidget {
@@ -427,7 +431,7 @@ class _StorageSettingsState extends State<StorageSettings> {
         message: Text(
           '占用空间: ${stats.formattedSize}\n'
           '空间上限: ${CacheService().formattedMaxCacheSize}\n'
-          '$_audioCacheLabel ${stats.audio.totalFiles} 首歌曲\n'
+          '${_audioCacheSummary(stats.audio)}\n'
           '歌词缓存 ${stats.lyric.totalFiles} 条记录\n'
           '歌词详情 可用 ${stats.lyric.readyCount} / 空结果 ${stats.lyric.emptyCount} / 失败退避 ${stats.lyric.failedCount}',
         ),
@@ -588,7 +592,7 @@ class _StorageSettingsState extends State<StorageSettings> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '$_audioCacheLabel ${stats.audio.totalFiles} 首歌曲',
+                  _audioCacheSummary(stats.audio),
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
@@ -767,7 +771,7 @@ class _StorageSettingsState extends State<StorageSettings> {
             const SizedBox(height: 8),
             Text('空间上限: ${CacheService().formattedMaxCacheSize}'),
             const SizedBox(height: 8),
-            Text('$_audioCacheLabel ${stats.audio.totalFiles} 首歌曲'),
+            Text(_audioCacheSummary(stats.audio)),
             const SizedBox(height: 4),
             Text('歌词缓存 ${stats.lyric.totalFiles} 条记录'),
             const SizedBox(height: 4),

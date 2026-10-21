@@ -5,6 +5,27 @@ import 'package:cyrene_music/services/playback/playback_view_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'buffering preserves pause intent and reports processing accurately',
+    () {
+      final state = MediaTransportState.project(
+        phase: PlaybackSwitchPhase.playing,
+        desiredPlaying: true,
+        enginePlaying: true,
+        buffering: true,
+      );
+      expect(state.playing, isTrue);
+      expect(state.processingState, AudioProcessingState.buffering);
+      final paused = MediaTransportState.project(
+        phase: PlaybackSwitchPhase.playing,
+        desiredPlaying: false,
+        enginePlaying: true,
+        pendingPlaying: false,
+        buffering: true,
+      );
+      expect(paused.playing, isFalse);
+    },
+  );
   MediaTransportState project(
     PlaybackSwitchPhase phase, {
     bool desired = true,

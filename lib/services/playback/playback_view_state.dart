@@ -22,6 +22,10 @@ class PlaybackViewState {
   final PlaybackSwitchPhase switchPhase;
   final bool desiredPlaying;
   final bool enginePlaying;
+  final bool isBuffering;
+
+  /// The native item has changed but the displayed timeline is still the old one.
+  final bool isSourceTransitionPending;
   final bool? pendingPlaying;
   final Duration position;
   final Duration? duration;
@@ -36,6 +40,8 @@ class PlaybackViewState {
     required this.switchPhase,
     required this.desiredPlaying,
     required this.enginePlaying,
+    this.isBuffering = false,
+    this.isSourceTransitionPending = false,
     this.pendingPlaying,
     required this.position,
     required this.duration,
@@ -49,7 +55,8 @@ class PlaybackViewState {
       switchPhase == PlaybackSwitchPhase.loadingSource;
 
   bool get timelineReady => duration != null;
-  bool get canSeek => timelineReady && !isSwitching;
+  bool get canSeek =>
+      timelineReady && !isSwitching && !isSourceTransitionPending;
 
   /// The state presented by interactive controls. During a switch the latest
   /// transport intent wins; after commit, actual playback phase wins.

@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:http/http.dart' as http;
@@ -19,6 +17,7 @@ import '../music_service.dart';
 import '../auth_service.dart';
 import '../audio_source_service.dart';
 import '../cache_service.dart';
+import '../audio_cache_identity.dart';
 import '../proxy_service.dart';
 import '../play_history_service.dart';
 import '../playback_mode_service.dart';
@@ -32,6 +31,8 @@ import '../notification_service.dart';
 import '../persistent_storage_service.dart';
 import '../equalizer_service.dart';
 import '../lyric/lyric_service.dart';
+import '../lyric/lyric_fetch_result.dart';
+import '../lyric/lyric_remote_source.dart';
 import '../lyric/lyric_snapshot.dart';
 import '../lx_runtime_interface.dart';
 import '../structured_log_service.dart';
@@ -265,6 +266,8 @@ class PlaybackService extends ChangeNotifier {
   Duration _presentationBufferedPosition = Duration.zero;
   bool _pendingTimelineReady = false;
   bool _desiredPlaying = false;
+  bool _engineBuffering = false;
+  int? _nativeLoadingGeneration;
   final PlaybackControlIntent _controlIntent = PlaybackControlIntent();
   int? _manualRetryRequestEpoch;
   bool get _manualRetryInFlight =>
@@ -326,6 +329,8 @@ class PlaybackService extends ChangeNotifier {
   final Map<String, _NativePreparedPlanEntry> _nativePreparedPlans = {};
   int _preparedSlotNonce = 0;
   Timer? _preloadTriggerTimer;
+  Timer? _preloadRetryTimer;
+  final Map<String, int> _preloadAttempts = {};
   (int, int, int)? _scheduledPreloadIdentity;
   bool _preloadDependencyListenersBound = false;
   bool _autoNextInFlight = false;
@@ -536,6 +541,9 @@ class PlaybackService extends ChangeNotifier {
       switchPhase: _viewSwitchPhase,
       desiredPlaying: _desiredPlaying,
       enginePlaying: _engine.isPlaying,
+      isBuffering:
+          _engineBuffering && _desiredPlaying && _state != PBState.error,
+      isSourceTransitionPending: _nativeLoadingGeneration != null,
       pendingPlaying: _controlIntent.pendingPlaying,
       position: presentationPositionNotifier.value,
       duration: _presentationDuration > Duration.zero
@@ -667,7 +675,23 @@ class PlaybackService extends ChangeNotifier {
   void _onLyricSnapshotChanged() => _captureLyricSnapshot(notify: true);
 
   void _onEngineEvent(EngineEvent event) {
+    if (event is EngineSourceLoadingEvent) {
+      final slot = _nativePreparedPlans[event.key]?.slot;
+      if (_pendingTrack == null &&
+          slot?.generation == event.epoch &&
+          slot?.preparedFromGeneration == _activePlaybackToken) {
+        _nativeLoadingGeneration = event.epoch;
+        _engineBuffering = true;
+        _livenessMonitor.suspend();
+        _cancelScheduledPreload();
+        notifyListeners();
+      }
+      return;
+    }
     if (event is EngineSourceCommittedEvent) {
+      if (_nativeLoadingGeneration == event.epoch) {
+        _nativeLoadingGeneration = null;
+      }
       _onNativeSourceCommitted(event.epoch, event.key);
       return;
     }
@@ -682,14 +706,21 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
     switch (event) {
+      case EngineSourceLoadingEvent():
+        break;
+      case EngineBufferingEvent(:final buffering):
+        _engineBuffering = buffering;
+        notifyListeners();
       case EngineStateEvent(:final state):
         _onEngineStateChanged(state);
       case EnginePositionEvent(:final position):
-        _onPositionChanged(position);
+        if (_nativeLoadingGeneration == null) _onPositionChanged(position);
       case EngineDurationEvent(:final duration):
-        _onDurationChanged(duration);
+        if (_nativeLoadingGeneration == null) _onDurationChanged(duration);
       case EngineBufferedPositionEvent(:final position):
-        _onBufferedPositionChanged(position);
+        if (_nativeLoadingGeneration == null) {
+          _onBufferedPositionChanged(position);
+        }
       case EngineSourceCommittedEvent():
         break;
       case EngineCompletedEvent():
@@ -944,7 +975,7 @@ class PlaybackService extends ChangeNotifier {
         }
         _scheduleSessionPersist();
         _stabilityTracker.onPlaybackStarted(_activePlaybackToken);
-        if (_pendingTrack == null) {
+        if (_pendingTrack == null && _nativeLoadingGeneration == null) {
           _livenessMonitor.start(
             generation: _activePlaybackToken,
             position: _position,
@@ -954,6 +985,7 @@ class PlaybackService extends ChangeNotifier {
         _schedulePreloadNextTrack();
         break;
       case EngineState.paused:
+        _engineBuffering = false;
         _controlIntent.acknowledge(false);
         _updateSessionPhase(PlaybackPhase.paused);
         _state = PBState.paused;
@@ -969,6 +1001,7 @@ class PlaybackService extends ChangeNotifier {
         _scheduleSessionPersist();
         break;
       case EngineState.idle:
+        _engineBuffering = false;
         _updateSessionPhase(PlaybackPhase.idle);
         _state = PBState.idle;
         _stabilityTracker.onPlaybackInterrupted();
@@ -1033,6 +1066,9 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _onEngineError(EngineError error) {
+    if (_nativeLoadingGeneration == error.epoch) {
+      _nativeLoadingGeneration = null;
+    }
     // The coordinator owns this failed native selection until recovery ends.
     // Repeated native callbacks must not start another retry or clear its state.
     if (_naturalRecovery?.generation == error.epoch) return;
@@ -1271,6 +1307,7 @@ class PlaybackService extends ChangeNotifier {
         evidence.generation != _activePlaybackToken ||
         evidence.generation != _playGeneration ||
         _pendingTrack != null ||
+        _nativeLoadingGeneration != null ||
         !_desiredPlaying ||
         _state != PBState.playing ||
         track.source == MusicSource.local ||
@@ -1396,6 +1433,24 @@ class PlaybackService extends ChangeNotifier {
       );
       _captureLyricSnapshot();
       _restartLivenessForActivePlayback();
+      if (activeSong == null || !_hasAnyLyricPayload(activeSong)) {
+        final track = _activeTrack!;
+        final quality = AudioQualityService().currentQuality;
+        unawaited(
+          LyricService().requestLyrics(
+            track: track,
+            playbackToken: _activePlaybackToken,
+            quality: quality.value,
+            refreshKey: _lyricRefreshKey(track),
+            adapter: _buildLyricRequestAdapter(
+              track,
+              quality: quality,
+              qualityStr: quality.value,
+              playbackToken: _activePlaybackToken,
+            ),
+          ),
+        );
+      }
       notifyListeners();
     }
     if (transaction?.budgetExhausted ?? false) {
@@ -1716,6 +1771,11 @@ class PlaybackService extends ChangeNotifier {
     // Keep manual retry available without automatically re-querying the source.
     if (error.cause is NativePlaybackTimeout) return false;
     if (error.httpStatus == 400 || error.httpStatus == 429) return false;
+    if (error.httpStatus == 404 ||
+        error.httpStatus == 410 ||
+        (error.httpStatus != null && error.httpStatus! >= 500)) {
+      return true;
+    }
     if (error.isSourceReadFailure) {
       return (_pendingTrack ?? currentTrack)?.source != MusicSource.local;
     }
@@ -1743,6 +1803,9 @@ class PlaybackService extends ChangeNotifier {
           (!Platform.isAndroid && error.isSourceReadFailure));
 
   String _buildErrorMessage(EngineError error) {
+    if (error.httpStatus == 429) {
+      return '播放请求受到限流，请稍后重试';
+    }
     if (error.cause is NativePlaybackTimeout) {
       return '播放失败: ${error.message}';
     }
@@ -2214,7 +2277,8 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> seek(Duration position) async {
-    if (!viewState.canSeek) return;
+    // Recheck live ownership for commands from an old UI/media-session snapshot.
+    if (_nativeLoadingGeneration != null || !viewState.canSeek) return;
     _livenessMonitor.suspend();
     await _engine.seek(position);
     _position = position;
@@ -2647,6 +2711,7 @@ class PlaybackService extends ChangeNotifier {
     );
     final token = generation ?? _transactionGuard.allocate();
     _transactionGuard.activate(token);
+    _engine.cancelPendingSourceLoad();
     _engineStateCommitGate.arm(token);
     LyricService().bindCurrentTrack(
       track: track,
@@ -2735,6 +2800,22 @@ class PlaybackService extends ChangeNotifier {
       return null;
     }
 
+    if (track.source != MusicSource.local) {
+      unawaited(
+        LyricService().requestLyrics(
+          track: track,
+          playbackToken: token,
+          quality: tx.qualityStr,
+          refreshKey: _lyricRefreshKey(track),
+          adapter: _buildLyricRequestAdapter(
+            track,
+            quality: tx.selectedQuality,
+            qualityStr: tx.qualityStr,
+            playbackToken: token,
+          ),
+        ),
+      );
+    }
     _precacheNextCover();
     if (Platform.isAndroid || Platform.isIOS) {
       WakelockPlus.enable();
@@ -3645,6 +3726,8 @@ class PlaybackService extends ChangeNotifier {
   }) {
     return LyricRequestAdapter(
       fetch: LyricRequestFetchAdapter(
+        fetchResult: (cancel, timeout, bypass) =>
+            LyricRemoteSource().fetch(track, cancel, timeout, bypass),
         useLyricOnlyFetch: _shouldUseLyricOnlySupplementalFetch(track),
         allowFullDetailFallback:
             _shouldAllowFullDetailFallbackForLyricOnlyFetch(track),
@@ -3736,6 +3819,8 @@ class PlaybackService extends ChangeNotifier {
     required String qualityStr,
   }) {
     return LyricPrefetchAdapter(
+      fetchResult: (cancel, timeout, bypass) =>
+          LyricRemoteSource().fetch(track, cancel, timeout, bypass),
       fetchLyricOnlyDetail: () {
         return MusicService()
             .fetchLyricOnlySongDetail(
@@ -3878,7 +3963,14 @@ class PlaybackService extends ChangeNotifier {
     bool Function() isStale,
   ) {
     if (isStale()) return;
-    final song = plan.resolvedSong.songDetail;
+    var song = plan.resolvedSong.songDetail;
+    final earlySnapshot = LyricService().currentSnapshot;
+    final hasEarlySnapshot =
+        earlySnapshot?.playbackToken == tx.token &&
+        earlySnapshot?.trackKey == _buildTrackIdentity(tx.track);
+    if (hasEarlySnapshot && _pendingSong != null) {
+      song = LyricPayload.fromSong(_pendingSong!).merge(tx.track, song);
+    }
     _pendingSong = song;
     final shouldRequest = _shouldRequestLyricsForPlan(
       tx.track,
@@ -3886,7 +3978,13 @@ class PlaybackService extends ChangeNotifier {
       plan,
       tx.qualityStr,
     );
-    final initialState = shouldRequest
+    final initialState = _hasAnyLyricPayload(song)
+        ? LyricLoadState.ready
+        : hasEarlySnapshot &&
+              tx.track.source != MusicSource.local &&
+              earlySnapshot!.state != LyricLoadState.idle
+        ? earlySnapshot.state
+        : shouldRequest
         ? LyricLoadState.loading
         : _deriveLyricLoadStateForPlan(tx.track, song, plan, tx.qualityStr);
     LyricService().bindCurrentTrack(
@@ -4337,7 +4435,9 @@ class PlaybackService extends ChangeNotifier {
           EngineErrorType.playback => PlaybackFailureCause.playback,
           EngineErrorType.unknown => PlaybackFailureCause.unknown,
         },
-        scope: PlaybackFailureScope.engine,
+        scope: exception.error.httpStatus == 429
+            ? PlaybackFailureScope.source
+            : PlaybackFailureScope.engine,
       );
       tx.failureEvidence = evidence;
       _lastFailureEvidence = evidence;
@@ -4614,6 +4714,8 @@ class PlaybackService extends ChangeNotifier {
           ? 3
           : 2,
       maxResolutionAttemptsPerTrack: 1,
+      shareResolutionBudget:
+          intent == PlaybackTransitionIntent.automaticAdvance,
     );
     final playbackIntent = intent == PlaybackTransitionIntent.automaticAdvance
         ? PlaybackRequestIntent.automatic
@@ -4663,7 +4765,9 @@ class PlaybackService extends ChangeNotifier {
             );
             lastAttemptedProblem = _problemStore.current;
             return PlaybackCandidateAttemptResult(
-              PlaybackCandidateAttemptStatus.engineFailure,
+              nativeFailure.error.httpStatus == 429
+                  ? PlaybackCandidateAttemptStatus.sourceFailure
+                  : PlaybackCandidateAttemptStatus.engineFailure,
               message: _errorMessage,
             );
           }
@@ -5052,6 +5156,8 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _cancelScheduledPreload() {
+    _preloadRetryTimer?.cancel();
+    _preloadRetryTimer = null;
     if (_preloadTriggerTimer != null) {
       StructuredLogService.event(
         'playback.preload_schedule_cancelled',
@@ -5064,7 +5170,9 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _resetPreloadState({bool clearPrefetchedDetails = true}) {
+    _nativeLoadingGeneration = null;
     _cancelScheduledPreload();
+    _preloadAttempts.clear();
     _lastPreloadedTargetKey = null;
     _preloadingNext = false;
     _preloadOp++;
@@ -5206,6 +5314,7 @@ class PlaybackService extends ChangeNotifier {
     required Duration timeout,
     required String purpose,
     bool fetchLyrics = true,
+    void Function(LxRuntimeFailure? failure)? onFailure,
   }) async {
     if (purpose == 'preload' &&
         (_pendingTrack != null ||
@@ -5227,6 +5336,7 @@ class PlaybackService extends ChangeNotifier {
     if (result.timedOut) {
       StructuredLogService.log('[PlaybackService] 获取歌曲详情超时($purpose)');
     }
+    if (!result.isPlayable) onFailure?.call(result.lxFailure);
     return result.detail;
   }
 
@@ -5322,6 +5432,8 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _schedulePreloadNextTrack() {
+    if (_nativeLoadingGeneration != null || _pendingTrack != null) return;
+    if (_preloadRetryTimer != null) return;
     if (_state != PBState.playing) return;
     final current = currentTrack;
     if (current == null) return;
@@ -5421,11 +5533,42 @@ class PlaybackService extends ChangeNotifier {
 
         if (nextEntryId != currentEntryId &&
             nextKey != _lastPreloadedTargetKey &&
+            (_preloadAttempts[nextKey] ?? 0) < 2 &&
             (nextTrack.source == MusicSource.local ||
                 AudioSourceService().isConfigured)) {
-          await _preloadTrackSource(nextTrack, selectedQuality, op);
+          _preloadAttempts[nextKey] = (_preloadAttempts[nextKey] ?? 0) + 1;
+          LxRuntimeFailure? failure;
+          final prepared = await _preloadTrackSource(
+            nextTrack,
+            selectedQuality,
+            op,
+            onFailure: (value) => failure = value,
+          );
           if (op == _preloadOp) {
-            _lastPreloadedTargetKey = nextKey;
+            if (prepared != null) {
+              _lastPreloadedTargetKey = nextKey;
+            } else {
+              final transient =
+                  failure?.kind == LxRuntimeFailureKind.timeout ||
+                  failure?.kind == LxRuntimeFailureKind.networkUnavailable ||
+                  failure?.kind == LxRuntimeFailureKind.notReady;
+              if (transient && _preloadAttempts[nextKey]! < 2) {
+                _preloadRetryTimer?.cancel();
+                _preloadRetryTimer = Timer(const Duration(seconds: 2), () {
+                  _preloadRetryTimer = null;
+                  if (op == _preloadOp &&
+                      _pendingTrack == null &&
+                      _desiredPlaying &&
+                      _state == PBState.playing &&
+                      _activeQueueEntryId == currentEntryId &&
+                      queueRevision == _queueController.structureRevision) {
+                    unawaited(_preloadAdjacentTracks());
+                  }
+                });
+              } else {
+                _preloadAttempts[nextKey] = 2;
+              }
+            }
           }
         }
       }
@@ -5630,8 +5773,9 @@ class PlaybackService extends ChangeNotifier {
 
   Future<_TrackSwitchPlaybackPlan?> _buildPrefetchedPlayablePlan(
     Track track,
-    AudioQuality selectedQuality,
-  ) async {
+    AudioQuality selectedQuality, {
+    void Function(LxRuntimeFailure? failure)? onFailure,
+  }) async {
     final qualityStr = selectedQuality.value;
     final cacheInfo =
         _cacheBypassKeys.contains(_cachePlaybackKey(track, qualityStr))
@@ -5688,6 +5832,7 @@ class PlaybackService extends ChangeNotifier {
       timeout: _preloadSongDetailTimeout,
       purpose: 'preload',
       fetchLyrics: false,
+      onFailure: onFailure,
     );
     if (detail == null || detail.url.isEmpty) return null;
 
@@ -5740,9 +5885,14 @@ class PlaybackService extends ChangeNotifier {
   Future<_TrackSwitchPlaybackPlan?> _preloadTrackSource(
     Track track,
     AudioQuality selectedQuality,
-    int op,
-  ) async {
-    final plan = await _buildPrefetchedPlayablePlan(track, selectedQuality);
+    int op, {
+    void Function(LxRuntimeFailure? failure)? onFailure,
+  }) async {
+    final plan = await _buildPrefetchedPlayablePlan(
+      track,
+      selectedQuality,
+      onFailure: onFailure,
+    );
     if (op != _preloadOp || plan == null) return null;
     _savePrefetchedPlayablePlan(track, selectedQuality, plan);
     return plan;
@@ -5765,19 +5915,10 @@ class PlaybackService extends ChangeNotifier {
       return DirectHttpPlayableSource(
         url,
         androidStreamCache: Platform.isAndroid
-            ? {
-                'source': track.source.name,
-                'songId': track.id.toString(),
-                'quality': quality,
-                'scope': sha256
-                    .convert(
-                      utf8.encode(
-                        '${AuthService().currentUser?.id ?? "anonymous"}:'
-                        '${PlaybackResolverRegistry().fingerprintFor(track.source)}',
-                      ),
-                    )
-                    .toString(),
-              }
+            ? audioCacheIdentityFor(
+                track,
+                CacheService.normalizeQualityValue(quality),
+              )
             : null,
         requestHeaders: needsHeaders
             ? _buildPlaybackHeaders(track.source)
@@ -6134,6 +6275,9 @@ class PlaybackService extends ChangeNotifier {
   @override
   void dispose() {
     AuthService().onSessionEnded = null;
+    // Lyrics are independent of native loads and may still be awaiting HTTP.
+    // Invalidate their callbacks before disposing this presentation owner.
+    LyricService().clearAll(notify: false);
     _resetPreloadState();
     _unbindPreloadDependencyListeners();
     _stabilityTracker.dispose();

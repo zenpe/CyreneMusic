@@ -39,6 +39,25 @@ class EngineHost implements AudioEngine {
   int _loadRevision = 0;
   bool _desiredPlaying = false;
   int _volumeRevision = 0;
+  bool _loading = false;
+
+  void cancelPendingSourceLoad() {
+    final engine = _active;
+    if (_loading && engine is EngineLoadControl) {
+      (engine as EngineLoadControl).cancelPendingLoad();
+    }
+  }
+
+  Future<T> _executeLoad<T>(Future<T> Function() action, T cancelled) async {
+    _loading = true;
+    try {
+      return await action();
+    } on EngineLoadCancelled {
+      return cancelled;
+    } finally {
+      _loading = false;
+    }
+  }
 
   EngineHost({
     AudioEngine Function()? engineFactory,
@@ -104,6 +123,29 @@ class EngineHost implements AudioEngine {
 
   void _bind(AudioEngine engine) {
     bool current() => !_disposed && identical(_active, engine);
+
+    if (engine is EngineBufferingReporter) {
+      _subscriptions.add(
+        (engine as EngineBufferingReporter).bufferingStream.listen((value) {
+          if (current()) {
+            _eventController.add(EngineBufferingEvent(_activeEpoch, value));
+          }
+        }),
+      );
+      _subscriptions.add(
+        (engine as EngineBufferingReporter).pendingSourceStream.listen((
+          selection,
+        ) {
+          if (current() &&
+              _latestRequestedGeneration == _activeEpoch &&
+              selection.generation > _activeEpoch) {
+            _eventController.add(
+              EngineSourceLoadingEvent(selection.generation, selection.key),
+            );
+          }
+        }),
+      );
+    }
 
     _subscriptions.add(
       engine.positionStream.listen((value) {
@@ -279,6 +321,7 @@ class EngineHost implements AudioEngine {
     Duration? loadTimeout,
   }) {
     final loadRevision = ++_loadRevision;
+    cancelPendingSourceLoad();
     final clock = Stopwatch()..start();
     _desiredPlaying = autoPlay;
     _latestRequestedGeneration = generation;
@@ -291,15 +334,18 @@ class EngineHost implements AudioEngine {
       _checkLoadBudget(remaining, generation);
       _recordSourceQueueWait('play', generation, clock);
       _beginEpoch(generation);
-      await _active!.play(
-        url,
-        generation: generation,
-        isLocal: isLocal,
-        headers: headers,
-        autoPlay: autoPlay && _desiredPlaying,
-        initialPosition: initialPosition,
-        preload: preload,
-        loadTimeout: remaining,
+      await _executeLoad<void>(
+        () => _active!.play(
+          url,
+          generation: generation,
+          isLocal: isLocal,
+          headers: headers,
+          autoPlay: autoPlay && _desiredPlaying,
+          initialPosition: initialPosition,
+          preload: preload,
+          loadTimeout: remaining,
+        ),
+        null,
       );
       if (!_desiredPlaying && (_active?.isPlaying ?? false)) {
         await _active?.pause();
@@ -317,6 +363,7 @@ class EngineHost implements AudioEngine {
     Duration? loadTimeout,
   }) {
     final loadRevision = ++_loadRevision;
+    cancelPendingSourceLoad();
     final clock = Stopwatch()..start();
     _desiredPlaying = autoPlay;
     _latestRequestedGeneration = generation;
@@ -329,13 +376,16 @@ class EngineHost implements AudioEngine {
       _checkLoadBudget(remaining, generation);
       _recordSourceQueueWait('play_source', generation, clock);
       _beginEpoch(generation);
-      await _active!.playSource(
-        source,
-        generation: generation,
-        autoPlay: autoPlay && _desiredPlaying,
-        initialPosition: initialPosition,
-        preload: preload,
-        loadTimeout: remaining,
+      await _executeLoad<void>(
+        () => _active!.playSource(
+          source,
+          generation: generation,
+          autoPlay: autoPlay && _desiredPlaying,
+          initialPosition: initialPosition,
+          preload: preload,
+          loadTimeout: remaining,
+        ),
+        null,
       );
       if (!_desiredPlaying && (_active?.isPlaying ?? false)) {
         await _active?.pause();
@@ -354,6 +404,7 @@ class EngineHost implements AudioEngine {
     Duration? loadTimeout,
   }) {
     final loadRevision = ++_loadRevision;
+    cancelPendingSourceLoad();
     final clock = Stopwatch()..start();
     _desiredPlaying = autoPlay;
     _latestRequestedGeneration = generation;
@@ -366,14 +417,17 @@ class EngineHost implements AudioEngine {
       _checkLoadBudget(remaining, generation);
       _recordSourceQueueWait('play_audio_source', generation, clock);
       _beginEpoch(generation);
-      await _active!.playAudioSource(
-        source,
-        generation: generation,
-        sourceUrl: sourceUrl,
-        autoPlay: autoPlay && _desiredPlaying,
-        initialPosition: initialPosition,
-        preload: preload,
-        loadTimeout: remaining,
+      await _executeLoad<void>(
+        () => _active!.playAudioSource(
+          source,
+          generation: generation,
+          sourceUrl: sourceUrl,
+          autoPlay: autoPlay && _desiredPlaying,
+          initialPosition: initialPosition,
+          preload: preload,
+          loadTimeout: remaining,
+        ),
+        null,
       );
       if (!_desiredPlaying && (_active?.isPlaying ?? false)) {
         await _active?.pause();
@@ -412,6 +466,7 @@ class EngineHost implements AudioEngine {
     Duration? loadTimeout,
   }) {
     final loadRevision = ++_loadRevision;
+    cancelPendingSourceLoad();
     final clock = Stopwatch()..start();
     _desiredPlaying = autoPlay;
     _latestRequestedGeneration = generation;
@@ -432,16 +487,19 @@ class EngineHost implements AudioEngine {
         return false;
       }
       _activeEpoch = generation;
-      final activated =
-          await _active?.activatePreparedSlot(
-            key,
-            generation: generation,
-            queueRevision: queueRevision,
-            autoPlay: autoPlay && _desiredPlaying,
-            initialPosition: initialPosition,
-            loadTimeout: remaining,
-          ) ??
-          false;
+      final activated = await _executeLoad<bool>(
+        () async =>
+            await _active?.activatePreparedSlot(
+              key,
+              generation: generation,
+              queueRevision: queueRevision,
+              autoPlay: autoPlay && _desiredPlaying,
+              initialPosition: initialPosition,
+              loadTimeout: remaining,
+            ) ??
+            false,
+        false,
+      );
       if (!activated || generation != _latestRequestedGeneration) {
         if (_activeEpoch == generation) _activeEpoch = previousEpoch;
         if (_latestRequestedGeneration == generation) {
@@ -485,6 +543,10 @@ class EngineHost implements AudioEngine {
   @override
   Future<void> pause() {
     _desiredPlaying = false;
+    final engine = _active;
+    if (_loading && engine is EngineLoadControl) {
+      return (engine as EngineLoadControl).pausePendingLoad();
+    }
     return _write(() => _active?.pause() ?? Future.value());
   }
 
@@ -502,6 +564,7 @@ class EngineHost implements AudioEngine {
   Future<void> stop() {
     _desiredPlaying = false;
     _loadRevision++;
+    cancelPendingSourceLoad();
     return _write(() async {
       await _active?.stop();
       _isPlaying = false;

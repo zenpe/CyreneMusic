@@ -1,3 +1,4 @@
+import '../../widgets/lyric_status_text.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -357,16 +358,12 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
 
   Widget _buildNoLyric() {
     final fontFamily = LyricFontService().currentFontFamily ?? 'Microsoft YaHei';
-    final message = widget.lyricState.displayText;
     return Center(
-      child: Text(
-        message,
-        style: TextStyle(
+      child: LyricStatusText(state: widget.lyricState, style: TextStyle(
           color: Colors.white.withValues(alpha: 0.5),
           fontSize: 16,
           fontFamily: fontFamily,
-        ),
-      ),
+        )),
     );
   }
 

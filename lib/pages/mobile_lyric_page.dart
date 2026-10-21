@@ -1,3 +1,4 @@
+import '../widgets/lyric_status_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -265,13 +266,10 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
                 Expanded(
                   child: _lyrics.isEmpty
                       ? Center(
-                          child: Text(
-                            _lyricStatusText(),
-                            style: const TextStyle(
+                          child: LyricStatusText(state: _lyricState, style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 16,
-                            ),
-                          ),
+                            )),
                         )
                       : _buildLyricList(),
                 ),
@@ -282,10 +280,6 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
       ),
       ),
     );
-  }
-
-  String _lyricStatusText() {
-    return _lyricState.displayText;
   }
 
   /// 构建歌词列表（支持流体云切换）
@@ -440,4 +434,3 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
     );
   }
 }
-

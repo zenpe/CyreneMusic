@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 import '../../models/lyric_line.dart';
 import '../../models/song_detail.dart';
@@ -7,6 +8,11 @@ import '../../utils/lyric_parser.dart';
 import 'lyric_cache_service.dart';
 import 'lyric_repository.dart';
 import 'lyric_snapshot.dart';
+import 'lyric_fetch_result.dart';
+import 'lyric_identity.dart';
+import 'lyric_request_coordinator.dart';
+import '../url_service.dart';
+import '../navidrome_session_service.dart';
 
 typedef LyricLogFn = void Function(String message, {bool toDeveloperPanel});
 
@@ -19,6 +25,7 @@ typedef LyricLookupFn =
     });
 
 class LyricRequestFetchAdapter {
+  final LyricFetch? fetchResult;
   final bool useLyricOnlyFetch;
   final bool allowFullDetailFallback;
   final bool emptyResultIsAuthoritative;
@@ -27,6 +34,7 @@ class LyricRequestFetchAdapter {
   final SongDetail Function(SongDetail detail) normalizeSongDetail;
 
   const LyricRequestFetchAdapter({
+    this.fetchResult,
     required this.useLyricOnlyFetch,
     this.allowFullDetailFallback = true,
     this.emptyResultIsAuthoritative = false,
@@ -81,12 +89,14 @@ class LyricRequestAdapter {
 }
 
 class LyricPrefetchAdapter {
+  final LyricFetch? fetchResult;
   final Future<SongDetail?> Function() fetchLyricOnlyDetail;
   final SongDetail Function(SongDetail detail) normalizeSongDetail;
   final bool Function(SongDetail song) hasAnyLyricPayload;
   final LyricLogFn log;
 
   const LyricPrefetchAdapter({
+    this.fetchResult,
     required this.fetchLyricOnlyDetail,
     required this.normalizeSongDetail,
     required this.hasAnyLyricPayload,
@@ -105,14 +115,63 @@ class LyricService extends ChangeNotifier {
   static final RegExp _plainLyricParensDoublePattern = RegExp(r'\(\d+,\d+\)');
   static final RegExp _plainLyricAngleTriplePattern = RegExp(r'<\d+,\d+,\d+>');
 
-  LyricService._internal() : _lookup = LyricRepository().lookup;
+  LyricService._internal()
+    : _lookup = LyricRepository().lookup,
+      _requests = LyricRequestCoordinator() {
+    UrlService().addListener(_contextChanged);
+    NavidromeSessionService().addListener(_contextChanged);
+  }
 
   @visibleForTesting
-  LyricService.forTesting({required LyricLookupFn lookup}) : _lookup = lookup;
+  LyricService.forTesting({
+    required LyricLookupFn lookup,
+    LyricRequestCoordinator? requests,
+  }) : _lookup = lookup,
+       _requests = requests ?? LyricRequestCoordinator();
 
   final LyricLookupFn _lookup;
 
   final Set<String> _pendingRefreshKeys = <String>{};
+  final LyricRequestCoordinator _requests;
+  final Set<String> _managedCompleted = {};
+  int _cacheEpoch = 0;
+  int _bindingRevision = 0;
+  String? _boundRequestScope;
+  Track? _boundTrack;
+  Future<void> Function()? _retryCurrent;
+
+  Future<void> retryCurrentLyrics({
+    required String trackKey,
+    required int playbackToken,
+  }) async {
+    if (_isCurrent(trackKey, playbackToken)) await _retryCurrent?.call();
+  }
+
+  @override
+  void dispose() {
+    UrlService().removeListener(_contextChanged);
+    NavidromeSessionService().removeListener(_contextChanged);
+    _requests.clear();
+    super.dispose();
+  }
+
+  void _contextChanged() {
+    final track = _boundTrack;
+    if (track == null || _boundRequestScope == lyricRequestScope(track)) return;
+    _boundRequestScope = lyricRequestScope(track);
+    _cacheEpoch++;
+    _requests.clear();
+    _managedCompleted.clear();
+    _repository.clearMemory();
+    final snapshot = _currentSnapshot;
+    if (snapshot == null || snapshot.hasLines) return;
+    _publish(
+      trackKey: snapshot.trackKey,
+      playbackToken: snapshot.playbackToken,
+      state: LyricLoadState.failed,
+      error: '歌词来源已变化，请重试',
+    );
+  }
 
   LyricSnapshot? _currentSnapshot;
   LyricLoadState _currentState = LyricLoadState.idle;
@@ -131,6 +190,20 @@ class LyricService extends ChangeNotifier {
     required LyricLoadState state,
     bool notify = true,
   }) {
+    final scope = lyricRequestScope(track);
+    _boundTrack = track;
+    if (_boundRequestScope != scope ||
+        !_isCurrent(_trackKey(track), playbackToken)) {
+      _bindingRevision++;
+      _requests.retain(scope);
+      _managedCompleted.clear();
+      _retryCurrent = null;
+      _boundRequestScope = scope;
+    } else if (_currentSnapshot?.hasLines == true &&
+        (song == null || !_hasDisplayableLyrics(song))) {
+      // A late playback-plan bind must not erase lyrics fetched during resolve.
+      return;
+    }
     _publish(
       trackKey: _trackKey(track),
       playbackToken: playbackToken,
@@ -160,6 +233,12 @@ class LyricService extends ChangeNotifier {
   }
 
   void clearCurrent({bool notify = true}) {
+    _bindingRevision++;
+    _requests.clear();
+    _managedCompleted.clear();
+    _retryCurrent = null;
+    _boundRequestScope = null;
+    _boundTrack = null;
     _currentSnapshot = null;
     _currentState = LyricLoadState.idle;
     _currentTrackKey = null;
@@ -171,20 +250,44 @@ class LyricService extends ChangeNotifier {
   }
 
   void clearAll({bool notify = true}) {
+    _cacheEpoch++;
     _pendingRefreshKeys.clear();
     _repository.clearMemory();
     clearCurrent(notify: notify);
   }
 
   Future<void> clearCachedLyrics() async {
+    _cacheEpoch++;
+    _requests.clear();
+    _managedCompleted.clear();
     _pendingRefreshKeys.clear();
     _repository.clearMemory();
+    _settleCancelledLoading();
     await LyricCacheService().clearAllCache();
   }
 
   Future<void> evictTrackCache(Track track, {String? quality}) async {
+    _cacheEpoch++;
+    _requests.clear();
+    _managedCompleted.clear();
     _repository.evictTrack(track, quality: quality);
+    _settleCancelledLoading();
     await LyricCacheService().deleteTrackCache(track, quality: quality);
+  }
+
+  void _settleCancelledLoading() {
+    final snapshot = _currentSnapshot;
+    if (snapshot == null ||
+        snapshot.state != LyricLoadState.loading ||
+        snapshot.hasLines) {
+      return;
+    }
+    _publish(
+      trackKey: snapshot.trackKey,
+      playbackToken: snapshot.playbackToken,
+      state: LyricLoadState.failed,
+      error: '歌词获取已中断，请重试',
+    );
   }
 
   Future<void> requestLyrics({
@@ -193,7 +296,19 @@ class LyricService extends ChangeNotifier {
     required String quality,
     required String refreshKey,
     required LyricRequestAdapter adapter,
+    bool force = false,
   }) async {
+    if (adapter.fetch.fetchResult != null) {
+      return _requestManagedLyrics(
+        track: track,
+        playbackToken: playbackToken,
+        quality: quality,
+        refreshKey: refreshKey,
+        adapter: adapter,
+        force: force,
+      );
+    }
+    final cacheEpoch = _cacheEpoch;
     final trackKey = _trackKey(track);
     final presentation = adapter.presentation;
     final fetch = adapter.fetch;
@@ -323,7 +438,7 @@ class LyricService extends ChangeNotifier {
       } else {
         detail = await fetch.fetchFullDetail();
       }
-      if (!_isCurrent(trackKey, playbackToken)) {
+      if (cacheEpoch != _cacheEpoch || !_isCurrent(trackKey, playbackToken)) {
         adapter.log(
           '[LyricService] 歌词结果已过期，丢弃: $refreshKey',
           toDeveloperPanel: true,
@@ -436,6 +551,10 @@ class LyricService extends ChangeNotifier {
     required String refreshKey,
     required LyricPrefetchAdapter adapter,
   }) async {
+    if (adapter.fetchResult != null) {
+      return _prefetchManagedLyrics(track, quality, adapter);
+    }
+    final cacheEpoch = _cacheEpoch;
     final prefetchKey = 'prefetch_$refreshKey';
     final cachedResult = await _lookupSafely(
       track: track,
@@ -470,6 +589,7 @@ class LyricService extends ChangeNotifier {
 
     try {
       final detail = await adapter.fetchLyricOnlyDetail();
+      if (cacheEpoch != _cacheEpoch) return;
       if (detail == null) {
         adapter.log(
           '[LyricService] 歌词预取未命中: $refreshKey',
@@ -511,6 +631,188 @@ class LyricService extends ChangeNotifier {
       );
     } finally {
       _pendingRefreshKeys.remove(prefetchKey);
+    }
+  }
+
+  Future<void> _requestManagedLyrics({
+    required Track track,
+    required int playbackToken,
+    required String quality,
+    required String refreshKey,
+    required LyricRequestAdapter adapter,
+    required bool force,
+  }) async {
+    final scope = lyricRequestScope(track);
+    final epoch = _cacheEpoch;
+    final key = 'managed_${epoch}_${playbackToken}_$scope';
+    bool valid() => epoch == _cacheEpoch && scope == lyricRequestScope(track);
+    bool current() => valid() && _isCurrent(_trackKey(track), playbackToken);
+    if (!current() || _pendingRefreshKeys.contains(key)) return;
+    _retryCurrent = () => _requestManagedLyrics(
+      track: track,
+      playbackToken: playbackToken,
+      quality: quality,
+      refreshKey: refreshKey,
+      adapter: adapter,
+      force: true,
+    );
+    if (!force && _managedCompleted.contains(key)) return;
+    _pendingRefreshKeys.add(key);
+    final presentation = adapter.presentation;
+    SongDetail? song = presentation.currentSong();
+    void publish(LyricLoadState state, {String? error}) {
+      if (!current()) return;
+      _publish(
+        trackKey: _trackKey(track),
+        playbackToken: playbackToken,
+        song: song,
+        state: state,
+        error: error,
+      );
+      if (song != null) presentation.applyResolvedSongDetail(song);
+    }
+
+    try {
+      final cached = await _lookupSafely(
+        track: track,
+        quality: quality,
+        currentSong: song,
+        log: adapter.log,
+      );
+      if (!current()) return;
+      if (cached != null && _isUsableLookupResult(cached)) {
+        final latest = presentation.currentSong();
+        if (latest != null && _hasDisplayableLyrics(latest)) {
+          song = latest;
+        } else if (cached.song != null) {
+          song = LyricPayload.fromSong(cached.song!).merge(track, latest);
+        }
+        publish(cached.state);
+        presentation.refreshFloatingLyrics();
+        if (cached.skipRemote && !force) return;
+      }
+      if (song == null || !_hasDisplayableLyrics(song)) {
+        publish(LyricLoadState.loading);
+      }
+      final watch = Stopwatch()..start();
+      final result = await _requests.request(
+        scope,
+        fetch: adapter.fetch.fetchResult!,
+        foreground: true,
+        isValid: valid,
+        force: force,
+      );
+      if (!current() || result.kind == LyricFetchKind.cancelled) return;
+      adapter.log(
+        '[LyricService] result=${result.kind.name} source=${track.source.name} '
+        'elapsed_ms=${watch.elapsedMilliseconds}',
+        toDeveloperPanel: true,
+      );
+      // Re-read metadata after the await: the native plan may now own a URL.
+      song = presentation.currentSong() ?? song;
+      if (result.kind == LyricFetchKind.ready) {
+        song = result.payload.merge(track, song);
+        if (_hasDisplayableLyrics(song)) {
+          publish(LyricLoadState.ready);
+          if (valid()) {
+            await _repository.storeReady(
+              track: track,
+              quality: quality,
+              song: song,
+              log: adapter.log,
+            );
+          }
+          if (current()) presentation.refreshFloatingLyrics();
+          return;
+        }
+      }
+      if (song != null && _hasDisplayableLyrics(song)) {
+        publish(
+          LyricLoadState.ready,
+        ); // Refresh failure never erases usable text.
+      } else if (result.kind == LyricFetchKind.empty) {
+        publish(LyricLoadState.empty);
+        if (valid()) {
+          await _repository.storeConfirmedEmpty(
+            track: track,
+            quality: quality,
+            currentSong: song,
+            log: adapter.log,
+          );
+        }
+      } else {
+        publish(
+          result.kind == LyricFetchKind.unsupported
+              ? LyricLoadState.unsupported
+              : LyricLoadState.failed,
+          error: result.kind == LyricFetchKind.unsupported
+              ? '当前歌曲暂不支持获取歌词'
+              : '歌词暂时获取失败',
+        );
+      }
+    } catch (e) {
+      adapter.log(
+        '[LyricService] lyric lifecycle failed: ${e.runtimeType}',
+        toDeveloperPanel: true,
+      );
+      publish(
+        song != null && _hasDisplayableLyrics(song)
+            ? LyricLoadState.ready
+            : LyricLoadState.failed,
+        error: '歌词暂时获取失败',
+      );
+    } finally {
+      _pendingRefreshKeys.remove(key);
+      if (current()) {
+        _managedCompleted.add(key);
+        if (_currentState == LyricLoadState.loading) {
+          publish(LyricLoadState.failed, error: '歌词暂时获取失败');
+        }
+      } else if (epoch == _cacheEpoch &&
+          _isCurrent(_trackKey(track), playbackToken)) {
+        // Authentication can change independently of backend settings listeners.
+        _settleCancelledLoading();
+      }
+    }
+  }
+
+  Future<void> _prefetchManagedLyrics(
+    Track track,
+    String quality,
+    LyricPrefetchAdapter adapter,
+  ) async {
+    final epoch = _cacheEpoch;
+    final binding = _bindingRevision;
+    final scope = lyricRequestScope(track);
+    bool valid() =>
+        epoch == _cacheEpoch &&
+        scope == lyricRequestScope(track) &&
+        (binding == _bindingRevision || _boundRequestScope == scope);
+    try {
+      final cached = await _lookupSafely(
+        track: track,
+        quality: quality,
+        currentSong: null,
+        log: adapter.log,
+      );
+      if (!valid() || cached?.skipRemote == true) return;
+      final result = await _requests.request(
+        scope,
+        fetch: adapter.fetchResult!,
+        foreground: false,
+        isValid: valid,
+      );
+      if (!valid() || result.kind != LyricFetchKind.ready) return;
+      final song = result.payload.merge(track, null);
+      if (!_hasDisplayableLyrics(song)) return;
+      await _repository.storeReady(
+        track: track,
+        quality: quality,
+        song: song,
+        log: adapter.log,
+      );
+    } catch (e) {
+      adapter.log('[LyricService] lyric prefetch failed: ${e.runtimeType}');
     }
   }
 
@@ -739,6 +1041,7 @@ class LyricService extends ChangeNotifier {
     switch (state) {
       case LyricLoadState.loading:
       case LyricLoadState.failed:
+      case LyricLoadState.unsupported:
       case LyricLoadState.empty:
       case LyricLoadState.transientMiss:
         return state;

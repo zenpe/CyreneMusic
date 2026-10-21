@@ -762,12 +762,14 @@ class _MobilePlayerFluidCloudLayoutState
                       _AppleMusicSlider(
                         value: progress,
                         duration: Duration(milliseconds: durationMs.toInt()),
-                        onChanged: (v) {
-                          final pos = Duration(
-                            milliseconds: (v * durationMs).round(),
-                          );
-                          player.seek(pos);
-                        },
+                        onChanged: player.viewState.canSeek
+                            ? (v) {
+                                final pos = Duration(
+                                  milliseconds: (v * durationMs).round(),
+                                );
+                                player.seek(pos);
+                              }
+                            : null,
                       ),
                     ],
                   ),
@@ -1043,12 +1045,14 @@ class _MobilePlayerFluidCloudLayoutState
                         _AppleMusicSlider(
                           value: value,
                           duration: Duration(milliseconds: duration.toInt()),
-                          onChanged: (v) {
-                            final pos = Duration(
-                              milliseconds: (v * duration).round(),
-                            );
-                            player.seek(pos);
-                          },
+                          onChanged: player.viewState.canSeek
+                              ? (v) {
+                                  final pos = Duration(
+                                    milliseconds: (v * duration).round(),
+                                  );
+                                  player.seek(pos);
+                                }
+                              : null,
                         ),
                       ],
                     ),
@@ -2001,6 +2005,16 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider>
   int? _lastHapticSecond;
 
   @override
+  void didUpdateWidget(_AppleMusicSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.onChanged == null && oldWidget.onChanged != null) {
+      _dragValue = null;
+      _lastHapticSecond = null;
+      _controller.reset();
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
     _controller = AnimationController(
@@ -2090,23 +2104,26 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider>
                   ),
                   child: Slider(
                     value: _dragValue ?? widget.value.clamp(0.0, 1.0),
-                    onChanged: (v) {
-                      setState(() {
-                        _dragValue = v;
-                      });
-                      if (widget.duration != null &&
-                          widget.duration!.inMilliseconds > 0) {
-                        final currentMs =
-                            (v * widget.duration!.inMilliseconds).round();
-                        final currentSecond = currentMs ~/ 1000;
-                        if (_lastHapticSecond != null &&
-                            (currentSecond ~/ 5) != (_lastHapticSecond! ~/ 5)) {
-                          HapticFeedback.selectionClick();
-                        }
-                        _lastHapticSecond = currentSecond;
-                      }
-                      if (widget.onChanged != null) widget.onChanged!(v);
-                    },
+                    onChanged: widget.onChanged == null
+                        ? null
+                        : (v) {
+                            setState(() {
+                              _dragValue = v;
+                            });
+                            if (widget.duration != null &&
+                                widget.duration!.inMilliseconds > 0) {
+                              final currentMs =
+                                  (v * widget.duration!.inMilliseconds).round();
+                              final currentSecond = currentMs ~/ 1000;
+                              if (_lastHapticSecond != null &&
+                                  (currentSecond ~/ 5) !=
+                                      (_lastHapticSecond! ~/ 5)) {
+                                HapticFeedback.selectionClick();
+                              }
+                              _lastHapticSecond = currentSecond;
+                            }
+                            if (widget.onChanged != null) widget.onChanged!(v);
+                          },
                     onChangeStart: (_) {
                       HapticFeedback.selectionClick();
                       setState(() {

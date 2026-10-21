@@ -10,6 +10,7 @@ import 'package:cyrene_music/services/auth_service.dart';
 import 'package:cyrene_music/services/cache_service.dart';
 import 'package:cyrene_music/services/lx_runtime_interface.dart';
 import 'package:cyrene_music/services/lyric/lyric_cache_service.dart';
+import 'package:cyrene_music/services/lyric/lyric_snapshot.dart';
 import 'package:cyrene_music/services/playback/audio_engine.dart';
 import 'package:cyrene_music/services/playback/engine_host.dart';
 import 'package:cyrene_music/services/playback/playable_source.dart';
@@ -52,6 +53,21 @@ void main() {
     await AuthService().logout();
     await testDirectory.delete(recursive: true);
   });
+
+  test(
+    'local playback without lyrics does not retain the resolving lyric state',
+    () async {
+      final resolver = _Resolver()..playable.add('0');
+      final playback = _createPlayback(resolver);
+      try {
+        await playback.playNow([track(0)], 0, QueueSource.none);
+        expect(playback.state, PBState.playing);
+        expect(playback.viewState.lyricState, LyricLoadState.empty);
+      } finally {
+        playback.dispose();
+      }
+    },
+  );
 
   test(
     'remote playback writes an uncached song through background cache',
@@ -124,6 +140,72 @@ void main() {
   );
 
   test(
+    'temporary prefetch failure retries once while current audio continues',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()..playable.add('0');
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      try {
+        await playback.playNow(_remoteTracks(2), 0, QueueSource.none);
+        await waitUntil(() => resolver.requests.contains('1'));
+        expect(playback.currentTrack?.id, '0');
+        expect(playback.state, PBState.playing);
+        resolver.playable.add('1');
+        await engine.prepared.future.timeout(const Duration(seconds: 4));
+        expect(resolver.requests.where((id) => id == '1').length, 2);
+        expect(playback.currentTrack?.id, '0');
+        expect(playback.state, PBState.playing);
+      } finally {
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
+
+  test('pause cancels a scheduled prefetch retry', () async {
+    await configureTestSource();
+    final resolver = _Resolver()..playable.add('0');
+    final playback = _createPlayback(resolver);
+    try {
+      await playback.playNow(_remoteTracks(2), 0, QueueSource.none);
+      await waitUntil(() => resolver.requests.contains('1'));
+      await playback.pause();
+      await Future<void>.delayed(const Duration(milliseconds: 2200));
+      expect(resolver.requests.where((id) => id == '1').length, 1);
+    } finally {
+      playback.dispose();
+      await AudioSourceService().removeSource('playback-test-source');
+    }
+  });
+
+  test('rejected prefetch does not repeatedly request the source', () async {
+    await configureTestSource();
+    final resolver = _Resolver()
+      ..playable.add('0')
+      ..failureResponse = const TrackResolutionResult(
+        detail: null,
+        lxFailure: LxRuntimeFailure(
+          kind: LxRuntimeFailureKind.scriptRejected,
+          message: 'rejected',
+        ),
+      );
+    final engine = _Engine();
+    final playback = _createPlayback(resolver, engine: engine);
+    try {
+      await playback.playNow(_remoteTracks(2), 0, QueueSource.none);
+      await waitUntil(() => resolver.requests.contains('1'));
+      engine._states.add(EngineState.playing);
+      await Future<void>.delayed(const Duration(milliseconds: 2200));
+      expect(resolver.requests.where((id) => id == '1').length, 1);
+      expect(playback.state, PBState.playing);
+    } finally {
+      playback.dispose();
+      await AudioSourceService().removeSource('playback-test-source');
+    }
+  });
+
+  test(
     'prepared success waits for activation and records one timing sample',
     () async {
       await configureTestSource();
@@ -170,6 +252,104 @@ void main() {
       } finally {
         if (!gate.isCompleted) gate.complete(false);
         StructuredLogService.sink = null;
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
+
+  test(
+    'natural buffering preserves old timeline until next source commits',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()..playable.addAll(['0', '1']);
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      try {
+        await playback.playNow(_remoteTracks(2), 0, QueueSource.none);
+        await engine.prepared.future.timeout(const Duration(seconds: 5));
+        engine.positionValue = const Duration(seconds: 150);
+        engine._durations.add(const Duration(minutes: 3));
+        engine._positions.add(engine.positionValue);
+        await Future<void>.delayed(Duration.zero);
+        engine._buffering.add(true);
+        await Future<void>.delayed(Duration.zero);
+        expect(playback.viewState.canSeek, isTrue);
+        await playback.seek(const Duration(seconds: 60));
+        expect(engine.seeks, [const Duration(seconds: 60)]);
+        final previousPosition = playback.viewState.position;
+        final slot = engine.preparedSlot!;
+        engine._loading.add(
+          EngineSourceCommit(key: slot.key, generation: slot.generation),
+        );
+        await Future<void>.delayed(Duration.zero);
+        engine.positionValue = Duration.zero;
+        engine._positions.add(engine.positionValue);
+        await Future<void>.delayed(Duration.zero);
+        expect(playback.viewState.isBuffering, isTrue);
+        expect(playback.currentTrack?.id, '0');
+        expect(playback.viewState.position, previousPosition);
+        expect(playback.viewState.canSeek, isFalse);
+        await playback.seek(const Duration(seconds: 150));
+        expect(engine.seeks, [const Duration(seconds: 60)]);
+        expect(playback.viewState.position, previousPosition);
+        await playback.pause();
+        expect(playback.viewState.isBuffering, isFalse);
+        expect(playback.viewState.canSeek, isFalse);
+        await playback.seek(const Duration(seconds: 120));
+        expect(engine.seeks, [const Duration(seconds: 60)]);
+        engine.commitPrepared();
+        engine._states.add(EngineState.paused);
+        engine._buffering.add(false);
+        await waitUntil(() => playback.currentTrack?.id == '1');
+        expect(playback.viewState.isBuffering, isFalse);
+        engine._durations.add(const Duration(minutes: 3));
+        await Future<void>.delayed(Duration.zero);
+        expect(playback.viewState.canSeek, isTrue);
+        await playback.seek(const Duration(seconds: 10));
+        expect(engine.seeks, [
+          const Duration(seconds: 60),
+          const Duration(seconds: 10),
+        ]);
+        expect(playback.state, PBState.paused);
+      } finally {
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
+
+  test(
+    'natural timeout after native teardown still advances the queue',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()..playable.addAll(['0', '1', '2']);
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      try {
+        await playback.playNow(_remoteTracks(3), 0, QueueSource.none);
+        await engine.prepared.future.timeout(const Duration(seconds: 5));
+        final failedGeneration = engine.preparedSlot!.generation;
+        engine._playing = false;
+        engine._states.add(EngineState.paused);
+        await Future<void>.delayed(Duration.zero);
+        engine._errors.add(
+          EngineError(
+            type: EngineErrorType.networkTimeout,
+            message: '下一首音频加载超时',
+            cause: NativePlaybackTimeout(
+              'natural_prepared',
+              TimeoutException('not ready'),
+            ),
+            epoch: failedGeneration,
+            retriable: false,
+          ),
+        );
+        await waitUntil(() => playback.currentTrack?.id == '2');
+        expect(playback.state, PBState.playing);
+        expect(playback.isTrackSwitchPending, isFalse);
+        expect(playback.currentProblem, isNull);
+      } finally {
         playback.dispose();
         await AudioSourceService().removeSource('playback-test-source');
       }
@@ -330,6 +510,40 @@ void main() {
       },
     );
   }
+
+  test(
+    'native rate limit stops scanning without resolving more songs',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()..playable.addAll(['0', '1', '2']);
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      try {
+        await playback.playNow(_remoteTracks(3), 0, QueueSource.none);
+        await engine.prepared.future.timeout(const Duration(seconds: 5));
+        resolver.requests.clear();
+        engine._playing = false;
+        engine._errors.add(
+          EngineError(
+            type: EngineErrorType.sourceLoad,
+            message: 'Too many requests',
+            cause: ja.PlayerException(429, 'Source error', 1),
+            epoch: engine.preparedSlot!.generation,
+          ),
+        );
+        await waitUntil(
+          () =>
+              playback.state == PBState.error && !playback.isTrackSwitchPending,
+        );
+        expect(resolver.requests, isEmpty);
+        expect(playback.errorMessage, contains('限流'));
+        expectFinished(playback);
+      } finally {
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
 
   test('native failure counts toward the three-candidate limit', () async {
     await configureTestSource();
@@ -1413,7 +1627,21 @@ class _Resolver extends TrackResolver {
   }
 }
 
-class _Engine extends Fake implements AudioEngine {
+class _Engine extends Fake implements AudioEngine, EngineBufferingReporter {
+  final seeks = <Duration>[];
+  final _durations = StreamController<Duration>.broadcast();
+  @override
+  Future<void> seek(Duration position) async {
+    seeks.add(position);
+    positionValue = position;
+  }
+
+  final _loading = StreamController<EngineSourceCommit>.broadcast();
+  final _buffering = StreamController<bool>.broadcast();
+  @override
+  Stream<EngineSourceCommit> get pendingSourceStream => _loading.stream;
+  @override
+  Stream<bool> get bufferingStream => _buffering.stream;
   Duration positionValue = Duration.zero;
   final _positions = StreamController<Duration>.broadcast();
   final prepared = Completer<void>();
@@ -1462,7 +1690,7 @@ class _Engine extends Fake implements AudioEngine {
   @override
   Stream<Duration> get positionStream => _positions.stream;
   @override
-  Stream<Duration> get durationStream => const Stream.empty();
+  Stream<Duration> get durationStream => _durations.stream;
   @override
   Stream<Duration> get bufferedPositionStream => const Stream.empty();
   @override
@@ -1582,6 +1810,9 @@ class _Engine extends Fake implements AudioEngine {
 
   @override
   Future<void> dispose() async {
+    await _loading.close();
+    await _durations.close();
+    await _buffering.close();
     await _positions.close();
     await _commits.close();
     await _errors.close();

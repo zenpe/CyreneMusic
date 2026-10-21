@@ -17,6 +17,7 @@ import '../utils/image_utils.dart';
 import '../utils/dynamic_color_utils.dart';
 import 'track_action_menu.dart';
 import 'liquid_glass_container.dart';
+import 'playback_switch_ring.dart';
 
 /// 迷你播放器组件（底部播放栏）
 class MiniPlayer extends StatefulWidget {
@@ -118,36 +119,40 @@ class _MiniPlayerState extends State<MiniPlayer> {
             HapticFeedback.lightImpact();
             player.togglePlayPause();
           },
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: player.isTrackSwitchPending
-                ? SizedBox(
-                    key: const ValueKey('cupertino_mini_loading'),
-                    width: playIconSize,
-                    height: playIconSize,
-                    child: Center(
-                      child: CupertinoActivityIndicator(
-                        radius: playIconSize * 0.38,
-                        color: DynamicColorUtils.resolveAccent(
-                          player.themeColorNotifier.value,
-                          Theme.of(context).colorScheme,
-                          isDark: isDark,
+          child: PlaybackSwitchRing(
+            isVisible: player.isBuffering,
+            color: CupertinoColors.systemGrey,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: player.isTrackSwitchPending
+                  ? SizedBox(
+                      key: const ValueKey('cupertino_mini_loading'),
+                      width: playIconSize,
+                      height: playIconSize,
+                      child: Center(
+                        child: CupertinoActivityIndicator(
+                          radius: playIconSize * 0.38,
+                          color: DynamicColorUtils.resolveAccent(
+                            player.themeColorNotifier.value,
+                            Theme.of(context).colorScheme,
+                            isDark: isDark,
+                          ),
                         ),
                       ),
+                    )
+                  : Icon(
+                      key: ValueKey(player.isPlaying),
+                      player.isPlaying
+                          ? CupertinoIcons.pause_fill
+                          : CupertinoIcons.play_fill,
+                      size: playIconSize,
+                      color: DynamicColorUtils.resolveAccent(
+                        player.themeColorNotifier.value,
+                        Theme.of(context).colorScheme,
+                        isDark: isDark,
+                      ),
                     ),
-                  )
-                : Icon(
-                    key: ValueKey(player.isPlaying),
-                    player.isPlaying
-                        ? CupertinoIcons.pause_fill
-                        : CupertinoIcons.play_fill,
-                    size: playIconSize,
-                    color: DynamicColorUtils.resolveAccent(
-                      player.themeColorNotifier.value,
-                      Theme.of(context).colorScheme,
-                      isDark: isDark,
-                    ),
-                  ),
+            ),
           ),
         ),
         if (!hideSkip)
@@ -199,34 +204,42 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 : null,
           ),
         fluent.IconButton(
-          icon: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: player.isTrackSwitchPending
-                ? SizedBox(
-                    key: const ValueKey('fluent_mini_loading'),
-                    width: playIconSize,
-                    height: playIconSize,
-                    child: Center(
-                      child: SizedBox(
-                        width: playIconSize * 0.75,
-                        height: playIconSize * 0.75,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation(
-                            theme.accentColor.defaultBrushFor(theme.brightness),
+          icon: PlaybackSwitchRing(
+            isVisible: player.isBuffering,
+            color: theme.accentColor.defaultBrushFor(theme.brightness),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: player.isTrackSwitchPending
+                  ? SizedBox(
+                      key: const ValueKey('fluent_mini_loading'),
+                      width: playIconSize,
+                      height: playIconSize,
+                      child: Center(
+                        child: SizedBox(
+                          width: playIconSize * 0.75,
+                          height: playIconSize * 0.75,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(
+                              theme.accentColor.defaultBrushFor(
+                                theme.brightness,
+                              ),
+                            ),
                           ),
                         ),
                       ),
+                    )
+                  : Icon(
+                      key: ValueKey(player.isPlaying),
+                      player.isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      size: playIconSize,
+                      color: theme.accentColor.defaultBrushFor(
+                        theme.brightness,
+                      ),
                     ),
-                  )
-                : Icon(
-                    key: ValueKey(player.isPlaying),
-                    player.isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                    size: playIconSize,
-                    color: theme.accentColor.defaultBrushFor(theme.brightness),
-                  ),
+            ),
           ),
           onPressed: () {
             HapticFeedback.lightImpact();
@@ -1924,38 +1937,42 @@ class _MiniPlayerState extends State<MiniPlayer> {
             ],
           ),
           child: IconButton(
-            icon: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: player.isTrackSwitchPending
-                  ? SizedBox(
-                      key: const ValueKey('material_mini_loading'),
-                      width: playIconSize,
-                      height: playIconSize,
-                      child: Center(
-                        child: SizedBox(
-                          width: playIconSize * 0.72,
-                          height: playIconSize * 0.72,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              ThemeData.estimateBrightnessForColor(
-                                        activeColor,
-                                      ) ==
-                                      Brightness.dark
-                                  ? Colors.white
-                                  : const Color(0xFF0F172A),
+            icon: PlaybackSwitchRing(
+              isVisible: player.isBuffering,
+              color: Theme.of(context).colorScheme.onPrimary,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: player.isTrackSwitchPending
+                    ? SizedBox(
+                        key: const ValueKey('material_mini_loading'),
+                        width: playIconSize,
+                        height: playIconSize,
+                        child: Center(
+                          child: SizedBox(
+                            width: playIconSize * 0.72,
+                            height: playIconSize * 0.72,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                ThemeData.estimateBrightnessForColor(
+                                          activeColor,
+                                        ) ==
+                                        Brightness.dark
+                                    ? Colors.white
+                                    : const Color(0xFF0F172A),
+                              ),
                             ),
                           ),
                         ),
+                      )
+                    : Icon(
+                        key: ValueKey(player.isPlaying),
+                        player.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        size: playIconSize,
                       ),
-                    )
-                  : Icon(
-                      key: ValueKey(player.isPlaying),
-                      player.isPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      size: playIconSize,
-                    ),
+              ),
             ),
             color:
                 ThemeData.estimateBrightnessForColor(activeColor) ==

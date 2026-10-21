@@ -433,8 +433,9 @@ Future<void> _withServer(Future<void> Function(_Fixture) action) async {
       await action(f).timeout(const Duration(seconds: 15));
     } finally {
       if (f.gate != null && !f.gate!.isCompleted) f.gate!.complete();
-      if (f.trackGate != null && !f.trackGate!.isCompleted)
+      if (f.trackGate != null && !f.trackGate!.isCompleted) {
         f.trackGate!.complete();
+      }
       await auth.logout();
       await subscription.cancel();
       await server.close(force: true);

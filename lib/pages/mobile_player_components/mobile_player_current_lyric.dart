@@ -1,3 +1,4 @@
+import '../../widgets/lyric_status_text.dart';
 import 'package:flutter/material.dart';
 import '../../services/player_service.dart';
 import '../../models/lyric_line.dart';
@@ -48,22 +49,14 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
         final textColor = _getAdaptiveLyricColor(themeColor, false).withValues(alpha: 0.5);
 
         return Center(
-          child: Text(
-            _lyricStatusText(),
-            style: TextStyle(
+          child: LyricStatusText(state: lyricState, style: TextStyle(
               color: textColor,
               fontSize: lyricFontSize,
               fontFamily: 'Microsoft YaHei',
-            ),
-            textAlign: TextAlign.center,
-          ),
+            )),
         );
       },
     );
-  }
-
-  String _lyricStatusText() {
-    return lyricState.displayText;
   }
 
   /// 构建3行歌词显示（当前歌词在第2行）

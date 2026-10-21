@@ -67,6 +67,11 @@ class _WavySplitProgressBarState extends State<WavySplitProgressBar>
   @override
   void didUpdateWidget(WavySplitProgressBar oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.onChanged == null && oldWidget.onChanged != null) {
+      _dragValue = null;
+      _lastHapticSecond = null;
+      _bubbleController.reset();
+    }
     if (widget.isPlaying != oldWidget.isPlaying) {
       if (widget.isPlaying) {
         _amplitudeController.forward();
@@ -202,13 +207,16 @@ class _WavySplitProgressBarState extends State<WavySplitProgressBar>
           alignment: Alignment.center,
           children: [
             GestureDetector(
-              onHorizontalDragStart: (d) => _handleDragStart(d, width),
-              onHorizontalDragUpdate: (d) => _handleDragUpdate(d, width),
-              onHorizontalDragEnd: _handleDragEnd,
-              onHorizontalDragCancel: _handleDragCancel,
-              onTapDown: (d) => _handleTapDown(d, width),
-              onTapUp: _handleTapUp,
-              onTapCancel: _handleDragCancel,
+              onHorizontalDragStart: widget.onChanged == null
+                  ? null : (d) => _handleDragStart(d, width),
+              onHorizontalDragUpdate: widget.onChanged == null
+                  ? null : (d) => _handleDragUpdate(d, width),
+              onHorizontalDragEnd: widget.onChanged == null ? null : _handleDragEnd,
+              onHorizontalDragCancel: widget.onChanged == null ? null : _handleDragCancel,
+              onTapDown: widget.onChanged == null
+                  ? null : (d) => _handleTapDown(d, width),
+              onTapUp: widget.onChanged == null ? null : _handleTapUp,
+              onTapCancel: widget.onChanged == null ? null : _handleDragCancel,
               child: SizedBox(
                 width: width,
                 height: widget.height,

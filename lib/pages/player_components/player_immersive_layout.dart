@@ -1,3 +1,4 @@
+import '../../widgets/lyric_status_text.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -493,11 +494,7 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
   @override
   Widget build(BuildContext context) {
     if (widget.lyrics.isEmpty) {
-      final message = widget.lyricState.displayText;
-      return Text(
-        message,
-        style: TextStyle(color: Colors.white54, fontSize: 24 * widget.uiScale),
-      );
+      return LyricStatusText(state: widget.lyricState, style: TextStyle(color: Colors.white54, fontSize: 24 * widget.uiScale));
     }
 
     // 字体服务

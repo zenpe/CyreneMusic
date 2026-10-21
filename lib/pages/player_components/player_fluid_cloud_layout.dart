@@ -638,13 +638,15 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                       ),
                                       _AppleMusicSlider(
                                         value: value,
-                                        onChanged: (v) {
-                                          final pos = Duration(
-                                            milliseconds: (v * duration)
-                                                .round(),
-                                          );
-                                          player.seek(pos);
-                                        },
+                                        onChanged: player.viewState.canSeek
+                                            ? (v) {
+                                                final pos = Duration(
+                                                  milliseconds: (v * duration)
+                                                      .round(),
+                                                );
+                                                player.seek(pos);
+                                              }
+                                            : null,
                                       ),
                                     ],
                                   ),
@@ -854,12 +856,14 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                             ),
                             _AppleMusicSlider(
                               value: value,
-                              onChanged: (v) {
-                                final pos = Duration(
-                                  milliseconds: (v * duration).round(),
-                                );
-                                player.seek(pos);
-                              },
+                              onChanged: player.viewState.canSeek
+                                  ? (v) {
+                                      final pos = Duration(
+                                        milliseconds: (v * duration).round(),
+                                      );
+                                      player.seek(pos);
+                                    }
+                                  : null,
                             ),
                           ],
                         ),

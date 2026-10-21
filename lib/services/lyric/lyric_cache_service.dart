@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../models/track.dart';
 import '../cache_service.dart';
 import '../developer_mode_service.dart';
+import 'lyric_identity.dart';
 
 enum LyricCacheState { ready, empty, failed }
 
@@ -172,6 +173,7 @@ class LyricCacheStats {
 }
 
 class LyricCacheService extends ChangeNotifier {
+  int _writeGeneration = 0;
   static final LyricCacheService _instance = LyricCacheService._internal();
   factory LyricCacheService() => _instance;
   LyricCacheService._internal() : _directoryOverride = null;
@@ -416,7 +418,7 @@ class LyricCacheService extends ChangeNotifier {
       }
       _replaceIndexEntry(
         cacheKey,
-        _buildIndexValue(entry, fileSize: raw.length),
+        _buildIndexValue(entry, fileSize: utf8.encode(raw).length),
       );
       return entry;
     } catch (e) {
@@ -436,8 +438,12 @@ class LyricCacheService extends ChangeNotifier {
   }
 
   Future<void> writeEntry(String cacheKey, LyricCacheEntry entry) async {
+    final generation = _writeGeneration;
     await initialize();
-    return _withCacheAccess(() => _writeEntry(cacheKey, entry));
+    return _withCacheAccess(() async {
+      if (generation != _writeGeneration) return;
+      await _writeEntry(cacheKey, entry);
+    });
   }
 
   Future<void> _writeEntry(String cacheKey, LyricCacheEntry entry) async {
@@ -448,8 +454,9 @@ class LyricCacheService extends ChangeNotifier {
     await _writeStringAtomically(targetPath, content);
     _replaceIndexEntry(
       cacheKey,
-      _buildIndexValue(entry, fileSize: content.length),
+      _buildIndexValue(entry, fileSize: utf8.encode(content).length),
     );
+    await _enforceCapacity();
     await _saveIndex();
     notifyListeners();
   }
@@ -522,6 +529,7 @@ class LyricCacheService extends ChangeNotifier {
   }
 
   Future<void> clearAllCache() async {
+    _writeGeneration++;
     await initialize();
     return _withCacheAccess(_clearAllCache);
   }
@@ -557,7 +565,7 @@ class LyricCacheService extends ChangeNotifier {
   Future<void> _deleteTrackCache(Track track, {String? quality}) async {
     if (!_isInitialized || _cacheDir == null) return;
 
-    final targetTrackKey = '${track.source.name}_${track.id}';
+    final targetTrackKey = lyricCacheKey(track);
     final requestedQuality = quality == null
         ? null
         : CacheService.normalizeQualityValue(quality);
@@ -926,12 +934,13 @@ class LyricCacheService extends ChangeNotifier {
         invalidKeys.add(entry.key);
         continue;
       }
-      if (cacheEntry.isExpired) {
+      if (cacheEntry.isExpired && cacheEntry.state != LyricCacheState.ready) {
         expiredKeys.add(entry.key);
       }
     }
 
     if (expiredKeys.isEmpty && invalidKeys.isEmpty) {
+      if (await _enforceCapacity()) await _saveIndex();
       return;
     }
 
@@ -940,12 +949,36 @@ class LyricCacheService extends ChangeNotifier {
       _removeIndexEntry(cacheKey);
     }
 
+    await _enforceCapacity();
     await _saveIndex();
     notifyListeners();
     _log(
       '🧹 [LyricCacheService] 已清理歌词缓存: expired=${expiredKeys.length} invalid=${invalidKeys.length}',
       toDeveloperPanel: true,
     );
+  }
+
+  Future<bool> _enforceCapacity() async {
+    const maxEntries = 1000;
+    const maxBytes = 32 * 1024 * 1024;
+    var bytes = _index.values.fold<int>(
+      0,
+      (sum, item) => sum + ((item['fileSize'] as int?) ?? 0),
+    );
+    if (_index.length <= maxEntries && bytes <= maxBytes) return false;
+    final oldest = _index.entries.toList()
+      ..sort(
+        (a, b) => (a.value['fetchedAt']?.toString() ?? '').compareTo(
+          b.value['fetchedAt']?.toString() ?? '',
+        ),
+      );
+    for (final item in oldest) {
+      if (_index.length <= maxEntries && bytes <= maxBytes) break;
+      await _deleteTargetArtifacts(_entryPath(item.key));
+      bytes -= (item.value['fileSize'] as int?) ?? 0;
+      _removeIndexEntry(item.key);
+    }
+    return true;
   }
 
   void _rebuildTrackCacheKeys() {

@@ -4,13 +4,23 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/lyric_line.dart';
 
-enum LyricLoadState { idle, loading, ready, empty, transientMiss, failed }
+enum LyricLoadState {
+  idle,
+  loading,
+  ready,
+  empty,
+  transientMiss,
+  failed,
+  unsupported,
+}
 
 extension LyricLoadStateDisplay on LyricLoadState {
   String get displayText {
     switch (this) {
+      case LyricLoadState.unsupported:
+        return '当前歌曲暂不支持获取歌词';
       case LyricLoadState.failed:
-        return '歌词加载失败';
+        return '歌词暂时获取失败';
       case LyricLoadState.empty:
         return '暂无歌词';
       case LyricLoadState.transientMiss:

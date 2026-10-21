@@ -85,10 +85,12 @@ class MobilePlayerControls extends StatelessWidget {
                               .clamp(0.0, 1.0)
                         : 0.0,
                     isPlaying: isPlaying,
-                    onChanged: (value) {
-                      final seekTo = duration.inMilliseconds * value;
-                      player.seek(Duration(milliseconds: seekTo.toInt()));
-                    },
+                    onChanged: player.viewState.canSeek
+                        ? (value) {
+                            final seekTo = duration.inMilliseconds * value;
+                            player.seek(Duration(milliseconds: seekTo.toInt()));
+                          }
+                        : null,
                     activeColor: Colors.white,
                     inactiveColor: Colors.white.withValues(alpha: 0.2),
                   ),
@@ -209,7 +211,8 @@ class MobilePlayerControls extends StatelessWidget {
                 // 播放/暂停
                 PlaybackSwitchRing(
                   isVisible:
-                      !showInitialLoading && player.viewState.isSwitching,
+                      !showInitialLoading &&
+                      (player.viewState.isSwitching || player.isBuffering),
                   color: Colors.black54,
                   strokeWidth: 2,
                   inset: 2,
@@ -231,7 +234,7 @@ class MobilePlayerControls extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: (showInitialLoading || player.viewState.isSwitching)
+                    child: showInitialLoading
                         ? Padding(
                             padding: EdgeInsets.all(playButtonSize * 0.28),
                             child: const CircularProgressIndicator(

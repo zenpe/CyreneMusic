@@ -18,7 +18,10 @@ class LocalPage extends StatefulWidget {
 
 // === Fluent helpers ===
 extension on _LocalPageState {
-  void _showFluentInfo(String text, [fluent.InfoBarSeverity severity = fluent.InfoBarSeverity.info]) {
+  void _showFluentInfo(
+    String text, [
+    fluent.InfoBarSeverity severity = fluent.InfoBarSeverity.info,
+  ]) {
     _infoBarTimer?.cancel();
     _refreshState(() {
       _fluentInfoText = text;
@@ -35,15 +38,21 @@ extension on _LocalPageState {
   Widget _buildFluentEmpty() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 200;
-        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        final compact =
+            constraints.hasBoundedHeight && constraints.maxHeight < 200;
+        final minHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 0.0;
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -84,6 +93,7 @@ extension on _LocalPageState {
 
   /// 构建 subtitle 显示（艺术家 • 格式）
   String _buildSubtitle(Track track) {
+    if (LocalLibraryService().isUnavailable(track)) return '文件不可用，请重新选择';
     final parts = <String>[];
     if (track.artists.isNotEmpty && track.artists != '本地文件') {
       parts.add(track.artists);
@@ -208,6 +218,7 @@ class _FluentLocalTrackTile extends StatelessWidget {
   }
 
   String _buildSubtitleText(Track track) {
+    if (LocalLibraryService().isUnavailable(track)) return '文件不可用，请重新选择';
     final parts = <String>[];
     if (track.artists.isNotEmpty && track.artists != '本地文件') {
       parts.add(track.artists);
@@ -289,7 +300,9 @@ class _LocalPageState extends State<LocalPage> {
                 },
               ),
               IconButton(
-                icon: Icon(_isAndroid ? Icons.library_music : Icons.folder_open),
+                icon: Icon(
+                  _isAndroid ? Icons.library_music : Icons.folder_open,
+                ),
                 tooltip: _isAndroid ? '批量选择音频文件' : '选择文件夹并扫描',
                 onPressed: () async {
                   await _local.pickAndScanFolder();
@@ -401,19 +414,29 @@ class _LocalPageState extends State<LocalPage> {
     final isAndroid = Theme.of(context).platform == TargetPlatform.android;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 200;
-        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        final compact =
+            constraints.hasBoundedHeight && constraints.maxHeight < 200;
+        final minHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 0.0;
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.folder, size: compact ? 52 : 64, color: cs.onSurfaceVariant),
+                    Icon(
+                      Icons.folder,
+                      size: compact ? 52 : 64,
+                      color: cs.onSurfaceVariant,
+                    ),
                     SizedBox(height: compact ? 10 : 12),
                     Text(
                       '未选择本地音乐',
@@ -430,9 +453,9 @@ class _LocalPageState extends State<LocalPage> {
                         textAlign: TextAlign.center,
                         maxLines: compact ? 2 : 3,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(
-                          context,
-                        ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ],
@@ -452,10 +475,14 @@ class _LocalPageState extends State<LocalPage> {
     return Material(
       type: MaterialType.transparency,
       child: CupertinoPageScaffold(
-        backgroundColor: isDark ? const Color(0xFF000000) : CupertinoColors.systemGroupedBackground,
+        backgroundColor: isDark
+            ? const Color(0xFF000000)
+            : CupertinoColors.systemGroupedBackground,
         navigationBar: CupertinoNavigationBar(
           middle: const Text('本地'),
-          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withValues(alpha: 0.9),
+          backgroundColor:
+              (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white)
+                  .withValues(alpha: 0.9),
           border: null,
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
@@ -509,15 +536,21 @@ class _LocalPageState extends State<LocalPage> {
   Widget _buildCupertinoEmpty(bool isDark) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 200;
-        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        final compact =
+            constraints.hasBoundedHeight && constraints.maxHeight < 200;
+        final minHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 0.0;
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -533,7 +566,9 @@ class _LocalPageState extends State<LocalPage> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w500,
-                        color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                        color: isDark
+                            ? CupertinoColors.white
+                            : CupertinoColors.black,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -589,7 +624,9 @@ class _LocalPageState extends State<LocalPage> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 15,
-                        color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                        color: isDark
+                            ? CupertinoColors.white
+                            : CupertinoColors.black,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -612,7 +649,11 @@ class _LocalPageState extends State<LocalPage> {
                 onPressed: () async {
                   await PlayerService().playTrack(track);
                 },
-                child: Icon(CupertinoIcons.play_fill, size: 22, color: CupertinoColors.activeBlue),
+                child: Icon(
+                  CupertinoIcons.play_fill,
+                  size: 22,
+                  color: CupertinoColors.activeBlue,
+                ),
               ),
             ],
           ),
@@ -634,8 +675,13 @@ class _LocalPageState extends State<LocalPage> {
           errorBuilder: (context, error, stackTrace) => Container(
             width: 48,
             height: 48,
-            color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5,
-            child: Icon(CupertinoIcons.music_note, color: CupertinoColors.systemGrey),
+            color: isDark
+                ? const Color(0xFF2C2C2E)
+                : CupertinoColors.systemGrey5,
+            child: Icon(
+              CupertinoIcons.music_note,
+              color: CupertinoColors.systemGrey,
+            ),
           ),
         ),
       );
@@ -664,7 +710,11 @@ class _LocalTrackTile extends StatelessWidget {
       child: ListTile(
         leading: _buildCover(cs),
         title: Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(_buildSubtitle(track), maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          _buildSubtitle(track),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         trailing: IconButton(
           icon: const Icon(Icons.play_arrow),
           onPressed: () async {
@@ -681,6 +731,7 @@ class _LocalTrackTile extends StatelessWidget {
 
   /// 构建 subtitle 显示（艺术家 • 格式）
   String _buildSubtitle(Track track) {
+    if (LocalLibraryService().isUnavailable(track)) return '文件不可用，请重新选择';
     final parts = <String>[];
     if (track.artists.isNotEmpty && track.artists != '本地文件') {
       parts.add(track.artists);
@@ -722,7 +773,9 @@ class _LocalTrackTile extends StatelessWidget {
   String _extOf(dynamic id) {
     if (id is String) {
       final idx = id.lastIndexOf('.');
-      if (idx > 0 && idx < id.length - 1) return id.substring(idx + 1).toUpperCase();
+      if (idx > 0 && idx < id.length - 1) {
+        return id.substring(idx + 1).toUpperCase();
+      }
     }
     return '';
   }

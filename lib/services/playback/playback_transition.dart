@@ -23,6 +23,8 @@ class PlaybackTransitionBudget {
   final int maxRemoteRequests;
   final int maxResolutionAttemptsPerTrack;
   final int maxCandidateAttempts;
+  final bool shareResolutionBudget;
+  int _remainingCandidates = 1;
   final Stopwatch _stopwatch;
   final Duration Function()? _elapsedOverride;
   final Set<int> _visitedEntryIds = <int>{};
@@ -34,6 +36,7 @@ class PlaybackTransitionBudget {
     this.maxRemoteRequests = 3,
     this.maxResolutionAttemptsPerTrack = 2,
     this.maxCandidateAttempts = 3,
+    this.shareResolutionBudget = false,
     Duration Function()? elapsed,
   }) : _elapsedOverride = elapsed,
        _stopwatch = Stopwatch()..start();
@@ -65,8 +68,31 @@ class PlaybackTransitionBudget {
   }
 
   Duration resolutionTimeout(Duration maximum) {
-    final available = resolutionTimeRemaining;
+    var available = resolutionTimeRemaining;
+    if (shareResolutionBudget) {
+      // Called after consumeRemoteRequest: include the current request. Fair
+      // sharing is for automatic candidates only, never for a manual retry.
+      final slots = _remainingCandidates.clamp(
+        1,
+        (maxRemoteRequests - _remoteRequests + 1).clamp(1, maxRemoteRequests),
+      );
+      available = available ~/ slots;
+      if (available < minimumResolutionTime &&
+          resolutionTimeRemaining >= minimumResolutionTime) {
+        available = minimumResolutionTime;
+      }
+    }
     return available < maximum ? available : maximum;
+  }
+
+  void prepareCandidate({
+    required int remainingCandidates,
+    required int failedCandidates,
+  }) {
+    _remainingCandidates = remainingCandidates.clamp(
+      1,
+      (maxCandidateAttempts - failedCandidates).clamp(1, maxCandidateAttempts),
+    );
   }
 
   bool visit(int entryId) => _visitedEntryIds.add(entryId);

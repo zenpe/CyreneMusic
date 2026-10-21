@@ -2,8 +2,9 @@
 
 Android HTTP progressive playback and Media3's three-second next-item preload
 use a shared SimpleCache/CacheDataSource store. There is one store per process,
-independent of player disposal and Flutter hot restart. No extra player, whole-song
-downloader, network stack replacement or playback deadline change is introduced.
+independent of player disposal and Flutter hot restart. No extra player,
+independent whole-song downloader, network stack replacement or playback
+deadline change is introduced.
 Windows/iOS and explicit user downloads retain their existing implementations.
 
 ## Identity and completeness
@@ -13,14 +14,21 @@ request headers, platform/song/quality and hashed account/resolver fingerprint.
 Range offsets do not enter the key. Different signed URLs are deliberately not
 merged. Changing a URL, account, quality or headers can reduce hits; this is safer
 than merging bytes from potentially different representations. Cache directory
-contents are Media3 fragments, never standalone media files. Android's legacy
-complete-file API returns no hits and explicit downloads fetch complete files.
-Apple/HLS/DASH sources are excluded. Resolved-URL caches and lyrics are separate.
+contents start as Media3 fragments. After an uninterrupted complete read, native
+maintenance checks continuous byte coverage, copies only cached bytes into an
+independent file, verifies an audio track, and atomically commits its metadata.
+Only these committed files can bypass URL resolution on a later play. The file
+identity includes platform, song ID, requested quality, account/server scope for
+private libraries, and resolver fingerprint. The requested quality is not claimed
+to be the stream's verified bitrate. Partial fragments remain bound to the exact
+URL and cannot bypass resolution. Apple/HLS/DASH sources are excluded. Explicit
+downloads, resolved-URL caches and lyrics remain separate.
 
 ## Lifecycle and maintenance
 
-- The cache preference and byte quota configure the native store. LRU evicts
-  spans at the live quota without releasing/reopening the cache. Active write
+- The cache preference and byte quota configure both native stores. LRU evicts
+  fragments and complete files within one quota; playing or prepared complete
+  files are protected until their MediaSource is released. Active write
   buffers are not counted as committed cache size until their spans commit.
 - Cache initialization/management use a worker; actual reads/writes use Media3
   loading threads. Registration uses a separate memory-only lock on the platform
@@ -34,7 +42,9 @@ Apple/HLS/DASH sources are excluded. Resolved-URL caches and lyrics are separate
   on the management worker after the last close, including late writes. Physical
   disk space for an active resource is therefore released later. A persisted
   removal marker lets process initialization finish deletion after an abrupt exit.
-  Cleanup failure keeps the key bypassed. Playback buffers are not flushed.
+  Complete-file metadata is invalidated before its bytes are deleted, including
+  when a player is still reading it. Cleanup failure keeps the key bypassed.
+  Playback buffers are not flushed.
 - Cache-specific read/write errors have one upstream fallback at the correct
   byte offset. A failing write sink may require a second HTTP open because Media3
   opens upstream before the sink. HTTP authentication/403/timeout errors are not
@@ -84,5 +94,8 @@ Business evidence: `build/native-cache-mixed-final-results.jsonl` and correspond
 events/native logs. The debug build is installed over the existing emulator app.
 
 Native-cache hits avoid downloading already cached bytes. They cannot accelerate
-third-party link parsing or an uncached CDN connection, and partial cached bytes
-do not establish full offline availability.
+third-party link parsing or an uncached CDN connection unless the entire resource
+has been promoted to a verified complete file. Partial cached bytes do not
+establish full offline availability. `tool/verify_android_complete_cache.cjs`
+checks promotion, replay without an upstream request, and deletion against an
+Android debug VM using a local Range-capable WAV stream.

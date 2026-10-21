@@ -16,6 +16,7 @@ import 'audio_quality_service.dart';
 import 'developer_mode_service.dart';
 import 'structured_log_service.dart';
 import 'android_stream_cache.dart';
+import 'audio_cache_identity.dart';
 
 /// 缓存元数据模型
 class CacheMetadata {
@@ -278,6 +279,8 @@ class CacheStats {
   final int qqCount;
   final int kugouCount;
   final int kuwoCount;
+  final int? completeFiles;
+  final int? partialFiles;
 
   CacheStats({
     required this.totalFiles,
@@ -287,6 +290,8 @@ class CacheStats {
     required this.qqCount,
     required this.kugouCount,
     required this.kuwoCount,
+    this.completeFiles,
+    this.partialFiles,
   });
 
   String get formattedSize => formatFileSize(totalSize);
@@ -1455,6 +1460,44 @@ class CacheService extends ChangeNotifier {
   }) async {
     if (!_isInitialized || !_cacheEnabled || _cacheDir == null) return null;
 
+    if (Platform.isAndroid) {
+      try {
+        final normalized = _qualityKey(quality);
+        final data = await AndroidStreamCache.lookup(
+          audioCacheIdentityFor(track, normalized),
+        );
+        if (data == null) return null;
+        final metadata = CacheMetadata(
+          songId: track.id.toString(),
+          songName: track.name,
+          artists: track.artists,
+          album: track.album,
+          picUrl: track.picUrl,
+          source: track.source.name,
+          quality: normalized,
+          originalUrl: '',
+          fileSize: data['fileSize'] as int,
+          cachedAt: DateTime.fromMillisecondsSinceEpoch(
+            data['cachedAt'] as int,
+          ),
+          lastAccessedAt: DateTime.now(),
+          checksum: data['checksum'] as String,
+          relativePath: path.basename(data['path'] as String),
+          contentType: data['contentType'] as String,
+        );
+        return CachedAudioFileInfo(
+          cacheKey: data['key'] as String,
+          filePath: data['path'] as String,
+          metadata: metadata,
+          audioLength: metadata.fileSize,
+          contentType: metadata.contentType,
+        );
+      } catch (error) {
+        _logCacheDebug('完整缓存查询失败，回退正常播放: $error');
+        return null;
+      }
+    }
+
     final resolved = _resolveCacheEntry(track, quality: quality);
     if (resolved == null) {
       return null;
@@ -1790,6 +1833,8 @@ class CacheService extends ChangeNotifier {
         qqCount: data['qq'] as int? ?? 0,
         kugouCount: data['kugou'] as int? ?? 0,
         kuwoCount: data['kuwo'] as int? ?? 0,
+        completeFiles: data['completeFiles'] as int? ?? 0,
+        partialFiles: data['partialFiles'] as int? ?? 0,
       );
     }
     int totalSize = 0;

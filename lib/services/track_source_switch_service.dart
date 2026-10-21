@@ -1,5 +1,6 @@
 import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 import '../models/track.dart';
 import '../models/playlist.dart';
 import 'api/api_client.dart';
@@ -54,7 +55,8 @@ class SourceSwitchProgress {
 
 /// 歌单换源服务
 class TrackSourceSwitchService extends ChangeNotifier {
-  static final TrackSourceSwitchService _instance = TrackSourceSwitchService._internal();
+  static final TrackSourceSwitchService _instance =
+      TrackSourceSwitchService._internal();
   factory TrackSourceSwitchService() => _instance;
   TrackSourceSwitchService._internal();
 
@@ -70,8 +72,8 @@ class TrackSourceSwitchService extends ChangeNotifier {
   bool _isProcessing = false;
   bool get isProcessing => _isProcessing;
 
-  // 是否已取消
-  bool _isCancelled = false;
+  int _generation = 0;
+  CancelToken? _request;
 
   /// 开始换源处理
   /// [tracks] 需要换源的歌曲列表
@@ -82,61 +84,79 @@ class TrackSourceSwitchService extends ChangeNotifier {
   ) async {
     if (_isProcessing) return;
 
+    final generation = ++_generation;
+    final request = CancelToken();
+    _request = request;
+    final candidates = List<PlaylistTrack>.of(tracks);
+    bool isCurrent() => generation == _generation && !request.isCancelled;
     _isProcessing = true;
-    _isCancelled = false;
-    _results = tracks.map((t) => SourceSwitchResult(
-      originalTrack: t,
-      isProcessing: true,
-    )).toList();
+    _results = candidates
+        .map((t) => SourceSwitchResult(originalTrack: t, isProcessing: true))
+        .toList();
     notifyListeners();
 
-    for (int i = 0; i < tracks.length; i++) {
-      if (_isCancelled) break;
+    try {
+      for (int i = 0; i < candidates.length; i++) {
+        if (!isCurrent()) return;
 
-      final track = tracks[i];
-      _progress = SourceSwitchProgress(
-        current: i + 1,
-        total: tracks.length,
-        currentTrackName: track.name,
-      );
-      notifyListeners();
-
-      try {
-        final searchResults = await _searchTrack(track, targetSource);
-
-        _results[i] = SourceSwitchResult(
-          originalTrack: track,
-          searchResults: searchResults,
-          selectedTrack: searchResults.isNotEmpty ? searchResults.first : null,
-          isProcessing: false,
+        final track = candidates[i];
+        _progress = SourceSwitchProgress(
+          current: i + 1,
+          total: candidates.length,
+          currentTrackName: track.name,
         );
-      } catch (e) {
-        _results[i] = SourceSwitchResult(
-          originalTrack: track,
-          searchResults: [],
-          isProcessing: false,
-          error: e.toString(),
-        );
+        notifyListeners();
+
+        try {
+          final searchResults = await _searchTrack(
+            track,
+            targetSource,
+            request,
+          );
+          if (!isCurrent()) return;
+
+          _results[i] = SourceSwitchResult(
+            originalTrack: track,
+            searchResults: searchResults,
+            selectedTrack: searchResults.isNotEmpty
+                ? searchResults.first
+                : null,
+            isProcessing: false,
+          );
+        } catch (e) {
+          if (!isCurrent()) return;
+          _results[i] = SourceSwitchResult(
+            originalTrack: track,
+            searchResults: [],
+            isProcessing: false,
+            error: e.toString(),
+          );
+        }
+        notifyListeners();
       }
-      notifyListeners();
+    } finally {
+      if (isCurrent()) {
+        _request = null;
+        _isProcessing = false;
+        _progress = null;
+        notifyListeners();
+      }
     }
-
-    _isProcessing = false;
-    _progress = null;
-    notifyListeners();
   }
 
   /// 取消处理
   void cancel() {
-    _isCancelled = true;
+    clear();
   }
 
   /// 清空结果
   void clear() {
+    _generation++;
+    _request?.cancel('换源任务已取消');
+    _request = null;
     _results = [];
     _progress = null;
     _isProcessing = false;
-    _isCancelled = false;
     notifyListeners();
   }
 
@@ -144,9 +164,7 @@ class TrackSourceSwitchService extends ChangeNotifier {
   void updateSelectedTrack(int index, Track? track) {
     if (index < 0 || index >= _results.length) return;
 
-    _results[index] = _results[index].copyWith(
-      selectedTrack: track,
-    );
+    _results[index] = _results[index].copyWith(selectedTrack: track);
     notifyListeners();
   }
 
@@ -159,25 +177,29 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索单首歌曲
-  Future<List<Track>> _searchTrack(PlaylistTrack track, MusicSource targetSource) async {
+  Future<List<Track>> _searchTrack(
+    PlaylistTrack track,
+    MusicSource targetSource,
+    CancelToken request,
+  ) async {
     final keyword = '${track.name} ${track.artists}';
 
     try {
       switch (targetSource) {
         case MusicSource.netease:
-          return await _searchNetease(keyword);
+          return await _searchNetease(keyword, request);
         case MusicSource.apple:
-          return await _searchApple(keyword);
+          return await _searchApple(keyword, request);
         case MusicSource.qq:
-          return await _searchQQ(keyword);
+          return await _searchQQ(keyword, request);
         case MusicSource.kugou:
-          return await _searchKugou(keyword);
+          return await _searchKugou(keyword, request);
         case MusicSource.kuwo:
-          return await _searchKuwo(keyword);
+          return await _searchKuwo(keyword, request);
         case MusicSource.navidrome:
           return [];
         case MusicSource.spotify:
-          return await _searchSpotify(keyword);
+          return await _searchSpotify(keyword, request);
         case MusicSource.local:
           return [];
       }
@@ -188,9 +210,10 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索 Apple Music
-  Future<List<Track>> _searchApple(String keyword) async {
+  Future<List<Track>> _searchApple(String keyword, CancelToken request) async {
     final result = await ApiClient().getJson(
       '/apple/search',
+      cancelToken: request,
       queryParameters: {'keywords': keyword, 'limit': 1},
       timeout: const Duration(seconds: 10),
     );
@@ -200,14 +223,16 @@ class TrackSourceSwitchService extends ChangeNotifier {
       if (data['status'] == 200) {
         return (data['result'] as List<dynamic>)
             .take(1)
-            .map((item) => Track(
-                  id: item['id'],
-                  name: item['name'] as String,
-                  artists: item['artists'] as String,
-                  album: item['album'] as String,
-                  picUrl: item['picUrl'] as String,
-                  source: MusicSource.apple,
-                ))
+            .map(
+              (item) => Track(
+                id: item['id'],
+                name: item['name'] as String,
+                artists: item['artists'] as String,
+                album: item['album'] as String,
+                picUrl: item['picUrl'] as String,
+                source: MusicSource.apple,
+              ),
+            )
             .toList();
       }
     }
@@ -215,9 +240,13 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索网易云音乐
-  Future<List<Track>> _searchNetease(String keyword) async {
+  Future<List<Track>> _searchNetease(
+    String keyword,
+    CancelToken request,
+  ) async {
     final result = await ApiClient().postJson(
       '/search',
+      cancelToken: request,
       data: {'keywords': keyword, 'limit': '1'},
       contentType: 'application/x-www-form-urlencoded',
       timeout: const Duration(seconds: 10),
@@ -227,14 +256,16 @@ class TrackSourceSwitchService extends ChangeNotifier {
       final data = result.data as Map<String, dynamic>;
       if (data['status'] == 200) {
         return (data['result'] as List<dynamic>)
-            .map((item) => Track(
-                  id: item['id'] as int,
-                  name: item['name'] as String,
-                  artists: item['artists'] as String,
-                  album: item['album'] as String,
-                  picUrl: item['picUrl'] as String,
-                  source: MusicSource.netease,
-                ))
+            .map(
+              (item) => Track(
+                id: item['id'] as int,
+                name: item['name'] as String,
+                artists: item['artists'] as String,
+                album: item['album'] as String,
+                picUrl: item['picUrl'] as String,
+                source: MusicSource.netease,
+              ),
+            )
             .toList();
       }
     }
@@ -242,9 +273,10 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索QQ音乐
-  Future<List<Track>> _searchQQ(String keyword) async {
+  Future<List<Track>> _searchQQ(String keyword, CancelToken request) async {
     final result = await ApiClient().getJson(
       '/qq/search',
+      cancelToken: request,
       queryParameters: {'keywords': keyword, 'limit': 1},
       timeout: const Duration(seconds: 10),
     );
@@ -253,14 +285,16 @@ class TrackSourceSwitchService extends ChangeNotifier {
       final data = result.data as Map<String, dynamic>;
       if (data['status'] == 200) {
         return (data['result'] as List<dynamic>)
-            .map((item) => Track(
-                  id: item['mid'] as String,
-                  name: item['name'] as String,
-                  artists: item['singer'] as String,
-                  album: item['album'] as String,
-                  picUrl: item['pic'] as String,
-                  source: MusicSource.qq,
-                ))
+            .map(
+              (item) => Track(
+                id: item['mid'] as String,
+                name: item['name'] as String,
+                artists: item['singer'] as String,
+                album: item['album'] as String,
+                picUrl: item['pic'] as String,
+                source: MusicSource.qq,
+              ),
+            )
             .toList();
       }
     }
@@ -268,9 +302,10 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索酷狗音乐
-  Future<List<Track>> _searchKugou(String keyword) async {
+  Future<List<Track>> _searchKugou(String keyword, CancelToken request) async {
     final result = await ApiClient().getJson(
       '/kugou/search',
+      cancelToken: request,
       queryParameters: {'keywords': keyword},
       timeout: const Duration(seconds: 10),
     );
@@ -312,9 +347,10 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索酷我音乐
-  Future<List<Track>> _searchKuwo(String keyword) async {
+  Future<List<Track>> _searchKuwo(String keyword, CancelToken request) async {
     final result = await ApiClient().getJson(
       '/kuwo/search',
+      cancelToken: request,
       queryParameters: {'keywords': keyword},
       timeout: const Duration(seconds: 10),
     );
@@ -325,14 +361,16 @@ class TrackSourceSwitchService extends ChangeNotifier {
         final songsData = data['data']?['songs'] as List<dynamic>? ?? [];
         return songsData
             .take(1)
-            .map((item) => Track(
-                  id: item['rid'] as int,
-                  name: item['name'] as String,
-                  artists: item['artist'] as String,
-                  album: item['album'] as String? ?? '',
-                  picUrl: item['pic'] as String? ?? '',
-                  source: MusicSource.kuwo,
-                ))
+            .map(
+              (item) => Track(
+                id: item['rid'] as int,
+                name: item['name'] as String,
+                artists: item['artist'] as String,
+                album: item['album'] as String? ?? '',
+                picUrl: item['pic'] as String? ?? '',
+                source: MusicSource.kuwo,
+              ),
+            )
             .toList();
       }
     }
@@ -340,9 +378,13 @@ class TrackSourceSwitchService extends ChangeNotifier {
   }
 
   /// 搜索 Spotify
-  Future<List<Track>> _searchSpotify(String keyword) async {
+  Future<List<Track>> _searchSpotify(
+    String keyword,
+    CancelToken request,
+  ) async {
     final result = await ApiClient().getJson(
       '/spotify/search',
+      cancelToken: request,
       queryParameters: {'keywords': keyword, 'limit': 1, 'type': 'track'},
       timeout: const Duration(seconds: 10),
     );

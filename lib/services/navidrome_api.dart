@@ -270,6 +270,25 @@ class NavidromeApi {
     }
   }
 
+  /// Cancellable lyric-only request; preserve failures for the lyric scheduler.
+  Future<NavidromeLyricsResult?> fetchLyrics(
+    String songId,
+    Future<void> abortTrigger,
+  ) async {
+    final response = await _get('getLyricsBySongId', {
+      'id': songId,
+    }, abortTrigger);
+    final list = response['lyricsList'];
+    if (list is! Map) {
+      throw NavidromeApiException('Invalid lyrics response', code: -1);
+    }
+    final lyrics = _extractStructuredLyrics(response);
+    if (lyrics == null && _asList(list['structuredLyrics']).isNotEmpty) {
+      throw NavidromeApiException('Invalid lyric content', code: -1);
+    }
+    return lyrics;
+  }
+
   /// 获取热门歌曲
   Future<List<NavidromeSong>> getTopSongs({
     int count = 50,
@@ -439,6 +458,7 @@ class NavidromeApi {
   Future<Map<String, dynamic>> _get(
     String method, [
     Map<String, String>? extraParams,
+    Future<void>? abortTrigger,
   ]) async {
     final params = _baseParams();
     if (extraParams != null) {
@@ -447,7 +467,13 @@ class NavidromeApi {
     final uri = _buildUri(method, params);
 
     try {
-      final response = await _client.get(uri);
+      final response = abortTrigger == null
+          ? await _client.get(uri)
+          : await http.Response.fromStream(
+              await _client.send(
+                http.AbortableRequest('GET', uri, abortTrigger: abortTrigger),
+              ),
+            );
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw NavidromeApiException(
           'HTTP ${response.statusCode}',

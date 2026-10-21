@@ -102,6 +102,7 @@ class PlayerService extends ChangeNotifier {
   bool get isPlaying => viewState.effectivePlaying;
   bool get isPaused => !viewState.effectivePlaying;
   bool get isLoading => _pb.isLoading;
+  bool get isBuffering => viewState.isBuffering;
   bool get isTrackSwitchPending => _pb.isTrackSwitchPending;
   double get volume => _pb.volume;
   double get playbackSpeed => _pb.playbackSpeed;

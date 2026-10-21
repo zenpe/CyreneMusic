@@ -1,3 +1,4 @@
+import '../../widgets/lyric_status_text.dart';
 import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
@@ -417,12 +418,8 @@ class _PlayerFluidCloudLyricsPanelState extends State<PlayerFluidCloudLyricsPane
   }
 
   Widget _buildNoLyric() {
-    final message = widget.lyricState.displayText;
     return Center(
-      child: Text(
-        message,
-        style: const TextStyle(color: Colors.white54, fontSize: 24),
-      ),
+      child: LyricStatusText(state: widget.lyricState, style: const TextStyle(color: Colors.white54, fontSize: 24)),
     );
   }
 }

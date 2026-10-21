@@ -22,6 +22,23 @@ class PlaybackSwitchRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return child;
+    if (!isVisible) return child;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        child,
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Padding(
+              padding: EdgeInsets.all(inset),
+              child: CircularProgressIndicator(
+                strokeWidth: strokeWidth,
+                color: color,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -8,6 +8,50 @@ void main() {
   const coordinator = PlaybackTransitionCoordinator();
 
   test(
+    'automatic candidates share resolution time and preserve native reserve',
+    () async {
+      var elapsed = Duration.zero;
+      final budget = PlaybackTransitionBudget(
+        shareResolutionBudget: true,
+        elapsed: () => elapsed,
+      );
+      final slices = <Duration>[];
+      await coordinator.run(
+        plan: PlaybackCandidatePlan(
+          candidates: [entry(1), entry(2), entry(3)],
+          stopsAtQueueEnd: false,
+        ),
+        budget: budget,
+        isCurrent: () => true,
+        attempt: (_, budget, _) async {
+          expect(budget.consumeRemoteRequest(), isTrue);
+          final slice = budget.resolutionTimeout(const Duration(seconds: 6));
+          slices.add(slice);
+          elapsed += slice;
+          return const PlaybackCandidateAttemptResult(
+            PlaybackCandidateAttemptStatus.trackFailure,
+          );
+        },
+      );
+      expect(slices, List.filled(3, const Duration(seconds: 3)));
+      expect(budget.remaining(), PlaybackTransitionBudget.nativeLoadReserve);
+    },
+  );
+
+  test('single automatic candidate keeps a normal resolution window', () {
+    final budget = PlaybackTransitionBudget(
+      shareResolutionBudget: true,
+      elapsed: () => Duration.zero,
+    );
+    budget.prepareCandidate(remainingCandidates: 1, failedCandidates: 0);
+    expect(budget.consumeRemoteRequest(), isTrue);
+    expect(
+      budget.resolutionTimeout(const Duration(seconds: 6)),
+      const Duration(seconds: 6),
+    );
+  });
+
+  test(
     'bounded startup network wait does not spend resolution/load budget',
     () {
       var elapsed = const Duration(seconds: 9);

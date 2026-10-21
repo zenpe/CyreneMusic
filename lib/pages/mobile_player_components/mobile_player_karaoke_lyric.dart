@@ -1,3 +1,4 @@
+import '../../widgets/lyric_status_text.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/player_service.dart';
@@ -209,22 +210,14 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
         final textColor = _getAdaptiveLyricColor(themeColor, false).withValues(alpha: 0.5);
 
         return Center(
-          child: Text(
-            _lyricStatusText(),
-            style: TextStyle(
+          child: LyricStatusText(state: widget.lyricState, style: TextStyle(
               color: textColor,
               fontSize: lyricFontSize,
               fontFamily: 'Microsoft YaHei',
-            ),
-            textAlign: TextAlign.center,
-          ),
+            )),
         );
       },
     );
-  }
-
-  String _lyricStatusText() {
-    return widget.lyricState.displayText;
   }
 
   /// 构建卡拉OK样式的3行歌词显示

@@ -14,7 +14,7 @@ Changes from that release are deliberately limited to:
    before it loads a source, using that incarnation's own method channel.
 3. `android/.../AudioPlayer.java`: one method-channel case calls upstream
    `ExoPlayer.setPreloadConfiguration`. Upstream LoadControl, player count,
-   stop/prepare and playback error handling remain unchanged.
+   and stop/prepare behavior remain unchanged.
 4. `analysis_options.yaml`: disable the inherited super-parameter style lint
    so the upstream constructors can remain unchanged.
 5. Optional `ProgressiveAudioSource.androidStreamCache` registers bounded source
@@ -25,6 +25,15 @@ Changes from that release are deliberately limited to:
    on loading/management threads, not the platform thread. HLS/DASH are excluded.
    The platform-interface package and other operating-system implementations are
    untouched. Registration failure falls back to ordinary playback.
+   Completed, continuously cached progressive resources can be verified and
+   committed as independent local audio files on a background worker. The
+   application queries these before link resolution; partial fragments never
+   qualify. The native store owns file leases, invalidation, and the shared quota.
+6. `PlaybackErrorCode.java`: preserve an HTTP error status from the native
+   exception cause chain, or otherwise the Media3 playback error code, in the
+   existing error channel. This lets the app distinguish expired URLs, rate
+   limits, network failures and decoding errors. Native recovery and loading
+   behavior are unchanged; both load-result and event errors use this mapping.
 
 The app owns a rolling current/next playlist using the existing official
 insert/remove/seek APIs. Media3's default LoadControl prioritizes loading the

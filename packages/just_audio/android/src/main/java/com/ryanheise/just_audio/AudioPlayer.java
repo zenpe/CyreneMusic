@@ -416,11 +416,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             default:
                 Log.e(TAG, "default ExoPlaybackException: " + exoError.getUnexpectedException().getMessage());
             }
-            // TODO: send both errorCode and type
-            sendError(exoError.type, exoError.getMessage(), mapOf("index", currentIndex));
+            sendError(PlaybackErrorCode.from(error), exoError.getMessage(), mapOf("index", currentIndex));
         } else {
             Log.e(TAG, "default PlaybackException: " + error.getMessage());
-            sendError(error.errorCode, error.getMessage(), mapOf("index", currentIndex));
+            sendError(PlaybackErrorCode.from(error), error.getMessage(), mapOf("index", currentIndex));
         }
     }
 
@@ -646,7 +645,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         String id = (String)map.get("id");
         switch ((String)map.get("type")) {
         case "progressive":
-            return new ProgressiveMediaSource.Factory(
+            return StreamCacheManager.get().protectCompleteSource(new ProgressiveMediaSource.Factory(
                     StreamCacheManager.get().wrap(buildDataSourceFactory(mapGet(map, "headers")),
                             (String)map.get("uri"), mapGet(map, "headers"),
                             StreamCacheManager.get().takeRegistration(id)),
@@ -654,7 +653,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                     .createMediaSource(new MediaItem.Builder()
                             .setUri(Uri.parse((String)map.get("uri")))
                             .setTag(id)
-                            .build());
+                            .build()), (String)map.get("uri"));
         case "dash":
             return new DashMediaSource.Factory(buildDataSourceFactory(mapGet(map, "headers")))
                     .createMediaSource(new MediaItem.Builder()

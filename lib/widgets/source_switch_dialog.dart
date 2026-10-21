@@ -649,11 +649,13 @@ class _SourceSwitchProgressDialogState
   @override
   void dispose() {
     _service.removeListener(_onServiceChanged);
+    if (_service.isProcessing) _service.cancel();
     super.dispose();
   }
 
   void _onServiceChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
 
     // 处理完成后自动关闭并返回结果
     if (!_service.isProcessing && _service.results.isNotEmpty) {

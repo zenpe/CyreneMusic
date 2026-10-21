@@ -1,3 +1,4 @@
+import '../../widgets/lyric_status_text.dart';
 import 'package:flutter/material.dart';
 import '../../services/player_service.dart';
 import '../../models/lyric_line.dart';
@@ -34,15 +35,11 @@ class PlayerLyricsPanel extends StatelessWidget {
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         final textColor = _getAdaptiveLyricColor(themeColor, false).withValues(alpha: 0.5);
-        final message = lyricState.displayText;
         return Center(
-          child: Text(
-            message,
-            style: TextStyle(
+          child: LyricStatusText(state: lyricState, style: TextStyle(
               color: textColor,
               fontSize: 16,
-            ),
-          ),
+            )),
         );
       },
     );

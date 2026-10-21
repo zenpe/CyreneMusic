@@ -1,3 +1,4 @@
+import '../../widgets/lyric_status_text.dart';
 import '../../services/structured_log_service.dart';
 import 'dart:async';
 import 'dart:math';
@@ -426,13 +427,9 @@ class _MobilePlayerFluidCloudLyricsPanelState extends State<MobilePlayerFluidClo
 
 
   Widget _buildNoLyric() {
-    final message = widget.lyricState.displayText;
     return Center(
-      child: Text(
-        message,
-        style: const TextStyle(color: Colors.white54, fontSize: 21.6), // 24 * 0.9
-      ),
-    );
+      child: LyricStatusText(state: widget.lyricState, style: const TextStyle(color: Colors.white54, fontSize: 21.6), // 24 * 0.9
+      ));
   }
 }
 
@@ -1502,4 +1499,3 @@ class _CountdownDotsState extends State<_CountdownDots> with SingleTickerProvide
     );
   }
 }
-

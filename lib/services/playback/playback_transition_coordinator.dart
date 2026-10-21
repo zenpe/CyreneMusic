@@ -73,7 +73,8 @@ class PlaybackTransitionCoordinator {
     var skippedCount = 0;
     var remoteBudgetExhausted = false;
 
-    for (final candidate in plan.candidates) {
+    for (var index = 0; index < plan.candidates.length; index++) {
+      final candidate = plan.candidates[index];
       if (!isCurrent()) {
         return _result(
           PlaybackTransitionResultStatus.cancelled,
@@ -92,6 +93,10 @@ class PlaybackTransitionCoordinator {
         continue;
       }
 
+      budget.prepareCandidate(
+        remainingCandidates: plan.candidates.length - index,
+        failedCandidates: skippedCount,
+      );
       final outcome = await attempt(candidate, budget, isCurrent);
       if (!isCurrent() ||
           outcome.status == PlaybackCandidateAttemptStatus.cancelled) {

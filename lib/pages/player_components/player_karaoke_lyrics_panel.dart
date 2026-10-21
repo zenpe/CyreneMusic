@@ -1,3 +1,4 @@
+import '../../widgets/lyric_status_text.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -184,12 +185,8 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel>
           themeColor,
           false,
         ).withValues(alpha: 0.5);
-        final message = widget.lyricState.displayText;
         return Center(
-          child: Text(
-            message,
-            style: TextStyle(color: textColor, fontSize: 16),
-          ),
+          child: LyricStatusText(state: widget.lyricState, style: TextStyle(color: textColor, fontSize: 16)),
         );
       },
     );

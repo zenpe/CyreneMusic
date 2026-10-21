@@ -303,7 +303,9 @@ class PlayerControls extends StatelessWidget {
 
             // 播放/暂停
             PlaybackSwitchRing(
-              isVisible: !showInitialLoading && player.viewState.isSwitching,
+              isVisible:
+                  !showInitialLoading &&
+                  (player.viewState.isSwitching || player.isBuffering),
               color: Colors.black54,
               strokeWidth: 2,
               inset: 2,

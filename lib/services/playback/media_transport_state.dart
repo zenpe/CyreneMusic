@@ -15,6 +15,7 @@ class MediaTransportState {
     required bool desiredPlaying,
     required bool enginePlaying,
     bool? pendingPlaying,
+    bool buffering = false,
   }) {
     switch (phase) {
       case PlaybackSwitchPhase.idle:
@@ -34,7 +35,9 @@ class MediaTransportState {
       case PlaybackSwitchPhase.paused:
         return MediaTransportState(
           pendingPlaying ?? (phase == PlaybackSwitchPhase.playing),
-          AudioProcessingState.ready,
+          buffering
+              ? AudioProcessingState.buffering
+              : AudioProcessingState.ready,
         );
     }
   }

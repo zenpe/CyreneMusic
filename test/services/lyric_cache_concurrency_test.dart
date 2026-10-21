@@ -95,6 +95,22 @@ void main() {
     reloaded.dispose();
   });
 
+  test('expired ready lyrics survive restart for offline display', () async {
+    final old = LyricCacheEntry.fromJson({
+      ...entry('netease_old', '[00:00]Old lyrics').toJson(),
+      'expiresAt': DateTime.utc(2020).toIso8601String(),
+    });
+    await cache.writeEntry('netease_old', old);
+    await cache.flushIndex();
+    final reloaded = LyricCacheService.forTesting(directory);
+    await reloaded.initialize();
+    final loaded = await reloaded.readEntry('netease_old');
+    expect(loaded, isNotNull);
+    expect(loaded!.lyric, '[00:00]Old lyrics');
+    expect(loaded.isExpired, isTrue);
+    reloaded.dispose();
+  });
+
   test('failed operation does not block later cache access', () async {
     await cache.initialize();
     await expectLater(

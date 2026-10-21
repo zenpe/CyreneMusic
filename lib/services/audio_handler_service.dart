@@ -18,6 +18,7 @@ import 'package:http/http.dart' as http;
 import 'lab_functions_service.dart';
 import 'playback_mode_service.dart';
 import '../utils/image_utils.dart';
+import '../models/widget_playback_data.dart';
 
 /// Android 媒体通知处理器
 /// 使用 audio_service 包实现 Android 系统通知栏的媒体控件
@@ -43,6 +44,7 @@ class CyreneAudioHandler extends BaseAudioHandler
   String? _lastObservedMediaIdentity;
   Future<void> _updateQueue = Future.value();
   Future<void> _widgetUpdateQueue = Future.value();
+  int _widgetUpdateRevision = 0;
   bool _disposed = false;
   bool _cacheCleanupInProgress = false;
   DateTime? _lastCacheCleanup;
@@ -396,13 +398,25 @@ class CyreneAudioHandler extends BaseAudioHandler
     }
 
     // 更新桌面小部件
-    unawaited(_enqueueWidgetUpdate(player.state, song ?? track));
+    unawaited(
+      _enqueueWidgetUpdate(
+        WidgetPlaybackData(
+          song: player.activeSong,
+          track: player.activeTrack,
+          playing: player.viewState.effectivePlaying,
+          coverUrl: player.currentCoverUrl ?? '',
+        ),
+      ),
+    );
   }
 
-  Future<void> _enqueueWidgetUpdate(PlayerState state, dynamic songOrTrack) {
+  Future<void> _enqueueWidgetUpdate(WidgetPlaybackData data) {
+    final revision = ++_widgetUpdateRevision;
     _widgetUpdateQueue = _widgetUpdateQueue
         .then((_) async {
-          await _updateWidget(state, songOrTrack);
+          if (!_disposed && revision == _widgetUpdateRevision) {
+            await _updateWidget(data, revision);
+          }
         })
         .catchError((e, st) {
           StructuredLogService.log('⚠️ [AudioHandler] 小部件更新队列失败: $e');
@@ -411,18 +425,16 @@ class CyreneAudioHandler extends BaseAudioHandler
   }
 
   /// 更新桌面小部件数据
-  Future<void> _updateWidget(PlayerState state, dynamic songOrTrack) async {
+  Future<void> _updateWidget(WidgetPlaybackData data, int revision) async {
     if (!Platform.isAndroid) return;
+    bool isCurrent() => !_disposed && revision == _widgetUpdateRevision;
 
     // 检查小部件是否在实验室设置中手动开启
     if (!LabFunctionsService().enableAndroidWidget) {
       // 如果未开启，将小部件内容替换为提示文字
       try {
         await Future.wait([
-          HomeWidget.saveWidgetData<String>(
-            'title',
-            '桌面小部件未启用',
-          ),
+          HomeWidget.saveWidgetData<String>('title', '桌面小部件未启用'),
           HomeWidget.saveWidgetData<String>('artist', ''),
           HomeWidget.saveWidgetData<bool>('isPlaying', false),
           HomeWidget.saveWidgetData<String>('albumArtPath', ''),
@@ -436,10 +448,15 @@ class CyreneAudioHandler extends BaseAudioHandler
     }
 
     try {
-      final title = songOrTrack?.name ?? songOrTrack?.title ?? '未在播放';
-      final artist =
-          songOrTrack?.arName ?? songOrTrack?.artist ?? 'Cyrene Music';
-      final isPlaying = state == PlayerState.playing;
+      final title = data.title;
+      final artist = data.artist;
+      final isPlaying = data.playing;
+      final artUri = data.coverUrl;
+      final currentSongKey = data.mediaKey;
+      final songChanged = currentSongKey != _lastWidgetSongKey;
+      String? albumArtPath = !songChanged && artUri == _lastWidgetArtUri
+          ? _lastWidgetArtPath
+          : null;
 
       // 1. 并行保存基础信息（加速响应）
       await Future.wait([
@@ -447,25 +464,26 @@ class CyreneAudioHandler extends BaseAudioHandler
         HomeWidget.saveWidgetData<String>('artist', artist),
         HomeWidget.saveWidgetData<bool>('isPlaying', isPlaying),
         HomeWidget.saveWidgetData<bool>('isEnabled', true),
+        HomeWidget.saveWidgetData<String>('albumArtPath', albumArtPath ?? ''),
       ]);
+      if (!isCurrent()) return;
+      await _triggerWidgetUpdates();
 
       // --- 专辑封面同步逻辑 (优化：识别切歌并强制刷新) ---
-      String? albumArtPath = _lastWidgetArtPath;
-      final artUri = _player.currentCoverUrl ?? '';
-      final currentSongKey = '$title-$artist';
-      final songChanged = currentSongKey != _lastWidgetSongKey;
 
       // 如果歌曲变了，或者封面 URI 变了，我们需要强制更新封面
       if (artUri.isNotEmpty && (songChanged || artUri != _lastWidgetArtUri)) {
         if (artUri.startsWith('http')) {
           // 网络图片：下载并保存到固定文件（覆盖式）
+          final client = http.Client();
           try {
             StructuredLogService.log(
               '🌐 [AudioHandler] 歌曲或封面变化，更新小部件封面: $artUri',
             );
-            final response = await http
+            final response = await client
                 .get(Uri.parse(artUri), headers: getImageHeaders(artUri))
                 .timeout(const Duration(seconds: 5));
+            if (!isCurrent()) return;
             if (response.statusCode == 200) {
               final tempDir = await getTemporaryDirectory();
               final file = File('${tempDir.path}/widget_art.png');
@@ -482,6 +500,8 @@ class CyreneAudioHandler extends BaseAudioHandler
             }
           } catch (e) {
             StructuredLogService.log('⚠️ [AudioHandler] 下载小部件封面失败: $e');
+          } finally {
+            client.close();
           }
         } else if (artUri.startsWith('/') || artUri.startsWith('file://')) {
           // 本地图片：直接使用路径
@@ -505,6 +525,7 @@ class CyreneAudioHandler extends BaseAudioHandler
         }
       }
 
+      if (!isCurrent()) return;
       await HomeWidget.saveWidgetData<String>(
         'albumArtPath',
         albumArtPath ?? '',
@@ -515,7 +536,7 @@ class CyreneAudioHandler extends BaseAudioHandler
       );
 
       // 触发小部件更新
-      _triggerWidgetUpdates();
+      if (isCurrent()) await _triggerWidgetUpdates();
     } catch (e) {
       StructuredLogService.log('⚠️ [AudioHandler] 更新桌面小部件失败: $e');
     }
@@ -896,6 +917,7 @@ class CyreneAudioHandler extends BaseAudioHandler
       desiredPlaying: view.desiredPlaying,
       enginePlaying: view.enginePlaying,
       pendingPlaying: player.pendingPlaybackIntent,
+      buffering: view.isBuffering,
     );
   }
 

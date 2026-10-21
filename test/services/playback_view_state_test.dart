@@ -94,6 +94,35 @@ void main() {
     expect(state.effectivePlaying, isFalse);
   });
 
+  for (final pendingSource in [false, true]) {
+    for (final playing in [false, true]) {
+      test(
+        'seek ownership with pending source=$pendingSource, playing=$playing',
+        () {
+          final state = PlaybackViewState(
+            generation: 10,
+            track: track,
+            song: null,
+            switchPhase: playing
+                ? PlaybackSwitchPhase.playing
+                : PlaybackSwitchPhase.paused,
+            desiredPlaying: playing,
+            enginePlaying: playing,
+            isBuffering: playing,
+            isSourceTransitionPending: pendingSource,
+            position: const Duration(seconds: 12),
+            duration: const Duration(minutes: 3),
+            bufferedPosition: Duration.zero,
+            lyricState: LyricLoadState.ready,
+            lyricSnapshot: null,
+          );
+          expect(state.canSeek, !pendingSource);
+          expect(state.effectivePlaying, playing);
+        },
+      );
+    }
+  }
+
   test('latest explicit command wins during source loading', () {
     final state = PlaybackViewState(
       generation: 11,

@@ -6,6 +6,7 @@ import '../../models/track.dart';
 import '../cache_service.dart';
 import 'lyric_cache_service.dart';
 import 'lyric_snapshot.dart';
+import 'lyric_identity.dart';
 
 typedef LyricRepositoryLogFn =
     void Function(String message, {bool toDeveloperPanel});
@@ -35,10 +36,11 @@ class LyricRepository {
 
   static const int _memoryCapacity = 64;
   static const Duration _readyTtl = Duration(days: 7);
-  static const Duration _confirmedEmptyTtl = Duration(hours: 24);
+  static const Duration _confirmedEmptyTtl = Duration(minutes: 30);
 
   final LinkedHashMap<String, LyricCacheEntry> _memory =
       LinkedHashMap<String, LyricCacheEntry>();
+  int _generation = 0;
 
   Future<LyricLookupResult?> lookup({
     required Track track,
@@ -46,6 +48,7 @@ class LyricRepository {
     required SongDetail? currentSong,
     required LyricRepositoryLogFn log,
   }) async {
+    final generation = _generation;
     final cacheKey = _cacheKey(track);
     final legacyCacheKey = _legacyCacheKey(track, quality);
 
@@ -80,8 +83,12 @@ class LyricRepository {
 
     var diskHitKey = cacheKey;
     var diskEntry = await LyricCacheService().readEntry(cacheKey);
+    if (generation != _generation || cacheKey != _cacheKey(track)) return null;
     if (diskEntry == null && legacyCacheKey != cacheKey) {
       diskEntry = await LyricCacheService().readEntry(legacyCacheKey);
+      if (generation != _generation || cacheKey != _cacheKey(track)) {
+        return null;
+      }
       diskHitKey = legacyCacheKey;
     }
     final diskHit = _toLookupResult(
@@ -176,9 +183,10 @@ class LyricRepository {
   String _legacyCacheKey(Track track, String quality) =>
       '${_trackKey(track)}_$quality';
 
-  String _trackKey(Track track) => '${track.source.name}_${track.id}';
+  String _trackKey(Track track) => lyricCacheKey(track);
 
   void clearMemory() {
+    _generation++;
     _memory.clear();
   }
 
@@ -189,6 +197,7 @@ class LyricRepository {
               .where((key) => key == trackKey || key.startsWith('${trackKey}_'))
               .toList(growable: false)
         : <String>[
+            _cacheKey(track),
             _legacyCacheKey(track, CacheService.normalizeQualityValue(quality)),
           ];
     for (final key in keysToRemove) {
@@ -206,13 +215,13 @@ class LyricRepository {
     if (entry == null) return null;
     switch (entry.state) {
       case LyricCacheState.ready:
-        if (!entry.hasContent || entry.isExpired) return null;
+        if (!entry.hasContent) return null;
         return LyricLookupResult(
           state: LyricLoadState.ready,
           song: _buildSongFromEntry(track, quality, currentSong, entry),
           source: source,
           category: source == 'memory' ? 'memory_hit' : 'disk_hit',
-          skipRemote: true,
+          skipRemote: !entry.isExpired,
         );
       case LyricCacheState.empty:
         if (!entry.authoritativeEmpty || entry.isExpired) return null;
@@ -360,7 +369,8 @@ class LyricRepository {
   ) async {
     _remember(cacheKey, entry);
     await _writeEntry(cacheKey, entry, log);
-    final legacyCacheKey = _legacyCacheKey(track, quality);
+    // Keep cleanup in the scope captured before the asynchronous write.
+    final legacyCacheKey = '${cacheKey}_$quality';
     if (legacyCacheKey == cacheKey) {
       return;
     }

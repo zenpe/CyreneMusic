@@ -16,6 +16,16 @@ final class EngineStateEvent extends EngineEvent {
   const EngineStateEvent(super.epoch, this.state);
 }
 
+final class EngineBufferingEvent extends EngineEvent {
+  final bool buffering;
+  const EngineBufferingEvent(super.epoch, this.buffering);
+}
+
+final class EngineSourceLoadingEvent extends EngineEvent {
+  final String key;
+  const EngineSourceLoadingEvent(super.epoch, this.key);
+}
+
 final class EnginePositionEvent extends EngineEvent {
   final Duration position;
 

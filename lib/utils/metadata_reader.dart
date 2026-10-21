@@ -5,6 +5,8 @@ import 'dart:typed_data';
 
 /// 专门用于解析音频文件（MP3/FLAC）内嵌元数据的实用工具
 class MetadataReader {
+  static const int _maxLyricsBytes = 4 * 1024 * 1024;
+
   /// 从音频文件中提取嵌入的歌词
   static Future<String?> extractLyrics(String filePath) async {
     try {
@@ -25,25 +27,32 @@ class MetadataReader {
 
   /// 提取 FLAC 内嵌歌词 (VORBIS_COMMENT)
   static Future<String?> _extractFlacLyrics(File file) async {
-    final bytes = await file.readAsBytes();
-    if (bytes.length < 4 || utf8.decode(bytes.sublist(0, 4)) != 'fLaC') return null;
-
-    int offset = 4;
-    while (offset < bytes.length) {
-      final header = bytes[offset];
-      final isLastBlock = (header & 0x80) != 0;
-      final blockType = header & 0x7F;
-      final blockLength = (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
-
-      if (blockType == 4) { // VORBIS_COMMENT
-        final commentBlock = bytes.sublist(offset + 4, offset + 4 + blockLength);
-        return _parseVorbisComment(commentBlock);
+    final input = await file.open();
+    try {
+      final signature = await input.read(4);
+      if (signature.length != 4 || latin1.decode(signature) != 'fLaC') {
+        return null;
       }
-
-      if (isLastBlock) break;
-      offset += 4 + blockLength;
+      final length = await input.length();
+      var offset = 4;
+      while (offset + 4 <= length) {
+        final header = await input.read(4);
+        if (header.length != 4) return null;
+        final size = (header[1] << 16) | (header[2] << 8) | header[3];
+        offset += 4;
+        if (offset + size > length) return null;
+        if ((header[0] & 0x7f) == 4) {
+          if (size > _maxLyricsBytes) return null;
+          return _parseVorbisComment(await input.read(size));
+        }
+        if ((header[0] & 0x80) != 0) return null;
+        offset += size;
+        await input.setPosition(offset);
+      }
+      return null;
+    } finally {
+      await input.close();
     }
-    return null;
   }
 
   /// 解析 Vorbis Comment 块寻找 LYRICS 或 UNSYNCEDLYRICS
@@ -52,22 +61,38 @@ class MetadataReader {
       int offset = 0;
 
       // Vendor string
-      final vendorLength = block[offset] | (block[offset + 1] << 8) | (block[offset + 2] << 16) | (block[offset + 3] << 24);
+      final vendorLength =
+          block[offset] |
+          (block[offset + 1] << 8) |
+          (block[offset + 2] << 16) |
+          (block[offset + 3] << 24);
       offset += 4 + vendorLength;
 
       // User comment list length
-      final commentListLength = block[offset] | (block[offset + 1] << 8) | (block[offset + 2] << 16) | (block[offset + 3] << 24);
+      final commentListLength =
+          block[offset] |
+          (block[offset + 1] << 8) |
+          (block[offset + 2] << 16) |
+          (block[offset + 3] << 24);
       offset += 4;
 
       for (int i = 0; i < commentListLength; i++) {
-        final commentLength = block[offset] | (block[offset + 1] << 8) | (block[offset + 2] << 16) | (block[offset + 3] << 24);
+        final commentLength =
+            block[offset] |
+            (block[offset + 1] << 8) |
+            (block[offset + 2] << 16) |
+            (block[offset + 3] << 24);
         offset += 4;
 
-        final comment = utf8.decode(block.sublist(offset, offset + commentLength), allowMalformed: true);
+        final comment = utf8.decode(
+          block.sublist(offset, offset + commentLength),
+          allowMalformed: true,
+        );
         offset += commentLength;
 
         final upperComment = comment.toUpperCase();
-        if (upperComment.startsWith('LYRICS=') || upperComment.startsWith('UNSYNCEDLYRICS=')) {
+        if (upperComment.startsWith('LYRICS=') ||
+            upperComment.startsWith('UNSYNCEDLYRICS=')) {
           return comment.substring(comment.indexOf('=') + 1);
         }
       }
@@ -79,54 +104,108 @@ class MetadataReader {
 
   /// 提取 MP3 内嵌歌词 (ID3v2 USLT)
   static Future<String?> _extractMp3Lyrics(File file) async {
-    final bytes = await file.readAsBytes();
-    if (bytes.length < 10 || bytes[0] != 0x49 || bytes[1] != 0x44 || bytes[2] != 0x33) return null;
-
-    // ID3v2 头部大小计算 (syncsafe)
-    final tagSize = ((bytes[6] & 0x7F) << 21) | ((bytes[7] & 0x7F) << 14) | ((bytes[8] & 0x7F) << 7) | (bytes[9] & 0x7F);
-
-    int offset = 10;
-    final end = 10 + tagSize;
-
-    while (offset + 10 < end) {
-      final frameId = utf8.decode(bytes.sublist(offset, offset + 4), allowMalformed: true);
-      final frameSize = (bytes[offset + 4] << 24) | (bytes[offset + 5] << 16) | (bytes[offset + 6] << 8) | bytes[offset + 7];
-
-      if (frameId == 'USLT') {
-        final frameContent = bytes.sublist(offset + 10, offset + 10 + frameSize);
-        return _parseUsltFrame(frameContent);
+    final input = await file.open();
+    try {
+      final header = await input.read(10);
+      if (header.length != 10 || latin1.decode(header.sublist(0, 3)) != 'ID3') {
+        return null;
       }
-
-      if (frameSize <= 0) break; // 避免死循环
-      offset += 10 + frameSize;
+      final version = header[3];
+      if (version != 3 && version != 4) return null;
+      final end = 10 + _syncSafe(header, 6);
+      if (end > await input.length()) return null;
+      var offset = 10;
+      if ((header[5] & 0x40) != 0) {
+        final extended = await input.read(4);
+        if (extended.length != 4) return null;
+        final size = version == 4
+            ? _syncSafe(extended, 0)
+            : _bigEndian(extended, 0) + 4;
+        if (size < 4 || offset + size > end) return null;
+        offset += size;
+        await input.setPosition(offset);
+      }
+      while (offset + 10 <= end) {
+        final frame = await input.read(10);
+        if (frame.length != 10) return null;
+        final size = version == 4 ? _syncSafe(frame, 4) : _bigEndian(frame, 4);
+        offset += 10;
+        if (size <= 0 || offset + size > end) return null;
+        if (latin1.decode(frame.sublist(0, 4)) == 'USLT') {
+          if (size > _maxLyricsBytes) return null;
+          // Compressed/encrypted frames need a decoder; do not interpret them as text.
+          if ((frame[9] & (version == 4 ? 0x0c : 0xc0)) != 0) return null;
+          return _parseUsltFrame(await input.read(size));
+        }
+        offset += size;
+        await input.setPosition(offset);
+      }
+      return null;
+    } finally {
+      await input.close();
     }
-    return null;
   }
+
+  static int _syncSafe(List<int> bytes, int offset) =>
+      ((bytes[offset] & 0x7f) << 21) |
+      ((bytes[offset + 1] & 0x7f) << 14) |
+      ((bytes[offset + 2] & 0x7f) << 7) |
+      (bytes[offset + 3] & 0x7f);
+
+  static int _bigEndian(List<int> bytes, int offset) =>
+      (bytes[offset] << 24) |
+      (bytes[offset + 1] << 16) |
+      (bytes[offset + 2] << 8) |
+      bytes[offset + 3];
 
   /// 解析 USLT 帧内容
   static String? _parseUsltFrame(Uint8List content) {
     try {
-      if (content.isEmpty) return null;
+      if (content.length < 5) return null;
       final encoding = content[0];
       // 1-3 bytes: language ('eng' etc.)
       const langSize = 3;
 
       // 寻找内容描述符后的结束符 (0x00)
       int lyricsStart = 1 + langSize;
-      while (lyricsStart < content.length && content[lyricsStart] != 0) {
-        lyricsStart++;
+      final utf16 = encoding == 1 || encoding == 2;
+      final step = utf16 ? 2 : 1;
+      while (lyricsStart + step <= content.length) {
+        if (content[lyricsStart] == 0 &&
+            (!utf16 || content[lyricsStart + 1] == 0)) {
+          break;
+        }
+        lyricsStart += step;
       }
-      lyricsStart++; // 跳过结束符
+      lyricsStart += step;
 
       if (lyricsStart >= content.length) return null;
 
       final lyricsData = content.sublist(lyricsStart);
-      if (encoding == 0x00) { // ISO-8859-1
+      if (encoding == 0x00) {
+        // ISO-8859-1
         return Latin1Decoder().convert(lyricsData);
-      } else if (encoding == 0x03) { // UTF-8
+      } else if (encoding == 0x03) {
+        // UTF-8
         return utf8.decode(lyricsData, allowMalformed: true);
-      } else { // UTF-16
-        return String.fromCharCodes(lyricsData.buffer.asUint16List());
+      } else if (utf16) {
+        var start = 0;
+        var endian = encoding == 2
+            ? Endian.big
+            : (content[4] == 0xfe && content[5] == 0xff
+                  ? Endian.big
+                  : Endian.little);
+        if (lyricsData.length >= 2 &&
+            ((lyricsData[0] == 0xff && lyricsData[1] == 0xfe) ||
+                (lyricsData[0] == 0xfe && lyricsData[1] == 0xff))) {
+          endian = lyricsData[0] == 0xfe ? Endian.big : Endian.little;
+          start = 2;
+        }
+        final data = ByteData.sublistView(lyricsData);
+        return String.fromCharCodes([
+          for (var i = start; i + 1 < lyricsData.length; i += 2)
+            data.getUint16(i, endian),
+        ]);
       }
     } catch (e) {
       StructuredLogService.log('❌ [MetadataReader] 解析 USLT 帧失败: $e');
