@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: zulu
           java-version: '17'
@@ -46,7 +46,7 @@ jobs:
           cp build/app/outputs/flutter-apk/app-debug.apk artifacts/android/cyrene-music-test-android-debug.apk
           sha256sum artifacts/android/*.apk > artifacts/android/SHA256SUMS.txt
           printf 'commit=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_NUMBER" > artifacts/android/build-info.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cyrene-music-test-android-${{ github.run_number }}
           path: artifacts/android
@@ -75,7 +75,7 @@ jobs:
           $hash = (Get-FileHash artifacts/windows/cyrene-music-test-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  cyrene-music-test-windows-x64.zip" | Set-Content artifacts/windows/SHA256SUMS.txt
           "commit=$env:GITHUB_SHA`nrun=$env:GITHUB_RUN_NUMBER" | Set-Content artifacts/windows/build-info.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cyrene-music-test-windows-${{ github.run_number }}
           path: artifacts/windows

@@ -80,11 +80,11 @@ flutter build ios --release
 
 ### 自动构建（GitHub Actions）
 
-推送版本标签即可自动构建所有平台：
+main 推送执行质量检查，PR 额外验证 Android 和 Windows 编译。推送与 `pubspec.yaml` 版本对应的标签即可构建所有平台并发布（下面仅为示例，勿覆盖已有标签）：
 
 ```bash
-git tag v1.0.4
-git push origin v1.0.4
+git tag v1.3.4
+git push origin v1.3.4
 ```
 
 详细说明请查看 [GitHub Actions 构建指南](docs/GITHUB_ACTIONS_BUILD.md)。

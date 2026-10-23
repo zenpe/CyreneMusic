@@ -3,14 +3,14 @@ name: Quality Gate
 on:
   workflow_call:
   pull_request:
-    branches: [just_audio]
+    branches: [main]
   push:
-    branches: [just_audio]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: quality-${{ github.ref }}
-  cancel-in-progress: true
+  group: quality-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: read
@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -50,9 +52,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: zulu
           java-version: '17'
@@ -71,9 +75,35 @@ jobs:
         run: flutter build apk --debug
 
       - name: Upload Android Debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cyrene-music-pr-${{ github.event.pull_request.number }}-android-debug
           path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 14
+          if-no-files-found: error
+
+  windows-release:
+    needs: analyze-and-test
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.3'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter build windows --release
+      - name: Package Windows build
+        shell: pwsh
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath cyrene-music-pr-windows-x64.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cyrene-music-pr-${{ github.event.pull_request.number }}-windows
+          path: cyrene-music-pr-windows-x64.zip
           retention-days: 14
           if-no-files-found: error
