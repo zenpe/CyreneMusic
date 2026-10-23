@@ -5,32 +5,25 @@ import '../../widgets/fluent_settings_card.dart';
 import '../../widgets/cupertino/cupertino_settings_widgets.dart';
 import '../../services/audio_quality_service.dart';
 import '../../services/audio_source_service.dart';
-import '../../services/player_service.dart';
 import '../../models/song_detail.dart';
 import '../../utils/theme_manager.dart';
 import '../../widgets/material/material_settings_widgets.dart';
-import 'equalizer_page.dart';
-import '../../services/persistent_storage_service.dart';
 
 /// 播放设置组件
 class PlaybackSettings extends StatelessWidget {
   final bool isSubPage;
 
-  const PlaybackSettings({
-    super.key,
-    this.isSubPage = false,
-  });
+  const PlaybackSettings({super.key, this.isSubPage = false});
 
   @override
   Widget build(BuildContext context) {
     final isFluent = fluent_ui.FluentTheme.maybeOf(context) != null;
     final isCupertino = ThemeManager().isCupertinoFramework;
     final qualityService = AudioQualityService();
-    final storageService = PersistentStorageService();
 
     // 使用 ListenableBuilder 监听音质变化，实现实时刷新
     return ListenableBuilder(
-      listenable: Listenable.merge([qualityService, storageService]),
+      listenable: qualityService,
       builder: (context, child) {
         if (isFluent) {
           return FluentSettingsGroup(
@@ -44,24 +37,12 @@ class PlaybackSettings extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _showAudioQualityDialogFluent(context),
               ),
-              fluent_ui.SizedBox(height: 8),
-              FluentSwitchTile(
-                icon: Icons.vpn_key_outlined,
-                title: '代理播放',
-                subtitle: '关闭时，播放受限音乐将不再使用本地代理，而是直连播放',
-                value: storageService.enableQqProxy,
-                onChanged: (value) => storageService.setEnableQqProxy(value),
-              ),
             ],
           );
         }
 
         if (isCupertino) {
-          return Column(
-            children: [
-              _buildCupertinoUI(context, qualityService, storageService),
-            ],
-          );
+          return Column(children: [_buildCupertinoUI(context, qualityService)]);
         }
 
         return MD3SettingsSection(
@@ -69,16 +50,10 @@ class PlaybackSettings extends StatelessWidget {
             MD3SettingsTile(
               leading: const Icon(Icons.high_quality_outlined),
               title: '音质选择',
-              subtitle: '${qualityService.getQualityName()} - ${qualityService.getQualityDescription()}',
+              subtitle:
+                  '${qualityService.getQualityName()} - ${qualityService.getQualityDescription()}',
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showAudioQualityDialog(context),
-            ),
-            MD3SwitchTile(
-              leading: const Icon(Icons.vpn_key_outlined),
-              title: '代理播放',
-              subtitle: '关闭时，播放受限音乐将不再使用本地代理，而是直连播放',
-              value: storageService.enableQqProxy,
-              onChanged: (value) => storageService.setEnableQqProxy(value),
             ),
           ],
         );
@@ -87,77 +62,63 @@ class PlaybackSettings extends StatelessWidget {
   }
 
   /// 构建 Cupertino UI 版本
-  Widget _buildCupertinoUI(BuildContext context, AudioQualityService qualityService, PersistentStorageService storageService) {
-    return Column(
-      children: [
-        CupertinoSettingsTile(
-          icon: CupertinoIcons.music_note_2,
-          iconColor: CupertinoColors.systemPurple,
-          title: '音质选择',
-          subtitle: '${qualityService.getQualityName()} - ${qualityService.getQualityDescription()}',
-          showChevron: true,
-          onTap: () => _showAudioQualityDialogCupertino(context),
-        ),
-        const SizedBox(height: 8),
-        CupertinoSwitchTile(
-          icon: CupertinoIcons.shield,
-          iconColor: CupertinoColors.systemBlue,
-          title: '代理播放',
-          subtitle: '关闭时，播放受限音乐将不再使用本地代理，而是直连播放',
-          value: storageService.enableQqProxy,
-          onChanged: (value) => storageService.setEnableQqProxy(value ?? false),
-        ),
-      ],
+  Widget _buildCupertinoUI(
+    BuildContext context,
+    AudioQualityService qualityService,
+  ) {
+    return CupertinoSettingsTile(
+      icon: CupertinoIcons.music_note_2,
+      iconColor: CupertinoColors.systemPurple,
+      title: '音质选择',
+      subtitle:
+          '${qualityService.getQualityName()} - ${qualityService.getQualityDescription()}',
+      showChevron: true,
+      onTap: () => _showAudioQualityDialogCupertino(context),
     );
   }
 
-
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0, left: 4.0),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-      ),
-    );
-  }
 
   void _showAudioQualityDialog(BuildContext context) {
     final qualityService = AudioQualityService();
     final currentQuality = qualityService.currentQuality;
     final sourceType = AudioSourceService().sourceType;
     final supportedQualities = qualityService.getSupportedQualities(sourceType);
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('选择音质'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: supportedQualities.map((quality) => RadioListTile<AudioQuality>(
-            title: Text(qualityService.getQualityName(quality)),
-            subtitle: Text(qualityService.getQualityDescription(quality)),
-            value: quality,
-            groupValue: currentQuality,
-            onChanged: (value) {
-              if (value != null) {
-                qualityService.setQuality(value);
-                Navigator.pop(context);
-                final messenger = ScaffoldMessenger.maybeOf(context);
-                if (messenger != null) {
-                  messenger.showSnackBar(
-                    const SnackBar(
-                      content: Text('音质设置已更新'),
-                      duration: Duration(seconds: 1),
+          children: supportedQualities
+              .map(
+                (quality) => RadioGroup<AudioQuality>(
+                  groupValue: currentQuality,
+                  onChanged: (value) {
+                    if (value != null) {
+                      qualityService.setQuality(value);
+                      Navigator.pop(context);
+                      final messenger = ScaffoldMessenger.maybeOf(context);
+                      if (messenger != null) {
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('音质设置已更新'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  child: RadioListTile<AudioQuality>(
+                    title: Text(qualityService.getQualityName(quality)),
+                    subtitle: Text(
+                      qualityService.getQualityDescription(quality),
                     ),
-                  );
-                }
-              }
-            },
-          )).toList(),
+                    value: quality,
+                  ),
+                ),
+              )
+              .toList(),
         ),
         actions: [
           TextButton(
@@ -180,29 +141,39 @@ class PlaybackSettings extends StatelessWidget {
       builder: (context) {
         return fluent_ui.ContentDialog(
           title: const Text('选择音质'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: supportedQualities.map((quality) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4.0),
-              child: fluent_ui.RadioButton(
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(qualityService.getQualityName(quality)),
-                    Text(
-                      qualityService.getQualityDescription(quality),
-                      style: fluent_ui.FluentTheme.of(context).typography.caption,
+          content: fluent_ui.RadioGroup<AudioQuality>(
+            groupValue: currentQuality,
+            onChanged: (value) {
+              if (value == null) return;
+              qualityService.setQuality(value);
+              Navigator.pop(context);
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: supportedQualities
+                  .map(
+                    (quality) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4.0),
+                      child: fluent_ui.RadioButton<AudioQuality>(
+                        value: quality,
+                        content: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(qualityService.getQualityName(quality)),
+                            Text(
+                              qualityService.getQualityDescription(quality),
+                              style: fluent_ui.FluentTheme.of(
+                                context,
+                              ).typography.caption,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ],
-                ),
-                checked: currentQuality == quality,
-                onChanged: (v) {
-                  qualityService.setQuality(quality);
-                  Navigator.pop(context);
-                },
-              ),
-            )).toList(),
+                  )
+                  .toList(),
+            ),
           ),
           actions: [
             fluent_ui.Button(
@@ -221,36 +192,40 @@ class PlaybackSettings extends StatelessWidget {
     final currentQuality = qualityService.currentQuality;
     final sourceType = AudioSourceService().sourceType;
     final supportedQualities = qualityService.getSupportedQualities(sourceType);
-    
+
     showCupertinoModalPopup<void>(
       context: context,
       builder: (context) => CupertinoActionSheet(
         title: const Text('选择音质'),
-        actions: supportedQualities.map((quality) => CupertinoActionSheetAction(
-          onPressed: () {
-            qualityService.setQuality(quality);
-            Navigator.pop(context);
-          },
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (currentQuality == quality)
-                const Padding(
-                  padding: EdgeInsets.only(right: 8),
-                  child: Icon(CupertinoIcons.checkmark, size: 18),
-                ),
-              Text(qualityService.getQualityName(quality)),
-              const SizedBox(width: 8),
-              Text(
-                qualityService.getQualityDescription(quality),
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: CupertinoColors.systemGrey,
+        actions: supportedQualities
+            .map(
+              (quality) => CupertinoActionSheetAction(
+                onPressed: () {
+                  qualityService.setQuality(quality);
+                  Navigator.pop(context);
+                },
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (currentQuality == quality)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 8),
+                        child: Icon(CupertinoIcons.checkmark, size: 18),
+                      ),
+                    Text(qualityService.getQualityName(quality)),
+                    const SizedBox(width: 8),
+                    Text(
+                      qualityService.getQualityDescription(quality),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: CupertinoColors.systemGrey,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        )).toList(),
+            )
+            .toList(),
         cancelButton: CupertinoActionSheetAction(
           isDefaultAction: true,
           onPressed: () => Navigator.pop(context),

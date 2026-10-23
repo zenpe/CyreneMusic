@@ -3,8 +3,8 @@
     <!-- 媒体通知所需权限 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.CAMERA"/>
     
     <!-- Android 13+ 通知权限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -93,12 +93,6 @@
             android:name=".FloatingLyricService"
             android:foregroundServiceType="mediaPlayback"
             android:exported="false"/>
-
-        <!-- 自定义媒体通知前台服务（复用 audio_service 的 MediaSession，仅接管通知 UI） -->
-        <service
-            android:name=".CustomMediaNotificationService"
-            android:foregroundServiceType="mediaPlayback"
-            android:exported="false" />
 
         <!-- 睡眠定时器前台服务 -->
         <service

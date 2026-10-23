@@ -15,7 +15,7 @@ class DesktopLyricSettings extends StatefulWidget {
 
 class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
   final _desktopLyricService = DesktopLyricService();
-  
+
   late int _fontSize;
   late Color _textColor;
   late Color _strokeColor;
@@ -63,10 +63,10 @@ class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
                   setState(() {
                     if (type == 'text') {
                       _textColor = color;
-                      _desktopLyricService.setTextColor(color.value);
+                      _desktopLyricService.setTextColor(color.toARGB32());
                     } else {
                       _strokeColor = color;
-                      _desktopLyricService.setStrokeColor(color.value);
+                      _desktopLyricService.setStrokeColor(color.toARGB32());
                     }
                   });
                 },
@@ -97,10 +97,10 @@ class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
               setState(() {
                 if (type == 'text') {
                   _textColor = color;
-                  _desktopLyricService.setTextColor(color.value);
+                  _desktopLyricService.setTextColor(color.toARGB32());
                 } else {
                   _strokeColor = color;
-                  _desktopLyricService.setStrokeColor(color.value);
+                  _desktopLyricService.setStrokeColor(color.toARGB32());
                 }
               });
             },
@@ -135,7 +135,7 @@ class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
 
     if (isFluent) {
       final fluentTheme = fluent_ui.FluentTheme.of(context);
-      
+
       return FluentSettingsGroup(
         title: '桌面歌词',
         children: [
@@ -290,7 +290,7 @@ class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
               ],
             ),
             const Divider(),
-            
+
             // 字体大小
             ListTile(
               leading: const Icon(Icons.format_size),
@@ -390,7 +390,7 @@ class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
                 _desktopLyricService.setMouseTransparent(value);
               },
             ),
-            
+
             // 纵向排列
             SwitchListTile(
               secondary: const Icon(Icons.swap_vert),
@@ -406,7 +406,7 @@ class _DesktopLyricSettingsState extends State<DesktopLyricSettings> {
             ),
 
             const SizedBox(height: 16),
-            
+
             // 测试按钮
             Center(
               child: ElevatedButton.icon(

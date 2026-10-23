@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../services/equalizer_service.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/cupertino.dart';
 import '../../services/player_service.dart';
@@ -9,17 +11,27 @@ class EqualizerContent extends StatefulWidget {
   final VoidCallback onBack;
   final bool embed;
 
-  const EqualizerContent({
-    super.key,
-    required this.onBack,
-    this.embed = false,
-  });
+  const EqualizerContent({super.key, required this.onBack, this.embed = false});
 
   @override
   State<EqualizerContent> createState() => _EqualizerContentState();
 }
 
 class _EqualizerContentState extends State<EqualizerContent> {
+  @override
+  void dispose() {
+    unawaited(EqualizerService().flushSettings());
+    super.dispose();
+  }
+
+  String _frequencyLabel(int frequency) {
+    if (frequency < 1000) return '$frequency';
+    final value = (frequency / 1000)
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'\.?0+$'), '');
+    return '${value}k';
+  }
+
   // 预设
   final Map<String, List<double>> _presets = {
     '默认': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -41,13 +53,51 @@ class _EqualizerContentState extends State<EqualizerContent> {
 
   @override
   Widget build(BuildContext context) {
+    final player = PlayerService();
+    return ListenableBuilder(
+      listenable: player,
+      builder: (context, _) {
+        final body = ThemeManager().isFluentFramework
+            ? _buildFluentBody()
+            : ThemeManager().isCupertinoFramework
+            ? _buildCupertinoBody()
+            : _buildMaterialBody();
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Wrap(
+                spacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(player.equalizerStatusText),
+                  if (player.canRetryEqualizer)
+                    _statusButton('重试', () => player.retryEqualizer()),
+                  if (!player.isEqualizerAvailable &&
+                      player.canConfigureEqualizer)
+                    _statusButton(
+                      player.equalizerEnabled ? '关闭' : '启用',
+                      () =>
+                          player.setEqualizerEnabled(!player.equalizerEnabled),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(child: body),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _statusButton(String text, VoidCallback action) {
     if (ThemeManager().isFluentFramework) {
-      return _buildFluentBody();
-    } else if (ThemeManager().isCupertinoFramework) {
-      return _buildCupertinoBody();
-    } else {
-      return _buildMaterialBody();
+      return fluent.Button(onPressed: action, child: Text(text));
     }
+    if (ThemeManager().isCupertinoFramework) {
+      return CupertinoButton(onPressed: action, child: Text(text));
+    }
+    return TextButton(onPressed: action, child: Text(text));
   }
 
   Widget _buildMaterialBody() {
@@ -57,26 +107,32 @@ class _EqualizerContentState extends State<EqualizerContent> {
     return ListenableBuilder(
       listenable: playerService,
       builder: (context, _) {
+        final available = playerService.isEqualizerAvailable;
         final gains = playerService.equalizerGains;
         final enabled = playerService.equalizerEnabled;
+        if (!available) return _buildMaterialUnavailable(cs);
 
         return Column(
           children: [
-            // 提示：均衡器目前仅支持mp3格式
+            // 提示：不同音源/格式效果可能有差异
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: cs.secondaryContainer.withOpacity(0.4),
+                color: cs.secondaryContainer.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline, size: 16, color: cs.onSecondaryContainer),
+                  Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: cs.onSecondaryContainer,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '均衡器目前仅支持mp3格式，暂时不支持无损音质和Hi-Res音质',
+                      '不同音源和编码格式的均衡器效果可能存在差异',
                       style: TextStyle(
                         color: cs.onSecondaryContainer,
                         fontSize: 12,
@@ -89,10 +145,18 @@ class _EqualizerContentState extends State<EqualizerContent> {
             // 启用开关（仅在嵌入模式下显示在列表中）
             if (widget.embed)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Row(
                   children: [
-                    const Expanded(child: Text('启用均衡器', style: TextStyle(fontWeight: FontWeight.bold))),
+                    const Expanded(
+                      child: Text(
+                        '启用均衡器',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
                     Switch(
                       value: enabled,
                       onChanged: (value) {
@@ -108,15 +172,21 @@ class _EqualizerContentState extends State<EqualizerContent> {
               height: 64,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 itemCount: _presets.length,
                 itemBuilder: (context, index) {
                   final name = _presets.keys.elementAt(index);
                   final presetGains = _presets[name]!;
+                  final mappedPreset = playerService.mapEqualizerPreset(
+                    presetGains,
+                  );
 
                   bool isSelected = true;
-                  for (int i = 0; i < 10; i++) {
-                    if ((gains[i] - presetGains[i]).abs() > 0.1) {
+                  for (int i = 0; i < gains.length; i++) {
+                    if ((gains[i] - mappedPreset[i]).abs() > 0.1) {
                       isSelected = false;
                       break;
                     }
@@ -130,7 +200,7 @@ class _EqualizerContentState extends State<EqualizerContent> {
                       onSelected: enabled
                           ? (selected) {
                               if (selected) {
-                                playerService.updateEqualizer(presetGains);
+                                playerService.applyEqualizerPreset(presetGains);
                               }
                             }
                           : null,
@@ -141,8 +211,12 @@ class _EqualizerContentState extends State<EqualizerContent> {
                       backgroundColor: cs.surfaceContainerHigh,
                       selectedColor: cs.primaryContainer,
                       labelStyle: TextStyle(
-                        color: isSelected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        color: isSelected
+                            ? cs.onPrimaryContainer
+                            : cs.onSurfaceVariant,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                       ),
                       showCheckmark: false,
                     ),
@@ -164,19 +238,21 @@ class _EqualizerContentState extends State<EqualizerContent> {
                   opacity: enabled ? 1.0 : 0.4,
                   child: AbsorbPointer(
                     absorbing: !enabled,
-                    child: LayoutBuilder(
+                    child: _EqualizerBandLayout(
+                      count: gains.length,
                       builder: (context, constraints) {
-                        final width = constraints.maxWidth / 10;
+                        final width = constraints.maxWidth / gains.length;
 
                         return Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: List.generate(10, (index) {
-                            final freq = PlayerService.kEqualizerFrequencies[index];
+                          children: List.generate(gains.length, (index) {
+                            final freq =
+                                playerService.equalizerFrequencies[index];
                             final gain = gains[index];
 
                             String freqLabel;
                             if (freq >= 1000) {
-                              freqLabel = '${freq ~/ 1000}k';
+                              freqLabel = _frequencyLabel(freq);
                             } else {
                               freqLabel = '$freq';
                             }
@@ -203,21 +279,29 @@ class _EqualizerContentState extends State<EqualizerContent> {
                                       child: SliderTheme(
                                         data: SliderTheme.of(context).copyWith(
                                           trackHeight: 24,
-                                          trackShape: const _SplitCapsuleSliderTrackShape(),
-                                          thumbShape: const _LineSliderThumbShape(),
-                                          overlayShape: SliderComponentShape.noOverlay,
+                                          trackShape:
+                                              const _SplitCapsuleSliderTrackShape(),
+                                          thumbShape:
+                                              const _LineSliderThumbShape(),
+                                          overlayShape:
+                                              SliderComponentShape.noOverlay,
                                           activeTrackColor: cs.primary,
-                                          inactiveTrackColor: cs.surfaceContainerHighest,
+                                          inactiveTrackColor:
+                                              cs.surfaceContainerHighest,
                                           thumbColor: cs.primary,
                                         ),
                                         child: Slider(
                                           value: gain,
-                                          min: -12.0,
-                                          max: 12.0,
+                                          min: playerService.equalizerMinGain,
+                                          max: playerService.equalizerMaxGain,
                                           onChanged: (value) {
-                                            final newGains = List<double>.from(gains);
+                                            final newGains = List<double>.from(
+                                              gains,
+                                            );
                                             newGains[index] = value;
-                                            playerService.updateEqualizer(newGains);
+                                            playerService.updateEqualizer(
+                                              newGains,
+                                            );
                                           },
                                         ),
                                       ),
@@ -269,10 +353,12 @@ class _EqualizerContentState extends State<EqualizerContent> {
     return ListenableBuilder(
       listenable: playerService,
       builder: (context, _) {
+        final available = playerService.isEqualizerAvailable;
         final gains = playerService.equalizerGains;
         final enabled = playerService.equalizerEnabled;
         final primaryColor = CupertinoTheme.of(context).primaryColor;
-        
+        if (!available) return _buildCupertinoUnavailable(context);
+
         return Material(
           type: MaterialType.transparency,
           child: Column(
@@ -280,10 +366,15 @@ class _EqualizerContentState extends State<EqualizerContent> {
               // 启用状态 (仅嵌入模式)
               if (widget.embed)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   child: Row(
                     children: [
-                      const Expanded(child: Text('启用均衡器', style: TextStyle(fontSize: 17))),
+                      const Expanded(
+                        child: Text('启用均衡器', style: TextStyle(fontSize: 17)),
+                      ),
                       CupertinoSwitch(
                         value: enabled,
                         onChanged: (value) {
@@ -304,13 +395,21 @@ class _EqualizerContentState extends State<EqualizerContent> {
                 ),
                 child: Row(
                   children: [
-                    Icon(CupertinoIcons.info, size: 16, color: CupertinoColors.label.resolveFrom(context).withOpacity(0.6)),
+                    Icon(
+                      CupertinoIcons.info,
+                      size: 16,
+                      color: CupertinoColors.label
+                          .resolveFrom(context)
+                          .withValues(alpha: 0.6),
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '均衡器目前仅支持mp3格式，暂时不支持无损音质和Hi-Res音质',
+                        '不同音源和编码格式的均衡器效果可能存在差异',
                         style: TextStyle(
-                          color: CupertinoColors.label.resolveFrom(context).withOpacity(0.6),
+                          color: CupertinoColors.label
+                              .resolveFrom(context)
+                              .withValues(alpha: 0.6),
                           fontSize: 12,
                         ),
                       ),
@@ -329,10 +428,13 @@ class _EqualizerContentState extends State<EqualizerContent> {
                   itemBuilder: (context, index) {
                     final name = _presets.keys.elementAt(index);
                     final presetGains = _presets[name]!;
-                    
+                    final mappedPreset = playerService.mapEqualizerPreset(
+                      presetGains,
+                    );
+
                     bool isSelected = true;
-                    for (int i = 0; i < 10; i++) {
-                      if ((gains[i] - presetGains[i]).abs() > 0.1) {
+                    for (int i = 0; i < gains.length; i++) {
+                      if ((gains[i] - mappedPreset[i]).abs() > 0.1) {
                         isSelected = false;
                         break;
                       }
@@ -341,22 +443,35 @@ class _EqualizerContentState extends State<EqualizerContent> {
                     return Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: GestureDetector(
-                        onTap: enabled ? () {
-                           playerService.updateEqualizer(presetGains);
-                        } : null,
+                        onTap: enabled
+                            ? () {
+                                playerService.applyEqualizerPreset(presetGains);
+                              }
+                            : null,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
-                            color: isSelected ? primaryColor : CupertinoColors.systemGrey5.resolveFrom(context),
+                            color: isSelected
+                                ? primaryColor
+                                : CupertinoColors.systemGrey5.resolveFrom(
+                                    context,
+                                  ),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           alignment: Alignment.center,
                           child: Text(
                             name,
                             style: TextStyle(
-                              color: isSelected ? CupertinoColors.white : CupertinoColors.label.resolveFrom(context),
+                              color: isSelected
+                                  ? CupertinoColors.white
+                                  : CupertinoColors.label.resolveFrom(context),
                               fontSize: 14,
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
                             ),
                           ),
                         ),
@@ -365,12 +480,12 @@ class _EqualizerContentState extends State<EqualizerContent> {
                   },
                 ),
               ),
-              
+
               const Padding(
-                 padding: EdgeInsets.symmetric(horizontal: 16),
-                 child: Divider(height: 1, color: CupertinoColors.systemGrey5),
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Divider(height: 1, color: CupertinoColors.systemGrey5),
               ),
-              
+
               // 均衡器推子区域
               Expanded(
                 child: Padding(
@@ -379,19 +494,21 @@ class _EqualizerContentState extends State<EqualizerContent> {
                     opacity: enabled ? 1.0 : 0.5,
                     child: AbsorbPointer(
                       absorbing: !enabled,
-                      child: LayoutBuilder(
+                      child: _EqualizerBandLayout(
+                        count: gains.length,
                         builder: (context, constraints) {
-                          final width = constraints.maxWidth / 10;
-                          
+                          final width = constraints.maxWidth / gains.length;
+
                           return Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: List.generate(10, (index) {
-                              final freq = PlayerService.kEqualizerFrequencies[index];
+                            children: List.generate(gains.length, (index) {
+                              final freq =
+                                  playerService.equalizerFrequencies[index];
                               final gain = gains[index];
-                              
+
                               String freqLabel;
                               if (freq >= 1000) {
-                                freqLabel = '${freq ~/ 1000}k';
+                                freqLabel = _frequencyLabel(freq);
                               } else {
                                 freqLabel = '$freq';
                               }
@@ -405,7 +522,9 @@ class _EqualizerContentState extends State<EqualizerContent> {
                                       '${gain > 0 ? "+" : ""}${gain.toStringAsFixed(1)}',
                                       style: TextStyle(
                                         fontSize: 10,
-                                        color: CupertinoColors.label.resolveFrom(context).withOpacity(0.6),
+                                        color: CupertinoColors.label
+                                            .resolveFrom(context)
+                                            .withValues(alpha: 0.6),
                                       ),
                                     ),
                                     const SizedBox(height: 8),
@@ -414,12 +533,16 @@ class _EqualizerContentState extends State<EqualizerContent> {
                                         quarterTurns: 3,
                                         child: CupertinoSlider(
                                           value: gain,
-                                          min: -12.0,
-                                          max: 12.0,
+                                          min: playerService.equalizerMinGain,
+                                          max: playerService.equalizerMaxGain,
                                           onChanged: (value) {
-                                            final newGains = List<double>.from(gains);
+                                            final newGains = List<double>.from(
+                                              gains,
+                                            );
                                             newGains[index] = value;
-                                            playerService.updateEqualizer(newGains);
+                                            playerService.updateEqualizer(
+                                              newGains,
+                                            );
                                           },
                                         ),
                                       ),
@@ -430,7 +553,9 @@ class _EqualizerContentState extends State<EqualizerContent> {
                                       style: TextStyle(
                                         fontSize: 10,
                                         fontWeight: FontWeight.w600,
-                                        color: CupertinoColors.label.resolveFrom(context).withOpacity(0.6),
+                                        color: CupertinoColors.label
+                                            .resolveFrom(context)
+                                            .withValues(alpha: 0.6),
                                       ),
                                     ),
                                   ],
@@ -444,12 +569,15 @@ class _EqualizerContentState extends State<EqualizerContent> {
                   ),
                 ),
               ),
-              
+
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Text(
                   '提示：调节过大可能会导致失真',
-                  style: TextStyle(color: CupertinoColors.secondaryLabel.resolveFrom(context), fontSize: 12),
+                  style: TextStyle(
+                    color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                    fontSize: 12,
+                  ),
                 ),
               ),
             ],
@@ -464,12 +592,16 @@ class _EqualizerContentState extends State<EqualizerContent> {
     return ListenableBuilder(
       listenable: playerService,
       builder: (context, _) {
+        final available = playerService.isEqualizerAvailable;
         final gains = playerService.equalizerGains;
         final enabled = playerService.equalizerEnabled;
         final theme = fluent.FluentTheme.of(context);
-        
+        if (!available) return _buildFluentUnavailable(context);
+
         return fluent.ListView(
-          padding: widget.embed ? const EdgeInsets.all(24) : const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: widget.embed
+              ? const EdgeInsets.all(24)
+              : const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           children: [
             // 启用开关
             fluent.Card(
@@ -481,8 +613,14 @@ class _EqualizerContentState extends State<EqualizerContent> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('均衡器', style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('自定义音频频率响应', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        Text(
+                          '均衡器',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '自定义音频频率响应',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
                       ],
                     ),
                   ),
@@ -502,7 +640,7 @@ class _EqualizerContentState extends State<EqualizerContent> {
             // 提示信息
             fluent.InfoBar(
               title: const Text('提示'),
-              content: const Text('均衡器目前仅支持 mp3 格式，暂时不支持无损音质和 Hi-Res 音质。'),
+              content: const Text('不同音源和编码格式的均衡器效果可能存在差异。'),
               severity: fluent.InfoBarSeverity.info,
               isIconVisible: true,
             ),
@@ -513,9 +651,12 @@ class _EqualizerContentState extends State<EqualizerContent> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                   const Text('预设选项', style: TextStyle(fontWeight: FontWeight.bold)),
-                   const SizedBox(height: 8),
-                   fluent.ComboBox<String>(
+                  const Text(
+                    '预设选项',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  fluent.ComboBox<String>(
                     placeholder: const Text('选择预设'),
                     isExpanded: true,
                     value: _getCurrentPresetName(gains),
@@ -525,11 +666,15 @@ class _EqualizerContentState extends State<EqualizerContent> {
                         child: Text(name),
                       );
                     }).toList(),
-                    onChanged: enabled ? (name) {
-                      if (name != null) {
-                        playerService.updateEqualizer(_presets[name]!);
-                      }
-                    } : null,
+                    onChanged: enabled
+                        ? (name) {
+                            if (name != null) {
+                              playerService.applyEqualizerPreset(
+                                _presets[name]!,
+                              );
+                            }
+                          }
+                        : null,
                   ),
                 ],
               ),
@@ -544,15 +689,19 @@ class _EqualizerContentState extends State<EqualizerContent> {
                   opacity: enabled ? 1.0 : 0.5,
                   child: AbsorbPointer(
                     absorbing: !enabled,
-                    child: LayoutBuilder(
+                    child: _EqualizerBandLayout(
+                      count: gains.length,
                       builder: (context, constraints) {
-                        final width = constraints.maxWidth / 10;
+                        final width = constraints.maxWidth / gains.length;
                         return Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: List.generate(10, (index) {
-                            final freq = PlayerService.kEqualizerFrequencies[index];
+                          children: List.generate(gains.length, (index) {
+                            final freq =
+                                playerService.equalizerFrequencies[index];
                             final gain = gains[index];
-                            String freqLabel = freq >= 1000 ? '${freq ~/ 1000}k' : '$freq';
+                            String freqLabel = freq >= 1000
+                                ? _frequencyLabel(freq)
+                                : '$freq';
 
                             return SizedBox(
                               width: width,
@@ -560,7 +709,10 @@ class _EqualizerContentState extends State<EqualizerContent> {
                                 children: [
                                   Text(
                                     '${gain > 0 ? "+" : ""}${gain.toStringAsFixed(1)}',
-                                    style: TextStyle(fontSize: 10, color: theme.accentColor),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: theme.accentColor,
+                                    ),
                                   ),
                                   const SizedBox(height: 8),
                                   Expanded(
@@ -568,12 +720,16 @@ class _EqualizerContentState extends State<EqualizerContent> {
                                       quarterTurns: 3,
                                       child: fluent.Slider(
                                         value: gain,
-                                        min: -12.0,
-                                        max: 12.0,
+                                        min: playerService.equalizerMinGain,
+                                        max: playerService.equalizerMaxGain,
                                         onChanged: (value) {
-                                          final newGains = List<double>.from(gains);
+                                          final newGains = List<double>.from(
+                                            gains,
+                                          );
                                           newGains[index] = value;
-                                          playerService.updateEqualizer(newGains);
+                                          playerService.updateEqualizer(
+                                            newGains,
+                                          );
                                         },
                                       ),
                                     ),
@@ -581,7 +737,10 @@ class _EqualizerContentState extends State<EqualizerContent> {
                                   const SizedBox(height: 8),
                                   Text(
                                     freqLabel,
-                                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -607,11 +766,60 @@ class _EqualizerContentState extends State<EqualizerContent> {
     );
   }
 
+  Widget _buildMaterialUnavailable(ColorScheme cs) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          '设备频段就绪后可调节音效',
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCupertinoUnavailable(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          '设备频段就绪后可调节音效',
+          style: TextStyle(
+            color: CupertinoColors.secondaryLabel.resolveFrom(context),
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFluentUnavailable(BuildContext context) {
+    return fluent.ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      children: const [
+        fluent.InfoBar(
+          title: Text('均衡器不可用'),
+          content: Text('设备频段就绪后可调节音效。'),
+          severity: fluent.InfoBarSeverity.warning,
+          isIconVisible: true,
+        ),
+      ],
+    );
+  }
+
   String? _getCurrentPresetName(List<double> gains) {
     for (var entry in _presets.entries) {
+      final mapped = PlayerService().mapEqualizerPreset(entry.value);
       bool matched = true;
-      for (int i = 0; i < 10; i++) {
-        if ((gains[i] - entry.value[i]).abs() > 0.1) {
+      for (int i = 0; i < gains.length; i++) {
+        if ((gains[i] - mapped[i]).abs() > 0.1) {
           matched = false;
           break;
         }
@@ -622,6 +830,31 @@ class _EqualizerContentState extends State<EqualizerContent> {
   }
 }
 
+// Preserve usable slider targets on narrow screens and devices with many bands.
+class _EqualizerBandLayout extends StatelessWidget {
+  const _EqualizerBandLayout({required this.count, required this.builder});
+  final int count;
+  final LayoutWidgetBuilder builder;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final minimumWidth = count * MediaQuery.textScalerOf(context).scale(48);
+      if (constraints.maxWidth >= minimumWidth) {
+        return builder(context, constraints);
+      }
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: minimumWidth,
+          height: constraints.maxHeight,
+          child: LayoutBuilder(builder: builder),
+        ),
+      );
+    },
+  );
+}
+
 class EqualizerPage extends StatelessWidget {
   const EqualizerPage({super.key});
 
@@ -629,19 +862,23 @@ class EqualizerPage extends StatelessWidget {
   Widget build(BuildContext context) {
     if (ThemeManager().isFluentFramework) {
       return fluent.ScaffoldPage(
-        header: fluent.PageHeader(
-          title: const Text('均衡器'),
-        ),
+        header: fluent.PageHeader(title: const Text('均衡器')),
         content: EqualizerContent(onBack: () => Navigator.pop(context)),
       );
     } else if (ThemeManager().isCupertinoFramework) {
       return CupertinoPageScaffold(
         navigationBar: CupertinoNavigationBar(
           middle: const Text('均衡器'),
-          trailing: CupertinoSwitch(
-            value: PlayerService().equalizerEnabled,
-            onChanged: (value) {
-              PlayerService().setEqualizerEnabled(value);
+          trailing: ListenableBuilder(
+            listenable: PlayerService(),
+            builder: (context, _) {
+              final player = PlayerService();
+              return CupertinoSwitch(
+                value: player.equalizerEnabled,
+                onChanged: player.canConfigureEqualizer
+                    ? (value) => player.setEqualizerEnabled(value)
+                    : null,
+              );
             },
           ),
         ),
@@ -654,18 +891,27 @@ class EqualizerPage extends StatelessWidget {
       return Scaffold(
         backgroundColor: colorScheme.surfaceContainerLow,
         appBar: AppBar(
-          title: const Text('均衡器', style: TextStyle(fontWeight: FontWeight.bold)),
+          title: const Text(
+            '均衡器',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
           backgroundColor: colorScheme.surfaceContainerLow,
           surfaceTintColor: Colors.transparent,
           actions: [
-            Transform.scale(
-              scale: 0.8,
-              child: Switch(
-                value: PlayerService().equalizerEnabled,
-                onChanged: (value) {
-                  PlayerService().setEqualizerEnabled(value);
-                },
-              ),
+            ListenableBuilder(
+              listenable: PlayerService(),
+              builder: (context, _) {
+                final player = PlayerService();
+                return Transform.scale(
+                  scale: 0.8,
+                  child: Switch(
+                    value: player.equalizerEnabled,
+                    onChanged: player.canConfigureEqualizer
+                        ? (value) => player.setEqualizerEnabled(value)
+                        : null,
+                  ),
+                );
+              },
             ),
             const SizedBox(width: 8),
           ],
@@ -677,7 +923,8 @@ class EqualizerPage extends StatelessWidget {
 }
 
 // 保持原有的 Custom Painter 类
-class _SplitCapsuleSliderTrackShape extends SliderTrackShape with BaseSliderTrackShape {
+class _SplitCapsuleSliderTrackShape extends SliderTrackShape
+    with BaseSliderTrackShape {
   const _SplitCapsuleSliderTrackShape();
 
   @override
@@ -694,7 +941,9 @@ class _SplitCapsuleSliderTrackShape extends SliderTrackShape with BaseSliderTrac
     bool isEnabled = false,
     double additionalActiveTrackHeight = 0,
   }) {
-    if (sliderTheme.trackHeight == null || sliderTheme.trackHeight! <= 0) return;
+    if (sliderTheme.trackHeight == null || sliderTheme.trackHeight! <= 0) {
+      return;
+    }
 
     final ColorTween activeTrackColorTween = ColorTween(
       begin: sliderTheme.disabledActiveTrackColor,
@@ -725,7 +974,7 @@ class _SplitCapsuleSliderTrackShape extends SliderTrackShape with BaseSliderTrac
       thumbCenter.dx - gapHeight,
       trackRect.bottom,
     );
-    
+
     if (leftTrackRect.width > 0) {
       context.canvas.drawRRect(
         RRect.fromLTRBAndCorners(
@@ -748,7 +997,7 @@ class _SplitCapsuleSliderTrackShape extends SliderTrackShape with BaseSliderTrac
       trackRect.right,
       trackRect.bottom,
     );
-    
+
     if (rightTrackRect.width > 0) {
       context.canvas.drawRRect(
         RRect.fromLTRBAndCorners(
@@ -789,7 +1038,7 @@ class _LineSliderThumbShape extends SliderComponentShape {
     required Size sizeWithOverflow,
   }) {
     final Canvas canvas = context.canvas;
-    
+
     final Paint paint = Paint()
       ..color = sliderTheme.thumbColor ?? Colors.blue
       ..style = PaintingStyle.fill;
@@ -800,7 +1049,7 @@ class _LineSliderThumbShape extends SliderComponentShape {
       Rect.fromCenter(center: center, width: currentWidth, height: 28.0),
       Radius.circular(currentWidth / 2),
     );
-    
+
     canvas.drawRRect(line, paint);
   }
 }

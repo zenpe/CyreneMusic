@@ -20,8 +20,10 @@ class MusicWidget : AppWidgetProvider() {
     ) {
         for (appWidgetId in appWidgetIds) {
             val widgetData = HomeWidgetPlugin.getData(context)
-            val title = widgetData.getString("title", "Not Playing")
-            val artist = widgetData.getString("artist", "Cyrene Music")
+            val rawTitle = widgetData.getString("title", "未在播放")
+            val title = if (rawTitle == "Not Playing" || rawTitle.isNullOrEmpty()) "未在播放" else rawTitle
+            val rawArtist = widgetData.getString("artist", "Cyrene Music")
+            val artist = if (rawArtist.isNullOrEmpty()) "Cyrene Music" else rawArtist
             val isPlaying = widgetData.getBoolean("isPlaying", false)
             val albumArtPath = widgetData.getString("albumArtPath", "")
             val artVersion = widgetData.getLong("art_version", 0L)
@@ -41,12 +43,14 @@ class MusicWidget : AppWidgetProvider() {
                 } else {
                     setViewVisibility(R.id.enabled_layout, View.GONE)
                     setViewVisibility(R.id.disabled_layout, View.VISIBLE)
-                    // 当禁用时，使用 title 作为提示文字显示在居中的文本框中
-                    setTextViewText(R.id.widget_disabled_text, title)
+                    setTextViewText(R.id.widget_disabled_text, context.getString(R.string.widget_enable_instructions))
                 }
 
                 // 播放/暂停图标
-                setImageViewResource(R.id.widget_play_pause, if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
+                setImageViewResource(
+                    R.id.widget_play_pause,
+                    if (isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play
+                )
 
                 // 专辑封面处理 (优化：使用 artVersion 识别内容变化)
                 if (albumArtPath?.isNotEmpty() == true) {
@@ -66,16 +70,16 @@ class MusicWidget : AppWidgetProvider() {
                                 lastArtVersion = artVersion
                                 setImageViewBitmap(R.id.widget_album_art, roundedBitmap)
                             } else {
-                                setImageViewResource(R.id.widget_album_art, R.drawable.ic_notification)
+                                setImageViewResource(R.id.widget_album_art, R.drawable.ic_widget_note)
                             }
                         } else {
-                            setImageViewResource(R.id.widget_album_art, R.drawable.ic_notification)
+                            setImageViewResource(R.id.widget_album_art, R.drawable.ic_widget_note)
                         }
                     }
                 } else {
                     lastArtVersion = -1L
                     lastBitmap = null
-                    setImageViewResource(R.id.widget_album_art, R.drawable.ic_notification)
+                    setImageViewResource(R.id.widget_album_art, R.drawable.ic_widget_note)
                 }
 
                 // 按钮点击事件 (使用 AudioService 的 MediaButtonReceiver 处理)
@@ -102,9 +106,11 @@ class MusicWidget : AppWidgetProvider() {
                 }
                 setOnClickPendingIntent(R.id.widget_next, PendingIntent.getBroadcast(context, 103, nextIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                 
-                // 点击整个小部件打开应用
+                // 点击整个小部件或封面打开应用
                 val appOpenIntent = Intent(context, MainActivity::class.java)
                 setOnClickPendingIntent(R.id.widget_album_art, PendingIntent.getActivity(context, 104, appOpenIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                setOnClickPendingIntent(R.id.info_layout, PendingIntent.getActivity(context, 105, appOpenIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                setOnClickPendingIntent(R.id.disabled_layout, PendingIntent.getActivity(context, 106, appOpenIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
             }
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }

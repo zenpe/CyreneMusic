@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../services/player_service.dart';
 import '../../services/playback_mode_service.dart';
 import '../../services/sleep_timer_service.dart';
@@ -6,6 +7,7 @@ import '../../services/download_service.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/wavy_split_progress_bar.dart';
+import '../../widgets/playback_switch_ring.dart';
 
 /// 移动端播放器控制区域组件
 /// 包含进度条、播放控制按钮等（不包含音量控制，改为控制中心按钮）
@@ -33,22 +35,25 @@ class MobilePlayerControls extends StatelessWidget {
         final horizontalPadding = (screenWidth * 0.05).clamp(16.0, 24.0);
         final verticalPadding = (screenHeight * 0.015).clamp(12.0, 16.0);
         final itemSpacing = (screenHeight * 0.015).clamp(12.0, 20.0);
-        
+
         return Container(
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: verticalPadding,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               // 进度条
               _buildProgressBar(),
-              
+
               SizedBox(height: itemSpacing),
-              
+
               // 第一行：播放模式、上一首、播放/暂停、下一首、播放列表
               _buildMainControlRow(),
-              
+
               SizedBox(height: itemSpacing * 0.8),
-              
+
               // 第二行：添加到歌单、睡眠定时器、音量控制、下载
               _buildSecondaryControlRow(),
             ],
@@ -58,36 +63,36 @@ class MobilePlayerControls extends StatelessWidget {
     );
   }
 
-
   /// 构建进度条
   Widget _buildProgressBar() {
+    final player = PlayerService();
     return AnimatedBuilder(
-      animation: PlayerService(),
+      animation: player,
       builder: (context, child) {
-        final player = PlayerService();
-        final position = player.position;
         final duration = player.duration;
-        
-        return ValueListenableBuilder<List<Map<String, int>>?>(
-          valueListenable: player.chorusTimesNotifier,
-          builder: (context, chorusTimes, child) {
+        final isPlaying = player.isPlaying;
+
+        return ValueListenableBuilder<Duration>(
+          valueListenable: player.positionNotifier,
+          builder: (context, position, _) {
             return Column(
               children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12.0),
                   child: WavySplitProgressBar(
                     value: duration.inMilliseconds > 0
-                        ? (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0)
+                        ? (position.inMilliseconds / duration.inMilliseconds)
+                              .clamp(0.0, 1.0)
                         : 0.0,
-                    isPlaying: player.isPlaying,
-                    onChanged: (value) {
-                      final seekTo = duration.inMilliseconds * value;
-                      player.seek(Duration(milliseconds: seekTo.toInt()));
-                    },
+                    isPlaying: isPlaying,
+                    onChanged: player.viewState.canSeek
+                        ? (value) {
+                            final seekTo = duration.inMilliseconds * value;
+                            player.seek(Duration(milliseconds: seekTo.toInt()));
+                          }
+                        : null,
                     activeColor: Colors.white,
-                    inactiveColor: Colors.white.withOpacity(0.2),
-                    chorusTimes: chorusTimes,
-                    durationMs: duration.inMilliseconds.toDouble(),
+                    inactiveColor: Colors.white.withValues(alpha: 0.2),
                   ),
                 ),
                 Padding(
@@ -98,14 +103,14 @@ class MobilePlayerControls extends StatelessWidget {
                       Text(
                         _formatDuration(position),
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 12,
                         ),
                       ),
                       Text(
                         _formatDuration(duration),
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 12,
                         ),
                       ),
@@ -131,12 +136,14 @@ class MobilePlayerControls extends StatelessWidget {
         final skipIconSize = (availableWidth * 0.09).clamp(36.0, 48.0);
         final playButtonSize = (availableWidth * 0.15).clamp(56.0, 72.0);
         final playIconSize = (availableWidth * 0.08).clamp(32.0, 40.0);
-        
+
         return AnimatedBuilder(
           animation: PlayerService(),
           builder: (context, child) {
             final player = PlayerService();
-            
+            final showInitialLoading =
+                player.currentTrack == null && player.isLoading;
+
             return Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -148,6 +155,9 @@ class MobilePlayerControls extends StatelessWidget {
                     IconData icon;
                     switch (mode) {
                       case PlaybackMode.sequential:
+                        icon = Icons.arrow_forward_rounded;
+                        break;
+                      case PlaybackMode.loopAll:
                         icon = Icons.repeat_rounded;
                         break;
                       case PlaybackMode.repeatOne:
@@ -157,15 +167,18 @@ class MobilePlayerControls extends StatelessWidget {
                         icon = Icons.shuffle_rounded;
                         break;
                     }
-                    
+
                     return IconButton(
                       icon: Icon(icon, color: Colors.white),
                       iconSize: sideIconSize,
                       onPressed: () {
+                        HapticFeedback.selectionClick();
                         PlaybackModeService().toggleMode();
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('播放模式: ${PlaybackModeService().getModeName()}'),
+                            content: Text(
+                              '播放模式: ${PlaybackModeService().getModeName()}',
+                            ),
                             duration: const Duration(seconds: 1),
                           ),
                         );
@@ -174,9 +187,9 @@ class MobilePlayerControls extends StatelessWidget {
                     );
                   },
                 ),
-                
+
                 SizedBox(width: buttonSpacing),
-                
+
                 // 上一首
                 IconButton(
                   icon: Icon(
@@ -184,52 +197,70 @@ class MobilePlayerControls extends StatelessWidget {
                     color: player.hasPrevious ? Colors.white : Colors.white38,
                   ),
                   iconSize: skipIconSize,
-                  onPressed: player.hasPrevious ? () => player.playPrevious() : null,
+                  onPressed: player.hasPrevious
+                      ? () {
+                          HapticFeedback.lightImpact();
+                          player.playPrevious();
+                        }
+                      : null,
                   tooltip: '上一首',
                 ),
-                
+
                 SizedBox(width: buttonSpacing),
-                
+
                 // 播放/暂停
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  width: playButtonSize,
-                  height: playButtonSize,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(
-                      player.isPlaying ? 16 : playButtonSize / 2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.3),
-                        blurRadius: 12,
-                        spreadRadius: 2,
+                PlaybackSwitchRing(
+                  isVisible:
+                      !showInitialLoading &&
+                      (player.viewState.isSwitching || player.isBuffering),
+                  color: Colors.black54,
+                  strokeWidth: 2,
+                  inset: 2,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    width: playButtonSize,
+                    height: playButtonSize,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(
+                        player.isPlaying ? 16 : playButtonSize / 2,
                       ),
-                    ],
-                  ),
-                  child: player.isLoading
-                      ? Padding(
-                          padding: EdgeInsets.all(playButtonSize * 0.28),
-                          child: const CircularProgressIndicator(
-                            strokeWidth: 3,
-                            color: Colors.black87,
-                          ),
-                        )
-                      : IconButton(
-                          icon: Icon(
-                            player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                            color: Colors.black87,
-                          ),
-                          iconSize: playIconSize,
-                          onPressed: () => player.togglePlayPause(),
-                          tooltip: player.isPlaying ? '暂停' : '播放',
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          blurRadius: 12,
+                          spreadRadius: 2,
                         ),
+                      ],
+                    ),
+                    child: showInitialLoading
+                        ? Padding(
+                            padding: EdgeInsets.all(playButtonSize * 0.28),
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 3,
+                              color: Colors.black87,
+                            ),
+                          )
+                        : IconButton(
+                            icon: Icon(
+                              player.isPlaying
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                              color: Colors.black87,
+                            ),
+                            iconSize: playIconSize,
+                            onPressed: () {
+                              HapticFeedback.lightImpact();
+                              player.togglePlayPause();
+                            },
+                            tooltip: player.isPlaying ? '暂停' : '播放',
+                          ),
+                  ),
                 ),
-                
+
                 SizedBox(width: buttonSpacing),
-                
+
                 // 下一首
                 IconButton(
                   icon: Icon(
@@ -237,15 +268,23 @@ class MobilePlayerControls extends StatelessWidget {
                     color: player.hasNext ? Colors.white : Colors.white38,
                   ),
                   iconSize: skipIconSize,
-                  onPressed: player.hasNext ? () => player.playNext() : null,
+                  onPressed: player.hasNext
+                      ? () {
+                          HapticFeedback.lightImpact();
+                          player.playNext();
+                        }
+                      : null,
                   tooltip: '下一首',
                 ),
-                
+
                 SizedBox(width: buttonSpacing),
-                
+
                 // 播放列表
                 IconButton(
-                  icon: const Icon(Icons.queue_music_rounded, color: Colors.white),
+                  icon: const Icon(
+                    Icons.queue_music_rounded,
+                    color: Colors.white,
+                  ),
                   iconSize: sideIconSize,
                   onPressed: onPlaylistPressed,
                   tooltip: '播放列表',
@@ -266,11 +305,11 @@ class MobilePlayerControls extends StatelessWidget {
         final player = PlayerService();
         final track = player.currentTrack;
         final song = player.currentSong;
-        
+
         if (track == null) {
           return const SizedBox.shrink();
         }
-        
+
         return Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -281,16 +320,16 @@ class MobilePlayerControls extends StatelessWidget {
               onPressed: () => onAddToPlaylistPressed(track),
               tooltip: '添加到歌单',
             ),
-            
+
             const SizedBox(width: 32),
-            
+
             // 睡眠定时器
             AnimatedBuilder(
               animation: SleepTimerService(),
               builder: (context, child) {
                 final timer = SleepTimerService();
                 final isActive = timer.isActive;
-                
+
                 return IconButton(
                   icon: Icon(
                     isActive ? Icons.schedule : Icons.schedule_outlined,
@@ -298,34 +337,39 @@ class MobilePlayerControls extends StatelessWidget {
                   ),
                   iconSize: 28,
                   onPressed: onSleepTimerPressed,
-                  tooltip: isActive ? '定时停止: ${timer.remainingTimeString}' : '睡眠定时器',
+                  tooltip: isActive
+                      ? '定时停止: ${timer.remainingTimeString}'
+                      : '睡眠定时器',
                 );
               },
             ),
-            
+
             const SizedBox(width: 32),
-            
+
             // 音量控制（控制中心）
             _buildVolumeButton(),
-            
+
             const SizedBox(width: 32),
-            
+
             // 下载
             if (song != null)
               AnimatedBuilder(
                 animation: DownloadService(),
                 builder: (context, child) {
                   final downloadService = DownloadService();
-                  final trackId = '${track.source.name}_${track.id}';
-                  final isDownloading = downloadService.downloadTasks.containsKey(trackId);
-                  
+                  final isDownloading = downloadService.isDownloading(track);
+
                   return IconButton(
                     icon: Icon(
-                      isDownloading ? Icons.downloading_rounded : Icons.download_rounded,
+                      isDownloading
+                          ? Icons.downloading_rounded
+                          : Icons.download_rounded,
                       color: Colors.white,
                     ),
                     iconSize: 28,
-                    onPressed: isDownloading ? null : () => _handleDownload(context, track, song),
+                    onPressed: isDownloading
+                        ? null
+                        : () => _handleDownload(context, track, song),
                     tooltip: isDownloading ? '下载中...' : '下载',
                   );
                 },
@@ -337,11 +381,15 @@ class MobilePlayerControls extends StatelessWidget {
   }
 
   /// 处理下载
-  Future<void> _handleDownload(BuildContext context, Track track, SongDetail song) async {
+  Future<void> _handleDownload(
+    BuildContext context,
+    Track track,
+    SongDetail song,
+  ) async {
     try {
       // 检查是否已下载
       final isDownloaded = await DownloadService().isDownloaded(track);
-      
+
       if (isDownloaded) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -353,10 +401,10 @@ class MobilePlayerControls extends StatelessWidget {
         }
         return;
       }
-      
+
       // 开始下载
       final success = await DownloadService().downloadSong(track, song);
-      
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -384,14 +432,14 @@ class MobilePlayerControls extends StatelessWidget {
       builder: (context, child) {
         final player = PlayerService();
         final volume = player.volume;
-        
+
         return IconButton(
           icon: Icon(
-            volume == 0 
-                ? Icons.volume_off_rounded 
-                : volume < 0.5 
-                    ? Icons.volume_down_rounded 
-                    : Icons.volume_up_rounded,
+            volume == 0
+                ? Icons.volume_off_rounded
+                : volume < 0.5
+                ? Icons.volume_down_rounded
+                : Icons.volume_up_rounded,
             color: Colors.white,
           ),
           iconSize: 28,

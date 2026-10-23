@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -170,39 +171,39 @@ class LyricFontService extends ChangeNotifier {
   static List<PresetFont> get platformFonts {
     // 系统默认字体始终在最前
     final List<PresetFont> result = [presetFonts.first];
-    
+
     if (Platform.isWindows) {
       // Windows 平台：Windows 字体 + 通用字体
-      result.addAll(presetFonts.where((f) => 
-        f.id.startsWith('microsoft') || 
-        f.id == 'simhei' || f.id == 'simsun' || 
-        f.id == 'kaiti' || f.id == 'fangsong' || 
+      result.addAll(presetFonts.where((f) =>
+        f.id.startsWith('microsoft') ||
+        f.id == 'simhei' || f.id == 'simsun' ||
+        f.id == 'kaiti' || f.id == 'fangsong' ||
         f.id == 'dengxian' ||
-        f.id == 'arial' || f.id == 'times_new_roman' || 
+        f.id == 'arial' || f.id == 'times_new_roman' ||
         f.id == 'georgia' || f.id == 'consolas'
       ));
     } else if (Platform.isAndroid) {
       // Android 平台：Android 字体 + 通用字体
-      result.addAll(presetFonts.where((f) => 
+      result.addAll(presetFonts.where((f) =>
         f.id == 'noto_sans_sc' || f.id == 'roboto' ||
         f.id == 'sans_serif' || f.id == 'serif' || f.id == 'monospace' ||
         f.id == 'arial' || f.id == 'georgia'
       ));
     } else if (Platform.isIOS || Platform.isMacOS) {
       // iOS/macOS 平台：iOS 字体 + 通用字体
-      result.addAll(presetFonts.where((f) => 
+      result.addAll(presetFonts.where((f) =>
         f.id == 'pingfang_sc' || f.id == 'sf_pro' ||
         f.id == 'heiti_sc' || f.id == 'songti_sc' || f.id == 'stkaiti' ||
         f.id == 'arial' || f.id == 'times_new_roman' || f.id == 'georgia'
       ));
     } else {
       // 其他平台：通用字体
-      result.addAll(presetFonts.where((f) => 
-        f.id == 'arial' || f.id == 'times_new_roman' || 
+      result.addAll(presetFonts.where((f) =>
+        f.id == 'arial' || f.id == 'times_new_roman' ||
         f.id == 'georgia' || f.id == 'consolas'
       ));
     }
-    
+
     return result;
   }
 
@@ -230,7 +231,7 @@ class LyricFontService extends ChangeNotifier {
     if (_fontType == 'custom' && _customFontFamily != null && _isCustomFontLoaded) {
       return _customFontFamily;
     }
-    
+
     final preset = presetFonts.firstWhere(
       (f) => f.id == _presetFontId,
       orElse: () => presetFonts.first,
@@ -244,7 +245,7 @@ class LyricFontService extends ChangeNotifier {
       final fileName = _customFontPath!.split(Platform.pathSeparator).last;
       return '自定义: $fileName';
     }
-    
+
     final preset = presetFonts.firstWhere(
       (f) => f.id == _presetFontId,
       orElse: () => presetFonts.first,
@@ -255,7 +256,7 @@ class LyricFontService extends ChangeNotifier {
   /// 初始化服务
   Future<void> initialize() async {
     await _loadSettings();
-    
+
     // 如果有自定义字体，尝试加载
     if (_fontType == 'custom' && _customFontPath != null) {
       await _loadCustomFont(_customFontPath!);
@@ -266,16 +267,16 @@ class LyricFontService extends ChangeNotifier {
   Future<void> _loadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       _fontType = prefs.getString(_keyFontType) ?? 'preset';
       _presetFontId = prefs.getString(_keyPresetFontId) ?? 'microsoft_yahei';
       _customFontPath = prefs.getString(_keyCustomFontPath);
       _customFontFamily = prefs.getString(_keyCustomFontFamily);
-      
-      print('✅ [LyricFontService] 加载设置成功: fontType=$_fontType, presetFontId=$_presetFontId');
+
+      StructuredLogService.log('✅ [LyricFontService] 加载设置成功: fontType=$_fontType, presetFontId=$_presetFontId');
       notifyListeners();
     } catch (e) {
-      print('❌ [LyricFontService] 加载设置失败: $e');
+      StructuredLogService.log('❌ [LyricFontService] 加载设置失败: $e');
     }
   }
 
@@ -283,44 +284,44 @@ class LyricFontService extends ChangeNotifier {
   Future<void> _saveSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       await prefs.setString(_keyFontType, _fontType);
       await prefs.setString(_keyPresetFontId, _presetFontId);
-      
+
       if (_customFontPath != null) {
         await prefs.setString(_keyCustomFontPath, _customFontPath!);
       } else {
         await prefs.remove(_keyCustomFontPath);
       }
-      
+
       if (_customFontFamily != null) {
         await prefs.setString(_keyCustomFontFamily, _customFontFamily!);
       } else {
         await prefs.remove(_keyCustomFontFamily);
       }
-      
-      print('✅ [LyricFontService] 保存设置成功');
+
+      StructuredLogService.log('✅ [LyricFontService] 保存设置成功');
     } catch (e) {
-      print('❌ [LyricFontService] 保存设置失败: $e');
+      StructuredLogService.log('❌ [LyricFontService] 保存设置失败: $e');
     }
   }
 
   /// 设置预设字体
   Future<void> setPresetFont(String fontId) async {
     if (!presetFonts.any((f) => f.id == fontId)) {
-      print('❌ [LyricFontService] 无效的预设字体 ID: $fontId');
+      StructuredLogService.log('❌ [LyricFontService] 无效的预设字体 ID: $fontId');
       return;
     }
-    
+
     _fontType = 'preset';
     _presetFontId = fontId;
     _isCustomFontLoaded = false;
-    
+
     await _saveSettings();
     notifyListeners();
-    
+
     final font = presetFonts.firstWhere((f) => f.id == fontId);
-    print('✅ [LyricFontService] 已设置预设字体: ${font.name}');
+    StructuredLogService.log('✅ [LyricFontService] 已设置预设字体: ${font.name}');
   }
 
   /// 选择并加载自定义字体
@@ -331,21 +332,21 @@ class LyricFontService extends ChangeNotifier {
         allowedExtensions: ['ttf', 'otf', 'ttc'],
         dialogTitle: '选择字体文件',
       );
-      
+
       if (result == null || result.files.isEmpty) {
-        print('⚠️ [LyricFontService] 用户取消选择字体');
+        StructuredLogService.log('⚠️ [LyricFontService] 用户取消选择字体');
         return false;
       }
-      
+
       final filePath = result.files.first.path;
       if (filePath == null) {
-        print('❌ [LyricFontService] 无法获取文件路径');
+        StructuredLogService.log('❌ [LyricFontService] 无法获取文件路径');
         return false;
       }
-      
+
       return await loadCustomFont(filePath);
     } catch (e) {
-      print('❌ [LyricFontService] 选择字体文件失败: $e');
+      StructuredLogService.log('❌ [LyricFontService] 选择字体文件失败: $e');
       return false;
     }
   }
@@ -354,17 +355,17 @@ class LyricFontService extends ChangeNotifier {
   Future<bool> loadCustomFont(String fontPath) async {
     try {
       final success = await _loadCustomFont(fontPath);
-      
+
       if (success) {
         _fontType = 'custom';
         _customFontPath = fontPath;
         await _saveSettings();
         notifyListeners();
       }
-      
+
       return success;
     } catch (e) {
-      print('❌ [LyricFontService] 加载自定义字体失败: $e');
+      StructuredLogService.log('❌ [LyricFontService] 加载自定义字体失败: $e');
       return false;
     }
   }
@@ -374,29 +375,29 @@ class LyricFontService extends ChangeNotifier {
     try {
       final file = File(fontPath);
       if (!await file.exists()) {
-        print('❌ [LyricFontService] 字体文件不存在: $fontPath');
+        StructuredLogService.log('❌ [LyricFontService] 字体文件不存在: $fontPath');
         return false;
       }
-      
+
       final bytes = await file.readAsBytes();
       final fontData = ByteData.view(bytes.buffer);
-      
+
       // 生成唯一的字体 family 名称
       final fileName = fontPath.split(Platform.pathSeparator).last;
       final fontFamily = 'CustomLyricFont_${fileName.hashCode.abs()}';
-      
+
       // 使用 FontLoader 加载字体
       final fontLoader = FontLoader(fontFamily);
       fontLoader.addFont(Future.value(fontData));
       await fontLoader.load();
-      
+
       _customFontFamily = fontFamily;
       _isCustomFontLoaded = true;
-      
-      print('✅ [LyricFontService] 自定义字体加载成功: $fontFamily');
+
+      StructuredLogService.log('✅ [LyricFontService] 自定义字体加载成功: $fontFamily');
       return true;
     } catch (e) {
-      print('❌ [LyricFontService] 加载自定义字体失败: $e');
+      StructuredLogService.log('❌ [LyricFontService] 加载自定义字体失败: $e');
       _isCustomFontLoaded = false;
       return false;
     }
@@ -408,11 +409,11 @@ class LyricFontService extends ChangeNotifier {
     _customFontPath = null;
     _customFontFamily = null;
     _isCustomFontLoaded = false;
-    
+
     await _saveSettings();
     notifyListeners();
-    
-    print('✅ [LyricFontService] 已清除自定义字体');
+
+    StructuredLogService.log('✅ [LyricFontService] 已清除自定义字体');
   }
 
   /// 获取预设字体信息

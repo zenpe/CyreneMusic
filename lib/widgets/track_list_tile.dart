@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../features/auth/auth_feature.dart';
 import '../models/track.dart';
 import '../services/player_service.dart';
-import '../services/auth_service.dart';
 import '../pages/auth/auth_page.dart';
+import '../utils/image_utils.dart';
+import 'track_action_menu.dart';
 
 /// 歌曲列表项组件
 class TrackListTile extends StatefulWidget {
@@ -12,14 +14,26 @@ class TrackListTile extends StatefulWidget {
   final VoidCallback? onTap;
   final bool showIndex;
   final void Function(ImageProvider provider)? onCoverReady;
+  final double coverSize;
+  final Widget? trailing;
+  final bool showMoreButton;
+  final VoidCallback? onPlay;
+  final VoidCallback? onDelete;
+  final bool isPlaying;
 
   const TrackListTile({
     super.key,
     required this.track,
     this.index,
     this.onTap,
-    this.showIndex = true, // 默认显示索引
+    this.showIndex = true,
     this.onCoverReady,
+    this.coverSize = 50.0,
+    this.trailing,
+    this.showMoreButton = false,
+    this.onPlay,
+    this.onDelete,
+    this.isPlaying = false,
   });
 
   @override
@@ -27,6 +41,7 @@ class TrackListTile extends StatefulWidget {
 }
 
 class _TrackListTileState extends State<TrackListTile> {
+  final AuthFacade _authFacade = AuthFacade();
   bool _reportedCover = false;
 
   @override
@@ -40,7 +55,7 @@ class _TrackListTileState extends State<TrackListTile> {
   /// 检查登录状态，如果未登录则跳转到登录页面
   /// 返回 true 表示已登录或登录成功，返回 false 表示未登录或取消登录
   Future<bool> _checkLoginStatus() async {
-    if (AuthService().isLoggedIn) {
+    if (_authFacade.isLoggedIn) {
       return true;
     }
 
@@ -72,9 +87,9 @@ class _TrackListTileState extends State<TrackListTile> {
     if (shouldLogin == true && mounted) {
       // 跳转到登录页面
       final result = await showAuthDialog(context);
-      
+
       // 返回登录是否成功
-      return result == true && AuthService().isLoggedIn;
+      return result == true && _authFacade.isLoggedIn;
     }
 
     return false;
@@ -83,7 +98,7 @@ class _TrackListTileState extends State<TrackListTile> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: Row(
@@ -110,6 +125,9 @@ class _TrackListTileState extends State<TrackListTile> {
             borderRadius: BorderRadius.circular(6),
             child: CachedNetworkImage(
               imageUrl: widget.track.picUrl,
+              httpHeaders: getImageHeaders(widget.track.picUrl),
+              memCacheWidth: 128,
+              memCacheHeight: 128,
               imageBuilder: (context, imageProvider) {
                 if (!_reportedCover) {
                   widget.onCoverReady?.call(imageProvider);
@@ -117,14 +135,14 @@ class _TrackListTileState extends State<TrackListTile> {
                 }
                 return Image(
                   image: imageProvider,
-                  width: 50,
-                  height: 50,
+                  width: widget.coverSize,
+                  height: widget.coverSize,
                   fit: BoxFit.cover,
                 );
               },
               placeholder: (context, url) => Container(
-                width: 50,
-                height: 50,
+                width: widget.coverSize,
+                height: widget.coverSize,
                 color: colorScheme.surfaceContainerHighest,
                 child: const Center(
                   child: SizedBox(
@@ -135,8 +153,8 @@ class _TrackListTileState extends State<TrackListTile> {
                 ),
               ),
               errorWidget: (context, url, error) => Container(
-                width: 50,
-                height: 50,
+                width: widget.coverSize,
+                height: widget.coverSize,
                 color: colorScheme.surfaceContainerHighest,
                 child: Icon(
                   Icons.music_note,
@@ -152,7 +170,8 @@ class _TrackListTileState extends State<TrackListTile> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-          fontWeight: FontWeight.w500,
+          fontWeight: widget.isPlaying ? FontWeight.bold : FontWeight.w500,
+          color: widget.isPlaying ? colorScheme.primary : null,
         ),
       ),
       subtitle: Row(
@@ -175,18 +194,28 @@ class _TrackListTileState extends State<TrackListTile> {
           ),
         ],
       ),
-      trailing: Icon(
-        Icons.play_circle_outline,
-        color: colorScheme.primary,
-      ),
+      trailing: widget.trailing ??
+          (widget.showMoreButton
+              ? TrackMoreButton(
+                  track: widget.track,
+                  onPlay: widget.onPlay ?? widget.onTap,
+                  onDelete: widget.onDelete,
+                )
+              : Icon(
+                  Icons.play_circle_outline,
+                  color: colorScheme.primary,
+                )),
       onTap: widget.onTap ?? () async {
         // 检查登录状态
         final isLoggedIn = await _checkLoginStatus();
-        if (isLoggedIn && mounted) {
+        if (isLoggedIn && context.mounted) {
           // 预取封面 Provider，供播放器复用，避免再次请求
           ImageProvider? provider;
           if (widget.track.picUrl.isNotEmpty) {
-            provider = CachedNetworkImageProvider(widget.track.picUrl);
+            provider = CachedNetworkImageProvider(
+              widget.track.picUrl,
+              headers: getImageHeaders(widget.track.picUrl),
+            );
           }
           PlayerService().playTrack(widget.track, coverProvider: provider);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -200,4 +229,3 @@ class _TrackListTileState extends State<TrackListTile> {
     );
   }
 }
-

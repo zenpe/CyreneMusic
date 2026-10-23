@@ -10,7 +10,7 @@ import '../../services/player_background_service.dart';
 import '../../services/window_background_service.dart';
 import '../../services/lyric_style_service.dart';
 import '../../services/lyric_font_service.dart';
-import '../../services/auth_service.dart';
+import '../../services/experience_profile_service.dart';
 import '../../widgets/custom_color_picker_dialog.dart';
 import '../../widgets/fluent_settings_card.dart';
 import '../../widgets/cupertino/cupertino_settings_widgets.dart';
@@ -22,9 +22,9 @@ import '../../widgets/material/material_settings_widgets.dart';
 class AppearanceSettingsContent extends StatefulWidget {
   final VoidCallback onBack;
   final bool embed;
-  
+
   const AppearanceSettingsContent({
-    super.key, 
+    super.key,
     required this.onBack,
     this.embed = false,
   });
@@ -33,7 +33,7 @@ class AppearanceSettingsContent extends StatefulWidget {
   Widget buildFluentBreadcrumb(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
     final typography = theme.typography;
-    
+
     // Windows 11 设置页面的面包屑样式：
     // - 无返回按钮
     // - 父级页面文字颜色较浅，可点击
@@ -63,41 +63,41 @@ class AppearanceSettingsContent extends StatefulWidget {
           ),
         ),
         // 当前页面：外观（正常颜色）
-        Text(
-          '外观',
-          style: typography.title,
-        ),
+        Text('外观', style: typography.title),
       ],
     );
   }
 
   @override
-  State<AppearanceSettingsContent> createState() => _AppearanceSettingsContentState();
+  State<AppearanceSettingsContent> createState() =>
+      _AppearanceSettingsContentState();
 }
 
 class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
   @override
   Widget build(BuildContext context) {
     final isFluentUI = ThemeManager().isDesktopFluentUI;
-    final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
-    
+    final isCupertinoUI =
+        (Platform.isIOS || Platform.isAndroid) &&
+        ThemeManager().isCupertinoFramework;
+
     if (isFluentUI) {
       return _buildFluentUI(context);
     }
-    
+
     if (isCupertinoUI) {
       return _buildCupertinoUI(context);
     }
-    
+
     return _buildMaterialUI(context);
   }
 
   /// 构建 Material UI 版本
   Widget _buildMaterialUI(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     final content = ListView(
-      padding: const EdgeInsets.only(top: 8, bottom: 24),
+      padding: const EdgeInsets.only(top: 8, bottom: 120),
       children: [
         // 主题模式
         MD3SettingsSection(
@@ -119,7 +119,10 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
               subtitle: _getFollowSystemColorSubtitle(),
               value: ThemeManager().followSystemColor,
               onChanged: (value) async {
-                await ThemeManager().setFollowSystemColor(value, context: context);
+                await ThemeManager().setFollowSystemColor(
+                  value,
+                  context: context,
+                );
                 setState(() {});
               },
             ),
@@ -128,16 +131,20 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
               title: '主题色',
               subtitle: _getCurrentThemeColorName(),
               trailing: ThemeManager().followSystemColor
-                  ? Icon(Icons.lock_outline, size: 18, color: Theme.of(context).disabledColor)
+                  ? Icon(
+                      Icons.lock_outline,
+                      size: 18,
+                      color: Theme.of(context).disabledColor,
+                    )
                   : const Icon(Icons.chevron_right),
-              onTap: ThemeManager().followSystemColor 
+              onTap: ThemeManager().followSystemColor
                   ? null
                   : () => _showThemeColorPicker(),
               enabled: !ThemeManager().followSystemColor,
             ),
           ],
         ),
-        
+
         // 播放器设置
         MD3SettingsSection(
           title: '播放器',
@@ -145,9 +152,18 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
             MD3SettingsTile(
               leading: const Icon(Icons.style_outlined),
               title: '全屏播放器样式',
-              subtitle: LyricStyleService().getStyleDescription(LyricStyleService().currentStyle),
+              subtitle: LyricStyleService().getStyleDescription(
+                LyricStyleService().currentStyle,
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showPlayerStyleDialog(),
+            ),
+            MD3SettingsTile(
+              leading: const Icon(Icons.directions_car_outlined),
+              title: '使用场景',
+              subtitle: _getExperienceProfileSubtitle(),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showExperienceProfileDialog(),
             ),
             MD3SettingsTile(
               leading: const Icon(Icons.font_download_outlined),
@@ -159,7 +175,8 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
             MD3SettingsTile(
               leading: const Icon(Icons.wallpaper_outlined),
               title: '播放器背景',
-              subtitle: '${PlayerBackgroundService().getBackgroundTypeName()} - ${PlayerBackgroundService().getBackgroundTypeDescription()}',
+              subtitle:
+                  '${PlayerBackgroundService().getBackgroundTypeName()} - ${PlayerBackgroundService().getBackgroundTypeDescription()}',
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showPlayerBackgroundDialog(),
             ),
@@ -172,7 +189,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
             ),
           ],
         ),
-        
+
         // 移动端专属设置
         if (Platform.isAndroid || Platform.isIOS)
           MD3SettingsSection(
@@ -187,7 +204,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
               ),
             ],
           ),
-        
+
         // 桌面端专属设置
         if (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
           MD3SettingsSection(
@@ -223,7 +240,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
     if (widget.embed) {
       return content;
     }
-    
+
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
@@ -236,32 +253,14 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
     );
   }
 
-  Widget _buildMaterialSection(BuildContext context, {required String title, required List<Widget> children}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8, left: 4),
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        Card(
-          child: Column(children: children),
-        ),
-      ],
-    );
-  }
 
   /// 构建 Cupertino UI 版本
   Widget _buildCupertinoUI(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = isDark ? CupertinoColors.black : CupertinoColors.systemGroupedBackground;
-    
+    final backgroundColor = isDark
+        ? CupertinoColors.black
+        : CupertinoColors.systemGroupedBackground;
+
     final content = CupertinoScrollbar(
       child: ListView(
         children: [
@@ -283,7 +282,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
               ),
             ],
           ),
-          
+
           // 播放器设置
           CupertinoSettingsSection(
             header: '播放器',
@@ -292,9 +291,19 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                 icon: CupertinoIcons.music_note,
                 iconColor: CupertinoColors.systemPink,
                 title: '全屏播放器样式',
-                subtitle: LyricStyleService().getStyleDescription(LyricStyleService().currentStyle),
+                subtitle: LyricStyleService().getStyleDescription(
+                  LyricStyleService().currentStyle,
+                ),
                 showChevron: true,
                 onTap: () => _showCupertinoPlayerStyleDialog(),
+              ),
+              CupertinoSettingsTile(
+                icon: CupertinoIcons.car_detailed,
+                iconColor: CupertinoColors.systemBlue,
+                title: '使用场景',
+                subtitle: _getExperienceProfileSubtitle(),
+                showChevron: true,
+                onTap: () => _showCupertinoExperienceProfileDialog(),
               ),
               CupertinoSettingsTile(
                 icon: CupertinoIcons.textformat,
@@ -314,7 +323,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
               ),
             ],
           ),
-          
+
           // 界面风格设置
           CupertinoSettingsSection(
             header: '界面风格',
@@ -334,16 +343,13 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
     );
 
     if (widget.embed) {
-      return Container(
-        color: backgroundColor,
-        child: content,
-      );
+      return Container(color: backgroundColor, child: content);
     }
-    
+
     return CupertinoPageScaffold(
       backgroundColor: backgroundColor,
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: backgroundColor.withOpacity(0.8),
+        backgroundColor: backgroundColor.withValues(alpha: 0.8),
         border: null,
         leading: CupertinoButton(
           padding: EdgeInsets.zero,
@@ -352,116 +358,31 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
         ),
         middle: const Text('外观'),
       ),
-      child: SafeArea(
-        child: content,
-      ),
+      child: SafeArea(child: content),
     );
   }
 
-  void _showCupertinoThemeColorPicker() {
-    showCupertinoModalPopup<void>(
-      context: context,
-      builder: (context) => Container(
-        height: 400,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: CupertinoTheme.of(context).barBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: CupertinoColors.systemGrey,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const Text(
-                '选择主题色',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 5,
-                    childAspectRatio: 1,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                  ),
-                  itemCount: ThemeColors.presets.length,
-                  itemBuilder: (context, index) {
-                    final colorScheme = ThemeColors.presets[index];
-                    final isSelected = ThemeManager().seedColor.value == colorScheme.color.value;
-                    
-                    return GestureDetector(
-                      onTap: () {
-                        ThemeManager().setSeedColor(colorScheme.color);
-                        Navigator.pop(context);
-                        setState(() {});
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: colorScheme.color,
-                          shape: BoxShape.circle,
-                          border: isSelected 
-                              ? Border.all(color: CupertinoColors.white, width: 3)
-                              : null,
-                          boxShadow: isSelected ? [
-                            BoxShadow(
-                              color: colorScheme.color.withOpacity(0.5),
-                              blurRadius: 8,
-                              spreadRadius: 2,
-                            ),
-                          ] : null,
-                        ),
-                        child: isSelected 
-                            ? const Icon(CupertinoIcons.checkmark, color: CupertinoColors.white, size: 24)
-                            : null,
-                      ),
-                    );
-                  },
-                ),
-              ),
-              CupertinoButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _showCustomColorPicker();
-                },
-                child: const Text('自定义颜色'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   void _showCupertinoPlayerStyleDialog() {
     showCupertinoModalPopup<void>(
       context: context,
       builder: (context) => CupertinoActionSheet(
         title: const Text('选择全屏播放器样式'),
-        actions: LyricStyle.values.where((style) => style != LyricStyle.defaultStyle).map((style) {
-          final isSelected = LyricStyleService().currentStyle == style;
-          return CupertinoActionSheetAction(
-            isDefaultAction: isSelected,
-            onPressed: () {
-              LyricStyleService().setStyle(style);
-              Navigator.pop(context);
-              setState(() {});
-            },
-            child: Text(LyricStyleService().getStyleName(style)),
-          );
-        }).toList(),
+        actions: LyricStyle.values
+            .where((style) => style != LyricStyle.defaultStyle)
+            .map((style) {
+              final isSelected = LyricStyleService().currentStyle == style;
+              return CupertinoActionSheetAction(
+                isDefaultAction: isSelected,
+                onPressed: () {
+                  LyricStyleService().setStyle(style);
+                  Navigator.pop(context);
+                  setState(() {});
+                },
+                child: Text(LyricStyleService().getStyleName(style)),
+              );
+            })
+            .toList(),
         cancelButton: CupertinoActionSheetAction(
           isDestructiveAction: true,
           onPressed: () => Navigator.pop(context),
@@ -536,7 +457,10 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                       fluent_ui.ToggleSwitch(
                         checked: ThemeManager().followSystemColor,
                         onChanged: (value) async {
-                          await ThemeManager().setFollowSystemColor(value, context: context);
+                          await ThemeManager().setFollowSystemColor(
+                            value,
+                            context: context,
+                          );
                           if (mounted) setState(() {});
                         },
                       ),
@@ -558,9 +482,13 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                                   color: ThemeManager().seedColor,
                                   borderRadius: BorderRadius.circular(4),
                                   border: Border.all(
-                                    color: (fluent_ui.FluentTheme.of(context).brightness == Brightness.light)
-                                        ? Colors.black.withOpacity(0.12)
-                                        : Colors.white.withOpacity(0.18),
+                                    color:
+                                        (fluent_ui.FluentTheme.of(
+                                              context,
+                                            ).brightness ==
+                                            Brightness.light)
+                                        ? Colors.black.withValues(alpha: 0.12)
+                                        : Colors.white.withValues(alpha: 0.18),
                                   ),
                                 ),
                               ),
@@ -579,7 +507,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
         ],
       ),
       const SizedBox(height: 16),
-      
+
       // 播放器设置
       FluentSettingsGroup(
         title: '播放器',
@@ -587,22 +515,46 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
           FluentSettingsTile(
             icon: fluent_ui.FluentIcons.music_note,
             title: '全屏播放器样式',
-            subtitle: LyricStyleService().getStyleDescription(LyricStyleService().currentStyle),
+            subtitle: LyricStyleService().getStyleDescription(
+              LyricStyleService().currentStyle,
+            ),
             trailing: SizedBox(
               width: 200,
               child: fluent_ui.ComboBox<LyricStyle>(
                 value: LyricStyleService().currentStyle,
-                items: LyricStyle.values.where((style) => style != LyricStyle.defaultStyle).map((style) {
-                  return fluent_ui.ComboBoxItem<LyricStyle>(
-                    value: style,
-                    child: Text(LyricStyleService().getStyleName(style)),
-                  );
-                }).toList(),
+                items: LyricStyle.values
+                    .where((style) => style != LyricStyle.defaultStyle)
+                    .map((style) {
+                      return fluent_ui.ComboBoxItem<LyricStyle>(
+                        value: style,
+                        child: Text(LyricStyleService().getStyleName(style)),
+                      );
+                    })
+                    .toList(),
                 onChanged: (style) {
                   if (style != null) {
                     LyricStyleService().setStyle(style);
                     if (mounted) setState(() {});
                   }
+                },
+              ),
+            ),
+          ),
+          FluentSettingsTile(
+            icon: fluent_ui.FluentIcons.car,
+            title: '使用场景',
+            subtitle: _getExperienceProfileSubtitle(),
+            trailing: SizedBox(
+              width: 200,
+              child: fluent_ui.ComboBox<String>(
+                value: _experienceProfileChoice(),
+                items: const [
+                  fluent_ui.ComboBoxItem(value: 'automatic', child: Text('自动')),
+                  fluent_ui.ComboBoxItem(value: 'tablet', child: Text('平板')),
+                  fluent_ui.ComboBoxItem(value: 'car', child: Text('车机')),
+                ],
+                onChanged: (value) {
+                  if (value != null) _setExperienceProfileChoice(value);
                 },
               ),
             ),
@@ -617,13 +569,14 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
           FluentSettingsTile(
             icon: fluent_ui.FluentIcons.picture_library,
             title: '播放器背景',
-            subtitle: '${PlayerBackgroundService().getBackgroundTypeName()} - ${PlayerBackgroundService().getBackgroundTypeDescription()}',
+            subtitle:
+                '${PlayerBackgroundService().getBackgroundTypeName()} - ${PlayerBackgroundService().getBackgroundTypeDescription()}',
             trailing: const Icon(fluent_ui.FluentIcons.chevron_right, size: 12),
             onTap: () => _showPlayerBackgroundDialog(),
           ),
           FluentSettingsTile(
             icon: fluent_ui.FluentIcons.photo_collection,
-            title: '窗口背景${(AuthService().currentUser?.isSponsor ?? false) ? '' : ' 🎁'}',
+            title: '窗口背景',
             subtitle: _getWindowBackgroundSubtitle(),
             trailing: const Icon(fluent_ui.FluentIcons.chevron_right, size: 12),
             onTap: () => _showWindowBackgroundDialog(),
@@ -631,7 +584,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
         ],
       ),
       const SizedBox(height: 16),
-      
+
       // 桌面端设置
       if (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
         FluentSettingsGroup(
@@ -641,7 +594,10 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
               icon: fluent_ui.FluentIcons.design,
               title: '桌面主题样式',
               subtitle: _getThemeFrameworkSubtitle(),
-              trailing: const Icon(fluent_ui.FluentIcons.chevron_right, size: 12),
+              trailing: const Icon(
+                fluent_ui.FluentIcons.chevron_right,
+                size: 12,
+              ),
               onTap: () => _showThemeFrameworkDialog(),
             ),
             // 窗口材质（目前仅 Windows 支持）
@@ -653,13 +609,19 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                 trailing: SizedBox(
                   width: 200,
                   child: fluent_ui.ComboBox<WindowEffect>(
-                    value: ThemeManager().themeMode == ThemeMode.system // 这里原本逻辑可能有误，应直接取 windowEffect，但先保持原样仅放开平台
-                        ? ThemeManager().windowEffect 
+                    value:
+                        ThemeManager().themeMode ==
+                            ThemeMode
+                                .system // 这里原本逻辑可能有误，应直接取 windowEffect，但先保持原样仅放开平台
+                        ? ThemeManager().windowEffect
                         : ThemeManager().windowEffect,
                     items: [
-                      const fluent_ui.ComboBoxItem(value: WindowEffect.disabled, child: Text('默认')),
+                      const fluent_ui.ComboBoxItem(
+                        value: WindowEffect.disabled,
+                        child: Text('默认'),
+                      ),
                       fluent_ui.ComboBoxItem(
-                        value: WindowEffect.mica, 
+                        value: WindowEffect.mica,
                         enabled: ThemeManager().isMicaSupported,
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -671,15 +633,23 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                                 '(需要 Win11)',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: fluent_ui.FluentTheme.of(context).resources.textFillColorDisabled,
+                                  color: fluent_ui.FluentTheme.of(
+                                    context,
+                                  ).resources.textFillColorDisabled,
                                 ),
                               ),
                             ],
                           ],
                         ),
                       ),
-                      const fluent_ui.ComboBoxItem(value: WindowEffect.acrylic, child: Text('亚克力')),
-                      const fluent_ui.ComboBoxItem(value: WindowEffect.transparent, child: Text('透明')),
+                      const fluent_ui.ComboBoxItem(
+                        value: WindowEffect.acrylic,
+                        child: Text('亚克力'),
+                      ),
+                      const fluent_ui.ComboBoxItem(
+                        value: WindowEffect.transparent,
+                        child: Text('透明'),
+                      ),
                     ],
                     onChanged: (effect) async {
                       if (effect != null) {
@@ -695,7 +665,10 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
               icon: fluent_ui.FluentIcons.view_all,
               title: '布局模式',
               subtitle: LayoutPreferenceService().getLayoutDescription(),
-              trailing: const Icon(fluent_ui.FluentIcons.chevron_right, size: 12),
+              trailing: const Icon(
+                fluent_ui.FluentIcons.chevron_right,
+                size: 12,
+              ),
               onTap: () => _showLayoutModeDialog(),
             ),
           ],
@@ -768,30 +741,24 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
         return 'Material Design 3（默认）';
       case MobileThemeFramework.cupertino:
         return 'Cupertino（iOS 风格）';
-      case MobileThemeFramework.oculus:
-        return 'Oculus（现代简约风格）';
     }
   }
 
   String _getWindowBackgroundSubtitle() {
     final service = WindowBackgroundService();
-    final isSponsor = AuthService().currentUser?.isSponsor ?? false;
-    
-    if (!isSponsor) {
-      return '赞助用户可设置自定义窗口背景图片';
-    }
-    
+
     if (!service.enabled) {
       return '未启用';
     }
-    
-    if (service.hasValidImage) {
-      return '已启用 - 模糊度: ${service.blurAmount.toStringAsFixed(0)}';
+
+    if (service.hasValidMedia) {
+      final mediaType = service.isVideo ? '视频' : '图片';
+      return '已启用$mediaType - 模糊度: ${service.blurAmount.toStringAsFixed(0)}';
     }
-    
-    return '已启用但未设置图片';
+
+    return '已启用但未设置背景';
   }
-  
+
   String _windowEffectLabel(WindowEffect effect) {
     switch (effect) {
       case WindowEffect.disabled:
@@ -816,10 +783,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
       builder: (context) => fluent_ui.ContentDialog(
         title: const Text('选择主题色'),
         content: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: 420,
-            maxHeight: 480,
-          ),
+          constraints: const BoxConstraints(maxWidth: 420, maxHeight: 480),
           child: Material(
             type: MaterialType.transparency,
             child: SingleChildScrollView(
@@ -901,7 +865,10 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
               Expanded(
                 child: SingleChildScrollView(
                   controller: scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 8,
+                  ),
                   child: _ThemeColorGrid(
                     onColorSelected: () {
                       Navigator.pop(context);
@@ -1008,54 +975,57 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
 
   void _showLayoutModeDialog() {
     final isFluentUI = ThemeManager().isDesktopFluentUI;
-    
+
     if (isFluentUI) {
       fluent_ui.showDialog(
         context: context,
         builder: (context) => fluent_ui.ContentDialog(
           title: const Text('选择布局模式'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              fluent_ui.RadioButton(
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('桌面模式'),
-                    Text(
-                      '侧边导航栏，横屏宽屏布局 (1320x880)',
-                      style: fluent_ui.FluentTheme.of(context).typography.caption,
-                    ),
-                  ],
+          content: fluent_ui.RadioGroup<LayoutMode>(
+            groupValue: LayoutPreferenceService().layoutMode,
+            onChanged: (value) {
+              if (value == null) return;
+              LayoutPreferenceService().setLayoutMode(value);
+              Navigator.pop(context);
+              setState(() {});
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                fluent_ui.RadioButton<LayoutMode>(
+                  value: LayoutMode.desktop,
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('桌面模式'),
+                      Text(
+                        '侧边导航栏，横屏宽屏布局 (1320x880)',
+                        style: fluent_ui.FluentTheme.of(
+                          context,
+                        ).typography.caption,
+                      ),
+                    ],
+                  ),
                 ),
-                checked: LayoutPreferenceService().layoutMode == LayoutMode.desktop,
-                onChanged: (v) {
-                  LayoutPreferenceService().setLayoutMode(LayoutMode.desktop);
-                  Navigator.pop(context);
-                  setState(() {});
-                },
-              ),
-              const SizedBox(height: 8),
-              fluent_ui.RadioButton(
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('移动模式'),
-                    Text(
-                      '底部导航栏，竖屏手机布局 (400x850)',
-                      style: fluent_ui.FluentTheme.of(context).typography.caption,
-                    ),
-                  ],
+                const SizedBox(height: 8),
+                fluent_ui.RadioButton<LayoutMode>(
+                  value: LayoutMode.mobile,
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('移动模式'),
+                      Text(
+                        '底部导航栏，竖屏手机布局 (400x850)',
+                        style: fluent_ui.FluentTheme.of(
+                          context,
+                        ).typography.caption,
+                      ),
+                    ],
+                  ),
                 ),
-                checked: LayoutPreferenceService().layoutMode == LayoutMode.mobile,
-                onChanged: (v) {
-                  LayoutPreferenceService().setLayoutMode(LayoutMode.mobile);
-                  Navigator.pop(context);
-                  setState(() {});
-                },
-              ),
-            ],
+              ],
+            ),
           ),
           actions: [
             fluent_ui.Button(
@@ -1073,29 +1043,33 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              RadioListTile<LayoutMode>(
-                title: const Text('桌面模式'),
-                subtitle: const Text('侧边导航栏，横屏宽屏布局'),
-                secondary: const Icon(Icons.desktop_windows),
-                value: LayoutMode.desktop,
+              RadioGroup<LayoutMode>(
                 groupValue: LayoutPreferenceService().layoutMode,
                 onChanged: (value) {
                   LayoutPreferenceService().setLayoutMode(value!);
                   Navigator.pop(context);
                   setState(() {});
                 },
+                child: RadioListTile<LayoutMode>(
+                  title: const Text('桌面模式'),
+                  subtitle: const Text('侧边导航栏，横屏宽屏布局'),
+                  secondary: const Icon(Icons.desktop_windows),
+                  value: LayoutMode.desktop,
+                ),
               ),
-              RadioListTile<LayoutMode>(
-                title: const Text('移动模式'),
-                subtitle: const Text('底部导航栏，竖屏手机布局'),
-                secondary: const Icon(Icons.smartphone),
-                value: LayoutMode.mobile,
+              RadioGroup<LayoutMode>(
                 groupValue: LayoutPreferenceService().layoutMode,
                 onChanged: (value) {
                   LayoutPreferenceService().setLayoutMode(value!);
                   Navigator.pop(context);
                   setState(() {});
                 },
+                child: RadioListTile<LayoutMode>(
+                  title: const Text('移动模式'),
+                  subtitle: const Text('底部导航栏，竖屏手机布局'),
+                  secondary: const Icon(Icons.smartphone),
+                  value: LayoutMode.mobile,
+                ),
               ),
             ],
           ),
@@ -1117,21 +1091,28 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
         title: const Text('选择全屏播放器样式'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: LyricStyle.values.where((style) => style != LyricStyle.defaultStyle).map((style) {
-            return RadioListTile<LyricStyle>(
-              title: Text(LyricStyleService().getStyleName(style)),
-              subtitle: Text(LyricStyleService().getStyleDescription(style)),
-              value: style,
-              groupValue: LyricStyleService().currentStyle,
-              onChanged: (value) {
-                if (value != null) {
-                  LyricStyleService().setStyle(value);
-                  Navigator.pop(context);
-                  setState(() {});
-                }
-              },
-            );
-          }).toList(),
+          children: LyricStyle.values
+              .where((style) => style != LyricStyle.defaultStyle)
+              .map((style) {
+                return RadioGroup<LyricStyle>(
+                  groupValue: LyricStyleService().currentStyle,
+                  onChanged: (value) {
+                    if (value != null) {
+                      LyricStyleService().setStyle(value);
+                      Navigator.pop(context);
+                      setState(() {});
+                    }
+                  },
+                  child: RadioListTile<LyricStyle>(
+                    title: Text(LyricStyleService().getStyleName(style)),
+                    subtitle: Text(
+                      LyricStyleService().getStyleDescription(style),
+                    ),
+                    value: style,
+                  ),
+                );
+              })
+              .toList(),
         ),
         actions: [
           TextButton(
@@ -1143,10 +1124,99 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
     );
   }
 
+  String _experienceProfileChoice() {
+    return switch (ExperienceProfileService().explicitProfile) {
+      ExperienceProfile.tablet => 'tablet',
+      ExperienceProfile.car => 'car',
+      _ => 'automatic',
+    };
+  }
+
+  String _getExperienceProfileSubtitle() {
+    return switch (_experienceProfileChoice()) {
+      'tablet' => '平板：完整大屏视觉效果',
+      'car' => '车机：大控件、常驻主控与减弱动效',
+      _ => '自动：根据屏幕尺寸选择',
+    };
+  }
+
+  Future<void> _setExperienceProfileChoice(String choice) async {
+    await ExperienceProfileService().setProfile(switch (choice) {
+      'tablet' => ExperienceProfile.tablet,
+      'car' => ExperienceProfile.car,
+      _ => null,
+    });
+    if (mounted) setState(() {});
+  }
+
+  void _showExperienceProfileDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('选择使用场景'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final option in const [
+              ('automatic', '自动', '根据屏幕尺寸选择布局'),
+              ('tablet', '平板', '保留完整大屏视觉效果'),
+              ('car', '车机', '大控件、常驻主控与减弱动效'),
+            ])
+              ListTile(
+                title: Text(option.$2),
+                subtitle: Text(option.$3),
+                trailing: _experienceProfileChoice() == option.$1
+                    ? Icon(
+                        Icons.check_circle,
+                        color: Theme.of(context).colorScheme.primary,
+                      )
+                    : null,
+                onTap: () {
+                  Navigator.pop(dialogContext);
+                  _setExperienceProfileChoice(option.$1);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCupertinoExperienceProfileDialog() {
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (sheetContext) => CupertinoActionSheet(
+        title: const Text('选择使用场景'),
+        message: const Text('车机模式会使用更大的控件并减少动态效果'),
+        actions: [
+          for (final option in const [
+            ('automatic', '自动'),
+            ('tablet', '平板'),
+            ('car', '车机'),
+          ])
+            CupertinoActionSheetAction(
+              isDefaultAction: _experienceProfileChoice() == option.$1,
+              onPressed: () {
+                Navigator.pop(sheetContext);
+                _setExperienceProfileChoice(option.$1);
+              },
+              child: Text(option.$2),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(sheetContext),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+  }
+
   void _showPlayerBackgroundDialog() {
     final isFluentUI = ThemeManager().isDesktopFluentUI;
-    final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
-    
+    final isCupertinoUI =
+        (Platform.isIOS || Platform.isAndroid) &&
+        ThemeManager().isCupertinoFramework;
+
     if (isCupertinoUI) {
       showCupertinoDialog(
         context: context,
@@ -1190,7 +1260,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
 
   void _showMobileThemeFrameworkDialog() {
     final isCupertino = ThemeManager().isCupertinoFramework;
-    
+
     if (isCupertino) {
       // Cupertino 风格的底部弹窗
       showCupertinoModalPopup<void>(
@@ -1200,31 +1270,30 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
           message: const Text('切换后界面将自动刷新'),
           actions: [
             CupertinoActionSheetAction(
-              isDefaultAction: ThemeManager().mobileThemeFramework == MobileThemeFramework.material,
+              isDefaultAction:
+                  ThemeManager().mobileThemeFramework ==
+                  MobileThemeFramework.material,
               onPressed: () {
-                ThemeManager().setMobileThemeFramework(MobileThemeFramework.material);
+                ThemeManager().setMobileThemeFramework(
+                  MobileThemeFramework.material,
+                );
                 Navigator.pop(context);
                 setState(() {});
               },
               child: const Text('Material Design 3'),
             ),
             CupertinoActionSheetAction(
-              isDefaultAction: ThemeManager().mobileThemeFramework == MobileThemeFramework.cupertino,
+              isDefaultAction:
+                  ThemeManager().mobileThemeFramework ==
+                  MobileThemeFramework.cupertino,
               onPressed: () {
-                ThemeManager().setMobileThemeFramework(MobileThemeFramework.cupertino);
+                ThemeManager().setMobileThemeFramework(
+                  MobileThemeFramework.cupertino,
+                );
                 Navigator.pop(context);
                 setState(() {});
               },
               child: const Text('Cupertino（iOS 风格）'),
-            ),
-            CupertinoActionSheetAction(
-              isDefaultAction: ThemeManager().mobileThemeFramework == MobileThemeFramework.oculus,
-              onPressed: () {
-                ThemeManager().setMobileThemeFramework(MobileThemeFramework.oculus);
-                Navigator.pop(context);
-                setState(() {});
-              },
-              child: const Text('Oculus（现代简约风格）'),
             ),
           ],
           cancelButton: CupertinoActionSheetAction(
@@ -1243,11 +1312,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              RadioListTile<MobileThemeFramework>(
-                title: const Text('Material Design 3'),
-                subtitle: const Text('Android 原生设计风格'),
-                secondary: const Icon(Icons.android),
-                value: MobileThemeFramework.material,
+              RadioGroup<MobileThemeFramework>(
                 groupValue: ThemeManager().mobileThemeFramework,
                 onChanged: (value) {
                   if (value == null) return;
@@ -1255,12 +1320,14 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                   Navigator.pop(context);
                   setState(() {});
                 },
+                child: RadioListTile<MobileThemeFramework>(
+                  title: const Text('Material Design 3'),
+                  subtitle: const Text('Android 原生设计风格'),
+                  secondary: const Icon(Icons.android),
+                  value: MobileThemeFramework.material,
+                ),
               ),
-              RadioListTile<MobileThemeFramework>(
-                title: const Text('Cupertino'),
-                subtitle: const Text('iOS 原生设计风格'),
-                secondary: const Icon(Icons.phone_iphone),
-                value: MobileThemeFramework.cupertino,
+              RadioGroup<MobileThemeFramework>(
                 groupValue: ThemeManager().mobileThemeFramework,
                 onChanged: (value) {
                   if (value == null) return;
@@ -1268,19 +1335,12 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                   Navigator.pop(context);
                   setState(() {});
                 },
-              ),
-              RadioListTile<MobileThemeFramework>(
-                title: const Text('Oculus'),
-                subtitle: const Text('现代简约设计风格'),
-                secondary: const Icon(Icons.blur_on),
-                value: MobileThemeFramework.oculus,
-                groupValue: ThemeManager().mobileThemeFramework,
-                onChanged: (value) {
-                  if (value == null) return;
-                  ThemeManager().setMobileThemeFramework(value);
-                  Navigator.pop(context);
-                  setState(() {});
-                },
+                child: RadioListTile<MobileThemeFramework>(
+                  title: const Text('Cupertino'),
+                  subtitle: const Text('iOS 原生设计风格'),
+                  secondary: const Icon(Icons.phone_iphone),
+                  value: MobileThemeFramework.cupertino,
+                ),
               ),
             ],
           ),
@@ -1302,48 +1362,51 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
         context: context,
         builder: (context) => fluent_ui.ContentDialog(
           title: const Text('选择桌面主题样式'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              fluent_ui.RadioButton(
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Material Design 3'),
-                    Text(
-                      '保持现有设计语言，适合跨平台体验',
-                      style: fluent_ui.FluentTheme.of(context).typography.caption,
-                    ),
-                  ],
+          content: fluent_ui.RadioGroup<ThemeFramework>(
+            groupValue: ThemeManager().themeFramework,
+            onChanged: (value) {
+              if (value == null) return;
+              ThemeManager().setThemeFramework(value);
+              Navigator.pop(context);
+              setState(() {});
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                fluent_ui.RadioButton<ThemeFramework>(
+                  value: ThemeFramework.material,
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Material Design 3'),
+                      Text(
+                        '保持现有设计语言，适合跨平台体验',
+                        style: fluent_ui.FluentTheme.of(
+                          context,
+                        ).typography.caption,
+                      ),
+                    ],
+                  ),
                 ),
-                checked: ThemeManager().themeFramework == ThemeFramework.material,
-                onChanged: (v) {
-                  ThemeManager().setThemeFramework(ThemeFramework.material);
-                  Navigator.pop(context);
-                  setState(() {});
-                },
-              ),
-              const SizedBox(height: 8),
-              fluent_ui.RadioButton(
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Fluent UI'),
-                    Text(
-                      '与 Windows 11 外观保持一致',
-                      style: fluent_ui.FluentTheme.of(context).typography.caption,
-                    ),
-                  ],
+                const SizedBox(height: 8),
+                fluent_ui.RadioButton<ThemeFramework>(
+                  value: ThemeFramework.fluent,
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Fluent UI'),
+                      Text(
+                        '与 Windows 11 外观保持一致',
+                        style: fluent_ui.FluentTheme.of(
+                          context,
+                        ).typography.caption,
+                      ),
+                    ],
+                  ),
                 ),
-                checked: ThemeManager().themeFramework == ThemeFramework.fluent,
-                onChanged: (v) {
-                  ThemeManager().setThemeFramework(ThemeFramework.fluent);
-                  Navigator.pop(context);
-                  setState(() {});
-                },
-              ),
-            ],
+              ],
+            ),
           ),
           actions: [
             fluent_ui.Button(
@@ -1361,11 +1424,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              RadioListTile<ThemeFramework>(
-                title: const Text('Material Design 3'),
-                subtitle: const Text('保持现有设计语言，适合跨平台体验'),
-                secondary: const Icon(Icons.layers_outlined),
-                value: ThemeFramework.material,
+              RadioGroup<ThemeFramework>(
                 groupValue: ThemeManager().themeFramework,
                 onChanged: (value) {
                   if (value == null) return;
@@ -1373,12 +1432,14 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                   Navigator.pop(context);
                   setState(() {});
                 },
+                child: RadioListTile<ThemeFramework>(
+                  title: const Text('Material Design 3'),
+                  subtitle: const Text('保持现有设计语言，适合跨平台体验'),
+                  secondary: const Icon(Icons.layers_outlined),
+                  value: ThemeFramework.material,
+                ),
               ),
-              RadioListTile<ThemeFramework>(
-                title: const Text('Fluent UI'),
-                subtitle: const Text('与 Windows 11 外观保持一致'),
-                secondary: const Icon(Icons.desktop_windows),
-                value: ThemeFramework.fluent,
+              RadioGroup<ThemeFramework>(
                 groupValue: ThemeManager().themeFramework,
                 onChanged: (value) {
                   if (value == null) return;
@@ -1386,6 +1447,12 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                   Navigator.pop(context);
                   setState(() {});
                 },
+                child: RadioListTile<ThemeFramework>(
+                  title: const Text('Fluent UI'),
+                  subtitle: const Text('与 Windows 11 外观保持一致'),
+                  secondary: const Icon(Icons.desktop_windows),
+                  value: ThemeFramework.fluent,
+                ),
               ),
             ],
           ),
@@ -1401,6 +1468,15 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
   }
 
   void _showWindowEffectDialog() {
+    void applyWindowEffect(WindowEffect? value) {
+      if (value == null) return;
+      ThemeManager().setWindowEffect(value).then((_) {
+        if (!mounted) return;
+        Navigator.pop(context);
+        setState(() {});
+      });
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1408,59 +1484,46 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            RadioListTile<WindowEffect>(
-              title: const Text('默认'),
-              subtitle: const Text('不应用特殊的窗口效果'),
-              value: WindowEffect.disabled,
+            RadioGroup<WindowEffect>(
               groupValue: ThemeManager().windowEffect,
-              onChanged: (value) async {
-                if (value != null) {
-                  await ThemeManager().setWindowEffect(value);
-                  Navigator.pop(context);
-                  setState(() {});
-                }
-              },
-            ),
-            RadioListTile<WindowEffect>(
-              title: const Text('云母 (Mica)'),
-              subtitle: Text(
-                ThemeManager().isMicaSupported ? 'Windows 11 原生材质效果' : '当前系统不支持（仅限 Win11）',
+              onChanged: applyWindowEffect,
+              child: RadioListTile<WindowEffect>(
+                title: const Text('默认'),
+                subtitle: const Text('不应用特殊的窗口效果'),
+                value: WindowEffect.disabled,
               ),
-              value: WindowEffect.mica,
-              groupValue: ThemeManager().windowEffect,
-              onChanged: ThemeManager().isMicaSupported ? (value) async {
-                if (value != null) {
-                  await ThemeManager().setWindowEffect(value);
-                  Navigator.pop(context);
-                  setState(() {});
-                }
-              } : null,
             ),
-            RadioListTile<WindowEffect>(
-              title: const Text('亚克力 (Acrylic)'),
-              subtitle: const Text('经典的毛玻璃半透明效果'),
-              value: WindowEffect.acrylic,
+            RadioGroup<WindowEffect>(
               groupValue: ThemeManager().windowEffect,
-              onChanged: (value) async {
-                if (value != null) {
-                  await ThemeManager().setWindowEffect(value);
-                  Navigator.pop(context);
-                  setState(() {});
-                }
-              },
+              onChanged: applyWindowEffect,
+              child: RadioListTile<WindowEffect>(
+                title: const Text('云母 (Mica)'),
+                subtitle: Text(
+                  ThemeManager().isMicaSupported
+                      ? 'Windows 11 原生材质效果'
+                      : '当前系统不支持（仅限 Win11）',
+                ),
+                value: WindowEffect.mica,
+                enabled: ThemeManager().isMicaSupported,
+              ),
             ),
-            RadioListTile<WindowEffect>(
-              title: const Text('透明'),
-              subtitle: const Text('完全透明的窗口背景'),
-              value: WindowEffect.transparent,
+            RadioGroup<WindowEffect>(
               groupValue: ThemeManager().windowEffect,
-              onChanged: (value) async {
-                if (value != null) {
-                  await ThemeManager().setWindowEffect(value);
-                  Navigator.pop(context);
-                  setState(() {});
-                }
-              },
+              onChanged: applyWindowEffect,
+              child: RadioListTile<WindowEffect>(
+                title: const Text('亚克力 (Acrylic)'),
+                subtitle: const Text('经典的毛玻璃半透明效果'),
+                value: WindowEffect.acrylic,
+              ),
+            ),
+            RadioGroup<WindowEffect>(
+              groupValue: ThemeManager().windowEffect,
+              onChanged: applyWindowEffect,
+              child: RadioListTile<WindowEffect>(
+                title: const Text('透明'),
+                subtitle: const Text('完全透明的窗口背景'),
+                value: WindowEffect.transparent,
+              ),
             ),
           ],
         ),
@@ -1477,7 +1540,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
   /// 显示歌词字体选择对话框 (Fluent UI / Material)
   void _showLyricFontDialog() {
     final isFluentUI = ThemeManager().isDesktopFluentUI;
-    
+
     if (isFluentUI) {
       fluent_ui.showDialog(
         context: context,
@@ -1493,56 +1556,72 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                   // 预设字体列表
                   Text(
                     '预设字体',
-                    style: fluent_ui.FluentTheme.of(context).typography.subtitle,
+                    style: fluent_ui.FluentTheme.of(
+                      context,
+                    ).typography.subtitle,
                   ),
                   const SizedBox(height: 8),
-                  ...LyricFontService.platformFonts.map((font) {
-                    final isSelected = LyricFontService().fontType == 'preset' && 
-                                       LyricFontService().presetFontId == font.id;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: fluent_ui.RadioButton(
-                        checked: isSelected,
-                        onChanged: (v) async {
-                          await LyricFontService().setPresetFont(font.id);
-                          setDialogState(() {});
-                          if (mounted) setState(() {});
-                        },
-                        content: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              font.name,
-                              style: TextStyle(
-                                fontFamily: font.fontFamily,
-                                fontWeight: FontWeight.w600,
-                              ),
+                  fluent_ui.RadioGroup<String>(
+                    groupValue: LyricFontService().fontType == 'preset'
+                        ? LyricFontService().presetFontId
+                        : null,
+                    onChanged: (value) async {
+                      if (value == null) return;
+                      await LyricFontService().setPresetFont(value);
+                      setDialogState(() {});
+                      if (mounted) setState(() {});
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: LyricFontService.platformFonts.map((font) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: fluent_ui.RadioButton<String>(
+                            value: font.id,
+                            content: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  font.name,
+                                  style: TextStyle(
+                                    fontFamily: font.fontFamily,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  font.description,
+                                  style: fluent_ui.FluentTheme.of(
+                                    context,
+                                  ).typography.caption,
+                                ),
+                              ],
                             ),
-                            Text(
-                              font.description,
-                              style: fluent_ui.FluentTheme.of(context).typography.caption,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-                  
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+
                   const SizedBox(height: 16),
                   const fluent_ui.Divider(),
                   const SizedBox(height: 16),
-                  
+
                   // 自定义字体
                   Text(
                     '自定义字体',
-                    style: fluent_ui.FluentTheme.of(context).typography.subtitle,
+                    style: fluent_ui.FluentTheme.of(
+                      context,
+                    ).typography.subtitle,
                   ),
                   const SizedBox(height: 8),
-                  if (LyricFontService().fontType == 'custom' && LyricFontService().customFontPath != null)
+                  if (LyricFontService().fontType == 'custom' &&
+                      LyricFontService().customFontPath != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: fluent_ui.InfoBar(
-                        title: Text('当前使用: ${LyricFontService().customFontPath!.split(Platform.pathSeparator).last}'),
+                        title: Text(
+                          '当前使用: ${LyricFontService().customFontPath!.split(Platform.pathSeparator).last}',
+                        ),
                         severity: fluent_ui.InfoBarSeverity.success,
                       ),
                     ),
@@ -1550,7 +1629,8 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                     children: [
                       fluent_ui.Button(
                         onPressed: () async {
-                          final success = await LyricFontService().pickAndLoadCustomFont();
+                          final success = await LyricFontService()
+                              .pickAndLoadCustomFont();
                           if (success) {
                             setDialogState(() {});
                             if (mounted) setState(() {});
@@ -1610,12 +1690,12 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                     ),
                     const SizedBox(height: 8),
                     ...LyricFontService.platformFonts.map((font) {
-                      final isSelected = LyricFontService().fontType == 'preset' && 
-                                         LyricFontService().presetFontId == font.id;
-                      return RadioListTile<String>(
-                        value: font.id,
-                        groupValue: LyricFontService().fontType == 'preset' 
-                            ? LyricFontService().presetFontId 
+                      final isSelected =
+                          LyricFontService().fontType == 'preset' &&
+                          LyricFontService().presetFontId == font.id;
+                      return RadioGroup<String>(
+                        groupValue: LyricFontService().fontType == 'preset'
+                            ? LyricFontService().presetFontId
                             : null,
                         onChanged: (value) async {
                           if (value != null) {
@@ -1624,21 +1704,24 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                             if (mounted) setState(() {});
                           }
                         },
-                        title: Text(
-                          font.name,
-                          style: TextStyle(
-                            fontFamily: font.fontFamily,
-                            fontWeight: FontWeight.w600,
+                        child: RadioListTile<String>(
+                          value: font.id,
+                          title: Text(
+                            font.name,
+                            style: TextStyle(
+                              fontFamily: font.fontFamily,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
+                          subtitle: Text(font.description),
+                          dense: true,
+                          selected: isSelected,
                         ),
-                        subtitle: Text(font.description),
-                        dense: true,
-                        selected: isSelected,
                       );
                     }),
-                    
+
                     const Divider(height: 24),
-                    
+
                     // 自定义字体
                     Text(
                       '自定义字体',
@@ -1647,7 +1730,8 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    if (LyricFontService().fontType == 'custom' && LyricFontService().customFontPath != null)
+                    if (LyricFontService().fontType == 'custom' &&
+                        LyricFontService().customFontPath != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Card(
@@ -1665,7 +1749,9 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                                   child: Text(
                                     '当前使用: ${LyricFontService().customFontPath!.split(Platform.pathSeparator).last}',
                                     style: TextStyle(
-                                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onPrimaryContainer,
                                     ),
                                   ),
                                 ),
@@ -1678,7 +1764,8 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                       children: [
                         ElevatedButton.icon(
                           onPressed: () async {
-                            final success = await LyricFontService().pickAndLoadCustomFont();
+                            final success = await LyricFontService()
+                                .pickAndLoadCustomFont();
                             if (success) {
                               setDialogState(() {});
                               if (mounted) setState(() {});
@@ -1731,7 +1818,9 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
             height: MediaQuery.of(context).size.height * 0.7,
             decoration: BoxDecoration(
               color: CupertinoTheme.of(context).barBackgroundColor,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
+              ),
             ),
             child: SafeArea(
               top: false,
@@ -1777,8 +1866,9 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                             ),
                           ),
                           ...LyricFontService.platformFonts.map((font) {
-                            final isSelected = LyricFontService().fontType == 'preset' && 
-                                               LyricFontService().presetFontId == font.id;
+                            final isSelected =
+                                LyricFontService().fontType == 'preset' &&
+                                LyricFontService().presetFontId == font.id;
                             return CupertinoListTile(
                               title: Text(
                                 font.name,
@@ -1788,8 +1878,11 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                                 ),
                               ),
                               subtitle: Text(font.description),
-                              trailing: isSelected 
-                                  ? const Icon(CupertinoIcons.checkmark, color: CupertinoColors.activeBlue)
+                              trailing: isSelected
+                                  ? const Icon(
+                                      CupertinoIcons.checkmark,
+                                      color: CupertinoColors.activeBlue,
+                                    )
                                   : null,
                               onTap: () async {
                                 await LyricFontService().setPresetFont(font.id);
@@ -1798,7 +1891,7 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                               },
                             );
                           }),
-                          
+
                           // 自定义字体
                           const Padding(
                             padding: EdgeInsets.only(top: 24, bottom: 8),
@@ -1811,17 +1904,23 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                               ),
                             ),
                           ),
-                          if (LyricFontService().fontType == 'custom' && LyricFontService().customFontPath != null)
+                          if (LyricFontService().fontType == 'custom' &&
+                              LyricFontService().customFontPath != null)
                             Container(
                               margin: const EdgeInsets.only(bottom: 8),
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: CupertinoColors.activeGreen.withOpacity(0.1),
+                                color: CupertinoColors.activeGreen.withValues(
+                                  alpha: 0.1,
+                                ),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(CupertinoIcons.checkmark_circle_fill, color: CupertinoColors.activeGreen),
+                                  const Icon(
+                                    CupertinoIcons.checkmark_circle_fill,
+                                    color: CupertinoColors.activeGreen,
+                                  ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
@@ -1835,21 +1934,33 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                           Row(
                             children: [
                               CupertinoButton(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
                                 color: CupertinoColors.activeBlue,
                                 onPressed: () async {
-                                  final success = await LyricFontService().pickAndLoadCustomFont();
+                                  final success = await LyricFontService()
+                                      .pickAndLoadCustomFont();
                                   if (success) {
                                     setDialogState(() {});
                                     if (mounted) setState(() {});
                                   }
                                 },
-                                child: const Text('选择字体文件', style: TextStyle(color: CupertinoColors.white)),
+                                child: const Text(
+                                  '选择字体文件',
+                                  style: TextStyle(
+                                    color: CupertinoColors.white,
+                                  ),
+                                ),
                               ),
                               const SizedBox(width: 8),
                               if (LyricFontService().fontType == 'custom')
                                 CupertinoButton(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
                                   onPressed: () async {
                                     await LyricFontService().clearCustomFont();
                                     setDialogState(() {});
@@ -1881,7 +1992,10 @@ class _AppearanceSettingsContentState extends State<AppearanceSettingsContent> {
                       child: CupertinoButton(
                         color: CupertinoColors.systemGrey5,
                         onPressed: () => Navigator.pop(context),
-                        child: const Text('关闭', style: TextStyle(color: CupertinoColors.label)),
+                        child: const Text(
+                          '关闭',
+                          style: TextStyle(color: CupertinoColors.label),
+                        ),
                       ),
                     ),
                   ),
@@ -1907,7 +2021,6 @@ class _ThemeColorGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentIndex = ThemeManager().getCurrentColorIndex();
-    final theme = Theme.of(context);
 
     return GridView.builder(
       shrinkWrap: true,
@@ -1945,7 +2058,7 @@ class _ThemeColorGrid extends StatelessWidget {
   Widget _buildCustomButton(BuildContext context, bool isSelected) {
     final theme = Theme.of(context);
     final color = theme.colorScheme.primary;
-    
+
     return InkWell(
       onTap: onCustomTap,
       borderRadius: BorderRadius.circular(20),
@@ -1959,21 +2072,21 @@ class _ThemeColorGrid extends StatelessWidget {
             padding: EdgeInsets.all(isSelected ? 3 : 0),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: isSelected 
-                  ? Border.all(color: color, width: 2)
-                  : null,
+              border: isSelected ? Border.all(color: color, width: 2) : null,
             ),
             child: Container(
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHighest,
                 shape: BoxShape.circle,
-                boxShadow: isSelected ? [
-                  BoxShadow(
-                    color: color.withOpacity(0.3),
-                    blurRadius: 8,
-                    spreadRadius: 1,
-                  )
-                ] : null,
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: color.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
               ),
               child: Icon(
                 isSelected ? Icons.check : Icons.add,
@@ -2015,7 +2128,7 @@ class _ColorSwatch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
@@ -2029,21 +2142,21 @@ class _ColorSwatch extends StatelessWidget {
             padding: EdgeInsets.all(isSelected ? 3 : 0),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: isSelected 
-                  ? Border.all(color: color, width: 2)
-                  : null,
+              border: isSelected ? Border.all(color: color, width: 2) : null,
             ),
             child: Container(
               decoration: BoxDecoration(
                 color: color,
                 shape: BoxShape.circle,
-                boxShadow: isSelected ? [
-                  BoxShadow(
-                    color: color.withOpacity(0.3),
-                    blurRadius: 8,
-                    spreadRadius: 1,
-                  )
-                ] : null,
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: color.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
               ),
               child: Icon(
                 isSelected ? Icons.check : icon,

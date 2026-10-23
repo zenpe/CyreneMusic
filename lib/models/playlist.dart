@@ -1,5 +1,7 @@
 import 'track.dart';
 
+enum PlaylistType { local, synced }
+
 /// 歌单模型
 class Playlist {
   final int id;
@@ -11,6 +13,11 @@ class Playlist {
   final DateTime updatedAt;
   final String? source; // 来源平台：netease/qq
   final String? sourcePlaylistId; // 来源歌单ID
+  final PlaylistType type;
+  final int contentRevision;
+  final int orderRevision;
+  final String syncStatus;
+  final DateTime? lastSyncedAt;
 
   Playlist({
     required this.id,
@@ -22,7 +29,15 @@ class Playlist {
     required this.updatedAt,
     this.source,
     this.sourcePlaylistId,
+    this.type = PlaylistType.local,
+    this.contentRevision = 0,
+    this.orderRevision = 0,
+    this.syncStatus = 'idle',
+    this.lastSyncedAt,
   });
+
+  bool get isLocal => type == PlaylistType.local;
+  bool get isSynced => type == PlaylistType.synced;
 
   factory Playlist.fromJson(Map<String, dynamic> json) {
     return Playlist(
@@ -35,6 +50,13 @@ class Playlist {
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       source: json['source'] as String?,
       sourcePlaylistId: json['sourcePlaylistId'] as String?,
+      type: json['type'] == 'synced' ? PlaylistType.synced : PlaylistType.local,
+      contentRevision: (json['contentRevision'] as num?)?.toInt() ?? 0,
+      orderRevision: (json['orderRevision'] as num?)?.toInt() ?? 0,
+      syncStatus: json['syncStatus'] as String? ?? 'idle',
+      lastSyncedAt: json['lastSyncedAt'] == null
+          ? null
+          : DateTime.tryParse(json['lastSyncedAt'] as String),
     );
   }
 
@@ -49,50 +71,90 @@ class Playlist {
       'updatedAt': updatedAt.toIso8601String(),
       'source': source,
       'sourcePlaylistId': sourcePlaylistId,
+      'type': type.name,
+      'contentRevision': contentRevision,
+      'orderRevision': orderRevision,
+      'syncStatus': syncStatus,
+      'lastSyncedAt': lastSyncedAt?.toIso8601String(),
     };
+  }
+
+  Playlist copyWith({
+    String? name,
+    int? trackCount,
+    int? contentRevision,
+    int? orderRevision,
+    String? syncStatus,
+    DateTime? lastSyncedAt,
+    DateTime? updatedAt,
+  }) {
+    return Playlist(
+      id: id,
+      name: name ?? this.name,
+      isDefault: isDefault,
+      trackCount: trackCount ?? this.trackCount,
+      coverUrl: coverUrl,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      source: source,
+      sourcePlaylistId: sourcePlaylistId,
+      type: type,
+      contentRevision: contentRevision ?? this.contentRevision,
+      orderRevision: orderRevision ?? this.orderRevision,
+      syncStatus: syncStatus ?? this.syncStatus,
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+    );
   }
 }
 
 /// 歌单中的歌曲模型
 class PlaylistTrack {
+  final int? itemId;
   final String trackId;
   final String name;
   final String artists;
   final String album;
   final String picUrl;
   final MusicSource source;
+  final TrackSourceIds sourceIds;
   final DateTime addedAt;
 
   PlaylistTrack({
+    this.itemId,
     required this.trackId,
     required this.name,
     required this.artists,
     required this.album,
     required this.picUrl,
     required this.source,
+    this.sourceIds = const TrackSourceIds(),
     required this.addedAt,
   });
 
   factory PlaylistTrack.fromJson(Map<String, dynamic> json) {
     return PlaylistTrack(
+      itemId: (json['itemId'] as num?)?.toInt(),
       trackId: json['trackId'] as String,
       name: json['name'] as String,
       artists: json['artists'] as String,
       album: json['album'] as String,
       picUrl: json['picUrl'] as String,
       source: _parseSource(json['source'] as String),
+      sourceIds: TrackSourceIds.fromJson(json['sourceIds']),
       addedAt: DateTime.parse(json['addedAt'] as String),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
+      if (itemId != null) 'itemId': itemId,
       'trackId': trackId,
       'name': name,
       'artists': artists,
       'album': album,
       'picUrl': picUrl,
       'source': source.toString().split('.').last,
+      if (!sourceIds.isEmpty) 'sourceIds': sourceIds.toJson(),
       'addedAt': addedAt.toIso8601String(),
     };
   }
@@ -106,6 +168,7 @@ class PlaylistTrack {
       album: track.album,
       picUrl: track.picUrl,
       source: track.source,
+      sourceIds: track.sourceIds,
       addedAt: DateTime.now(),
     );
   }
@@ -114,14 +177,15 @@ class PlaylistTrack {
   Track toTrack() {
     // 尝试解析为 int，如果失败则保持为字符串（用于 QQ 音乐和酷狗音乐）
     final dynamic trackIdValue = int.tryParse(trackId) ?? trackId;
-    
+
     return Track(
-      id: trackIdValue,  // 支持 int 和 String 类型
+      id: trackIdValue, // 支持 int 和 String 类型
       name: name,
       artists: artists,
       album: album,
       picUrl: picUrl,
       source: source,
+      sourceIds: sourceIds,
     );
   }
 
@@ -138,6 +202,8 @@ class PlaylistTrack {
         return MusicSource.kugou;
       case 'kuwo':
         return MusicSource.kuwo;
+      case 'navidrome':
+        return MusicSource.navidrome;
       case 'local':
         return MusicSource.local;
       default:
@@ -145,4 +211,3 @@ class PlaylistTrack {
     }
   }
 }
-

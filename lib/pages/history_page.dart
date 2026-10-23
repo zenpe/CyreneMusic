@@ -1,3 +1,4 @@
+import '../widgets/floating_playback_insets.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -63,8 +64,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
       return _buildCupertinoPage(context, history);
     }
 
-    final isExpressive = !ThemeManager().isFluentFramework && 
-                        !ThemeManager().isCupertinoFramework && 
+    final isExpressive = !ThemeManager().isFluentFramework &&
+                        !ThemeManager().isCupertinoFramework &&
                         (Platform.isAndroid || Platform.isIOS);
 
     return Scaffold(
@@ -149,7 +150,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
 
           // 底部留白
           SliverToBoxAdapter(
-            child: SizedBox(height: MediaQuery.of(context).padding.bottom + 80),
+            child: const FloatingPlaybackBottomSpacer(fallback: 80),
           ),
         ],
       ),
@@ -209,11 +210,10 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                         },
                         onPlay: () {
                           PlayerService().playTrack(history[index].toTrack());
-                          _showFluentInfo('正在播放: ${history[index].name}');
                         },
                       ),
                     ),
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemCount: history.length,
                   ),
           ),
@@ -231,13 +231,13 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
         backgroundColor: isDark ? const Color(0xFF000000) : CupertinoColors.systemGroupedBackground,
         navigationBar: CupertinoNavigationBar(
           middle: const Text('播放历史'),
-          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withOpacity(0.9),
+          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withValues(alpha: 0.9),
           border: null,
           trailing: history.isNotEmpty
               ? CupertinoButton(
                   padding: EdgeInsets.zero,
-                  child: const Icon(CupertinoIcons.trash, size: 22),
                   onPressed: _showCupertinoClearConfirmDialog,
+                  child: const Icon(CupertinoIcons.trash, size: 22),
                 )
               : null,
         ),
@@ -258,7 +258,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                       );
                     }),
                     // 底部留白给迷你播放器
-                    SizedBox(height: MediaQuery.of(context).padding.bottom + 80),
+                    const FloatingPlaybackBottomSpacer(fallback: 80),
                   ],
                 ),
         ),
@@ -353,6 +353,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                     borderRadius: BorderRadius.circular(6),
                     child: CachedNetworkImage(
                       imageUrl: item.picUrl,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       width: 50,
                       height: 50,
                       fit: BoxFit.cover,
@@ -437,26 +439,14 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                 ),
               ),
               // 操作按钮
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CupertinoButton(
-                    padding: const EdgeInsets.all(8),
-                    minSize: 0,
-                    onPressed: () {
-                      PlayerService().playTrack(item.toTrack());
-                    },
-                    child: Icon(CupertinoIcons.play_fill, size: 20, color: CupertinoColors.activeBlue),
-                  ),
-                  CupertinoButton(
-                    padding: const EdgeInsets.all(8),
-                    minSize: 0,
-                    onPressed: () {
-                      _historyService.removeHistoryItem(item);
-                    },
-                    child: Icon(CupertinoIcons.trash, size: 18, color: CupertinoColors.systemGrey),
-                  ),
-                ],
+              TrackMoreButton(
+                track: item.toTrack(),
+                onPlay: () {
+                  PlayerService().playTrack(item.toTrack());
+                },
+                onDelete: () {
+                  _historyService.removeHistoryItem(item);
+                },
               ),
             ],
           ),
@@ -466,34 +456,55 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
   }
 
   Widget _buildCupertinoEmptyState(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            CupertinoIcons.time,
-            size: 80,
-            color: CupertinoColors.systemGrey.withOpacity(0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '暂无播放历史',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-              color: isDark ? CupertinoColors.white : CupertinoColors.black,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.time,
+                      size: compact ? 56 : 80,
+                      color: CupertinoColors.systemGrey.withValues(alpha: 0.5),
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '暂无播放历史',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '播放歌曲后会自动记录',
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: CupertinoColors.systemGrey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '播放歌曲后会自动记录',
-            style: TextStyle(
-              fontSize: 14,
-              color: CupertinoColors.systemGrey,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -534,14 +545,14 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            colorScheme.primaryContainer.withOpacity(0.7),
-            colorScheme.primaryContainer.withOpacity(0.4),
+            colorScheme.primaryContainer.withValues(alpha: 0.7),
+            colorScheme.primaryContainer.withValues(alpha: 0.4),
           ],
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: colorScheme.primary.withOpacity(0.05),
+            color: colorScheme.primary.withValues(alpha: 0.05),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -563,7 +574,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: isExpressive ? colorScheme.primary.withOpacity(0.1) : null,
+                      color: isExpressive ? colorScheme.primary.withValues(alpha: 0.1) : null,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
@@ -613,7 +624,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
         Text(
           label,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                 fontWeight: isExpressive ? FontWeight.w600 : null,
               ),
         ),
@@ -632,7 +643,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.03),
+                color: Colors.black.withValues(alpha: 0.03),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -655,7 +666,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
+                                color: Colors.black.withValues(alpha: 0.1),
                                 blurRadius: 8,
                                 offset: const Offset(0, 4),
                               ),
@@ -665,6 +676,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                             borderRadius: BorderRadius.circular(16),
                             child: CachedNetworkImage(
                               imageUrl: item.picUrl,
+                              memCacheWidth: 128,
+                              memCacheHeight: 128,
                               width: 60,
                               height: 60,
                               fit: BoxFit.cover,
@@ -723,7 +736,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 13,
-                              color: colorScheme.onSurfaceVariant.withOpacity(0.8),
+                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -739,7 +752,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                                 _formatTime(item.playedAt),
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: colorScheme.primary.withOpacity(0.7),
+                                  color: colorScheme.primary.withValues(alpha: 0.7),
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -782,6 +795,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
               borderRadius: BorderRadius.circular(4),
               child: CachedNetworkImage(
                 imageUrl: item.picUrl,
+                memCacheWidth: 128,
+                memCacheHeight: 128,
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
@@ -857,7 +872,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                 Text(
                   _formatTime(item.playedAt),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                         fontSize: 11,
                       ),
                 ),
@@ -865,42 +880,20 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
             ),
           ],
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.play_arrow),
-              onPressed: () {
-                PlayerService().playTrack(item.toTrack());
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('正在播放: ${item.name}'),
-                    duration: const Duration(seconds: 1),
-                  ),
-                );
-              },
-              tooltip: '播放',
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, size: 20),
-              onPressed: () {
-                _historyService.removeHistoryItem(item);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('已删除'),
-                    duration: const Duration(seconds: 1),
-                    action: SnackBarAction(
-                      label: '撤销',
-                      onPressed: () {
-                        // TODO: 实现撤销功能
-                      },
-                    ),
-                  ),
-                );
-              },
-              tooltip: '删除',
-            ),
-          ],
+        trailing: TrackMoreButton(
+          track: item.toTrack(),
+          onPlay: () {
+            PlayerService().playTrack(item.toTrack());
+          },
+          onDelete: () {
+            _historyService.removeHistoryItem(item);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('已删除'),
+                duration: const Duration(seconds: 1),
+              ),
+            );
+          },
         ),
         onTap: () {
           PlayerService().playTrack(item.toTrack());
@@ -922,6 +915,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
         return '🎼';
       case MusicSource.kuwo:
         return '🎸';
+      case MusicSource.navidrome:
+        return '🎧';
       case MusicSource.spotify:
         return '🟢';
       case MusicSource.local:
@@ -950,31 +945,53 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
 
   /// 构建空状态
   Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.history,
-            size: 80,
-            color: colorScheme.onSurfaceVariant.withOpacity(0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '暂无播放历史',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+    final theme = Theme.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.history,
+                      size: compact ? 56 : 80,
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '暂无播放历史',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '播放歌曲后会自动记录',
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '播放歌曲后会自动记录',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.7),
-                ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1004,7 +1021,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
       ),
     );
   }
-  
+
   void _showFluentClearConfirmDialog() {
     fluent.showDialog(
       context: context,
@@ -1095,17 +1112,44 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
   }
 
   Widget _buildFluentEmptyState(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
-          Icon(fluent.FluentIcons.history, size: 80),
-          SizedBox(height: 16),
-          Text('暂无播放历史', style: TextStyle(fontSize: 18)),
-          SizedBox(height: 8),
-          Text('播放歌曲后会自动记录', style: TextStyle(fontSize: 12)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(fluent.FluentIcons.history, size: compact ? 56 : 80),
+                    SizedBox(height: compact ? 10 : 16),
+                    const Text(
+                      '暂无播放历史',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 18),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '播放歌曲后会自动记录',
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1220,18 +1264,10 @@ class _FluentHistoryTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    fluent.IconButton(
-                      icon: const Icon(fluent.FluentIcons.play),
-                      onPressed: onPlay,
-                    ),
-                    fluent.IconButton(
-                      icon: const Icon(fluent.FluentIcons.delete),
-                      onPressed: onDelete,
-                    ),
-                  ],
+                TrackMoreButton(
+                  track: item.toTrack(),
+                  onPlay: onPlay,
+                  onDelete: onDelete,
                 ),
               ],
             ),

@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../utils/theme_manager.dart';
-import '../services/audio_source_service.dart';
-import '../pages/settings_page/audio_source_settings.dart';
 
 /// 音源未配置状态下的精美配置提示组件
 /// 适配 iOS Cupertino、Material Design 3 和 Fluent UI 三种主题
@@ -12,24 +10,24 @@ class AudioSourcePrompt extends StatefulWidget {
   final VoidCallback onConfigurePressed;
   final String? title;
   final String? subtitle;
-  
+
   const AudioSourcePrompt({
     super.key,
     required this.onConfigurePressed,
     this.title,
     this.subtitle,
   });
-  
+
   @override
   State<AudioSourcePrompt> createState() => _AudioSourcePromptState();
 }
 
-class _AudioSourcePromptState extends State<AudioSourcePrompt> 
+class _AudioSourcePromptState extends State<AudioSourcePrompt>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
-  
+
   @override
   void initState() {
     super.initState();
@@ -46,37 +44,36 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
     ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOutCubic));
     _animationController.forward();
   }
-  
+
   @override
   void dispose() {
     _animationController.dispose();
     super.dispose();
   }
-  
+
   String get _title => widget.title ?? '配置音源后开始使用';
-  String get _subtitle => widget.subtitle ?? '应用需要配置音源才能播放音乐，支持洛雪音源和 TuneHub 等第三方服务';
-  
+  String get _subtitle => widget.subtitle ?? '应用需要先导入洛雪音源才能播放在线音乐';
+
   @override
   Widget build(BuildContext context) {
     final themeManager = ThemeManager();
     final isMobile = Platform.isIOS || Platform.isAndroid;
-    
+
     if (themeManager.isFluentFramework) {
       return _buildFluentPrompt(context);
     }
-    
+
     if (isMobile && themeManager.isCupertinoFramework) {
       return _buildCupertinoPrompt(context);
     }
-    
+
     return _buildMaterialPrompt(context);
   }
-  
+
   /// Material Design 3 风格配置提示
   Widget _buildMaterialPrompt(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
@@ -103,14 +100,14 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          cs.tertiary.withOpacity(0.15),
-                          cs.secondary.withOpacity(0.1),
+                          cs.tertiary.withValues(alpha: 0.15),
+                          cs.secondary.withValues(alpha: 0.1),
                         ],
                       ),
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: cs.tertiary.withOpacity(0.1),
+                          color: cs.tertiary.withValues(alpha: 0.1),
                           blurRadius: 30,
                           spreadRadius: 5,
                         ),
@@ -126,7 +123,7 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: cs.tertiary.withOpacity(0.3),
+                              color: cs.tertiary.withValues(alpha: 0.3),
                               width: 2,
                             ),
                           ),
@@ -148,7 +145,7 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
+                                  color: Colors.black.withValues(alpha: 0.1),
                                   blurRadius: 8,
                                 ),
                               ],
@@ -197,7 +194,6 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                     alignment: WrapAlignment.center,
                     children: [
                       _buildFeatureChip(context, Icons.cloud_outlined, '洛雪音源', cs),
-                      _buildFeatureChip(context, Icons.hub_outlined, 'TuneHub', cs),
                       _buildFeatureChip(context, Icons.music_note, '多平台支持', cs),
                       _buildFeatureChip(context, Icons.high_quality, '音质可选', cs),
                     ],
@@ -223,14 +219,14 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
       ),
     );
   }
-  
+
   Widget _buildFeatureChip(BuildContext context, IconData icon, String label, ColorScheme cs) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(0.5),
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outline.withOpacity(0.2)),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -242,11 +238,11 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
       ),
     );
   }
-  
+
   /// iOS Cupertino 风格配置提示
   Widget _buildCupertinoPrompt(BuildContext context) {
     final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
-    
+
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
@@ -273,8 +269,8 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          CupertinoColors.systemPurple.withOpacity(0.15),
-                          CupertinoColors.systemIndigo.withOpacity(0.1),
+                          CupertinoColors.systemPurple.withValues(alpha: 0.15),
+                          CupertinoColors.systemIndigo.withValues(alpha: 0.1),
                         ],
                       ),
                       shape: BoxShape.circle,
@@ -289,7 +285,7 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: CupertinoColors.systemPurple.withOpacity(0.3),
+                              color: CupertinoColors.systemPurple.withValues(alpha: 0.3),
                               width: 2,
                             ),
                           ),
@@ -311,7 +307,7 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
+                                  color: Colors.black.withValues(alpha: 0.1),
                                   blurRadius: 8,
                                 ),
                               ],
@@ -363,7 +359,6 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                     alignment: WrapAlignment.center,
                     children: [
                       _buildCupertinoFeatureChip(CupertinoIcons.cloud, '洛雪音源', isDark),
-                      _buildCupertinoFeatureChip(CupertinoIcons.link, 'TuneHub', isDark),
                       _buildCupertinoFeatureChip(CupertinoIcons.music_note, '多平台', isDark),
                       _buildCupertinoFeatureChip(CupertinoIcons.waveform, '高音质', isDark),
                     ],
@@ -393,7 +388,7 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
       ),
     );
   }
-  
+
   Widget _buildCupertinoFeatureChip(IconData icon, String label, bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -418,12 +413,11 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
       ),
     );
   }
-  
+
   /// Fluent UI 风格配置提示
   Widget _buildFluentPrompt(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    
+
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
@@ -450,8 +444,8 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          theme.accentColor.withOpacity(0.15),
-                          theme.accentColor.withOpacity(0.05),
+                          theme.accentColor.withValues(alpha: 0.15),
+                          theme.accentColor.withValues(alpha: 0.05),
                         ],
                       ),
                       shape: BoxShape.circle,
@@ -466,7 +460,7 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: theme.accentColor.withOpacity(0.3),
+                              color: theme.accentColor.withValues(alpha: 0.3),
                               width: 2,
                             ),
                           ),
@@ -533,7 +527,6 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
                     alignment: WrapAlignment.center,
                     children: [
                       _buildFluentFeatureChip(fluent.FluentIcons.cloud, '洛雪音源', theme),
-                      _buildFluentFeatureChip(fluent.FluentIcons.link, 'TuneHub', theme),
                       _buildFluentFeatureChip(fluent.FluentIcons.music_in_collection, '多平台支持', theme),
                       _buildFluentFeatureChip(fluent.FluentIcons.equalizer, '音质可选', theme),
                     ],
@@ -564,7 +557,7 @@ class _AudioSourcePromptState extends State<AudioSourcePrompt>
       ),
     );
   }
-  
+
   Widget _buildFluentFeatureChip(IconData icon, String label, fluent.FluentThemeData theme) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

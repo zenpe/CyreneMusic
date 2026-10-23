@@ -1,5 +1,5 @@
+import '../../services/structured_log_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../utils/image_utils.dart';
 import 'package:cyrene_music/models/toplist.dart';
 import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/services/music_service.dart';
@@ -7,8 +7,10 @@ import 'package:cyrene_music/services/play_history_service.dart';
 import 'package:cyrene_music/services/player_service.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
+import '../../utils/image_utils.dart';
 import '../../utils/page_visibility_notifier.dart';
 import '../../utils/theme_manager.dart';
+import '../../widgets/warm_empty_state.dart';
 
 /// 首页顶部胶囊 Tabs
 class HomeCapsuleTabs extends StatelessWidget {
@@ -68,7 +70,7 @@ class HomeCapsuleTabs extends StatelessWidget {
                     borderRadius: BorderRadius.circular(radius - padding),
                     boxShadow: [
                       BoxShadow(
-                        color: pillColor.withOpacity(0.25),
+                        color: pillColor.withValues(alpha: 0.25),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -133,6 +135,8 @@ class TrackBannerCard extends StatelessWidget {
               imageUrl: track.picUrl,
               httpHeaders: getImageHeaders(track.picUrl),
               fit: BoxFit.cover,
+              memCacheWidth: 280,
+              memCacheHeight: 280,
               placeholder: (context, url) => Container(
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 child: const Center(
@@ -158,7 +162,7 @@ class TrackBannerCard extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
+                  colors: [Colors.transparent, Colors.black.withValues(alpha: 0.8)],
                 ),
               ),
             ),
@@ -180,7 +184,7 @@ class TrackBannerCard extends StatelessWidget {
                         Shadow(
                           offset: const Offset(0, 1),
                           blurRadius: 3.0,
-                          color: Colors.black.withOpacity(0.5),
+                          color: Colors.black.withValues(alpha: 0.5),
                         ),
                       ],
                     ),
@@ -192,12 +196,12 @@ class TrackBannerCard extends StatelessWidget {
                   Text(
                     track.artists,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       shadows: [
                         Shadow(
                           offset: const Offset(0, 1),
                           blurRadius: 3.0,
-                          color: Colors.black.withOpacity(0.5),
+                          color: Colors.black.withValues(alpha: 0.5),
                         ),
                       ],
                     ),
@@ -227,12 +231,12 @@ class TrackBannerCard extends StatelessWidget {
                           track.album,
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(
-                                color: Colors.white.withOpacity(0.8),
+                                color: Colors.white.withValues(alpha: 0.8),
                                 shadows: [
                                   Shadow(
                                     offset: const Offset(0, 1),
                                     blurRadius: 3.0,
-                                    color: Colors.black.withOpacity(0.5),
+                                    color: Colors.black.withValues(alpha: 0.5),
                                   ),
                                 ],
                               ),
@@ -255,7 +259,7 @@ class TrackBannerCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -369,7 +373,7 @@ class BannerSection extends StatelessWidget {
                             shape: BoxShape.circle,
                             color: currentBannerIndex == index
                                 ? Colors.white
-                                : Colors.white.withOpacity(0.5),
+                                : Colors.white.withValues(alpha: 0.5),
                           ),
                         ),
                       ),
@@ -381,6 +385,43 @@ class BannerSection extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _HistoryCover extends StatelessWidget {
+  final String url;
+  final double size;
+
+  const _HistoryCover({required this.url, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final placeholder = ColoredBox(
+      color: colors.surfaceContainerHighest,
+      child: Center(
+        child: Icon(Icons.music_note_rounded, color: colors.onSurfaceVariant),
+      ),
+    );
+    final imageUrl = url.trim();
+    final uri = Uri.tryParse(imageUrl);
+    final valid = uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host.isNotEmpty;
+    return SizedBox.square(
+      dimension: size,
+      child: valid
+          ? CachedNetworkImage(
+              imageUrl: imageUrl,
+              httpHeaders: getImageHeaders(imageUrl),
+              fit: BoxFit.cover,
+              memCacheWidth: 280,
+              memCacheHeight: 280,
+              placeholder: (context, url) => placeholder,
+              errorWidget: (context, url, error) => placeholder,
+            )
+          : placeholder,
     );
   }
 }
@@ -404,7 +445,7 @@ class HistorySection extends StatelessWidget {
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.6),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
         child: Column(
           children: [
             // Header Area - View All
@@ -417,8 +458,8 @@ class HistorySection extends StatelessWidget {
                 child: Row(
                   children: [
                     Icon(
-                      Icons.history_rounded, 
-                      size: 20, 
+                      Icons.history_rounded,
+                      size: 20,
                       color: Theme.of(context).colorScheme.primary
                     ),
                     const SizedBox(width: 8),
@@ -457,7 +498,7 @@ class HistorySection extends StatelessWidget {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
+                              color: Colors.black.withValues(alpha: 0.1),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -465,13 +506,7 @@ class HistorySection extends StatelessWidget {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child: CachedNetworkImage(
-                            imageUrl: history.first.picUrl,
-                            httpHeaders: getImageHeaders(history.first.picUrl),
-                            width: 88,
-                            height: 88,
-                            fit: BoxFit.cover,
-                          ),
+                          child: _HistoryCover(url: history.first.picUrl, size: 88),
                         ),
                       ),
                     ),
@@ -504,8 +539,8 @@ class HistorySection extends StatelessWidget {
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 14,
-                                    color: index == 0 
-                                      ? Theme.of(context).colorScheme.primary 
+                                    color: index == 0
+                                      ? Theme.of(context).colorScheme.primary
                                       : Theme.of(context).colorScheme.onSurfaceVariant,
                                   ),
                                 ),
@@ -573,13 +608,7 @@ class HistorySection extends StatelessWidget {
                   // 封面
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: CachedNetworkImage(
-                      imageUrl: history.first.picUrl,
-                      httpHeaders: getImageHeaders(history.first.picUrl),
-                      width: 64,
-                      height: 64,
-                      fit: BoxFit.cover,
-                    ),
+                    child: _HistoryCover(url: history.first.picUrl, size: 64),
                   ),
                   const SizedBox(width: 12),
                   // 歌曲列表
@@ -648,7 +677,7 @@ class GuessYouLikeSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeManager = ThemeManager();
-    
+
     // Material Design Expressive 风格实现
     if (!themeManager.isFluentFramework && !themeManager.isCupertinoFramework) {
        return Card(
@@ -656,21 +685,21 @@ class GuessYouLikeSection extends StatelessWidget {
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.6),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
         child: Column(
           children: [
             InkWell(
               onTap: () {
                 // TODO: 跳转到推荐页面
-                print('跳转到推荐页面');
+                StructuredLogService.log('跳转到推荐页面');
               },
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
                 child: Row(
                   children: [
                     Icon(
-                      Icons.auto_awesome_rounded, 
-                      size: 20, 
+                      Icons.auto_awesome_rounded,
+                      size: 20,
                       color: Theme.of(context).colorScheme.primary
                     ),
                     const SizedBox(width: 8),
@@ -710,7 +739,7 @@ class GuessYouLikeSection extends StatelessWidget {
       type: MaterialType.transparency,
       child: InkWell(
         onTap: () {
-          print('跳转到推荐页面');
+          StructuredLogService.log('跳转到推荐页面');
         },
         child: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -776,7 +805,7 @@ class GuessYouLikeSection extends StatelessWidget {
             InkWell(
               onTap: () {
                  // TODO: 跳转到推荐页面
-                 print('跳转到推荐页面');
+                 StructuredLogService.log('跳转到推荐页面');
               },
               borderRadius: BorderRadius.circular(16),
               child: Hero(
@@ -786,7 +815,7 @@ class GuessYouLikeSection extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -800,6 +829,8 @@ class GuessYouLikeSection extends StatelessWidget {
                       width: 88,
                       height: 88,
                       fit: BoxFit.cover,
+                      memCacheWidth: 280,
+                      memCacheHeight: 280,
                     ),
                   ),
                 ),
@@ -833,8 +864,8 @@ class GuessYouLikeSection extends StatelessWidget {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
-                              color: index == 0 
-                                ? Theme.of(context).colorScheme.primary 
+                              color: index == 0
+                                ? Theme.of(context).colorScheme.primary
                                 : Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
@@ -880,11 +911,11 @@ class GuessYouLikeSection extends StatelessWidget {
       future: guessYouLikeFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const GuessYouLikeShimmerSkeleton();
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-          return _buildGuessYouLikePlaceholder(context, isLegacy: true, isError: true);
+          return _buildGuessYouLikePlaceholder(context, isError: snapshot.hasError);
         }
 
         final sampleTracks = snapshot.data!;
@@ -900,6 +931,8 @@ class GuessYouLikeSection extends StatelessWidget {
                 width: 64,
                 height: 64,
                 fit: BoxFit.cover,
+                memCacheWidth: 280,
+                memCacheHeight: 280,
               ),
             ),
             const SizedBox(width: 12),
@@ -937,63 +970,14 @@ class GuessYouLikeSection extends StatelessWidget {
   }
 
   Widget _buildGuessYouLikePlaceholder(BuildContext context, {bool isError = false, bool isLegacy = false}) {
-    final message = isError ? '加载推荐失败' : '导入歌单查看更多';
-    
-    // Legacy 风格
-    if (isLegacy) {
-      return InkWell(
-        onTap: () {
-          print('引导用户导入歌单');
-        },
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Expressive 风格
-    return InkWell(
+    return WarmCompactEmptyCard(
+      title: isError ? '开启个性化推荐' : '定制专属心动单曲',
+      subtitle: isError ? '正在为你准备好听的音乐，轻触探索热门榜单' : '多听听歌或导入歌单，为你发现更多惊喜',
+      icon: isError ? Icons.auto_awesome_rounded : Icons.library_music_rounded,
+      actionLabel: '探索榜单',
       onTap: () {
-        print('引导用户导入歌单');
+        StructuredLogService.log('用户点击推荐空态卡片');
       },
-      child: Container(
-        height: 88,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
-          ),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isError ? Icons.error_outline : Icons.add_circle_outline,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1124,6 +1108,8 @@ class ToplistsGrid extends StatelessWidget {
                               width: coverSize,
                               height: coverSize,
                               fit: BoxFit.cover,
+                              memCacheWidth: 280,
+                              memCacheHeight: 280,
                               placeholder: (context, url) => Container(
                                 width: coverSize,
                                 height: coverSize,
@@ -1185,12 +1171,12 @@ class ToplistsGrid extends StatelessWidget {
                                 opacity: isHovering ? 1.0 : 0.0,
                                 duration: const Duration(milliseconds: 150),
                                 child: Container(
-                                  color: Colors.black.withOpacity(0),
+                                  color: Colors.black.withValues(alpha: 0),
                                   child: Center(
                                     child: Icon(
                                       Icons.play_arrow,
                                       size: coverSize * 0.28,
-                                      color: Colors.white.withOpacity(0.95),
+                                      color: Colors.white.withValues(alpha: 0.95),
                                     ),
                                   ),
                                 ),
@@ -1284,41 +1270,14 @@ class ErrorSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final themeManager = ThemeManager();
-
-    final cardContent = Padding(
-      padding: const EdgeInsets.all(48.0),
-      child: Column(
-        children: [
-          Icon(Icons.error_outline, size: 64, color: colorScheme.error),
-          const SizedBox(height: 16),
-          Text('加载失败', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          Text(
-            MusicService().errorMessage ?? '未知错误',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: () {
-              MusicService().refreshToplists();
-            },
-            icon: const Icon(Icons.refresh),
-            label: const Text('重试'),
-          ),
-        ],
-      ),
+    return WarmStateCard(
+      type: MusicService().errorMessage?.contains('HTTP 0') == true ||
+              MusicService().errorMessage?.contains('Socket') == true
+          ? WarmStateType.network
+          : WarmStateType.error,
+      technicalDetails: MusicService().errorMessage,
+      onRetry: () => MusicService().refreshToplists(),
     );
-
-    if (themeManager.isFluentFramework) {
-      return fluent.Card(padding: EdgeInsets.zero, child: cardContent);
-    }
-
-    return Card(color: colorScheme.surfaceContainer, child: cardContent);
   }
 }
 
@@ -1327,39 +1286,10 @@ class EmptySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final themeManager = ThemeManager();
-
-    final cardContent = Padding(
-      padding: const EdgeInsets.all(48.0),
-      child: Column(
-        children: [
-          Icon(Icons.music_note, size: 64, color: colorScheme.onSurfaceVariant),
-          const SizedBox(height: 16),
-          Text('暂无榜单', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          Text(
-            '请检查后端服务是否正常',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: () {
-              MusicService().fetchToplists();
-            },
-            icon: const Icon(Icons.refresh),
-            label: const Text('刷新'),
-          ),
-        ],
-      ),
+    return WarmStateCard(
+      type: WarmStateType.empty,
+      retryText: '获取榜单',
+      onRetry: () => MusicService().refreshToplists(),
     );
-
-    if (themeManager.isFluentFramework) {
-      return fluent.Card(padding: EdgeInsets.zero, child: cardContent);
-    }
-
-    return Card(color: colorScheme.surfaceContainer, child: cardContent);
   }
 }

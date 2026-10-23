@@ -1,3 +1,4 @@
+import '../../widgets/lyric_status_text.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/player_service.dart';
@@ -8,6 +9,7 @@ import '../../models/lyric_line.dart';
 class MobilePlayerKaraokeLyric extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
+  final LyricLoadState lyricState;
   final VoidCallback onTap;
   final bool showTranslation;
 
@@ -15,6 +17,7 @@ class MobilePlayerKaraokeLyric extends StatefulWidget {
     super.key,
     required this.lyrics,
     required this.currentLyricIndex,
+    required this.lyricState,
     required this.onTap,
     required this.showTranslation,
   });
@@ -29,7 +32,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
   Timer? _autoResetTimer; // 自动回退定时器
   AnimationController? _timeCapsuleAnimationController;
   Animation<double>? _timeCapsuleFadeAnimation;
-  
+
   // 滑动相关
   double _accumulatedDelta = 0.0; // 累积的滑动距离
   static const double _scrollSensitivity = 15.0; // 滑动敏感度
@@ -68,7 +71,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
       _isManualMode = true;
       _selectedLyricIndex = lyricIndex;
     });
-    
+
     _timeCapsuleAnimationController?.forward();
     _resetAutoTimer();
   }
@@ -82,34 +85,32 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
   /// 退出手动模式
   void _exitManualMode() {
     if (!mounted) return;
-    
+
     setState(() {
       _isManualMode = false;
       _selectedLyricIndex = null;
     });
-    
+
     _timeCapsuleAnimationController?.reverse();
     _autoResetTimer?.cancel();
   }
 
   /// 跳转到选中的歌词时间
   void _seekToSelectedLyric() {
-    if (_selectedLyricIndex != null && 
-        _selectedLyricIndex! >= 0 && 
+    if (_selectedLyricIndex != null &&
+        _selectedLyricIndex! >= 0 &&
         _selectedLyricIndex! < widget.lyrics.length) {
-      
+
       final selectedLyric = widget.lyrics[_selectedLyricIndex!];
-      if (selectedLyric.startTime != null) {
-        PlayerService().seek(selectedLyric.startTime!);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已跳转到: ${selectedLyric.text}'),
-            duration: const Duration(seconds: 1),
-          ),
-        );
-      }
+      PlayerService().seek(selectedLyric.startTime);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已跳转到: ${selectedLyric.text}'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
     }
-    
+
     _exitManualMode();
   }
 
@@ -124,7 +125,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
         const double translationHeight = 22.0;
         final double itemHeight = lineHeight + (widget.showTranslation ? translationHeight : 0);
         final double containerHeight = totalVisibleLines * itemHeight + 2.0; // 轻微冗余，避免字体度量导致的溢出
-        
+
         return Stack(
           children: [
             // 主要歌词区域
@@ -132,7 +133,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
               onTap: widget.onTap,
               onVerticalDragStart: (details) {
                 if (widget.lyrics.isEmpty) return;
-                
+
                 // 开始滑动时，如果还没有手动选择，使用当前播放索引作为起点
                 if (!_isManualMode) {
                   _startManualMode(widget.currentLyricIndex);
@@ -141,17 +142,17 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
               },
               onVerticalDragUpdate: (details) {
                 if (widget.lyrics.isEmpty || !_isManualMode) return;
-                
+
                 // 累积滑动距离
                 _accumulatedDelta += details.delta.dy;
-                
+
                 // 计算应该移动的行数
                 final linesToMove = (_accumulatedDelta / _scrollSensitivity).floor();
-                
+
                 if (linesToMove.abs() >= 1) {
                   final currentIndex = _selectedLyricIndex ?? widget.currentLyricIndex;
                   int newIndex;
-                  
+
                   if (linesToMove > 0) {
                     // 向下滑动，选择更前面的歌词
                     newIndex = (currentIndex - linesToMove).clamp(0, widget.lyrics.length - 1);
@@ -159,12 +160,12 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
                     // 向上滑动，选择更后面的歌词
                     newIndex = (currentIndex - linesToMove).clamp(0, widget.lyrics.length - 1);
                   }
-                  
+
                   if (newIndex != currentIndex) {
                     setState(() {
                       _selectedLyricIndex = newIndex;
                     });
-                    
+
                     // 重置累积距离和定时器
                     _accumulatedDelta = 0.0;
                     _resetAutoTimer();
@@ -184,7 +185,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
                     : _buildKaraokeLyricLines(screenWidth),
               ),
             ),
-            
+
             // 时间胶囊组件
             if (_isManualMode && _selectedLyricIndex != null)
               Positioned(
@@ -202,22 +203,18 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
   /// 构建无歌词提示
   Widget _buildNoLyric(double screenWidth) {
     final lyricFontSize = (screenWidth * 0.038).clamp(14.0, 16.0);
-    
+
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
-        final textColor = _getAdaptiveLyricColor(themeColor, false).withOpacity(0.5);
-        
+        final textColor = _getAdaptiveLyricColor(themeColor, false).withValues(alpha: 0.5);
+
         return Center(
-          child: Text(
-            '暂无歌词',
-            style: TextStyle(
+          child: LyricStatusText(state: widget.lyricState, style: TextStyle(
               color: textColor,
               fontSize: lyricFontSize,
               fontFamily: 'Microsoft YaHei',
-            ),
-            textAlign: TextAlign.center,
-          ),
+            )),
         );
       },
     );
@@ -230,17 +227,17 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
     // 使用 flex 比例代替固定像素高度，避免轻微的度量误差造成溢出
     const int mainFlex = 100; // 近似 30
     const int transFlex = 73; // 近似 22，对应比例 30:22 ≈ 100:73
-    
+
     final lyricFontSize = (screenWidth * 0.038).clamp(14.0, 16.0);
     final smallFontSize = lyricFontSize * 0.85;
     final showTrans = widget.showTranslation;
-    
+
     // 使用手动选择的索引或当前播放索引
     final displayIndex = _selectedLyricIndex ?? widget.currentLyricIndex;
-    
+
     // 计算显示范围
     int startIndex = displayIndex - currentLinePosition;
-    
+
     List<Widget> rows = [];
     for (int i = 0; i < totalVisibleLines; i++) {
       final int lyricIndex = startIndex + i;
@@ -288,14 +285,14 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
         ),
       );
     }
-    
+
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
       layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
         return Stack(
           alignment: Alignment.center,
           children: <Widget>[
-            if (currentChild != null) currentChild,
+            ?currentChild,
           ],
         );
       },
@@ -320,18 +317,17 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
   /// 构建卡拉OK样式的歌词行（当前歌词）
   Widget _buildKaraokeLyricLine(LyricLine lyric, double fontSize, bool isActuallyPlaying) {
     final text = lyric.text.trim().isEmpty ? '♪' : lyric.text;
-    
+
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
-        return AnimatedBuilder(
-          animation: PlayerService(),
-          builder: (context, child) {
-            final player = PlayerService();
+        return ValueListenableBuilder<Duration>(
+          valueListenable: PlayerService().positionNotifier,
+          builder: (context, position, child) {
             // 只有正在播放的歌词才显示填充效果，手动选择的显示静态高亮
-            final fillProgress = isActuallyPlaying ? _calculateFillProgress(lyric, player.position) : 0.0;
+            final fillProgress = isActuallyPlaying ? _calculateFillProgress(lyric, position) : 0.0;
             final isSelected = _isManualMode && !isActuallyPlaying;
-            
+
             return Center(
               child: _buildKaraokeText(
                 text: text,
@@ -340,7 +336,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
                 themeColor: themeColor,
                 isSelected: isSelected,
                 lyric: lyric,
-                currentPosition: player.position,
+                currentPosition: position,
               ),
             );
           },
@@ -352,12 +348,12 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
   /// 构建普通歌词行（非当前歌词）
   Widget _buildNormalLyricLine(LyricLine lyric, double fontSize, bool isCurrent) {
     final text = lyric.text.trim().isEmpty ? '♪' : lyric.text;
-    
+
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         final lyricColor = _getAdaptiveLyricColor(themeColor, isCurrent);
-        
+
         return Center(
           child: AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 300),
@@ -384,7 +380,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
-        final baseColor = _getAdaptiveLyricColor(themeColor, false).withOpacity(0.75);
+        final baseColor = _getAdaptiveLyricColor(themeColor, false).withValues(alpha: 0.75);
         return Center(
           child: Text(
             translation,
@@ -416,7 +412,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
   }) {
     final baseColor = _getAdaptiveLyricColor(themeColor, false);
     final highlightColor = _getAdaptiveLyricColor(themeColor, true);
-    
+
     // 如果有逐字歌词数据，使用逐字填充模式
     if (lyric != null && lyric.hasWordByWord && lyric.words != null && currentPosition != null && !isSelected) {
       return _buildWordByWordKaraokeText(
@@ -427,7 +423,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
         highlightColor: highlightColor,
       );
     }
-    
+
     // 回退到整行填充模式
     return Stack(
       children: [
@@ -444,7 +440,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        
+
         // 上层：填充的文字（高亮色或选中色）
         ClipRect(
           clipper: _KaraokeClipper(isSelected ? 1.0 : fillProgress),
@@ -458,9 +454,9 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
               // 添加发光效果
               shadows: [
                 Shadow(
-                  color: isSelected 
-                      ? Colors.orange.withOpacity(0.6)
-                      : highlightColor.withOpacity(0.5),
+                  color: isSelected
+                      ? Colors.orange.withValues(alpha: 0.6)
+                      : highlightColor.withValues(alpha: 0.5),
                   blurRadius: isSelected ? 12 : 8,
                   offset: const Offset(0, 0),
                 ),
@@ -484,13 +480,13 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
     required Color highlightColor,
   }) {
     final words = lyric.words!;
-    
+
     return Wrap(
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: List.generate(words.length, (index) {
         final word = words[index];
-        
+
         // 计算这个字的填充进度
         double wordProgress;
         if (currentPosition < word.startTime) {
@@ -501,7 +497,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
           final wordElapsed = currentPosition - word.startTime;
           wordProgress = (wordElapsed.inMilliseconds / word.duration.inMilliseconds).clamp(0.0, 1.0);
         }
-        
+
         return _MobileKaraokeWordWidget(
           text: word.text,
           progress: wordProgress,
@@ -515,48 +511,44 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
 
   /// 计算填充进度（0.0 - 1.0）
   double _calculateFillProgress(LyricLine lyric, Duration currentPosition) {
-    if (lyric.startTime == null) return 0.0;
-    
-    final startMs = lyric.startTime!.inMilliseconds;
+    final startMs = lyric.startTime.inMilliseconds;
     final currentMs = currentPosition.inMilliseconds;
-    
+
     // 如果还没开始，返回0
     if (currentMs < startMs) return 0.0;
-    
+
     // 计算歌词行的持续时间（到下一行开始或3秒默认）
     final nextLyricIndex = widget.currentLyricIndex + 1;
     Duration endTime;
-    
-    if (nextLyricIndex < widget.lyrics.length && widget.lyrics[nextLyricIndex].startTime != null) {
-      endTime = widget.lyrics[nextLyricIndex].startTime!;
+
+    if (nextLyricIndex < widget.lyrics.length) {
+      endTime = widget.lyrics[nextLyricIndex].startTime;
     } else {
       // 最后一行或下一行没有时间戳，使用3秒默认持续时间
-      endTime = lyric.startTime! + const Duration(seconds: 3);
+      endTime = lyric.startTime + const Duration(seconds: 3);
     }
-    
+
     final endMs = endTime.inMilliseconds;
     final durationMs = endMs - startMs;
-    
+
     if (durationMs <= 0) return 1.0; // 避免除零
-    
+
     final elapsedMs = currentMs - startMs;
     final progress = (elapsedMs / durationMs).clamp(0.0, 1.0);
-    
+
     return progress;
   }
 
   /// 构建时间胶囊组件
   Widget _buildTimeCapsule() {
-    if (_selectedLyricIndex == null || 
-        _selectedLyricIndex! < 0 || 
+    if (_selectedLyricIndex == null ||
+        _selectedLyricIndex! < 0 ||
         _selectedLyricIndex! >= widget.lyrics.length) {
       return const SizedBox.shrink();
     }
 
     final selectedLyric = widget.lyrics[_selectedLyricIndex!];
-    final timeText = selectedLyric.startTime != null 
-        ? _formatDuration(selectedLyric.startTime!)
-        : '00:00';
+    final timeText = _formatDuration(selectedLyric.startTime);
 
     return FadeTransition(
       opacity: _timeCapsuleFadeAnimation!,
@@ -566,11 +558,11 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.9),
+              color: Colors.orange.withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.orange.withOpacity(0.3),
+                  color: Colors.orange.withValues(alpha: 0.3),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -622,17 +614,17 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
   Color _getAdaptiveLyricColor(Color? themeColor, bool isCurrent) {
     final color = themeColor ?? Colors.grey[700]!;
     final useDarkText = _shouldUseDarkText(color);
-    
+
     if (useDarkText) {
       // 亮色背景，使用深色文字
-      return isCurrent 
-          ? Colors.black87 
+      return isCurrent
+          ? Colors.black87
           : Colors.black54;
     } else {
       // 暗色背景，使用浅色文字
-      return isCurrent 
-          ? Colors.white 
-          : Colors.white.withOpacity(0.5);
+      return isCurrent
+          ? Colors.white
+          : Colors.white.withValues(alpha: 0.5);
     }
   }
 }
@@ -690,7 +682,7 @@ class _MobileKaraokeWordWidget extends StatelessWidget {
               fontFamily: 'Microsoft YaHei',
             ),
           ),
-          
+
           // 上层亮色文字（通过 ClipRect 裁剪）
           ClipRect(
             clipper: _KaraokeClipper(progress),
@@ -703,7 +695,7 @@ class _MobileKaraokeWordWidget extends StatelessWidget {
                 fontFamily: 'Microsoft YaHei',
                 shadows: [
                   Shadow(
-                    color: highlightColor.withOpacity(0.5),
+                    color: highlightColor.withValues(alpha: 0.5),
                     blurRadius: 8,
                     offset: const Offset(0, 0),
                   ),

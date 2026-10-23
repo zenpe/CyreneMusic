@@ -1,3 +1,4 @@
+import '../../widgets/lyric_status_text.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -13,6 +14,7 @@ import '../../models/lyric_line.dart';
 class MobilePlayerFluidCloudLyric extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
+  final LyricLoadState lyricState;
   final bool showTranslation;
   final VoidCallback? onTap;
 
@@ -20,6 +22,7 @@ class MobilePlayerFluidCloudLyric extends StatefulWidget {
     super.key,
     required this.lyrics,
     required this.currentLyricIndex,
+    this.lyricState = LyricLoadState.idle,
     this.showTranslation = true,
     this.onTap,
   });
@@ -38,7 +41,7 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
   bool _isDragging = false;
   Timer? _dragResetTimer;
   int? _selectedLyricIndex;
-  
+
   // 时间胶囊动画
   AnimationController? _timeCapsuleAnimationController;
   Animation<double>? _timeCapsuleFadeAnimation;
@@ -326,8 +329,11 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
 
     // 7. 模糊逻辑
     double targetBlur = 3.0;
-    if (diff == 0) targetBlur = 0.0;
-    else if (diff.abs() == 1) targetBlur = 0.8;
+    if (diff == 0) {
+      targetBlur = 0.0;
+    } else if (diff.abs() == 1) {
+      targetBlur = 0.8;
+    }
 
     final bool isActive = (diff == 0);
 
@@ -353,14 +359,11 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
   Widget _buildNoLyric() {
     final fontFamily = LyricFontService().currentFontFamily ?? 'Microsoft YaHei';
     return Center(
-      child: Text(
-        '暂无歌词',
-        style: TextStyle(
-          color: Colors.white.withOpacity(0.5),
+      child: LyricStatusText(state: widget.lyricState, style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.5),
           fontSize: 16,
           fontFamily: fontFamily,
-        ),
-      ),
+        )),
     );
   }
 
@@ -381,10 +384,10 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withValues(alpha: 0.3),
               width: 0.5,
             ),
           ),
@@ -434,7 +437,7 @@ class _MobileElasticLyricLine extends StatefulWidget {
   final bool showTranslation;
 
   const _MobileElasticLyricLine({
-    Key? key,
+    super.key,
     required this.text,
     this.translation,
     required this.lyric,
@@ -449,7 +452,7 @@ class _MobileElasticLyricLine extends StatefulWidget {
     required this.delay,
     required this.isDragging,
     required this.showTranslation,
-  }) : super(key: key);
+  });
 
   @override
   State<_MobileElasticLyricLine> createState() => _MobileElasticLyricLineState();
@@ -593,7 +596,7 @@ class _MobileElasticLyricLineState extends State<_MobileElasticLyricLine> with T
     if (widget.isActive) {
       textColor = Colors.white;
     } else {
-      textColor = Colors.white.withOpacity(0.35);
+      textColor = Colors.white.withValues(alpha: 0.35);
     }
 
     // 构建文本 Widget
@@ -658,7 +661,7 @@ class _MobileElasticLyricLineState extends State<_MobileElasticLyricLine> with T
                 fontFamily: fontFamily,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.white.withOpacity(0.35),
+                color: Colors.white.withValues(alpha: 0.35),
                 height: 1.2,
               ),
             ),
@@ -870,12 +873,12 @@ class _MobileWordFillWidget extends StatefulWidget {
   final ValueNotifier<Duration> positionNotifier;
 
   const _MobileWordFillWidget({
-    Key? key,
+    super.key,
     required this.text,
     required this.word,
     required this.style,
     required this.positionNotifier,
-  }) : super(key: key);
+  });
 
   @override
   State<_MobileWordFillWidget> createState() => _MobileWordFillWidgetState();
@@ -1029,7 +1032,7 @@ class _MobileWordFillWidgetState extends State<_MobileWordFillWidget> with Ticke
     } else {
       const double glowWidth = 0.05;
       gradientColors = [
-        Colors.white.withOpacity(0.9),
+        Colors.white.withValues(alpha: 0.9),
         Colors.white,
         Colors.white,
         const Color(0x99FFFFFF),
@@ -1101,7 +1104,7 @@ class _MobileWordFillWidgetState extends State<_MobileWordFillWidget> with Ticke
         } else {
           const double glowW = 0.15;
           lColors = [
-            Colors.white.withOpacity(0.9),
+            Colors.white.withValues(alpha: 0.9),
             Colors.white,
             Colors.white,
             const Color(0x99FFFFFF),

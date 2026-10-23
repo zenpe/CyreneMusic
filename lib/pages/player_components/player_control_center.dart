@@ -19,14 +19,14 @@ class PlayerControlCenter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!isVisible) return const SizedBox.shrink();
-    
+
     if (fadeAnimation != null) {
       return FadeTransition(
         opacity: fadeAnimation!,
         child: _buildPanel(),
       );
     }
-    
+
     return _buildPanel();
   }
 
@@ -34,7 +34,7 @@ class PlayerControlCenter extends StatelessWidget {
     return GestureDetector(
       onTap: onClose,
       child: Container(
-        color: Colors.black.withOpacity(0.85),
+        color: Colors.black.withValues(alpha: 0.85),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
           child: SafeArea(
@@ -61,7 +61,7 @@ class PlayerControlCenter extends StatelessWidget {
                     ],
                   ),
                 ),
-                
+
                 // 内容区域 - 使用 AnimatedBuilder 监听音量变化
                 Expanded(
                   child: AnimatedBuilder(
@@ -69,7 +69,7 @@ class PlayerControlCenter extends StatelessWidget {
                     builder: (context, child) {
                       final player = PlayerService();
                       final volume = player.volume;
-                      
+
                       return GestureDetector(
                         onTap: () {}, // 阻止点击穿透
                         child: Center(
@@ -81,10 +81,10 @@ class PlayerControlCenter extends StatelessWidget {
                                 width: 320,
                                 padding: const EdgeInsets.all(32),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.1),
+                                  color: Colors.white.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(24),
                                   border: Border.all(
-                                    color: Colors.white.withOpacity(0.2),
+                                    color: Colors.white.withValues(alpha: 0.2),
                                     width: 1,
                                   ),
                                 ),
@@ -96,22 +96,22 @@ class PlayerControlCenter extends StatelessWidget {
                                       width: 80,
                                       height: 80,
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.15),
+                                        color: Colors.white.withValues(alpha: 0.15),
                                         shape: BoxShape.circle,
                                       ),
                                       child: Icon(
-                                        volume == 0 
-                                            ? Icons.volume_off_rounded 
-                                            : volume < 0.5 
-                                                ? Icons.volume_down_rounded 
+                                        volume == 0
+                                            ? Icons.volume_off_rounded
+                                            : volume < 0.5
+                                                ? Icons.volume_down_rounded
                                                 : Icons.volume_up_rounded,
                                         color: Colors.white,
                                         size: 40,
                                       ),
                                     ),
-                                    
+
                                     const SizedBox(height: 24),
-                                    
+
                                     // 标题
                                     const Text(
                                       '音量',
@@ -121,9 +121,9 @@ class PlayerControlCenter extends StatelessWidget {
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                    
+
                                     const SizedBox(height: 32),
-                                    
+
                                     // 纵向胶囊样式滑块
                                     CapsuleSlider(
                                       value: volume,
@@ -131,9 +131,9 @@ class PlayerControlCenter extends StatelessWidget {
                                         player.setVolume(value);
                                       },
                                     ),
-                                    
+
                                     const SizedBox(height: 16),
-                                    
+
                                     // 音量百分比
                                     Text(
                                       '${(volume * 100).toInt()}%',
@@ -146,14 +146,14 @@ class PlayerControlCenter extends StatelessWidget {
                                   ],
                                 ),
                               ),
-                              
+
                               const SizedBox(height: 24),
-                              
+
                               // 提示文字
                               Text(
                                 '点击任意位置关闭',
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
+                                  color: Colors.white.withValues(alpha: 0.5),
                                   fontSize: 14,
                                 ),
                               ),
@@ -194,7 +194,7 @@ class _CapsuleSliderState extends State<CapsuleSlider> {
   @override
   Widget build(BuildContext context) {
     final currentValue = _dragValue ?? widget.value;
-    
+
     return GestureDetector(
       onVerticalDragStart: (details) {
         setState(() {
@@ -226,7 +226,7 @@ class _CapsuleSliderState extends State<CapsuleSlider> {
         height: 200,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(30),
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha: 0.2),
         ),
         child: Stack(
           children: [
@@ -242,14 +242,14 @@ class _CapsuleSliderState extends State<CapsuleSlider> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.grey[700]!.withOpacity(0.8),
+                      Colors.grey[700]!.withValues(alpha: 0.8),
                       Colors.grey[700]!,
                     ],
                   ),
                 ),
               ),
             ),
-            
+
             // 滑块手柄（横线）
             Positioned(
               left: 0,
@@ -263,7 +263,7 @@ class _CapsuleSliderState extends State<CapsuleSlider> {
                   borderRadius: BorderRadius.circular(2),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -271,7 +271,7 @@ class _CapsuleSliderState extends State<CapsuleSlider> {
                 ),
               ),
             ),
-            
+
             // 顶部小圆点
             Positioned(
               top: 8,
@@ -282,7 +282,7 @@ class _CapsuleSliderState extends State<CapsuleSlider> {
                   width: 6,
                   height: 6,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.6),
+                    color: Colors.white.withValues(alpha: 0.6),
                     shape: BoxShape.circle,
                   ),
                 ),

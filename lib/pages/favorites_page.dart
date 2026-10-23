@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../features/auth/auth_feature.dart';
 import '../services/favorite_service.dart';
 import '../services/player_service.dart';
-import '../services/auth_service.dart';
 import '../services/playlist_queue_service.dart';
 import '../models/track.dart';
 
@@ -16,6 +16,7 @@ class FavoritesPage extends StatefulWidget {
 
 class _FavoritesPageState extends State<FavoritesPage>
     with AutomaticKeepAliveClientMixin {
+  final AuthFacade _authFacade = AuthFacade();
   final FavoriteService _favoriteService = FavoriteService();
 
   @override
@@ -25,9 +26,9 @@ class _FavoritesPageState extends State<FavoritesPage>
   void initState() {
     super.initState();
     _favoriteService.addListener(_onFavoritesChanged);
-    
+
     // 加载收藏列表
-    if (AuthService().isLoggedIn) {
+    if (_authFacade.isLoggedIn) {
       _favoriteService.loadFavorites();
     }
   }
@@ -50,7 +51,7 @@ class _FavoritesPageState extends State<FavoritesPage>
     final colorScheme = Theme.of(context).colorScheme;
 
     // 检查登录状态
-    if (!AuthService().isLoggedIn) {
+    if (!_authFacade.isLoggedIn) {
       return Scaffold(
         backgroundColor: colorScheme.surface,
         body: CustomScrollView(
@@ -137,7 +138,7 @@ class _FavoritesPageState extends State<FavoritesPage>
         IconButton(
           icon: const Icon(Icons.refresh),
           onPressed: () {
-            if (AuthService().isLoggedIn) {
+            if (_authFacade.isLoggedIn) {
               _favoriteService.loadFavorites();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -190,6 +191,8 @@ class _FavoritesPageState extends State<FavoritesPage>
               borderRadius: BorderRadius.circular(4),
               child: CachedNetworkImage(
                 imageUrl: item.picUrl,
+                memCacheWidth: 128,
+                memCacheHeight: 128,
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
@@ -304,7 +307,7 @@ class _FavoritesPageState extends State<FavoritesPage>
 
     // 将收藏列表转换为 Track 列表
     final trackList = favorites.map((f) => f.toTrack()).toList();
-    
+
     // 设置播放队列
     PlaylistQueueService().setQueue(
       trackList,
@@ -314,15 +317,6 @@ class _FavoritesPageState extends State<FavoritesPage>
 
     // 播放选中的歌曲
     PlayerService().playTrack(trackList[index]);
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('正在播放: ${favorites[index].name}'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    }
   }
 
   /// 获取音乐平台图标
@@ -338,6 +332,8 @@ class _FavoritesPageState extends State<FavoritesPage>
         return '🎼';
       case MusicSource.kuwo:
         return '🎸';
+      case MusicSource.navidrome:
+        return '🎧';
       case MusicSource.spotify:
         return '🟢';
       case MusicSource.local:
@@ -347,61 +343,105 @@ class _FavoritesPageState extends State<FavoritesPage>
 
   /// 构建空状态
   Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.favorite_border,
-            size: 80,
-            color: colorScheme.onSurfaceVariant.withOpacity(0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '暂无收藏',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+    final theme = Theme.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.favorite_border,
+                      size: compact ? 56 : 80,
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '暂无收藏',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '在播放器中点击爱心即可收藏歌曲',
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '在播放器中点击爱心即可收藏歌曲',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.7),
-                ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   /// 构建登录提示
   Widget _buildLoginPrompt(ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.login,
-            size: 80,
-            color: colorScheme.onSurfaceVariant.withOpacity(0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '请先登录',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+    final theme = Theme.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.login,
+                      size: compact ? 56 : 80,
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '请先登录',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '登录后即可使用收藏功能',
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '登录后即可使用收藏功能',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.7),
-                ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

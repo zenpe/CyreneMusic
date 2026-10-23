@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,7 +15,7 @@ class UrlService extends ChangeNotifier {
   UrlService._internal();
 
   /// 官方源地址
-  static const String officialBaseUrl = 'http://114.66.31.209:4055';
+  static const String officialBaseUrl = 'https://niba.cc.cd';
 
   /// 当前源类型
   BackendSourceType _sourceType = BackendSourceType.official;
@@ -24,35 +25,62 @@ class UrlService extends ChangeNotifier {
 
   /// 是否已初始化
   bool _isInitialized = false;
+  int _backendRevision = 0;
+
+  /// Changes only when the effective backend URL changes, including A → B → A.
+  int get backendRevision => _backendRevision;
+
+  void _notifySettingsChanged(String previousBaseUrl) {
+    if (previousBaseUrl != baseUrl) _backendRevision++;
+    notifyListeners();
+  }
 
   /// 初始化服务（必须在应用启动时调用）
   Future<void> initialize() async {
     if (_isInitialized) {
-      print('⚠️ [UrlService] 已经初始化，跳过重复初始化');
+      StructuredLogService.log('⚠️ [UrlService] 已经初始化，跳过重复初始化');
       return;
     }
-    
+
     await _loadSettings();
     _isInitialized = true;
-    print('✅ [UrlService] 初始化完成');
+    StructuredLogService.log('✅ [UrlService] 初始化完成');
   }
 
   /// 从本地存储加载设置
   Future<void> _loadSettings() async {
+    final previousBaseUrl = baseUrl;
     try {
       final prefs = await SharedPreferences.getInstance();
-      
-      // 加载源类型
-      final sourceTypeIndex = prefs.getInt('backend_source_type') ?? 0;
-      _sourceType = BackendSourceType.values[sourceTypeIndex];
-      
+
+      // 1) 新版：优先读取字符串类型
+      final sourceTypeStr = prefs.getString('backend_source_type');
+      if (sourceTypeStr == BackendSourceType.custom.name) {
+        _sourceType = BackendSourceType.custom;
+      } else if (sourceTypeStr == BackendSourceType.official.name) {
+        _sourceType = BackendSourceType.official;
+      } else {
+        // 2) 兼容旧版 int（0=official, 1=custom）
+        final sourceTypeIndex = prefs.getInt('backend_source_type');
+        if (sourceTypeIndex == 1) {
+          _sourceType = BackendSourceType.custom;
+        } else if (sourceTypeIndex == 0) {
+          _sourceType = BackendSourceType.official;
+        }
+      }
+
       // 加载自定义源地址
       _customBaseUrl = prefs.getString('custom_base_url') ?? '';
-      
-      print('🌐 [UrlService] 从本地加载配置: ${_sourceType.name}, 自定义源: $_customBaseUrl');
-      notifyListeners();
+
+      // 迁移保护：如果被误切到 custom 但地址为空，回退官方
+      if (_sourceType == BackendSourceType.custom && _customBaseUrl.isEmpty) {
+        _sourceType = BackendSourceType.official;
+      }
+
+      StructuredLogService.log('🌐 [UrlService] 从本地加载配置: ${_sourceType.name}, 自定义源: $_customBaseUrl');
+      _notifySettingsChanged(previousBaseUrl);
     } catch (e) {
-      print('❌ [UrlService] 加载配置失败: $e');
+      StructuredLogService.log('❌ [UrlService] 加载配置失败: $e');
     }
   }
 
@@ -60,10 +88,10 @@ class UrlService extends ChangeNotifier {
   Future<void> _saveSourceType() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('backend_source_type', _sourceType.index);
-      print('💾 [UrlService] 源类型已保存: ${_sourceType.name}');
+      await prefs.setString('backend_source_type', _sourceType.name);
+      StructuredLogService.log('💾 [UrlService] 源类型已保存: ${_sourceType.name}');
     } catch (e) {
-      print('❌ [UrlService] 保存源类型失败: $e');
+      StructuredLogService.log('❌ [UrlService] 保存源类型失败: $e');
     }
   }
 
@@ -72,9 +100,9 @@ class UrlService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('custom_base_url', _customBaseUrl);
-      print('💾 [UrlService] 自定义源已保存: $_customBaseUrl');
+      StructuredLogService.log('💾 [UrlService] 自定义源已保存: $_customBaseUrl');
     } catch (e) {
-      print('❌ [UrlService] 保存自定义源失败: $e');
+      StructuredLogService.log('❌ [UrlService] 保存自定义源失败: $e');
     }
   }
 
@@ -100,23 +128,25 @@ class UrlService extends ChangeNotifier {
   /// 设置后端源类型
   void setSourceType(BackendSourceType type) {
     if (_sourceType != type) {
+      final previousBaseUrl = baseUrl;
       _sourceType = type;
       _saveSourceType();
-      notifyListeners();
+      _notifySettingsChanged(previousBaseUrl);
     }
   }
 
   /// 设置自定义源地址
   void setCustomBaseUrl(String url) {
     // 移除末尾的斜杠
-    final cleanUrl = url.trim().endsWith('/') 
-        ? url.trim().substring(0, url.trim().length - 1) 
+    final cleanUrl = url.trim().endsWith('/')
+        ? url.trim().substring(0, url.trim().length - 1)
         : url.trim();
-    
+
     if (_customBaseUrl != cleanUrl) {
+      final previousBaseUrl = baseUrl;
       _customBaseUrl = cleanUrl;
       _saveCustomBaseUrl();
-      notifyListeners();
+      _notifySettingsChanged(previousBaseUrl);
     }
   }
 
@@ -141,11 +171,6 @@ class UrlService extends ChangeNotifier {
   String get neteaseQrKeyUrl => '$baseUrl/login/qr/key';
   String get neteaseQrCreateUrl => '$baseUrl/login/qr/create';
   String get neteaseQrCheckUrl => '$baseUrl/login/qr/check';
-  String get neteaseListenTogether => '$baseUrl/listen/together/status';
-  String get neteaseListenTogetherCheck => '$baseUrl/listen/together/play/command';
-  String get neteaseDynamicCover => '$baseUrl/song/dynamic/cover';
-  // 获取网易云副歌时间
-  String get neteaseChorus => '$baseUrl/song/chorus';
 
   // Accounts API
   String get accountsBindingsUrl => '$baseUrl/accounts/bindings';
@@ -165,12 +190,6 @@ class UrlService extends ChangeNotifier {
   String get neteasePlaylistDetailUrl => '$baseUrl/playlist';
   // Netease user playlists (for import)
   String get neteaseUserPlaylistsUrl => '$baseUrl/netease/user/playlists';
-  // Netease Library
-  String get neteaseLikelistUrl => '$baseUrl/netease/likelist';
-  String get neteaseAlbumSublistUrl => '$baseUrl/netease/album/sublist';
-  String get neteaseArtistSublistUrl => '$baseUrl/netease/artist/sublist';
-  String get neteaseTopArtistUrl => '$baseUrl/netease/artist/top';
-  String get neteaseDjSublistUrl => '$baseUrl/netease/dj/sublist';
 
   // QQ Music API
   String get qqSearchUrl => '$baseUrl/qq/search';
@@ -206,7 +225,7 @@ class UrlService extends ChangeNotifier {
 
   // Version API
   String get versionLatestUrl => '$baseUrl/version/latest';
-  
+
   // Weather API
   String get weatherUrl => '$baseUrl/weather';
 
@@ -221,7 +240,7 @@ class UrlService extends ChangeNotifier {
   /// 验证 URL 格式
   static bool isValidUrl(String url) {
     if (url.isEmpty) return false;
-    
+
     try {
       final uri = Uri.parse(url);
       return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https');

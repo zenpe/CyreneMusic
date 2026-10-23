@@ -10,13 +10,13 @@ class InteractionSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return AnimatedBuilder(
       animation: AutoCollapseService(),
       builder: (context, _) {
         final service = AutoCollapseService();
         final isEnabled = service.isAutoCollapseEnabled;
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: GestureDetector(
@@ -31,25 +31,25 @@ class InteractionSection extends StatelessWidget {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          colorScheme.primaryContainer.withOpacity(0.7),
-                          colorScheme.primaryContainer.withOpacity(0.4),
+                          colorScheme.primaryContainer.withValues(alpha: 0.7),
+                          colorScheme.primaryContainer.withValues(alpha: 0.4),
                         ],
                       )
                     : null,
                 color: isEnabled
                     ? null
-                    : colorScheme.surfaceContainerHighest.withOpacity(isDark ? 0.6 : 0.8),
+                    : colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
                 borderRadius: BorderRadius.circular(28),
                 border: Border.all(
                   color: isEnabled
-                      ? colorScheme.primary.withOpacity(0.5)
-                      : colorScheme.outlineVariant.withOpacity(0.3),
+                      ? colorScheme.primary.withValues(alpha: 0.5)
+                      : colorScheme.outlineVariant.withValues(alpha: 0.3),
                   width: isEnabled ? 2 : 1,
                 ),
                 boxShadow: isEnabled
                     ? [
                         BoxShadow(
-                          color: colorScheme.primary.withOpacity(0.15),
+                          color: colorScheme.primary.withValues(alpha: 0.15),
                           blurRadius: 16,
                           offset: const Offset(0, 6),
                         ),
@@ -67,8 +67,8 @@ class InteractionSection extends StatelessWidget {
                       gradient: isEnabled
                           ? LinearGradient(
                               colors: [
-                                colorScheme.primary.withOpacity(0.3),
-                                colorScheme.primary.withOpacity(0.1),
+                                colorScheme.primary.withValues(alpha: 0.3),
+                                colorScheme.primary.withValues(alpha: 0.1),
                               ],
                             )
                           : null,
@@ -81,12 +81,12 @@ class InteractionSection extends StatelessWidget {
                           : Icons.visibility_rounded,
                       color: isEnabled
                           ? colorScheme.primary
-                          : colorScheme.onSurfaceVariant.withOpacity(0.6),
+                          : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                       size: 26,
                     ),
                   ),
                   const SizedBox(width: 16),
-                  
+
                   // 文字区域
                   Expanded(
                     child: Column(
@@ -108,8 +108,8 @@ class InteractionSection extends StatelessWidget {
                           '自动隐藏控制按钮，点击屏幕呼出',
                           style: TextStyle(
                             color: isEnabled
-                                ? colorScheme.onPrimaryContainer.withOpacity(0.7)
-                                : colorScheme.onSurfaceVariant.withOpacity(0.7),
+                                ? colorScheme.onPrimaryContainer.withValues(alpha: 0.7)
+                                : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
@@ -117,15 +117,15 @@ class InteractionSection extends StatelessWidget {
                       ],
                     ),
                   ),
-                  
+
                   // 开关
                   Transform.scale(
                     scale: 1.1,
                     child: Switch(
                       value: isEnabled,
                       onChanged: (value) => service.setAutoCollapseEnabled(value),
-                      activeColor: colorScheme.primary,
-                      activeTrackColor: colorScheme.primary.withOpacity(0.3),
+                      activeThumbColor: colorScheme.primary,
+                      activeTrackColor: colorScheme.primary.withValues(alpha: 0.3),
                       inactiveThumbColor: colorScheme.outline,
                       inactiveTrackColor: colorScheme.surfaceContainerHighest,
                     ),

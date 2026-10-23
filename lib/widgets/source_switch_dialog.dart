@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/track.dart';
 import '../models/playlist.dart';
 import '../services/track_source_switch_service.dart';
+import '../utils/image_utils.dart';
 import '../utils/theme_manager.dart';
 
 /// 换源选择对话框 - 第一步：选择平台和歌曲
@@ -18,14 +19,15 @@ class SourceSwitchSelectDialog extends StatefulWidget {
   });
 
   @override
-  State<SourceSwitchSelectDialog> createState() => _SourceSwitchSelectDialogState();
+  State<SourceSwitchSelectDialog> createState() =>
+      _SourceSwitchSelectDialogState();
 }
 
 class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
   MusicSource? _targetSource;
   final Set<int> _selectedIndices = {};
   bool _selectAll = true;
-  
+
   // 搜索相关
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -47,7 +49,13 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
 
   List<MusicSource> _getAvailableSources() {
     return MusicSource.values
-        .where((s) => s != MusicSource.local && s != MusicSource.apple && s != widget.currentSource)
+        .where(
+          (s) =>
+              s != MusicSource.local &&
+              s != MusicSource.apple &&
+              s != MusicSource.navidrome &&
+              s != widget.currentSource,
+        )
         .toList();
   }
 
@@ -74,8 +82,10 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
   void _toggleSelectAll() {
     setState(() {
       final filteredIndices = _getFilteredIndices();
-      final allFilteredSelected = filteredIndices.every((i) => _selectedIndices.contains(i));
-      
+      final allFilteredSelected = filteredIndices.every(
+        (i) => _selectedIndices.contains(i),
+      );
+
       if (allFilteredSelected) {
         // 取消选择所有过滤后的歌曲
         for (final i in filteredIndices) {
@@ -159,8 +169,13 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 filled: true,
-                fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                fillColor: colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 isDense: true,
               ),
               onChanged: _onSearchChanged,
@@ -169,11 +184,18 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
             // 歌曲选择标题
             Row(
               children: [
-                Text('选择需要换源的歌曲', style: Theme.of(context).textTheme.titleSmall),
+                Text(
+                  '选择需要换源的歌曲',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: _toggleSelectAll,
-                  icon: Icon(_selectAll ? Icons.check_box : Icons.check_box_outline_blank),
+                  icon: Icon(
+                    _selectAll
+                        ? Icons.check_box
+                        : Icons.check_box_outline_blank,
+                  ),
                   label: Text(_selectAll ? '取消全选' : '全选'),
                 ),
               ],
@@ -181,7 +203,9 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
             Builder(
               builder: (context) {
                 final filteredIndices = _getFilteredIndices();
-                final selectedInFiltered = filteredIndices.where((i) => _selectedIndices.contains(i)).length;
+                final selectedInFiltered = filteredIndices
+                    .where((i) => _selectedIndices.contains(i))
+                    .length;
                 return Text(
                   _searchQuery.isEmpty
                       ? '已选择 ${_selectedIndices.length}/${widget.tracks.length} 首'
@@ -199,15 +223,47 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                 builder: (context) {
                   final filteredIndices = _getFilteredIndices();
                   if (filteredIndices.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.search_off, size: 48, color: colorScheme.onSurfaceVariant),
-                          const SizedBox(height: 8),
-                          Text('未找到匹配的歌曲', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                        ],
-                      ),
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final compact =
+                            constraints.hasBoundedHeight &&
+                            constraints.maxHeight < 160;
+                        final minHeight = constraints.hasBoundedHeight
+                            ? constraints.maxHeight
+                            : 0.0;
+                        return SingleChildScrollView(
+                          physics: const ClampingScrollPhysics(),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(minHeight: minHeight),
+                            child: Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.search_off,
+                                      size: compact ? 40 : 48,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '未找到匹配的歌曲',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     );
                   }
                   return ListView.builder(
@@ -216,44 +272,47 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                       final index = filteredIndices[listIndex];
                       final track = widget.tracks[index];
                       final isSelected = _selectedIndices.contains(index);
-                  return ListTile(
-                    leading: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Checkbox(
-                          value: isSelected,
-                          onChanged: (_) => _toggleTrack(index),
-                        ),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: CachedNetworkImage(
-                            imageUrl: track.picUrl,
-                            width: 40,
-                            height: 40,
-                            fit: BoxFit.cover,
-                            errorWidget: (_, __, ___) => Container(
-                              width: 40,
-                              height: 40,
-                              color: colorScheme.surfaceContainerHighest,
-                              child: const Icon(Icons.music_note, size: 20),
+                      return ListTile(
+                        leading: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Checkbox(
+                              value: isSelected,
+                              onChanged: (_) => _toggleTrack(index),
                             ),
-                          ),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: CachedNetworkImage(
+                                imageUrl: track.picUrl,
+                                httpHeaders: getImageHeaders(track.picUrl),
+                                width: 40,
+                                height: 40,
+                                memCacheWidth: 128,
+                                memCacheHeight: 128,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, _, _) => Container(
+                                  width: 40,
+                                  height: 40,
+                                  color: colorScheme.surfaceContainerHighest,
+                                  child: const Icon(Icons.music_note, size: 20),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    title: Text(
-                      track.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      '${track.artists} · ${track.album}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: _buildSourceBadge(track.source, colorScheme),
-                    onTap: () => _toggleTrack(index),
-                  );
+                        title: Text(
+                          track.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          '${track.artists} · ${track.album}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: _buildSourceBadge(track.source, colorScheme),
+                        onTap: () => _toggleTrack(index),
+                      );
                     },
                   );
                 },
@@ -270,11 +329,11 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
         FilledButton(
           onPressed: _targetSource != null && _selectedIndices.isNotEmpty
               ? () => Navigator.pop(context, {
-                    'targetSource': _targetSource,
-                    'selectedTracks': _selectedIndices
-                        .map((i) => widget.tracks[i])
-                        .toList(),
-                  })
+                  'targetSource': _targetSource,
+                  'selectedTracks': _selectedIndices
+                      .map((i) => widget.tracks[i])
+                      .toList(),
+                })
               : null,
           child: const Text('开始换源'),
         ),
@@ -359,7 +418,9 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
             Builder(
               builder: (context) {
                 final filteredIndices = _getFilteredIndices();
-                final selectedInFiltered = filteredIndices.where((i) => _selectedIndices.contains(i)).length;
+                final selectedInFiltered = filteredIndices
+                    .where((i) => _selectedIndices.contains(i))
+                    .length;
                 return Text(
                   _searchQuery.isEmpty
                       ? '已选择 ${_selectedIndices.length}/${widget.tracks.length} 首'
@@ -377,15 +438,51 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                 builder: (context) {
                   final filteredIndices = _getFilteredIndices();
                   if (filteredIndices.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(fluent.FluentIcons.search, size: 48, color: theme.resources.textFillColorSecondary),
-                          const SizedBox(height: 8),
-                          Text('未找到匹配的歌曲', style: TextStyle(color: theme.resources.textFillColorSecondary)),
-                        ],
-                      ),
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final compact =
+                            constraints.hasBoundedHeight &&
+                            constraints.maxHeight < 160;
+                        final minHeight = constraints.hasBoundedHeight
+                            ? constraints.maxHeight
+                            : 0.0;
+                        return SingleChildScrollView(
+                          physics: const ClampingScrollPhysics(),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(minHeight: minHeight),
+                            child: Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      fluent.FluentIcons.search,
+                                      size: compact ? 40 : 48,
+                                      color: theme
+                                          .resources
+                                          .textFillColorSecondary,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '未找到匹配的歌曲',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: theme
+                                            .resources
+                                            .textFillColorSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     );
                   }
                   return ListView.builder(
@@ -409,14 +506,21 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
                               borderRadius: BorderRadius.circular(4),
                               child: CachedNetworkImage(
                                 imageUrl: track.picUrl,
+                                httpHeaders: getImageHeaders(track.picUrl),
                                 width: 40,
                                 height: 40,
+                                memCacheWidth: 128,
+                                memCacheHeight: 128,
                                 fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) => Container(
+                                errorWidget: (_, _, _) => Container(
                                   width: 40,
                                   height: 40,
-                                  color: theme.resources.controlFillColorDefault,
-                                  child: const Icon(fluent.FluentIcons.music_note, size: 20),
+                                  color:
+                                      theme.resources.controlFillColorDefault,
+                                  child: const Icon(
+                                    fluent.FluentIcons.music_note,
+                                    size: 20,
+                                  ),
                                 ),
                               ),
                             ),
@@ -450,11 +554,11 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
         fluent.FilledButton(
           onPressed: _targetSource != null && _selectedIndices.isNotEmpty
               ? () => Navigator.pop(context, {
-                    'targetSource': _targetSource,
-                    'selectedTracks': _selectedIndices
-                        .map((i) => widget.tracks[i])
-                        .toList(),
-                  })
+                  'targetSource': _targetSource,
+                  'selectedTracks': _selectedIndices
+                      .map((i) => widget.tracks[i])
+                      .toList(),
+                })
               : null,
           child: const Text('开始换源'),
         ),
@@ -471,27 +575,24 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
       ),
       child: Text(
         _getSourceName(source),
-        style: TextStyle(
-          fontSize: 10,
-          color: colorScheme.onPrimaryContainer,
-        ),
+        style: TextStyle(fontSize: 10, color: colorScheme.onPrimaryContainer),
       ),
     );
   }
 
-  Widget _buildFluentSourceBadge(MusicSource source, fluent.FluentThemeData theme) {
+  Widget _buildFluentSourceBadge(
+    MusicSource source,
+    fluent.FluentThemeData theme,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: theme.accentColor.withOpacity(0.2),
+        color: theme.accentColor.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         _getSourceName(source),
-        style: TextStyle(
-          fontSize: 10,
-          color: theme.accentColor,
-        ),
+        style: TextStyle(fontSize: 10, color: theme.accentColor),
       ),
     );
   }
@@ -508,6 +609,8 @@ class _SourceSwitchSelectDialogState extends State<SourceSwitchSelectDialog> {
         return '酷狗';
       case MusicSource.kuwo:
         return '酷我';
+      case MusicSource.navidrome:
+        return 'Navidrome';
       case MusicSource.spotify:
         return 'Spotify';
       case MusicSource.local:
@@ -528,10 +631,12 @@ class SourceSwitchProgressDialog extends StatefulWidget {
   });
 
   @override
-  State<SourceSwitchProgressDialog> createState() => _SourceSwitchProgressDialogState();
+  State<SourceSwitchProgressDialog> createState() =>
+      _SourceSwitchProgressDialogState();
 }
 
-class _SourceSwitchProgressDialogState extends State<SourceSwitchProgressDialog> {
+class _SourceSwitchProgressDialogState
+    extends State<SourceSwitchProgressDialog> {
   final TrackSourceSwitchService _service = TrackSourceSwitchService();
 
   @override
@@ -544,12 +649,14 @@ class _SourceSwitchProgressDialogState extends State<SourceSwitchProgressDialog>
   @override
   void dispose() {
     _service.removeListener(_onServiceChanged);
+    if (_service.isProcessing) _service.cancel();
     super.dispose();
   }
 
   void _onServiceChanged() {
-    if (mounted) setState(() {});
-    
+    if (!mounted) return;
+    setState(() {});
+
     // 处理完成后自动关闭并返回结果
     if (!_service.isProcessing && _service.results.isNotEmpty) {
       Navigator.pop(context, true);
@@ -607,12 +714,7 @@ class _SourceSwitchProgressDialogState extends State<SourceSwitchProgressDialog>
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _cancel,
-          child: const Text('取消'),
-        ),
-      ],
+      actions: [TextButton(onPressed: _cancel, child: const Text('取消'))],
     );
   }
 
@@ -650,12 +752,7 @@ class _SourceSwitchProgressDialogState extends State<SourceSwitchProgressDialog>
           ],
         ),
       ),
-      actions: [
-        fluent.Button(
-          onPressed: _cancel,
-          child: const Text('取消'),
-        ),
-      ],
+      actions: [fluent.Button(onPressed: _cancel, child: const Text('取消'))],
     );
   }
 }
@@ -665,7 +762,8 @@ class SourceSwitchResultDialog extends StatefulWidget {
   const SourceSwitchResultDialog({super.key});
 
   @override
-  State<SourceSwitchResultDialog> createState() => _SourceSwitchResultDialogState();
+  State<SourceSwitchResultDialog> createState() =>
+      _SourceSwitchResultDialogState();
 }
 
 class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
@@ -697,7 +795,9 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
   }
 
   void _updateSelectAllState() {
-    final validCount = _service.results.where((r) => r.selectedTrack != null).length;
+    final validCount = _service.results
+        .where((r) => r.selectedTrack != null)
+        .length;
     _selectAll = _selectedIndices.length == validCount && validCount > 0;
   }
 
@@ -773,7 +873,11 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                 const Spacer(),
                 TextButton.icon(
                   onPressed: _toggleSelectAll,
-                  icon: Icon(_selectAll ? Icons.check_box : Icons.check_box_outline_blank),
+                  icon: Icon(
+                    _selectAll
+                        ? Icons.check_box
+                        : Icons.check_box_outline_blank,
+                  ),
                   label: Text(_selectAll ? '取消全选' : '全选'),
                 ),
               ],
@@ -803,10 +907,12 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
           onPressed: _selectedIndices.isNotEmpty
               ? () {
                   final selected = _selectedIndices
-                      .map((i) => MapEntry(
-                            results[i].originalTrack,
-                            results[i].selectedTrack!,
-                          ))
+                      .map(
+                        (i) => MapEntry(
+                          results[i].originalTrack,
+                          results[i].selectedTrack!,
+                        ),
+                      )
                       .toList();
                   Navigator.pop(context, selected);
                 }
@@ -829,7 +935,9 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      color: isSelected ? colorScheme.primaryContainer.withOpacity(0.3) : null,
+      color: isSelected
+          ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+          : null,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -846,10 +954,13 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                   borderRadius: BorderRadius.circular(4),
                   child: CachedNetworkImage(
                     imageUrl: original.picUrl,
+                    httpHeaders: getImageHeaders(original.picUrl),
                     width: 48,
                     height: 48,
+                    memCacheWidth: 128,
+                    memCacheHeight: 128,
                     fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) => Container(
+                    errorWidget: (_, _, _) => Container(
                       width: 48,
                       height: 48,
                       color: colorScheme.surfaceContainerHighest,
@@ -913,9 +1024,9 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
       children: [
         Text(
           '换源到:',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 8),
         ...result.searchResults.map((track) {
@@ -927,8 +1038,10 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
               margin: const EdgeInsets.only(bottom: 4),
               decoration: BoxDecoration(
                 color: isTrackSelected
-                    ? colorScheme.primaryContainer.withOpacity(0.5)
-                    : colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                    ? colorScheme.primaryContainer.withValues(alpha: 0.5)
+                    : colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.3,
+                      ),
                 borderRadius: BorderRadius.circular(8),
                 border: isTrackSelected
                     ? Border.all(color: colorScheme.primary, width: 2)
@@ -936,19 +1049,22 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
               ),
               child: Row(
                 children: [
-                  Radio<dynamic>(
-                    value: track.id,
+                  RadioGroup<dynamic>(
                     groupValue: selected?.id,
                     onChanged: (_) => _changeSelectedTrack(index, track),
+                    child: Radio<dynamic>(value: track.id),
                   ),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: CachedNetworkImage(
                       imageUrl: track.picUrl,
+                      httpHeaders: getImageHeaders(track.picUrl),
                       width: 40,
                       height: 40,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => Container(
+                      errorWidget: (_, _, _) => Container(
                         width: 40,
                         height: 40,
                         color: colorScheme.surfaceContainerHighest,
@@ -966,7 +1082,9 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontWeight: isTrackSelected ? FontWeight.bold : null,
+                            fontWeight: isTrackSelected
+                                ? FontWeight.bold
+                                : null,
                           ),
                         ),
                         Text(
@@ -996,10 +1114,7 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
       ),
       child: Text(
         _getSourceName(source),
-        style: TextStyle(
-          fontSize: 10,
-          color: colorScheme.onPrimaryContainer,
-        ),
+        style: TextStyle(fontSize: 10, color: colorScheme.onPrimaryContainer),
       ),
     );
   }
@@ -1069,10 +1184,12 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
           onPressed: _selectedIndices.isNotEmpty
               ? () {
                   final selected = _selectedIndices
-                      .map((i) => MapEntry(
-                            results[i].originalTrack,
-                            results[i].selectedTrack!,
-                          ))
+                      .map(
+                        (i) => MapEntry(
+                          results[i].originalTrack,
+                          results[i].selectedTrack!,
+                        ),
+                      )
                       .toList();
                   Navigator.pop(context, selected);
                 }
@@ -1096,7 +1213,7 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
     return fluent.Card(
       margin: const EdgeInsets.only(bottom: 8),
       backgroundColor: isSelected
-          ? theme.accentColor.withOpacity(0.1)
+          ? theme.accentColor.withValues(alpha: 0.1)
           : null,
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1115,10 +1232,13 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                   borderRadius: BorderRadius.circular(4),
                   child: CachedNetworkImage(
                     imageUrl: original.picUrl,
+                    httpHeaders: getImageHeaders(original.picUrl),
                     width: 48,
                     height: 48,
+                    memCacheWidth: 128,
+                    memCacheHeight: 128,
                     fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) => Container(
+                    errorWidget: (_, _, _) => Container(
                       width: 48,
                       height: 48,
                       color: theme.resources.controlFillColorDefault,
@@ -1155,10 +1275,7 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
             ),
             // 搜索结果
             if (result.error != null)
-              Text(
-                '处理失败: ${result.error}',
-                style: TextStyle(color: Colors.red),
-              )
+              Text('处理失败: ${result.error}', style: TextStyle(color: Colors.red))
             else if (result.searchResults.isEmpty)
               Text(
                 '未找到匹配结果',
@@ -1201,7 +1318,7 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
               margin: const EdgeInsets.only(bottom: 4),
               decoration: BoxDecoration(
                 color: isTrackSelected
-                    ? theme.accentColor.withOpacity(0.2)
+                    ? theme.accentColor.withValues(alpha: 0.2)
                     : theme.resources.controlFillColorDefault,
                 borderRadius: BorderRadius.circular(8),
                 border: isTrackSelected
@@ -1210,10 +1327,10 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
               ),
               child: Row(
                 children: [
-                  fluent.RadioButton(
+                  fluent.Checkbox(
                     checked: isTrackSelected,
                     onChanged: (checked) {
-                      if (checked) _changeSelectedTrack(index, track);
+                      if (checked == true) _changeSelectedTrack(index, track);
                     },
                   ),
                   const SizedBox(width: 8),
@@ -1221,14 +1338,20 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
                     borderRadius: BorderRadius.circular(4),
                     child: CachedNetworkImage(
                       imageUrl: track.picUrl,
+                      httpHeaders: getImageHeaders(track.picUrl),
                       width: 40,
                       height: 40,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => Container(
+                      errorWidget: (_, _, _) => Container(
                         width: 40,
                         height: 40,
                         color: theme.resources.controlFillColorDefault,
-                        child: const Icon(fluent.FluentIcons.music_note, size: 20),
+                        child: const Icon(
+                          fluent.FluentIcons.music_note,
+                          size: 20,
+                        ),
                       ),
                     ),
                   ),
@@ -1263,19 +1386,19 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
     );
   }
 
-  Widget _buildFluentSourceBadge(MusicSource source, fluent.FluentThemeData theme) {
+  Widget _buildFluentSourceBadge(
+    MusicSource source,
+    fluent.FluentThemeData theme,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: theme.accentColor.withOpacity(0.2),
+        color: theme.accentColor.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         _getSourceName(source),
-        style: TextStyle(
-          fontSize: 10,
-          color: theme.accentColor,
-        ),
+        style: TextStyle(fontSize: 10, color: theme.accentColor),
       ),
     );
   }
@@ -1292,6 +1415,8 @@ class _SourceSwitchResultDialogState extends State<SourceSwitchResultDialog> {
         return '酷狗';
       case MusicSource.kuwo:
         return '酷我';
+      case MusicSource.navidrome:
+        return 'Navidrome';
       case MusicSource.spotify:
         return 'Spotify';
       case MusicSource.local:

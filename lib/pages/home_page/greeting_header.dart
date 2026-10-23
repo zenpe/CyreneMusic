@@ -9,26 +9,23 @@ class SectionTitle extends StatelessWidget {
   final String title;
   final VoidCallback? onViewAll;
   const SectionTitle({super.key, required this.title, this.onViewAll});
-  
+
   @override
   Widget build(BuildContext context) {
     final themeManager = ThemeManager();
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
-    final isOculus = (Platform.isIOS || Platform.isAndroid) && themeManager.isOculusFramework;
     final cs = Theme.of(context).colorScheme;
-    
+
     return Padding(
-      padding: EdgeInsets.only(bottom: (isCupertino || isOculus) ? 12.0 : 16.0),
+      padding: EdgeInsets.only(bottom: isCupertino ? 12.0 : 16.0),
       child: Row(
         children: [
           Expanded(
             child: Text(
-              title, 
-              style: isOculus
-                  ? const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)
-                  : isCupertino
-                      ? const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: -0.5)
-                      : Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.5),
+              title,
+              style: isCupertino
+                  ? const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: -0.5)
+                  : Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.5),
             ),
           ),
           if (onViewAll != null)
@@ -78,17 +75,16 @@ class GreetingHeader extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final themeManager = ThemeManager();
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
-    final isOculus = (Platform.isIOS || Platform.isAndroid) && themeManager.isOculusFramework;
     final now = TimeOfDay.now();
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0),
+      padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
       child: Row(
         children: [
           Icon(
-            isOculus ? Icons.auto_awesome : (isCupertino ? CupertinoIcons.sun_max_fill : Icons.wb_twilight_rounded), 
-            color: (isCupertino || isOculus) ? ThemeManager.iosBlue : cs.primary,
-            size: (isCupertino || isOculus) ? 24 : 28,
+            isCupertino ? CupertinoIcons.sun_max_fill : Icons.wb_twilight_rounded,
+            color: isCupertino ? ThemeManager.iosBlue : cs.primary,
+            size: isCupertino ? 24 : 28,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -97,19 +93,17 @@ class GreetingHeader extends StatelessWidget {
               children: [
                 Text(
                   _greetText(now),
-                  style: isOculus
-                      ? const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -1.0)
-                      : isCupertino 
-                          ? const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: -0.5)
-                          : Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -1.0),
+                  style: isCupertino
+                      ? const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: -0.5)
+                      : Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -1.0),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   _subGreeting(now),
-                  style: (isCupertino || isOculus)
-                      ? TextStyle(fontSize: 14, color: isOculus ? Colors.grey : CupertinoColors.systemGrey)
+                  style: isCupertino
+                      ? TextStyle(fontSize: 14, color: CupertinoColors.systemGrey)
                       : Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: cs.onSurfaceVariant.withOpacity(0.8),
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.8),
                           fontWeight: FontWeight.w500,
                         ),
                 ),
@@ -125,7 +119,7 @@ class GreetingHeader extends StatelessWidget {
               return Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(isCupertino ? CupertinoIcons.sun_max : Icons.wb_sunny_rounded, 
+                  Icon(isCupertino ? CupertinoIcons.sun_max : Icons.wb_sunny_rounded,
                     size: 16, color: isCupertino ? CupertinoColors.systemGrey : cs.onSurfaceVariant),
                   const SizedBox(width: 6),
                   ConstrainedBox(

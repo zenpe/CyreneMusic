@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -48,7 +49,7 @@ class PlayerBackgroundService extends ChangeNotifier {
   /// 初始化服务
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     // 读取背景类型
     final savedTypeIndex = prefs.getInt(_keyBackgroundType);
     if (savedTypeIndex != null && savedTypeIndex < PlayerBackgroundType.values.length) {
@@ -61,35 +62,35 @@ class PlayerBackgroundService extends ChangeNotifier {
           ? PlayerBackgroundType.dynamic
           : PlayerBackgroundType.adaptive;
     }
-    
+
     // 读取纯色
     final colorValue = prefs.getInt(_keySolidColor);
     if (colorValue != null) {
       _solidColor = Color(colorValue);
     }
-    
+
     // 读取媒体路径（优先读取新键名，向后兼容旧键名）
     _mediaPath = prefs.getString(_keyMediaPath) ?? prefs.getString(_keyImagePath);
-    
+
     // 根据文件扩展名自动检测类型（如果是从旧版本迁移）
     if (_mediaPath != null && _backgroundType == PlayerBackgroundType.image) {
       _detectAndUpdateMediaType();
     }
-    
+
     // 读取模糊程度
     _blurAmount = prefs.getDouble(_keyBlurAmount) ?? 10.0;
-    
+
     // 读取渐变开关
     _enableGradient = prefs.getBool(_keyEnableGradient) ?? false;
-    
+
     notifyListeners();
-    print('🎨 [PlayerBackground] 已初始化: $_backgroundType, 模糊: $_blurAmount, 渐变: $_enableGradient');
+    StructuredLogService.log('🎨 [PlayerBackground] 已初始化: $_backgroundType, 模糊: $_blurAmount, 渐变: $_enableGradient');
   }
-  
+
   /// 根据文件扩展名检测并更新媒体类型
   void _detectAndUpdateMediaType() {
     if (_mediaPath == null) return;
-    
+
     final ext = _mediaPath!.toLowerCase().split('.').last;
     if (ext == 'mp4' || ext == 'mov' || ext == 'avi' || ext == 'mkv' || ext == 'webm' || ext == 'm4v') {
       _backgroundType = PlayerBackgroundType.video;
@@ -99,25 +100,25 @@ class PlayerBackgroundService extends ChangeNotifier {
   /// 设置背景类型
   Future<void> setBackgroundType(PlayerBackgroundType type) async {
     if (_backgroundType == type) return;
-    
+
     _backgroundType = type;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyBackgroundType, type.index);
-    
+
     notifyListeners();
-    print('🎨 [PlayerBackground] 背景类型已更改: $type');
+    StructuredLogService.log('🎨 [PlayerBackground] 背景类型已更改: $type');
   }
 
   /// 设置纯色背景
   Future<void> setSolidColor(Color color) async {
     if (_solidColor == color) return;
-    
+
     _solidColor = color;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keySolidColor, color.value);
-    
+    await prefs.setInt(_keySolidColor, color.toARGB32());
+
     notifyListeners();
-    print('🎨 [PlayerBackground] 纯色已更改: ${color.value.toRadixString(16)}');
+    StructuredLogService.log('🎨 [PlayerBackground] 纯色已更改: ${color.toARGB32().toRadixString(16)}');
   }
 
   /// 设置媒体背景（图片或视频）
@@ -125,12 +126,12 @@ class PlayerBackgroundService extends ChangeNotifier {
     // 验证文件是否存在
     final file = File(mediaPath);
     if (!await file.exists()) {
-      print('❌ [PlayerBackground] 媒体文件不存在: $mediaPath');
+      StructuredLogService.log('❌ [PlayerBackground] 媒体文件不存在: $mediaPath');
       return;
     }
-    
+
     _mediaPath = mediaPath;
-    
+
     // 自动检测媒体类型
     final ext = mediaPath.toLowerCase().split('.').last;
     if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v'].contains(ext)) {
@@ -138,15 +139,15 @@ class PlayerBackgroundService extends ChangeNotifier {
     } else {
       _backgroundType = PlayerBackgroundType.image;
     }
-    
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyMediaPath, mediaPath);
     await prefs.setInt(_keyBackgroundType, _backgroundType.index);
-    
+
     notifyListeners();
-    print('🎨 [PlayerBackground] 媒体背景已设置: $mediaPath (类型: $_backgroundType)');
+    StructuredLogService.log('🎨 [PlayerBackground] 媒体背景已设置: $mediaPath (类型: $_backgroundType)');
   }
-  
+
   /// 设置图片背景（兼容旧代码）
   Future<void> setImageBackground(String imagePath) async {
     await setMediaBackground(imagePath);
@@ -155,13 +156,13 @@ class PlayerBackgroundService extends ChangeNotifier {
   /// 设置模糊程度
   Future<void> setBlurAmount(double amount) async {
     if (_blurAmount == amount) return;
-    
+
     _blurAmount = amount.clamp(0.0, 50.0); // 限制范围 0-50
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keyBlurAmount, _blurAmount);
-    
+
     notifyListeners();
-    print('🎨 [PlayerBackground] 模糊程度已更改: $_blurAmount');
+    StructuredLogService.log('🎨 [PlayerBackground] 模糊程度已更改: $_blurAmount');
   }
 
   /// 清除媒体背景
@@ -170,11 +171,11 @@ class PlayerBackgroundService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyMediaPath);
     await prefs.remove(_keyImagePath); // 同时清除旧键名
-    
+
     notifyListeners();
-    print('🎨 [PlayerBackground] 媒体背景已清除');
+    StructuredLogService.log('🎨 [PlayerBackground] 媒体背景已清除');
   }
-  
+
   /// 清除图片背景（兼容旧代码）
   Future<void> clearImageBackground() async {
     await clearMediaBackground();
@@ -199,13 +200,13 @@ class PlayerBackgroundService extends ChangeNotifier {
   /// 设置渐变开关
   Future<void> setEnableGradient(bool enabled) async {
     if (_enableGradient == enabled) return;
-    
+
     _enableGradient = enabled;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyEnableGradient, enabled);
-    
+
     notifyListeners();
-    print('🎨 [PlayerBackground] 渐变开关已更改: $enabled');
+    StructuredLogService.log('🎨 [PlayerBackground] 渐变开关已更改: $enabled');
   }
 
   /// 获取背景类型的描述
@@ -223,19 +224,19 @@ class PlayerBackgroundService extends ChangeNotifier {
         return '基于封面的动态渐变效果';
     }
   }
-  
+
   /// 检查文件是否为支持的图片格式
   bool isImageFile(String path) {
     final ext = path.toLowerCase().split('.').last;
     return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext);
   }
-  
+
   /// 检查文件是否为支持的视频格式
   bool isVideoFile(String path) {
     final ext = path.toLowerCase().split('.').last;
     return ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v'].contains(ext);
   }
-  
+
   /// 获取媒体文件（如果存在）
   File? getMediaFile() {
     if (_mediaPath == null || _mediaPath!.isEmpty) return null;

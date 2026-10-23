@@ -4,12 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
 import 'package:file_picker/file_picker.dart';
 import '../../services/window_background_service.dart';
-import '../../services/auth_service.dart';
 
-/// 窗口背景设置对话框（赞助用户独享）
+/// 窗口背景设置对话框
 class WindowBackgroundDialog extends StatefulWidget {
   final VoidCallback onChanged;
-  
+
   const WindowBackgroundDialog({super.key, required this.onChanged});
 
   @override
@@ -20,8 +19,6 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
   @override
   Widget build(BuildContext context) {
     final service = WindowBackgroundService();
-    final authService = AuthService();
-    final isSponsor = authService.currentUser?.isSponsor ?? false;
 
     return fluent_ui.ContentDialog(
       title: Row(
@@ -29,20 +26,6 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
           const Icon(fluent_ui.FluentIcons.picture_library),
           const SizedBox(width: 8),
           const Text('窗口背景设置'),
-          const SizedBox(width: 8),
-          if (!isSponsor)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Colors.orange, width: 1),
-              ),
-              child: const Text(
-                '赞助独享',
-                style: TextStyle(fontSize: 10, color: Colors.orange),
-              ),
-            ),
         ],
       ),
       content: SingleChildScrollView(
@@ -50,55 +33,28 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 赞助提示（非赞助用户）
-            if (!isSponsor) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(fluent_ui.FluentIcons.info, color: Colors.orange, size: 16),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '此功能为赞助用户独享，成为赞助用户即可使用自定义窗口背景（图片或视频）',
-                        style: TextStyle(fontSize: 12, color: Colors.orange),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
             // 启用开关
             Row(
               children: [
                 const Expanded(child: Text('启用窗口背景')),
                 fluent_ui.ToggleSwitch(
-                  checked: service.enabled && isSponsor,
-                  onChanged: isSponsor
-                      ? (value) async {
-                          await service.setEnabled(value);
-                          setState(() {});
-                          widget.onChanged();
-                        }
-                      : null,
+                  checked: service.enabled,
+                  onChanged: (value) async {
+                    await service.setEnabled(value);
+                    setState(() {});
+                    widget.onChanged();
+                  },
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 8),
             const Text(
               '为整个窗口设置背景图片或视频（独立于播放器背景）',
               style: TextStyle(fontSize: 11, color: Colors.grey),
             ),
 
-            if (service.enabled && isSponsor) ...[
+            if (service.enabled) ...[
               const SizedBox(height: 16),
               const fluent_ui.Divider(),
               const SizedBox(height: 16),
@@ -113,13 +69,13 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            service.isVideo 
-                                ? fluent_ui.FluentIcons.video 
-                                : fluent_ui.FluentIcons.photo_collection, 
+                            service.isVideo
+                                ? fluent_ui.FluentIcons.video
+                                : fluent_ui.FluentIcons.photo_collection,
                             size: 16
                           ),
                           const SizedBox(width: 8),
-                          Text(service.mediaPath != null 
+                          Text(service.mediaPath != null
                               ? (service.isVideo ? '更换视频' : '更换图片')
                               : '选择图片/视频'),
                         ],
@@ -204,7 +160,7 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
                   height: 120,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                    border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
@@ -242,7 +198,7 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
                                   sigmaY: service.blurAmount,
                                 ),
                                 child: Container(
-                                  color: Colors.black.withOpacity(1 - service.opacity),
+                                  color: Colors.black.withValues(alpha: 1 - service.opacity),
                                 ),
                               ),
                             ],
@@ -274,11 +230,11 @@ class _WindowBackgroundDialogState extends State<WindowBackgroundDialog> {
     if (result != null && result.files.single.path != null) {
       final mediaPath = result.files.single.path!;
       final service = WindowBackgroundService();
-      
+
       await service.setMediaPath(mediaPath);
       setState(() {});
       widget.onChanged();
-      
+
       if (mounted) {
         final isVideo = service.isVideoFile(mediaPath);
         fluent_ui.displayInfoBar(

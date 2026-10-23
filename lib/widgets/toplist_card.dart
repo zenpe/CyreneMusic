@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/toplist.dart';
+import '../utils/image_utils.dart';
 
 /// 榜单卡片组件
 class ToplistCard extends StatelessWidget {
@@ -33,7 +34,10 @@ class ToplistCard extends StatelessWidget {
                 children: [
                   CachedNetworkImage(
                     imageUrl: toplist.coverImgUrl,
+                    httpHeaders: getImageHeaders(toplist.coverImgUrl),
                     fit: BoxFit.cover,
+                    memCacheWidth: 280,
+                    memCacheHeight: 280,
                     placeholder: (context, url) => Container(
                       color: colorScheme.surfaceContainerHighest,
                       child: const Center(
@@ -66,7 +70,7 @@ class ToplistCard extends StatelessWidget {
                           end: Alignment.bottomCenter,
                           colors: [
                             Colors.transparent,
-                            Colors.black.withOpacity(0.7),
+                            Colors.black.withValues(alpha: 0.7),
                           ],
                         ),
                       ),
@@ -86,7 +90,7 @@ class ToplistCard extends StatelessWidget {
                           Text(
                             toplist.creator,
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.white.withOpacity(0.8),
+                              color: Colors.white.withValues(alpha: 0.8),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

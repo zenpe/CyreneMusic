@@ -34,16 +34,16 @@ class FluentHomeBreadcrumbs extends StatelessWidget {
     final resources = theme.resources;
 
     final emphasizedStyle =
-        (typography?.subtitle ??
+        (typography.subtitle ??
                 const TextStyle(fontSize: 24, fontWeight: FontWeight.w600))
             .copyWith(color: resources.textFillColorPrimary);
 
     final baseStyle =
-        (typography?.body ??
+        (typography.body ??
                 const TextStyle(fontSize: 15, fontWeight: FontWeight.w500))
             .copyWith(color: resources.textFillColorSecondary);
 
-    TextStyle _resolveStyle(HomeBreadcrumbItem item) {
+    TextStyle resolveStyle(HomeBreadcrumbItem item) {
       if (item.isCurrent) {
         return emphasizedStyle;
       }
@@ -72,7 +72,7 @@ class FluentHomeBreadcrumbs extends StatelessWidget {
         );
       }
 
-      final style = _resolveStyle(item);
+      final style = resolveStyle(item);
       final hasTap = item.onTap != null && !item.isCurrent;
 
       if (hasTap) {
@@ -83,7 +83,7 @@ class FluentHomeBreadcrumbs extends StatelessWidget {
           fluent.HyperlinkButton(
             onPressed: item.onTap,
             style: fluent.ButtonStyle(
-              padding: fluent.ButtonState.all(EdgeInsets.zero),
+              padding: WidgetStatePropertyAll(EdgeInsets.zero),
             ),
             child: Text(
               item.label,

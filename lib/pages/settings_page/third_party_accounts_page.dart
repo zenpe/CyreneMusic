@@ -2,9 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
+import '../../features/auth/auth_feature.dart';
 import '../../widgets/fluent_settings_card.dart';
 import '../../widgets/cupertino/cupertino_settings_widgets.dart';
-import '../../services/auth_service.dart';
 import '../../services/netease_login_service.dart';
 import '../../services/kugou_login_service.dart';
 import '../../utils/theme_manager.dart';
@@ -17,7 +17,7 @@ import 'kugou_qr_dialog.dart';
 class ThirdPartyAccountsContent extends StatefulWidget {
   final VoidCallback? onBack;
   final bool embed;
-  
+
   const ThirdPartyAccountsContent({
     super.key,
     this.onBack,
@@ -26,12 +26,12 @@ class ThirdPartyAccountsContent extends StatefulWidget {
 
   @override
   State<ThirdPartyAccountsContent> createState() => _ThirdPartyAccountsContentState();
-  
+
   /// 构建 Fluent UI 面包屑导航（Windows 11 24H2 风格）
   Widget buildFluentBreadcrumb(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
     final typography = theme.typography;
-    
+
     // Windows 11 设置页面的面包屑样式：
     // - 无返回按钮
     // - 父级页面文字颜色较浅，可点击
@@ -71,6 +71,7 @@ class ThirdPartyAccountsContent extends StatefulWidget {
 }
 
 class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
+  final AuthFacade _authFacade = AuthFacade();
   int _refreshKey = 0;
 
   void _refresh() {
@@ -84,7 +85,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
   @override
   void initState() {
     super.initState();
-    AuthService().addListener(_onAuthChanged);
+    _authFacade.addAuthStateListener(_onAuthChanged);
     // 监听第三方登录服务的状态变化
     NeteaseLoginService().addListener(_onBindingChanged);
     KugouLoginService().addListener(_onBindingChanged);
@@ -92,7 +93,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
 
   @override
   void dispose() {
-    AuthService().removeListener(_onAuthChanged);
+    _authFacade.removeAuthStateListener(_onAuthChanged);
     NeteaseLoginService().removeListener(_onBindingChanged);
     KugouLoginService().removeListener(_onBindingChanged);
     super.dispose();
@@ -117,10 +118,10 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
 
   @override
   Widget build(BuildContext context) {
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
     final isFluent = fluent_ui.FluentTheme.maybeOf(context) != null;
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
-    
+
     // 如果未登录，显示提示信息
     if (user == null) {
       return _buildNotLoggedIn(context, isFluent, isCupertino);
@@ -180,7 +181,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
         ),
       );
     }
-    
+
     if (isFluent) {
       return fluent_ui.ListView(
         padding: const EdgeInsets.all(24),
@@ -193,7 +194,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
         ],
       );
     }
-    
+
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -230,7 +231,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
 
   Widget _buildMaterialContent(BuildContext context, dynamic user) {
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 120),
       children: [
         // 提示信息
         Padding(
@@ -261,14 +262,14 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
             ),
           ),
         ),
-        
+
         MD3SettingsSection(
           title: '网易云音乐',
           children: [
             _buildNeteaseCard(context, user),
           ],
         ),
-        
+
         MD3SettingsSection(
           title: '酷狗音乐',
           children: [
@@ -283,7 +284,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
   Widget _buildCupertinoContent(BuildContext context, dynamic user) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final backgroundColor = isDark ? CupertinoColors.black : CupertinoColors.systemGroupedBackground;
-    
+
     return Container(
       color: backgroundColor,
       child: CupertinoScrollbar(
@@ -294,7 +295,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: ThemeManager.iosBlue.withOpacity(0.1),
+                color: ThemeManager.iosBlue.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -318,7 +319,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
               ),
             ),
             const SizedBox(height: 24),
-            
+
             // 网易云音乐
             CupertinoSettingsSection(
               header: '网易云音乐',
@@ -327,7 +328,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
               ],
             ),
             const SizedBox(height: 16),
-            
+
             // 酷狗音乐
             CupertinoSettingsSection(
               header: '酷狗音乐',
@@ -344,7 +345,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
   /// 构建网易云音乐卡片 (Cupertino)
   Widget _buildCupertinoNeteaseCard(BuildContext context, dynamic user) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return FutureBuilder<Map<String, dynamic>>(
       key: ValueKey(_refreshKey),
       future: NeteaseLoginService().fetchBindings(),
@@ -437,7 +438,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
               CupertinoButton(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 color: bound ? CupertinoColors.systemGrey4 : ThemeManager.iosBlue,
-                minSize: 0,
+                minimumSize: Size.zero,
                 onPressed: bound
                     ? () => _showUnbindDialogCupertino(context, '网易云音乐', () async {
                         return await NeteaseLoginService().unbindNetease();
@@ -463,7 +464,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
   /// 构建酷狗音乐卡片 (Cupertino)
   Widget _buildCupertinoKugouCard(BuildContext context, dynamic user) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return FutureBuilder<Map<String, dynamic>>(
       key: ValueKey(_refreshKey),
       future: KugouLoginService().fetchBindings(),
@@ -556,7 +557,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
               CupertinoButton(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 color: bound ? CupertinoColors.systemGrey4 : ThemeManager.iosBlue,
-                minSize: 0,
+                minimumSize: Size.zero,
                 onPressed: bound
                     ? () => _showUnbindDialogCupertino(context, '酷狗音乐', () async {
                         return await KugouLoginService().unbindKugou();
@@ -622,7 +623,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
           severity: fluent_ui.InfoBarSeverity.info,
         ),
         const SizedBox(height: 24),
-        
+
         // 网易云音乐
         FluentSettingsGroup(
           title: '网易云音乐',
@@ -631,7 +632,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
           ],
         ),
         const SizedBox(height: 16),
-        
+
         // 酷狗音乐
         FluentSettingsGroup(
           title: '酷狗音乐',
@@ -643,18 +644,6 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
     );
   }
 
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4.0),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-      ),
-    );
-  }
 
   Widget _buildNeteaseCard(BuildContext context, dynamic user) {
     return FutureBuilder<Map<String, dynamic>>(
@@ -928,7 +917,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
           FilledButton(
             onPressed: () async {
               Navigator.pop(context);
-              
+
               if (context.mounted) {
                 final messenger = ScaffoldMessenger.maybeOf(context);
                 if (messenger != null) {
@@ -955,7 +944,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
               }
 
               final ok = await NeteaseLoginService().unbindNetease();
-              
+
               if (context.mounted) {
                 final messenger = ScaffoldMessenger.maybeOf(context);
                 if (messenger != null) {
@@ -967,7 +956,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
                     ),
                   );
                 }
-                
+
                 if (ok) {
                   _refresh();
                 }
@@ -998,6 +987,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
             onPressed: () async {
               Navigator.pop(context);
               final ok = await NeteaseLoginService().unbindNetease();
+              if (!context.mounted) return;
               if (ok) {
                 _refresh();
               }
@@ -1072,7 +1062,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
           FilledButton(
             onPressed: () async {
               Navigator.pop(context);
-              
+
               if (context.mounted) {
                 final messenger = ScaffoldMessenger.maybeOf(context);
                 if (messenger != null) {
@@ -1099,7 +1089,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
               }
 
               final ok = await KugouLoginService().unbindKugou();
-              
+
               if (context.mounted) {
                 final messenger = ScaffoldMessenger.maybeOf(context);
                 if (messenger != null) {
@@ -1111,7 +1101,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
                     ),
                   );
                 }
-                
+
                 if (ok) {
                   _refresh();
                 }
@@ -1142,6 +1132,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
             onPressed: () async {
               Navigator.pop(context);
               final ok = await KugouLoginService().unbindKugou();
+              if (!context.mounted) return;
               if (ok) {
                 _refresh();
               }

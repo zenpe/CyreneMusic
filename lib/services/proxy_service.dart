@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
@@ -19,13 +20,11 @@ class ProxyService {
 
   bool get isRunning => _isRunning;
   int get port => _port;
-  int? _lastUpstreamStatus;
-  int? get lastUpstreamStatus => _lastUpstreamStatus;
 
   /// 启动代理服务器
   Future<bool> start() async {
     if (_isRunning) {
-      print('🌐 [ProxyService] 代理服务器已在运行');
+      StructuredLogService.log('🌐 [ProxyService] 代理服务器已在运行');
       DeveloperModeService().addLog('🌐 [ProxyService] 代理服务器已在运行');
       return true;
     }
@@ -34,9 +33,9 @@ class ProxyService {
       // 尝试多个端口，避免端口冲突
       for (int port = 8888; port < 8898; port++) {
         try {
-          print('🌐 [ProxyService] 尝试端口: $port');
+          StructuredLogService.log('🌐 [ProxyService] 尝试端口: $port');
           DeveloperModeService().addLog('🌐 [ProxyService] 尝试端口: $port');
-          
+
           _server = await shelf_io.serve(
             _handleRequest,
             InternetAddress.loopbackIPv4,
@@ -44,11 +43,15 @@ class ProxyService {
           );
           _port = port;
           _isRunning = true;
-          print('✅ [ProxyService] 代理服务器已启动: http://127.0.0.1:$_port');
-          DeveloperModeService().addLog('✅ [ProxyService] 代理服务器已启动: http://127.0.0.1:$_port');
+          StructuredLogService.log(
+            '✅ [ProxyService] 代理服务器已启动: http://localhost:$_port',
+          );
+          DeveloperModeService().addLog(
+            '✅ [ProxyService] 代理服务器已启动: http://localhost:$_port',
+          );
           return true;
         } catch (e) {
-          print('⚠️ [ProxyService] 端口 $port 启动失败: $e');
+          StructuredLogService.log('⚠️ [ProxyService] 端口 $port 启动失败: $e');
           DeveloperModeService().addLog('⚠️ [ProxyService] 端口 $port 启动失败: $e');
           // 端口被占用，尝试下一个
           if (port == 8897) {
@@ -58,10 +61,12 @@ class ProxyService {
       }
       return false;
     } catch (e, stackTrace) {
-      print('❌ [ProxyService] 启动代理服务器失败: $e');
-      print('Stack trace: $stackTrace');
+      StructuredLogService.log('❌ [ProxyService] 启动代理服务器失败: $e');
+      StructuredLogService.log('Stack trace: $stackTrace');
       DeveloperModeService().addLog('❌ [ProxyService] 启动代理服务器失败: $e');
-      DeveloperModeService().addLog('📜 [ProxyService] 堆栈: ${stackTrace.toString().split('\n').take(5).join(' | ')}');
+      DeveloperModeService().addLog(
+        '📜 [ProxyService] 堆栈: ${stackTrace.toString().split('\n').take(5).join(' | ')}',
+      );
       _isRunning = false;
       return false;
     }
@@ -73,7 +78,7 @@ class ProxyService {
       await _server!.close();
       _server = null;
       _isRunning = false;
-      print('⏹️ [ProxyService] 代理服务器已停止');
+      StructuredLogService.log('⏹️ [ProxyService] 代理服务器已停止');
       DeveloperModeService().addLog('⏹️ [ProxyService] 代理服务器已停止');
     }
   }
@@ -103,7 +108,9 @@ class ProxyService {
           ? ' range=$rangeHeader'
           : '';
 
-      print('🌐 [ProxyService] 代理请求: $method $targetUrl$rangeText');
+      StructuredLogService.log(
+        '🌐 [ProxyService] 代理请求: $method $targetUrl$rangeText',
+      );
       DeveloperModeService().addLog(
         '🌐 [ProxyService] 代理请求: $method ${targetUrl.length > 100 ? '${targetUrl.substring(0, 100)}...' : targetUrl}$rangeText',
       );
@@ -117,7 +124,8 @@ class ProxyService {
             lowerKey != 'connection' &&
             lowerKey != 'user-agent' &&
             lowerKey != 'referer' &&
-            lowerKey != 'accept-encoding') { // 移除 accept-encoding，防止上游返回压缩数据
+            lowerKey != 'accept-encoding') {
+          // 移除 accept-encoding，防止上游返回压缩数据
           targetHeaders[key] = value;
         }
       });
@@ -128,29 +136,34 @@ class ProxyService {
       if (platform == 'qq') {
         // QQ 音乐对 Headers 检查非常严格，尤其是 Origin 和 Referer
         // 模拟洛雪音乐桌面端使用的 UA，包含 lx-music-desktop 标识
-        targetHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 lx-music-desktop/2.12.0';
+        targetHeaders['User-Agent'] =
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 lx-music-desktop/2.12.0';
         targetHeaders['Referer'] = 'https://y.qq.com';
         targetHeaders['Origin'] = 'https://y.qq.com';
         targetHeaders['Accept'] = 'audio/*,*/*;q=0.9';
         targetHeaders['Accept-Language'] = 'zh-CN,zh;q=0.9';
         // 移除 Sec-Fetch-* 等现代浏览器安全头，回归更传统的伪装
       } else if (platform == 'kugou') {
-        targetHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
+        targetHeaders['User-Agent'] =
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
         targetHeaders['Referer'] = 'https://www.kugou.com';
         targetHeaders['Accept'] = '*/*';
       } else if (platform == 'apple') {
-        targetHeaders['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15';
+        targetHeaders['User-Agent'] =
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15';
         targetHeaders['Referer'] = 'https://music.apple.com';
         targetHeaders['Origin'] = 'https://music.apple.com';
         targetHeaders['Accept'] = 'audio/*,*/*;q=0.9';
-        targetHeaders['Accept-Language'] = request.headers['accept-language'] ??
+        targetHeaders['Accept-Language'] =
+            request.headers['accept-language'] ??
             'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6';
         targetHeaders['Connection'] = 'keep-alive';
         targetHeaders['Cache-Control'] = 'no-cache';
         targetHeaders['Pragma'] = 'no-cache';
       } else {
         // 默认使用一个通用的 PC User-Agent
-        targetHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
+        targetHeaders['User-Agent'] =
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
         targetHeaders['Accept'] = '*/*';
       }
 
@@ -168,20 +181,21 @@ class ProxyService {
       }
 
       final isMaybeM3u8 = targetUri.path.toLowerCase().endsWith('.m3u8');
-      print('🔍 [ProxyService] isMaybeM3u8: $isMaybeM3u8, path: ${targetUri.path}');
+      StructuredLogService.log(
+        '🔍 [ProxyService] isMaybeM3u8: $isMaybeM3u8, path: ${targetUri.path}',
+      );
 
       // 发起请求（使用流式传输）
       http.StreamedResponse streamedResponse;
       try {
         streamedResponse = await client.send(upstreamRequest);
       } catch (e) {
-        print('❌ [ProxyService] 发送上游请求失败: $e');
+        StructuredLogService.log('❌ [ProxyService] 发送上游请求失败: $e');
         client.close();
         rethrow;
       }
 
       final upstreamStatus = streamedResponse.statusCode;
-      _lastUpstreamStatus = upstreamStatus;
       final upstreamContentRange = streamedResponse.headers['content-range'];
       final upstreamContentLength = streamedResponse.headers['content-length'];
 
@@ -193,10 +207,13 @@ class ProxyService {
 
       final upstreamContentType =
           (streamedResponse.headers['content-type'] ?? '').toLowerCase();
-      
-      print('🔍 [ProxyService] Content-Type: $upstreamContentType');
-      
-      final isM3u8 = isMaybeM3u8 ||
+
+      StructuredLogService.log(
+        '🔍 [ProxyService] Content-Type: $upstreamContentType',
+      );
+
+      final isM3u8 =
+          isMaybeM3u8 ||
           upstreamContentType.contains('mpegurl') ||
           upstreamContentType.contains('application/vnd.apple.mpegurl') ||
           upstreamContentType.contains('application/x-mpegurl');
@@ -227,68 +244,71 @@ class ProxyService {
         final playlistText = utf8.decode(bodyBytes);
         final lines = playlistText.split(RegExp(r'\r?\n'));
 
-        final rewritten = lines.map((line) {
-          final trimmed = line.trim();
-          if (trimmed.isEmpty) return line;
-          if (trimmed.startsWith('#')) {
-            final uriAttrRegex = RegExp(r'URI="([^"]+)"');
-            if (!uriAttrRegex.hasMatch(line)) return line;
+        final rewritten = lines
+            .map((line) {
+              final trimmed = line.trim();
+              if (trimmed.isEmpty) return line;
+              if (trimmed.startsWith('#')) {
+                final uriAttrRegex = RegExp(r'URI="([^"]+)"');
+                if (!uriAttrRegex.hasMatch(line)) return line;
 
-            return line.replaceAllMapped(uriAttrRegex, (m) {
-              final raw = m.group(1);
-              if (raw == null || raw.isEmpty) return m.group(0) ?? '';
-              if (raw.startsWith('skd://')) return m.group(0) ?? '';
+                return line.replaceAllMapped(uriAttrRegex, (m) {
+                  final raw = m.group(1);
+                  if (raw == null || raw.isEmpty) return m.group(0) ?? '';
+                  if (raw.startsWith('skd://')) return m.group(0) ?? '';
+
+                  Uri resolved;
+                  try {
+                    if (raw.startsWith('http://') ||
+                        raw.startsWith('https://')) {
+                      resolved = Uri.parse(raw);
+                    } else if (raw.startsWith('//')) {
+                      resolved = Uri.parse('${targetUri.scheme}:$raw');
+                    } else {
+                      resolved = targetUri.resolve(raw);
+                    }
+                  } catch (_) {
+                    return m.group(0) ?? '';
+                  }
+
+                  final proxied = getProxyUrl(resolved.toString(), platform);
+                  return 'URI="$proxied"';
+                });
+              }
 
               Uri resolved;
               try {
-                if (raw.startsWith('http://') || raw.startsWith('https://')) {
-                  resolved = Uri.parse(raw);
-                } else if (raw.startsWith('//')) {
-                  resolved = Uri.parse('${targetUri.scheme}:$raw');
+                if (trimmed.startsWith('http://') ||
+                    trimmed.startsWith('https://')) {
+                  resolved = Uri.parse(trimmed);
+                } else if (trimmed.startsWith('//')) {
+                  resolved = Uri.parse('${targetUri.scheme}:$trimmed');
                 } else {
-                  resolved = targetUri.resolve(raw);
+                  resolved = targetUri.resolve(trimmed);
                 }
               } catch (_) {
-                return m.group(0) ?? '';
+                return line;
               }
 
-              final proxied = getProxyUrl(resolved.toString(), platform);
-              return 'URI="$proxied"';
-            });
-          }
-
-          Uri resolved;
-          try {
-            if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-              resolved = Uri.parse(trimmed);
-            } else if (trimmed.startsWith('//')) {
-              resolved = Uri.parse('${targetUri.scheme}:$trimmed');
-            } else {
-              resolved = targetUri.resolve(trimmed);
-            }
-          } catch (_) {
-            return line;
-          }
-
-          return getProxyUrl(resolved.toString(), platform);
-        }).join('\n');
+              return getProxyUrl(resolved.toString(), platform);
+            })
+            .join('\n');
 
         final responseHeaders = <String, String>{
           'Content-Type':
-              streamedResponse.headers['content-type'] ?? 'application/vnd.apple.mpegurl',
+              streamedResponse.headers['content-type'] ??
+              'application/vnd.apple.mpegurl',
           'Cache-Control': 'no-cache',
         };
 
-        return shelf.Response.ok(
-          rewritten,
-          headers: responseHeaders,
-        );
+        return shelf.Response.ok(rewritten, headers: responseHeaders);
       }
 
       if (upstreamStatus == 200 || upstreamStatus == 206) {
         // 设置响应头
         final responseHeaders = <String, String>{
-          'Content-Type': streamedResponse.headers['content-type'] ?? 'audio/mpeg',
+          'Content-Type':
+              streamedResponse.headers['content-type'] ?? 'audio/mpeg',
           'Accept-Ranges': 'bytes',
           'Cache-Control': 'no-cache',
         };
@@ -297,12 +317,13 @@ class ProxyService {
           responseHeaders['Content-Length'] =
               streamedResponse.headers['content-length']!;
         }
-        if (upstreamStatus == 206 && streamedResponse.headers['content-range'] != null) {
+        if (upstreamStatus == 206 &&
+            streamedResponse.headers['content-range'] != null) {
           responseHeaders['Content-Range'] =
               streamedResponse.headers['content-range']!;
         }
 
-        print('✅ [ProxyService] 开始流式传输音频数据');
+        StructuredLogService.log('✅ [ProxyService] 开始流式传输音频数据');
         DeveloperModeService().addLog('✅ [ProxyService] 开始流式传输音频数据');
         final controller = StreamController<List<int>>();
         late final StreamSubscription<List<int>> sub;
@@ -321,8 +342,13 @@ class ProxyService {
           cancelOnError: false,
         );
         controller.onCancel = () async {
-          await sub.cancel();
-          client.close();
+          try {
+            await sub.cancel();
+          } catch (e) {
+            DeveloperModeService().addLog('⚠️ [ProxyService] 取消上游订阅失败: $e');
+          } finally {
+            client.close();
+          }
         };
 
         return shelf.Response(
@@ -332,40 +358,42 @@ class ProxyService {
         );
       }
 
-        print('❌ [ProxyService] 上游服务器返回: $upstreamStatus');
-        DeveloperModeService().addLog('❌ [ProxyService] 上游服务器返回: $upstreamStatus');
-        client.close();
-        return shelf.Response(
-          upstreamStatus,
-          body: 'Upstream server error: $upstreamStatus',
-        );
-    } catch (e, stackTrace) {
-      print('❌ [ProxyService] 处理请求失败: $e');
-      print('Stack trace: $stackTrace');
-      DeveloperModeService().addLog('❌ [ProxyService] 处理请求失败: $e');
-      DeveloperModeService().addLog('📜 [ProxyService] 堆栈: ${stackTrace.toString().split('\n').take(3).join(' | ')}');
-      return shelf.Response.internalServerError(
-        body: 'Proxy error: $e',
+      StructuredLogService.log('❌ [ProxyService] 上游服务器返回: $upstreamStatus');
+      DeveloperModeService().addLog(
+        '❌ [ProxyService] 上游服务器返回: $upstreamStatus',
       );
+      client.close();
+      return shelf.Response(
+        upstreamStatus,
+        body: 'Upstream server error: $upstreamStatus',
+      );
+    } catch (e, stackTrace) {
+      StructuredLogService.log('❌ [ProxyService] 处理请求失败: $e');
+      StructuredLogService.log('Stack trace: $stackTrace');
+      DeveloperModeService().addLog('❌ [ProxyService] 处理请求失败: $e');
+      DeveloperModeService().addLog(
+        '📜 [ProxyService] 堆栈: ${stackTrace.toString().split('\n').take(3).join(' | ')}',
+      );
+      return shelf.Response.internalServerError(body: 'Proxy error: $e');
     }
   }
 
   /// 生成代理 URL
   String getProxyUrl(String originalUrl, String platform) {
     if (!_isRunning) {
-      print('⚠️ [ProxyService] 代理服务器未运行，返回原始 URL');
+      StructuredLogService.log('⚠️ [ProxyService] 代理服务器未运行，返回原始 URL');
       DeveloperModeService().addLog('⚠️ [ProxyService] 代理服务器未运行，返回原始 URL');
       return originalUrl;
     }
-    
-    // 重置状态，避免旧的 404 影响后续播放
-    _lastUpstreamStatus = null;
-    
+
     final encodedUrl = Uri.encodeComponent(originalUrl);
-    final proxyUrl = 'http://127.0.0.1:$_port/proxy?url=$encodedUrl&platform=$platform';
-    
-    print('🔗 [ProxyService] 生成代理 URL: $proxyUrl');
-    DeveloperModeService().addLog('🔗 [ProxyService] 生成代理 URL (端口: $_port, 平台: $platform)');
+    final proxyUrl =
+        'http://localhost:$_port/proxy?url=$encodedUrl&platform=$platform';
+
+    StructuredLogService.log('🔗 [ProxyService] 生成代理 URL: $proxyUrl');
+    DeveloperModeService().addLog(
+      '🔗 [ProxyService] 生成代理 URL (端口: $_port, 平台: $platform)',
+    );
     return proxyUrl;
   }
 
@@ -374,4 +402,3 @@ class ProxyService {
     await stop();
   }
 }
-

@@ -1,3 +1,4 @@
+import '../../services/structured_log_service.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
@@ -23,17 +24,9 @@ Future<bool?> showKugouQrDialog(BuildContext context, int userId) async {
   if (!context.mounted) return null;
 
   final bool isFluent = fluent_ui.FluentTheme.maybeOf(context) != null;
-  final success = isFluent
-      ? await fluent_ui.showDialog<bool>(
-          context: context,
-          barrierDismissible: true,
-          builder: (context) => KugouQrDialog(
-            userId: userId,
-            qrUrl: created!.qrUrl,
-            qrcode: created.qrcode,
-          ),
-        )
-      : await showDialog<bool>(
+  final bool? success;
+  if (isFluent) {
+    success = await fluent_ui.showDialog<bool>(
           context: context,
           barrierDismissible: true,
           builder: (context) => KugouQrDialog(
@@ -42,6 +35,17 @@ Future<bool?> showKugouQrDialog(BuildContext context, int userId) async {
             qrcode: created.qrcode,
           ),
         );
+  } else {
+    success = await showDialog<bool>(
+          context: context,
+          barrierDismissible: true,
+          builder: (context) => KugouQrDialog(
+            userId: userId,
+            qrUrl: created!.qrUrl,
+            qrcode: created.qrcode,
+          ),
+        );
+  }
 
   if (success == true && context.mounted) {
     final messenger = ScaffoldMessenger.maybeOf(context);
@@ -60,7 +64,7 @@ class KugouQrDialog extends StatefulWidget {
   final int userId;
   final String qrUrl;
   final String qrcode;
-  
+
   const KugouQrDialog({
     super.key,
     required this.userId,
@@ -87,7 +91,7 @@ class _KugouQrDialogState extends State<KugouQrDialog> {
           qrcode: widget.qrcode,
           userId: widget.userId,
         );
-        print('[KugouQrDialog] 收到状态: ${r.status}, message: ${r.message}');
+        StructuredLogService.log('[KugouQrDialog] 收到状态: ${r.status}, message: ${r.message}');
         String nextStatus = _statusText;
         bool success = false;
         switch (r.status) {
@@ -101,7 +105,7 @@ class _KugouQrDialogState extends State<KugouQrDialog> {
             nextStatus = '待确认，请在手机上确认登录';
             break;
           case 4:
-            print('[KugouQrDialog] 登录成功，准备关闭对话框');
+            StructuredLogService.log('[KugouQrDialog] 登录成功，准备关闭对话框');
             success = true;
             _completed = true;
             break;
@@ -110,7 +114,7 @@ class _KugouQrDialogState extends State<KugouQrDialog> {
         }
         if (!mounted) return;
         if (success) {
-          print('[KugouQrDialog] 关闭对话框');
+          StructuredLogService.log('[KugouQrDialog] 关闭对话框');
           Navigator.of(context).pop(true);
         } else if (nextStatus != _statusText) {
           setState(() {
@@ -118,7 +122,7 @@ class _KugouQrDialogState extends State<KugouQrDialog> {
           });
         }
       } catch (e) {
-        print('[KugouQrDialog] 异常: $e');
+        StructuredLogService.log('[KugouQrDialog] 异常: $e');
         if (!mounted) return;
         setState(() {
           _statusText = '检查状态失败: ${e.toString()}';
@@ -235,4 +239,3 @@ class _KugouQrDialogState extends State<KugouQrDialog> {
     );
   }
 }
-

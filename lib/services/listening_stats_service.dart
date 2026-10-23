@@ -1,9 +1,10 @@
+import 'structured_log_service.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:dio/dio.dart';
 import '../models/track.dart';
 import 'auth_service.dart';
+import 'api/api_client.dart';
 import 'url_service.dart';
 
 /// 听歌统计数据模型
@@ -22,8 +23,11 @@ class ListeningStatsData {
     return ListeningStatsData(
       totalListeningTime: json['totalListeningTime'] as int? ?? 0,
       totalPlayCount: json['totalPlayCount'] as int? ?? 0,
-      playCounts: (json['playCounts'] as List<dynamic>?)
-              ?.map((item) => PlayCountItem.fromJson(item as Map<String, dynamic>))
+      playCounts:
+          (json['playCounts'] as List<dynamic>?)
+              ?.map(
+                (item) => PlayCountItem.fromJson(item as Map<String, dynamic>),
+              )
               .toList() ??
           [],
     );
@@ -90,6 +94,8 @@ class PlayCountItem {
         return MusicSource.kugou;
       case 'kuwo':
         return MusicSource.kuwo;
+      case 'navidrome':
+        return MusicSource.navidrome;
       case 'local':
         return MusicSource.local;
       default:
@@ -98,95 +104,156 @@ class PlayCountItem {
   }
 }
 
+class PlayCountPage {
+  final List<PlayCountItem> records;
+  final int page;
+  final bool hasMore;
+
+  PlayCountPage({
+    required this.records,
+    required this.page,
+    required this.hasMore,
+  });
+}
+
 /// 听歌统计服务
 class ListeningStatsService extends ChangeNotifier {
-  static final ListeningStatsService _instance = ListeningStatsService._internal();
+  static final ListeningStatsService _instance =
+      ListeningStatsService._internal();
   factory ListeningStatsService() => _instance;
-  ListeningStatsService._internal();
+  ListeningStatsService._internal() {
+    _observedSession = AuthService().dataSessionIdentity;
+    _observedBackendRevision = UrlService().backendRevision;
+    AuthService().addListener(_onAuthChanged);
+    UrlService().addListener(_onAuthChanged);
+  }
+
+  String? _observedSession;
+  int _observedBackendRevision = 0;
+  String? _syncingSession;
+
+  void _onAuthChanged() {
+    final session = AuthService().dataSessionIdentity;
+    final backendRevision = UrlService().backendRevision;
+    if (session == _observedSession &&
+        backendRevision == _observedBackendRevision) {
+      return;
+    }
+    _observedSession = session;
+    _observedBackendRevision = backendRevision;
+    _pendingSeconds = 0;
+    _statsData = null;
+    _statsFetchedAt = null;
+    _lastError = null;
+    _statsRequest?.cancel('登录会话已改变');
+    _statsRequest = null;
+    _statsInFlight = null;
+    _isLoading = false;
+    _syncingSession = null;
+    notifyListeners();
+  }
+
+  final ApiClient _api = ApiClient();
 
   Timer? _syncTimer;
   int _pendingSeconds = 0; // 待同步的秒数
   ListeningStatsData? _statsData;
+  DateTime? _statsFetchedAt;
+  String? _lastError;
+  CancelToken? _statsRequest;
+  Future<ListeningStatsData?>? _statsInFlight;
+  bool _isLoading = false;
+  bool get isLoading => _isLoading;
 
-  ListeningStatsData? get statsData => _statsData;
+  /// Includes backend generation so even A → B → A invalidates old operations.
+  String? get contextIdentity {
+    final session = AuthService().dataSessionIdentity;
+    return session == null ? null : '${UrlService().backendRevision}:$session';
+  }
+
+  ListeningStatsData? get statsData =>
+      _observedSession == AuthService().dataSessionIdentity &&
+          _observedBackendRevision == UrlService().backendRevision
+      ? _statsData
+      : null;
+  String? get lastError => _lastError;
 
   /// 初始化服务
   void initialize() {
+    if (_syncTimer?.isActive ?? false) return;
     // 每30秒同步一次听歌时长
     _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _syncListeningTime();
     });
-    print('📊 [ListeningStatsService] 服务已初始化');
+    StructuredLogService.log('📊 [ListeningStatsService] 服务已初始化');
   }
 
   /// 累积听歌时长
   void accumulateListeningTime(int seconds) {
+    _onAuthChanged();
+    if (AuthService().sessionIdentity == null || seconds <= 0) return;
     _pendingSeconds += seconds;
   }
 
   /// 同步听歌时长到服务器
   Future<void> _syncListeningTime() async {
+    _onAuthChanged();
+    final session = contextIdentity;
+    if (session == null || _syncingSession == session) return;
     if (_pendingSeconds <= 0) {
-      print('📊 [ListeningStatsService] 无待同步数据（待同步: ${_pendingSeconds}秒）');
+      StructuredLogService.log(
+        '📊 [ListeningStatsService] 无待同步数据（待同步: $_pendingSeconds秒）',
+      );
       return;
     }
-    
+
     if (!AuthService().isLoggedIn) {
-      print('⚠️ [ListeningStatsService] 用户未登录，无法同步');
+      StructuredLogService.log('⚠️ [ListeningStatsService] 用户未登录，无法同步');
       return;
     }
 
     final seconds = _pendingSeconds;
+    _syncingSession = session;
     _pendingSeconds = 0; // 重置待同步秒数
 
-    print('📤 [ListeningStatsService] 准备同步听歌时长: ${seconds}秒');
+    StructuredLogService.log('📤 [ListeningStatsService] 准备同步听歌时长: $seconds秒');
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
+      final result = await _api.postJson(
+        '/stats/listening-time',
+        data: {'seconds': seconds},
+      );
+      if (session != contextIdentity) return;
 
-      if (token == null) {
-        print('❌ [ListeningStatsService] Token 为空，无法同步');
-        _pendingSeconds += seconds;
-        return;
-      }
-
-      print('📤 [ListeningStatsService] 发送同步请求到: $baseUrl/stats/listening-time');
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/stats/listening-time'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'seconds': seconds}),
+      StructuredLogService.log(
+        '📥 [ListeningStatsService] 同步响应状态: ${result.statusCode}',
       );
 
-      print('📥 [ListeningStatsService] 同步响应状态: ${response.statusCode}');
-      print('📥 [ListeningStatsService] 同步响应内容: ${response.body}');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        print('✅ [ListeningStatsService] 听歌时长已同步: +${seconds}秒, 总计: ${data['data']['totalListeningTime']}秒');
-      } else if (response.statusCode == 401) {
-        print('⚠️ [ListeningStatsService] 未授权，登录态可能失效');
-        _pendingSeconds += seconds;
-        await AuthService().handleUnauthorized();
+      if (result.ok) {
+        StructuredLogService.log(
+          '✅ [ListeningStatsService] 听歌时长已同步: +$seconds秒',
+        );
       } else {
-        print('❌ [ListeningStatsService] 同步听歌时长失败: ${response.statusCode}');
+        StructuredLogService.log(
+          '❌ [ListeningStatsService] 同步听歌时长失败: ${result.statusCode}',
+        );
         // 同步失败，将秒数加回待同步队列
         _pendingSeconds += seconds;
       }
     } catch (e) {
-      print('❌ [ListeningStatsService] 同步听歌时长异常: $e');
+      StructuredLogService.log('❌ [ListeningStatsService] 同步听歌时长异常: $e');
       // 异常时将秒数加回待同步队列
-      _pendingSeconds += seconds;
+      if (session == contextIdentity) _pendingSeconds += seconds;
+    } finally {
+      if (_syncingSession == session) _syncingSession = null;
     }
   }
-  
+
   /// 立即同步听歌时长（用于调试）
   Future<void> syncNow() async {
-    print('🔄 [ListeningStatsService] 手动触发同步，待同步: ${_pendingSeconds}秒');
+    StructuredLogService.log(
+      '🔄 [ListeningStatsService] 手动触发同步，待同步: $_pendingSeconds秒',
+    );
     await _syncListeningTime();
   }
 
@@ -195,109 +262,200 @@ class ListeningStatsService extends ChangeNotifier {
     if (!AuthService().isLoggedIn) return;
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-
-      if (token == null) return;
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/stats/play-count'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
+      final result = await _api.postJson(
+        '/stats/play-count',
+        data: {
           'trackId': track.id.toString(),
           'trackName': track.name,
           'artists': track.artists,
           'album': track.album,
           'picUrl': track.picUrl,
           'source': track.source.name,
-        }),
+        },
       );
 
-      if (response.statusCode == 200) {
-        print('✅ [ListeningStatsService] 播放次数已记录: ${track.name}');
-      } else if (response.statusCode == 401) {
-        print('⚠️ [ListeningStatsService] 未授权，登录态可能失效');
-        await AuthService().handleUnauthorized();
+      if (result.ok) {
+        StructuredLogService.log(
+          '✅ [ListeningStatsService] 播放次数已记录: ${track.name}',
+        );
       } else {
-        print('❌ [ListeningStatsService] 记录播放次数失败: ${response.statusCode}');
+        StructuredLogService.log(
+          '❌ [ListeningStatsService] 记录播放次数失败: ${result.statusCode}',
+        );
       }
     } catch (e) {
-      print('❌ [ListeningStatsService] 记录播放次数异常: $e');
+      StructuredLogService.log('❌ [ListeningStatsService] 记录播放次数异常: $e');
     }
   }
 
   /// 获取统计数据
-  Future<ListeningStatsData?> fetchStats() async {
-    if (!AuthService().isLoggedIn) {
-      print('⚠️ [ListeningStatsService] 用户未登录');
+  Future<ListeningStatsData?> fetchStats({bool forceRefresh = false}) async {
+    _onAuthChanged();
+    final session = contextIdentity;
+    if (session == null) {
+      StructuredLogService.log('⚠️ [ListeningStatsService] 用户未登录');
       return null;
     }
 
+    final pending = _statsInFlight;
+    if (pending != null) return pending;
+    final fetchedAt = _statsFetchedAt;
+    if (!forceRefresh &&
+        _lastError == null &&
+        _statsData != null &&
+        fetchedAt != null &&
+        DateTime.now().difference(fetchedAt) < const Duration(seconds: 60)) {
+      return _statsData;
+    }
+    final request = _fetchStats(session);
+    _statsInFlight = request;
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
+      return await request;
+    } finally {
+      if (identical(_statsInFlight, request)) _statsInFlight = null;
+    }
+  }
 
-      if (token == null) return null;
+  Future<ListeningStatsData?> _fetchStats(String session) async {
+    final token = CancelToken();
+    final clock = Stopwatch()..start();
+    int? statusCode;
+    _statsRequest = token;
+    _lastError = null;
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final result = await _api
+          .getJson(
+            '/stats',
+            cancelToken: token,
+            timeout: const Duration(seconds: 10),
+          )
+          .timeout(
+            const Duration(seconds: 12),
+            onTimeout: () {
+              token.cancel('统计加载超时');
+              throw TimeoutException('统计加载超时');
+            },
+          );
+      if (session != contextIdentity) return null;
+      statusCode = result.statusCode;
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/stats'),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        _statsData = ListeningStatsData.fromJson(data['data']);
+      if (result.ok) {
+        if (result.data is! Map ||
+            result.data['status'] != 200 ||
+            result.bodyData is! Map<String, dynamic>) {
+          throw const FormatException('统计数据格式错误');
+        }
+        final body = result.bodyData as Map<String, dynamic>;
+        if (body['totalListeningTime'] is! int ||
+            body['totalPlayCount'] is! int ||
+            body['playCounts'] is! List) {
+          throw const FormatException('统计数据字段缺失');
+        }
+        _statsData = ListeningStatsData.fromJson(
+          result.bodyData as Map<String, dynamic>,
+        );
+        _statsFetchedAt = DateTime.now();
         notifyListeners();
-        print('✅ [ListeningStatsService] 统计数据已获取');
+        StructuredLogService.log('✅ [ListeningStatsService] 统计数据已获取');
         return _statsData;
-      } else if (response.statusCode == 401) {
-        print('⚠️ [ListeningStatsService] 未授权，登录态可能失效');
-        await AuthService().handleUnauthorized();
-        return null;
       } else {
-        print('❌ [ListeningStatsService] 获取统计数据失败: ${response.statusCode}');
+        _lastError = '统计更新失败，请重试';
+        StructuredLogService.event(
+          'stats.load_failed',
+          level: LogLevel.warning,
+          fields: {
+            'path': '/stats',
+            'status': statusCode,
+            'elapsed_ms': clock.elapsedMilliseconds,
+          },
+        );
         return null;
       }
     } catch (e) {
-      print('❌ [ListeningStatsService] 获取统计数据异常: $e');
+      if (session != contextIdentity) return null;
+      _lastError = '统计更新失败，请重试';
+      StructuredLogService.event(
+        'stats.load_failed',
+        level: LogLevel.warning,
+        fields: {
+          'path': '/stats',
+          'status': statusCode,
+          'elapsed_ms': clock.elapsedMilliseconds,
+        },
+        error: e,
+      );
       return null;
+    } finally {
+      if (identical(_statsRequest, token)) {
+        _statsRequest = null;
+        _isLoading = false;
+        notifyListeners();
+      }
     }
+  }
+
+  /// 完整排行榜按需分页，不使用首页的 Top 10 快照。
+  Future<PlayCountPage> fetchRecords({int page = 1}) async {
+    final session = contextIdentity;
+    if (session == null) throw StateError('请先登录');
+    final result = await _api.getJson(
+      '/stats/records',
+      queryParameters: {'page': page, 'limit': 20},
+      dedupe: false,
+    );
+    if (session != contextIdentity) throw StateError('登录会话或后端已改变');
+    final data = result.bodyData;
+    if (!result.ok ||
+        result.data is! Map ||
+        result.data['status'] != 200 ||
+        data is! Map ||
+        data['page'] != page ||
+        data['records'] is! List ||
+        data['hasMore'] is! bool) {
+      throw StateError('播放记录加载失败，请重试');
+    }
+    return PlayCountPage(
+      records: (data['records'] as List)
+          .map((item) => PlayCountItem.fromJson(item as Map<String, dynamic>))
+          .toList(),
+      page: page,
+      hasMore: data['hasMore'] as bool,
+    );
   }
 
   /// 格式化时长（秒转为时分秒）
   static String formatDuration(int seconds) {
     if (seconds < 60) {
-      return '${seconds}秒';
+      return '$seconds秒';
     } else if (seconds < 3600) {
       final minutes = seconds ~/ 60;
       final secs = seconds % 60;
-      return '${minutes}分${secs}秒';
+      return '$minutes分$secs秒';
     } else {
       final hours = seconds ~/ 3600;
       final minutes = (seconds % 3600) ~/ 60;
-      return '${hours}小时${minutes}分';
+      return '$hours小时$minutes分';
     }
   }
 
   /// 在退出前同步数据
   Future<void> syncBeforeExit() async {
-    print('🔄 [ListeningStatsService] 退出前同步数据...');
+    StructuredLogService.log('🔄 [ListeningStatsService] 退出前同步数据...');
     _syncTimer?.cancel();
     await _syncListeningTime();
-    print('✅ [ListeningStatsService] 退出前同步完成');
+    StructuredLogService.log('✅ [ListeningStatsService] 退出前同步完成');
   }
 
   /// 清理资源
   @override
   void dispose() {
+    AuthService().removeListener(_onAuthChanged);
+    UrlService().removeListener(_onAuthChanged);
+    _statsRequest?.cancel('统计服务已释放');
     _syncTimer?.cancel();
-    print('🗑️ [ListeningStatsService] 服务已释放');
+    StructuredLogService.log('🗑️ [ListeningStatsService] 服务已释放');
     super.dispose();
   }
 }
-

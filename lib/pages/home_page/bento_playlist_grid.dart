@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../utils/image_utils.dart';
+import '../../services/music_service.dart';
+import '../../widgets/skeleton_loader.dart';
+import '../../widgets/warm_empty_state.dart';
 
 /// Bento 网格歌单 - 1大+4小布局
 class BentoPlaylistGrid extends StatelessWidget {
@@ -10,12 +13,25 @@ class BentoPlaylistGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (list.isEmpty) return Text('暂无数据', style: Theme.of(context).textTheme.bodySmall);
-    
+    if (list.isEmpty) {
+      if (MusicService().isLoading) {
+        return const BentoPlaylistGridSkeleton();
+      }
+      return WarmCompactEmptyCard(
+        title: '精选歌单整备中',
+        subtitle: '暂无推荐歌单，轻触重新获取最新榜单与推荐',
+        icon: Icons.album_outlined,
+        actionLabel: '刷新',
+        onTap: () {
+          MusicService().refreshToplists();
+        },
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 600;
-        
+
         if (isWide && list.length >= 5) {
           // Bento 布局：左边大卡+右边 2x2
           return SizedBox(
@@ -54,7 +70,7 @@ class BentoPlaylistGrid extends StatelessWidget {
             ),
           );
         }
-        
+
         // 默认网格
         return GridView.builder(
           shrinkWrap: true,
@@ -86,7 +102,6 @@ class _LargePlaylistCardState extends State<LargePlaylistCard> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final pic = (widget.playlist['picUrl'] ?? widget.playlist['coverImgUrl'] ?? '').toString();
     final name = widget.playlist['name']?.toString() ?? '';
     final id = int.tryParse(widget.playlist['id']?.toString() ?? '');
@@ -101,9 +116,9 @@ class _LargePlaylistCardState extends State<LargePlaylistCard> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             boxShadow: _hovering ? [
-              BoxShadow(color: cs.primary.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8)),
+              BoxShadow(color: cs.primary.withValues(alpha: 0.2), blurRadius: 20, offset: const Offset(0, 8)),
             ] : [
-              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
           child: ClipRRect(
@@ -118,6 +133,8 @@ class _LargePlaylistCardState extends State<LargePlaylistCard> {
                     imageUrl: pic,
                     httpHeaders: getImageHeaders(pic),
                     fit: BoxFit.cover,
+                    memCacheWidth: 280,
+                    memCacheHeight: 280,
                   ),
                 ),
                 // 渐变遮罩
@@ -125,7 +142,7 @@ class _LargePlaylistCardState extends State<LargePlaylistCard> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
+                      colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
                     ),
                   ),
                 ),
@@ -140,7 +157,7 @@ class _LargePlaylistCardState extends State<LargePlaylistCard> {
                       decoration: BoxDecoration(
                         color: cs.primary,
                         shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: cs.primary.withOpacity(0.4), blurRadius: 12)],
+                        boxShadow: [BoxShadow(color: cs.primary.withValues(alpha: 0.4), blurRadius: 12)],
                       ),
                       child: Icon(Icons.play_arrow_rounded, color: cs.onPrimary, size: 28),
                     ),
@@ -191,7 +208,7 @@ class _SmallPlaylistCardState extends State<SmallPlaylistCard> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             boxShadow: _hovering ? [
-              BoxShadow(color: cs.shadow.withOpacity(0.15), blurRadius: 12, offset: const Offset(0, 4)),
+              BoxShadow(color: cs.shadow.withValues(alpha: 0.15), blurRadius: 12, offset: const Offset(0, 4)),
             ] : [],
           ),
           child: ClipRRect(
@@ -206,13 +223,15 @@ class _SmallPlaylistCardState extends State<SmallPlaylistCard> {
                     imageUrl: pic,
                     httpHeaders: getImageHeaders(pic),
                     fit: BoxFit.cover,
+                    memCacheWidth: 280,
+                    memCacheHeight: 280,
                   ),
                 ),
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Colors.black.withOpacity(0.6)],
+                      colors: [Colors.transparent, Colors.black.withValues(alpha: 0.6)],
                     ),
                   ),
                 ),

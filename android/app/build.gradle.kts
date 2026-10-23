@@ -71,8 +71,6 @@ android {
 
     buildTypes {
         debug {
-            // Debug 版本增加后缀，实现共存
-            applicationIdSuffix = ".debug"
             manifestPlaceholders["appName"] = "Cyrene Music (Debug)"
         }
 
@@ -81,6 +79,8 @@ android {
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("release")
             manifestPlaceholders["appName"] = "Cyrene Music"
+            ndk.abiFilters.clear()
+            ndk.abiFilters.add("arm64-v8a")
         }
     }
 }
@@ -93,9 +93,6 @@ dependencies {
     // 核心库脱糖支持（flutter_local_notifications 需要 2.1.4+）
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 
-    // 媒体兼容库：提供 MediaBrowserCompat / MediaControllerCompat / MediaStyle 等
-    implementation("androidx.media:media:1.7.0")
-    
     // Android 12+ Splash Screen API 向后兼容库
     implementation("androidx.core:core-splashscreen:1.0.1")
 }

@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <!-- 基础圆角背景 -->
+    <path
+        android:fillColor="@color/widget_cover_placeholder_bg"
+        android:pathData="M14,0 H50 A14,14 0 0 1 64,14 V50 A14,14 0 0 1 50,64 H14 A14,14 0 0 1 0,50 V14 A14,14 0 0 1 14,0 Z" />
+    <!-- 音符图标 -->
+    <path
+        android:fillColor="@color/widget_cover_placeholder_tint"
+        android:pathData="M32,18 v14.07 c-0.79,-0.45 -1.7,-0.74 -2.67,-0.74 -2.95,0 -5.33,2.39 -5.33,5.33 s2.39,5.34 5.33,5.34 5.34,-2.39 5.34,-5.34 V23.33 h5.33 V18 h-8 z" />
+</vector>

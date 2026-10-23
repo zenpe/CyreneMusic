@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/player_service.dart';
 import '../../services/player_background_service.dart';
+import '../../utils/image_utils.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/search_widget.dart';
 import '../../services/netease_artist_service.dart';
 import '../artist_detail_page.dart';
-import '../../widgets/dynamic_cover_widget.dart';
 
 /// 移动端播放器歌曲信息组件
 /// 显示专辑封面、歌曲名称、艺术家等信息
@@ -26,23 +26,35 @@ class MobilePlayerSongInfo extends StatelessWidget {
       animation: PlayerService(),
       builder: (context, child) {
         final player = PlayerService();
-        final song = player.currentSong;
-        final track = player.currentTrack;
+        final isPending = player.isLoading && player.pendingTrack != null;
+        final track = player.displayTrack;
+        final song = isPending ? null : player.currentSong;
+        final displayTitle = player.displayTitle;
+        final displayArtist = player.displayArtist;
+        final displayAlbum = player.displayAlbum;
         final backgroundService = PlayerBackgroundService();
-        final isGradientMode = backgroundService.enableGradient && 
+        final isGradientMode = backgroundService.enableGradient &&
                               backgroundService.backgroundType == PlayerBackgroundType.adaptive;
-        
+
         return LayoutBuilder(
           builder: (context, constraints) {
             final screenHeight = constraints.maxHeight;
-            
+
             if (isGradientMode) {
               // 渐变模式：封面在背景中，歌曲信息居中
               return Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Spacer(),
-                  _buildSongInfo(context, song, track),
+                  _buildSongInfo(
+                    context,
+                    song,
+                    track,
+                    displayTitle: displayTitle,
+                    displayArtist: displayArtist,
+                    displayAlbum: displayAlbum,
+                    artistsEnabled: !isPending,
+                  ),
                   const Spacer(),
                 ],
               );
@@ -56,9 +68,17 @@ class MobilePlayerSongInfo extends StatelessWidget {
                     _buildAlbumCover(song, track),
                     SizedBox(height: screenHeight * 0.04),
                   ],
-                  
+
                   // 歌曲信息
-                  _buildSongInfo(context, song, track),
+                  _buildSongInfo(
+                    context,
+                    song,
+                    track,
+                    displayTitle: displayTitle,
+                    displayArtist: displayArtist,
+                    displayAlbum: displayAlbum,
+                    artistsEnabled: !isPending,
+                  ),
                 ],
               );
             }
@@ -70,30 +90,33 @@ class MobilePlayerSongInfo extends StatelessWidget {
 
   /// 构建专辑封面
   Widget _buildAlbumCover(SongDetail? song, Track? track) {
-    final picUrl = song?.pic ?? track?.picUrl ?? '';
-    
+    final player = PlayerService();
+    final isPending = player.isLoading && player.pendingTrack != null;
+    final picUrl = _resolveCoverUrl(song, track);
+    final provider = isPending ? null : player.currentCoverImageProvider;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         // 根据屏幕宽度自适应调整封面大小
         final screenWidth = MediaQuery.of(context).size.width;
         final screenHeight = MediaQuery.of(context).size.height;
-        
+
         // 动态计算边距：屏幕宽度的 12%
         final horizontalMargin = screenWidth * 0.12;
-        
+
         // 优化封面大小计算：限制为屏幕高度的 28% 或宽度的 65%（取较小值）
         final maxCoverByHeight = screenHeight * 0.28;
         final maxCoverByWidth = screenWidth * 0.65;
         final maxCoverSize = maxCoverByHeight < maxCoverByWidth ? maxCoverByHeight : maxCoverByWidth;
-        
+
         // 计算封面大小，确保 min 不大于 max
         final calculatedSize = screenWidth - horizontalMargin * 2;
         final minCoverSize = 180.0;
         final baseCoverSize = calculatedSize.clamp(minCoverSize, maxCoverSize > minCoverSize ? maxCoverSize : calculatedSize);
-        
+
         // 缩小到原大小的 80%
         final coverSize = baseCoverSize * 0.8;
-        
+
         return Hero(
           tag: 'album_cover',
           child: Center(
@@ -105,7 +128,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                     blurRadius: 20,
                     spreadRadius: 3,
                   ),
@@ -113,16 +136,25 @@ class MobilePlayerSongInfo extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: picUrl.isNotEmpty
-                    ? _buildOptimizedCover(picUrl, coverSize)
-                    : Container(
-                        color: Colors.grey[900],
-                        child: Icon(
-                          Icons.music_note,
-                          size: coverSize * 0.3,
-                          color: Colors.white30,
-                        ),
-                      ),
+                child: provider != null
+                    ? Image(
+                        image: provider,
+                        fit: BoxFit.cover,
+                      )
+                    : picUrl.isNotEmpty
+                        ? _buildOptimizedCover(
+                            picUrl,
+                            coverSize,
+                            provider: provider,
+                          )
+                        : Container(
+                            color: Colors.grey[900],
+                            child: Icon(
+                              Icons.music_note,
+                              size: coverSize * 0.3,
+                              color: Colors.white30,
+                            ),
+                          ),
               ),
             ),
           ),
@@ -131,36 +163,112 @@ class MobilePlayerSongInfo extends StatelessWidget {
     );
   }
 
-  /// 构建优化的封面图片，支持动态视频封面
-  Widget _buildOptimizedCover(String imageUrl, double coverSize) {
-    return DynamicCoverWidget(
+  String _resolveCoverUrl(SongDetail? song, Track? track) {
+    final player = PlayerService();
+    if (player.isLoading &&
+        player.pendingTrack != null &&
+        player.pendingTrack!.picUrl.isNotEmpty) {
+      return player.pendingTrack!.picUrl;
+    }
+    final songPic = song?.pic;
+    if (songPic != null && songPic.isNotEmpty) {
+      return songPic;
+    }
+
+    final trackPic = track?.picUrl;
+    if (trackPic != null && trackPic.isNotEmpty) {
+      return trackPic;
+    }
+
+    return '';
+  }
+
+  /// 构建优化的封面图片，优先使用预取的 Provider 避免重复加载
+  Widget _buildOptimizedCover(
+    String imageUrl,
+    double coverSize, {
+    ImageProvider? provider,
+  }) {
+    if (provider != null) {
+      return Image(
+        image: provider,
+        fit: BoxFit.cover,
+      );
+    }
+
+    // 检查是否为网络图片
+    final isNetwork = imageUrl.startsWith('http') || imageUrl.startsWith('https');
+
+    if (!isNetwork) {
+      // 本地文件
+      return Image.file(
+        File(imageUrl),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: Colors.grey[900],
+          child: Icon(
+            Icons.music_note,
+            size: coverSize * 0.3,
+            color: Colors.white30,
+          ),
+        ),
+      );
+    }
+
+    // 回退到 CachedNetworkImage（首次加载或 Provider 不可用时）
+    return CachedNetworkImage(
       imageUrl: imageUrl,
-      width: coverSize,
-      height: coverSize,
-      borderRadius: BorderRadius.circular(12),
+      httpHeaders: getImageHeaders(imageUrl),
+      fit: BoxFit.cover,
+      memCacheWidth: 1080,
+      memCacheHeight: 1080,
+      placeholder: (context, url) => Container(
+        color: Colors.grey[900],
+        child: const Center(
+          child: CircularProgressIndicator(
+            color: Colors.white30,
+          ),
+        ),
+      ),
+      errorWidget: (context, url, error) => Container(
+        color: Colors.grey[900],
+        child: Icon(
+          Icons.music_note,
+          size: coverSize * 0.3,
+          color: Colors.white30,
+        ),
+      ),
     );
   }
 
   /// 构建歌曲信息
-  Widget _buildSongInfo(BuildContext context, SongDetail? song, Track? track) {
-    final name = song?.name ?? track?.name ?? '未知歌曲';
-    final artistsStr = song?.arName ?? track?.artists ?? '未知艺术家';
-    final album = song?.alName ?? track?.album ?? '';
+  Widget _buildSongInfo(
+    BuildContext context,
+    SongDetail? song,
+    Track? track, {
+    required String displayTitle,
+    required String displayArtist,
+    required String displayAlbum,
+    required bool artistsEnabled,
+  }) {
+    final name = displayTitle.isNotEmpty ? displayTitle : '未知歌曲';
+    final artistsStr = displayArtist.isNotEmpty ? displayArtist : '未知艺术家';
+    final album = displayAlbum;
 
     // 分割歌手（支持多种分隔符：/ , 、）
     final artists = _splitArtists(artistsStr);
-    
+
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         final titleColor = _getAdaptiveLyricColor(themeColor, true);
         final subtitleColor = _getAdaptiveLyricColor(themeColor, false);
-        
+
         return LayoutBuilder(
           builder: (context, constraints) {
             final screenWidth = MediaQuery.of(context).size.width;
             final titleFontSize = (screenWidth * 0.055).clamp(20.0, 26.0);
-            
+
             return Padding(
               padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
               child: Column(
@@ -179,10 +287,17 @@ class MobilePlayerSongInfo extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   SizedBox(height: screenWidth * 0.02),
-                  
+
                   // 艺术家（多个可点击）
-                  _buildArtistsRow(context, artists, subtitleColor, screenWidth, song),
-                  
+                  _buildArtistsRow(
+                    context,
+                    artists,
+                    subtitleColor,
+                    screenWidth,
+                    song,
+                    enabled: artistsEnabled,
+                  ),
+
                   // 专辑（可点击）
                   if (album.isNotEmpty) ...[
                     SizedBox(height: screenWidth * 0.015),
@@ -197,14 +312,14 @@ class MobilePlayerSongInfo extends StatelessWidget {
                             Icon(
                               Icons.album_outlined,
                               size: 12,
-                              color: subtitleColor.withOpacity(0.6),
+                              color: subtitleColor.withValues(alpha: 0.6),
                             ),
                             const SizedBox(width: 4),
                             Flexible(
                               child: Text(
                                 album,
                                 style: TextStyle(
-                                  color: subtitleColor.withOpacity(0.6),
+                                  color: subtitleColor.withValues(alpha: 0.6),
                                   fontSize: (screenWidth * 0.032).clamp(12.0, 14.0),
                                   fontFamily: 'Microsoft YaHei', // 微软雅黑
                                 ),
@@ -228,9 +343,16 @@ class MobilePlayerSongInfo extends StatelessWidget {
   }
 
   /// 构建多个艺术家的可点击行
-  Widget _buildArtistsRow(BuildContext context, List<String> artists, Color baseColor, double screenWidth, SongDetail? song) {
+  Widget _buildArtistsRow(
+    BuildContext context,
+    List<String> artists,
+    Color baseColor,
+    double screenWidth,
+    SongDetail? song, {
+    bool enabled = true,
+  }) {
     final artistFontSize = (screenWidth * 0.04).clamp(14.0, 17.0);
-    
+
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: 0,
@@ -239,19 +361,19 @@ class MobilePlayerSongInfo extends StatelessWidget {
         final index = entry.key;
         final artist = entry.value;
         final isLast = index == artists.length - 1;
-        
+
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             InkWell(
-              onTap: () => _onArtistTap(context, artist, song),
+              onTap: enabled ? () => _onArtistTap(context, artist, song) : null,
               borderRadius: BorderRadius.circular(4),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Text(
                   artist,
                   style: TextStyle(
-                    color: baseColor.withOpacity(0.8),
+                    color: baseColor.withValues(alpha: 0.8),
                     fontSize: artistFontSize,
                     fontFamily: 'Microsoft YaHei', // 微软雅黑
                   ),
@@ -262,7 +384,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
               Text(
                 ' / ',
                 style: TextStyle(
-                  color: baseColor.withOpacity(0.6),
+                  color: baseColor.withValues(alpha: 0.6),
                   fontSize: artistFontSize,
                 ),
               ),
@@ -282,6 +404,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
     // 网易云：尝试解析歌手ID；失败则回退到搜索
     final id = await NeteaseArtistDetailService().resolveArtistIdByName(artistName);
     if (id == null) {
+      if (!context.mounted) return;
       _searchInDialog(context, artistName);
       return;
     }
@@ -315,7 +438,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
   List<String> _splitArtists(String artistsStr) {
     // 支持的分隔符：/ , 、
     final separators = ['/', ',', '、'];
-    
+
     for (final separator in separators) {
       if (artistsStr.contains(separator)) {
         return artistsStr
@@ -325,7 +448,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
             .toList();
       }
     }
-    
+
     return [artistsStr];
   }
 
@@ -351,7 +474,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
     // 计算颜色的相对亮度 (0.0 - 1.0)
     // 使用 W3C 推荐的计算公式
     final luminance = backgroundColor.computeLuminance();
-    
+
     // 如果亮度大于 0.5，认为是亮色背景，应该用深色文字
     return luminance > 0.5;
   }
@@ -360,17 +483,17 @@ class MobilePlayerSongInfo extends StatelessWidget {
   Color _getAdaptiveLyricColor(Color? themeColor, bool isCurrent) {
     final color = themeColor ?? Colors.grey[700]!;
     final useDarkText = _shouldUseDarkText(color);
-    
+
     if (useDarkText) {
       // 亮色背景，使用深色文字
-      return isCurrent 
-          ? Colors.black87 
+      return isCurrent
+          ? Colors.black87
           : Colors.black54;
     } else {
       // 暗色背景，使用浅色文字
-      return isCurrent 
-          ? Colors.white 
-          : Colors.white.withOpacity(0.45);
+      return isCurrent
+          ? Colors.white
+          : Colors.white.withValues(alpha: 0.45);
     }
   }
 }

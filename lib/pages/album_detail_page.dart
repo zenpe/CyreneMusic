@@ -1,3 +1,4 @@
+import '../widgets/floating_playback_insets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import '../utils/theme_manager.dart';
 import '../services/netease_album_service.dart';
 import '../models/track.dart';
 import '../services/player_service.dart';
+import '../widgets/track_action_menu.dart';
 
 class AlbumDetailPage extends StatefulWidget {
   final int albumId;
@@ -51,10 +53,9 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     if (widget.embedded) {
       return _buildBody();
     }
-    
+
     final isFluent = fluent.FluentTheme.maybeOf(context) != null;
     final isCupertino = ThemeManager().isCupertinoFramework;
-    final isExpressive = !isFluent && !isCupertino && (Platform.isAndroid || Platform.isIOS);
 
     if (isFluent) {
       final useWindowEffect =
@@ -81,14 +82,14 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     if (isCupertino) {
       final isDark = Theme.of(context).brightness == Brightness.dark;
       return CupertinoPageScaffold(
-        backgroundColor: isDark 
-            ? const Color(0xFF000000) 
+        backgroundColor: isDark
+            ? const Color(0xFF000000)
             : CupertinoColors.systemGroupedBackground,
         navigationBar: CupertinoNavigationBar(
           middle: const Text('专辑详情'),
-          backgroundColor: isDark 
-              ? const Color(0xFF1C1C1E).withOpacity(0.9) 
-              : CupertinoColors.white.withOpacity(0.9),
+          backgroundColor: isDark
+              ? const Color(0xFF1C1C1E).withValues(alpha: 0.9)
+              : CupertinoColors.white.withValues(alpha: 0.9),
         ),
         child: _buildBody(),
       );
@@ -119,12 +120,12 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     if (_error != null) return Center(child: Text(_error!));
 
     final album = _data!['album'] as Map<String, dynamic>? ?? {};
-    final songs = (album['songs'] as List<dynamic>? ?? []) as List<dynamic>;
+    final songs = album['songs'] as List<dynamic>? ?? [];
     final coverUrl = (album['coverImgUrl'] ?? '') as String? ?? '';
     final fluentTheme = isFluent ? fluent.FluentTheme.of(context) : null;
     final placeholderColor = isFluent
-        ? fluentTheme?.resources?.controlAltFillColorSecondary ??
-            Colors.black.withOpacity(0.05)
+        ? fluentTheme?.resources.controlAltFillColorSecondary ??
+            Colors.black.withValues(alpha: 0.05)
         : Theme.of(context).colorScheme.surfaceContainerHighest;
 
     Widget buildCover() {
@@ -143,8 +144,10 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         imageUrl: coverUrl,
         width: 120,
         height: 120,
+        memCacheWidth: 280,
+        memCacheHeight: 280,
         fit: BoxFit.cover,
-        placeholder: (_, __) => Container(
+        placeholder: (_, _) => Container(
           width: 120,
           height: 120,
           color: placeholderColor,
@@ -156,7 +159,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
             ),
           ),
         ),
-        errorWidget: (_, __, ___) => Container(
+        errorWidget: (_, _, _) => Container(
           width: 120,
           height: 120,
           color: placeholderColor,
@@ -182,7 +185,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
             children: [
               Text(album['name']?.toString() ?? '',
                   style: TextStyle(
-                    fontSize: isExpressive ? 20 : 18, 
+                    fontSize: isExpressive ? 20 : 18,
                     fontWeight: FontWeight.w700,
                     color: isCupertino ? (isDark ? Colors.white : Colors.black) : null,
                   )),
@@ -202,10 +205,10 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                     album['description']?.toString() ?? '',
                     maxLines: _descExpanded ? null : (isExpressive ? 2 : 3),
                     overflow: _descExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
-                    style: isCupertino 
-                        ? const TextStyle(color: CupertinoColors.systemGrey, fontSize: 13) 
-                        : isExpressive 
-                            ? TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.8))
+                    style: isCupertino
+                        ? const TextStyle(color: CupertinoColors.systemGrey, fontSize: 13)
+                        : isExpressive
+                            ? TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8))
                             : null,
                   ),
                 ),
@@ -243,7 +246,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                 borderRadius: BorderRadius.circular(32),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
                     blurRadius: 20,
                     offset: const Offset(0, 8),
                   ),
@@ -264,15 +267,15 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
 
 
     final iconColor = isFluent
-        ? fluentTheme?.resources?.textFillColorSecondary ?? Colors.grey
+        ? fluentTheme?.resources.textFillColorSecondary ?? Colors.grey
         : Theme.of(context).colorScheme.onSurfaceVariant;
 
     final viewToggleRow = Padding(
       padding: EdgeInsets.symmetric(horizontal: isExpressive ? 20 : 0),
       child: Row(
         children: [
-          Text('歌曲', 
-            style: isExpressive 
+          Text('歌曲',
+            style: isExpressive
                 ? TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface)
                 : isCupertino
                     ? TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: isDark ? Colors.white : Colors.black)
@@ -280,7 +283,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
           ),
           const Spacer(),
           if (!isExpressive) ...[
-            Icon(isCupertino ? CupertinoIcons.list_bullet : Icons.view_list, 
+            Icon(isCupertino ? CupertinoIcons.list_bullet : Icons.view_list,
                  size: 18, color: iconColor),
             const SizedBox(width: 8),
             isFluent
@@ -296,7 +299,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                       )
                     : Switch(value: _useGrid, onChanged: (v) => setState(() => _useGrid = v)),
             const SizedBox(width: 8),
-            Icon(isCupertino ? CupertinoIcons.square_grid_2x2 : Icons.grid_view, 
+            Icon(isCupertino ? CupertinoIcons.square_grid_2x2 : Icons.grid_view,
                  size: 18, color: iconColor),
           ],
         ],
@@ -337,12 +340,12 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       );
     }
 
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+    final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
     return ListView(
       padding: EdgeInsets.only(
-        left: 16, 
-        right: 16, 
-        top: isExpressive ? 8 : 16, 
+        left: 16,
+        right: 16,
+        top: isExpressive ? 8 : 16,
         bottom: bottomPadding
       ),
       children: children,
@@ -446,7 +449,7 @@ Widget _buildSongListItem({
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -456,10 +459,12 @@ Widget _buildSongListItem({
         borderRadius: BorderRadius.circular(isExpressive ? 14 : isCupertino ? 10 : 4),
         child: CachedNetworkImage(
           imageUrl: track.picUrl,
+          memCacheWidth: 128,
+          memCacheHeight: 128,
           width: isExpressive ? 56 : 50,
           height: isExpressive ? 56 : 50,
           fit: BoxFit.cover,
-          placeholder: (_, __) => Container(
+          placeholder: (_, _) => Container(
             width: isExpressive ? 56 : 50,
             height: isExpressive ? 56 : 50,
             color: placeholderColor,
@@ -471,7 +476,7 @@ Widget _buildSongListItem({
               ),
             ),
           ),
-          errorWidget: (_, __, ___) => Container(
+          errorWidget: (_, _, _) => Container(
             width: isExpressive ? 56 : 50,
             height: isExpressive ? 56 : 50,
             color: placeholderColor,
@@ -485,13 +490,11 @@ Widget _buildSongListItem({
     ),
   );
 
-  final trailing = isExpressive
-      ? const SizedBox.shrink()
-      : isFluent
-          ? const fluent.Icon(fluent.FluentIcons.play)
-          : isCupertino
-              ? const Icon(CupertinoIcons.play_circle, color: CupertinoColors.systemGrey)
-              : const Icon(Icons.play_arrow);
+  final trailing = TrackMoreButton(
+    track: track,
+    onPlay: () => PlayerService().playTrack(track),
+    size: 32,
+  );
 
   if (isExpressive) {
     return Container(
@@ -530,7 +533,7 @@ Widget _buildSongListItem({
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
-                          color: cs.onSurfaceVariant.withOpacity(0.8),
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.8),
                         ),
                       ),
                     ],
@@ -599,13 +602,11 @@ Widget _buildSongsGrid({
         source: MusicSource.netease,
       );
 
-      final trailing = isExpressive
-          ? const SizedBox.shrink()
-          : isFluent
-              ? const fluent.Icon(fluent.FluentIcons.play)
-              : isCupertino
-                  ? const Icon(CupertinoIcons.play_circle_fill, color: CupertinoColors.activeBlue)
-                  : const Icon(Icons.play_arrow);
+      final trailing = TrackMoreButton(
+        track: track,
+        onPlay: () => PlayerService().playTrack(track),
+        size: 32,
+      );
 
       final cardContent = Row(
         children: [
@@ -615,8 +616,10 @@ Widget _buildSongsGrid({
               imageUrl: track.picUrl,
               width: isExpressive ? 88 : 80,
               height: isExpressive ? 88 : 80,
+              memCacheWidth: 280,
+              memCacheHeight: 280,
               fit: BoxFit.cover,
-              placeholder: (_, __) => Container(
+              placeholder: (_, _) => Container(
                 width: isExpressive ? 88 : 80,
                 height: isExpressive ? 88 : 80,
                 color: placeholderColor,
@@ -628,7 +631,7 @@ Widget _buildSongsGrid({
                   ),
                 ),
               ),
-              errorWidget: (_, __, ___) => Container(
+              errorWidget: (_, _, _) => Container(
                 width: isExpressive ? 88 : 80,
                 height: isExpressive ? 88 : 80,
                 color: placeholderColor,
@@ -659,7 +662,7 @@ Widget _buildSongsGrid({
                   track.artists,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: isCupertino 
+                  style: isCupertino
                       ? const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)
                       : Theme.of(context).textTheme.bodySmall,
                 ),
@@ -668,7 +671,7 @@ Widget _buildSongsGrid({
                   track.album,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: isCupertino 
+                  style: isCupertino
                       ? const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)
                       : Theme.of(context).textTheme.bodySmall,
                 ),
@@ -688,7 +691,7 @@ Widget _buildSongsGrid({
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -708,7 +711,7 @@ Widget _buildSongsGrid({
 
       return ConstrainedBox(
         constraints: BoxConstraints(
-          minWidth: 260, 
+          minWidth: 260,
           maxWidth: isExpressive ? 480 : 440
         ),
         child: isFluent

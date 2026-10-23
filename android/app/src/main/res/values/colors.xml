@@ -5,4 +5,19 @@
     <!-- Splash Screen 图标背景色 -->
     <color name="splash_icon_background">#9C27B0</color>
 	<color name="ic_launcher_background">#FFFFFF</color>
+
+    <!-- 桌面小部件 - 浅色模式 -->
+    <color name="widget_background">#F8F9FA</color>
+    <color name="widget_card_surface">#FFFFFF</color>
+    <color name="widget_text_primary">#1C1B1F</color>
+    <color name="widget_text_secondary">#75777A</color>
+    <color name="widget_btn_secondary_bg">#EAEBED</color>
+    <color name="widget_btn_tint">#3C3D40</color>
+    <color name="widget_primary_btn_bg">#1A1C1E</color>
+    <color name="widget_primary_btn_tint">#FFFFFF</color>
+    <color name="widget_border">#E3E5E8</color>
+    <color name="widget_cover_placeholder_bg">#E2E4E9</color>
+    <color name="widget_cover_placeholder_tint">#909399</color>
+    <color name="widget_badge_bg">#E9EBF0</color>
+    <color name="widget_badge_text">#66686D</color>
 </resources>

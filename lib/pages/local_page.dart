@@ -1,8 +1,8 @@
+import '../widgets/floating_playback_insets.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../services/local_library_service.dart';
 import '../services/player_service.dart';
@@ -18,32 +18,66 @@ class LocalPage extends StatefulWidget {
 
 // === Fluent helpers ===
 extension on _LocalPageState {
-  void _showFluentInfo(String text, [fluent.InfoBarSeverity severity = fluent.InfoBarSeverity.info]) {
+  void _showFluentInfo(
+    String text, [
+    fluent.InfoBarSeverity severity = fluent.InfoBarSeverity.info,
+  ]) {
     _infoBarTimer?.cancel();
-    setState(() {
+    _refreshState(() {
       _fluentInfoText = text;
       _fluentInfoSeverity = severity;
     });
     _infoBarTimer = Timer(const Duration(seconds: 1), () {
       if (!mounted) return;
-      setState(() {
+      _refreshState(() {
         _fluentInfoText = null;
       });
     });
   }
 
   Widget _buildFluentEmpty() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
-          Icon(fluent.FluentIcons.folder, size: 80),
-          SizedBox(height: 12),
-          Text('未选择本地音乐', style: TextStyle(fontSize: 18)),
-          SizedBox(height: 8),
-          Text('可选择单首歌曲或扫描整个文件夹（支持 mp3/wav/flac 等）', style: TextStyle(fontSize: 12)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact =
+            constraints.hasBoundedHeight && constraints.maxHeight < 200;
+        final minHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(fluent.FluentIcons.folder, size: compact ? 56 : 80),
+                    SizedBox(height: compact ? 10 : 12),
+                    const Text(
+                      '未选择本地音乐',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 18),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '可选择单首歌曲或扫描整个文件夹（支持 mp3/wav/flac 等）',
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 2 : 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -59,6 +93,7 @@ extension on _LocalPageState {
 
   /// 构建 subtitle 显示（艺术家 • 格式）
   String _buildSubtitle(Track track) {
+    if (LocalLibraryService().isUnavailable(track)) return '文件不可用，请重新选择';
     final parts = <String>[];
     if (track.artists.isNotEmpty && track.artists != '本地文件') {
       parts.add(track.artists);
@@ -183,6 +218,7 @@ class _FluentLocalTrackTile extends StatelessWidget {
   }
 
   String _buildSubtitleText(Track track) {
+    if (LocalLibraryService().isUnavailable(track)) return '文件不可用，请重新选择';
     final parts = <String>[];
     if (track.artists.isNotEmpty && track.artists != '本地文件') {
       parts.add(track.artists);
@@ -204,6 +240,11 @@ class _LocalPageState extends State<LocalPage> {
   String? _fluentInfoText;
   fluent.InfoBarSeverity _fluentInfoSeverity = fluent.InfoBarSeverity.info;
   Timer? _infoBarTimer;
+
+  void _refreshState(VoidCallback action) {
+    if (!mounted) return;
+    setState(action);
+  }
 
   @override
   void initState() {
@@ -259,7 +300,9 @@ class _LocalPageState extends State<LocalPage> {
                 },
               ),
               IconButton(
-                icon: Icon(_isAndroid ? Icons.library_music : Icons.folder_open),
+                icon: Icon(
+                  _isAndroid ? Icons.library_music : Icons.folder_open,
+                ),
                 tooltip: _isAndroid ? '批量选择音频文件' : '选择文件夹并扫描',
                 onPressed: () async {
                   await _local.pickAndScanFolder();
@@ -354,11 +397,10 @@ class _LocalPageState extends State<LocalPage> {
                         index: index,
                         onPlay: () async {
                           await PlayerService().playTrack(tracks[index]);
-                          _showFluentInfo('正在播放: ${tracks[index].name}');
                         },
                       ),
                     ),
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemCount: tracks.length,
                   ),
           ),
@@ -370,26 +412,59 @@ class _LocalPageState extends State<LocalPage> {
   Widget _buildEmpty() {
     final cs = Theme.of(context).colorScheme;
     final isAndroid = Theme.of(context).platform == TargetPlatform.android;
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.folder, size: 64, color: cs.onSurfaceVariant),
-          const SizedBox(height: 12),
-          Text('未选择本地音乐', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              isAndroid 
-                ? '点击右上方按钮选择单首或批量选择多首音乐文件\n（支持 mp3/wav/flac 等格式）'
-                : '可选择单首歌曲或扫描整个文件夹（支持 mp3/wav/flac 等）',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-              textAlign: TextAlign.center,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact =
+            constraints.hasBoundedHeight && constraints.maxHeight < 200;
+        final minHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.folder,
+                      size: compact ? 52 : 64,
+                      color: cs.onSurfaceVariant,
+                    ),
+                    SizedBox(height: compact ? 10 : 12),
+                    Text(
+                      '未选择本地音乐',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        isAndroid
+                            ? '点击右上方按钮选择单首或批量选择多首音乐文件\n（支持 mp3/wav/flac 等格式）'
+                            : '可选择单首歌曲或扫描整个文件夹（支持 mp3/wav/flac 等）',
+                        textAlign: TextAlign.center,
+                        maxLines: compact ? 2 : 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -400,10 +475,14 @@ class _LocalPageState extends State<LocalPage> {
     return Material(
       type: MaterialType.transparency,
       child: CupertinoPageScaffold(
-        backgroundColor: isDark ? const Color(0xFF000000) : CupertinoColors.systemGroupedBackground,
+        backgroundColor: isDark
+            ? const Color(0xFF000000)
+            : CupertinoColors.systemGroupedBackground,
         navigationBar: CupertinoNavigationBar(
           middle: const Text('本地'),
-          backgroundColor: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white).withOpacity(0.9),
+          backgroundColor:
+              (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white)
+                  .withValues(alpha: 0.9),
           border: null,
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
@@ -441,7 +520,7 @@ class _LocalPageState extends State<LocalPage> {
                   itemCount: tracks.length + 1, // +1 for bottom padding
                   itemBuilder: (context, index) {
                     if (index == tracks.length) {
-                      return SizedBox(height: MediaQuery.of(context).padding.bottom + 80);
+                      return const FloatingPlaybackBottomSpacer(fallback: 80);
                     }
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
@@ -455,38 +534,64 @@ class _LocalPageState extends State<LocalPage> {
   }
 
   Widget _buildCupertinoEmpty(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            CupertinoIcons.folder,
-            size: 80,
-            color: CupertinoColors.systemGrey.withOpacity(0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '未选择本地音乐',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-              color: isDark ? CupertinoColors.white : CupertinoColors.black,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Text(
-              '点击右上方按钮选择单首或批量选择多首音乐文件\n（支持 mp3/wav/flac 等格式）',
-              style: TextStyle(
-                fontSize: 14,
-                color: CupertinoColors.systemGrey,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact =
+            constraints.hasBoundedHeight && constraints.maxHeight < 200;
+        final minHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.folder,
+                      size: compact ? 56 : 80,
+                      color: CupertinoColors.systemGrey.withValues(alpha: 0.5),
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '未选择本地音乐',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                        color: isDark
+                            ? CupertinoColors.white
+                            : CupertinoColors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        '点击右上方按钮选择单首或批量选择多首音乐文件\n（支持 mp3/wav/flac 等格式）',
+                        textAlign: TextAlign.center,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: CupertinoColors.systemGrey,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              textAlign: TextAlign.center,
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -519,7 +624,9 @@ class _LocalPageState extends State<LocalPage> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 15,
-                        color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                        color: isDark
+                            ? CupertinoColors.white
+                            : CupertinoColors.black,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -538,11 +645,15 @@ class _LocalPageState extends State<LocalPage> {
               // 播放按钮
               CupertinoButton(
                 padding: const EdgeInsets.all(8),
-                minSize: 0,
+                minimumSize: Size.zero,
                 onPressed: () async {
                   await PlayerService().playTrack(track);
                 },
-                child: Icon(CupertinoIcons.play_fill, size: 22, color: CupertinoColors.activeBlue),
+                child: Icon(
+                  CupertinoIcons.play_fill,
+                  size: 22,
+                  color: CupertinoColors.activeBlue,
+                ),
               ),
             ],
           ),
@@ -564,8 +675,13 @@ class _LocalPageState extends State<LocalPage> {
           errorBuilder: (context, error, stackTrace) => Container(
             width: 48,
             height: 48,
-            color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5,
-            child: Icon(CupertinoIcons.music_note, color: CupertinoColors.systemGrey),
+            color: isDark
+                ? const Color(0xFF2C2C2E)
+                : CupertinoColors.systemGrey5,
+            child: Icon(
+              CupertinoIcons.music_note,
+              color: CupertinoColors.systemGrey,
+            ),
           ),
         ),
       );
@@ -594,7 +710,11 @@ class _LocalTrackTile extends StatelessWidget {
       child: ListTile(
         leading: _buildCover(cs),
         title: Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(_buildSubtitle(track), maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          _buildSubtitle(track),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         trailing: IconButton(
           icon: const Icon(Icons.play_arrow),
           onPressed: () async {
@@ -611,6 +731,7 @@ class _LocalTrackTile extends StatelessWidget {
 
   /// 构建 subtitle 显示（艺术家 • 格式）
   String _buildSubtitle(Track track) {
+    if (LocalLibraryService().isUnavailable(track)) return '文件不可用，请重新选择';
     final parts = <String>[];
     if (track.artists.isNotEmpty && track.artists != '本地文件') {
       parts.add(track.artists);
@@ -652,10 +773,10 @@ class _LocalTrackTile extends StatelessWidget {
   String _extOf(dynamic id) {
     if (id is String) {
       final idx = id.lastIndexOf('.');
-      if (idx > 0 && idx < id.length - 1) return id.substring(idx + 1).toUpperCase();
+      if (idx > 0 && idx < id.length - 1) {
+        return id.substring(idx + 1).toUpperCase();
+      }
     }
     return '';
   }
 }
-
-

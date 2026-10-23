@@ -1,3 +1,4 @@
+import '../widgets/floating_playback_insets.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -7,6 +8,7 @@ import '../utils/theme_manager.dart';
 import '../services/netease_artist_service.dart';
 import '../services/player_service.dart';
 import '../models/track.dart';
+import '../widgets/track_action_menu.dart';
 import 'album_detail_page.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -19,31 +21,8 @@ class ArtistDetailPage extends StatefulWidget {
 }
 
 class _ArtistDetailPageState extends State<ArtistDetailPage> {
-  Map<String, dynamic>? _data;
-  bool _loading = true;
-  String? _error;
 
   bool get _isCupertino => ThemeManager().isCupertinoFramework;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    final data = await NeteaseArtistDetailService().fetchArtistDetail(widget.artistId);
-    if (!mounted) return;
-    setState(() {
-      _data = data;
-      _loading = false;
-      if (data == null) _error = '加载失败';
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,14 +55,14 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
     if (_isCupertino) {
       final isDark = Theme.of(context).brightness == Brightness.dark;
       return CupertinoPageScaffold(
-        backgroundColor: isDark 
-            ? const Color(0xFF000000) 
+        backgroundColor: isDark
+            ? const Color(0xFF000000)
             : CupertinoColors.systemGroupedBackground,
         navigationBar: CupertinoNavigationBar(
           middle: const Text('歌手详情'),
-          backgroundColor: isDark 
-              ? const Color(0xFF1C1C1E).withOpacity(0.9) 
-              : CupertinoColors.white.withOpacity(0.9),
+          backgroundColor: isDark
+              ? const Color(0xFF1C1C1E).withValues(alpha: 0.9)
+              : CupertinoColors.white.withValues(alpha: 0.9),
         ),
         child: ArtistDetailContent(artistId: widget.artistId),
       );
@@ -147,20 +126,18 @@ class _CapsuleTabs extends StatelessWidget {
 
     final cs = Theme.of(context).colorScheme;
     final bg = isFluent
-        ? (fluentTheme!.resources?.controlAltFillColorSecondary ??
-            Colors.black.withOpacity(0.05))
+        ? fluentTheme.resources.controlAltFillColorSecondary
         : cs.surfaceContainerHighest;
     final pillColor = isFluent
-        ? fluentTheme!.accentColor.defaultBrushFor(
+        ? fluentTheme.accentColor.defaultBrushFor(
             fluentTheme.brightness,
           )
         : cs.primary;
     final selFg = isFluent
-        ? fluentTheme!.resources?.textOnAccentFillColorPrimary ?? Colors.white
+        ? fluentTheme.resources.textOnAccentFillColorPrimary
         : cs.onPrimary;
     final unSelFg = isFluent
-        ? fluentTheme!.resources?.textFillColorSecondary ??
-            Colors.white.withOpacity(0.8)
+        ? fluentTheme.resources.textFillColorSecondary
         : cs.onSurfaceVariant;
 
     return LayoutBuilder(
@@ -201,7 +178,7 @@ class _CapsuleTabs extends StatelessWidget {
                     borderRadius: BorderRadius.circular(radius - padding),
                     boxShadow: [
                       BoxShadow(
-                        color: pillColor.withOpacity(0.25),
+                        color: pillColor.withValues(alpha: 0.25),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -342,7 +319,7 @@ Widget _buildAdaptiveListTile({
                 ],
               ),
             ),
-            if (trailing != null) trailing,
+            ?trailing,
           ],
         ),
       ),
@@ -373,8 +350,8 @@ class _SongsListView extends StatelessWidget {
   final bool isCupertino;
   final bool isDark;
   const _SongsListView({
-    super.key, 
-    required this.songs, 
+    super.key,
+    required this.songs,
     required this.isFluent,
     required this.isCupertino,
     required this.isDark,
@@ -385,17 +362,17 @@ class _SongsListView extends StatelessWidget {
     if (songs.isEmpty) {
       return Center(
         child: Text(
-          '暂无歌曲', 
+          '暂无歌曲',
           style: isCupertino
               ? TextStyle(color: CupertinoColors.systemGrey)
               : Theme.of(context).textTheme.bodySmall,
         ),
       );
     }
-    
+
     // iOS Cupertino 风格：使用圆角卡片容器
     if (isCupertino) {
-      final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+      final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
       return ListView(
         padding: EdgeInsets.only(left: 16, right: 16, top: 8, bottom: bottomPadding),
         children: [
@@ -413,7 +390,7 @@ class _SongsListView extends StatelessWidget {
                       padding: const EdgeInsets.only(left: 78),
                       child: Container(
                         height: 0.5,
-                        color: CupertinoColors.systemGrey.withOpacity(0.3),
+                        color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
                       ),
                     ),
                 ],
@@ -423,8 +400,8 @@ class _SongsListView extends StatelessWidget {
         ],
       );
     }
-    
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+
+    final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
     return ListView.builder(
       padding: EdgeInsets.only(left: 16, right: 16, bottom: bottomPadding),
       itemCount: songs.length,
@@ -438,9 +415,11 @@ class _SongsListView extends StatelessWidget {
           picUrl: m['picUrl']?.toString() ?? '',
           source: MusicSource.netease,
         );
-        final trailing = isFluent
-            ? const fluent.Icon(fluent.FluentIcons.play)
-            : const Icon(Icons.play_arrow);
+        final trailing = TrackMoreButton(
+          track: track,
+          onPlay: () => PlayerService().playTrack(track),
+          size: 32,
+        );
 
         final isExpressive = !isFluent && !isCupertino && (Platform.isAndroid || Platform.isIOS);
         if (isExpressive) {
@@ -466,7 +445,7 @@ class _SongsListView extends StatelessWidget {
                             borderRadius: BorderRadius.circular(14),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.08),
+                                color: Colors.black.withValues(alpha: 0.08),
                                 blurRadius: 8,
                                 offset: const Offset(0, 3),
                               ),
@@ -476,6 +455,8 @@ class _SongsListView extends StatelessWidget {
                             borderRadius: BorderRadius.circular(14),
                             child: CachedNetworkImage(
                               imageUrl: track.picUrl,
+                              memCacheWidth: 128,
+                              memCacheHeight: 128,
                               width: 56,
                               height: 56,
                               fit: BoxFit.cover,
@@ -547,6 +528,8 @@ class _SongsListView extends StatelessWidget {
               borderRadius: BorderRadius.circular(4),
               child: CachedNetworkImage(
                 imageUrl: track.picUrl,
+                memCacheWidth: 128,
+                memCacheHeight: 128,
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
@@ -561,7 +544,7 @@ class _SongsListView extends StatelessWidget {
       },
     );
   }
-  
+
   Widget _buildCupertinoSongTile(BuildContext context, Map<String, dynamic> m) {
     final track = Track(
       id: m['id'],
@@ -571,7 +554,7 @@ class _SongsListView extends StatelessWidget {
       picUrl: m['picUrl']?.toString() ?? '',
       source: MusicSource.netease,
     );
-    
+
     return CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: () => PlayerService().playTrack(track),
@@ -583,14 +566,16 @@ class _SongsListView extends StatelessWidget {
               borderRadius: BorderRadius.circular(6),
               child: CachedNetworkImage(
                 imageUrl: track.picUrl,
+                memCacheWidth: 128,
+                memCacheHeight: 128,
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
                 placeholder: (context, url) => Container(
                   width: 50,
                   height: 50,
-                  color: isDark 
-                      ? const Color(0xFF2C2C2E) 
+                  color: isDark
+                      ? const Color(0xFF2C2C2E)
                       : CupertinoColors.systemGrey5,
                   child: const Center(
                     child: CupertinoActivityIndicator(radius: 10),
@@ -625,10 +610,10 @@ class _SongsListView extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(
-              CupertinoIcons.play_fill,
-              color: CupertinoColors.activeBlue,
-              size: 20,
+            TrackMoreButton(
+              track: track,
+              onPlay: () => PlayerService().playTrack(track),
+              size: 32,
             ),
           ],
         ),
@@ -644,9 +629,9 @@ class _AlbumsListView extends StatelessWidget {
   final bool isCupertino;
   final bool isDark;
   const _AlbumsListView({
-    super.key, 
-    required this.albums, 
-    this.onOpenAlbum, 
+    super.key,
+    required this.albums,
+    this.onOpenAlbum,
     required this.isFluent,
     required this.isCupertino,
     required this.isDark,
@@ -657,17 +642,17 @@ class _AlbumsListView extends StatelessWidget {
     if (albums.isEmpty) {
       return Center(
         child: Text(
-          '暂无专辑', 
+          '暂无专辑',
           style: isCupertino
               ? TextStyle(color: CupertinoColors.systemGrey)
               : Theme.of(context).textTheme.bodySmall,
         ),
       );
     }
-    
+
     // iOS Cupertino 风格
     if (isCupertino) {
-      final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+      final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
       return ListView(
         padding: EdgeInsets.only(left: 16, right: 16, top: 8, bottom: bottomPadding),
         children: [
@@ -685,7 +670,7 @@ class _AlbumsListView extends StatelessWidget {
                       padding: const EdgeInsets.only(left: 84),
                       child: Container(
                         height: 0.5,
-                        color: CupertinoColors.systemGrey.withOpacity(0.3),
+                        color: CupertinoColors.systemGrey.withValues(alpha: 0.3),
                       ),
                     ),
                 ],
@@ -695,8 +680,8 @@ class _AlbumsListView extends StatelessWidget {
         ],
       );
     }
-    
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+
+    final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
     return ListView.builder(
       padding: EdgeInsets.only(left: 16, right: 16, bottom: bottomPadding),
       itemCount: albums.length,
@@ -718,7 +703,7 @@ class _AlbumsListView extends StatelessWidget {
             isDark: isDark,
             leading: ClipRRect(
               borderRadius: BorderRadius.circular(6),
-              child: CachedNetworkImage(imageUrl: cover, width: 56, height: 56, fit: BoxFit.cover),
+              child: CachedNetworkImage(imageUrl: cover, memCacheWidth: 128, memCacheHeight: 128, width: 56, height: 56, fit: BoxFit.cover),
             ),
             title: Text(a['name']?.toString() ?? ''),
             subtitle: Text((a['company']?.toString() ?? '').isEmpty ? '' : a['company'].toString()),
@@ -742,12 +727,12 @@ class _AlbumsListView extends StatelessWidget {
       },
     );
   }
-  
+
   Widget _buildCupertinoAlbumTile(BuildContext context, Map<String, dynamic> a) {
     final cover = (a['coverImgUrl'] ?? '') as String;
     final name = a['name']?.toString() ?? '';
     final company = (a['company']?.toString() ?? '').isEmpty ? '' : a['company'].toString();
-    
+
     return CupertinoButton(
       padding: EdgeInsets.zero,
       onPressed: () {
@@ -770,14 +755,16 @@ class _AlbumsListView extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               child: CachedNetworkImage(
                 imageUrl: cover,
+                memCacheWidth: 128,
+                memCacheHeight: 128,
                 width: 56,
                 height: 56,
                 fit: BoxFit.cover,
                 placeholder: (context, url) => Container(
                   width: 56,
                   height: 56,
-                  color: isDark 
-                      ? const Color(0xFF2C2C2E) 
+                  color: isDark
+                      ? const Color(0xFF2C2C2E)
                       : CupertinoColors.systemGrey5,
                   child: const Center(
                     child: CupertinoActivityIndicator(radius: 10),
@@ -832,8 +819,8 @@ class _SongsThumbView extends StatelessWidget {
   final bool isCupertino;
   final bool isDark;
   const _SongsThumbView({
-    super.key, 
-    required this.songs, 
+    super.key,
+    required this.songs,
     required this.isFluent,
     required this.isCupertino,
     required this.isDark,
@@ -844,14 +831,14 @@ class _SongsThumbView extends StatelessWidget {
     if (songs.isEmpty) {
       return Center(
         child: Text(
-          '暂无歌曲', 
+          '暂无歌曲',
           style: isCupertino
               ? TextStyle(color: CupertinoColors.systemGrey)
               : Theme.of(context).textTheme.bodySmall,
         ),
       );
     }
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+    final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
     return SingleChildScrollView(
       padding: EdgeInsets.only(left: 16, right: 16, top: 8, bottom: bottomPadding),
       child: Wrap(
@@ -864,18 +851,18 @@ class _SongsThumbView extends StatelessWidget {
           final album = m['album']?.toString() ?? '';
           final pic = m['picUrl']?.toString() ?? '';
           final track = Track(id: m['id'], name: name, artists: artists, album: album, picUrl: pic, source: MusicSource.netease);
-          
-          final trailing = isFluent
-              ? const fluent.Icon(fluent.FluentIcons.play)
-              : isCupertino
-                  ? Icon(CupertinoIcons.play_fill, color: CupertinoColors.activeBlue, size: 20)
-                  : const Icon(Icons.play_arrow);
-          
+
+          final trailing = TrackMoreButton(
+            track: track,
+            onPlay: () => PlayerService().playTrack(track),
+            size: 32,
+          );
+
           final cardContent = Row(
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(imageUrl: pic, width: 80, height: 80, fit: BoxFit.cover),
+                child: CachedNetworkImage(imageUrl: pic, width: 80, height: 80, fit: BoxFit.cover, memCacheWidth: 200, memCacheHeight: 200),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -883,31 +870,31 @@ class _SongsThumbView extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      name, 
-                      maxLines: 1, 
-                      overflow: TextOverflow.ellipsis, 
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        color: isCupertino 
-                            ? (isDark ? CupertinoColors.white : CupertinoColors.black) 
+                        color: isCupertino
+                            ? (isDark ? CupertinoColors.white : CupertinoColors.black)
                             : null,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      artists, 
-                      maxLines: 1, 
-                      overflow: TextOverflow.ellipsis, 
-                      style: isCupertino 
+                      artists,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: isCupertino
                           ? TextStyle(fontSize: 13, color: CupertinoColors.systemGrey)
                           : Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      album, 
-                      maxLines: 1, 
-                      overflow: TextOverflow.ellipsis, 
-                      style: isCupertino 
+                      album,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: isCupertino
                           ? TextStyle(fontSize: 13, color: CupertinoColors.systemGrey)
                           : Theme.of(context).textTheme.bodySmall,
                     ),
@@ -925,7 +912,7 @@ class _SongsThumbView extends StatelessWidget {
             padding: const EdgeInsets.all(10),
             child: cardContent,
           );
-          final tapHandler = () => PlayerService().playTrack(track);
+          Future<void> tapHandler() => PlayerService().playTrack(track);
 
           return ConstrainedBox(
             constraints: const BoxConstraints(minWidth: 260, maxWidth: 440),
@@ -959,9 +946,9 @@ class _AlbumsThumbView extends StatelessWidget {
   final bool isCupertino;
   final bool isDark;
   const _AlbumsThumbView({
-    super.key, 
-    required this.albums, 
-    this.onOpenAlbum, 
+    super.key,
+    required this.albums,
+    this.onOpenAlbum,
     required this.isFluent,
     required this.isCupertino,
     required this.isDark,
@@ -972,14 +959,14 @@ class _AlbumsThumbView extends StatelessWidget {
     if (albums.isEmpty) {
       return Center(
         child: Text(
-          '暂无专辑', 
+          '暂无专辑',
           style: isCupertino
               ? TextStyle(color: CupertinoColors.systemGrey)
               : Theme.of(context).textTheme.bodySmall,
         ),
       );
     }
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
+    final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
     return SingleChildScrollView(
       padding: EdgeInsets.only(left: 16, right: 16, top: 8, bottom: bottomPadding),
       child: Wrap(
@@ -991,18 +978,18 @@ class _AlbumsThumbView extends StatelessWidget {
           final cover = (a['coverImgUrl'] ?? '') as String;
           final name = (a['name'] ?? '').toString();
           final sub = (a['company'] ?? '').toString();
-          
+
           final trailing = isFluent
               ? const fluent.Icon(fluent.FluentIcons.chevron_right_small)
               : isCupertino
                   ? Icon(CupertinoIcons.chevron_forward, color: CupertinoColors.systemGrey, size: 18)
                   : const Icon(Icons.chevron_right);
-          
+
           final cardContent = Row(
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(imageUrl: cover, width: 80, height: 80, fit: BoxFit.cover),
+                child: CachedNetworkImage(imageUrl: cover, width: 80, height: 80, fit: BoxFit.cover, memCacheWidth: 200, memCacheHeight: 200),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1010,21 +997,21 @@ class _AlbumsThumbView extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      name, 
-                      maxLines: 1, 
-                      overflow: TextOverflow.ellipsis, 
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        color: isCupertino 
+                        color: isCupertino
                             ? (isDark ? CupertinoColors.white : CupertinoColors.black)
                             : null,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      sub, 
-                      maxLines: 1, 
-                      overflow: TextOverflow.ellipsis, 
+                      sub,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: isCupertino
                           ? TextStyle(fontSize: 13, color: CupertinoColors.systemGrey)
                           : Theme.of(context).textTheme.bodySmall,
@@ -1149,7 +1136,7 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
     final isFluent = fluent.FluentTheme.maybeOf(context) != null;
     final isCupertino = ThemeManager().isCupertinoFramework;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     if (_loading) {
       return Center(child: _buildAdaptiveProgressIndicator(isFluent, isCupertino));
     }
@@ -1157,18 +1144,18 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
       return Center(
         child: Text(
           _error!,
-          style: isCupertino 
-              ? TextStyle(color: CupertinoColors.systemGrey) 
+          style: isCupertino
+              ? TextStyle(color: CupertinoColors.systemGrey)
               : null,
         ),
       );
     }
-    
+
     final artist = _data!['artist'] as Map<String, dynamic>? ?? {};
-    final albums = (_data!['albums'] as List<dynamic>? ?? []) as List<dynamic>;
-    final songs = (_data!['songs'] as List<dynamic>? ?? []) as List<dynamic>;
+    final albums = _data!['albums'] as List<dynamic>? ?? [];
+    final songs = _data!['songs'] as List<dynamic>? ?? [];
     final imageUrl = (artist['img1v1Url'] ?? artist['picUrl'] ?? '') as String;
-    
+
     Widget avatar;
     if (isFluent) {
       avatar = fluent.CircleAvatar(
@@ -1185,11 +1172,11 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5,
-          image: imageUrl.isNotEmpty 
+          image: imageUrl.isNotEmpty
               ? DecorationImage(image: NetworkImage(imageUrl), fit: BoxFit.cover)
               : null,
         ),
-        child: imageUrl.isEmpty 
+        child: imageUrl.isEmpty
             ? Icon(CupertinoIcons.person_fill, size: 36, color: CupertinoColors.systemGrey)
             : null,
       );
@@ -1200,7 +1187,7 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
         child: imageUrl.isEmpty ? const Icon(Icons.person) : null,
       );
     }
-    
+
     final headerContent = Row(
       children: [
         avatar,
@@ -1210,11 +1197,11 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                artist['name']?.toString() ?? '', 
+                artist['name']?.toString() ?? '',
                 style: TextStyle(
-                  fontSize: 20, 
+                  fontSize: 20,
                   fontWeight: FontWeight.w600,
-                  color: isCupertino 
+                  color: isCupertino
                       ? (isDark ? CupertinoColors.white : CupertinoColors.black)
                       : null,
                 ),
@@ -1227,8 +1214,8 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
                   curve: Curves.easeInOut,
                   alignment: Alignment.topLeft,
                   child: Text(
-                    artist['briefDesc']?.toString() ?? artist['description']?.toString() ?? '', 
-                    maxLines: _descExpanded ? null : 2, 
+                    artist['briefDesc']?.toString() ?? artist['description']?.toString() ?? '',
+                    maxLines: _descExpanded ? null : 2,
                     overflow: _descExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
                     style: isCupertino
                         ? TextStyle(fontSize: 14, color: CupertinoColors.systemGrey)
@@ -1258,11 +1245,11 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
     );
 
     final isExpressive = !isFluent && !isCupertino && (Platform.isAndroid || Platform.isIOS);
-    
+
     if (isExpressive) {
       final cs = Theme.of(context).colorScheme;
-      final bottomPadding = MediaQuery.of(context).padding.bottom + 100;
-      
+      final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 100);
+
       return CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
@@ -1277,7 +1264,7 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
                   borderRadius: BorderRadius.circular(32),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+                      color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -1287,7 +1274,7 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
               ),
             ),
           ),
-          
+
           // Expressive Tabs
           SliverToBoxAdapter(
             child: Padding(
@@ -1299,7 +1286,7 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
               ),
             ),
           ),
-          
+
           // 内容列表
           SliverPadding(
             padding: EdgeInsets.only(left: 16, right: 16, bottom: bottomPadding),
@@ -1388,15 +1375,15 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
             child: _tabIndex == 0
                 ? (_useGrid
                     ? _SongsThumbView(
-                        key: const ValueKey('artist_songs_grid'), 
-                        songs: songs, 
+                        key: const ValueKey('artist_songs_grid'),
+                        songs: songs,
                         isFluent: isFluent,
                         isCupertino: isCupertino,
                         isDark: isDark,
                       )
                     : _SongsListView(
-                        key: const ValueKey('artist_songs_list'), 
-                        songs: songs, 
+                        key: const ValueKey('artist_songs_list'),
+                        songs: songs,
                         isFluent: isFluent,
                         isCupertino: isCupertino,
                         isDark: isDark,
@@ -1427,9 +1414,9 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
   Widget _buildViewModeToggle(BuildContext context, bool isFluent, bool isCupertino, bool isDark) {
     if (isFluent) {
       final fluentTheme = fluent.FluentTheme.of(context);
-      final iconColor = fluentTheme.resources?.textFillColorSecondary ?? Colors.grey;
-      final labelStyle = fluentTheme.typography?.bodyStrong?.copyWith(
-            color: fluentTheme.resources?.textFillColorSecondary,
+      final iconColor = fluentTheme.resources.textFillColorSecondary;
+      final labelStyle = fluentTheme.typography.bodyStrong?.copyWith(
+            color: fluentTheme.resources.textFillColorSecondary,
           ) ??
           const TextStyle();
       return Row(
@@ -1448,7 +1435,7 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
         ],
       );
     }
-    
+
     if (isCupertino) {
       return Row(
         children: [
@@ -1462,9 +1449,9 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
           Icon(CupertinoIcons.square_grid_2x2, size: 18, color: CupertinoColors.systemGrey),
           const Spacer(),
           Text(
-            _useGrid ? '缩略图' : '列表', 
+            _useGrid ? '缩略图' : '列表',
             style: TextStyle(
-              fontSize: 13, 
+              fontSize: 13,
               color: CupertinoColors.systemGrey,
             ),
           ),
@@ -1513,7 +1500,7 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
                       borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
+                          color: Colors.black.withValues(alpha: 0.08),
                           blurRadius: 8,
                           offset: const Offset(0, 3),
                         ),
@@ -1523,6 +1510,8 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
                       borderRadius: BorderRadius.circular(14),
                       child: CachedNetworkImage(
                         imageUrl: track.picUrl,
+                        memCacheWidth: 128,
+                        memCacheHeight: 128,
                         width: 56,
                         height: 56,
                         fit: BoxFit.cover,
@@ -1584,7 +1573,7 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
     final albumId = a['id'];
     final albumName = a['name']?.toString() ?? '';
     final picUrl = (a['picUrl'] ?? a['coverImgUrl'] ?? '')?.toString() ?? '';
-    
+
     // 安全获取歌手名
     String artistName = '';
     final artistData = a['artist'];
@@ -1636,6 +1625,8 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
                       imageUrl: picUrl,
                       width: 80,
                       height: 80,
+                      memCacheWidth: 200,
+                      memCacheHeight: 200,
                       fit: BoxFit.cover,
                     ),
                   ),
@@ -1695,7 +1686,7 @@ class _ArtistExpressiveTabs extends StatelessWidget {
       builder: (context, constraints) {
         final count = tabs.length;
         if (count == 0) return const SizedBox.shrink();
-        
+
         final totalWidth = constraints.maxWidth;
         final tabWidth = totalWidth / count;
         const height = 56.0;
@@ -1725,7 +1716,7 @@ class _ArtistExpressiveTabs extends StatelessWidget {
               Row(
                 children: List.generate(count, (i) {
                   final selected = i == currentIndex;
-                  
+
                   return Expanded(
                     child: GestureDetector(
                       onTap: () => onChanged(i),
@@ -1736,9 +1727,9 @@ class _ArtistExpressiveTabs extends StatelessWidget {
                           duration: const Duration(milliseconds: 250),
                           curve: Curves.easeOutCubic,
                           style: TextStyle(
-                            color: selected 
-                                ? (isDark ? Colors.white : Colors.black87) 
-                                : cs.onSurface.withOpacity(0.5),
+                            color: selected
+                                ? (isDark ? Colors.white : Colors.black87)
+                                : cs.onSurface.withValues(alpha: 0.5),
                             fontSize: selected ? 19 : 15,
                             fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
                             letterSpacing: selected ? -0.2 : 0,

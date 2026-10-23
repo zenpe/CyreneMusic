@@ -1,18 +1,22 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
-import '../../services/auth_service.dart';
-import 'qr_login_dialog.dart';
-import 'linuxdo_webview_login_page.dart';
+import '../../services/auth_overlay_service.dart';
+import '../../services/auth_credentials_service.dart';
+import '../../widgets/terms_consent.dart';
+import '../../features/auth/auth_feature.dart';
+
+final AuthFacade _authFacade = AuthFacade();
 
 /// 桌面端 Fluent UI 风格认证页面
-/// 
+///
 /// 包含登录、注册、找回密码三个 Tab
-/// 支持账号密码登录、Linux Do 授权登录、手机扫码登录
+/// 支持账号密码登录、手机扫码登录
 class FluentAuthPage extends StatefulWidget {
   final int initialTab;
-  
-  const FluentAuthPage({super.key, this.initialTab = 0});
+  final bool embedded;
+
+  const FluentAuthPage({super.key, this.initialTab = 0, this.embedded = false});
 
   @override
   State<FluentAuthPage> createState() => _FluentAuthPageState();
@@ -20,7 +24,7 @@ class FluentAuthPage extends StatefulWidget {
 
 class _FluentAuthPageState extends State<FluentAuthPage> {
   late int _selectedTab;
-  
+
   @override
   void initState() {
     super.initState();
@@ -29,8 +33,12 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
 
   @override
   Widget build(BuildContext context) {
+    return TermsConsentScope(child: Builder(builder: _buildPage));
+  }
+
+  Widget _buildPage(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
-    
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -39,7 +47,7 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
           // Logo 和标题
           _buildHeader(theme),
           const SizedBox(height: 32),
-          
+
           // Tab 选择器
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -52,7 +60,7 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
             ],
           ),
           const SizedBox(height: 24),
-          
+
           // Tab 内容
           Center(
             child: AnimatedSwitcher(
@@ -64,8 +72,12 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
       ),
     );
   }
-  
-  Widget _buildTabButton(fluent.FluentThemeData theme, int index, String label) {
+
+  Widget _buildTabButton(
+    fluent.FluentThemeData theme,
+    int index,
+    String label,
+  ) {
     final isSelected = _selectedTab == index;
     return fluent.Button(
       style: fluent.ButtonStyle(
@@ -86,7 +98,7 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
       ),
     );
   }
-  
+
   Widget _buildHeader(fluent.FluentThemeData theme) {
     return Column(
       children: [
@@ -95,7 +107,7 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: theme.accentColor.withOpacity(0.15),
+            color: theme.accentColor.withValues(alpha: 0.15),
             shape: BoxShape.circle,
           ),
           child: Center(
@@ -109,7 +121,7 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
           ),
         ),
         const SizedBox(height: 20),
-        
+
         // 标题
         Text(
           'Cyrene Music',
@@ -122,32 +134,46 @@ class _FluentAuthPageState extends State<FluentAuthPage> {
         Text(
           '发现美好音乐',
           style: theme.typography.body?.copyWith(
-            color: theme.brightness == Brightness.dark 
-                ? Colors.white70 
+            color: theme.brightness == Brightness.dark
+                ? Colors.white70
                 : Colors.black54,
           ),
         ),
       ],
     );
   }
-  
+
   Widget _buildTabContent() {
     switch (_selectedTab) {
       case 0:
-        return _FluentLoginView(key: const ValueKey('login'));
+        return _FluentLoginView(
+          key: const ValueKey('login'),
+          embedded: widget.embedded,
+        );
       case 1:
-        return _FluentRegisterView(key: const ValueKey('register'));
+        return _FluentRegisterView(
+          key: const ValueKey('register'),
+          embedded: widget.embedded,
+        );
       case 2:
-        return _FluentForgotPasswordView(key: const ValueKey('forgot'));
+        return _FluentForgotPasswordView(
+          key: const ValueKey('forgot'),
+          embedded: widget.embedded,
+        );
       default:
-        return _FluentLoginView(key: const ValueKey('login'));
+        return _FluentLoginView(
+          key: const ValueKey('login'),
+          embedded: widget.embedded,
+        );
     }
   }
 }
 
 /// Fluent UI 登录视图
 class _FluentLoginView extends StatefulWidget {
-  const _FluentLoginView({super.key});
+  final bool embedded;
+
+  const _FluentLoginView({super.key, required this.embedded});
 
   @override
   State<_FluentLoginView> createState() => _FluentLoginViewState();
@@ -157,24 +183,52 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
-  bool _isLinuxDoLoading = false;
-  String _linuxDoLoadingText = '正在授权...';
+  String? _loginError;
   bool _obscurePassword = true;
-  bool _linuxDoEnabled = true;
+  bool _rememberLoginEnabled = true;
+  bool _rememberCredentials = true;
 
   @override
   void initState() {
     super.initState();
-    _checkLinuxDoStatus();
+    _loadRememberedCredentials();
   }
 
-  Future<void> _checkLinuxDoStatus() async {
-    final result = await AuthService().checkLinuxDoStatus();
-    if (mounted) {
-      setState(() {
-        _linuxDoEnabled = result['enabled'] ?? true;
-      });
+  Future<void> _loadRememberedCredentials() async {
+    final credentialsService = AuthCredentialsService();
+    final enabled = credentialsService.isRememberLoginEnabled;
+    final credentials = await credentialsService.loadCredentials();
+    if (!mounted) return;
+    setState(() {
+      _rememberLoginEnabled = enabled;
+      _rememberCredentials = enabled;
+      if (credentials.account != null && credentials.account!.isNotEmpty) {
+        _accountController.text = credentials.account!;
+      }
+      if (credentials.password != null && credentials.password!.isNotEmpty) {
+        _passwordController.text = credentials.password!;
+      }
+    });
+  }
+
+  Future<void> _syncRememberedCredentials({
+    required String account,
+    required String password,
+    required bool remember,
+  }) async {
+    final credentialsService = AuthCredentialsService();
+    if (!credentialsService.isRememberLoginEnabled) {
+      await credentialsService.clearCredentials();
+      return;
     }
+    if (remember) {
+      await credentialsService.saveCredentials(
+        account: account,
+        password: password,
+      );
+      return;
+    }
+    await credentialsService.clearCredentials();
   }
 
   @override
@@ -185,32 +239,68 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
   }
 
   Future<void> _handleLogin() async {
-    if (_accountController.text.trim().isEmpty || 
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
+    if (_accountController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
       _showInfoBar('请填写完整信息', fluent.InfoBarSeverity.warning);
       return;
     }
 
-    setState(() => _isLoading = true);
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isLoading = true;
+      _loginError = null;
+    });
 
-    final result = await AuthService().login(
-      account: _accountController.text.trim(),
-      password: _passwordController.text,
+    final account = _accountController.text.trim();
+    final password = _passwordController.text;
+    final remember = _rememberCredentials;
+    final result = await _authFacade.login(
+      account: account,
+      password: password,
     );
 
-    setState(() => _isLoading = false);
+    if (result['success'] == true) {
+      await _syncRememberedCredentials(
+        account: account,
+        password: password,
+        remember: remember,
+      );
+    }
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      _loginError = result['success'] == true
+          ? null
+          : result['message'] as String? ?? '登录失败';
+    });
 
     if (mounted) {
       if (result['success']) {
         _showInfoBar(result['message'], fluent.InfoBarSeverity.success);
         // 登录成功后，自动上报IP归属地
-        AuthService().updateLocation();
+        _authFacade.updateLocation();
+        _closeAuthEntry();
       } else {
         _showInfoBar(result['message'], fluent.InfoBarSeverity.error);
       }
     }
   }
-  
+
+  void _closeAuthEntry() {
+    if (widget.embedded || !mounted) return;
+    if (AuthOverlayService().isVisible) {
+      AuthOverlayService().hide(true);
+      return;
+    }
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop(true);
+    }
+  }
+
   void _showInfoBar(String message, fluent.InfoBarSeverity severity) {
     fluent.displayInfoBar(
       context,
@@ -225,7 +315,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
   @override
   Widget build(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
-    
+
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 400),
       child: Column(
@@ -244,7 +334,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // 密码输入
           fluent.InfoLabel(
             label: '密码',
@@ -258,19 +348,37 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
               ),
               suffix: fluent.IconButton(
                 icon: Icon(
-                  _obscurePassword 
-                      ? fluent.FluentIcons.view 
+                  _obscurePassword
+                      ? fluent.FluentIcons.view
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
               ),
               onSubmitted: (_) => _handleLogin(),
             ),
           ),
+          if (_rememberLoginEnabled) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                fluent.Checkbox(
+                  checked: _rememberCredentials,
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _rememberCredentials = value);
+                  },
+                ),
+                const SizedBox(width: 8),
+                Text('记住账号密码', style: theme.typography.body),
+              ],
+            ),
+          ],
           const SizedBox(height: 24),
-          
+
           // 登录按钮
+          const TermsConsentTile(fluentStyle: true),
           fluent.FilledButton(
             onPressed: _isLoading ? null : _handleLogin,
             child: _isLoading
@@ -281,66 +389,20 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
                   )
                 : const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('登录', style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: Text(
+                      '登录',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
           ),
-          
-          // Linux Do 授权登录
-          if (_linuxDoEnabled) ...[
-            const SizedBox(height: 12),
-            fluent.Button(
-              onPressed: (_isLoading || _isLinuxDoLoading) ? null : _handleLinuxDoLogin,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (_isLinuxDoLoading)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 8),
-                      child: SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: fluent.ProgressRing(strokeWidth: 2),
-                      ),
-                    )
-                  else
-                    const Padding(
-                      padding: EdgeInsets.only(right: 8),
-                      child: Icon(fluent.FluentIcons.comment, size: 16),
-                    ),
-                  Text(_isLinuxDoLoading ? _linuxDoLoadingText : '通过 Linux Do 授权'),
-                ],
-              ),
-            ),
-          ],
-          
-          // 手机扫码登录
-          const SizedBox(height: 12),
-          fluent.Button(
-            onPressed: _isLoading ? null : () async {
-              final ok = await showQrLoginDialog(context);
-              if (ok == true && mounted) {
-                _showInfoBar('登录成功', fluent.InfoBarSeverity.success);
-              }
-            },
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Padding(
-                  padding: EdgeInsets.only(right: 8),
-                  child: Icon(fluent.FluentIcons.q_r_code, size: 16),
-                ),
-                Text('手机扫码登录'),
-              ],
-            ),
-          ),
-          
+
           const SizedBox(height: 16),
           Center(
             child: Text(
-              '第一次使用？切换到注册标签页创建账号',
+              _loginError ?? '第一次使用？切换到注册标签页创建账号',
               style: theme.typography.caption?.copyWith(
-                color: theme.brightness == Brightness.dark 
-                    ? Colors.white54 
+                color: theme.brightness == Brightness.dark
+                    ? Colors.white54
                     : Colors.black45,
               ),
             ),
@@ -349,49 +411,13 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
       ),
     );
   }
-  
-  Future<void> _handleLinuxDoLogin() async {
-    setState(() {
-      _isLinuxDoLoading = true;
-      _linuxDoLoadingText = '正在打开授权页面...';
-    });
-    
-    // 使用 WebView 方式进行登录
-    final code = await showLinuxDoWebViewLogin(context);
-    
-    if (!mounted) return;
-    
-    if (code == null) {
-      // 用户取消或获取授权码失败
-      setState(() => _isLinuxDoLoading = false);
-      return;
-    }
-    
-    // 获取到授权码，进行登录
-    setState(() => _linuxDoLoadingText = '正在验证授权...');
-    
-    final result = await AuthService().loginWithLinuxDoCode(code);
-    
-    if (!mounted) return;
-    
-    if (result['success'] == true) {
-      setState(() => _linuxDoLoadingText = '授权成功，正在登录...');
-      AuthService().updateLocation();
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) {
-        setState(() => _isLinuxDoLoading = false);
-        _showInfoBar('登录成功', fluent.InfoBarSeverity.success);
-      }
-    } else {
-      setState(() => _isLinuxDoLoading = false);
-      _showInfoBar(result['message'] ?? '授权失败', fluent.InfoBarSeverity.error);
-    }
-  }
 }
 
 /// Fluent UI 注册视图
 class _FluentRegisterView extends StatefulWidget {
-  const _FluentRegisterView({super.key});
+  final bool embedded;
+
+  const _FluentRegisterView({super.key, required this.embedded});
 
   @override
   State<_FluentRegisterView> createState() => _FluentRegisterViewState();
@@ -431,7 +457,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
   }
 
   Future<void> _checkRegistrationStatus() async {
-    final result = await AuthService().checkRegistrationStatus();
+    final result = await _authFacade.checkRegistrationStatus();
     if (mounted) {
       setState(() {
         _registrationEnabled = result['enabled'] ?? false;
@@ -461,7 +487,10 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
   }
 
   Future<void> _sendCode() async {
-    if (_qqNumberController.text.trim().isEmpty || 
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
+    if (_qqNumberController.text.trim().isEmpty ||
         _usernameController.text.trim().isEmpty) {
       _showInfoBar('请先填写 QQ 号和用户名', fluent.InfoBarSeverity.warning);
       return;
@@ -469,11 +498,12 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().sendRegisterCode(
+    final result = await _authFacade.sendRegisterCode(
       email: _getFullEmail(),
       username: _usernameController.text.trim(),
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -487,6 +517,9 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
   }
 
   Future<void> _handleRegister() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     // 验证表单
     if (_qqNumberController.text.trim().isEmpty) {
       _showInfoBar('请输入 QQ 号', fluent.InfoBarSeverity.warning);
@@ -500,7 +533,8 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
       _showInfoBar('请输入用户名', fluent.InfoBarSeverity.warning);
       return;
     }
-    if (_passwordController.text.isEmpty || _passwordController.text.length < 8) {
+    if (_passwordController.text.isEmpty ||
+        _passwordController.text.length < 8) {
       _showInfoBar('密码至少8个字符', fluent.InfoBarSeverity.warning);
       return;
     }
@@ -515,13 +549,14 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().register(
+    final result = await _authFacade.register(
       email: _getFullEmail(),
       username: _usernameController.text.trim(),
       password: _passwordController.text,
       code: _codeController.text.trim(),
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -532,7 +567,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
       }
     }
   }
-  
+
   void _showInfoBar(String message, fluent.InfoBarSeverity severity) {
     fluent.displayInfoBar(
       context,
@@ -547,29 +582,50 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
   @override
   Widget build(BuildContext context) {
     final theme = fluent.FluentTheme.of(context);
-    
+
     if (_checkingStatus) {
       return const Center(child: fluent.ProgressRing());
     }
 
     if (!_registrationEnabled) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              fluent.FluentIcons.blocked2,
-              size: 64,
-              color: Colors.red,
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final compact =
+              constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final minHeight = constraints.hasBoundedHeight
+              ? constraints.maxHeight
+              : 0.0;
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        fluent.FluentIcons.blocked2,
+                        size: compact ? 52 : 64,
+                        color: Colors.red,
+                      ),
+                      SizedBox(height: compact ? 14 : 24),
+                      Text(
+                        '因滥用，我们暂时关闭了公开注册！',
+                        textAlign: TextAlign.center,
+                        style: theme.typography.subtitle,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            const SizedBox(height: 24),
-            Text(
-              '因滥用，我们暂时关闭了公开注册！',
-              textAlign: TextAlign.center,
-              style: theme.typography.subtitle,
-            ),
-          ],
-        ),
+          );
+        },
       );
     }
 
@@ -591,20 +647,17 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
               onChanged: (_) => setState(() {}),
             ),
           ),
-          
+
           if (_qqNumberController.text.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(left: 4, top: 4),
               child: Text(
                 '注册邮箱：${_getFullEmail()}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.accentColor,
-                ),
+                style: TextStyle(fontSize: 12, color: theme.accentColor),
               ),
             ),
           const SizedBox(height: 16),
-          
+
           // 用户名
           fluent.InfoLabel(
             label: '用户名',
@@ -618,7 +671,7 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // 密码
           fluent.InfoLabel(
             label: '密码',
@@ -632,17 +685,18 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
               ),
               suffix: fluent.IconButton(
                 icon: Icon(
-                  _obscurePassword 
-                      ? fluent.FluentIcons.view 
+                  _obscurePassword
+                      ? fluent.FluentIcons.view
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
               ),
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // 确认密码
           fluent.InfoLabel(
             label: '确认密码',
@@ -656,17 +710,19 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
               ),
               suffix: fluent.IconButton(
                 icon: Icon(
-                  _obscureConfirmPassword 
-                      ? fluent.FluentIcons.view 
+                  _obscureConfirmPassword
+                      ? fluent.FluentIcons.view
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
-                onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                onPressed: () => setState(
+                  () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                ),
               ),
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // 验证码
           Row(
             children: [
@@ -695,8 +751,9 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
             ],
           ),
           const SizedBox(height: 24),
-          
+
           // 注册按钮
+          const TermsConsentTile(fluentStyle: true),
           fluent.FilledButton(
             onPressed: _isLoading ? null : _handleRegister,
             child: _isLoading
@@ -707,17 +764,20 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
                   )
                 : const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('注册', style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: Text(
+                      '注册',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
           ),
-          
+
           const SizedBox(height: 12),
           Center(
             child: Text(
-              '注册即表示您同意我们的服务条款和隐私政策',
+              '账号用于同步收藏与播放记录',
               style: theme.typography.caption?.copyWith(
-                color: theme.brightness == Brightness.dark 
-                    ? Colors.white54 
+                color: theme.brightness == Brightness.dark
+                    ? Colors.white54
                     : Colors.black45,
               ),
             ),
@@ -730,10 +790,13 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
 
 /// Fluent UI 找回密码视图
 class _FluentForgotPasswordView extends StatefulWidget {
-  const _FluentForgotPasswordView({super.key});
+  final bool embedded;
+
+  const _FluentForgotPasswordView({super.key, required this.embedded});
 
   @override
-  State<_FluentForgotPasswordView> createState() => _FluentForgotPasswordViewState();
+  State<_FluentForgotPasswordView> createState() =>
+      _FluentForgotPasswordViewState();
 }
 
 class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
@@ -741,7 +804,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
   final _codeController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -778,6 +841,9 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
   }
 
   Future<void> _sendCode() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     if (_emailController.text.trim().isEmpty) {
       _showInfoBar('请输入邮箱', fluent.InfoBarSeverity.warning);
       return;
@@ -785,10 +851,11 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().sendResetCode(
+    final result = await _authFacade.sendResetCode(
       email: _emailController.text.trim(),
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -802,12 +869,17 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
   }
 
   Future<void> _handleReset() async {
+    if (_isLoading) return;
+    if (!await TermsConsentScope.ensureAccepted(context)) return;
+    if (!mounted || _isLoading) return;
     // 验证表单
     if (_emailController.text.trim().isEmpty) {
       _showInfoBar('请输入邮箱', fluent.InfoBarSeverity.warning);
       return;
     }
-    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(_emailController.text.trim())) {
+    if (!RegExp(
+      r'^[^@]+@[^@]+\.[^@]+',
+    ).hasMatch(_emailController.text.trim())) {
       _showInfoBar('邮箱格式不正确', fluent.InfoBarSeverity.warning);
       return;
     }
@@ -815,7 +887,8 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
       _showInfoBar('请输入验证码', fluent.InfoBarSeverity.warning);
       return;
     }
-    if (_passwordController.text.isEmpty || _passwordController.text.length < 8) {
+    if (_passwordController.text.isEmpty ||
+        _passwordController.text.length < 8) {
       _showInfoBar('密码至少8个字符', fluent.InfoBarSeverity.warning);
       return;
     }
@@ -826,12 +899,13 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService().resetPassword(
+    final result = await _authFacade.resetPassword(
       email: _emailController.text.trim(),
       code: _codeController.text.trim(),
       newPassword: _passwordController.text,
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (mounted) {
@@ -842,7 +916,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
       }
     }
   }
-  
+
   void _showInfoBar(String message, fluent.InfoBarSeverity severity) {
     fluent.displayInfoBar(
       context,
@@ -856,8 +930,6 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = fluent.FluentTheme.of(context);
-    
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 400),
       child: Column(
@@ -870,7 +942,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
             isLong: true,
           ),
           const SizedBox(height: 20),
-          
+
           // 邮箱
           fluent.InfoLabel(
             label: '注册邮箱',
@@ -884,7 +956,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // 验证码
           Row(
             children: [
@@ -913,7 +985,7 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // 新密码
           fluent.InfoLabel(
             label: '新密码',
@@ -927,17 +999,18 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
               ),
               suffix: fluent.IconButton(
                 icon: Icon(
-                  _obscurePassword 
-                      ? fluent.FluentIcons.view 
+                  _obscurePassword
+                      ? fluent.FluentIcons.view
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
               ),
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // 确认新密码
           fluent.InfoLabel(
             label: '确认新密码',
@@ -951,18 +1024,21 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
               ),
               suffix: fluent.IconButton(
                 icon: Icon(
-                  _obscureConfirmPassword 
-                      ? fluent.FluentIcons.view 
+                  _obscureConfirmPassword
+                      ? fluent.FluentIcons.view
                       : fluent.FluentIcons.hide3,
                   size: 16,
                 ),
-                onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                onPressed: () => setState(
+                  () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                ),
               ),
             ),
           ),
           const SizedBox(height: 24),
-          
+
           // 重置密码按钮
+          const TermsConsentTile(fluentStyle: true),
           fluent.FilledButton(
             onPressed: _isLoading ? null : _handleReset,
             child: _isLoading
@@ -973,7 +1049,10 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
                   )
                 : const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('重置密码', style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: Text(
+                      '重置密码',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
           ),
         ],

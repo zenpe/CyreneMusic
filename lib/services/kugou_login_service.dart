@@ -1,9 +1,6 @@
-import 'dart:convert';
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'url_service.dart';
-import 'audio_source_service.dart';
-import 'auth_service.dart';
+import 'api/api_client.dart';
 
 /// 酷狗歌单信息
 class KugouPlaylistInfo {
@@ -62,13 +59,13 @@ class KugouTrackInfo {
     // hash 字段是必需的，用于获取播放链接，确保转换为大写
     final hashValue = json['hash']?.toString() ?? '';
     final hash = hashValue.isNotEmpty ? hashValue.toUpperCase() : '';
-    
+
     // album_audio_id 可能有多种字段名
-    final albumAudioId = json['album_audio_id']?.toString() ?? 
-                         json['add_mixsongid']?.toString() ?? 
-                         json['mixsongid']?.toString() ?? 
+    final albumAudioId = json['album_audio_id']?.toString() ??
+                         json['add_mixsongid']?.toString() ??
+                         json['mixsongid']?.toString() ??
                          json['audio_id']?.toString() ?? '';
-    
+
     return KugouTrackInfo(
       hash: hash,
       albumAudioId: albumAudioId,
@@ -111,8 +108,8 @@ class KugouQrCheckResult {
   final String? userid;
   final String? username;
   final String? avatar;
-  final int? vip_type;
-  final String? vip_token;
+  final int? vipType;
+  final String? vipToken;
   KugouQrCheckResult({
     required this.status,
     this.message,
@@ -120,8 +117,8 @@ class KugouQrCheckResult {
     this.userid,
     this.username,
     this.avatar,
-    this.vip_type,
-    this.vip_token,
+    this.vipType,
+    this.vipToken,
   });
 }
 
@@ -131,12 +128,14 @@ class KugouLoginService extends ChangeNotifier {
   KugouLoginService._internal();
 
   Future<KugouQrCreateResult> createQrKey() async {
-    final keyResp = await http.get(Uri.parse(UrlService().kugouQrKeyUrl))
-        .timeout(const Duration(seconds: 10));
-    if (keyResp.statusCode != 200) {
-      throw Exception('HTTP ${keyResp.statusCode}');
+    final keyResult = await ApiClient().getJson(
+      '/kugou/login/qr/key',
+      timeout: const Duration(seconds: 10),
+    );
+    if (!keyResult.ok) {
+      throw Exception('HTTP ${keyResult.statusCode}');
     }
-    final keyData = json.decode(utf8.decode(keyResp.bodyBytes)) as Map<String, dynamic>;
+    final keyData = keyResult.data as Map<String, dynamic>;
     if ((keyData['code'] as int?) != 200) {
       throw Exception(keyData['message'] ?? '获取二维码 key 失败');
     }
@@ -157,34 +156,35 @@ class KugouLoginService extends ChangeNotifier {
     int? userId,
   }) async {
     final ts = DateTime.now().millisecondsSinceEpoch;
-    final primary = Uri.parse(
-      '${UrlService().kugouQrCheckUrl}?qrcode=$qrcode${userId != null ? '&userId=$userId' : ''}&timestamp=$ts'
-    );
+    final queryParams = <String, dynamic>{
+      'qrcode': qrcode,
+      if (userId != null) 'userId': userId.toString(),
+      'timestamp': ts.toString(),
+    };
 
     if (kDebugMode) {
-      print('[KugouLoginService] checkQrStatus 请求: $primary');
+      StructuredLogService.log('[KugouLoginService] checkQrStatus 请求: /kugou/login/qr/check $queryParams');
     }
 
-    Future<Map<String, dynamic>> doGet(Uri u) async {
-      final r = await http.get(u).timeout(const Duration(seconds: 10));
-      final data = json.decode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    final r = await ApiClient().getJson(
+      '/kugou/login/qr/check',
+      queryParameters: queryParams,
+      timeout: const Duration(seconds: 10),
+    );
 
-      if (kDebugMode) {
-        print('[KugouLoginService] checkQrStatus 响应: statusCode=${r.statusCode}, data=$data');
-      }
+    // 即使 HTTP 状态码不是 200，也尝试解析响应
+    final data = r.data as Map<String, dynamic>? ?? {};
 
-      // 即使 HTTP 状态码不是 200，也尝试解析响应
-      if (r.statusCode != 200) {
-        // 如果响应中有 status 字段，使用它；否则抛出异常
-        if (data['status'] != null) {
-          return data;
-        }
+    if (kDebugMode) {
+      StructuredLogService.log('[KugouLoginService] checkQrStatus 响应: statusCode=${r.statusCode}, data=$data');
+    }
+
+    if (!r.ok) {
+      // 如果响应中有 status 字段，使用它；否则抛出异常
+      if (data['status'] == null) {
         throw Exception('HTTP ${r.statusCode}: ${data['message'] ?? '未知错误'}');
       }
-      return data;
     }
-
-    Map<String, dynamic> data = await doGet(primary);
 
     final statusVal = data['status'] as int?;
     if (statusVal == null) {
@@ -192,7 +192,7 @@ class KugouLoginService extends ChangeNotifier {
     }
 
     if (kDebugMode) {
-      print('[KugouLoginService] checkQrStatus 解析结果: status=$statusVal');
+      StructuredLogService.log('[KugouLoginService] checkQrStatus 解析结果: status=$statusVal');
     }
 
     final result = KugouQrCheckResult(
@@ -202,41 +202,35 @@ class KugouLoginService extends ChangeNotifier {
       userid: data['userid'] as String?,
       username: data['username'] as String?,
       avatar: data['avatar'] as String?,
-      vip_type: data['vip_type'] as int?,
-      vip_token: data['vip_token'] as String?,
+      vipType: data['vip_type'] as int?,
+      vipToken: data['vip_token'] as String?,
     );
-    
+
     // 如果绑定成功（status 4），通知监听者刷新 UI
     if (statusVal == 4) {
       notifyListeners();
     }
-    
+
     return result;
   }
 
   // ===== Third-party accounts =====
   Future<Map<String, dynamic>> fetchBindings() async {
-    final token = AuthService().token;
-    final r = await http.get(
-      Uri.parse(UrlService().accountsBindingsUrl),
-      headers: token != null ? { 'Authorization': 'Bearer $token' } : {},
-    ).timeout(const Duration(seconds: 10));
-    final data = json.decode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
-    return data;
+    final r = await ApiClient().getJson(
+      '/accounts/bindings',
+      timeout: const Duration(seconds: 10),
+    );
+    return r.data as Map<String, dynamic>;
   }
 
   Future<bool> unbindKugou() async {
-    final token = AuthService().token;
     final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000; // 秒级时间戳
-    final r = await http.post(
-      Uri.parse(UrlService().accountsUnbindKugouUrl),
-      headers: {
-        if (token != null) 'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: json.encode({'timestamp': timestamp}),
-    ).timeout(const Duration(seconds: 10));
-    final success = r.statusCode == 200;
+    final r = await ApiClient().postJson(
+      '/accounts/kugou/unbind',
+      data: {'timestamp': timestamp},
+      timeout: const Duration(seconds: 10),
+    );
+    final success = r.ok;
     if (success) {
       notifyListeners();
     }
@@ -245,22 +239,20 @@ class KugouLoginService extends ChangeNotifier {
 
   /// 获取用户酷狗歌单列表
   Future<List<KugouPlaylistInfo>> fetchUserPlaylists({int page = 1, int pagesize = 30}) async {
-    final token = AuthService().token;
-    if (token == null) {
-      throw Exception('未登录');
-    }
+    final r = await ApiClient().getJson(
+      '/kugou/user/playlists',
+      queryParameters: {
+        'page': page.toString(),
+        'pagesize': pagesize.toString(),
+      },
+      timeout: const Duration(seconds: 15),
+    );
 
-    final url = Uri.parse('${UrlService().kugouUserPlaylistsUrl}?page=$page&pagesize=$pagesize');
-    final r = await http.get(
-      url,
-      headers: { 'Authorization': 'Bearer $token' },
-    ).timeout(const Duration(seconds: 15));
-
-    if (r.statusCode != 200) {
+    if (!r.ok) {
       throw Exception('HTTP ${r.statusCode}');
     }
 
-    final data = json.decode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    final data = r.data as Map<String, dynamic>;
     if ((data['code'] as int?) != 200) {
       throw Exception(data['message'] ?? '获取歌单失败');
     }
@@ -274,22 +266,21 @@ class KugouLoginService extends ChangeNotifier {
   /// 获取酷狗歌单内的歌曲
   /// [globalCollectionId] - 歌单的 global_collection_id
   Future<List<KugouTrackInfo>> fetchPlaylistTracks(String globalCollectionId, {int page = 1, int pagesize = 100}) async {
-    final token = AuthService().token;
-    if (token == null) {
-      throw Exception('未登录');
-    }
+    final r = await ApiClient().getJson(
+      '/kugou/playlist/tracks',
+      queryParameters: {
+        'listid': globalCollectionId,
+        'page': page.toString(),
+        'pagesize': pagesize.toString(),
+      },
+      timeout: const Duration(seconds: 30),
+    );
 
-    final url = Uri.parse('${UrlService().kugouPlaylistTracksUrl}?listid=$globalCollectionId&page=$page&pagesize=$pagesize');
-    final r = await http.get(
-      url,
-      headers: { 'Authorization': 'Bearer $token' },
-    ).timeout(const Duration(seconds: 30));
-
-    if (r.statusCode != 200) {
+    if (!r.ok) {
       throw Exception('HTTP ${r.statusCode}');
     }
 
-    final data = json.decode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    final data = r.data as Map<String, dynamic>;
     if ((data['code'] as int?) != 200) {
       throw Exception(data['message'] ?? '获取歌曲失败');
     }
@@ -316,15 +307,20 @@ class KugouLoginService extends ChangeNotifier {
   /// [limit] - 返回结果数量限制，默认20
   /// 返回搜索结果列表，每个结果包含 emixsongid
   Future<List<KugouSearchResult>> searchKugou(String keyword, {int limit = 20}) async {
-    final url = AudioSourceService().buildKugouSearchUrl(keyword, limit: limit);
-    print('🔍 [KugouLoginService] 酷狗搜索 URL: $url');
-    final r = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+    final r = await ApiClient().getJson(
+      '/kugou/search',
+      queryParameters: {
+        'keywords': keyword,
+        'limit': limit.toString(),
+      },
+      timeout: const Duration(seconds: 10),
+    );
 
-    if (r.statusCode != 200) {
+    if (!r.ok) {
       throw Exception('HTTP ${r.statusCode}');
     }
 
-    final data = json.decode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    final data = r.data as Map<String, dynamic>;
     if ((data['status'] as int?) != 200) {
       throw Exception(data['msg'] ?? '搜索失败');
     }
@@ -341,7 +337,9 @@ class KugouSearchResult {
   final String name;
   final String singer;
   final String album;
+  final String hash;
   final String emixsongid;
+  final String? albumAudioId;
   final String? pic;
   final int? duration;
 
@@ -349,7 +347,9 @@ class KugouSearchResult {
     required this.name,
     required this.singer,
     required this.album,
+    required this.hash,
     required this.emixsongid,
+    this.albumAudioId,
     this.pic,
     this.duration,
   });
@@ -359,10 +359,11 @@ class KugouSearchResult {
       name: json['name']?.toString() ?? '',
       singer: json['singer']?.toString() ?? '',
       album: json['album']?.toString() ?? '',
+      hash: json['hash']?.toString() ?? '',
       emixsongid: json['emixsongid']?.toString() ?? '',
+      albumAudioId: json['album_audio_id']?.toString(),
       pic: json['pic']?.toString(),
       duration: json['duration'] is int ? json['duration'] : int.tryParse(json['duration']?.toString() ?? '0'),
     );
   }
 }
-

@@ -1,7 +1,7 @@
 part of 'my_page.dart';
 
 /// Cupertino UI 构建方法
-extension MyPageCupertinoUI on _MyPageState {
+extension _MyPageCupertinoUI on _MyPageState {
   Widget _buildCupertinoPage(BuildContext context, bool isLoggedIn) {
     final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
     if (!isLoggedIn) return _buildCupertinoLoginPrompt(context, isDark);
@@ -18,7 +18,7 @@ extension MyPageCupertinoUI on _MyPageState {
           children: [
             Container(
               width: 100, height: 100,
-              decoration: BoxDecoration(color: CupertinoColors.systemBlue.withOpacity(0.1), shape: BoxShape.circle),
+              decoration: BoxDecoration(color: CupertinoColors.systemBlue.withValues(alpha: 0.1), shape: BoxShape.circle),
               child: const Icon(CupertinoIcons.person_fill, size: 50, color: CupertinoColors.systemBlue),
             ),
             const SizedBox(height: 24),
@@ -36,11 +36,12 @@ extension MyPageCupertinoUI on _MyPageState {
   Widget _buildCupertinoMainView(BuildContext context, bool isDark) {
     return CupertinoPageScaffold(
       backgroundColor: isDark ? const Color(0xFF000000) : CupertinoColors.systemGroupedBackground,
-      navigationBar: CupertinoNavigationBar(middle: const Text('我的'), backgroundColor: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground),
+      navigationBar: CupertinoNavigationBar(middle: const Text('我的'), trailing: _buildRefreshButton(), backgroundColor: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground),
       child: SafeArea(
         child: CustomScrollView(
+          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
           slivers: [
-            CupertinoSliverRefreshControl(onRefresh: () async { await _playlistService.loadPlaylists(); await _loadStats(); }),
+            CupertinoSliverRefreshControl(onRefresh: () => _refreshAll()),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -50,6 +51,7 @@ extension MyPageCupertinoUI on _MyPageState {
                     _buildCupertinoUserCard(isDark),
                     const SizedBox(height: 16),
                     _buildCupertinoStatsCard(isDark),
+                    if (_statsError != null) _buildStatsError(),
                     const SizedBox(height: 24),
                     _buildCupertinoSectionHeader('我的歌单', isDark, actions: [
                       CupertinoButton(padding: EdgeInsets.zero, onPressed: _showMusicTasteDialog, child: const Icon(CupertinoIcons.sparkles, size: 22)),
@@ -58,6 +60,7 @@ extension MyPageCupertinoUI on _MyPageState {
                       CupertinoButton(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), color: CupertinoColors.systemBlue, borderRadius: BorderRadius.circular(16), onPressed: _showCreatePlaylistDialog, child: const Text('新建', style: TextStyle(fontSize: 14, color: CupertinoColors.white))),
                     ]),
                     const SizedBox(height: 12),
+                    _buildPlaylistStatus(),
                     _buildCupertinoPlaylistsList(isDark),
                     const SizedBox(height: 24),
                     if (_statsData != null && _statsData!.playCounts.isNotEmpty) ...[
@@ -65,7 +68,7 @@ extension MyPageCupertinoUI on _MyPageState {
                       const SizedBox(height: 12),
                       _buildCupertinoTopPlaysList(isDark),
                     ],
-                    const SizedBox(height: 40),
+                    const FloatingPlaybackBottomSpacer(fallback: 40),
                   ],
                 ),
               ),
@@ -87,7 +90,7 @@ extension MyPageCupertinoUI on _MyPageState {
   }
 
   Widget _buildCupertinoUserCard(bool isDark) {
-    final user = AuthService().currentUser;
+    final user = _authFacade.currentUser;
     if (user == null) return const SizedBox.shrink();
 
     return Container(
@@ -97,11 +100,11 @@ extension MyPageCupertinoUI on _MyPageState {
         children: [
           Container(
             width: 60, height: 60,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: CupertinoColors.systemBlue.withOpacity(0.1)),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: CupertinoColors.systemBlue.withValues(alpha: 0.1)),
             child: user.avatarUrl != null
                 ? (user.avatarUrl!.contains('linux.do')
                     ? ClipOval(child: LinuxDoAvatarMaterial(url: user.avatarUrl!, userId: user.id, size: 60))
-                    : ClipOval(child: CachedNetworkImage(imageUrl: user.avatarUrl!, fit: BoxFit.cover, placeholder: (_, __) => const CupertinoActivityIndicator(), errorWidget: (_, __, ___) => Text(user.username[0].toUpperCase(), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)))))
+                    : ClipOval(child: CachedNetworkImage(imageUrl: user.avatarUrl!, fit: BoxFit.cover, placeholder: (_, _) => const CupertinoActivityIndicator(), errorWidget: (_, _, _) => Text(user.username[0].toUpperCase(), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)))))
                 : Center(child: Text(user.username[0].toUpperCase(), style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: CupertinoColors.systemBlue))),
           ),
           const SizedBox(width: 16),
@@ -128,6 +131,12 @@ extension MyPageCupertinoUI on _MyPageState {
       return Container(padding: const EdgeInsets.all(32), decoration: BoxDecoration(color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white, borderRadius: BorderRadius.circular(12)), child: const Center(child: CupertinoActivityIndicator()));
     }
     if (_statsData == null) {
+      if (_statsError != null) {
+        return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white, borderRadius: BorderRadius.circular(12)),
+        child: const Text('听歌统计暂不可用'));
+      }
       return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white, borderRadius: BorderRadius.circular(12)), child: Text('暂无统计数据', style: TextStyle(color: CupertinoColors.systemGrey)));
     }
 
@@ -170,6 +179,9 @@ extension MyPageCupertinoUI on _MyPageState {
 
   Widget _buildCupertinoPlaylistsList(bool isDark) {
     final playlists = _playlistService.playlists;
+    if (playlists.isEmpty && !_playlistService.hasLoadedPlaylists) {
+      return const SizedBox.shrink();
+    }
     if (playlists.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(32),
@@ -232,8 +244,9 @@ extension MyPageCupertinoUI on _MyPageState {
         borderRadius: BorderRadius.circular(8),
         child: CachedNetworkImage(
           imageUrl: playlist.coverUrl!, width: 48, height: 48, fit: BoxFit.cover,
-          placeholder: (_, __) => Container(width: 48, height: 48, decoration: BoxDecoration(color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, borderRadius: BorderRadius.circular(8)), child: Icon(playlist.isDefault ? CupertinoIcons.heart_fill : CupertinoIcons.music_albums, color: playlist.isDefault ? CupertinoColors.systemRed : CupertinoColors.systemBlue, size: 20)),
-          errorWidget: (_, __, ___) => Container(width: 48, height: 48, decoration: BoxDecoration(color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, borderRadius: BorderRadius.circular(8)), child: Icon(playlist.isDefault ? CupertinoIcons.heart_fill : CupertinoIcons.music_albums, color: playlist.isDefault ? CupertinoColors.systemRed : CupertinoColors.systemBlue, size: 20)),
+          memCacheWidth: 128, memCacheHeight: 128,
+          placeholder: (_, _) => Container(width: 48, height: 48, decoration: BoxDecoration(color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, borderRadius: BorderRadius.circular(8)), child: Icon(playlist.isDefault ? CupertinoIcons.heart_fill : CupertinoIcons.music_albums, color: playlist.isDefault ? CupertinoColors.systemRed : CupertinoColors.systemBlue, size: 20)),
+          errorWidget: (_, _, _) => Container(width: 48, height: 48, decoration: BoxDecoration(color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, borderRadius: BorderRadius.circular(8)), child: Icon(playlist.isDefault ? CupertinoIcons.heart_fill : CupertinoIcons.music_albums, color: playlist.isDefault ? CupertinoColors.systemRed : CupertinoColors.systemBlue, size: 20)),
         ),
       );
     }
@@ -251,10 +264,15 @@ extension MyPageCupertinoUI on _MyPageState {
           final rank = index + 1;
           final isLast = index == topPlays.length - 1;
           Color rankColor;
-          if (rank == 1) rankColor = const Color(0xFFFFD700);
-          else if (rank == 2) rankColor = const Color(0xFFC0C0C0);
-          else if (rank == 3) rankColor = const Color(0xFFCD7F32);
-          else rankColor = CupertinoColors.systemBlue;
+          if (rank == 1) {
+            rankColor = const Color(0xFFFFD700);
+          } else if (rank == 2) {
+            rankColor = const Color(0xFFC0C0C0);
+          } else if (rank == 3) {
+            rankColor = const Color(0xFFCD7F32);
+          } else {
+            rankColor = CupertinoColors.systemBlue;
+          }
 
           return Column(
             children: [
@@ -271,8 +289,9 @@ extension MyPageCupertinoUI on _MyPageState {
                             borderRadius: BorderRadius.circular(6),
                             child: CachedNetworkImage(
                               imageUrl: item.picUrl, width: 48, height: 48, fit: BoxFit.cover,
-                              placeholder: (_, __) => Container(width: 48, height: 48, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
-                              errorWidget: (_, __, ___) => Container(width: 48, height: 48, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
+                              memCacheWidth: 128, memCacheHeight: 128,
+                              placeholder: (_, _) => Container(width: 48, height: 48, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
+                              errorWidget: (_, _, _) => Container(width: 48, height: 48, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
                             ),
                           ),
                           Positioned(left: 0, top: 0, child: Container(padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2), decoration: BoxDecoration(color: rankColor, borderRadius: const BorderRadius.only(topLeft: Radius.circular(6), bottomRight: Radius.circular(6))), child: Text('$rank', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: CupertinoColors.white)))),
@@ -320,7 +339,13 @@ extension MyPageCupertinoUI on _MyPageState {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (allTracks.isNotEmpty) CupertinoButton(padding: EdgeInsets.zero, onPressed: _toggleSearchMode, child: Icon(_isSearchMode ? CupertinoIcons.search : CupertinoIcons.search)),
-                  if (allTracks.isNotEmpty) CupertinoButton(padding: EdgeInsets.zero, onPressed: _toggleEditMode, child: const Icon(CupertinoIcons.pencil)),
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () => _showPlaylistMoreOptionsCupertino(playlist, isDark),
+                    child: const Icon(CupertinoIcons.ellipsis),
+                  ),
+                  if (playlist.isSynced) CupertinoButton(padding: EdgeInsets.zero, onPressed: () => _copySyncedPlaylist(playlist), child: const Icon(CupertinoIcons.doc_on_doc)),
+                  if (allTracks.isNotEmpty && playlist.isLocal) CupertinoButton(padding: EdgeInsets.zero, onPressed: _toggleEditMode, child: const Icon(CupertinoIcons.pencil)),
                 ],
               ),
       ),
@@ -358,7 +383,7 @@ extension MyPageCupertinoUI on _MyPageState {
                                     return _buildCupertinoTrackItem(track, originalIndex, isDark);
                                   }, childCount: filteredTracks.length)),
                                 ),
-                                const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                                const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 40)),
                               ],
                             ),
             ),
@@ -397,7 +422,7 @@ extension MyPageCupertinoUI on _MyPageState {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(color: isSelected && _isEditMode ? CupertinoColors.systemBlue.withOpacity(0.1) : (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white), borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(color: isSelected && _isEditMode ? CupertinoColors.systemBlue.withValues(alpha: 0.1) : (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white), borderRadius: BorderRadius.circular(10)),
       child: CupertinoButton(
         padding: EdgeInsets.zero,
         onPressed: _isEditMode ? () => _toggleTrackSelection(item) : () => _playDetailTrack(index),
@@ -414,8 +439,9 @@ extension MyPageCupertinoUI on _MyPageState {
                       borderRadius: BorderRadius.circular(6),
                       child: CachedNetworkImage(
                         imageUrl: item.picUrl, width: 50, height: 50, fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(width: 50, height: 50, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Center(child: CupertinoActivityIndicator(radius: 10))),
-                        errorWidget: (_, __, ___) => Container(width: 50, height: 50, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
+                        memCacheWidth: 128, memCacheHeight: 128,
+                        placeholder: (_, _) => Container(width: 50, height: 50, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Center(child: CupertinoActivityIndicator(radius: 10))),
+                        errorWidget: (_, _, _) => Container(width: 50, height: 50, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
                       ),
                     ),
                     Positioned(bottom: 0, right: 0, child: Container(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2), decoration: BoxDecoration(color: CupertinoColors.systemBlue, borderRadius: const BorderRadius.only(topLeft: Radius.circular(4))), child: Text('#${index + 1}', style: const TextStyle(color: CupertinoColors.white, fontSize: 9, fontWeight: FontWeight.bold)))),
@@ -446,32 +472,92 @@ extension MyPageCupertinoUI on _MyPageState {
   }
 
   Widget _buildCupertinoDetailEmptyState(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(CupertinoIcons.music_note_2, size: 64, color: CupertinoColors.systemGrey),
-          const SizedBox(height: 16),
-          Text('歌单为空', style: TextStyle(fontSize: 16, color: isDark ? CupertinoColors.white : CupertinoColors.black)),
-          const SizedBox(height: 8),
-          Text('快去添加一些喜欢的歌曲吧', style: TextStyle(fontSize: 14, color: CupertinoColors.systemGrey)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.music_note_2,
+                      size: compact ? 52 : 64,
+                      color: CupertinoColors.systemGrey,
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '歌单为空',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '快去添加一些喜欢的歌曲吧',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: CupertinoColors.systemGrey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildCupertinoSearchEmptyState(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(CupertinoIcons.search, size: 64, color: CupertinoColors.systemGrey),
-          const SizedBox(height: 16),
-          Text('未找到匹配的歌曲', style: TextStyle(fontSize: 16, color: isDark ? CupertinoColors.white : CupertinoColors.black)),
-          const SizedBox(height: 8),
-          Text('尝试其他关键词', style: TextStyle(fontSize: 14, color: CupertinoColors.systemGrey)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.search,
+                      size: compact ? 52 : 64,
+                      color: CupertinoColors.systemGrey,
+                    ),
+                    SizedBox(height: compact ? 10 : 16),
+                    Text(
+                      '未找到匹配的歌曲',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '尝试其他关键词',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: CupertinoColors.systemGrey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -483,6 +569,14 @@ extension MyPageCupertinoUI on _MyPageState {
         title: Text(playlist.name),
         message: Text('共 ${playlist.trackCount} 首歌曲'),
         actions: [
+          if (!playlist.isDefault)
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(context);
+                _showRenamePlaylistDialog(playlist);
+              },
+              child: const Text('重命名'),
+            ),
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(context);
@@ -577,7 +671,7 @@ extension MyPageCupertinoUI on _MyPageState {
 
               _showCupertinoToast('已删除 $deletedCount 首歌曲');
 
-              setState(() {
+              _refreshState(() {
                 _isEditMode = false;
                 _selectedTrackIds.clear();
               });

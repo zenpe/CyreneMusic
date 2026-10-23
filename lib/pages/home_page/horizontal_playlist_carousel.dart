@@ -21,7 +21,7 @@ class HorizontalPlaylistCarousel extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             clipBehavior: Clip.none,
             itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (context, i) => CarouselPlaylistCard(playlist: list[i], onTap: onTap),
           ),
         );
@@ -64,9 +64,9 @@ class _CarouselPlaylistCardState extends State<CarouselPlaylistCard> {
             borderRadius: BorderRadius.circular(16),
             color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
             boxShadow: _hovering ? [
-              BoxShadow(color: cs.primary.withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 8)),
+              BoxShadow(color: cs.primary.withValues(alpha: 0.15), blurRadius: 20, offset: const Offset(0, 8)),
             ] : [
-              BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 10, offset: const Offset(0, 4)),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
           child: ClipRRect(
@@ -86,6 +86,8 @@ class _CarouselPlaylistCardState extends State<CarouselPlaylistCard> {
                           imageUrl: pic,
                           httpHeaders: getImageHeaders(pic),
                           fit: BoxFit.cover,
+                          memCacheWidth: 280,
+                          memCacheHeight: 280,
                         ),
                       ),
                       // 播放按钮
@@ -96,7 +98,7 @@ class _CarouselPlaylistCardState extends State<CarouselPlaylistCard> {
                           child: Container(
                             width: 48, height: 48,
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withValues(alpha: 0.9),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(Icons.play_arrow_rounded, color: cs.primary, size: 28),
@@ -118,7 +120,7 @@ class _CarouselPlaylistCardState extends State<CarouselPlaylistCard> {
                         const SizedBox(height: 8),
                         Expanded(
                           child: Text(desc.isNotEmpty ? desc : '精选歌单', maxLines: 4, overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+                            style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
                         ),
                       ],
                     ),

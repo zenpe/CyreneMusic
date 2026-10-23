@@ -1,10 +1,9 @@
-import 'dart:convert';
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import '../models/announcement.dart';
 import 'persistent_storage_service.dart';
-import 'url_service.dart';
 import 'developer_mode_service.dart';
+import 'api/api_client.dart';
 
 /// 公告服务 - 管理全局公告的获取和显示逻辑
 class AnnouncementService extends ChangeNotifier {
@@ -27,20 +26,20 @@ class AnnouncementService extends ChangeNotifier {
   /// 初始化公告服务
   Future<void> initialize() async {
     if (_isInitialized) {
-      print('📢 [AnnouncementService] 已经初始化过，跳过');
+      StructuredLogService.log('📢 [AnnouncementService] 已经初始化过，跳过');
       return;
     }
 
     try {
-      print('📢 [AnnouncementService] 开始初始化');
+      StructuredLogService.log('📢 [AnnouncementService] 开始初始化');
       DeveloperModeService().addLog('📢 公告服务初始化');
       await fetchAnnouncement();
       _isInitialized = true;
-      print('📢 [AnnouncementService] 初始化完成');
-      print('📢 [AnnouncementService] _currentAnnouncement: $_currentAnnouncement');
+      StructuredLogService.log('📢 [AnnouncementService] 初始化完成');
+      StructuredLogService.log('📢 [AnnouncementService] _currentAnnouncement: $_currentAnnouncement');
       DeveloperModeService().addLog('✅ 公告服务初始化完成');
     } catch (e) {
-      print('📢 [AnnouncementService] 初始化失败: $e');
+      StructuredLogService.log('📢 [AnnouncementService] 初始化失败: $e');
       DeveloperModeService().addLog('❌ 公告服务初始化失败: $e');
       _error = e.toString();
       _isInitialized = true; // 即使失败也标记为已初始化，避免重复尝试
@@ -54,60 +53,45 @@ class AnnouncementService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final baseUrl = UrlService().baseUrl;
-      final url = Uri.parse('$baseUrl/config/public');
+      StructuredLogService.log('📢 [AnnouncementService] 正在获取公告配置...');
+      DeveloperModeService().addLog('📢 正在获取公告配置');
 
-      print('📢 [AnnouncementService] 正在获取公告配置: $url');
-      DeveloperModeService().addLog('📢 正在获取公告配置: $url');
+      final result = await ApiClient().getJson('/config/public', auth: false);
 
-      final response = await http.get(url).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('获取公告配置超时');
-        },
-      );
+      StructuredLogService.log('📢 [AnnouncementService] 响应状态码: ${result.statusCode}');
 
-      print('📢 [AnnouncementService] 响应状态码: ${response.statusCode}');
-      print('📢 [AnnouncementService] 响应体: ${response.body}');
+      if (result.ok) {
+        final responseData = result.data as Map<String, dynamic>?;
+        StructuredLogService.log('📢 [AnnouncementService] 解析后的响应数据: $responseData');
 
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body) as Map<String, dynamic>;
-        print('📢 [AnnouncementService] 解析后的响应数据: $responseData');
-
-        // 检查响应格式：{ status: 200, data: { announcement: {...} } }
-        if (responseData.containsKey('data')) {
+        if (responseData != null && responseData.containsKey('data')) {
           final data = responseData['data'] as Map<String, dynamic>;
-          print('📢 [AnnouncementService] data 字段: $data');
 
           if (data.containsKey('announcement')) {
             final announcementData = data['announcement'] as Map<String, dynamic>;
-            print('📢 [AnnouncementService] announcement 数据: $announcementData');
 
             _currentAnnouncement = Announcement.fromJson(announcementData);
-            print('📢 [AnnouncementService] 解析后的公告对象: $_currentAnnouncement');
-            print('📢 [AnnouncementService] enabled: ${_currentAnnouncement?.enabled}');
-            print('📢 [AnnouncementService] id: ${_currentAnnouncement?.id}');
-            print('📢 [AnnouncementService] title: ${_currentAnnouncement?.title}');
+            StructuredLogService.log('📢 [AnnouncementService] enabled: ${_currentAnnouncement?.enabled}');
+            StructuredLogService.log('📢 [AnnouncementService] id: ${_currentAnnouncement?.id}');
+            StructuredLogService.log('📢 [AnnouncementService] title: ${_currentAnnouncement?.title}');
 
             DeveloperModeService().addLog(
               '✅ 公告配置获取成功: ${_currentAnnouncement?.id} - ${_currentAnnouncement?.title}'
             );
           } else {
-            print('📢 [AnnouncementService] data 中没有 announcement 字段');
             DeveloperModeService().addLog('⚠️ 后端配置中未找到公告数据');
             _currentAnnouncement = null;
           }
         } else {
-          print('📢 [AnnouncementService] 响应中没有 data 字段');
           DeveloperModeService().addLog('⚠️ 响应格式不正确');
           _currentAnnouncement = null;
         }
       } else {
-        throw Exception('获取公告配置失败: HTTP ${response.statusCode}');
+        throw Exception('获取公告配置失败: HTTP ${result.statusCode}');
       }
     } catch (e, stackTrace) {
-      print('📢 [AnnouncementService] 获取公告配置失败: $e');
-      print('📢 [AnnouncementService] 堆栈: $stackTrace');
+      StructuredLogService.log('📢 [AnnouncementService] 获取公告配置失败: $e');
+      StructuredLogService.log('📢 [AnnouncementService] 堆栈: $stackTrace');
       DeveloperModeService().addLog('❌ 获取公告配置失败: $e');
       _error = e.toString();
       _currentAnnouncement = null;
@@ -120,28 +104,28 @@ class AnnouncementService extends ChangeNotifier {
   /// 检查是否应该显示公告
   /// 返回 true 表示应该显示，false 表示不应该显示
   bool shouldShowAnnouncement() {
-    print('📢 [AnnouncementService] shouldShowAnnouncement() 开始检查');
-    print('📢 [AnnouncementService] _currentAnnouncement: $_currentAnnouncement');
+    StructuredLogService.log('📢 [AnnouncementService] shouldShowAnnouncement() 开始检查');
+    StructuredLogService.log('📢 [AnnouncementService] _currentAnnouncement: $_currentAnnouncement');
 
     if (_currentAnnouncement == null) {
       final msg = '📢 无公告数据，不显示';
-      print(msg);
+      StructuredLogService.log(msg);
       DeveloperModeService().addLog(msg);
       return false;
     }
 
-    print('📢 [AnnouncementService] enabled: ${_currentAnnouncement!.enabled}');
+    StructuredLogService.log('📢 [AnnouncementService] enabled: ${_currentAnnouncement!.enabled}');
     if (!_currentAnnouncement!.enabled) {
       final msg = '📢 公告已禁用，不显示';
-      print(msg);
+      StructuredLogService.log(msg);
       DeveloperModeService().addLog(msg);
       return false;
     }
 
-    print('📢 [AnnouncementService] id: ${_currentAnnouncement!.id}');
+    StructuredLogService.log('📢 [AnnouncementService] id: ${_currentAnnouncement!.id}');
     if (_currentAnnouncement!.id.isEmpty) {
       final msg = '📢 公告 ID 为空，不显示';
-      print(msg);
+      StructuredLogService.log(msg);
       DeveloperModeService().addLog(msg);
       return false;
     }
@@ -150,18 +134,18 @@ class AnnouncementService extends ChangeNotifier {
     final storageKey = _storageKeyPrefix + _currentAnnouncement!.id;
     final isDismissed = PersistentStorageService().getBool(storageKey) ?? false;
 
-    print('📢 [AnnouncementService] storageKey: $storageKey');
-    print('📢 [AnnouncementService] isDismissed: $isDismissed');
+    StructuredLogService.log('📢 [AnnouncementService] storageKey: $storageKey');
+    StructuredLogService.log('📢 [AnnouncementService] isDismissed: $isDismissed');
 
     if (isDismissed) {
       final msg = '📢 用户已选择不再显示此公告: ${_currentAnnouncement!.id}';
-      print(msg);
+      StructuredLogService.log(msg);
       DeveloperModeService().addLog(msg);
       return false;
     }
 
     final msg = '📢 应该显示公告: ${_currentAnnouncement!.id}';
-    print(msg);
+    StructuredLogService.log(msg);
     DeveloperModeService().addLog(msg);
     return true;
   }

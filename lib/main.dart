@@ -1,356 +1,449 @@
+import 'services/structured_log_service.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:flutter/foundation.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
 import 'package:window_manager/window_manager.dart';
-import 'package:cyrene_music/layouts/fluent_main_layout.dart';
 import 'package:cyrene_music/layouts/main_layout.dart';
+import 'package:cyrene_music/layouts/navidrome_main_layout.dart';
 import 'package:cyrene_music/services/android_floating_lyric_service.dart';
 import 'package:cyrene_music/services/announcement_service.dart';
 import 'package:cyrene_music/services/auto_update_service.dart';
 import 'package:cyrene_music/services/cache_service.dart';
 import 'package:cyrene_music/services/developer_mode_service.dart';
+import 'package:cyrene_music/services/app_settings_service.dart';
 import 'package:cyrene_music/services/desktop_lyric_service.dart';
 import 'package:cyrene_music/services/listening_stats_service.dart';
+import 'package:cyrene_music/services/lyric/lyric_cache_service.dart';
 import 'package:cyrene_music/services/lyric_style_service.dart';
 import 'package:cyrene_music/services/lyric_font_service.dart';
 import 'package:cyrene_music/services/persistent_storage_service.dart';
+import 'package:cyrene_music/services/navidrome_session_service.dart';
 import 'package:cyrene_music/services/player_background_service.dart';
 import 'package:cyrene_music/services/player_service.dart';
 import 'package:cyrene_music/services/notification_service.dart';
-import 'package:cyrene_music/services/playback_resume_service.dart';
+import 'package:cyrene_music/services/music_service.dart';
 import 'package:cyrene_music/services/permission_service.dart';
+import 'package:cyrene_music/services/playback/startup_playback_coordinator.dart';
 import 'package:cyrene_music/services/system_media_service.dart';
 import 'package:cyrene_music/services/tray_service.dart';
 import 'package:cyrene_music/services/url_service.dart';
 import 'package:cyrene_music/services/audio_source_service.dart';
-import 'package:cyrene_music/services/auth_service.dart';
+import 'package:cyrene_music/features/audio_source/audio_source_feature.dart';
 import 'package:cyrene_music/services/version_service.dart';
 import 'package:cyrene_music/services/mini_player_window_service.dart';
 import 'package:cyrene_music/services/local_library_service.dart';
 import 'package:cyrene_music/pages/mini_player_window_page.dart';
 import 'package:cyrene_music/utils/theme_manager.dart';
+import 'package:cyrene_music/utils/toast_utils.dart';
 import 'package:cyrene_music/services/startup_logger.dart';
+import 'package:cyrene_music/widgets/playback_problem_dialog.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:cyrene_music/pages/settings_page/audio_source_settings.dart';
-import 'package:cyrene_music/pages/mobile_setup_page.dart';
 import 'package:cyrene_music/pages/mobile_app_gate.dart';
 import 'package:cyrene_music/pages/desktop_app_gate.dart';
+import 'package:cyrene_music/pages/navidrome_setup_page.dart';
 
 // 条件导入 flutter_displaymode（仅 Android）
-import 'package:flutter_displaymode/flutter_displaymode.dart' if (dart.library.html) '';
+import 'package:flutter_displaymode/flutter_displaymode.dart'
+    if (dart.library.html) '';
 
 Future<void> main() async {
   final startupLogger = StartupLogger.bootstrapSync(appName: 'CyreneMusic');
   startupLogger.log('main() entered');
-  if (startupLogger.filePath != null) {
-    print(' [StartupLogger] ${startupLogger.filePath}');
+  if (startupLogger.filePath != null && kDebugMode) {
+    StructuredLogService.log(' [StartupLogger] ${startupLogger.filePath}');
   }
 
-  await runZonedGuarded(() async {
-    FlutterError.onError = (details) {
-      StartupLogger().log('FlutterError: ${details.exceptionAsString()}\n${details.stack ?? ''}');
-      FlutterError.presentError(details);
-    };
+  await runZonedGuarded(
+    () async {
+      FlutterError.onError = (details) {
+        StartupLogger().log(
+          'FlutterError: ${details.exceptionAsString()}\n${details.stack ?? ''}',
+        );
+        FlutterError.presentError(details);
+      };
 
-    PlatformDispatcher.instance.onError = (error, stack) {
-      StartupLogger().log('PlatformDispatcher.onError: $error\n$stack');
-      return true;
-    };
+      PlatformDispatcher.instance.onError = (error, stack) {
+        StartupLogger().log('PlatformDispatcher.onError: $error\n$stack');
+        return true;
+      };
 
-    void log(String message) {
-      StartupLogger().log(message);
-      DeveloperModeService().addLog(message);
-    }
-
-    Future<T> timed<T>(String name, FutureOr<T> Function() fn) async {
-      final sw = Stopwatch()..start();
-      log(' $name');
-      try {
-        final result = await fn();
-        log(' $name (${sw.elapsedMilliseconds}ms)');
-        return result;
-      } catch (e, st) {
-        log(' $name: $e');
-        StartupLogger().log(' $name stack: $st');
-        rethrow;
+      void log(String message) {
+        StartupLogger().log(message);
+        DeveloperModeService().addLog(message);
       }
-    }
 
-    await timed('WidgetsFlutterBinding.ensureInitialized', () {
-      WidgetsFlutterBinding.ensureInitialized();
-    });
-  
-    await timed('Platform check & initial logs', () {
-      log(' 应用启动');
-      log(' 平台: ${Platform.operatingSystem}');
-    });
-  
-    if (Platform.isIOS) {
-      await timed('SystemChrome.setPreferredOrientations(iOS)', () async {
-        await SystemChrome.setPreferredOrientations([
-          DeviceOrientation.portraitUp,
-          DeviceOrientation.portraitDown,
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ]);
-      });
-    }
-  
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux || Platform.isAndroid) {
-      await timed('MediaKit.ensureInitialized', () {
+      Future<T> timed<T>(String name, FutureOr<T> Function() fn) async {
+        final sw = Stopwatch()..start();
+        log(' $name');
         try {
-          MediaKit.ensureInitialized();
+          final result = await fn();
+          log(' $name (${sw.elapsedMilliseconds}ms)');
+          return result;
         } catch (e, st) {
-          log(' MediaKit.ensureInitialized 失败: $e');
-          StartupLogger().log(' MediaKit.ensureInitialized stack: $st');
+          log(' $name: $e');
+          StartupLogger().log(' $name stack: $st');
+          rethrow;
         }
-      });
-    }
-  
-    await timed('PersistentStorageService.initialize', () async {
-      await PersistentStorageService().initialize();
-    });
-    log(' 持久化存储服务已初始化');
+      }
 
-    await timed('ThemeManager.initialize', () async {
-      await ThemeManager().initialize();
-    });
-    log(' 主题服务已初始化');
-
-    await timed('DeveloperModeService.initialize', () async {
-      await DeveloperModeService().initialize();
-    });
-    log('✅ 开发者模式服务已初始化');
-  
-    await timed('PersistentStorageService.getBackupStats', () {
-      final storageStats = PersistentStorageService().getBackupStats();
-      log(' 存储统计: ${storageStats['sharedPreferences_keys']} 个键');
-      log(' 备份路径: ${storageStats['backup_file_path']}');
-    });
-  
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      await timed('windowManager.ensureInitialized', () async {
-        await windowManager.ensureInitialized();
+      await timed('WidgetsFlutterBinding.ensureInitialized', () {
+        WidgetsFlutterBinding.ensureInitialized();
       });
 
-      if (Platform.isWindows) {
-        await timed('Window.initialize(Windows)', () async {
-          try {
-            await Window.initialize();
-          } catch (_) {}
+      await timed('Platform check & initial logs', () {
+        log(' 应用启动');
+        log(' 平台: ${Platform.operatingSystem}');
+      });
+
+      if (Platform.isIOS) {
+        await timed('SystemChrome.setPreferredOrientations(iOS)', () async {
+          await SystemChrome.setPreferredOrientations([
+            DeviceOrientation.portraitUp,
+            DeviceOrientation.portraitDown,
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]);
         });
       }
 
-      final WindowOptions windowOptions = WindowOptions(
-        size: const Size(1320, 880),
-        minimumSize: const Size(320, 120),
-        center: true,
-        backgroundColor: Platform.isWindows ? Colors.transparent : Colors.white,
-        skipTaskbar: false,
-        titleBarStyle:
-            Platform.isWindows ? TitleBarStyle.hidden : TitleBarStyle.normal,
-        windowButtonVisibility: !Platform.isWindows,
+      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+        await timed('MediaKit.ensureInitialized', () {
+          try {
+            MediaKit.ensureInitialized();
+          } catch (e, st) {
+            log(' MediaKit.ensureInitialized 失败: $e');
+            StartupLogger().log(' MediaKit.ensureInitialized stack: $st');
+          }
+        });
+      }
+
+      // ── 第 1 批：基础服务（串行，有依赖关系） ──
+      await timed('PersistentStorageService.initialize', () async {
+        await PersistentStorageService().initialize();
+      });
+      log(' 持久化存储服务已初始化');
+
+      // Navidrome 会话服务初始化（依赖 PersistentStorageService）
+      await timed('NavidromeSessionService.initialize', () async {
+        await NavidromeSessionService().initialize();
+      });
+      log(' Navidrome 会话服务已初始化');
+
+      await timed('PersistentStorageService.getBackupStats', () {
+        final storageStats = PersistentStorageService().getBackupStats();
+        log(' 存储统计: ${storageStats['sharedPreferences_keys']} 个键');
+        log(' 备份路径: ${storageStats['backup_file_path']}');
+      });
+
+      // WindowManager 初始化（平台相关 UI 操作，保持原有位置）
+      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+        await timed('windowManager.ensureInitialized', () async {
+          await windowManager.ensureInitialized();
+        });
+
+        if (Platform.isWindows) {
+          await timed('Window.initialize(Windows)', () async {
+            try {
+              await Window.initialize();
+            } catch (_) {}
+          });
+        }
+
+        final WindowOptions windowOptions = WindowOptions(
+          size: const Size(1320, 880),
+          minimumSize: const Size(320, 120),
+          center: true,
+          backgroundColor: Platform.isWindows
+              ? Colors.transparent
+              : Colors.white,
+          skipTaskbar: false,
+          titleBarStyle: Platform.isWindows
+              ? TitleBarStyle.hidden
+              : TitleBarStyle.normal,
+          windowButtonVisibility: !Platform.isWindows,
+        );
+
+        await timed('windowManager.waitUntilReadyToShow', () async {
+          windowManager.waitUntilReadyToShow(windowOptions, () async {
+            log(' windowManager.waitUntilReadyToShow callback entered');
+            await timed('windowManager.setTitle', () async {
+              await windowManager.setTitle('Cyrene Music');
+            });
+
+            await timed('windowManager.setIcon', () async {
+              if (Platform.isWindows) {
+                await windowManager.setIcon('assets/icons/tray_icon.ico');
+              } else if (Platform.isMacOS || Platform.isLinux) {
+                await windowManager.setIcon('assets/icons/tray_icon.png');
+              }
+            });
+
+            await timed('windowManager.show', () async {
+              await windowManager.show();
+            });
+
+            await timed('windowManager.focus', () async {
+              await windowManager.focus();
+            });
+
+            await timed('windowManager.setPreventClose(true)', () async {
+              await windowManager.setPreventClose(true);
+            });
+
+            log(' [Main] 窗口已显示，关闭按钮将最小化到托盘');
+          });
+        });
+      }
+
+      // Android 特有的 edge-to-edge
+      if (Platform.isAndroid) {
+        await timed('Android edgeToEdge + overlays', () {
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+          SystemChrome.setSystemUIOverlayStyle(
+            const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarDividerColor: Colors.transparent,
+            ),
+          );
+          log(' 已启用边到边模式');
+        });
+      }
+
+      // ── 第 2 批：无互相依赖的服务（并行） ──
+      await timed(
+        'Batch 2: parallel services',
+        () => Future.wait([
+          timed('DeveloperModeService.initialize', () async {
+            await DeveloperModeService().initialize();
+            log('✅ 开发者模式服务已初始化');
+          }),
+          timed('AppSettingsService.initialize', () async {
+            await AppSettingsService().initialize();
+            log(' 应用设置服务已初始化');
+          }),
+          timed('UrlService.initialize', () async {
+            await UrlService().initialize();
+            log('✅ URL 服务已初始化');
+          }),
+          timed('LocalLibraryService.init', () async {
+            await LocalLibraryService().init();
+            log(' 本地音乐库服务已初始化');
+          }),
+          timed('LyricStyleService.initialize', () async {
+            await LyricStyleService().initialize();
+            log(' 歌词样式服务已初始化');
+          }),
+          timed('LyricFontService.initialize', () async {
+            await LyricFontService().initialize();
+            log(' 歌词字体服务已初始化');
+          }),
+          timed('PlayerBackgroundService.initialize', () async {
+            await PlayerBackgroundService().initialize();
+            log(' 播放器背景服务已初始化');
+          }),
+          timed('AudioSourceService.initialize', () async {
+            await AudioSourceService().initialize();
+            log('✅ 音源服务已初始化');
+          }),
+          timed('MusicService.initialize', () async {
+            await MusicService().initialize();
+            log('🎵 音乐服务榜单缓存已初始化');
+          }),
+        ]),
       );
 
-      await timed('windowManager.waitUntilReadyToShow', () async {
-        windowManager.waitUntilReadyToShow(windowOptions, () async {
-          log(' windowManager.waitUntilReadyToShow callback entered');
-          await timed('windowManager.setTitle', () async {
-            await windowManager.setTitle('Cyrene Music');
-          });
+      // ── 第 3 批：依赖第 1-2 批的服务（并行） ──
+      await timed(
+        'Batch 3: parallel services',
+        () => Future.wait([
+          timed('VersionService.initialize', () async {
+            await VersionService().initialize();
+            log(' 版本服务已初始化');
+          }),
+          timed('AutoUpdateService.initialize', () async {
+            await AutoUpdateService().initialize();
+            log(' 自动更新服务已初始化');
+          }),
+          timed('ListeningStatsService.initialize', () async {
+            ListeningStatsService().initialize();
+            log(' 听歌统计服务已初始化');
+          }),
+          timed('NotificationService.initialize', () async {
+            await NotificationService().initialize();
+          }),
+        ]),
+      );
 
-          await timed('windowManager.setIcon', () async {
-            if (Platform.isWindows) {
-              await windowManager.setIcon('assets/icons/tray_icon.ico');
-            } else if (Platform.isMacOS || Platform.isLinux) {
-              await windowManager.setIcon('assets/icons/tray_icon.png');
-            }
-          });
+      // ── 第 4 批：串行，有依赖关系 ──
+      await timed('PlayerService.initialize', () async {
+        await PlayerService().initialize();
+      });
+      log(' 播放器服务已初始化');
 
-          await timed('windowManager.show', () async {
-            await windowManager.show();
-          });
+      await timed('SystemMediaService.initialize', () async {
+        await SystemMediaService().initialize();
+      });
+      log(' 系统媒体服务已初始化');
 
-          await timed('windowManager.focus', () async {
-            await windowManager.focus();
-          });
+      await timed('TrayService.initialize', () async {
+        await TrayService().initialize();
+      });
+      log(' 系统托盘已初始化');
 
-          await timed('windowManager.setPreventClose(true)', () async {
-            await windowManager.setPreventClose(true);
-          });
+      // ── 第 5 批：平台相关服务（放最后） ──
+      if (Platform.isWindows) {
+        await timed('DesktopLyricService.initialize(Windows)', () async {
+          await DesktopLyricService().initialize();
+        });
+        log(' 桌面歌词服务已初始化');
+      }
 
-          log(' [Main] 窗口已显示，关闭按钮将最小化到托盘');
+      if (Platform.isAndroid) {
+        await timed(
+          'AndroidFloatingLyricService.initialize(Android)',
+          () async {
+            await AndroidFloatingLyricService().initialize();
+          },
+        );
+        log(' Android悬浮歌词服务已初始化');
+      }
+
+      await timed('CacheService.initialize', () async {
+        await CacheService().initialize();
+      });
+      log(' 缓存服务已初始化');
+
+      await timed('LyricCacheService.initialize', () async {
+        await LyricCacheService().initialize();
+      });
+      log(' 歌词缓存服务已初始化');
+
+      // 必须在 runApp 之前读完主题设置：首帧就要确定根节点是 FluentApp 还是
+      // MaterialApp。否则会先按平台默认值建出 FluentApp 并推入 FluentPageRoute，
+      // 异步加载完成后再换成 MaterialApp，共用 navigatorKey 的 Navigator 被重挂时
+      // 会把那个 FluentPageRoute 带进没有 FluentTheme 的树，导致整页空白。
+      await timed('ThemeManager.ensureSettingsLoaded', () async {
+        await ThemeManager().ensureSettingsLoaded();
+      });
+
+      await timed('runApp(MyApp)', () {
+        runApp(const MyApp());
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(() async {
+          await timed(
+            'StartupPlaybackCoordinator.restorePlaybackOnStartup',
+            () async {
+              await StartupPlaybackCoordinator().restorePlaybackOnStartup();
+            },
+          );
+          log(' 启动播放会话恢复流程已完成');
+        }());
+      });
+
+      // P0: 权限请求放到 runApp 之后
+      if (Platform.isAndroid) {
+        Future.microtask(() async {
+          await timed(
+            'PermissionService.requestNotificationPermission',
+            () async {
+              final hasPermission = await PermissionService()
+                  .requestNotificationPermission();
+              if (hasPermission) {
+                log(' 通知权限已授予');
+              } else {
+                log(' 通知权限未授予，媒体通知可能无法显示');
+              }
+            },
+          );
+        });
+      }
+
+      // P0: 公告请求延迟到 runApp 之后，避免阻塞首帧
+      Future.microtask(() async {
+        await timed('AnnouncementService.initialize', () async {
+          await AnnouncementService().initialize();
+          log(' 公告服务已初始化');
         });
       });
-    }
-  
-    await timed('UrlService.initialize', () async {
-      await UrlService().initialize();
-    });
-    log('✅ URL 服务已初始化');
-  
-    await timed('AudioSourceService.initialize', () async {
-      await AudioSourceService().initialize();
-    });
-    log('✅ 音源服务已初始化');
-  
-    await timed('VersionService.initialize', () async {
-      await VersionService().initialize();
-    });
-    log(' 版本服务已初始化');
-
-    await timed('AutoUpdateService.initialize', () async {
-      await AutoUpdateService().initialize();
-    });
-    log(' 自动更新服务已初始化');
-
-    await timed('AnnouncementService.initialize', () async {
-      await AnnouncementService().initialize();
-    });
-    log(' 公告服务已初始化');
-  
-    await timed('CacheService.initialize', () async {
-      await CacheService().initialize();
-    });
-    log(' 缓存服务已初始化');
-  
-    await timed('PlayerBackgroundService.initialize', () async {
-      await PlayerBackgroundService().initialize();
-    });
-    log(' 播放器背景服务已初始化');
-  
-    await timed('PlayerService.initialize', () async {
-      await PlayerService().initialize();
-    });
-    log(' 播放器服务已初始化');
-
-    await timed('LocalLibraryService.init', () async {
-      await LocalLibraryService().init();
-    });
-    log(' 本地音乐库服务已初始化');
-  
-    await timed('LyricStyleService.initialize', () async {
-      await LyricStyleService().initialize();
-    });
-    log(' 歌词样式服务已初始化');
-  
-    await timed('LyricFontService.initialize', () async {
-      await LyricFontService().initialize();
-    });
-    log(' 歌词字体服务已初始化');
-  
-    if (Platform.isAndroid) {
-      await timed('Android edgeToEdge + overlays', () {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-        SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          systemNavigationBarColor: Colors.transparent,
-          systemNavigationBarDividerColor: Colors.transparent,
-        ));
-        log(' 已启用边到边模式');
-      });
-
-      await timed('PermissionService.requestNotificationPermission', () async {
-        final hasPermission = await PermissionService().requestNotificationPermission();
-        if (hasPermission) {
-          log(' 通知权限已授予');
-        } else {
-          log(' 通知权限未授予，媒体通知可能无法显示');
-        }
-      });
-
-    }
-
-  
-    await timed('SystemMediaService.initialize', () async {
-      await SystemMediaService().initialize();
-    });
-    log(' 系统媒体服务已初始化');
-  
-    await timed('TrayService.initialize', () async {
-      await TrayService().initialize();
-    });
-    log(' 系统托盘已初始化');
-  
-    await timed('ListeningStatsService.initialize', () {
-      ListeningStatsService().initialize();
-    });
-    log(' 听歌统计服务已初始化');
-  
-    await timed('NotificationService.initialize', () async {
-      await NotificationService().initialize();
-    });
-  
-    if (Platform.isWindows) {
-      await timed('DesktopLyricService.initialize(Windows)', () async {
-        await DesktopLyricService().initialize();
-      });
-      log(' 桌面歌词服务已初始化');
-    }
-  
-    if (Platform.isAndroid) {
-      await timed('AndroidFloatingLyricService.initialize(Android)', () async {
-        await AndroidFloatingLyricService().initialize();
-      });
-      log(' Android悬浮歌词服务已初始化');
-    }
-  
-    print(' [Main] 将在2秒后检查播放恢复状态...');
-    log(' 将在2秒后检查播放恢复状态...');
-
-    Future.delayed(const Duration(seconds: 2), () {
-      print(' [Main] 开始检查播放恢复状态...');
-      log(' 开始检查播放恢复状态...');
-
-      PlaybackResumeService().checkAndShowResumeNotification().then((_) {
-        print(' [Main] 播放恢复检查完成');
-        log(' 播放恢复检查完成');
-      }).catchError((e, st) {
-        print(' [Main] 播放恢复检查失败: $e');
-        log(' 播放恢复检查失败: $e');
-        StartupLogger().log(' 播放恢复检查失败 stack: $st');
-      });
-    });
-
-    await timed('runApp(MyApp)', () {
-      runApp(const MyApp());
-    });
-  
-
-  }, (error, stack) {
-    StartupLogger().log('runZonedGuarded: $error\n$stack');
-  });
- }
+    },
+    (error, stack) {
+      StartupLogger().log('runZonedGuarded: $error\n$stack');
+    },
+    zoneSpecification: kReleaseMode
+        ? ZoneSpecification(print: (self, parent, zone, line) {})
+        : null,
+  );
+}
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
-  
-  // 全局 Navigator Key（用于在任何地方显示对话框）
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+  // 每种应用根节点使用独立的 Navigator。FluentApp 和 MaterialApp 的
+  // Navigator 不能共享路由树，否则切换框架时旧的 FluentPageRoute 可能
+  // 被重新挂到没有 FluentTheme 的 Material 树中，最终表现为白屏。
+  static final GlobalKey<NavigatorState> fluentNavigatorKey =
+      GlobalKey<NavigatorState>(debugLabel: 'fluent-navigator');
+  static final GlobalKey<NavigatorState> materialNavigatorKey =
+      GlobalKey<NavigatorState>(debugLabel: 'material-navigator');
+  static final GlobalKey<NavigatorState> cupertinoNavigatorKey =
+      GlobalKey<NavigatorState>(debugLabel: 'cupertino-navigator');
+
+  /// 当前应用根节点的 Navigator，用于全局弹窗和恢复操作。
+  ///
+  /// 不保留一个跨框架复用的 GlobalKey；框架切换后的下一帧由对应 App
+  /// 分支接管自己的 key，旧导航栈自然被销毁。
+  static GlobalKey<NavigatorState> get navigatorKey {
+    final themeManager = ThemeManager();
+    if (themeManager.isDesktopFluentUI) return fluentNavigatorKey;
+    if ((Platform.isIOS || Platform.isAndroid) &&
+        themeManager.isCupertinoFramework) {
+      return cupertinoNavigatorKey;
+    }
+    return materialNavigatorKey;
+  }
 
   @override
   State<MyApp> createState() => _MyAppState();
 }
 
 class _MyAppState extends State<MyApp> {
+  int? _lastPresentedPlaybackProblemId;
+  bool _isPresentingPlaybackProblem = false;
+  PlaybackProblem? _queuedPlaybackProblem;
+  final AudioSourceFacade _audioSourceFacade = AudioSourceFacade();
+
+  Widget _buildDesktopMaterialHomeByRoute(AppGateRoute route) {
+    // 保持当前桌面 Material 分支的既有行为：
+    // 非 Navidrome 情况统一进入 MainLayout。
+    return switch (route) {
+      AppGateRoute.navidromeMain => const NavidromeMainLayout(),
+      AppGateRoute.navidromeSetup => const NavidromeSetupPage(),
+      AppGateRoute.regularMain => const MainLayout(),
+      AppGateRoute.regularSetup => const MainLayout(),
+    };
+  }
+
   @override
   void initState() {
     super.initState();
-    // 延迟设置高刷新率和回调，确保 Navigator 和 Activity 已经初始化
+    PlayerService().problemNotifier.addListener(_onPlaybackProblemChanged);
+    _setupPlaybackFailureCallback();
+    // 延迟设置高刷新率，确保 Activity 已经初始化。
+    // 播放失败统一由 problemNotifier 驱动，避免旧的音源弹窗与恢复弹窗叠加。
     Future.delayed(const Duration(milliseconds: 500), () {
-      _setupAudioSourceCallback();
       _setupHighRefreshRate();
-      // 获取 context 后再次触发初始化以应用系统主题色（如果启用）
-      if (mounted) {
-        ThemeManager().initialize(context);
-      }
     });
   }
 
@@ -361,54 +454,162 @@ class _MyAppState extends State<MyApp> {
       // 获取所有可用的模式
       final modes = await FlutterDisplayMode.supported;
       if (modes.isNotEmpty) {
-        print(' [DisplayMode] 发现 ${modes.length} 个可用模式:');
+        StructuredLogService.log(' [DisplayMode] 发现 ${modes.length} 个可用模式:');
         for (var mode in modes) {
-          print('   - ID: ${mode.id}, ${mode.width}x${mode.height} @${mode.refreshRate.toStringAsFixed(0)}Hz');
+          StructuredLogService.log(
+            '   - ID: ${mode.id}, ${mode.width}x${mode.height} @${mode.refreshRate.toStringAsFixed(0)}Hz',
+          );
         }
 
         // 挑选最高刷新率模式
         final optimalMode = modes.reduce((curr, next) {
           if (next.refreshRate > curr.refreshRate) return next;
-          if (next.refreshRate == curr.refreshRate && (next.width * next.height) > (curr.width * curr.height)) return next;
+          if (next.refreshRate == curr.refreshRate &&
+              (next.width * next.height) > (curr.width * curr.height)) {
+            return next;
+          }
           return curr;
         });
 
-        print(' [DisplayMode] 尝试设置最高刷新率模式: ID: ${optimalMode.id}, ${optimalMode.width}x${optimalMode.height} @${optimalMode.refreshRate.toStringAsFixed(0)}Hz');
+        StructuredLogService.log(
+          ' [DisplayMode] 尝试设置最高刷新率模式: ID: ${optimalMode.id}, ${optimalMode.width}x${optimalMode.height} @${optimalMode.refreshRate.toStringAsFixed(0)}Hz',
+        );
         await FlutterDisplayMode.setPreferredMode(optimalMode);
       } else {
         await FlutterDisplayMode.setHighRefreshRate();
       }
 
       final activeMode = await FlutterDisplayMode.active;
-      print(' [DisplayMode] 最终激活模式: ${activeMode.width}x${activeMode.height} @${activeMode.refreshRate.toStringAsFixed(0)}Hz');
+      StructuredLogService.log(
+        ' [DisplayMode] 最终激活模式: ${activeMode.width}x${activeMode.height} @${activeMode.refreshRate.toStringAsFixed(0)}Hz',
+      );
     } catch (e) {
-      print(' [DisplayMode] 设置高刷新率失败: $e');
+      StructuredLogService.log(' [DisplayMode] 设置高刷新率失败: $e');
     }
   }
 
-  void _setupAudioSourceCallback() {
-    PlayerService().onAudioSourceNotConfigured = () {
-      print('🔔 [MyApp] 音源未配置回调被触发');
-      // 优先使用 GlobalContextHolder（包含正确的 Localizations）
-      final globalContext = GlobalContextHolder.context;
-      final navigatorContext = MyApp.navigatorKey.currentContext;
-      final contextToUse = globalContext ?? navigatorContext;
-      
-      if (contextToUse != null) {
-        print('🔔 [MyApp] 使用 ${globalContext != null ? "GlobalContextHolder" : "navigatorKey"} context 显示弹窗');
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          showAudioSourceNotConfiguredDialog(contextToUse);
-        });
+  void _setupPlaybackFailureCallback() {
+    // 播放器页面会显示内嵌错误条；列表页、歌单页等没有播放器错误条，
+    // 因此普通最终失败需要通过一次 Toast 反馈给用户。重试过程不会调用
+    // 此回调，只有最终失败才会到这里。
+    PlayerService().onPlaybackFailure = (problem) {
+      if (problem.kind == PlaybackProblemKind.sourceNotConfigured) return;
+      final player = PlayerService();
+      if (player.isPlaying) {
+        ToastUtils.show(
+          '《${problem.track.name}》播放失败，继续播放《${player.displayTitle}》',
+        );
       } else {
-        print('⚠️ [MyApp] 无法获取有效的 context');
+        ToastUtils.error('${problem.message}\n《${problem.track.name}》');
       }
     };
-    print('✅ [MyApp] 音源未配置回调已设置');
+    PlayerService().onPlaybackNotice = ToastUtils.show;
+    final currentProblem = PlayerService().currentProblem;
+    if (_shouldPresentPlaybackDialog(currentProblem)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _presentPlaybackProblem(currentProblem!);
+      });
+    }
+  }
+
+  void _onPlaybackProblemChanged() {
+    final problem = PlayerService().problemNotifier.value;
+    if (problem != null && _shouldPresentPlaybackDialog(problem)) {
+      _presentPlaybackProblem(problem);
+    }
+  }
+
+  bool _shouldPresentPlaybackDialog(PlaybackProblem? problem) {
+    return problem?.kind == PlaybackProblemKind.sourceNotConfigured;
+  }
+
+  void _presentPlaybackProblem(PlaybackProblem problem) {
+    if (_lastPresentedPlaybackProblemId == problem.id) return;
+    _lastPresentedPlaybackProblemId = problem.id;
+    _queuedPlaybackProblem = problem;
+    unawaited(_drainPlaybackProblems());
+  }
+
+  Future<void> _drainPlaybackProblems() async {
+    if (_isPresentingPlaybackProblem) return;
+    final problem = _queuedPlaybackProblem;
+    if (problem == null) return;
+
+    // MaterialApp.builder 外层的 Overlay context 不一定挂在 Navigator 下。
+    // 优先使用 Navigator overlay，避免 showDialog 找不到 Navigator 或被短暂页面吞掉。
+    final contextToUse =
+        MyApp.navigatorKey.currentState?.overlay?.context ??
+        MyApp.navigatorKey.currentContext ??
+        GlobalContextHolder.context;
+    if (contextToUse == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_drainPlaybackProblems());
+      });
+      return;
+    }
+
+    _queuedPlaybackProblem = null;
+    _isPresentingPlaybackProblem = true;
+    final action = await showPlaybackProblemDialog(contextToUse, problem);
+    _isPresentingPlaybackProblem = false;
+    if (!mounted) return;
+
+    // 自动跳歌或其它事务可能已清理/替换当前问题。此时对话框里保存的
+    // problem 已失效，任何恢复操作都不能再作用于当前队列指针。
+    if (!PlayerService().isCurrentPlaybackProblem(problem)) {
+      if (_queuedPlaybackProblem != null) {
+        unawaited(_drainPlaybackProblems());
+      }
+      return;
+    }
+
+    final recoveryContext =
+        MyApp.navigatorKey.currentState?.overlay?.context ??
+        MyApp.navigatorKey.currentContext ??
+        GlobalContextHolder.context;
+    if (recoveryContext != null && recoveryContext.mounted) {
+      await _handlePlaybackRecoveryAction(recoveryContext, problem, action);
+    }
+    if (_queuedPlaybackProblem != null) {
+      unawaited(_drainPlaybackProblems());
+    }
+  }
+
+  Future<void> _handlePlaybackRecoveryAction(
+    BuildContext context,
+    PlaybackProblem problem,
+    PlaybackRecoveryAction? action,
+  ) async {
+    switch (action) {
+      case PlaybackRecoveryAction.retry:
+        // 在命令队列内再次校验 transactionId，防止自动跳歌命令先执行
+        // 后，Retry 错作用到下一首。
+        await PlayerService().retryCurrent(expectedProblem: problem);
+        return;
+      case PlaybackRecoveryAction.switchSource:
+      case PlaybackRecoveryAction.openSourceSettings:
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const AudioSourceSettings()));
+        return;
+      case PlaybackRecoveryAction.reimportSource:
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const AudioSourceSettings(openImportDialog: true),
+          ),
+        );
+        return;
+      case null:
+        return;
+    }
   }
 
   @override
   void dispose() {
+    PlayerService().problemNotifier.removeListener(_onPlaybackProblemChanged);
     PlayerService().onAudioSourceNotConfigured = null;
+    PlayerService().onPlaybackFailure = null;
+    PlayerService().onPlaybackNotice = null;
     super.dispose();
   }
 
@@ -423,7 +624,9 @@ class _MyAppState extends State<MyApp> {
         final darkTheme = themeManager.buildThemeData(Brightness.dark);
 
         final useFluentLayout = themeManager.isDesktopFluentUI;
-        final useCupertinoLayout = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
+        final useCupertinoLayout =
+            (Platform.isIOS || Platform.isAndroid) &&
+            themeManager.isCupertinoFramework;
 
         if (useFluentLayout) {
           return AnimatedBuilder(
@@ -433,7 +636,9 @@ class _MyAppState extends State<MyApp> {
               return fluent.FluentApp(
                 title: 'Cyrene Music',
                 debugShowCheckedModeBanner: false,
-                showPerformanceOverlay: DeveloperModeService().showPerformanceOverlay,
+                navigatorKey: MyApp.navigatorKey,
+                showPerformanceOverlay:
+                    DeveloperModeService().showPerformanceOverlay,
                 theme: themeManager.buildFluentThemeData(Brightness.light),
                 darkTheme: themeManager.buildFluentThemeData(Brightness.dark),
                 themeMode: _mapMaterialThemeMode(themeManager.themeMode),
@@ -444,17 +649,24 @@ class _MyAppState extends State<MyApp> {
                   final ftoastBuilder = FToastBuilder();
                   // 添加 ScaffoldMessenger 支持 SnackBar（即使在 Fluent UI 中）
                   return ScaffoldMessenger(
-                    child: ftoastBuilder(context, Overlay(
-                      initialEntries: [
-                        OverlayEntry(builder: (innerContext) {
-                          GlobalContextHolder._context = innerContext;
-                          return child!;
-                        }),
-                      ],
-                    )),
+                    child: ftoastBuilder(
+                      context,
+                      Overlay(
+                        initialEntries: [
+                          OverlayEntry(
+                            builder: (innerContext) {
+                              GlobalContextHolder._context = innerContext;
+                              return child!;
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
                   );
                 },
-                home: isMiniMode ? const MiniPlayerWindowPage() : const DesktopAppGate(),
+                home: isMiniMode
+                    ? const MiniPlayerWindowPage()
+                    : const DesktopAppGate(),
               );
             },
           );
@@ -463,39 +675,52 @@ class _MyAppState extends State<MyApp> {
         // 移动端 Cupertino 风格
         if (useCupertinoLayout) {
           final cupertinoTheme = themeManager.buildCupertinoThemeData(
-            themeManager.themeMode == ThemeMode.dark 
-                ? Brightness.dark 
-                : (themeManager.themeMode == ThemeMode.system 
-                    ? WidgetsBinding.instance.platformDispatcher.platformBrightness 
-                    : Brightness.light),
+            themeManager.themeMode == ThemeMode.dark
+                ? Brightness.dark
+                : (themeManager.themeMode == ThemeMode.system
+                      ? WidgetsBinding
+                            .instance
+                            .platformDispatcher
+                            .platformBrightness
+                      : Brightness.light),
           );
-          
+
           // 使用 MaterialApp 包裹 CupertinoTheme 以保持 Navigator 等功能
           // MobileAppGate 内部处理状态切换，避免重建 MaterialApp
           return MaterialApp(
             title: 'Cyrene Music',
             debugShowCheckedModeBanner: false,
-            showPerformanceOverlay: DeveloperModeService().showPerformanceOverlay,
+            showPerformanceOverlay:
+                DeveloperModeService().showPerformanceOverlay,
             navigatorKey: MyApp.navigatorKey,
             theme: lightTheme.copyWith(
-              cupertinoOverrideTheme: themeManager.buildCupertinoThemeData(Brightness.light),
+              cupertinoOverrideTheme: themeManager.buildCupertinoThemeData(
+                Brightness.light,
+              ),
             ),
             darkTheme: darkTheme.copyWith(
-              cupertinoOverrideTheme: themeManager.buildCupertinoThemeData(Brightness.dark),
+              cupertinoOverrideTheme: themeManager.buildCupertinoThemeData(
+                Brightness.dark,
+              ),
             ),
             themeMode: themeManager.themeMode,
             builder: (context, child) {
               final ftoastBuilder = FToastBuilder();
               return CupertinoTheme(
                 data: cupertinoTheme,
-                child: ftoastBuilder(context, Overlay(
-                  initialEntries: [
-                    OverlayEntry(builder: (innerContext) {
-                      GlobalContextHolder._context = innerContext;
-                      return child!;
-                    }),
-                  ],
-                )),
+                child: ftoastBuilder(
+                  context,
+                  Overlay(
+                    initialEntries: [
+                      OverlayEntry(
+                        builder: (innerContext) {
+                          GlobalContextHolder._context = innerContext;
+                          return child!;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
               );
             },
             home: const MobileAppGate(),
@@ -514,14 +739,19 @@ class _MyAppState extends State<MyApp> {
             themeMode: themeManager.themeMode,
             builder: (context, child) {
               final ftoastBuilder = FToastBuilder();
-              return ftoastBuilder(context, Overlay(
-                initialEntries: [
-                  OverlayEntry(builder: (innerContext) {
-                    GlobalContextHolder._context = innerContext;
-                    return child!;
-                  }),
-                ],
-              ));
+              return ftoastBuilder(
+                context,
+                Overlay(
+                  initialEntries: [
+                    OverlayEntry(
+                      builder: (innerContext) {
+                        GlobalContextHolder._context = innerContext;
+                        return child!;
+                      },
+                    ),
+                  ],
+                ),
+              );
             },
             home: const MobileAppGate(),
           );
@@ -538,24 +768,40 @@ class _MyAppState extends State<MyApp> {
           themeMode: themeManager.themeMode,
           builder: (context, child) {
             final ftoastBuilder = FToastBuilder();
-            final content = ftoastBuilder(context, Overlay(
-              initialEntries: [
-                OverlayEntry(builder: (innerContext) {
-                  GlobalContextHolder._context = innerContext;
-                  return child!;
-                }),
-              ],
-            ));
-            
+            final content = ftoastBuilder(
+              context,
+              Overlay(
+                initialEntries: [
+                  OverlayEntry(
+                    builder: (innerContext) {
+                      GlobalContextHolder._context = innerContext;
+                      return child!;
+                    },
+                  ),
+                ],
+              ),
+            );
+
             // 桌面端添加刷新率助推器
             if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
               return RefreshRateBooster(child: content);
             }
             return content;
           },
-          home: Platform.isWindows
-            ? _WindowsRoundedContainer(child: const MainLayout())
-            : const MainLayout(),
+          home: AnimatedBuilder(
+            animation: Listenable.merge([
+              AudioSourceService(),
+              NavidromeSessionService(),
+            ]),
+            builder: (context, _) {
+              final route = _audioSourceFacade.resolveEntryRoute();
+              final home = _buildDesktopMaterialHomeByRoute(route);
+
+              return Platform.isWindows
+                  ? _WindowsRoundedContainer(child: home)
+                  : home;
+            },
+          ),
         );
       },
     );
@@ -568,7 +814,6 @@ class GlobalContextHolder {
   static BuildContext? get context => _context;
 }
 
-
 fluent.ThemeMode _mapMaterialThemeMode(ThemeMode mode) {
   switch (mode) {
     case ThemeMode.light:
@@ -579,11 +824,16 @@ fluent.ThemeMode _mapMaterialThemeMode(ThemeMode mode) {
       return fluent.ThemeMode.system;
   }
 }
+
 class _FluentScrollBehavior extends MaterialScrollBehavior {
   const _FluentScrollBehavior();
 
   @override
-  Widget buildOverscrollIndicator(BuildContext context, Widget child, ScrollableDetails details) {
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
     return child;
   }
 }
@@ -591,14 +841,16 @@ class _FluentScrollBehavior extends MaterialScrollBehavior {
 /// Windows 圆角窗口容器
 class _WindowsRoundedContainer extends StatefulWidget {
   final Widget child;
-  
+
   const _WindowsRoundedContainer({required this.child});
 
   @override
-  State<_WindowsRoundedContainer> createState() => _WindowsRoundedContainerState();
+  State<_WindowsRoundedContainer> createState() =>
+      _WindowsRoundedContainerState();
 }
 
-class _WindowsRoundedContainerState extends State<_WindowsRoundedContainer> with WindowListener {
+class _WindowsRoundedContainerState extends State<_WindowsRoundedContainer>
+    with WindowListener {
   bool _isMaximized = false;
 
   @override
@@ -640,21 +892,36 @@ class _WindowsRoundedContainerState extends State<_WindowsRoundedContainer> with
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
-    // 最大化时无边距和圆角，正常时有边距和圆角
+
+    // 最大化时无边距和圆角
+    if (_isMaximized) {
+      return Container(color: colorScheme.surface, child: widget.child);
+    }
+
+    // 正常窗口：8px 边距区域可拖动移动窗口
     return Container(
-      padding: _isMaximized ? EdgeInsets.zero : const EdgeInsets.all(8.0),
-      color: Theme.of(context).colorScheme.background,
-      child: Container(
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: _isMaximized ? BorderRadius.zero : BorderRadius.circular(12),
-          // 移除阴影效果
-        ),
-        child: ClipRRect(
-          borderRadius: _isMaximized ? BorderRadius.zero : BorderRadius.circular(12),
-          child: widget.child,
-        ),
+      color: Theme.of(context).colorScheme.surface,
+      child: Stack(
+        children: [
+          // 底层：整个区域（含 8px 边距）可拖动
+          Positioned.fill(
+            child: DragToMoveArea(child: const SizedBox.expand()),
+          ),
+          // 上层：内容区域，内部事件正常处理
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: widget.child,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -664,15 +931,25 @@ class _WindowsRoundedContainerState extends State<_WindowsRoundedContainer> with
 void showAudioSourceNotConfiguredDialog(BuildContext context) {
   final themeManager = ThemeManager();
   final isFluent = themeManager.isDesktopFluentUI;
-  final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
+  final isCupertino =
+      (Platform.isIOS || Platform.isAndroid) &&
+      themeManager.isCupertinoFramework;
+  final isNavidromeActive = AudioSourceService().isNavidromeActive;
+  final title = isNavidromeActive ? 'Navidrome 未配置' : '音源失效';
+  final content = isNavidromeActive
+      ? '当前 Navidrome 配置似乎已失效或未填写，请重新配置。'
+      : '当前音源配置似乎已失效或无法连接，请重新配置音源。';
+  final targetPage = isNavidromeActive
+      ? const AudioSourceSettings(openNavidromeSettings: true)
+      : const AudioSourceSettings();
 
   if (isFluent) {
     fluent.showDialog(
       context: context,
       builder: (context) {
         return fluent.ContentDialog(
-          title: const Text('音源失效'),
-          content: const Text('当前音源配置似乎已失效或无法连接，请重新配置音源。'),
+          title: Text(title),
+          content: Text(content),
           actions: [
             fluent.Button(
               onPressed: () => Navigator.pop(context),
@@ -683,7 +960,7 @@ void showAudioSourceNotConfiguredDialog(BuildContext context) {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const AudioSourceSettings()),
+                  MaterialPageRoute(builder: (context) => targetPage),
                 );
               },
               child: const Text('去配置'),
@@ -697,8 +974,8 @@ void showAudioSourceNotConfiguredDialog(BuildContext context) {
       context: context,
       builder: (context) {
         return CupertinoAlertDialog(
-          title: const Text('音源失效'),
-          content: const Text('当前音源配置似乎已失效或无法连接，请重新配置音源。'),
+          title: Text(title),
+          content: Text(content),
           actions: [
             CupertinoDialogAction(
               onPressed: () => Navigator.pop(context),
@@ -710,7 +987,7 @@ void showAudioSourceNotConfiguredDialog(BuildContext context) {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const AudioSourceSettings()),
+                  MaterialPageRoute(builder: (context) => targetPage),
                 );
               },
               child: const Text('去配置'),
@@ -724,8 +1001,8 @@ void showAudioSourceNotConfiguredDialog(BuildContext context) {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('音源失效'),
-          content: const Text('当前音源配置似乎已失效或无法连接，请重新配置音源。'),
+          title: Text(title),
+          content: Text(content),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -736,7 +1013,7 @@ void showAudioSourceNotConfiguredDialog(BuildContext context) {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const AudioSourceSettings()),
+                  MaterialPageRoute(builder: (context) => targetPage),
                 );
               },
               child: const Text('去配置'),
@@ -758,7 +1035,8 @@ class RefreshRateBooster extends StatefulWidget {
   State<RefreshRateBooster> createState() => _RefreshRateBoosterState();
 }
 
-class _RefreshRateBoosterState extends State<RefreshRateBooster> with SingleTickerProviderStateMixin {
+class _RefreshRateBoosterState extends State<RefreshRateBooster>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override

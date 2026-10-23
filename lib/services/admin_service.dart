@@ -1,8 +1,8 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-import 'url_service.dart';
+import 'api/api_client.dart';
 
 /// 用户数据模型（管理员视图）
 class AdminUserData {
@@ -109,10 +109,7 @@ class LocationStat {
   LocationStat({required this.location, required this.count});
 
   factory LocationStat.fromJson(Map<String, dynamic> json) {
-    return LocationStat(
-      location: json['location'],
-      count: json['count'],
-    );
+    return LocationStat(location: json['location'], count: json['count']);
   }
 }
 
@@ -124,180 +121,7 @@ class TrendData {
   TrendData({required this.date, required this.count});
 
   factory TrendData.fromJson(Map<String, dynamic> json) {
-    return TrendData(
-      date: json['date'],
-      count: json['count'],
-    );
-  }
-}
-
-/// 赞助记录数据模型
-class DonationData {
-  final int id;
-  final double amount;
-  final String paymentType;
-  final int status; // 0=未支付, 1=已支付
-  final String? outTradeNo;
-  final String? tradeNo;
-  final String? paidAt;
-  final String createdAt;
-
-  DonationData({
-    required this.id,
-    required this.amount,
-    required this.paymentType,
-    required this.status,
-    this.outTradeNo,
-    this.tradeNo,
-    this.paidAt,
-    required this.createdAt,
-  });
-
-  factory DonationData.fromJson(Map<String, dynamic> json) {
-    return DonationData(
-      id: json['id'],
-      amount: (json['amount'] as num).toDouble(),
-      paymentType: json['paymentType'] ?? 'unknown',
-      status: json['status'] ?? 0,
-      outTradeNo: json['outTradeNo'],
-      tradeNo: json['tradeNo'],
-      paidAt: json['paidAt'],
-      createdAt: json['createdAt'] ?? '',
-    );
-  }
-
-  bool get isPaid => status == 1;
-
-  String get statusText => isPaid ? '已支付' : '未支付';
-
-  String get paymentTypeText {
-    switch (paymentType) {
-      case 'alipay':
-        return '支付宝';
-      case 'wxpay':
-        return '微信支付';
-      case 'manual':
-        return '手动添加';
-      default:
-        return paymentType;
-    }
-  }
-}
-
-/// 用户赞助详情
-class UserSponsorDetails {
-  final int userId;
-  final String username;
-  final bool isSponsor;
-  final String? sponsorSince;
-  final double totalAmount;
-  final List<DonationData> donations;
-
-  UserSponsorDetails({
-    required this.userId,
-    required this.username,
-    required this.isSponsor,
-    this.sponsorSince,
-    required this.totalAmount,
-    required this.donations,
-  });
-
-  factory UserSponsorDetails.fromJson(Map<String, dynamic> json) {
-    return UserSponsorDetails(
-      userId: json['userId'],
-      username: json['username'] ?? '',
-      isSponsor: json['isSponsor'] ?? false,
-      sponsorSince: json['sponsorSince'],
-      totalAmount: (json['totalAmount'] as num?)?.toDouble() ?? 0.0,
-      donations: (json['donations'] as List?)
-              ?.map((d) => DonationData.fromJson(d))
-              .toList() ??
-          [],
-    );
-  }
-}
-
-/// 赞助排行榜项
-class SponsorRankingItem {
-  final int rank;
-  final int userId;
-  final String username;
-  final String email;
-  final String? avatarUrl;
-  final bool isSponsor;
-  final String? sponsorSince;
-  final double totalAmount;
-  final int donationCount;
-  final String? lastDonationAt;
-
-  SponsorRankingItem({
-    required this.rank,
-    required this.userId,
-    required this.username,
-    required this.email,
-    this.avatarUrl,
-    required this.isSponsor,
-    this.sponsorSince,
-    required this.totalAmount,
-    required this.donationCount,
-    this.lastDonationAt,
-  });
-
-  factory SponsorRankingItem.fromJson(Map<String, dynamic> json) {
-    return SponsorRankingItem(
-      rank: json['rank'] ?? 0,
-      userId: json['userId'],
-      username: json['username'] ?? '',
-      email: json['email'] ?? '',
-      avatarUrl: json['avatarUrl'],
-      isSponsor: json['isSponsor'] ?? false,
-      sponsorSince: json['sponsorSince'],
-      totalAmount: (json['totalAmount'] as num?)?.toDouble() ?? 0.0,
-      donationCount: json['donationCount'] ?? 0,
-      lastDonationAt: json['lastDonationAt'],
-    );
-  }
-}
-
-/// 赞助排行榜汇总
-class SponsorRankingSummary {
-  final int totalSponsors;
-  final double totalDonations;
-  final int totalUsers;
-
-  SponsorRankingSummary({
-    required this.totalSponsors,
-    required this.totalDonations,
-    required this.totalUsers,
-  });
-
-  factory SponsorRankingSummary.fromJson(Map<String, dynamic> json) {
-    return SponsorRankingSummary(
-      totalSponsors: json['totalSponsors'] ?? 0,
-      totalDonations: (json['totalDonations'] as num?)?.toDouble() ?? 0.0,
-      totalUsers: json['totalUsers'] ?? 0,
-    );
-  }
-}
-
-/// 赞助排行榜数据
-class SponsorRankingData {
-  final List<SponsorRankingItem> ranking;
-  final SponsorRankingSummary summary;
-
-  SponsorRankingData({
-    required this.ranking,
-    required this.summary,
-  });
-
-  factory SponsorRankingData.fromJson(Map<String, dynamic> json) {
-    return SponsorRankingData(
-      ranking: (json['ranking'] as List?)
-              ?.map((r) => SponsorRankingItem.fromJson(r))
-              .toList() ??
-          [],
-      summary: SponsorRankingSummary.fromJson(json['summary'] ?? {}),
-    );
+    return TrendData(date: json['date'], count: json['count']);
   }
 }
 
@@ -309,6 +133,9 @@ class AdminService extends ChangeNotifier {
     _loadToken();
   }
 
+  static const String _tokenKey = 'admin_token';
+
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   String? _adminToken;
   bool _isAuthenticated = false;
   List<AdminUserData> _users = [];
@@ -323,82 +150,110 @@ class AdminService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
+  /// Admin auth headers (used for authenticated admin calls)
+  Map<String, String> get _authHeaders => {
+    'Authorization': 'Bearer $_adminToken',
+  };
+
   /// 从本地存储加载令牌
   Future<void> _loadToken() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      _adminToken = prefs.getString('admin_token');
-      if (_adminToken != null && _adminToken!.isNotEmpty) {
+      final token = await _secureStorage.read(key: _tokenKey);
+      if (token != null && token.isNotEmpty) {
+        _adminToken = token;
         _isAuthenticated = true;
-        print('👑 [AdminService] 从本地加载管理员令牌');
+        StructuredLogService.log('👑 [AdminService] 从本地加载管理员令牌');
         notifyListeners();
       }
     } catch (e) {
-      print('❌ [AdminService] 加载令牌失败: $e');
+      _adminToken = null;
+      _isAuthenticated = false;
+      StructuredLogService.log('⚠️ [AdminService] 安全令牌不可用，需要重新登录: $e');
     }
   }
 
   /// 保存令牌到本地
-  Future<void> _saveToken(String token) async {
+  Future<bool> _saveToken(String token) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('admin_token', token);
-      print('💾 [AdminService] 管理员令牌已保存');
+      await _secureStorage.write(key: _tokenKey, value: token);
+      StructuredLogService.log('💾 [AdminService] 管理员令牌已保存');
+      return true;
     } catch (e) {
-      print('❌ [AdminService] 保存令牌失败: $e');
+      StructuredLogService.log('❌ [AdminService] 保存安全令牌失败: $e');
+      return false;
     }
   }
 
   /// 清除令牌
   Future<void> _clearToken() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('admin_token');
-      print('🗑️ [AdminService] 管理员令牌已清除');
+      await _secureStorage.delete(key: _tokenKey);
     } catch (e) {
-      print('❌ [AdminService] 清除令牌失败: $e');
+      StructuredLogService.log('⚠️ [AdminService] 清除安全令牌失败: $e');
+    }
+
+    // 清理旧版本可能留下的明文值，防止被持久化备份继续收集。
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_tokenKey);
+      StructuredLogService.log('🗑️ [AdminService] 管理员令牌已清除');
+    } catch (e) {
+      StructuredLogService.log('⚠️ [AdminService] 清理旧令牌失败: $e');
     }
   }
 
   /// 管理员登录
   Future<Map<String, dynamic>> login(String password) async {
-    print('👑 [AdminService] 开始管理员登录...');
+    StructuredLogService.log('👑 [AdminService] 开始管理员登录...');
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      final url = '${UrlService().baseUrl}/admin/login';
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'password': password}),
+      final result = await ApiClient().postJson(
+        '/admin/login',
+        data: {'password': password},
+        auth: false,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      StructuredLogService.log('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200) {
-        _adminToken = data['data']['token'];
+      if (result.ok) {
+        final token = data?['data']?['token']?.toString();
+        if (token == null || token.isEmpty) {
+          _errorMessage = '登录响应缺少有效令牌';
+          _isLoading = false;
+          notifyListeners();
+          return {'success': false, 'message': _errorMessage};
+        }
+
+        if (!await _saveToken(token)) {
+          _errorMessage = '无法保存登录凭据，请重试';
+          _isLoading = false;
+          notifyListeners();
+          return {'success': false, 'message': _errorMessage};
+        }
+
+        _adminToken = token;
         _isAuthenticated = true;
-        await _saveToken(_adminToken!);
 
-        print('✅ [AdminService] 管理员登录成功');
+        StructuredLogService.log('✅ [AdminService] 管理员登录成功');
 
         _isLoading = false;
         notifyListeners();
 
-        return {'success': true, 'message': data['message']};
+        return {'success': true, 'message': data?['message']};
       } else {
-        _errorMessage = data['message'];
+        _errorMessage = data?['message'];
         _isLoading = false;
         notifyListeners();
 
-        return {'success': false, 'message': data['message']};
+        return {'success': false, 'message': data?['message']};
       }
     } catch (e) {
-      print('❌ [AdminService] 登录异常: $e');
+      StructuredLogService.log('❌ [AdminService] 登录异常: $e');
       _errorMessage = '网络错误: ${e.toString()}';
       _isLoading = false;
       notifyListeners();
@@ -409,20 +264,17 @@ class AdminService extends ChangeNotifier {
 
   /// 管理员登出
   Future<void> logout() async {
-    print('👑 [AdminService] 管理员登出...');
+    StructuredLogService.log('👑 [AdminService] 管理员登出...');
 
     if (_adminToken != null) {
       try {
-        final url = '${UrlService().baseUrl}/admin/logout';
-        await http.post(
-          Uri.parse(url),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $_adminToken',
-          },
+        await ApiClient().postJson(
+          '/admin/logout',
+          auth: false,
+          headers: _authHeaders,
         );
       } catch (e) {
-        print('⚠️ [AdminService] 登出请求失败: $e');
+        StructuredLogService.log('⚠️ [AdminService] 登出请求失败: $e');
       }
     }
 
@@ -432,35 +284,32 @@ class AdminService extends ChangeNotifier {
     _stats = null;
     await _clearToken();
 
-    print('✅ [AdminService] 管理员已登出');
+    StructuredLogService.log('✅ [AdminService] 管理员已登出');
     notifyListeners();
   }
 
   /// 获取所有用户列表
   Future<bool> fetchUsers() async {
     if (!_isAuthenticated || _adminToken == null) {
-      print('⚠️ [AdminService] 未登录，无法获取用户列表');
+      StructuredLogService.log('⚠️ [AdminService] 未登录，无法获取用户列表');
       return false;
     }
 
-    print('👑 [AdminService] 获取用户列表...');
+    StructuredLogService.log('👑 [AdminService] 获取用户列表...');
     _isLoading = true;
     _errorMessage = null; // 清除之前的错误信息
     notifyListeners();
 
     try {
-      final url = '${UrlService().baseUrl}/admin/users';
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
+      final result = await ApiClient().getJson(
+        '/admin/users',
+        auth: false,
+        headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      StructuredLogService.log('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      if (response.statusCode == 401) {
+      if (result.statusCode == 401) {
         // 令牌无效，但不立即登出，给用户一个重试机会
         _errorMessage = '令牌验证失败，请重新登录或重试';
         _isLoading = false;
@@ -468,25 +317,25 @@ class AdminService extends ChangeNotifier {
         return false;
       }
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200) {
-        final usersList = data['data']['users'] as List;
+      if (result.ok) {
+        final usersList = data?['data']?['users'] as List;
         _users = usersList.map((json) => AdminUserData.fromJson(json)).toList();
 
-        print('✅ [AdminService] 获取用户列表成功: ${_users.length} 个用户');
+        StructuredLogService.log('✅ [AdminService] 获取用户列表成功: ${_users.length} 个用户');
 
         _isLoading = false;
         notifyListeners();
         return true;
       } else {
-        _errorMessage = data['message'];
+        _errorMessage = data?['message'];
         _isLoading = false;
         notifyListeners();
         return false;
       }
     } catch (e) {
-      print('❌ [AdminService] 获取用户列表异常: $e');
+      StructuredLogService.log('❌ [AdminService] 获取用户列表异常: $e');
       _errorMessage = '网络错误: ${e.toString()}';
       _isLoading = false;
       notifyListeners();
@@ -497,28 +346,25 @@ class AdminService extends ChangeNotifier {
   /// 获取统计数据
   Future<bool> fetchStats() async {
     if (!_isAuthenticated || _adminToken == null) {
-      print('⚠️ [AdminService] 未登录，无法获取统计数据');
+      StructuredLogService.log('⚠️ [AdminService] 未登录，无法获取统计数据');
       return false;
     }
 
-    print('👑 [AdminService] 获取统计数据...');
+    StructuredLogService.log('👑 [AdminService] 获取统计数据...');
     _isLoading = true;
     _errorMessage = null; // 清除之前的错误信息
     notifyListeners();
 
     try {
-      final url = '${UrlService().baseUrl}/admin/stats';
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
+      final result = await ApiClient().getJson(
+        '/admin/stats',
+        auth: false,
+        headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      StructuredLogService.log('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      if (response.statusCode == 401) {
+      if (result.statusCode == 401) {
         // 令牌无效，但不立即登出，给用户一个重试机会
         _errorMessage = '令牌验证失败，请重新登录或重试';
         _isLoading = false;
@@ -526,24 +372,24 @@ class AdminService extends ChangeNotifier {
         return false;
       }
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200) {
-        _stats = UserStats.fromJson(data['data']);
+      if (result.ok) {
+        _stats = UserStats.fromJson(data!['data']);
 
-        print('✅ [AdminService] 获取统计数据成功');
+        StructuredLogService.log('✅ [AdminService] 获取统计数据成功');
 
         _isLoading = false;
         notifyListeners();
         return true;
       } else {
-        _errorMessage = data['message'];
+        _errorMessage = data?['message'];
         _isLoading = false;
         notifyListeners();
         return false;
       }
     } catch (e) {
-      print('❌ [AdminService] 获取统计数据异常: $e');
+      StructuredLogService.log('❌ [AdminService] 获取统计数据异常: $e');
       _errorMessage = '网络错误: ${e.toString()}';
       _isLoading = false;
       notifyListeners();
@@ -554,254 +400,44 @@ class AdminService extends ChangeNotifier {
   /// 删除用户
   Future<bool> deleteUser(int userId) async {
     if (!_isAuthenticated || _adminToken == null) {
-      print('⚠️ [AdminService] 未登录，无法删除用户');
+      StructuredLogService.log('⚠️ [AdminService] 未登录，无法删除用户');
       return false;
     }
 
-    print('👑 [AdminService] 删除用户 ID: $userId');
+    StructuredLogService.log('👑 [AdminService] 删除用户 ID: $userId');
 
     try {
-      final url = '${UrlService().baseUrl}/admin/users';
-      final response = await http.delete(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
-        body: jsonEncode({'userId': userId}),
+      final result = await ApiClient().deleteJson(
+        '/admin/users',
+        data: {'userId': userId},
+        auth: false,
+        headers: _authHeaders,
       );
 
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
+      StructuredLogService.log('📥 [AdminService] 状态码: ${result.statusCode}');
 
-      if (response.statusCode == 401) {
+      if (result.statusCode == 401) {
         await logout();
         return false;
       }
 
-      final data = jsonDecode(response.body);
+      final data = result.data as Map<String, dynamic>?;
 
-      if (response.statusCode == 200) {
-        print('✅ [AdminService] 用户已删除');
-        
+      if (result.ok) {
+        StructuredLogService.log('✅ [AdminService] 用户已删除');
+
         // 从本地列表中移除
         _users.removeWhere((user) => user.id == userId);
         notifyListeners();
-        
+
         return true;
       } else {
-        print('❌ [AdminService] 删除失败: ${data['message']}');
+        StructuredLogService.log('❌ [AdminService] 删除失败: ${data?['message']}');
         return false;
       }
     } catch (e) {
-      print('❌ [AdminService] 删除用户异常: $e');
+      StructuredLogService.log('❌ [AdminService] 删除用户异常: $e');
       return false;
-    }
-  }
-
-  /// 获取用户赞助详情
-  Future<UserSponsorDetails?> fetchUserSponsorDetails(int userId) async {
-    if (!_isAuthenticated || _adminToken == null) {
-      print('⚠️ [AdminService] 未登录，无法获取赞助详情');
-      return null;
-    }
-
-    print('👑 [AdminService] 获取用户赞助详情 ID: $userId');
-
-    try {
-      final url = '${UrlService().baseUrl}/admin/sponsors/$userId';
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
-      );
-
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
-
-      if (response.statusCode == 401) {
-        return null;
-      }
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && data['data'] != null) {
-        print('✅ [AdminService] 获取赞助详情成功');
-        return UserSponsorDetails.fromJson(data['data']);
-      } else {
-        print('❌ [AdminService] 获取赞助详情失败: ${data['message']}');
-        return null;
-      }
-    } catch (e) {
-      print('❌ [AdminService] 获取赞助详情异常: $e');
-      return null;
-    }
-  }
-
-  /// 更新用户赞助状态
-  Future<bool> updateSponsorStatus(int userId, bool isSponsor) async {
-    if (!_isAuthenticated || _adminToken == null) {
-      print('⚠️ [AdminService] 未登录，无法更新赞助状态');
-      return false;
-    }
-
-    print('👑 [AdminService] 更新用户赞助状态 ID: $userId, isSponsor: $isSponsor');
-
-    try {
-      final url = '${UrlService().baseUrl}/admin/sponsors/$userId';
-      final response = await http.put(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
-        body: jsonEncode({'isSponsor': isSponsor}),
-      );
-
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
-
-      if (response.statusCode == 401) {
-        return false;
-      }
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200) {
-        print('✅ [AdminService] 赞助状态已更新');
-        return true;
-      } else {
-        print('❌ [AdminService] 更新失败: ${data['message']}');
-        return false;
-      }
-    } catch (e) {
-      print('❌ [AdminService] 更新赞助状态异常: $e');
-      return false;
-    }
-  }
-
-  /// 手动添加赞助记录
-  Future<bool> addManualDonation(int userId, double amount, {String paymentType = 'manual'}) async {
-    if (!_isAuthenticated || _adminToken == null) {
-      print('⚠️ [AdminService] 未登录，无法添加赞助记录');
-      return false;
-    }
-
-    print('👑 [AdminService] 添加赞助记录 userId: $userId, amount: $amount');
-
-    try {
-      final url = '${UrlService().baseUrl}/admin/sponsors/$userId/donation';
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
-        body: jsonEncode({
-          'amount': amount,
-          'paymentType': paymentType,
-          'markAsPaid': true,
-        }),
-      );
-
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
-
-      if (response.statusCode == 401) {
-        return false;
-      }
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200) {
-        print('✅ [AdminService] 赞助记录已添加');
-        return true;
-      } else {
-        print('❌ [AdminService] 添加失败: ${data['message']}');
-        return false;
-      }
-    } catch (e) {
-      print('❌ [AdminService] 添加赞助记录异常: $e');
-      return false;
-    }
-  }
-
-  /// 删除赞助记录
-  Future<bool> deleteDonation(int donationId) async {
-    if (!_isAuthenticated || _adminToken == null) {
-      print('⚠️ [AdminService] 未登录，无法删除赞助记录');
-      return false;
-    }
-
-    print('👑 [AdminService] 删除赞助记录 ID: $donationId');
-
-    try {
-      final url = '${UrlService().baseUrl}/admin/donations/$donationId';
-      final response = await http.delete(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
-      );
-
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
-
-      if (response.statusCode == 401) {
-        return false;
-      }
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200) {
-        print('✅ [AdminService] 赞助记录已删除');
-        return true;
-      } else {
-        print('❌ [AdminService] 删除失败: ${data['message']}');
-        return false;
-      }
-    } catch (e) {
-      print('❌ [AdminService] 删除赞助记录异常: $e');
-      return false;
-    }
-  }
-
-  /// 获取赞助排行榜
-  Future<SponsorRankingData?> fetchSponsorRanking() async {
-    if (!_isAuthenticated || _adminToken == null) {
-      print('⚠️ [AdminService] 未登录，无法获取赞助排行榜');
-      return null;
-    }
-
-    print('👑 [AdminService] 获取赞助排行榜');
-
-    try {
-      final url = '${UrlService().baseUrl}/admin/sponsors/ranking';
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_adminToken',
-        },
-      );
-
-      print('📥 [AdminService] 状态码: ${response.statusCode}');
-
-      if (response.statusCode == 401) {
-        return null;
-      }
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && data['data'] != null) {
-        print('✅ [AdminService] 获取赞助排行榜成功');
-        return SponsorRankingData.fromJson(data['data']);
-      } else {
-        print('❌ [AdminService] 获取赞助排行榜失败: ${data['message']}');
-        return null;
-      }
-    } catch (e) {
-      print('❌ [AdminService] 获取赞助排行榜异常: $e');
-      return null;
     }
   }
 }
-

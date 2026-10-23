@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.graphics.*
 import android.widget.RemoteViews
 import android.graphics.BitmapFactory
@@ -14,6 +15,16 @@ import java.io.File
 import es.antonborri.home_widget.HomeWidgetPlugin
 
 class MusicWidgetSmall : AppWidgetProvider() {
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle
+    ) {
+        // The manager stores the new dimensions before delivering this callback.
+        onUpdate(context, appWidgetManager, intArrayOf(appWidgetId))
+    }
+
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
@@ -21,17 +32,31 @@ class MusicWidgetSmall : AppWidgetProvider() {
     ) {
         for (appWidgetId in appWidgetIds) {
             val widgetData = HomeWidgetPlugin.getData(context)
-            val title = widgetData.getString("title", "Not Playing")
-            val artist = widgetData.getString("artist", "Cyrene Music")
+            val rawTitle = widgetData.getString("title", "未在播放")
+            val title = if (rawTitle == "Not Playing" || rawTitle.isNullOrEmpty()) "未在播放" else rawTitle
+            val rawArtist = widgetData.getString("artist", "Cyrene Music")
+            val artist = if (rawArtist.isNullOrEmpty()) "Cyrene Music" else rawArtist
             val isPlaying = widgetData.getBoolean("isPlaying", false)
             val albumArtPath = widgetData.getString("albumArtPath", "")
             val artVersion = widgetData.getLong("art_version", 0L)
             
             val isEnabled = widgetData.getBoolean("isEnabled", true)
             
-            android.util.Log.d("MusicWidgetSmall", "🔄 更新小部件 (White Theme) ($appWidgetId): Title=$title, Artist=$artist, Playing=$isPlaying, Enabled=$isEnabled")
+            android.util.Log.d("MusicWidgetSmall", "🔄 更新小部件 ($appWidgetId): Title=$title, Artist=$artist, Playing=$isPlaying, Enabled=$isEnabled")
 
             val views = RemoteViews(context.packageName, R.layout.widget_music_small).apply {
+                val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
+                // Use the smallest advertised dimensions so both orientations fit,
+                // including launchers predating Android 12's responsive RemoteViews.
+                val width = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 128)
+                val height = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 140)
+                val fontScale = context.resources.configuration.fontScale.coerceAtLeast(1f)
+                val textHeight = kotlin.math.ceil((14 + 12) * fontScale * 1.4 + 2).toInt()
+                val textAndControlsHeight = 20 + 48 + 8 + textHeight
+                setViewVisibility(R.id.widget_prev, if (width >= 172) View.VISIBLE else View.GONE)
+                setViewVisibility(R.id.widget_badge, if (width >= 160) View.VISIBLE else View.GONE)
+                setViewVisibility(R.id.widget_header, if (height >= textAndControlsHeight + 54) View.VISIBLE else View.GONE)
+                setViewVisibility(R.id.widget_artist, if (height >= textAndControlsHeight) View.VISIBLE else View.GONE)
                 setTextViewText(R.id.widget_title, title)
                 setTextViewText(R.id.widget_artist, artist)
 
@@ -42,12 +67,17 @@ class MusicWidgetSmall : AppWidgetProvider() {
                 } else {
                     setViewVisibility(R.id.enabled_layout, View.GONE)
                     setViewVisibility(R.id.disabled_layout, View.VISIBLE)
-                    // 当禁用时，使用 title 作为提示文字
-                    setTextViewText(R.id.widget_disabled_text, title)
+                    setTextViewText(R.id.widget_disabled_text, context.getString(R.string.widget_enable_instructions))
                 }
 
                 // 播放/暂停图标
-                setImageViewResource(R.id.widget_play_pause, if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
+                setImageViewResource(
+                    R.id.widget_play_pause,
+                    if (isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play
+                )
+                setContentDescription(R.id.widget_play_pause, context.getString(
+                    if (isPlaying) R.string.widget_pause else R.string.widget_play
+                ))
 
                 // 专辑封面处理 (优化：使用 artVersion 识别内容变化)
                 if (albumArtPath?.isNotEmpty() == true) {
@@ -67,16 +97,16 @@ class MusicWidgetSmall : AppWidgetProvider() {
                                 lastArtVersion = artVersion
                                 setImageViewBitmap(R.id.widget_album_art, roundedBitmap)
                             } else {
-                                setImageViewResource(R.id.widget_album_art, R.drawable.ic_notification)
+                                setImageViewResource(R.id.widget_album_art, R.drawable.ic_widget_note)
                             }
                         } else {
-                            setImageViewResource(R.id.widget_album_art, R.drawable.ic_notification)
+                            setImageViewResource(R.id.widget_album_art, R.drawable.ic_widget_note)
                         }
                     }
                 } else {
                     lastArtVersion = -1L
                     lastBitmap = null
-                    setImageViewResource(R.id.widget_album_art, R.drawable.ic_notification)
+                    setImageViewResource(R.id.widget_album_art, R.drawable.ic_widget_note)
                 }
 
                 // 按钮点击事件
@@ -103,11 +133,11 @@ class MusicWidgetSmall : AppWidgetProvider() {
                 }
                 setOnClickPendingIntent(R.id.widget_next, PendingIntent.getBroadcast(context, 203, nextIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                 
-                // 点击封面图打开应用
+                // 点击封面图或信息区域打开应用
                 val appOpenIntent = Intent(context, MainActivity::class.java)
                 setOnClickPendingIntent(R.id.widget_album_art, PendingIntent.getActivity(context, 204, appOpenIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
-                // 点击信息区域打开应用
                 setOnClickPendingIntent(R.id.info_layout, PendingIntent.getActivity(context, 205, appOpenIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                setOnClickPendingIntent(R.id.disabled_layout, PendingIntent.getActivity(context, 206, appOpenIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
             }
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }

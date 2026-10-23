@@ -132,7 +132,7 @@ Environment variables such as `PORT`, `HOST`, and `KUGOU_API_PROXY` can be set (
 
 - `UrlService` (documented in `lib/services/README.md`) is the central abstraction for backend URLs:
   - Exposes a `baseUrl` and strongly‑typed per‑endpoint URLs (e.g. `searchUrl`, `songUrl`, `biliPlayurlUrl`, `qqSearchUrl`, `kugouSearchUrl`, `douyinUrl`, `versionLatestUrl`, etc.).
-  - Supports switching between an **official source** and a **custom source** that must implement the same OmniParse‑style API surface.
+  - Supports switching between an **official source** and a **custom source** that must implement the same Cyrene API surface.
   - Normalizes and validates URLs (trims trailing slashes, checks format) and notifies listeners when the base URL changes.
 - UI components typically depend on `UrlService` rather than hard‑coding paths, so changing the backend host or swapping in a compatible third‑party backend does not require code changes.
 - The settings UI (as described in `lib/services/README.md`) exposes a **Settings → Network → Backend Source** screen where users can:

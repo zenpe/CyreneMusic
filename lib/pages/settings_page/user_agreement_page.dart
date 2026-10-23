@@ -32,7 +32,6 @@ class UserAgreementPage extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context, bool isCupertino) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),

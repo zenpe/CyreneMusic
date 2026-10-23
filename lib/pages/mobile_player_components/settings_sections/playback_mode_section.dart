@@ -10,25 +10,25 @@ class PlaybackModeSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return AnimatedBuilder(
       animation: PlaybackModeService(),
       builder: (context, _) {
         final modeService = PlaybackModeService();
         final currentMode = modeService.currentMode;
-        
+
         // 获取当前选中索引
         final currentIndex = _getModeIndex(currentMode);
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withOpacity(isDark ? 0.6 : 0.8),
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: colorScheme.outlineVariant.withOpacity(0.3),
+                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -56,14 +56,14 @@ class PlaybackModeSection extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 18),
-                
+
                 // 分段选择器
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final totalWidth = constraints.maxWidth;
-                    final tabWidth = totalWidth / 3;
+                    final tabWidth = totalWidth / 4;
                     const height = 88.0;
-                    
+
                     return SizedBox(
                       height: height,
                       child: Stack(
@@ -82,7 +82,7 @@ class PlaybackModeSection extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(2),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: colorScheme.primary.withOpacity(0.4),
+                                    color: colorScheme.primary.withValues(alpha: 0.4),
                                     blurRadius: 8,
                                     offset: const Offset(0, 2),
                                   ),
@@ -95,7 +95,7 @@ class PlaybackModeSection extends StatelessWidget {
                             children: [
                               _buildModeItem(
                                 context: context,
-                                icon: Icons.repeat_rounded,
+                                icon: Icons.arrow_forward_rounded,
                                 label: '顺序',
                                 isSelected: currentMode == PlaybackMode.sequential,
                                 onTap: () => modeService.setMode(PlaybackMode.sequential),
@@ -103,10 +103,10 @@ class PlaybackModeSection extends StatelessWidget {
                               ),
                               _buildModeItem(
                                 context: context,
-                                icon: Icons.repeat_one_rounded,
-                                label: '单曲循环',
-                                isSelected: currentMode == PlaybackMode.repeatOne,
-                                onTap: () => modeService.setMode(PlaybackMode.repeatOne),
+                                icon: Icons.repeat_rounded,
+                                label: '循环',
+                                isSelected: currentMode == PlaybackMode.loopAll,
+                                onTap: () => modeService.setMode(PlaybackMode.loopAll),
                                 colorScheme: colorScheme,
                               ),
                               _buildModeItem(
@@ -115,6 +115,14 @@ class PlaybackModeSection extends StatelessWidget {
                                 label: '随机',
                                 isSelected: currentMode == PlaybackMode.shuffle,
                                 onTap: () => modeService.setMode(PlaybackMode.shuffle),
+                                colorScheme: colorScheme,
+                              ),
+                              _buildModeItem(
+                                context: context,
+                                icon: Icons.repeat_one_rounded,
+                                label: '单曲',
+                                isSelected: currentMode == PlaybackMode.repeatOne,
+                                onTap: () => modeService.setMode(PlaybackMode.repeatOne),
                                 colorScheme: colorScheme,
                               ),
                             ],
@@ -136,10 +144,12 @@ class PlaybackModeSection extends StatelessWidget {
     switch (mode) {
       case PlaybackMode.sequential:
         return 0;
-      case PlaybackMode.repeatOne:
+      case PlaybackMode.loopAll:
         return 1;
       case PlaybackMode.shuffle:
         return 2;
+      case PlaybackMode.repeatOne:
+        return 3;
     }
   }
 
@@ -176,7 +186,7 @@ class PlaybackModeSection extends StatelessWidget {
                           end: Alignment.bottomRight,
                           colors: [
                             colorScheme.primaryContainer,
-                            colorScheme.primaryContainer.withOpacity(0.7),
+                            colorScheme.primaryContainer.withValues(alpha: 0.7),
                           ],
                         )
                       : null,
@@ -185,7 +195,7 @@ class PlaybackModeSection extends StatelessWidget {
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color: colorScheme.primary.withOpacity(0.2),
+                            color: colorScheme.primary.withValues(alpha: 0.2),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -196,7 +206,7 @@ class PlaybackModeSection extends StatelessWidget {
                   icon,
                   color: isSelected
                       ? colorScheme.onPrimaryContainer
-                      : colorScheme.onSurfaceVariant.withOpacity(0.7),
+                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   size: 24,
                 ),
               ),
@@ -208,7 +218,7 @@ class PlaybackModeSection extends StatelessWidget {
                 style: TextStyle(
                   color: isSelected
                       ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant.withOpacity(0.7),
+                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   fontSize: isSelected ? 13 : 12,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 ),

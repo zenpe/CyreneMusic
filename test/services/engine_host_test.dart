@@ -1,0 +1,708 @@
+import 'dart:async';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:just_audio/just_audio.dart' as ja;
+
+import 'package:cyrene_music/services/playback/audio_engine.dart';
+import 'package:cyrene_music/services/playback/engine_event.dart';
+import 'package:cyrene_music/services/playback/engine_host.dart';
+import 'package:cyrene_music/services/playback/playable_source.dart';
+
+void main() {
+  test(
+    'failed prepared activation reconciles a disposed native player',
+    () async {
+      final engine = FakeEngine();
+      final host = EngineHost(engineFactory: () => engine);
+      try {
+        await host.play('a', generation: 1);
+        engine.isPlaying = true;
+        engine.emitState(EngineState.playing);
+        await Future<void>.delayed(Duration.zero);
+        expect(host.isPlaying, isTrue);
+        engine.activationResult = false;
+        engine.stopOnFailedActivation = true;
+        expect(
+          await host.activatePreparedSlot(
+            'next',
+            generation: 2,
+            queueRevision: 1,
+          ),
+          isFalse,
+        );
+        expect(host.isPlaying, isFalse);
+        expect(host.canResumeSource(1), isFalse);
+      } finally {
+        await host.dispose();
+      }
+    },
+  );
+  for (final milliseconds in [486, 1320]) {
+    test(
+      'short nonzero load budget preserves the old source ($milliseconds)',
+      () async {
+        final engine = FakeEngine();
+        final host = EngineHost(engineFactory: () => engine);
+        try {
+          await host.play('a', generation: 1);
+          final wasPlaying = host.isPlaying;
+          await expectLater(
+            host.playSource(
+              const DirectHttpPlayableSource('https://example.test/b.mp3'),
+              generation: 2,
+              loadTimeout: Duration(milliseconds: milliseconds),
+            ),
+            throwsA(isA<EngineReportedException>()),
+          );
+          expect(engine.playedUrls, ['a']);
+          expect(host.canResumeSource(1), isTrue);
+          expect(host.isPlaying, wasPlaying);
+        } finally {
+          await host.dispose();
+        }
+      },
+    );
+  }
+  test(
+    'expired prepared activation does not touch the existing source',
+    () async {
+      final engine = FakeEngine();
+      final host = EngineHost(engineFactory: () => engine);
+      await host.play('a', generation: 1);
+      expect(
+        await host.activatePreparedSlot(
+          'b',
+          generation: 2,
+          queueRevision: 1,
+          loadTimeout: Duration.zero,
+        ),
+        isFalse,
+      );
+      expect(engine.activatedKeys, isEmpty);
+      expect(host.canResumeSource(1), isTrue);
+      await host.dispose();
+    },
+  );
+  test('expired load budget leaves the existing source resumable', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    await host.play('a', generation: 1);
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+    await expectLater(
+      host.play('b', generation: 2, loadTimeout: Duration.zero),
+      throwsA(isA<EngineReportedException>()),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(engine.playedUrls, ['a']);
+    expect(host.canResumeSource(1), isTrue);
+    expect(host.canResumeSource(2), isFalse);
+    expect(events.whereType<EngineFailureEvent>().single.epoch, 2);
+    await subscription.cancel();
+    await host.dispose();
+  });
+
+  test(
+    'queue expiry never starts native loading or discards the old source',
+    () async {
+      final engine = FakeEngine();
+      final host = EngineHost(engineFactory: () => engine);
+      final gate = Completer<void>();
+      engine.playGate = gate;
+      final first = host.play('a', generation: 1);
+      await Future<void>.delayed(Duration.zero);
+      final queued = host.play(
+        'b',
+        generation: 2,
+        loadTimeout: const Duration(milliseconds: 10),
+      );
+      final result = expectLater(
+        queued,
+        throwsA(isA<EngineReportedException>()),
+      );
+      expect(host.canResumeSource(1), isFalse);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      gate.complete();
+      await first;
+      await result;
+      expect(engine.playedUrls, ['a']);
+      expect(host.canResumeSource(1), isTrue);
+      await host.dispose();
+    },
+  );
+
+  test(
+    'current failure reconciles playing snapshot; old failure cannot',
+    () async {
+      final engine = FakeEngine();
+      final host = EngineHost(engineFactory: () => engine);
+      await host.play('a', generation: 2);
+      engine.isPlaying = true;
+      engine.emitState(EngineState.playing);
+      await Future<void>.delayed(Duration.zero);
+      expect(host.isPlaying, isTrue);
+      engine.isPlaying = false;
+      engine.emitError(
+        const EngineError(
+          type: EngineErrorType.networkTimeout,
+          message: 'old timeout',
+          epoch: 1,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(host.isPlaying, isTrue);
+      engine.emitError(
+        const EngineError(
+          type: EngineErrorType.networkTimeout,
+          message: 'current timeout',
+          epoch: 2,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(host.isPlaying, isFalse);
+      await host.dispose();
+    },
+  );
+
+  test('单一 engine 的错误保留源头 epoch，供协调器丢弃旧事件', () async {
+    final engines = <FakeEngine>[];
+    final host = EngineHost(
+      engineFactory: () {
+        final engine = FakeEngine();
+        engines.add(engine);
+        return engine;
+      },
+    );
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+
+    await host.play('a', generation: 1);
+    await host.play('b', generation: 2);
+    final engine = engines.single;
+
+    engine.emitError(
+      const EngineError(
+        type: EngineErrorType.sourceLoad,
+        message: 'late old error',
+        retriable: true,
+        epoch: 1,
+      ),
+    );
+    engine.emitError(
+      const EngineError(
+        type: EngineErrorType.sourceLoad,
+        message: 'current error',
+        retriable: true,
+        epoch: 2,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    final failures = events.whereType<EngineFailureEvent>().toList();
+    expect(failures, hasLength(2));
+    expect(failures.map((event) => event.epoch), [1, 2]);
+    expect(failures.last.error.message, 'current error');
+
+    await subscription.cancel();
+    await host.dispose();
+  });
+
+  test('排队中的切歌只执行最新 generation', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+
+    final first = host.play('a', generation: 1);
+    await Future<void>.delayed(Duration.zero);
+    final second = host.play('b', generation: 2);
+    final third = host.play('c', generation: 3);
+
+    gate.complete();
+    await Future.wait([first, second, third]);
+
+    expect(engine.playedUrls, ['a', 'c']);
+    await host.dispose();
+  });
+
+  test('stop invalidates a source load that has not started', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+
+    final active = host.play('a', generation: 1);
+    await Future<void>.delayed(Duration.zero);
+    final queued = host.play('b', generation: 2);
+    final stop = host.stop();
+
+    gate.complete();
+    await Future.wait([active, queued, stop]);
+
+    expect(engine.playedUrls, ['a']);
+    expect(engine.stopCount, 1);
+    await host.dispose();
+  });
+
+  test('forwards the source load deadline to the native engine', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+
+    await host.play(
+      'a',
+      generation: 1,
+      loadTimeout: const Duration(seconds: 4),
+    );
+
+    expect(engine.loadTimeouts.single, greaterThan(Duration.zero));
+    expect(
+      engine.loadTimeouts.single,
+      lessThanOrEqualTo(const Duration(seconds: 4)),
+    );
+    await host.dispose();
+  });
+
+  test('排队中的音量写入会合并为最后一个值', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+
+    final play = host.play('a', generation: 1);
+    await Future<void>.delayed(Duration.zero);
+    final firstVolume = host.setVolume(0.2);
+    final lastVolume = host.setVolume(0.8);
+
+    gate.complete();
+    await Future.wait([play, firstVolume, lastVolume]);
+
+    expect(engine.volumeWrites, [0.8]);
+    await host.dispose();
+  });
+
+  test(
+    'queued load consumes its budget while waiting for native writes',
+    () async {
+      final engine = FakeEngine();
+      final host = EngineHost(engineFactory: () => engine);
+      final gate = Completer<void>();
+      engine.playGate = gate;
+      final first = host.play('a', generation: 1);
+      final second = host.play(
+        'b',
+        generation: 2,
+        loadTimeout: const Duration(milliseconds: 20),
+      );
+      final failed = expectLater(
+        second,
+        throwsA(isA<EngineReportedException>()),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      gate.complete();
+      await first;
+      await failed;
+      expect(engine.playedUrls, ['a']);
+      await host.dispose();
+    },
+  );
+
+  test('a newer manual load discards queued obsolete preloading', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+    final first = host.play('a', generation: 1);
+    final preload = host.preparePlaybackWindow(
+      PreparedPlaybackWindow(
+        current: _slot('current', 1),
+        next: _slot('next', 1),
+      ),
+    );
+    final second = host.play('b', generation: 2);
+    gate.complete();
+    await Future.wait([first, preload, second]);
+    expect(engine.preparedWindows, isEmpty);
+    expect(engine.playedUrls, ['a', 'b']);
+    await host.dispose();
+  });
+
+  test('new source discards stale queued binding and invalidation', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+    final first = host.play('a', generation: 1);
+    final binding = host.bindCurrentPreparedSlot(_slot('current', 1));
+    final invalidation = host.invalidatePreparedSlots();
+    final latest = host.play('b', generation: 2);
+    gate.complete();
+    await Future.wait([first, binding, invalidation, latest]);
+    expect(engine.boundSlots, isEmpty);
+    expect(engine.invalidations, 0);
+    expect(engine.playedUrls, ['a', 'b']);
+    await host.invalidatePreparedSlots();
+    expect(engine.invalidations, 1);
+    await host.dispose();
+  });
+
+  test('预备窗口通过 EngineHost 写队列串行执行', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+    final slot = _slot('current', 1);
+
+    final play = host.play('a', generation: 1);
+    await Future<void>.delayed(Duration.zero);
+    final prepare = host.preparePlaybackWindow(
+      PreparedPlaybackWindow(current: slot, next: _slot('next', 1)),
+    );
+
+    expect(engine.preparedWindows, isEmpty);
+    gate.complete();
+    await Future.wait([play, prepare]);
+    expect(engine.preparedWindows, hasLength(1));
+    await host.dispose();
+  });
+
+  test('原生当前 source 变化通过 EngineHost 保留 active epoch', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+
+    await host.play('a', generation: 7);
+    engine.emitCurrentSourceKey('next');
+    await Future<void>.delayed(Duration.zero);
+
+    final sourceChanges = events
+        .whereType<EngineSourceCommittedEvent>()
+        .toList();
+    expect(sourceChanges, hasLength(1));
+    expect(sourceChanges.single.epoch, 7);
+    expect(sourceChanges.single.key, 'next');
+
+    await subscription.cancel();
+    await host.dispose();
+  });
+
+  test('原生自然切歌采用预分配 generation', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+
+    await host.play('a', generation: 1);
+    engine.emitCurrentSourceKey('next', generation: 2);
+    await Future<void>.delayed(Duration.zero);
+
+    final sourceChanges = events
+        .whereType<EngineSourceCommittedEvent>()
+        .toList();
+    expect(sourceChanges, hasLength(1));
+    expect(sourceChanges.single.epoch, 2);
+    expect(sourceChanges.single.key, 'next');
+
+    await subscription.cancel();
+    await host.dispose();
+  });
+
+  test('旧 prepared source 不能覆盖更新的加载请求', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+
+    await host.play('a', generation: 1);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+    final newerRequest = host.play('c', generation: 3);
+    await Future<void>.delayed(Duration.zero);
+
+    engine.emitCurrentSourceKey('stale-next', generation: 2);
+    await Future<void>.delayed(Duration.zero);
+    expect(events.whereType<EngineSourceCommittedEvent>(), isEmpty);
+
+    gate.complete();
+    await newerRequest;
+    await subscription.cancel();
+    await host.dispose();
+  });
+
+  test('排队中的 prepared 激活只执行最新 generation', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final gate = Completer<void>();
+    engine.playGate = gate;
+
+    final play = host.play('a', generation: 1);
+    await Future<void>.delayed(Duration.zero);
+    final stale = host.activatePreparedSlot(
+      'b',
+      generation: 2,
+      queueRevision: 1,
+    );
+    final latest = host.activatePreparedSlot(
+      'c',
+      generation: 3,
+      queueRevision: 1,
+    );
+
+    gate.complete();
+    await Future.wait([play, stale, latest]);
+    expect(engine.activatedKeys, ['c']);
+    await host.dispose();
+  });
+
+  test('prepared 激活期间提交的 source 使用新 generation', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+
+    await host.play('a', generation: 1);
+    engine.sourceKeyOnActivation = 'b';
+
+    expect(
+      await host.activatePreparedSlot('b', generation: 2, queueRevision: 1),
+      isTrue,
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    final sourceChanges = events
+        .whereType<EngineSourceCommittedEvent>()
+        .toList();
+    expect(sourceChanges, hasLength(1));
+    expect(sourceChanges.single.epoch, 2);
+    expect(sourceChanges.single.key, 'b');
+
+    await subscription.cancel();
+    await host.dispose();
+  });
+
+  test('prepared 激活失败后恢复原 active epoch', () async {
+    final engine = FakeEngine();
+    final host = EngineHost(engineFactory: () => engine);
+    final events = <EngineEvent>[];
+    final subscription = host.events.listen(events.add);
+
+    await host.play('a', generation: 4);
+    engine.activationResult = false;
+
+    expect(
+      await host.activatePreparedSlot('b', generation: 5, queueRevision: 1),
+      isFalse,
+    );
+    engine.emitCurrentSourceKey('a');
+    await Future<void>.delayed(Duration.zero);
+
+    final sourceChanges = events
+        .whereType<EngineSourceCommittedEvent>()
+        .toList();
+    expect(sourceChanges, hasLength(1));
+    expect(sourceChanges.single.epoch, 4);
+    expect(sourceChanges.single.key, 'a');
+
+    await subscription.cancel();
+    await host.dispose();
+  });
+}
+
+PreparedPlaybackSlot _slot(String key, int queueRevision) =>
+    PreparedPlaybackSlot(
+      key: key,
+      source: LocalFilePlayableSource('$key.mp3'),
+      expiresAt: DateTime.now().add(const Duration(minutes: 1)),
+      queueRevision: queueRevision,
+      generation: key == 'current' ? 1 : 2,
+      preparedFromGeneration: 1,
+      queueEntryId: key == 'current' ? 1 : 2,
+      trackKey: key,
+      nonce: key == 'current' ? 1 : 2,
+    );
+
+class FakeEngine implements AudioEngine {
+  @override
+  bool canResumeSource(int generation) => generation == activeGeneration;
+  @override
+  Stream<EngineSourceCommit> get sourceCommitStream => _sourceKeys.stream;
+  final _position = StreamController<Duration>.broadcast();
+  final _duration = StreamController<Duration>.broadcast();
+  final _bufferedPosition = StreamController<Duration>.broadcast();
+  final _state = StreamController<EngineState>.broadcast();
+  final _completion = StreamController<bool>.broadcast();
+  final _errors = StreamController<EngineError>.broadcast();
+  final _sourceKeys = StreamController<EngineSourceCommit>.broadcast();
+  final List<String> playedUrls = <String>[];
+  final List<Duration?> loadTimeouts = <Duration?>[];
+  final List<double> volumeWrites = <double>[];
+  final List<PreparedPlaybackWindow> preparedWindows =
+      <PreparedPlaybackWindow>[];
+  final List<String> activatedKeys = <String>[];
+  final List<PreparedPlaybackSlot> boundSlots = [];
+  int invalidations = 0;
+  Completer<void>? playGate;
+  bool activationResult = true;
+  bool stopOnFailedActivation = false;
+  String? sourceKeyOnActivation;
+  int activeGeneration = 0;
+  int stopCount = 0;
+
+  @override
+  Duration duration = Duration.zero;
+
+  @override
+  Duration position = Duration.zero;
+
+  @override
+  Duration bufferedPosition = Duration.zero;
+
+  @override
+  bool isPlaying = false;
+
+  @override
+  double playbackSpeed = 1.0;
+
+  @override
+  EngineStartupTiming? get lastStartupTiming => null;
+
+  @override
+  Stream<Duration> get positionStream => _position.stream;
+
+  @override
+  Stream<Duration> get durationStream => _duration.stream;
+
+  @override
+  Stream<Duration> get bufferedPositionStream => _bufferedPosition.stream;
+
+  @override
+  Stream<EngineState> get stateStream => _state.stream;
+
+  @override
+  Stream<bool> get completionStream => _completion.stream;
+
+  @override
+  Stream<EngineError> get errorStream => _errors.stream;
+
+  @override
+  Future<void> play(
+    String url, {
+    required int generation,
+    bool isLocal = false,
+    Map<String, String>? headers,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    bool preload = true,
+    Duration? loadTimeout,
+  }) async {
+    activeGeneration = generation;
+    playedUrls.add(url);
+    loadTimeouts.add(loadTimeout);
+    final gate = playGate;
+    playGate = null;
+    await gate?.future;
+  }
+
+  @override
+  Future<void> playAudioSource(
+    ja.AudioSource source, {
+    required int generation,
+    String? sourceUrl,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    bool preload = true,
+    Duration? loadTimeout,
+  }) async {}
+
+  @override
+  Future<void> playSource(
+    PlayableSource source, {
+    required int generation,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    bool preload = true,
+    Duration? loadTimeout,
+  }) async {}
+
+  @override
+  Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) async {
+    preparedWindows.add(window);
+  }
+
+  @override
+  Future<bool> activatePreparedSlot(
+    String key, {
+    required int generation,
+    required int queueRevision,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    Duration? loadTimeout,
+  }) async {
+    activatedKeys.add(key);
+    if (activationResult) activeGeneration = generation;
+    if (!activationResult && stopOnFailedActivation) {
+      isPlaying = false;
+      activeGeneration = 0;
+    }
+    final sourceKey = sourceKeyOnActivation;
+    if (sourceKey != null) {
+      _sourceKeys.add(
+        EngineSourceCommit(key: sourceKey, generation: generation),
+      );
+    }
+    return activationResult;
+  }
+
+  @override
+  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) async {
+    boundSlots.add(slot);
+  }
+
+  @override
+  Future<void> invalidatePreparedSlots() async {
+    invalidations++;
+  }
+
+  @override
+  Future<void> pause() async {}
+
+  @override
+  Future<void> resume() async {}
+
+  @override
+  Future<void> seek(Duration position) async {}
+
+  @override
+  Future<void> stop() async {
+    stopCount++;
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {
+    volumeWrites.add(volume);
+  }
+
+  @override
+  Future<void> setPlaybackSpeed(double speed) async {
+    playbackSpeed = speed;
+  }
+
+  void emitError(EngineError error) => _errors.add(error);
+  void emitState(EngineState state) => _state.add(state);
+
+  void emitCurrentSourceKey(String key, {int? generation}) => _sourceKeys.add(
+    EngineSourceCommit(key: key, generation: generation ?? activeGeneration),
+  );
+
+  @override
+  Future<void> dispose() async {
+    // Intentionally leave the error controller open: a native callback can
+    // arrive after dispose, which is the race EngineHost must isolate.
+    await _position.close();
+    await _duration.close();
+    await _bufferedPosition.close();
+    await _state.close();
+    await _completion.close();
+    await _sourceKeys.close();
+  }
+}

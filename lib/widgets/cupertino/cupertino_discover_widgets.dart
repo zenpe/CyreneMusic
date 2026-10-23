@@ -2,7 +2,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/netease_discover.dart';
+import '../../utils/image_utils.dart';
 import '../../utils/theme_manager.dart';
+import '../discover_playlist_card_layout.dart';
 
 /// iOS 风格的歌单卡片
 class CupertinoDiscoverPlaylistCard extends StatelessWidget {
@@ -27,7 +29,7 @@ class CupertinoDiscoverPlaylistCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: CupertinoColors.black.withOpacity(isDark ? 0.3 : 0.05),
+              color: CupertinoColors.black.withValues(alpha: isDark ? 0.3 : 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -46,7 +48,10 @@ class CupertinoDiscoverPlaylistCard extends StatelessWidget {
                   children: [
                     CachedNetworkImage(
                       imageUrl: summary.coverImgUrl,
+                      httpHeaders: getImageHeaders(summary.coverImgUrl),
                       fit: BoxFit.cover,
+                      memCacheWidth: 280,
+                      memCacheHeight: 280,
                       placeholder: (context, url) => Container(
                         color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey6,
                         child: const CupertinoActivityIndicator(),
@@ -63,7 +68,7 @@ class CupertinoDiscoverPlaylistCard extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: CupertinoColors.black.withOpacity(0.6),
+                          color: CupertinoColors.black.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Row(
@@ -94,11 +99,8 @@ class CupertinoDiscoverPlaylistCard extends StatelessWidget {
                       summary.name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                      style: DiscoverPlaylistCardLayout.cupertinoTitle.copyWith(
                         color: isDark ? CupertinoColors.white : CupertinoColors.black,
-                        height: 1.2,
                       ),
                     ),
                     const Spacer(),
@@ -106,8 +108,7 @@ class CupertinoDiscoverPlaylistCard extends StatelessWidget {
                       summary.creatorNickname,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
+                      style: DiscoverPlaylistCardLayout.cupertinoCreator.copyWith(
                         color: CupertinoColors.systemGrey,
                       ),
                     ),
@@ -145,17 +146,16 @@ class CupertinoTagSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: ThemeManager.iosBlue.withOpacity(0.1),
+          color: ThemeManager.iosBlue.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: ThemeManager.iosBlue.withOpacity(0.3),
+            color: ThemeManager.iosBlue.withValues(alpha: 0.3),
             width: 1,
           ),
         ),

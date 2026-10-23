@@ -1,6 +1,6 @@
+import '../../widgets/floating_playback_insets.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../utils/image_utils.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'dart:io';
 import 'package:flutter/services.dart';
@@ -8,6 +8,7 @@ import 'package:flutter_acrylic/flutter_acrylic.dart';
 import '../../services/player_service.dart';
 import '../../services/playlist_queue_service.dart';
 import '../../models/track.dart';
+import '../../utils/image_utils.dart';
 import '../../utils/theme_manager.dart';
 
 /// 每日推荐详情页
@@ -237,7 +238,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
                         ),
                       ),
                 // 底部留白
-                const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 100)),
               ],
             ),
           );
@@ -251,39 +252,64 @@ class DailyRecommendDetailPage extends StatelessWidget {
 
   /// 空状态
   Widget _buildEmptyState(ColorScheme cs) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(28),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(32),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 220;
+        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(compact ? 18 : 28),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(compact ? 24 : 32),
+                      ),
+                      child: Icon(
+                        Icons.music_off_rounded,
+                        size: compact ? 52 : 64,
+                        color: cs.onSurface.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    SizedBox(height: compact ? 14 : 24),
+                    Text(
+                      '暂无推荐',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: cs.onSurface.withValues(alpha: 0.7),
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '稍后再来看看吧',
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: cs.onSurface.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            child: Icon(Icons.music_off_rounded, size: 64, color: cs.onSurface.withOpacity(0.4)),
           ),
-          const SizedBox(height: 24),
-          Text(
-            '暂无推荐',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: cs.onSurface.withOpacity(0.7),
-              letterSpacing: -0.3,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '稍后再来看看吧',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: cs.onSurface.withOpacity(0.5),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -321,11 +347,11 @@ class DailyRecommendDetailPage extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHigh.withOpacity(0.8),
+        color: cs.surfaceContainerHigh.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -354,7 +380,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
                   '根据你的口味生成，每日6:00更新',
                   style: TextStyle(
                     fontSize: 12,
-                    color: cs.onSurface.withOpacity(0.6),
+                    color: cs.onSurface.withValues(alpha: 0.6),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -375,12 +401,12 @@ class DailyRecommendDetailPage extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [cs.primary, cs.primary.withOpacity(0.7)],
+          colors: [cs.primary, cs.primary.withValues(alpha: 0.7)],
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: cs.primary.withOpacity(0.3),
+            color: cs.primary.withValues(alpha: 0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -405,7 +431,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: cs.onPrimary.withOpacity(0.9),
+                color: cs.onPrimary.withValues(alpha: 0.9),
               ),
             ),
           ],
@@ -430,13 +456,13 @@ class DailyRecommendDetailPage extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             cs.surfaceContainerHigh,
-            cs.surfaceContainerHighest.withOpacity(0.8),
+            cs.surfaceContainerHighest.withValues(alpha: 0.8),
           ],
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -469,7 +495,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
                 '点击歌曲开始播放',
                 style: TextStyle(
                   fontSize: 12,
-                  color: cs.onSurface.withOpacity(0.6),
+                  color: cs.onSurface.withValues(alpha: 0.6),
                 ),
               ),
             ],
@@ -514,7 +540,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -537,7 +563,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
@@ -550,6 +576,8 @@ class DailyRecommendDetailPage extends StatelessWidget {
                           httpHeaders: getImageHeaders(picUrl),
                           width: 56,
                           height: 56,
+                          memCacheWidth: 128,
+                          memCacheHeight: 128,
                           fit: BoxFit.cover,
                           placeholder: (context, url) => Container(
                             width: 56,
@@ -567,7 +595,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
                             width: 56,
                             height: 56,
                             color: cs.surfaceContainerHighest,
-                            child: Icon(Icons.music_note, size: 24, color: cs.onSurface.withOpacity(0.3)),
+                            child: Icon(Icons.music_note, size: 24, color: cs.onSurface.withValues(alpha: 0.3)),
                           ),
                         ),
                       ),
@@ -621,7 +649,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 13,
-                          color: cs.onSurfaceVariant.withOpacity(0.8),
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.8),
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -650,111 +678,6 @@ class DailyRecommendDetailPage extends StatelessWidget {
   }
 
   /// 构建歌曲列表项
-  Widget _buildTrackTile(
-    BuildContext context,
-    Map<String, dynamic> song,
-    int index,
-  ) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final album = (song['al'] ?? song['album'] ?? {}) as Map<String, dynamic>;
-    final artists = (song['ar'] ?? song['artists'] ?? []) as List<dynamic>;
-    final picUrl = (album['picUrl'] ?? '').toString();
-    final artistsText = artists
-        .map((e) => (e as Map<String, dynamic>)['name']?.toString() ?? '')
-        .where((e) => e.isNotEmpty)
-        .join(' / ');
-    final songName = song['name']?.toString() ?? '';
-    final songId = song['id'];
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8.0),
-      color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => _playSong(context, song, index),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
-            children: [
-              // 序号
-              SizedBox(
-                width: 32,
-                child: Text(
-                  '${index + 1}',
-                  style: TextStyle(
-                    color: colorScheme.onSurface.withOpacity(0.6),
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(width: 12),
-              // 封面
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(
-                  imageUrl: picUrl,
-                  httpHeaders: getImageHeaders(picUrl),
-                  width: 56,
-                  height: 56,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    color: colorScheme.surfaceContainerHighest,
-                    child: Icon(
-                      Icons.music_note,
-                      color: colorScheme.onSurface.withOpacity(0.3),
-                    ),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    color: colorScheme.surfaceContainerHighest,
-                    child: Icon(
-                      Icons.broken_image,
-                      color: colorScheme.onSurface.withOpacity(0.3),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              // 歌曲信息
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      songName,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurface,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      artistsText,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: colorScheme.onSurface.withOpacity(0.6),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              // 操作按钮
-              IconButton(
-                icon: const Icon(Icons.more_vert),
-                onPressed: () => _showTrackMenu(context, song),
-                tooltip: '更多',
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   /// 播放单曲
   void _playSong(
@@ -984,7 +907,7 @@ class _FluentDailyRecommendPage extends StatelessWidget {
     final resources = theme.resources;
 
     final homeStyle =
-        (typography?.subtitle ??
+        (typography.subtitle ??
                 const TextStyle(fontSize: 26, fontWeight: FontWeight.w600))
             .copyWith(
               fontSize: 26,
@@ -993,7 +916,7 @@ class _FluentDailyRecommendPage extends StatelessWidget {
             );
 
     final crumbBaseStyle =
-        (typography?.body ??
+        (typography.body ??
                 const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))
             .copyWith(
               fontSize: 16,
@@ -1118,6 +1041,8 @@ class _FluentDailyRecommendPage extends StatelessWidget {
               httpHeaders: getImageHeaders(picUrl),
               width: 48,
               height: 48,
+              memCacheWidth: 128,
+              memCacheHeight: 128,
               fit: BoxFit.cover,
               placeholder: (context, url) => Container(
                 width: 48,

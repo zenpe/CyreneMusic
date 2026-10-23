@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import '../models/playlist.dart';
 import 'playlist_service.dart';
-import 'url_service.dart';
-import 'auth_service.dart';
+import 'api/api_client.dart';
 
 enum MusicTasteMode {
   professional,
@@ -104,7 +102,7 @@ class MusicTasteService extends ChangeNotifier {
     try {
       // 获取所有歌曲
       final tracks = await getTracksFromPlaylists(playlists);
-      
+
       if (tracks.isEmpty) {
         _error = '选中的歌单中没有歌曲';
         _isLoading = false;
@@ -130,38 +128,22 @@ class MusicTasteService extends ChangeNotifier {
     required MusicTasteMode mode,
   }) async {
     try {
-      final baseUrl = UrlService().baseUrl;
-      final token = AuthService().token;
-      
-      if (token == null) {
-        throw Exception('未登录，请先登录');
-      }
-
-      final request = http.Request(
-        'POST',
-        Uri.parse('$baseUrl/music-taste/generate'),
+      final response = await ApiClient().requestStream(
+        '/music-taste/generate',
+        method: 'POST',
+        data: {
+          'tracks': _tracksToApiFormat(tracks),
+          'mode': mode.apiValue,
+        },
+        contentType: 'application/json',
       );
 
-      request.headers.addAll({
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      });
-
-      request.body = json.encode({
-        'tracks': _tracksToApiFormat(tracks),
-        'mode': mode.apiValue,
-      });
-
-      final client = http.Client();
-      final response = await client.send(request);
-
       if (response.statusCode != 200) {
-        final body = await response.stream.bytesToString();
-        throw Exception('API 请求失败: ${response.statusCode} - $body');
+        throw Exception('API 请求失败: ${response.statusCode}');
       }
 
       // 处理流式响应
-      await for (final chunk in response.stream.transform(utf8.decoder)) {
+      await for (final chunk in utf8.decoder.bind(response.data!.stream)) {
         // SSE 格式：每行以 "data: " 开头
         final lines = chunk.split('\n');
         for (final line in lines) {
@@ -173,7 +155,7 @@ class MusicTasteService extends ChangeNotifier {
               notifyListeners();
               break;
             }
-            
+
             try {
               final jsonData = json.decode(data) as Map<String, dynamic>;
               final choices = jsonData['choices'] as List<dynamic>?;
@@ -194,7 +176,6 @@ class MusicTasteService extends ChangeNotifier {
         }
       }
 
-      client.close();
       _isStreaming = false;
       _isLoading = false;
       notifyListeners();
@@ -219,39 +200,29 @@ class MusicTasteService extends ChangeNotifier {
 
     // 获取所有歌曲
     final tracks = await getTracksFromPlaylists(playlists);
-    
+
     if (tracks.isEmpty) {
       throw Exception('选中的歌单中没有歌曲');
     }
 
-    final baseUrl = UrlService().baseUrl;
-    final token = AuthService().token;
-    
-    if (token == null) {
-      throw Exception('未登录，请先登录');
-    }
-
     // 调用后端 API
-    final response = await http.post(
-      Uri.parse('$baseUrl/music-taste/generate-sync'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: json.encode({
+    final result = await ApiClient().postJson(
+      '/music-taste/generate-sync',
+      data: {
         'tracks': _tracksToApiFormat(tracks),
         'mode': mode.apiValue,
-      }),
-    ).timeout(const Duration(minutes: 2));
+      },
+      timeout: const Duration(minutes: 2),
+    );
 
-    if (response.statusCode != 200) {
-      throw Exception('API 请求失败: ${response.statusCode}');
+    if (!result.ok) {
+      throw Exception('API 请求失败: ${result.statusCode}');
     }
 
-    final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-    
-    if (data['code'] != 200) {
-      throw Exception(data['message'] ?? 'API 请求失败');
+    final data = result.data as Map<String, dynamic>?;
+
+    if (data == null || data['code'] != 200) {
+      throw Exception(data?['message'] ?? 'API 请求失败');
     }
 
     final content = data['data']?['content'] as String?;

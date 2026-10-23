@@ -1,10 +1,13 @@
-import 'dart:ui';
+import '../../services/structured_log_service.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/player_service.dart';
 import '../../services/playlist_queue_service.dart';
+import '../../services/playback/playback_service.dart';
 import '../../services/netease_artist_service.dart';
+import '../../utils/image_utils.dart';
 import '../../models/track.dart';
+import '../../widgets/track_action_menu.dart';
 
 /// 流体云专用播放队列面板
 /// 对标 Apple Music 设计：无边框、半透明、大封面、沉浸式体验
@@ -13,12 +16,14 @@ class PlayerFluidCloudQueuePanel extends StatefulWidget {
   const PlayerFluidCloudQueuePanel({super.key});
 
   @override
-  State<PlayerFluidCloudQueuePanel> createState() => _PlayerFluidCloudQueuePanelState();
+  State<PlayerFluidCloudQueuePanel> createState() =>
+      _PlayerFluidCloudQueuePanelState();
 }
 
-class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel> {
+class _PlayerFluidCloudQueuePanelState
+    extends State<PlayerFluidCloudQueuePanel> {
   final ScrollController _scrollController = ScrollController();
-  
+
   // 歌手相关歌曲推荐
   List<Track> _artistSongs = [];
   bool _artistSongsLoading = false;
@@ -46,7 +51,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
   /// 加载当前歌手的其他歌曲
   Future<void> _loadArtistSongs() async {
     final currentTrack = PlayerService().currentTrack;
-    
+
     // 仅对网易云音源生效
     if (currentTrack == null || currentTrack.source != MusicSource.netease) {
       if (_artistSongs.isNotEmpty) {
@@ -76,8 +81,12 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
       // 1. 先通过歌手名获取歌手ID
       int? artistId = _lastArtistId;
       if (artistName != _lastArtistName) {
-        artistId = await NeteaseArtistDetailService().resolveArtistIdByName(artistName);
-        print('🎤 [QueuePanel] 搜索歌手 "$artistName" -> ID: $artistId');
+        artistId = await NeteaseArtistDetailService().resolveArtistIdByName(
+          artistName,
+        );
+        StructuredLogService.log(
+          '🎤 [QueuePanel] 搜索歌手 "$artistName" -> ID: $artistId',
+        );
       }
 
       if (artistId == null) {
@@ -91,7 +100,9 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
       }
 
       // 2. 获取歌手详情（包含歌曲列表）
-      final artistDetail = await NeteaseArtistDetailService().fetchArtistDetail(artistId);
+      final artistDetail = await NeteaseArtistDetailService().fetchArtistDetail(
+        artistId,
+      );
       if (artistDetail == null) {
         setState(() {
           _artistSongs = [];
@@ -105,7 +116,9 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
       // 3. 提取歌曲列表
       final songsData = (artistDetail['songs'] as List<dynamic>?) ?? [];
       final currentTrackId = currentTrack.id.toString();
-      final queueTrackIds = PlaylistQueueService().queue.map((t) => t.id.toString()).toSet();
+      final queueTrackIds = PlaylistQueueService().queue
+          .map((t) => t.id.toString())
+          .toSet();
 
       final tracks = songsData
           .map((s) {
@@ -120,13 +133,17 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
             );
           })
           // 过滤掉当前播放的歌曲和已在队列中的歌曲
-          .where((t) => 
-              t.id.toString() != currentTrackId && 
-              !queueTrackIds.contains(t.id.toString()))
+          .where(
+            (t) =>
+                t.id.toString() != currentTrackId &&
+                !queueTrackIds.contains(t.id.toString()),
+          )
           .take(20) // 最多显示20首
           .toList();
 
-      print('🎵 [QueuePanel] 获取歌手 "$artistName" 的 ${tracks.length} 首推荐歌曲');
+      StructuredLogService.log(
+        '🎵 [QueuePanel] 获取歌手 "$artistName" 的 ${tracks.length} 首推荐歌曲',
+      );
 
       if (mounted) {
         setState(() {
@@ -137,7 +154,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
         });
       }
     } catch (e) {
-      print('❌ [QueuePanel] 加载歌手歌曲失败: $e');
+      StructuredLogService.log('❌ [QueuePanel] 加载歌手歌曲失败: $e');
       if (mounted) {
         setState(() {
           _artistSongs = [];
@@ -159,14 +176,10 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        PlaylistQueueService(),
-        PlayerService(),
-      ]),
+      animation: Listenable.merge([PlaylistQueueService(), PlayerService()]),
       builder: (context, _) {
         final queueService = PlaylistQueueService();
         final queue = queueService.queue;
-        final currentTrack = PlayerService().currentTrack;
 
         if (queue.isEmpty) {
           return const Center(
@@ -179,7 +192,8 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
 
         // 计算总项目数：队列 + 分隔标题(如果有推荐) + 推荐歌曲
         final hasArtistSection = _artistSongs.isNotEmpty || _artistSongsLoading;
-        final totalItemCount = queue.length + 
+        final totalItemCount =
+            queue.length +
             (hasArtistSection ? 1 : 0) + // 分隔标题
             _artistSongs.length;
 
@@ -194,9 +208,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                 // 播放队列部分
                 if (index < queue.length) {
                   final track = queue[index];
-                  final isCurrent = currentTrack != null &&
-                      track.id.toString() == currentTrack.id.toString() &&
-                      track.source == currentTrack.source;
+                  final isCurrent = queueService.currentIndex == index;
                   return _buildQueueItem(track, isCurrent, index, height: 76);
                 }
 
@@ -207,8 +219,12 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
 
                 // 推荐歌曲部分
                 final artistSongIndex = index - queue.length - 1;
-                if (artistSongIndex >= 0 && artistSongIndex < _artistSongs.length) {
-                  return _buildArtistSongItem(_artistSongs[artistSongIndex], artistSongIndex);
+                if (artistSongIndex >= 0 &&
+                    artistSongIndex < _artistSongs.length) {
+                  return _buildArtistSongItem(
+                    _artistSongs[artistSongIndex],
+                    artistSongIndex,
+                  );
                 }
 
                 return const SizedBox.shrink();
@@ -223,8 +239,8 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
   /// 构建分隔标题
   Widget _buildSectionHeader() {
     final currentTrack = PlayerService().currentTrack;
-    final artistName = currentTrack != null 
-        ? _extractFirstArtist(currentTrack.artists) 
+    final artistName = currentTrack != null
+        ? _extractFirstArtist(currentTrack.artists)
         : '';
 
     return Container(
@@ -239,9 +255,9 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  Colors.white.withOpacity(0.0),
-                  Colors.white.withOpacity(0.2),
-                  Colors.white.withOpacity(0.0),
+                  Colors.white.withValues(alpha: 0.0),
+                  Colors.white.withValues(alpha: 0.2),
+                  Colors.white.withValues(alpha: 0.0),
                 ],
               ),
             ),
@@ -282,13 +298,21 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
     );
   }
 
-  Widget _buildQueueItem(Track track, bool isCurrent, int index, {double height = 76}) {
+  Widget _buildQueueItem(
+    Track track,
+    bool isCurrent,
+    int index, {
+    double height = 76,
+  }) {
     return SizedBox(
+      key: ValueKey('${track.source.name}_${track.id}'),
       height: height,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         decoration: BoxDecoration(
-          color: isCurrent ? Colors.white.withOpacity(0.12) : Colors.transparent,
+          color: isCurrent
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Material(
@@ -296,10 +320,12 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: () {
-              final coverProvider = PlaylistQueueService().getCoverProvider(track);
+              final coverProvider = PlaylistQueueService().getCoverProvider(
+                track,
+              );
               PlayerService().playTrack(track, coverProvider: coverProvider);
             },
-            hoverColor: Colors.white.withOpacity(0.06),
+            hoverColor: Colors.white.withValues(alpha: 0.06),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
@@ -309,9 +335,12 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                     borderRadius: BorderRadius.circular(6),
                     child: CachedNetworkImage(
                       imageUrl: track.picUrl,
+                      httpHeaders: getImageHeaders(track.picUrl),
                       width: 44,
                       height: 44,
                       fit: BoxFit.cover,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       fadeOutDuration: Duration.zero,
                       fadeInDuration: const Duration(milliseconds: 200),
                     ),
@@ -328,9 +357,13 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: isCurrent ? Colors.white : Colors.white.withOpacity(0.9),
+                            color: isCurrent
+                                ? Colors.white
+                                : Colors.white.withValues(alpha: 0.9),
                             fontSize: 16,
-                            fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                            fontWeight: isCurrent
+                                ? FontWeight.bold
+                                : FontWeight.w500,
                             fontFamily: 'Microsoft YaHei',
                           ),
                         ),
@@ -351,13 +384,43 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                   // 正在播放指示器
                   if (isCurrent)
                     const Padding(
-                      padding: EdgeInsets.only(left: 12),
+                      padding: EdgeInsets.only(left: 8),
                       child: Icon(
                         Icons.equalizer_rounded,
                         color: Colors.white,
                         size: 20,
                       ),
                     ),
+                  // 更多菜单
+                  TrackMoreButton(
+                    track: track,
+                    onPlay: () {
+                      final coverProvider = PlaylistQueueService()
+                          .getCoverProvider(track);
+                      PlayerService().playTrack(
+                        track,
+                        coverProvider: coverProvider,
+                      );
+                    },
+                    size: 30,
+                  ),
+                  // 移除按钮
+                  IconButton(
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: Colors.white.withValues(alpha: 0.4),
+                      size: 16,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 28,
+                      minHeight: 28,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: () {
+                      PlaybackService().removeAt(index);
+                    },
+                    tooltip: '移除',
+                  ),
                 ],
               ),
             ),
@@ -374,10 +437,10 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: Colors.white.withOpacity(0.08),
+            color: Colors.white.withValues(alpha: 0.08),
             width: 1,
           ),
         ),
@@ -389,7 +452,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
               // 播放推荐歌曲
               PlayerService().playTrack(track);
             },
-            hoverColor: Colors.white.withOpacity(0.08),
+            hoverColor: Colors.white.withValues(alpha: 0.08),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Row(
@@ -399,15 +462,18 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                     borderRadius: BorderRadius.circular(5),
                     child: CachedNetworkImage(
                       imageUrl: track.picUrl,
+                      httpHeaders: getImageHeaders(track.picUrl),
                       width: 40,
                       height: 40,
                       fit: BoxFit.cover,
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
                       fadeOutDuration: Duration.zero,
                       fadeInDuration: const Duration(milliseconds: 200),
                       placeholder: (context, url) => Container(
                         width: 40,
                         height: 40,
-                        color: Colors.white.withOpacity(0.1),
+                        color: Colors.white.withValues(alpha: 0.1),
                       ),
                     ),
                   ),
@@ -423,7 +489,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.85),
+                            color: Colors.white.withValues(alpha: 0.85),
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                             fontFamily: 'Microsoft YaHei',
@@ -435,7 +501,7 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.45),
+                            color: Colors.white.withValues(alpha: 0.45),
                             fontSize: 12,
                             fontFamily: 'Microsoft YaHei',
                           ),
@@ -443,11 +509,13 @@ class _PlayerFluidCloudQueuePanelState extends State<PlayerFluidCloudQueuePanel>
                       ],
                     ),
                   ),
-                  // 播放图标
-                  Icon(
-                    Icons.play_circle_outline_rounded,
-                    color: Colors.white.withOpacity(0.5),
-                    size: 22,
+                  // 更多菜单
+                  TrackMoreButton(
+                    track: track,
+                    onPlay: () {
+                      PlayerService().playTrack(track);
+                    },
+                    size: 28,
                   ),
                 ],
               ),

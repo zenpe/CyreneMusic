@@ -1,0 +1,2848 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:just_audio/just_audio.dart' as ja;
+import 'package:media_kit/media_kit.dart' as mk;
+
+import '../android_equalizer_service.dart';
+import 'engine_epoch_gate.dart';
+import '../equalizer_service.dart';
+import '../../models/equalizer_state.dart';
+import '../persistent_storage_service.dart';
+import '../structured_log_service.dart';
+import 'playable_source.dart';
+
+/// 统一播放状态
+enum EngineState { idle, playing, paused }
+
+/// Processing is independent of the user's play/pause intent.
+abstract interface class EngineBufferingReporter {
+  Stream<bool> get bufferingStream;
+  Stream<EngineSourceCommit> get pendingSourceStream;
+}
+
+/// Only the engine may interrupt its own pending native load. New loads still
+/// enter through EngineHost's serialized queue after cancellation has settled.
+abstract interface class EngineLoadControl {
+  void cancelPendingLoad();
+  Future<void> pausePendingLoad();
+}
+
+class EngineLoadCancelled implements Exception {
+  final EngineError? failure;
+  const EngineLoadCancelled([this.failure]);
+}
+
+const _engineStartupTimeout = Duration(seconds: 8);
+const _androidPlaylistPreloadDuration = Duration(seconds: 3);
+
+// Official Media3 playlist preloading, exposed by the minimal plugin adapter.
+// Disable at build time to retain the single-source comparison/fallback path.
+const androidPlaylistPreloadEnabled = bool.fromEnvironment(
+  'CYRENE_ANDROID_PLAYLIST_PRELOAD',
+  defaultValue: true,
+);
+
+/// A bounded native operation failed; this does not establish URL expiry.
+class NativePlaybackTimeout extends TimeoutException {
+  final String stage;
+
+  NativePlaybackTimeout(this.stage, TimeoutException cause)
+    : super(cause.message, cause.duration);
+}
+
+class EngineStartupTiming {
+  final int ensurePlayerMs;
+  final int muteMs;
+  final int stopMs;
+  final int setSourceMs;
+  final int playToReadyMs;
+  final bool preparedActivation;
+
+  const EngineStartupTiming({
+    this.ensurePlayerMs = 0,
+    this.muteMs = 0,
+    this.stopMs = 0,
+    this.setSourceMs = 0,
+    this.playToReadyMs = 0,
+    this.preparedActivation = false,
+  });
+}
+
+/// 引擎错误类型
+enum EngineErrorType {
+  networkTimeout,
+  accessDenied,
+  unsupportedFormat,
+  sourceLoad,
+  playback,
+  unknown,
+}
+
+/// 引擎错误事件
+class EngineError {
+  int? get httpStatus {
+    final error = cause;
+    if (error is! ja.PlayerException) return null;
+    return error.code >= 400 && error.code <= 599 ? error.code : null;
+  }
+
+  // Legacy bridges report ExoPlayer TYPE_SOURCE as code 0 without a nested
+  // HTTP status. Keep this weaker evidence separate from an explicit status.
+  bool get isSourceReadFailure =>
+      type == EngineErrorType.sourceLoad &&
+      cause is ja.PlayerException &&
+      (cause as ja.PlayerException).code == 0 &&
+      ((cause as ja.PlayerException).message?.toLowerCase().contains(
+            'source error',
+          ) ??
+          false);
+  final EngineErrorType type;
+  final String message;
+  final String? sourceUrl;
+  final Object? cause;
+  final bool retriable;
+
+  /// 产生该错误的播放代次（与协调器的 transaction token 同一域）。
+  /// 协调器据此丢弃属于旧纪元的迟到错误，避免旧歌错误污染新歌。
+  final int epoch;
+
+  const EngineError({
+    required this.type,
+    required this.message,
+    this.sourceUrl,
+    this.cause,
+    this.retriable = false,
+    this.epoch = 0,
+  });
+
+  @override
+  String toString() {
+    return 'EngineError(epoch: $epoch, type: $type, retriable: $retriable, '
+        'sourceUrl: $sourceUrl, message: $message)';
+  }
+}
+
+/// 引擎内部已上报到 `errorStream` 的异常包装。
+/// 调用方可据此避免与 `errorStream` 重复处理同一错误。
+class EngineReportedException implements Exception {
+  final EngineError error;
+
+  const EngineReportedException(this.error);
+
+  @override
+  String toString() => 'EngineReportedException($error)';
+}
+
+/// 统一音频引擎接口
+abstract class AudioEngine {
+  /// 装载并（可选）播放新的音源。
+  ///
+  /// [generation] 是协调器分配的播放代次（transaction token）：
+  /// - 装载期间（停止旧源到新源就绪之间）产生的流事件按旧代次上报；
+  /// - 装载成功后，流事件按 [generation] 上报；
+  /// - 装载本身失败（同步异常）按 [generation] 上报。
+  /// 协调器据此实现"旧歌迟到事件不污染新歌"的不变量。
+  Future<void> play(
+    String url, {
+    required int generation,
+    bool isLocal = false,
+    Map<String, String>? headers,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    bool preload = true,
+    Duration? loadTimeout,
+  });
+  Future<void> playAudioSource(
+    ja.AudioSource source, {
+    required int generation,
+    String? sourceUrl,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    bool preload = true,
+    Duration? loadTimeout,
+  });
+  Future<void> playSource(
+    PlayableSource source, {
+    required int generation,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    bool preload = true,
+    Duration? loadTimeout,
+  }) async {
+    final customSource = source.audioSource;
+    if (customSource != null) {
+      await playAudioSource(
+        customSource,
+        generation: generation,
+        sourceUrl: source.sourceUrl,
+        autoPlay: autoPlay,
+        initialPosition: initialPosition,
+        preload: preload,
+        loadTimeout: loadTimeout,
+      );
+      return;
+    }
+
+    final pathOrUrl = source.playbackPathOrUrl;
+    if (pathOrUrl == null || pathOrUrl.isEmpty) {
+      throw StateError('PlayableSource has no playable path or url');
+    }
+    await play(
+      pathOrUrl,
+      generation: generation,
+      isLocal: source.isLocal,
+      headers: source.headers,
+      autoPlay: autoPlay,
+      initialPosition: initialPosition,
+      preload: preload,
+      loadTimeout: loadTimeout,
+    );
+  }
+
+  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) async {}
+
+  Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) async {}
+
+  Future<bool> activatePreparedSlot(
+    String key, {
+    required int generation,
+    required int queueRevision,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    Duration? loadTimeout,
+  }) async => false;
+
+  Future<void> invalidatePreparedSlots() async {}
+
+  Future<void> pause();
+  Future<void> resume();
+
+  /// Whether the native player still owns a resumable source for this track.
+  bool canResumeSource(int generation);
+  Future<void> seek(Duration position);
+  Future<void> stop();
+  Future<void> setVolume(double volume);
+  Future<void> setPlaybackSpeed(double speed);
+  Future<void> dispose();
+
+  Stream<Duration> get positionStream;
+  Stream<Duration> get durationStream;
+  Stream<Duration> get bufferedPositionStream;
+  Stream<EngineState> get stateStream;
+  Stream<bool> get completionStream;
+  Stream<EngineError> get errorStream;
+
+  /// Emits the stable key of the native playlist's current source.
+  /// Single-source engines may leave this stream empty.
+  Stream<EngineSourceCommit> get sourceCommitStream =>
+      Stream<EngineSourceCommit>.empty();
+
+  Duration get duration;
+  Duration get position;
+  Duration get bufferedPosition;
+  bool get isPlaying;
+  double get playbackSpeed;
+  EngineStartupTiming? get lastStartupTiming;
+}
+
+/// 根据平台选择引擎
+AudioEngine createEngine() {
+  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    return MediaKitEngine();
+  }
+  return JustAudioEngine();
+}
+
+class _PreparedEngineSlot {
+  PreparedPlaybackSlot descriptor;
+  final ja.AudioSource audioSource;
+
+  _PreparedEngineSlot(this.descriptor, this.audioSource);
+}
+
+// ─────────────────────────────────────────────────────────
+// JustAudio 实现（Android / iOS）
+// ─────────────────────────────────────────────────────────
+class JustAudioEngine
+    implements
+        AudioEngine,
+        EqualizerCapable,
+        EngineBufferingReporter,
+        EngineLoadControl {
+  Completer<EngineError?>? _loadCancellation;
+  Completer<void>? _loadPaused;
+  Future<dynamic>? _pendingNativeLoad;
+  bool _loadShouldPlay = false;
+  bool _playerInitialized = false;
+
+  void _beginLoadIntent(bool autoPlay) {
+    _loadCancellation = Completer<EngineError?>();
+    _loadPaused = Completer<void>();
+    _loadShouldPlay = autoPlay;
+  }
+
+  @override
+  void cancelPendingLoad() {
+    final cancellation = _loadCancellation;
+    if (cancellation != null && !cancellation.isCompleted) {
+      _loadShouldPlay = false;
+      _playTicket++;
+      cancellation.complete();
+    }
+  }
+
+  @override
+  Future<void> pausePendingLoad() async {
+    final cancellation = _loadCancellation;
+    final generation = _dispatchEpoch;
+    _loadShouldPlay = false;
+    _playTicket++;
+    final paused = _loadPaused;
+    if (paused != null && !paused.isCompleted) paused.complete();
+    final player = _player;
+    if (player == null) return;
+    try {
+      // just_audio supports pause while a source is preparing. Do not queue a
+      // transport intent behind network readiness or consume its load budget.
+      await player.pause().timeout(_nativeOperationTimeout);
+    } catch (error) {
+      // A failed pause is a real control failure, not a superseded request.
+      // Never let the host's cancellation path turn it into a successful load.
+      if (!identical(_player, player) || generation != _dispatchEpoch) return;
+      if (cancellation?.isCompleted ?? false) return;
+      final failure = _mapJustAudioError(
+        error is TimeoutException
+            ? NativePlaybackTimeout('pause_pending_load', error)
+            : error,
+      );
+      if (cancellation != null && identical(cancellation, _loadCancellation)) {
+        cancellation.complete(failure);
+      } else {
+        _emitError(failure, epoch: generation);
+      }
+    }
+  }
+
+  Future<T> _withLoadCancellation<T>(Future<T> work) {
+    final cancellation = _loadCancellation;
+    if (cancellation == null) return work;
+    return Future.any([
+      work,
+      cancellation.future.then<T>(
+        (failure) => throw EngineLoadCancelled(failure),
+      ),
+    ]);
+  }
+
+  Future<void> _settleCancelledLoad() async {
+    final player = _player;
+    final pending = _pendingNativeLoad;
+    _epochGate.beginStop();
+    _clearNaturalTransition();
+    _hasSource = false;
+    _loadedAudioSource = null;
+    _preparedSlots.clear();
+    _lastCurrentSourceKey = null;
+    _isPlaying = false;
+    _reportBuffering(false);
+    if (player == null) return;
+    if (!_playerInitialized) {
+      // Initialization may have been interrupted before stream subscriptions
+      // were attached. A settled native call does not make this player reusable.
+      await _disposePlayerOnly();
+      return;
+    }
+    try {
+      await player.stop().timeout(_nativeOperationTimeout);
+      if (pending != null) {
+        await pending
+            .then<void>((_) {}, onError: (Object _, StackTrace _) {})
+            .timeout(const Duration(milliseconds: 300));
+      }
+    } catch (_) {
+      // Never reuse a player whose cancelled mutation can still complete late.
+      await _disposePlayerOnly();
+    }
+    StructuredLogService.event(
+      'audio_engine.load_cancelled',
+      fields: {'epoch': _dispatchEpoch},
+    );
+  }
+
+  void _endLoadIntent() {
+    _loadCancellation = null;
+    _loadPaused = null;
+    _pendingNativeLoad = null;
+  }
+
+  final _bufferingController = StreamController<bool>.broadcast();
+  final _pendingSourceController =
+      StreamController<EngineSourceCommit>.broadcast();
+  String? _reportedPendingSource;
+  @override
+  Stream<EngineSourceCommit> get pendingSourceStream =>
+      _pendingSourceController.stream;
+  bool _reportedBuffering = false;
+  @override
+  Stream<bool> get bufferingStream => _bufferingController.stream;
+
+  void _reportBuffering(bool value) {
+    if (_reportedBuffering == value) return;
+    _reportedBuffering = value;
+    if (!_bufferingController.isClosed) _bufferingController.add(value);
+  }
+
+  @override
+  bool canResumeSource(int generation) =>
+      generation == _dispatchEpoch &&
+      generation == _epochGate.streamEventEpoch &&
+      _hasSource &&
+      _player != null &&
+      _player!.processingState != ja.ProcessingState.idle;
+  static const ja.AudioLoadConfiguration _audioLoadConfiguration =
+      ja.AudioLoadConfiguration(
+        androidLoadControl: ja.AndroidLoadControl(
+          minBufferDuration: Duration(milliseconds: 1500),
+          maxBufferDuration: Duration(seconds: 30),
+          bufferForPlaybackDuration: Duration(milliseconds: 500),
+          bufferForPlaybackAfterRebufferDuration: Duration(milliseconds: 1200),
+          prioritizeTimeOverSizeThresholds: true,
+        ),
+      );
+
+  JustAudioEngine({
+    ja.AudioPlayer Function()? playerFactory,
+    bool? allowPlaylistPreload,
+    Duration bufferingStallThreshold = const Duration(seconds: 10),
+    Duration nativeOperationTimeout = const Duration(seconds: 3),
+    Duration nativeCleanupTimeout = const Duration(seconds: 2),
+    Duration naturalTransitionTimeout = _engineStartupTimeout,
+  }) : _playerFactory = playerFactory,
+       _allowPlaylistPreload =
+           allowPlaylistPreload ??
+           (!Platform.isAndroid || androidPlaylistPreloadEnabled),
+       _nativeOperationTimeout = nativeOperationTimeout,
+       _nativeCleanupTimeout = nativeCleanupTimeout,
+       _naturalTransitionTimeout = naturalTransitionTimeout,
+       _bufferingStallThreshold = bufferingStallThreshold,
+       assert(nativeOperationTimeout > Duration.zero),
+       assert(nativeCleanupTimeout > Duration.zero),
+       assert(bufferingStallThreshold > Duration.zero) {
+    EqualizerService().setBackend(this, capabilities: null);
+  }
+
+  final ja.AudioPlayer Function()? _playerFactory;
+  // Both paths use upstream APIs. Keep a construction-time switch so native
+  // playlist preloading can be compared with the single-source baseline.
+  final bool _allowPlaylistPreload;
+
+  final Duration _bufferingStallThreshold;
+  final Duration _naturalTransitionTimeout;
+  final Duration _nativeOperationTimeout;
+  final Duration _nativeCleanupTimeout;
+  Duration? _operationBudget;
+  final Stopwatch _operationClock = Stopwatch();
+  bool _volumeInitialized = false;
+
+  ja.AudioPlayer? _player;
+  double _currentVolume = 1.0;
+  double _playbackSpeed = 1.0;
+  bool _hasSource = false;
+  EngineStartupTiming? _lastStartupTiming;
+  int? _androidAudioSessionId;
+  bool _androidEqualizerDirty = true;
+  int _equalizerRevision = 0;
+  int _equalizerIntentRevision = 0;
+  Future<void>? _equalizerUpdate;
+  Future<void>? _pendingPreparedMutation;
+  ja.AudioSource? _loadedAudioSource;
+  final List<_PreparedEngineSlot> _preparedSlots = <_PreparedEngineSlot>[];
+
+  /// 纪元闸门：arm 窗口内流事件归旧纪元，提交后归新纪元（源头捕获）。
+  final EngineEpochGate _epochGate = EngineEpochGate();
+
+  /// 当前错误/事件分发使用的纪元（commit 前为旧纪元，commit 后为新纪元）。
+  int _dispatchEpoch = 0;
+  bool _equalizerEnabled = true;
+  List<double> _equalizerGains = List.filled(10, 0.0);
+  List<int> _equalizerFrequencies = EqualizerService.kEqualizerFrequencies;
+  int _playTicket = 0;
+  // Resume cancellation is separate from the ticket owning output restoration.
+  // Pausing must not cancel restoration and leave the next play muted.
+  int _resumeRevision = 0;
+
+  final _positionController = StreamController<Duration>.broadcast();
+  final _durationController = StreamController<Duration>.broadcast();
+  final _bufferedPositionController = StreamController<Duration>.broadcast();
+  final _stateController = StreamController<EngineState>.broadcast();
+  final _completionController = StreamController<bool>.broadcast();
+  final _errorController = StreamController<EngineError>.broadcast();
+
+  StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<Duration?>? _durationSub;
+  StreamSubscription<Duration>? _bufferedPositionSub;
+  StreamSubscription<ja.PlayerState>? _playerStateSub;
+  StreamSubscription<ja.PlayerException>? _eventSub;
+  StreamSubscription<int?>? _currentIndexSub;
+  StreamSubscription<int?>? _androidSessionSub;
+
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+  Duration _bufferedPosition = Duration.zero;
+  bool _isPlaying = false;
+  String? _lastCurrentSourceKey;
+  int _sourceCommitTicket = 0;
+  DateTime? _bufferingStartedAt;
+  Duration _bufferingStartPosition = Duration.zero;
+  int _bufferingGeneration = 0;
+  Timer? _bufferingStallTimer;
+  Timer? _naturalTransitionTimer;
+  String? _naturalTransitionKey;
+  String? _failedNaturalSourceKey;
+
+  @override
+  Duration get duration => _duration;
+
+  @override
+  Duration get position => _position;
+
+  @override
+  Duration get bufferedPosition => _bufferedPosition;
+
+  @override
+  bool get isPlaying => _isPlaying;
+
+  @override
+  double get playbackSpeed => _playbackSpeed;
+
+  @override
+  EngineStartupTiming? get lastStartupTiming => _lastStartupTiming;
+
+  @override
+  Stream<Duration> get positionStream => _positionController.stream;
+
+  @override
+  Stream<Duration> get durationStream => _durationController.stream;
+
+  @override
+  Stream<Duration> get bufferedPositionStream =>
+      _bufferedPositionController.stream;
+
+  @override
+  Stream<EngineState> get stateStream => _stateController.stream;
+
+  @override
+  Stream<bool> get completionStream => _completionController.stream;
+
+  @override
+  Stream<EngineError> get errorStream => _errorController.stream;
+
+  final _sourceCommitController =
+      StreamController<EngineSourceCommit>.broadcast();
+
+  @override
+  Stream<EngineSourceCommit> get sourceCommitStream =>
+      _sourceCommitController.stream;
+
+  Future<void> _ensurePlayer() async {
+    if (_player != null) return;
+
+    // 移动端不使用 MediaKit 均衡器实现，避免 native EQ 路径影响播放稳定性。
+    EqualizerService().setBackend(this, capabilities: null);
+
+    final player =
+        _playerFactory?.call() ??
+        ja.AudioPlayer(
+          audioLoadConfiguration: _audioLoadConfiguration,
+          useLazyPreparation: !(Platform.isAndroid && _allowPlaylistPreload),
+          androidPlaylistPreloadDuration: Platform.isAndroid
+              ? (_allowPlaylistPreload
+                    ? _androidPlaylistPreloadDuration
+                    : Duration.zero)
+              : null,
+          // Android sends headers directly through the official Media3 path.
+          // iOS retains just_audio's header compatibility.
+          useProxyForRequestHeaders: !Platform.isAndroid,
+        );
+    _player = player;
+    _playerInitialized = false;
+
+    if (!_volumeInitialized) {
+      final savedVolume = PersistentStorageService().getDouble('player_volume');
+      _currentVolume = (savedVolume ?? 0.7).clamp(0.0, 1.0);
+      _volumeInitialized = true;
+    }
+    await _awaitNative(
+      player.setVolume(_currentVolume),
+      stage: 'initialize_volume',
+    );
+    await _awaitNative(
+      player.setSpeed(_playbackSpeed),
+      stage: 'initialize_speed',
+    );
+
+    _positionSub = player.positionStream.listen((pos) {
+      if (!identical(_player, player)) return;
+      _position = pos;
+      if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+        _positionController.add(pos);
+      }
+    });
+
+    _durationSub = player.durationStream.listen((dur) {
+      if (!identical(_player, player)) return;
+      _duration = dur ?? Duration.zero;
+      if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+        _durationController.add(_duration);
+      }
+    });
+
+    _bufferedPositionSub = player.bufferedPositionStream.listen((buffered) {
+      if (!identical(_player, player)) return;
+      _bufferedPosition = buffered;
+      if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+        _bufferedPositionController.add(buffered);
+      }
+    });
+
+    _playerStateSub = player.playerStateStream.listen((state) {
+      if (!identical(_player, player)) return;
+      _observeNaturalSource(player);
+      // 纪元闸门：切换窗口内的状态/完成事件归属旧纪元，不向外分发，
+      // 但引擎内部 bookkeeping（_isPlaying/_position）照常更新。
+      final stale = _epochGate.streamEventEpoch != _dispatchEpoch;
+      final processing = state.processingState;
+      if (!stale) {
+        _reportBuffering(
+          state.playing &&
+              (processing == ja.ProcessingState.loading ||
+                  processing == ja.ProcessingState.buffering),
+        );
+      }
+      if (!stale) _observeBufferingState(state);
+      if (processing == ja.ProcessingState.completed) {
+        _isPlaying = false;
+        _position = Duration.zero;
+        if (!stale) {
+          _stateController.add(EngineState.idle);
+          _completionController.add(true);
+        }
+        return;
+      }
+
+      if (state.playing) {
+        _isPlaying = true;
+        if (!stale) _stateController.add(EngineState.playing);
+        return;
+      }
+
+      if (_isPlaying) {
+        _isPlaying = false;
+        if (stale) return;
+        if (processing == ja.ProcessingState.idle) {
+          _stateController.add(EngineState.idle);
+        } else {
+          _stateController.add(EngineState.paused);
+        }
+      }
+    });
+
+    _currentIndexSub = player.currentIndexStream.listen((_) {
+      if (!identical(_player, player)) return;
+      _scheduleCurrentSourceCommit(player);
+    });
+
+    _eventSub = player.errorStream.listen((e) {
+      if (!identical(_player, player)) return;
+      // stop() may produce an abort error while cancellation is settling.
+      // The cancelling load owns the outcome, not this late native callback.
+      if (_loadCancellation?.isCompleted ?? false) return;
+      final mapped = _mapJustAudioError(e);
+      // 纪元闸门：arm/stop 窗口内的流事件归属旧纪元，直接抑制，
+      // 避免旧歌的迟到错误触发新歌的错误处理/自动跳歌。
+      if (_epochGate.streamEventEpoch != _dispatchEpoch) {
+        StructuredLogService.event(
+          'audio_engine.stale_event_suppressed',
+          level: LogLevel.debug,
+          fields: {
+            'engine': 'just_audio',
+            'event_epoch': _epochGate.streamEventEpoch,
+            'dispatch_epoch': _dispatchEpoch,
+            'failure_kind': mapped.type.name,
+          },
+        );
+        return;
+      }
+      // A naturally selected item can fail before ready (and thus before its
+      // presentation commit). Attribute that failure to its prepared epoch,
+      // without announcing a successful source commit or changing the gate.
+      final index = player.currentIndex;
+      final selected =
+          !_epochGate.armInFlight &&
+              (e.index == null || e.index == index) &&
+              index != null &&
+              index >= 0 &&
+              index < _preparedSlots.length
+          ? _preparedSlots[index].descriptor
+          : null;
+      final failedEpoch =
+          selected != null &&
+              selected.key == _currentSourceKey(player) &&
+              selected.preparedFromGeneration == _dispatchEpoch &&
+              selected.generation > _dispatchEpoch
+          ? selected.generation
+          : _dispatchEpoch;
+      if (failedEpoch != _dispatchEpoch) {
+        _failedNaturalSourceKey = _currentSourceKey(player);
+        _clearNaturalTransition();
+      }
+      _emitError(mapped, epoch: failedEpoch);
+      if (!_stateController.isClosed) {
+        _stateController.add(EngineState.idle);
+      }
+    });
+
+    if (Platform.isAndroid) {
+      _androidSessionSub = player.androidAudioSessionIdStream.listen((id) {
+        if (identical(_player, player)) _handleAndroidAudioSessionIdChanged(id);
+      });
+    }
+    _playerInitialized = true;
+  }
+
+  void _observeBufferingState(ja.PlayerState state) {
+    final buffering =
+        state.playing && state.processingState == ja.ProcessingState.buffering;
+    if (!buffering) {
+      _finishBufferingObservation(state.processingState.name);
+      return;
+    }
+    if (_bufferingStartedAt != null) return;
+
+    final startedAt = DateTime.now();
+    final position = _player?.position ?? _position;
+    _bufferingStartedAt = startedAt;
+    _bufferingStartPosition = position;
+    _bufferingGeneration = _epochGate.streamEventEpoch;
+    StructuredLogService.event(
+      'audio_engine.buffering_started',
+      fields: {
+        'engine': 'just_audio',
+        'epoch': _bufferingGeneration,
+        'position_ms': position.inMilliseconds,
+        'buffered_ahead_ms': _bufferedAhead.inMilliseconds,
+      },
+    );
+
+    _bufferingStallTimer?.cancel();
+    _bufferingStallTimer = Timer(_bufferingStallThreshold, () {
+      if (_bufferingStartedAt != startedAt) return;
+      final position = _player?.position ?? _position;
+      final positionDelta = position - _bufferingStartPosition;
+      final bufferedAhead = _bufferedAhead;
+      StructuredLogService.event(
+        'audio_engine.buffering_stalled',
+        level: LogLevel.warning,
+        fields: {
+          'engine': 'just_audio',
+          'epoch': _bufferingGeneration,
+          'duration_ms': DateTime.now().difference(startedAt).inMilliseconds,
+          'position_delta_ms': positionDelta.inMilliseconds,
+          'buffered_ahead_ms': bufferedAhead.inMilliseconds,
+          'stall_kind': _classifyBufferingStall(positionDelta, bufferedAhead),
+        },
+      );
+    });
+  }
+
+  String _classifyBufferingStall(
+    Duration positionDelta,
+    Duration bufferedAhead,
+  ) {
+    if (positionDelta >= const Duration(milliseconds: 250)) {
+      return 'position_advancing';
+    }
+    if (bufferedAhead >= const Duration(milliseconds: 500)) {
+      return 'buffered_but_not_advancing';
+    }
+    return 'buffer_starved';
+  }
+
+  Duration get _bufferedAhead {
+    final player = _player;
+    final position = player?.position ?? _position;
+    final bufferedPosition = player?.bufferedPosition ?? _bufferedPosition;
+    final ahead = bufferedPosition - position;
+    return ahead.isNegative ? Duration.zero : ahead;
+  }
+
+  void _finishBufferingObservation(String outcome) {
+    final startedAt = _bufferingStartedAt;
+    if (startedAt == null) return;
+    final position = _player?.position ?? _position;
+    final positionDelta = position - _bufferingStartPosition;
+    StructuredLogService.event(
+      'audio_engine.buffering_ended',
+      fields: {
+        'engine': 'just_audio',
+        'epoch': _bufferingGeneration,
+        'duration_ms': DateTime.now().difference(startedAt).inMilliseconds,
+        'position_delta_ms': positionDelta.inMilliseconds,
+        'buffered_ahead_ms': _bufferedAhead.inMilliseconds,
+        'outcome': outcome,
+      },
+    );
+    _clearBufferingObservation();
+  }
+
+  void _clearBufferingObservation() {
+    _bufferingStallTimer?.cancel();
+    _bufferingStallTimer = null;
+    _bufferingStartedAt = null;
+    _bufferingStartPosition = Duration.zero;
+    _bufferingGeneration = 0;
+  }
+
+  String? _currentSourceKey(ja.AudioPlayer player) {
+    final index = player.currentIndex;
+    final taggedKey =
+        index != null &&
+            index >= 0 &&
+            index < player.sequence.length &&
+            player.sequence[index].tag is String
+        ? player.sequence[index].tag as String
+        : null;
+    return taggedKey ??
+        (index != null && index >= 0 && index < _preparedSlots.length
+            ? _preparedSlots[index].descriptor.key
+            : null);
+  }
+
+  void _scheduleCurrentSourceCommit(ja.AudioPlayer player) {
+    final ticket = ++_sourceCommitTicket;
+    scheduleMicrotask(() {
+      if (ticket == _sourceCommitTicket && identical(_player, player)) {
+        _observeNaturalSource(player);
+      }
+    });
+  }
+
+  void _clearNaturalTransition() {
+    _naturalTransitionTimer?.cancel();
+    _naturalTransitionTimer = null;
+    _naturalTransitionKey = null;
+  }
+
+  void _observeNaturalSource(ja.AudioPlayer player) {
+    if (_epochGate.armInFlight || !identical(_player, player)) return;
+    final key = _currentSourceKey(player);
+    if (key == null || key == _failedNaturalSourceKey) return;
+    final index = player.currentIndex;
+    final selected =
+        index != null && index >= 0 && index < _preparedSlots.length
+        ? _preparedSlots[index].descriptor
+        : null;
+    if (selected == null ||
+        selected.key != key ||
+        selected.generation <= _dispatchEpoch ||
+        selected.preparedFromGeneration != _dispatchEpoch) {
+      _clearNaturalTransition();
+      return;
+    }
+    if (player.processingState == ja.ProcessingState.ready) {
+      _clearNaturalTransition();
+      _emitCurrentSourceKey(expectedKey: key);
+      return;
+    }
+    if (_reportedPendingSource != key) {
+      _reportedPendingSource = key;
+      _pendingSourceController.add(
+        EngineSourceCommit(key: key, generation: selected.generation),
+      );
+    }
+    if (!player.playing) {
+      _clearNaturalTransition();
+      return;
+    }
+    if (_naturalTransitionKey == key) return;
+    _clearNaturalTransition();
+    _naturalTransitionKey = key;
+    _naturalTransitionTimer = Timer(_naturalTransitionTimeout, () {
+      if (!identical(_player, player) ||
+          _epochGate.armInFlight ||
+          _currentSourceKey(player) != key ||
+          !player.playing ||
+          selected.preparedFromGeneration != _dispatchEpoch) {
+        return;
+      }
+      _clearNaturalTransition();
+      _failedNaturalSourceKey = key;
+      unawaited(
+        _failNaturalTransition(
+          EngineError(
+            type: EngineErrorType.networkTimeout,
+            message: '下一首音频加载超时',
+            cause: NativePlaybackTimeout(
+              'natural_prepared',
+              TimeoutException('Next item did not become ready'),
+            ),
+            retriable: false,
+            epoch: selected.generation,
+          ),
+        ),
+      );
+    });
+  }
+
+  Future<void> _failNaturalTransition(EngineError failure) async {
+    final originEpoch = _dispatchEpoch;
+    // A failed selection can still become audible when its buffer fills.
+    // Detach synchronously, then stop/dispose with bounded cleanup. Never reuse
+    // this instance: late native completion must not affect another selection.
+    final cleanup = _disposePlayerOnly();
+    final cleanupRevision = _resumeRevision;
+    if (!_stateController.isClosed) {
+      _stateController.add(EngineState.paused);
+    }
+    await cleanup;
+    // A new selection or transport intent owns the state now. Cleanup above
+    // only captures the old player; do not publish its failure into that intent.
+    if (_dispatchEpoch != originEpoch ||
+        _resumeRevision != cleanupRevision ||
+        _player != null ||
+        _errorController.isClosed) {
+      return;
+    }
+    _emitError(failure, epoch: failure.epoch);
+  }
+
+  void _emitCurrentSourceKey({String? expectedKey}) {
+    final player = _player;
+    if (player == null) return;
+    if (player.processingState != ja.ProcessingState.ready) return;
+    final key = _currentSourceKey(player);
+    if (key == _failedNaturalSourceKey && key != null) return;
+    if (expectedKey != null && key != expectedKey) return;
+    if (key == _lastCurrentSourceKey) return;
+    final index = player.currentIndex;
+    final descriptor =
+        index != null &&
+            index >= 0 &&
+            index < _preparedSlots.length &&
+            _preparedSlots[index].descriptor.key == key
+        ? _preparedSlots[index].descriptor
+        : null;
+    final adoptedPreparedSource =
+        descriptor != null && descriptor.generation != _dispatchEpoch;
+    if (adoptedPreparedSource) {
+      _dispatchEpoch = descriptor.generation;
+      _epochGate.adoptPreparedSource(descriptor.generation);
+    }
+    if (_epochGate.streamEventEpoch != _dispatchEpoch || key == null) return;
+    _lastCurrentSourceKey = key;
+    _sourceCommitController.add(
+      EngineSourceCommit(key: key, generation: _dispatchEpoch),
+    );
+    if (adoptedPreparedSource) {
+      // Natural playlist advancement can retain playing=true without another
+      // state event. Commit the source before publishing its verified state.
+      _publishLoadedState(player, _dispatchEpoch);
+    }
+  }
+
+  void _handleAndroidAudioSessionIdChanged(int? id) {
+    final previousId = _androidAudioSessionId;
+    _androidAudioSessionId = id;
+    final isNewSession = previousId != id;
+    if (isNewSession) {
+      _equalizerRevision++;
+      _androidEqualizerDirty = true;
+      EqualizerService().report(this, EqualizerStatus.waiting);
+    }
+    _scheduleEqualizerUpdate();
+  }
+
+  void _emitError(EngineError error, {int? epoch}) {
+    final effectiveEpoch = epoch ?? _dispatchEpoch;
+    if (!_errorController.isClosed) {
+      _errorController.add(
+        error.epoch == effectiveEpoch
+            ? error
+            : EngineError(
+                type: error.type,
+                message: error.message,
+                sourceUrl: error.sourceUrl,
+                cause: error.cause,
+                retriable: error.retriable,
+                epoch: effectiveEpoch,
+              ),
+      );
+    }
+    StructuredLogService.event(
+      'audio_engine.error',
+      level: LogLevel.error,
+      fields: {
+        'engine': 'just_audio',
+        'failure_kind': error.type.name,
+        'retriable': error.retriable,
+        'source_url': error.sourceUrl,
+        'epoch': effectiveEpoch,
+      },
+      error: error.cause ?? error.message,
+    );
+  }
+
+  EngineError _mapJustAudioError(
+    Object error, {
+    String? sourceUrl,
+    bool retriable = false,
+  }) {
+    if (error is TimeoutException) {
+      return EngineError(
+        type: EngineErrorType.networkTimeout,
+        message: error.message ?? 'Operation timeout',
+        sourceUrl: sourceUrl,
+        cause: error,
+        retriable: true,
+      );
+    }
+
+    if (error is ja.PlayerException) {
+      final code = error.code;
+      final message = error.message ?? error.toString();
+      final lower = message.toLowerCase();
+
+      // Android reports Media3's stable errorCode, or the actual HTTP status.
+      if (code == 2001 || code == 2002) {
+        return EngineError(
+          type: EngineErrorType.networkTimeout,
+          message: message,
+          sourceUrl: sourceUrl,
+          cause: error,
+          retriable: true,
+        );
+      }
+      if (code >= 3000 && code < 5000) {
+        return EngineError(
+          type: EngineErrorType.unsupportedFormat,
+          message: message,
+          sourceUrl: sourceUrl,
+          cause: error,
+          retriable: false,
+        );
+      }
+
+      if (code == 401 || code == 403 || lower.contains('forbidden')) {
+        return EngineError(
+          type: EngineErrorType.accessDenied,
+          message: message,
+          sourceUrl: sourceUrl,
+          cause: error,
+          retriable: false,
+        );
+      }
+
+      if (lower.contains('decoder') ||
+          lower.contains('format') ||
+          lower.contains('unsupported')) {
+        return EngineError(
+          type: EngineErrorType.unsupportedFormat,
+          message: message,
+          sourceUrl: sourceUrl,
+          cause: error,
+          retriable: false,
+        );
+      }
+
+      return EngineError(
+        type: EngineErrorType.sourceLoad,
+        message: message,
+        sourceUrl: sourceUrl,
+        cause: error,
+        retriable:
+            retriable || lower.contains('network') || lower.contains('io'),
+      );
+    }
+
+    if (error is ja.PlayerInterruptedException) {
+      return EngineError(
+        type: EngineErrorType.sourceLoad,
+        message: error.message ?? error.toString(),
+        sourceUrl: sourceUrl,
+        cause: error,
+        retriable: true,
+      );
+    }
+
+    return EngineError(
+      type: EngineErrorType.unknown,
+      message: error.toString(),
+      sourceUrl: sourceUrl,
+      cause: error,
+      retriable: retriable,
+    );
+  }
+
+  void _fireAndForgetPlay({bool Function()? canStart}) {
+    final player = _player;
+    if (player == null) return;
+    final playTicket = ++_playTicket;
+    unawaited(() async {
+      try {
+        if (canStart != null && !canStart()) return;
+        if (!_isCurrentPlayTicket(player, playTicket)) return;
+        final playFuture = player.play();
+        _scheduleEqualizerUpdate();
+        await playFuture;
+      } catch (e) {
+        if (canStart != null && !canStart()) return;
+        if (!_isCurrentPlayTicket(player, playTicket)) return;
+        if (_isCurrentPlayTicket(player, playTicket)) {
+          _playTicket++;
+        }
+        if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+          _emitError(_mapJustAudioError(e));
+          if (!_stateController.isClosed) {
+            _stateController.add(EngineState.idle);
+          }
+        }
+      }
+    }());
+  }
+
+  // Effects follow the audio session/configuration, not each track. Coalesce
+  // updates and keep all effect work out of playback's startup deadline.
+  void _scheduleEqualizerUpdate() {
+    if (!Platform.isAndroid ||
+        _player == null ||
+        !_androidEqualizerDirty ||
+        _equalizerUpdate != null) {
+      return;
+    }
+    _equalizerUpdate = () async {
+      try {
+        int revision;
+        do {
+          revision = _equalizerRevision;
+          final applied = await _applyAndroidEqualizerIfReady();
+          if (!applied && revision == _equalizerRevision) break;
+        } while (_player != null && revision != _equalizerRevision);
+      } catch (error) {
+        EqualizerService().report(this, EqualizerStatus.failed);
+        StructuredLogService.event(
+          'audio_engine.equalizer_update_failed',
+          level: LogLevel.warning,
+          error: error,
+        );
+      } finally {
+        _equalizerUpdate = null;
+      }
+    }();
+  }
+
+  Future<bool> _applyAndroidEqualizerIfReady() async {
+    if (!Platform.isAndroid) return false;
+    final player = _player;
+    final sessionId = _androidAudioSessionId;
+    if (player == null) return false;
+    final revision = _equalizerRevision;
+    final intentRevision = _equalizerIntentRevision;
+    final enabled = _equalizerEnabled;
+    final gains = List<double>.from(_equalizerGains);
+    final frequencies = List<int>.from(_equalizerFrequencies);
+
+    bool isCurrent() =>
+        identical(_player, player) &&
+        _androidAudioSessionId == sessionId &&
+        _equalizerRevision == revision;
+
+    if (!enabled) {
+      final released = await AndroidEqualizerService().release(
+        sessionId: sessionId,
+      );
+      if (released && isCurrent()) {
+        _androidEqualizerDirty = false;
+        EqualizerService().report(
+          this,
+          EqualizerStatus.disabled,
+          revision: intentRevision,
+        );
+        StructuredLogService.event(
+          'audio_engine.equalizer_applied',
+          fields: {'enabled': false, 'revision': revision},
+        );
+        return true;
+      }
+      if (isCurrent()) EqualizerService().report(this, EqualizerStatus.failed);
+      return false;
+    }
+
+    if (sessionId == null || sessionId <= 0) {
+      EqualizerService().report(this, EqualizerStatus.waiting);
+      return false;
+    }
+    final result = await AndroidEqualizerService().configure(
+      sessionId: sessionId,
+      enabled: enabled,
+      gains: gains,
+      frequencies: frequencies,
+    );
+    if (!isCurrent()) return true;
+    EqualizerService().report(
+      this,
+      result.status,
+      capabilities: result.capabilities,
+      revision: intentRevision,
+    );
+    if (result.status != EqualizerStatus.failed) {
+      _androidEqualizerDirty = false;
+      StructuredLogService.event(
+        'audio_engine.equalizer_applied',
+        fields: {
+          'enabled': true,
+          'revision': revision,
+          'session_id': sessionId,
+        },
+      );
+      return true;
+    }
+    return false;
+  }
+
+  bool _isCurrentPlayTicket(ja.AudioPlayer player, int playTicket) {
+    return identical(_player, player) && _playTicket == playTicket;
+  }
+
+  Future<void> _recreatePlayer() async {
+    await _disposePlayerOnly();
+    // Initialize lazily on the next request; recovery itself must be bounded.
+  }
+
+  Future<void> _awaitPreparedMutation(
+    ja.AudioPlayer player,
+    Future<void> Function() mutation, {
+    required String stage,
+  }) async {
+    late final Future<void> pending;
+    pending = () async {
+      try {
+        await mutation();
+      } finally {
+        if (identical(_pendingPreparedMutation, pending)) {
+          _pendingPreparedMutation = null;
+        }
+      }
+    }();
+    _pendingPreparedMutation = pending;
+    try {
+      await pending.timeout(_remainingOperationTime(_nativeOperationTimeout));
+    } on TimeoutException {
+      // A background deadline is not proof that the currently audible source
+      // is broken. Retain the mutation until native completion; foreground
+      // source changes drain it with a bounded deadline before touching the list.
+      StructuredLogService.event(
+        'audio_engine.preload_mutation_pending',
+        level: LogLevel.warning,
+        fields: {'stage': stage, 'engine': 'just_audio'},
+      );
+      unawaited(
+        pending.catchError((Object error, StackTrace stack) {
+          if (!identical(_player, player)) return;
+          StructuredLogService.event(
+            'audio_engine.preload_mutation_failed',
+            level: LogLevel.warning,
+            fields: {'stage': stage},
+            error: error,
+          );
+        }),
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> _settlePreparedMutation() async {
+    final pending = _pendingPreparedMutation;
+    if (pending == null) return;
+    try {
+      await pending.timeout(_remainingOperationTime(_nativeOperationTimeout));
+    } on TimeoutException {
+      StructuredLogService.event(
+        'audio_engine.preload_player_isolated',
+        level: LogLevel.warning,
+        fields: {'engine': 'just_audio', 'epoch': _dispatchEpoch},
+      );
+      // Recovery belongs to this foreground operation. Do not publish an
+      // intermediate fatal error and cause a second resolver request/recovery.
+      await _disposePlayerOnly();
+    } catch (error) {
+      // A rejected mutation has completed. A full source replacement below
+      // establishes a fresh list without tearing down the active player.
+      StructuredLogService.event(
+        'audio_engine.preload_settle_failed',
+        level: LogLevel.warning,
+        error: error,
+      );
+    }
+  }
+
+  Duration _remainingOperationTime(Duration limit) {
+    final budget = _operationBudget;
+    final remaining = budget == null ? null : budget - _operationClock.elapsed;
+    if (remaining == null || remaining > limit) return limit;
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  Future<T> _awaitNative<T>(
+    Future<T> operation, {
+    required String stage,
+    Duration? timeout,
+  }) async {
+    final clock = Stopwatch()..start();
+    final effectiveTimeout = _remainingOperationTime(
+      timeout ?? _nativeOperationTimeout,
+    );
+    final epoch = _dispatchEpoch;
+    StructuredLogService.event(
+      'audio_engine.native_operation_started',
+      fields: {
+        'engine': 'just_audio',
+        'stage': stage,
+        'epoch': epoch,
+        'budget_ms': effectiveTimeout.inMilliseconds,
+      },
+    );
+    try {
+      if (_loadCancellation != null) _pendingNativeLoad = operation;
+      final result = await _withLoadCancellation(
+        operation,
+      ).timeout(effectiveTimeout);
+      StructuredLogService.event(
+        'audio_engine.native_operation_completed',
+        fields: {
+          'engine': 'just_audio',
+          'stage': stage,
+          'epoch': epoch,
+          'elapsed_ms': clock.elapsedMilliseconds,
+        },
+      );
+      return result;
+    } on TimeoutException catch (cause) {
+      final error = EngineError(
+        type: EngineErrorType.networkTimeout,
+        message: '播放器操作超时，请重试播放',
+        cause: NativePlaybackTimeout(stage, cause),
+        retriable: true,
+        epoch: _dispatchEpoch,
+      );
+      StructuredLogService.event(
+        'audio_engine.native_operation_timeout',
+        level: LogLevel.warning,
+        fields: {
+          'engine': 'just_audio',
+          'stage': stage,
+          'epoch': _dispatchEpoch,
+          'budget_ms': effectiveTimeout.inMilliseconds,
+          'elapsed_ms': clock.elapsedMilliseconds,
+          'operation_elapsed_ms': _operationClock.elapsedMilliseconds,
+          'native_processing_state': _player?.processingState.name,
+          'native_playing': _player?.playing,
+          'native_position_ms': _player?.position.inMilliseconds,
+          'native_buffer_ms': _player?.bufferedPosition.inMilliseconds,
+          'native_index': _player?.currentIndex,
+          'prepared_slot_count': _preparedSlots.length,
+        },
+      );
+      _epochGate.abandonArm(_dispatchEpoch);
+      _epochGate.beginStop();
+      await _disposePlayerOnly();
+      _emitError(error);
+      throw EngineReportedException(error);
+    }
+  }
+
+  Future<void> _disposePlayerOnly() async {
+    _reportedPendingSource = null;
+    _reportBuffering(false);
+    _clearNaturalTransition();
+    _failedNaturalSourceKey = null;
+    _sourceCommitTicket++;
+    _resumeRevision++;
+    _playTicket++;
+    _equalizerRevision++;
+    _clearBufferingObservation();
+    // Detach first, so late callbacks and output preparation cannot revive it.
+    final player = _player;
+    _player = null;
+    _playerInitialized = false;
+    final subscriptions = <StreamSubscription<dynamic>>[
+      ?_positionSub,
+      ?_durationSub,
+      ?_bufferedPositionSub,
+      ?_playerStateSub,
+      ?_eventSub,
+      ?_currentIndexSub,
+      ?_androidSessionSub,
+    ];
+    _positionSub = null;
+    _durationSub = null;
+    _bufferedPositionSub = null;
+    _playerStateSub = null;
+    _eventSub = null;
+    _currentIndexSub = null;
+    _androidSessionSub = null;
+
+    _hasSource = false;
+    _loadedAudioSource = null;
+    _preparedSlots.clear();
+    _lastCurrentSourceKey = null;
+    _isPlaying = false;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _bufferedPosition = Duration.zero;
+    final androidAudioSessionId = _androidAudioSessionId;
+    _androidAudioSessionId = null;
+    _androidEqualizerDirty = true;
+    _pendingPreparedMutation = null;
+    final cleanup = Future.wait([
+      for (final subscription in subscriptions) subscription.cancel(),
+      () async {
+        if (player != null) {
+          try {
+            await player.stop().timeout(_nativeCleanupTimeout ~/ 2);
+          } catch (_) {}
+          try {
+            await player.dispose().timeout(_nativeCleanupTimeout ~/ 2);
+          } catch (_) {}
+        }
+        if (Platform.isAndroid && androidAudioSessionId != null) {
+          await AndroidEqualizerService().release(
+            sessionId: androidAudioSessionId,
+          );
+        }
+      }(),
+    ]);
+    try {
+      await cleanup.timeout(_nativeCleanupTimeout);
+    } catch (error) {
+      StructuredLogService.event(
+        'audio_engine.native_cleanup_failed',
+        level: LogLevel.warning,
+        fields: {'engine': 'just_audio'},
+        error: error,
+      );
+    }
+  }
+
+  @override
+  Future<void> play(
+    String url, {
+    required int generation,
+    bool isLocal = false,
+    Map<String, String>? headers,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    bool preload = true,
+    Duration? loadTimeout,
+  }) async {
+    final source = _buildAudioSource(
+      isLocal
+          ? LocalFilePlayableSource(url)
+          : DirectHttpPlayableSource(url, requestHeaders: headers),
+    );
+    await playAudioSource(
+      source,
+      generation: generation,
+      sourceUrl: url,
+      autoPlay: autoPlay,
+      initialPosition: initialPosition,
+      preload: preload,
+      loadTimeout: loadTimeout,
+    );
+  }
+
+  @override
+  Future<void> playSource(
+    PlayableSource source, {
+    required int generation,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    bool preload = true,
+    Duration? loadTimeout,
+  }) async {
+    await playAudioSource(
+      _buildAudioSource(source),
+      generation: generation,
+      sourceUrl: source.sourceUrl,
+      autoPlay: autoPlay,
+      initialPosition: initialPosition,
+      preload: preload,
+      loadTimeout: loadTimeout,
+    );
+  }
+
+  ja.AudioSource _buildAudioSource(PlayableSource source, {Object? tag}) {
+    final customSource = source.audioSource;
+    if (customSource != null) return customSource;
+    final pathOrUrl = source.playbackPathOrUrl;
+    if (pathOrUrl == null || pathOrUrl.isEmpty) {
+      throw StateError('PlayableSource has no playable path or url');
+    }
+    if (Platform.isAndroid && source.androidStreamCache != null) {
+      final uri = Uri.parse(pathOrUrl);
+      final extension = uri.path.toLowerCase();
+      if ((uri.scheme == 'https' || uri.scheme == 'http') &&
+          !extension.endsWith('.m3u8') &&
+          !extension.endsWith('.mpd') &&
+          !extension.endsWith('.ism')) {
+        return ja.ProgressiveAudioSource(
+          uri,
+          headers: source.headers,
+          tag: tag,
+          androidStreamCache: source.androidStreamCache,
+        );
+      }
+    }
+    return source.isLocal
+        ? ja.AudioSource.file(pathOrUrl, tag: tag)
+        : ja.AudioSource.uri(
+            Uri.parse(pathOrUrl),
+            headers: source.headers,
+            tag: tag,
+          );
+  }
+
+  @override
+  Future<void> playAudioSource(
+    ja.AudioSource source, {
+    required int generation,
+    String? sourceUrl,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    bool preload = true,
+    Duration? loadTimeout,
+  }) async {
+    _clearNaturalTransition();
+    _failedNaturalSourceKey = null;
+    _beginLoadIntent(autoPlay);
+    _reportedPendingSource = null;
+    _finishBufferingObservation('source_replaced');
+    _resumeRevision++;
+    _playTicket++;
+    _lastStartupTiming = null;
+    var ensurePlayerMs = 0;
+    var setSourceMs = 0;
+    var playToReadyMs = 0;
+    // 必须在第一个 await 之前打开 arm 窗口，避免 ensurePlayer/setVolume
+    // 期间旧源的迟到事件被错误地送入新会话。
+    _epochGate.beginArm(generation);
+    _dispatchEpoch = generation;
+    _operationBudget = loadTimeout ?? const Duration(seconds: 15);
+    _operationClock
+      ..reset()
+      ..start();
+    try {
+      await _settlePreparedMutation();
+      final ensurePlayerSw = Stopwatch()..start();
+      await _ensurePlayer();
+      ensurePlayerMs = ensurePlayerSw.elapsedMilliseconds;
+      final player = _player!;
+      // Source replacement retains playWhenReady. A paused load must not
+      // briefly become audible before its final paused snapshot is published.
+      if (!autoPlay && player.playing) {
+        await _awaitNative(player.pause(), stage: 'load_pause');
+      }
+
+      // Keep event isolation around the official plugin's source replacement.
+      // Native stop/prepare behavior belongs to upstream just_audio.
+      if (_isPlaying || _hasSource) {
+        _epochGate.beginStop();
+      }
+      _hasSource = false;
+      _loadedAudioSource = null;
+      _preparedSlots.clear();
+      _lastCurrentSourceKey = null;
+
+      final setSourceSw = Stopwatch()..start();
+      StructuredLogService.event(
+        'audio_engine.source_load_started',
+        fields: {
+          'generation': generation,
+          'source_id': identityHashCode(source),
+          'prepared': false,
+          'source_switch': 'replace',
+        },
+      );
+      await _awaitNative(
+        player.setAudioSource(
+          source,
+          initialPosition: initialPosition,
+          preload: preload,
+        ),
+        stage: 'load_source',
+        timeout: loadTimeout ?? const Duration(seconds: 15),
+      );
+      setSourceMs = setSourceSw.elapsedMilliseconds;
+      _hasSource = true;
+      _loadedAudioSource = source;
+
+      // 装载成功：纪元翻转，窗口关闭。此后流事件按新纪元分发。
+      _epochGate.commitArm(generation);
+      _emitCurrentSourceKey();
+
+      _duration = player.duration ?? Duration.zero;
+      if (_duration > Duration.zero) {
+        _durationController.add(_duration);
+      }
+
+      _position = initialPosition ?? Duration.zero;
+      _positionController.add(_position);
+      // just_audio retains speed across source replacements. Reapplying an
+      // unchanged value adds an unnecessary platform call to the deadline.
+      if (player.speed != _playbackSpeed) {
+        await _awaitNative(player.setSpeed(_playbackSpeed), stage: 'set_speed');
+      }
+      if (autoPlay && _loadShouldPlay) {
+        final playReadySw = Stopwatch()..start();
+        _fireAndForgetPlay(canStart: () => _loadShouldPlay);
+        await _waitForStartup(player);
+        playToReadyMs = playReadySw.elapsedMilliseconds;
+      } else if (player.playing) {
+        await _awaitNative(player.pause(), stage: 'load_pause');
+      }
+      _publishLoadedState(player, generation);
+      _lastStartupTiming = EngineStartupTiming(
+        ensurePlayerMs: ensurePlayerMs,
+        setSourceMs: setSourceMs,
+        playToReadyMs: playToReadyMs,
+      );
+    } on EngineLoadCancelled catch (cancelled) {
+      await _settleCancelledLoad();
+      if (cancelled.failure case final failure?) {
+        _emitError(failure, epoch: generation);
+        throw EngineReportedException(failure);
+      }
+      rethrow;
+    } on EngineReportedException {
+      rethrow;
+    } catch (e) {
+      final mapped = _mapJustAudioError(e, sourceUrl: sourceUrl);
+      _epochGate.abandonArm(generation);
+      await _recreatePlayer();
+      _emitError(mapped, epoch: generation);
+      throw EngineReportedException(mapped);
+    } finally {
+      _endLoadIntent();
+      _operationBudget = null;
+      _operationClock.stop();
+    }
+  }
+
+  void _publishLoadedState(ja.AudioPlayer player, int generation) {
+    if (!identical(_player, player) ||
+        generation != _dispatchEpoch ||
+        _epochGate.streamEventEpoch != generation) {
+      return;
+    }
+    // Replacing a playing source need not emit a new playing transition.
+    // Publish the verified snapshot after arming so the host cannot stay loading.
+    _isPlaying =
+        player.playing &&
+        player.processingState != ja.ProcessingState.completed &&
+        player.processingState != ja.ProcessingState.idle;
+    _reportBuffering(
+      player.playing && player.processingState == ja.ProcessingState.buffering,
+    );
+    _stateController.add(_isPlaying ? EngineState.playing : EngineState.paused);
+  }
+
+  @override
+  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) async {
+    if (slot.isExpired || !_hasSource || _loadedAudioSource == null) return;
+    final player = _player;
+    if (player == null) return;
+
+    final currentIndex = player.currentIndex;
+    if (currentIndex != null &&
+        currentIndex >= 0 &&
+        currentIndex < _preparedSlots.length) {
+      _preparedSlots[currentIndex].descriptor = slot;
+      return;
+    }
+
+    if (_preparedSlots.isEmpty &&
+        player.sequence.length == 1 &&
+        currentIndex == 0) {
+      _preparedSlots.add(_PreparedEngineSlot(slot, _loadedAudioSource!));
+    }
+  }
+
+  @override
+  Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) async {
+    if (!_allowPlaylistPreload) return;
+    final player = _player;
+    if (player == null ||
+        !_hasSource ||
+        window.current.isExpired ||
+        _pendingPreparedMutation != null) {
+      return;
+    }
+    final currentIndex = player.currentIndex;
+    if (currentIndex == null ||
+        currentIndex < 0 ||
+        currentIndex >= _preparedSlots.length ||
+        _preparedSlots[currentIndex].descriptor.key != window.current.key) {
+      return;
+    }
+
+    final prepareSw = Stopwatch()..start();
+    _preparedSlots[currentIndex].descriptor = window.current;
+    final desiredNext = window.next;
+    _operationBudget = _nativeOperationTimeout;
+    _operationClock
+      ..reset()
+      ..start();
+    try {
+      final currentEntry = _preparedSlots[currentIndex];
+      final retainedNext = desiredNext == null || desiredNext.isExpired
+          ? null
+          : _preparedSlots
+                .where(
+                  (entry) =>
+                      entry.descriptor.key == desiredNext.key &&
+                      !entry.descriptor.isExpired &&
+                      entry.descriptor.queueRevision ==
+                          desiredNext.queueRevision &&
+                      entry.descriptor.preparedFromGeneration ==
+                          desiredNext.preparedFromGeneration &&
+                      entry.descriptor.source == desiredNext.source &&
+                      !identical(entry, currentEntry),
+                )
+                .firstOrNull;
+      for (var index = _preparedSlots.length - 1; index >= 0; index--) {
+        if (identical(_preparedSlots[index], currentEntry) ||
+            identical(_preparedSlots[index], retainedNext)) {
+          continue;
+        }
+        await _awaitPreparedMutation(player, () async {
+          await player.removeAudioSourceAt(index);
+          if (identical(_player, player)) _preparedSlots.removeAt(index);
+        }, stage: 'preload_remove');
+      }
+
+      if (retainedNext != null) retainedNext.descriptor = desiredNext!;
+
+      if (desiredNext != null &&
+          !desiredNext.isExpired &&
+          desiredNext.key != window.current.key &&
+          retainedNext == null) {
+        final source = _buildAudioSource(
+          desiredNext.source,
+          tag: desiredNext.key,
+        );
+        final refreshedCurrentIndex = _preparedSlots.indexOf(currentEntry);
+        final insertAt = refreshedCurrentIndex + 1;
+        await _awaitPreparedMutation(player, () async {
+          await player.insertAudioSource(insertAt, source);
+          if (!identical(_player, player)) return;
+          _preparedSlots.insert(
+            insertAt,
+            _PreparedEngineSlot(desiredNext, source),
+          );
+          _scheduleCurrentSourceCommit(player);
+        }, stage: 'preload_insert');
+      }
+      StructuredLogService.event(
+        'audio_engine.prepared_window_ready',
+        fields: {
+          'engine': 'just_audio',
+          'prepare_ms': prepareSw.elapsedMilliseconds,
+          'slot_count': _preparedSlots.length,
+          'has_next': desiredNext != null,
+          'next_reused': retainedNext != null,
+          'preparation_stage': 'playlist_inserted',
+          'native_preload_target_ms': Platform.isAndroid
+              ? _androidPlaylistPreloadDuration.inMilliseconds
+              : null,
+          'next_generation': desiredNext?.generation,
+          'next_source_id': _preparedSlots.length > 1
+              ? identityHashCode(_preparedSlots[1].audioSource)
+              : null,
+          'queue_revision': window.current.queueRevision,
+        },
+      );
+    } catch (error) {
+      StructuredLogService.event(
+        'audio_engine.prepare_window_failed',
+        level: LogLevel.warning,
+        fields: {
+          'engine': 'just_audio',
+          'prepare_ms': prepareSw.elapsedMilliseconds,
+          'queue_revision': window.current.queueRevision,
+        },
+        error: error,
+      );
+    } finally {
+      _operationBudget = null;
+      _operationClock.stop();
+    }
+  }
+
+  @override
+  Future<bool> activatePreparedSlot(
+    String key, {
+    required int generation,
+    required int queueRevision,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    Duration? loadTimeout,
+  }) async {
+    if (!_allowPlaylistPreload) return false;
+    final player = _player;
+    final targetIndex = _preparedSlots.indexWhere(
+      (entry) =>
+          entry.descriptor.key == key &&
+          entry.descriptor.queueRevision == queueRevision &&
+          !entry.descriptor.isExpired,
+    );
+    if (player == null ||
+        targetIndex < 0 ||
+        !_hasSource ||
+        _pendingPreparedMutation != null) {
+      return false;
+    }
+
+    _resumeRevision++;
+    _playTicket++;
+    final target = _preparedSlots[targetIndex];
+    _clearNaturalTransition();
+    _failedNaturalSourceKey = null;
+    _beginLoadIntent(autoPlay);
+    final sw = Stopwatch()..start();
+    _epochGate.beginArm(generation);
+    _dispatchEpoch = generation;
+    _operationBudget = loadTimeout ?? _engineStartupTimeout;
+    _operationClock
+      ..reset()
+      ..start();
+    try {
+      if (!autoPlay && player.playing) {
+        await _awaitNative(player.pause(), stage: 'prepared_pause');
+      }
+      final nativeIndex = targetIndex;
+      StructuredLogService.event(
+        'audio_engine.source_load_started',
+        fields: {
+          'generation': generation,
+          'source_id': identityHashCode(target.audioSource),
+          'prepared': true,
+        },
+      );
+      final sourceClock = Stopwatch()..start();
+      await _awaitNative(
+        player.seek(initialPosition ?? Duration.zero, index: targetIndex),
+        stage: 'prepared_seek',
+        timeout: _engineStartupTimeout,
+      );
+      if (player.currentIndex != nativeIndex ||
+          player.processingState != ja.ProcessingState.ready) {
+        await _waitForPreparedReady(player, nativeIndex);
+      }
+      sourceClock.stop();
+
+      _loadedAudioSource = target.audioSource;
+      _hasSource = true;
+      _epochGate.commitArm(generation);
+      _emitCurrentSourceKey();
+      _duration = player.duration ?? Duration.zero;
+      _position = initialPosition ?? Duration.zero;
+      _bufferedPosition = player.bufferedPosition;
+      _durationController.add(_duration);
+      _positionController.add(_position);
+      _bufferedPositionController.add(_bufferedPosition);
+      if (player.speed != _playbackSpeed) {
+        await _awaitNative(
+          player.setSpeed(_playbackSpeed),
+          stage: 'prepared_speed',
+        );
+      }
+      var playToReadyMs = 0;
+      if (autoPlay && _loadShouldPlay) {
+        final playSw = Stopwatch()..start();
+        _fireAndForgetPlay(canStart: () => _loadShouldPlay);
+        await _waitForStartup(player);
+        playToReadyMs = playSw.elapsedMilliseconds;
+      } else if (player.playing) {
+        await _awaitNative(player.pause(), stage: 'prepared_pause');
+      }
+      _publishLoadedState(player, generation);
+      _lastStartupTiming = EngineStartupTiming(
+        muteMs: 0,
+        setSourceMs: sourceClock.elapsedMilliseconds,
+        playToReadyMs: playToReadyMs,
+        preparedActivation: true,
+      );
+      StructuredLogService.event(
+        'audio_engine.prepared_slot_activated',
+        fields: {
+          'engine': 'just_audio',
+          'activation_ms': sw.elapsedMilliseconds,
+          'source_switch': 'playlist_seek',
+          'generation': generation,
+          'source_id': identityHashCode(target.audioSource),
+          'queue_revision': queueRevision,
+        },
+      );
+      return true;
+    } on EngineLoadCancelled catch (cancelled) {
+      await _settleCancelledLoad();
+      if (cancelled.failure case final failure?) {
+        _emitError(failure, epoch: generation);
+        throw EngineReportedException(failure);
+      }
+      rethrow;
+    } catch (error) {
+      _epochGate.abandonArm(generation);
+      StructuredLogService.event(
+        'audio_engine.prepared_slot_failed',
+        level: LogLevel.warning,
+        fields: {'engine': 'just_audio', 'queue_revision': queueRevision},
+        error: error,
+      );
+      return false;
+    } finally {
+      _endLoadIntent();
+      _operationBudget = null;
+      _operationClock.stop();
+    }
+  }
+
+  @override
+  Future<void> invalidatePreparedSlots() async {
+    await _settlePreparedMutation();
+    final player = _player;
+    final currentIndex = player?.currentIndex;
+    if (player == null || currentIndex == null || _preparedSlots.isEmpty) {
+      _preparedSlots.clear();
+      return;
+    }
+    for (var index = _preparedSlots.length - 1; index >= 0; index--) {
+      if (index == currentIndex) continue;
+      await _awaitNative(
+        player.removeAudioSourceAt(index),
+        stage: 'invalidate_preload',
+      );
+      _preparedSlots.removeAt(index);
+    }
+  }
+
+  Future<void> _waitForPreparedReady(ja.AudioPlayer player, int index) async {
+    final ready = Completer<void>();
+    void checkReady() {
+      if (!ready.isCompleted &&
+          player.currentIndex == index &&
+          player.processingState == ja.ProcessingState.ready) {
+        ready.complete();
+      }
+    }
+
+    final subscription = player.playerStateStream.listen(
+      (_) => checkReady(),
+      onError: (Object error, StackTrace stack) {
+        if (!ready.isCompleted) ready.completeError(error, stack);
+      },
+      onDone: () {
+        if (!ready.isCompleted) {
+          ready.completeError(StateError('播放器状态流已关闭'));
+        }
+      },
+    );
+    try {
+      // Ready can change between the caller's snapshot and subscription setup.
+      checkReady();
+      await _awaitNative(
+        ready.future,
+        stage: 'prepared_ready',
+        timeout: _engineStartupTimeout,
+      );
+    } finally {
+      await subscription.cancel();
+    }
+  }
+
+  Future<void> _waitForStartup(ja.AudioPlayer player) async {
+    final completer = Completer<void>();
+    // These streams are broadcast streams and may emit the first playing
+    // event before the listeners below are attached. Seed the gate from the
+    // current player snapshot so a fast source is not reported as a timeout.
+    var playing = player.playing;
+    bool sourceReady(ja.ProcessingState state) =>
+        state == ja.ProcessingState.ready ||
+        (state == ja.ProcessingState.completed &&
+            player.position > Duration.zero);
+    var ready = sourceReady(player.processingState);
+    var progressed =
+        player.bufferedPosition > Duration.zero ||
+        player.position > Duration.zero;
+    late final StreamSubscription<ja.PlayerState> stateSub;
+    late final StreamSubscription<Duration> bufferSub;
+    late final StreamSubscription<Duration> positionSub;
+    late final StreamSubscription<EngineError> errorSub;
+    Timer? timeoutTimer;
+
+    void completeIfReady() {
+      if (playing && ready && progressed && !completer.isCompleted) {
+        completer.complete();
+      }
+    }
+
+    stateSub = player.playerStateStream.listen((state) {
+      playing = state.playing;
+      ready = sourceReady(state.processingState);
+      completeIfReady();
+    });
+    bufferSub = player.bufferedPositionStream.listen((position) {
+      progressed = progressed || position > Duration.zero;
+      completeIfReady();
+    });
+    positionSub = player.positionStream.listen((position) {
+      progressed = progressed || position > Duration.zero;
+      completeIfReady();
+    });
+    errorSub = _errorController.stream
+        .where((error) => error.epoch == _dispatchEpoch)
+        .listen((error) {
+          if (!completer.isCompleted) completer.completeError(error);
+        });
+    completeIfReady();
+    timeoutTimer = Timer(_remainingOperationTime(_engineStartupTimeout), () {
+      if (!completer.isCompleted) {
+        completer.completeError(TimeoutException('音频流启动超时'));
+      }
+    });
+
+    try {
+      final paused = _loadPaused;
+      await _withLoadCancellation(
+        paused == null
+            ? completer.future
+            : Future.any([completer.future, paused.future]),
+      );
+    } on EngineError catch (error) {
+      _playTicket++;
+      _epochGate.beginStop();
+      await _recreatePlayer();
+      throw EngineReportedException(error);
+    } on TimeoutException catch (error) {
+      final mapped = EngineError(
+        type: EngineErrorType.networkTimeout,
+        message: '音频流启动超时',
+        cause: NativePlaybackTimeout('startup', error),
+        retriable: true,
+        epoch: _dispatchEpoch,
+      );
+      _playTicket++;
+      _epochGate.beginStop();
+      await _recreatePlayer();
+      _emitError(mapped);
+      throw EngineReportedException(mapped);
+    } finally {
+      timeoutTimer.cancel();
+      await stateSub.cancel();
+      await bufferSub.cancel();
+      await positionSub.cancel();
+      await errorSub.cancel();
+    }
+  }
+
+  @override
+  Future<void> pause() async {
+    _resumeRevision++;
+    final player = _player;
+    if (player != null) await _awaitNative(player.pause(), stage: 'pause');
+  }
+
+  @override
+  Future<void> resume() async {
+    final revision = ++_resumeRevision;
+    await _ensurePlayer();
+    if (revision != _resumeRevision) return;
+    if (!_hasSource) {
+      _emitError(
+        EngineError(
+          type: EngineErrorType.sourceLoad,
+          message: 'resume() called without an active source',
+          retriable: false,
+          epoch: _dispatchEpoch,
+        ),
+      );
+      return;
+    }
+    if (_isPlaying) return;
+    final player = _player;
+    final epoch = _dispatchEpoch;
+    _fireAndForgetPlay(
+      canStart: () =>
+          revision == _resumeRevision &&
+          identical(player, _player) &&
+          epoch == _dispatchEpoch &&
+          _hasSource,
+    );
+  }
+
+  @override
+  Future<void> seek(Duration position) async {
+    final player = _player;
+    if (player != null) {
+      await _awaitNative(
+        player.seek(position),
+        stage: 'seek',
+        timeout: _engineStartupTimeout,
+      );
+    }
+    _position = position;
+  }
+
+  @override
+  Future<void> stop() async {
+    await _settlePreparedMutation();
+    _resumeRevision++;
+    // stop 属于源头操作：其后的流事件（idle/completed）归属被停止的纪元，
+    // 在下一次 arm 前不会污染新歌。
+    _epochGate.beginStop();
+    final player = _player;
+    if (player != null) await _awaitNative(player.stop(), stage: 'stop');
+    _hasSource = false;
+    _loadedAudioSource = null;
+    _preparedSlots.clear();
+    _lastCurrentSourceKey = null;
+    _isPlaying = false;
+    if (!_stateController.isClosed) {
+      _stateController.add(EngineState.idle);
+    }
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {
+    _volumeInitialized = true;
+    _currentVolume = volume.clamp(0.0, 1.0);
+    final player = _player;
+    if (player != null) {
+      await _awaitNative(player.setVolume(_currentVolume), stage: 'volume');
+    }
+  }
+
+  @override
+  Future<void> setPlaybackSpeed(double speed) async {
+    _playbackSpeed = speed.clamp(0.5, 2.0);
+    final player = _player;
+    if (player != null) {
+      await _awaitNative(player.setSpeed(_playbackSpeed), stage: 'speed');
+    }
+  }
+
+  @override
+  Future<void> dispose() async {
+    await _disposePlayerOnly();
+    await _bufferingController.close();
+    await _pendingSourceController.close();
+    EqualizerService().setBackend(null);
+    await _positionController.close();
+    await _durationController.close();
+    await _bufferedPositionController.close();
+    await _stateController.close();
+    await _completionController.close();
+    await _errorController.close();
+    await _sourceCommitController.close();
+  }
+
+  @override
+  bool get supportsEqualizer => Platform.isAndroid;
+
+  @override
+  Future<void> applyEqualizer(
+    bool enabled,
+    List<double> gains,
+    List<int> frequencies,
+  ) async {
+    _equalizerIntentRevision = EqualizerService().revision;
+    if (_player == null) {
+      EqualizerService().report(
+        this,
+        enabled ? EqualizerStatus.waiting : EqualizerStatus.disabled,
+      );
+    }
+    _equalizerEnabled = enabled;
+    _equalizerGains = List<double>.from(gains);
+    _equalizerFrequencies = List<int>.from(frequencies);
+    _equalizerRevision++;
+
+    if (!Platform.isAndroid) return;
+    _androidEqualizerDirty = true;
+    _scheduleEqualizerUpdate();
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// MediaKit 实现（Windows / macOS / Linux）
+// ─────────────────────────────────────────────────────────
+class MediaKitEngine implements AudioEngine, EqualizerCapable {
+  @override
+  bool canResumeSource(int generation) =>
+      generation == _dispatchEpoch &&
+      generation == _epochGate.streamEventEpoch &&
+      _hasMedia &&
+      _player != null;
+  MediaKitEngine() {
+    EqualizerService().setBackend(this);
+  }
+
+  @override
+  Stream<EngineSourceCommit> get sourceCommitStream =>
+      Stream<EngineSourceCommit>.empty();
+
+  static Future<void>? _mediaKitInitFuture;
+
+  mk.Player? _player;
+  double _currentVolume = 70; // MediaKit 音量 0-100
+  double _playbackSpeed = 1.0;
+  bool _hasMedia = false;
+  EngineStartupTiming? _lastStartupTiming;
+
+  /// 纪元闸门：与 JustAudioEngine 相同的源头捕获模式。
+  final EngineEpochGate _epochGate = EngineEpochGate();
+  int _dispatchEpoch = 0;
+
+  final _positionController = StreamController<Duration>.broadcast();
+  final _durationController = StreamController<Duration>.broadcast();
+  final _bufferedPositionController = StreamController<Duration>.broadcast();
+  final _stateController = StreamController<EngineState>.broadcast();
+  final _completionController = StreamController<bool>.broadcast();
+  final _errorController = StreamController<EngineError>.broadcast();
+
+  StreamSubscription<bool>? _playingSub;
+  StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<Duration?>? _durationSub;
+  StreamSubscription<Duration>? _bufferSub;
+  StreamSubscription<double>? _rateSub;
+  StreamSubscription<bool>? _completedSub;
+  StreamSubscription<String>? _errorSub;
+
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+  Duration _bufferedPosition = Duration.zero;
+
+  @override
+  Future<void> bindCurrentPreparedSlot(PreparedPlaybackSlot slot) async {}
+
+  @override
+  Future<void> preparePlaybackWindow(PreparedPlaybackWindow window) async {}
+
+  @override
+  Future<bool> activatePreparedSlot(
+    String key, {
+    required int generation,
+    required int queueRevision,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    Duration? loadTimeout,
+  }) async => false;
+
+  @override
+  Future<void> invalidatePreparedSlots() async {}
+  bool _isPlaying = false;
+
+  @override
+  Duration get duration => _duration;
+
+  @override
+  Duration get position => _position;
+
+  @override
+  Duration get bufferedPosition => _bufferedPosition;
+
+  @override
+  bool get isPlaying => _isPlaying;
+
+  @override
+  double get playbackSpeed => _playbackSpeed;
+
+  @override
+  EngineStartupTiming? get lastStartupTiming => _lastStartupTiming;
+
+  @override
+  Stream<Duration> get positionStream => _positionController.stream;
+
+  @override
+  Stream<Duration> get durationStream => _durationController.stream;
+
+  @override
+  Stream<Duration> get bufferedPositionStream =>
+      _bufferedPositionController.stream;
+
+  @override
+  Stream<EngineState> get stateStream => _stateController.stream;
+
+  @override
+  Stream<bool> get completionStream => _completionController.stream;
+
+  @override
+  Stream<EngineError> get errorStream => _errorController.stream;
+
+  Future<void> _ensureMediaKitInitialized() {
+    _mediaKitInitFuture ??= Future<void>(() {
+      try {
+        mk.MediaKit.ensureInitialized();
+      } catch (e) {
+        StructuredLogService.event(
+          'audio_engine.initialize_failed',
+          level: LogLevel.error,
+          fields: const {'engine': 'media_kit'},
+          error: e,
+        );
+        rethrow;
+      }
+    });
+    return _mediaKitInitFuture!;
+  }
+
+  void _emitError(EngineError error, {int? epoch}) {
+    final effectiveEpoch = epoch ?? _dispatchEpoch;
+    if (!_errorController.isClosed) {
+      _errorController.add(
+        error.epoch == effectiveEpoch
+            ? error
+            : EngineError(
+                type: error.type,
+                message: error.message,
+                sourceUrl: error.sourceUrl,
+                cause: error.cause,
+                retriable: error.retriable,
+                epoch: effectiveEpoch,
+              ),
+      );
+    }
+    StructuredLogService.event(
+      'audio_engine.error',
+      level: LogLevel.error,
+      fields: {
+        'engine': 'media_kit',
+        'failure_kind': error.type.name,
+        'retriable': error.retriable,
+        'source_url': error.sourceUrl,
+        'epoch': effectiveEpoch,
+      },
+      error: error.cause ?? error.message,
+    );
+  }
+
+  EngineError _mapMediaKitError(String message, {String? sourceUrl}) {
+    final lower = message.toLowerCase();
+    if (lower.contains('403') ||
+        lower.contains('401') ||
+        lower.contains('forbidden')) {
+      return EngineError(
+        type: EngineErrorType.accessDenied,
+        message: message,
+        sourceUrl: sourceUrl,
+        retriable: false,
+      );
+    }
+    if (lower.contains('timeout') ||
+        lower.contains('timed out') ||
+        lower.contains('network')) {
+      return EngineError(
+        type: EngineErrorType.networkTimeout,
+        message: message,
+        sourceUrl: sourceUrl,
+        retriable: true,
+      );
+    }
+    if (lower.contains('decoder') ||
+        lower.contains('unsupported') ||
+        lower.contains('format')) {
+      return EngineError(
+        type: EngineErrorType.unsupportedFormat,
+        message: message,
+        sourceUrl: sourceUrl,
+        retriable: false,
+      );
+    }
+    return EngineError(
+      type: EngineErrorType.sourceLoad,
+      message: message,
+      sourceUrl: sourceUrl,
+      retriable: true,
+    );
+  }
+
+  Future<void> _ensurePlayer() async {
+    if (_player != null) return;
+    await _ensureMediaKitInitialized();
+
+    _player = mk.Player(
+      configuration: const mk.PlayerConfiguration(
+        title: 'Cyrene Music',
+        ready: null,
+      ),
+    );
+
+    // 注入桌面端均衡器
+    EqualizerService().setBackend(this);
+    unawaited(EqualizerService().applyEqualizer());
+
+    final savedVolume = PersistentStorageService().getDouble('player_volume');
+    if (savedVolume != null) {
+      _currentVolume = (savedVolume.clamp(0.0, 1.0)) * 100;
+      await _player!.setVolume(_currentVolume);
+    } else {
+      _currentVolume = 70;
+      await _player!.setVolume(70);
+    }
+    await _player!.setRate(_playbackSpeed);
+
+    _playingSub = _player!.stream.playing.listen((playing) {
+      if (playing) {
+        _isPlaying = true;
+        if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+          _stateController.add(EngineState.playing);
+        }
+      } else if (_isPlaying) {
+        _isPlaying = false;
+        if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+          _stateController.add(EngineState.paused);
+        }
+      }
+    });
+
+    _positionSub = _player!.stream.position.listen((pos) {
+      _position = pos;
+      if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+        _positionController.add(pos);
+      }
+    });
+
+    _durationSub = _player!.stream.duration.listen((dur) {
+      _duration = dur;
+      if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+        _durationController.add(_duration);
+      }
+    });
+
+    _bufferSub = _player!.stream.buffer.listen((buffer) {
+      _bufferedPosition = buffer;
+      if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+        _bufferedPositionController.add(buffer);
+      }
+    });
+
+    _rateSub = _player!.stream.rate.listen((rate) {
+      _playbackSpeed = rate;
+    });
+
+    _completedSub = _player!.stream.completed.listen((completed) {
+      if (completed) {
+        _isPlaying = false;
+        _position = Duration.zero;
+        if (_epochGate.streamEventEpoch == _dispatchEpoch) {
+          _stateController.add(EngineState.idle);
+          _completionController.add(true);
+        }
+      }
+    });
+
+    _errorSub = _player!.stream.error.listen((message) {
+      final mapped = _mapMediaKitError(message);
+      // 纪元闸门：切换窗口内的错误归属旧纪元，直接抑制。
+      // media_kit 在 stop/open 切换时可能抛出属于旧媒体的未知错误，
+      // 且其错误流不区分来源，必须靠闸门防止旧歌错误触发新歌重试/跳歌。
+      if (_epochGate.streamEventEpoch != _dispatchEpoch) {
+        StructuredLogService.event(
+          'audio_engine.stale_event_suppressed',
+          level: LogLevel.debug,
+          fields: {
+            'engine': 'media_kit',
+            'event_epoch': _epochGate.streamEventEpoch,
+            'dispatch_epoch': _dispatchEpoch,
+            'failure_kind': mapped.type.name,
+          },
+        );
+        return;
+      }
+      _emitError(mapped);
+    });
+  }
+
+  Future<void> _discardPlayerAfterLoadFailure(mk.Player player) async {
+    if (identical(_player, player)) _player = null;
+    await _playingSub?.cancel();
+    await _positionSub?.cancel();
+    await _durationSub?.cancel();
+    await _bufferSub?.cancel();
+    await _rateSub?.cancel();
+    await _completedSub?.cancel();
+    await _errorSub?.cancel();
+    _playingSub = null;
+    _positionSub = null;
+    _durationSub = null;
+    _bufferSub = null;
+    _rateSub = null;
+    _completedSub = null;
+    _errorSub = null;
+    _hasMedia = false;
+    _isPlaying = false;
+    try {
+      await player.dispose();
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> play(
+    String url, {
+    required int generation,
+    bool isLocal = false,
+    Map<String, String>? headers,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    bool preload = true,
+    Duration? loadTimeout,
+  }) async {
+    _lastStartupTiming = null;
+    var ensurePlayerMs = 0;
+    var muteMs = 0;
+    var stopMs = 0;
+    var setSourceMs = 0;
+    var playToReadyMs = 0;
+    // 源头捕获必须早于初始化/打开媒体的异步边界。
+    _epochGate.beginArm(generation);
+    _dispatchEpoch = generation;
+    final ensurePlayerSw = Stopwatch()..start();
+    await _ensurePlayer();
+    ensurePlayerMs = ensurePlayerSw.elapsedMilliseconds;
+    final player = _player!;
+
+    if (_isPlaying || _hasMedia) {
+      _epochGate.beginStop();
+      final muteSw = Stopwatch()..start();
+      await player.setVolume(0);
+      muteMs = muteSw.elapsedMilliseconds;
+      final stopSw = Stopwatch()..start();
+      await player.stop();
+      stopMs = stopSw.elapsedMilliseconds;
+    }
+    try {
+      final setSourceSw = Stopwatch()..start();
+      await player
+          .open(mk.Media(url, httpHeaders: headers), play: false)
+          .timeout(loadTimeout ?? const Duration(seconds: 15));
+      setSourceMs = setSourceSw.elapsedMilliseconds;
+      _hasMedia = true;
+    } catch (e) {
+      final base = _mapMediaKitError(e.toString(), sourceUrl: url);
+      final mapped = EngineError(
+        type: base.type,
+        message: base.message,
+        sourceUrl: base.sourceUrl,
+        cause: e,
+        retriable: base.retriable,
+        epoch: generation,
+      );
+      _epochGate.abandonArm(generation);
+      _emitError(mapped, epoch: generation);
+      await _discardPlayerAfterLoadFailure(player);
+      throw EngineReportedException(mapped);
+    }
+
+    // 装载成功：纪元翻转，窗口关闭。此后流事件按新纪元分发。
+    _epochGate.commitArm(generation);
+
+    _duration = player.state.duration;
+    if (_duration > Duration.zero) {
+      _durationController.add(_duration);
+    }
+    if (player.state.buffer > Duration.zero) {
+      _bufferedPosition = player.state.buffer;
+      _bufferedPositionController.add(_bufferedPosition);
+    }
+
+    if (initialPosition != null && initialPosition > Duration.zero) {
+      await player.seek(initialPosition);
+      _position = initialPosition;
+    } else {
+      _position = Duration.zero;
+    }
+    _positionController.add(_position);
+    await player.setVolume(_currentVolume);
+    await player.setRate(_playbackSpeed);
+    if (autoPlay) {
+      final playReadySw = Stopwatch()..start();
+      await player.play();
+      await _waitForStartup(player);
+      playToReadyMs = playReadySw.elapsedMilliseconds;
+    }
+    _lastStartupTiming = EngineStartupTiming(
+      ensurePlayerMs: ensurePlayerMs,
+      muteMs: muteMs,
+      stopMs: stopMs,
+      setSourceMs: setSourceMs,
+      playToReadyMs: playToReadyMs,
+    );
+  }
+
+  Future<void> _waitForStartup(mk.Player player) async {
+    final completer = Completer<void>();
+    // media_kit also exposes the current state synchronously; use it to
+    // cover the same subscribe-after-play race as just_audio.
+    var playing = player.state.playing;
+    var progressed =
+        player.state.buffer > Duration.zero ||
+        player.state.position > Duration.zero;
+    late final StreamSubscription<bool> playingSub;
+    late final StreamSubscription<Duration> bufferSub;
+    late final StreamSubscription<Duration> positionSub;
+    late final StreamSubscription<EngineError> errorSub;
+    Timer? timeoutTimer;
+
+    void completeIfReady() {
+      if (playing && progressed && !completer.isCompleted) {
+        completer.complete();
+      }
+    }
+
+    playingSub = player.stream.playing.listen((value) {
+      playing = playing || value;
+      completeIfReady();
+    });
+    bufferSub = player.stream.buffer.listen((value) {
+      progressed = progressed || value > Duration.zero;
+      completeIfReady();
+    });
+    positionSub = player.stream.position.listen((value) {
+      progressed = progressed || value > Duration.zero;
+      completeIfReady();
+    });
+    errorSub = _errorController.stream
+        .where((error) => error.epoch == _dispatchEpoch)
+        .listen((error) {
+          if (!completer.isCompleted) completer.completeError(error);
+        });
+    timeoutTimer = Timer(_engineStartupTimeout, () {
+      if (!completer.isCompleted) {
+        completer.completeError(TimeoutException('音频流启动超时'));
+      }
+    });
+
+    try {
+      await completer.future;
+    } on EngineError catch (error) {
+      _epochGate.beginStop();
+      try {
+        await player.stop().timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      _hasMedia = false;
+      throw EngineReportedException(error);
+    } on TimeoutException catch (error) {
+      final mapped = EngineError(
+        type: EngineErrorType.networkTimeout,
+        message: '音频流启动超时',
+        cause: error,
+        retriable: true,
+        epoch: _dispatchEpoch,
+      );
+      _epochGate.beginStop();
+      try {
+        await player.stop().timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      _hasMedia = false;
+      _emitError(mapped);
+      throw EngineReportedException(mapped);
+    } finally {
+      timeoutTimer.cancel();
+      await playingSub.cancel();
+      await bufferSub.cancel();
+      await positionSub.cancel();
+      await errorSub.cancel();
+    }
+  }
+
+  @override
+  Future<void> playSource(
+    PlayableSource source, {
+    required int generation,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    bool preload = true,
+    Duration? loadTimeout,
+  }) async {
+    final customSource = source.audioSource;
+    if (customSource != null) {
+      await playAudioSource(
+        customSource,
+        generation: generation,
+        sourceUrl: source.sourceUrl,
+        autoPlay: autoPlay,
+        initialPosition: initialPosition,
+        preload: preload,
+        loadTimeout: loadTimeout,
+      );
+      return;
+    }
+
+    final pathOrUrl = source.playbackPathOrUrl;
+    if (pathOrUrl == null || pathOrUrl.isEmpty) {
+      throw StateError('PlayableSource has no playable path or url');
+    }
+    await play(
+      pathOrUrl,
+      generation: generation,
+      isLocal: source.isLocal,
+      headers: source.headers,
+      autoPlay: autoPlay,
+      initialPosition: initialPosition,
+      preload: preload,
+      loadTimeout: loadTimeout,
+    );
+  }
+
+  @override
+  Future<void> playAudioSource(
+    ja.AudioSource source, {
+    required int generation,
+    String? sourceUrl,
+    bool autoPlay = true,
+    Duration? initialPosition,
+    bool preload = true,
+    Duration? loadTimeout,
+  }) async {
+    throw UnsupportedError(
+      'Custom audio sources are only supported on just_audio platforms.',
+    );
+  }
+
+  @override
+  Future<void> pause() async {
+    await _player?.pause();
+  }
+
+  @override
+  Future<void> resume() async {
+    if (!_hasMedia) {
+      _emitError(
+        EngineError(
+          type: EngineErrorType.sourceLoad,
+          message: 'resume() called without an active media',
+          retriable: false,
+          epoch: _dispatchEpoch,
+        ),
+      );
+      return;
+    }
+    await _player?.play();
+  }
+
+  @override
+  Future<void> seek(Duration position) async {
+    await _player?.seek(position);
+    _position = position;
+  }
+
+  @override
+  Future<void> stop() async {
+    // stop 属于源头操作：其后到下一次 arm 前的流事件归属被停止的纪元。
+    _epochGate.beginStop();
+    await _player?.stop();
+    _hasMedia = false;
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {
+    _currentVolume = (volume.clamp(0.0, 1.0)) * 100;
+    await _player?.setVolume(_currentVolume);
+  }
+
+  @override
+  Future<void> setPlaybackSpeed(double speed) async {
+    _playbackSpeed = speed.clamp(0.5, 2.0);
+    await _player?.setRate(_playbackSpeed);
+  }
+
+  @override
+  Future<void> dispose() async {
+    await _playingSub?.cancel();
+    await _positionSub?.cancel();
+    await _durationSub?.cancel();
+    await _bufferSub?.cancel();
+    await _rateSub?.cancel();
+    await _completedSub?.cancel();
+    await _errorSub?.cancel();
+    _player?.dispose();
+    _player = null;
+    EqualizerService().setBackend(null);
+    await _positionController.close();
+    await _durationController.close();
+    await _bufferedPositionController.close();
+    await _stateController.close();
+    await _completionController.close();
+    await _errorController.close();
+  }
+
+  @override
+  bool get supportsEqualizer => true;
+
+  @override
+  Future<void> applyEqualizer(
+    bool enabled,
+    List<double> gains,
+    List<int> frequencies,
+  ) async {
+    final player = _player;
+    if (player == null) {
+      EqualizerService().report(
+        this,
+        enabled ? EqualizerStatus.waiting : EqualizerStatus.disabled,
+      );
+      return;
+    }
+
+    final intentRevision = EqualizerService().revision;
+    if (!enabled) {
+      await (player.platform as dynamic)?.setProperty('af', '');
+      if (identical(_player, player)) {
+        EqualizerService().report(
+          this,
+          EqualizerStatus.disabled,
+          revision: intentRevision,
+        );
+      }
+      return;
+    }
+
+    final filterBuffer = StringBuffer();
+    final mapped = mapEqualizerCurve(
+      frequencies,
+      gains,
+      EqualizerCapabilities.standard,
+    );
+    for (int i = 0; i < mapped.length; i++) {
+      final gain = mapped[i];
+      if (gain.abs() <= 0.1) continue;
+
+      if (filterBuffer.isNotEmpty) filterBuffer.write(',');
+      filterBuffer.write(
+        'equalizer=f=${EqualizerCapabilities.standard.frequencies[i]}:width_type=o:width=1:g=${gain.toStringAsFixed(1)}',
+      );
+    }
+
+    final filterString = filterBuffer.toString();
+    await (player.platform as dynamic)?.setProperty('af', filterString);
+    if (identical(_player, player)) {
+      EqualizerService().report(
+        this,
+        filterString.isEmpty
+            ? EqualizerStatus.bypassed
+            : EqualizerStatus.applied,
+        revision: intentRevision,
+      );
+    }
+  }
+}

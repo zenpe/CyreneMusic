@@ -1,26 +1,29 @@
+import 'structured_log_service.dart';
+import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
+import 'package:charset/charset.dart';
 
 /// 洛雪音源脚本配置
-/// 
+///
 /// 从洛雪音源 JS 脚本中解析出的配置信息
 class LxMusicSourceConfig {
   /// 音源名称
   final String name;
-  
+
   /// 音源版本
   final String version;
-  
+
   /// API 基础 URL
   final String apiUrl;
-  
+
   /// API 验证密钥
   final String apiKey;
-  
+
   /// 脚本来源（URL 或文件路径）
   final String source;
-  
+
   /// URL 路径模板（用于构建请求 URL）
   final String urlPathTemplate;
 
@@ -46,60 +49,73 @@ class LxMusicSourceConfig {
   });
 
   /// 检查配置是否有效
-  /// 
+  ///
   /// 只要有脚本内容，就认为是有效的（支持运行时环境）
   /// 或者有 API URL（支持旧版解析）
   bool get isValid => scriptContent.isNotEmpty || apiUrl.isNotEmpty;
 }
 
 /// 洛雪音源脚本解析器
-/// 
+///
 /// 用于解析洛雪音源 JS 脚本，提取 API 配置信息
 class LxMusicSourceParser {
   /// 从 URL 解析洛雪音源脚本
-  /// 
+  ///
   /// [scriptUrl] - 脚本的 URL 地址
-  /// 
+  ///
   /// 返回解析后的配置，如果解析失败返回 null
   Future<LxMusicSourceConfig?> parseFromUrl(String scriptUrl) async {
     try {
-      print('🔍 [LxMusicSourceParser] 从 URL 解析脚本: $scriptUrl');
-      
+      StructuredLogService.log(
+        '🔍 [LxMusicSourceParser] 从 URL 解析脚本: $scriptUrl',
+      );
+
       // 下载脚本内容
-      final response = await http.get(
-        Uri.parse(scriptUrl),
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .get(
+            Uri.parse(scriptUrl),
+            headers: {
+              'Cache-Control': 'no-cache',
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
-        print('❌ [LxMusicSourceParser] 下载脚本失败: HTTP ${response.statusCode}');
+        StructuredLogService.log(
+          '❌ [LxMusicSourceParser] 下载脚本失败: HTTP ${response.statusCode}',
+        );
         return null;
       }
 
-      final scriptContent = response.body;
-      print('✅ [LxMusicSourceParser] 脚本下载成功，长度: ${scriptContent.length}');
+      final scriptContent = _decodeScriptBytes(
+        response.bodyBytes,
+        contentType: response.headers['content-type'],
+      );
+      StructuredLogService.log(
+        '✅ [LxMusicSourceParser] 脚本下载成功，长度: ${scriptContent.length}',
+      );
 
       // 解析脚本内容
       final config = _parseScriptContent(scriptContent, scriptUrl);
-      
+
       return config;
     } catch (e) {
-      print('❌ [LxMusicSourceParser] 解析失败: $e');
+      StructuredLogService.log('❌ [LxMusicSourceParser] 解析失败: $e');
       return null;
     }
   }
 
   /// 从本地文件解析洛雪音源脚本
-  /// 
+  ///
   /// 打开文件选择器让用户选择 .js 文件
-  /// 
+  ///
   /// 返回解析后的配置，如果用户取消或解析失败返回 null
   Future<LxMusicSourceConfig?> parseFromFile() async {
     try {
-      print('🔍 [LxMusicSourceParser] 从本地文件解析脚本');
-      
+      StructuredLogService.log('🔍 [LxMusicSourceParser] 从本地文件解析脚本');
+
       // 打开文件选择器
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -108,78 +124,101 @@ class LxMusicSourceParser {
       );
 
       if (result == null || result.files.isEmpty) {
-        print('⚠️ [LxMusicSourceParser] 用户取消了文件选择');
+        StructuredLogService.log('⚠️ [LxMusicSourceParser] 用户取消了文件选择');
         return null;
       }
 
       final file = result.files.first;
       String? scriptContent;
       String source;
+      List<int>? scriptBytes;
 
       if (file.path != null) {
-        // 桌面平台：直接读取文件
-        scriptContent = await File(file.path!).readAsString();
+        // 桌面平台：按字节读取，避免系统默认编码导致乱码
+        scriptBytes = await File(file.path!).readAsBytes();
         source = file.path!;
       } else if (file.bytes != null) {
         // Web/移动平台：从字节读取
-        scriptContent = String.fromCharCodes(file.bytes!);
+        scriptBytes = file.bytes!;
         source = file.name;
       } else {
-        print('❌ [LxMusicSourceParser] 无法读取文件内容');
+        StructuredLogService.log('❌ [LxMusicSourceParser] 无法读取文件内容');
         return null;
       }
 
-      print('✅ [LxMusicSourceParser] 文件读取成功: ${file.name}，长度: ${scriptContent.length}');
+      scriptContent = _decodeScriptBytes(scriptBytes);
+      StructuredLogService.log(
+        '✅ [LxMusicSourceParser] 文件读取成功: ${file.name}，长度: ${scriptContent.length}',
+      );
 
       // 解析脚本内容
       final config = _parseScriptContent(scriptContent, source);
-      
+
       return config;
     } catch (e) {
-      print('❌ [LxMusicSourceParser] 解析失败: $e');
+      StructuredLogService.log('❌ [LxMusicSourceParser] 解析失败: $e');
       return null;
     }
   }
 
   /// 解析脚本内容
-  /// 
+  ///
   /// 从 JS 脚本中提取配置信息
-  LxMusicSourceConfig? _parseScriptContent(String scriptContent, String source) {
+  LxMusicSourceConfig? _parseScriptContent(
+    String scriptContent,
+    String source,
+  ) {
     try {
-      print('🔍 [LxMusicSourceParser] 开始解析脚本内容...');
+      StructuredLogService.log('🔍 [LxMusicSourceParser] 开始解析脚本内容...');
 
       // 提取头部元数据（优先级最高）
       final headerMetadata = _parseHeaderMetadata(scriptContent);
 
       // 提取名称
       String name = headerMetadata['name'] ?? _extractName(scriptContent);
-      
+
       // 提取版本
-      String version = headerMetadata['version'] ?? _extractVersion(scriptContent);
-      
+      String version =
+          headerMetadata['version'] ?? _extractVersion(scriptContent);
+
       // 提取 API URL
       String apiUrl = _extractApiUrl(scriptContent);
-      
+
       // 提取 API Key
       String apiKey = _extractApiKey(scriptContent);
-      
+
       // 提取 URL 路径模板
       String urlPathTemplate = _extractUrlPathTemplate(scriptContent);
-      
+
       // 提取作者
       String author = headerMetadata['author'] ?? _extractAuthor(scriptContent);
-      
-      // 提取描述
-      String description = headerMetadata['description'] ?? _extractDescription(scriptContent);
 
-      print('📋 [LxMusicSourceParser] 解析结果:');
-      print('   名称: $name');
-      print('   版本: $version');
-      print('   作者: ${author.isNotEmpty ? author : "(未找到)"}');
-      print('   描述: ${description.isNotEmpty ? description : "(未找到)"}');
-      print('   API URL: $apiUrl');
-      print('   API Key: ${apiKey.isNotEmpty ? "(已提取)" : "(未找到)"}');
-      print('   路径模板: ${urlPathTemplate.isNotEmpty ? urlPathTemplate : "(未找到)"}');
+      // 提取描述
+      String description =
+          headerMetadata['description'] ?? _extractDescription(scriptContent);
+
+      // 清洗元数据，尽量修复常见 UTF-8/Latin1 误解码乱码
+      name = _normalizeMetadataText(name, fallback: '洛雪音源');
+      version = _normalizeMetadataText(version, fallback: '1.0.0');
+      author = _normalizeMetadataText(author);
+      description = _normalizeMetadataText(description);
+
+      StructuredLogService.log('📋 [LxMusicSourceParser] 解析结果:');
+      StructuredLogService.log('   名称: $name');
+      StructuredLogService.log('   版本: $version');
+      StructuredLogService.log(
+        '   作者: ${author.isNotEmpty ? author : "(未找到)"}',
+      );
+      StructuredLogService.log(
+        '   描述: ${description.isNotEmpty ? description : "(未找到)"}',
+      );
+      StructuredLogService.log('   API URL: $apiUrl');
+      StructuredLogService.log(
+        '   API Key: ${apiKey.isNotEmpty ? "(已提取)" : "(未找到)"}',
+      );
+      StructuredLogService.log(
+        '   路径模板: ${urlPathTemplate.isNotEmpty ? urlPathTemplate : "(未找到)"}',
+      );
 
       return LxMusicSourceConfig(
         name: name,
@@ -193,7 +232,7 @@ class LxMusicSourceParser {
         urlPathTemplate: urlPathTemplate,
       );
     } catch (e) {
-      print('❌ [LxMusicSourceParser] 解析脚本内容失败: $e');
+      StructuredLogService.log('❌ [LxMusicSourceParser] 解析脚本内容失败: $e');
       return null;
     }
   }
@@ -380,13 +419,13 @@ class LxMusicSourceParser {
   /// 解析脚本开头的注释块元数据
   Map<String, String> _parseHeaderMetadata(String script) {
     final Map<String, String> metadata = {};
-    
+
     // 匹配 /*! ... */ 或 /* ... */ 块注释
     final commentBlockMatch = RegExp(r'/\*[\s\S]*?\*/').firstMatch(script);
     if (commentBlockMatch == null) return metadata;
-    
+
     final commentContent = commentBlockMatch.group(0)!;
-    
+
     // 提取 @name, @author, @version, @description
     final patterns = {
       'name': RegExp(r'@name\s+(.*)'),
@@ -394,7 +433,7 @@ class LxMusicSourceParser {
       'version': RegExp(r'@version\s+(.*)'),
       'description': RegExp(r'@description\s+(.*)'),
     };
-    
+
     patterns.forEach((key, pattern) {
       final match = pattern.firstMatch(commentContent);
       if (match != null) {
@@ -408,7 +447,95 @@ class LxMusicSourceParser {
         }
       }
     });
-    
+
     return metadata;
+  }
+
+  /// 按字节解码脚本内容，优先 UTF-8，兼容 GBK/GB18030。
+  String _decodeScriptBytes(List<int>? bytes, {String? contentType}) {
+    if (bytes == null || bytes.isEmpty) return '';
+
+    // 服务端显式声明 charset 时优先遵循。
+    final declaredCharset = _extractCharsetFromContentType(contentType);
+    if (declaredCharset != null) {
+      final declaredEncoding = Charset.getByName(declaredCharset);
+      if (declaredEncoding != null) {
+        try {
+          return _normalizeScriptText(declaredEncoding.decode(bytes));
+        } catch (_) {}
+      }
+    }
+
+    // 优先 UTF-8（多数脚本发布源使用 UTF-8）。
+    try {
+      return _normalizeScriptText(utf8.decode(bytes));
+    } catch (_) {}
+
+    // 兼容 GBK/GB18030 脚本。
+    try {
+      return _normalizeScriptText(gbk.decode(bytes));
+    } catch (_) {}
+
+    // 最后兜底，避免完全无法导入。
+    return _normalizeScriptText(utf8.decode(bytes, allowMalformed: true));
+  }
+
+  String? _extractCharsetFromContentType(String? contentType) {
+    if (contentType == null || contentType.isEmpty) return null;
+    final lower = contentType.toLowerCase();
+    for (final segment in lower.split(';')) {
+      final trimmed = segment.trim();
+      if (!trimmed.startsWith('charset=')) continue;
+      var charsetName = trimmed.substring('charset='.length).trim();
+      if (charsetName.startsWith('"') &&
+          charsetName.endsWith('"') &&
+          charsetName.length > 1) {
+        charsetName = charsetName.substring(1, charsetName.length - 1);
+      } else if (charsetName.startsWith("'") &&
+          charsetName.endsWith("'") &&
+          charsetName.length > 1) {
+        charsetName = charsetName.substring(1, charsetName.length - 1);
+      }
+      return charsetName.isEmpty ? null : charsetName;
+    }
+    return null;
+  }
+
+  String _normalizeScriptText(String text) {
+    if (text.isEmpty) return text;
+    return text.replaceFirst('\uFEFF', '');
+  }
+
+  String _normalizeMetadataText(String value, {String fallback = ''}) {
+    if (value.isEmpty) return fallback;
+    var normalized = _normalizeScriptText(value).trim();
+    if (normalized.isEmpty) return fallback;
+
+    final repaired = _repairUtf8Mojibake(normalized);
+    normalized = repaired.trim();
+    return normalized.isEmpty ? fallback : normalized;
+  }
+
+  String _repairUtf8Mojibake(String text) {
+    if (!_looksLikeMojibake(text)) return text;
+    try {
+      final repaired = utf8.decode(latin1.encode(text));
+      if (_countCjk(repaired) > _countCjk(text)) {
+        return repaired;
+      }
+    } catch (_) {}
+    return text;
+  }
+
+  bool _looksLikeMojibake(String text) {
+    const suspiciousTokens = ['Ã', 'Â', 'æ', 'ç', 'é', '¤', '»', '¿', 'ð', 'þ'];
+    for (final token in suspiciousTokens) {
+      if (text.contains(token)) return true;
+    }
+    return false;
+  }
+
+  int _countCjk(String text) {
+    return RegExp(r'[\u4E00-\u9FFF]').allMatches(text).length;
   }
 }

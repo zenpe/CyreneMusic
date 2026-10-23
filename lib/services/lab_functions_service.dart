@@ -40,10 +40,10 @@ class LabFunctionsService extends ChangeNotifier {
       _enableAndroidWidget = enable;
       final storage = PersistentStorageService();
       await storage.setBool('enable_android_widget', enable);
-      
+
       // 无论开启还是关闭，立即触发一次更新同步，以便刷新小部件显示内容
       await SystemMediaService().updateWidget();
-      
+
       notifyListeners();
     }
   }

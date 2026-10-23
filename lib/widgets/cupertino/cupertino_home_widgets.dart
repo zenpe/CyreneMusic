@@ -7,7 +7,9 @@ import '../../services/music_service.dart';
 import '../../services/play_history_service.dart';
 import '../../services/player_service.dart';
 import '../../utils/theme_manager.dart';
+import '../../utils/image_utils.dart';
 import '../skeleton_loader.dart';
+import '../warm_empty_state.dart';
 
 /// iOS 风格的分段控制器（替代胶囊 Tabs）
 /// 采用轻量纯文字样式，更符合 iOS 原生设计
@@ -26,7 +28,7 @@ class CupertinoHomeSegmentedControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(tabs.length, (index) {
@@ -41,7 +43,7 @@ class CupertinoHomeSegmentedControl extends StatelessWidget {
             margin: EdgeInsets.only(right: index < tabs.length - 1 ? 4 : 0),
             decoration: BoxDecoration(
               color: isSelected
-                  ? (isDark 
+                  ? (isDark
                       ? CupertinoColors.systemGrey5.darkColor
                       : CupertinoColors.systemGrey5)
                   : Colors.transparent,
@@ -89,17 +91,17 @@ class CupertinoHomeStickyHeader extends StatelessWidget {
     final progress = (shrinkOffset / maxExtent).clamp(0.0, 1.0);
     // 背景透明度随滚动增加
     final bgOpacity = 0.0 + progress * 0.95;
-    
+
     return Container(
       height: maxExtent,
       decoration: BoxDecoration(
         color: (isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground)
-            .withOpacity(bgOpacity),
+            .withValues(alpha: bgOpacity),
         border: progress > 0.5
             ? Border(
                 bottom: BorderSide(
                   color: isDark
-                      ? CupertinoColors.systemGrey.darkColor.withOpacity(0.3)
+                      ? CupertinoColors.systemGrey.darkColor.withValues(alpha: 0.3)
                       : CupertinoColors.systemGrey4,
                   width: 0.5,
                 ),
@@ -179,7 +181,7 @@ class CupertinoTrackBannerCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: CupertinoColors.black.withOpacity(isDark ? 0.3 : 0.15),
+              color: CupertinoColors.black.withValues(alpha: isDark ? 0.3 : 0.15),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -193,7 +195,10 @@ class CupertinoTrackBannerCard extends StatelessWidget {
               // 封面图片
               CachedNetworkImage(
                 imageUrl: track.picUrl,
+                httpHeaders: getImageHeaders(track.picUrl),
                 fit: BoxFit.cover,
+                memCacheWidth: 280,
+                memCacheHeight: 280,
                 placeholder: (context, url) => Container(
                   color: isDark
                       ? const Color(0xFF2C2C2E)
@@ -221,7 +226,7 @@ class CupertinoTrackBannerCard extends StatelessWidget {
                     end: Alignment.bottomCenter,
                     colors: [
                       Colors.transparent,
-                      CupertinoColors.black.withOpacity(0.7),
+                      CupertinoColors.black.withValues(alpha: 0.7),
                     ],
                   ),
                 ),
@@ -255,7 +260,7 @@ class CupertinoTrackBannerCard extends StatelessWidget {
                     Text(
                       track.artists,
                       style: TextStyle(
-                        color: CupertinoColors.white.withOpacity(0.9),
+                        color: CupertinoColors.white.withValues(alpha: 0.9),
                         fontSize: 14,
                         shadows: const [
                           Shadow(
@@ -283,7 +288,7 @@ class CupertinoTrackBannerCard extends StatelessWidget {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: CupertinoColors.black.withOpacity(0.3),
+                        color: CupertinoColors.black.withValues(alpha: 0.3),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -380,7 +385,7 @@ class CupertinoBannerSection extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: currentBannerIndex == index
                                 ? CupertinoColors.white
-                                : CupertinoColors.white.withOpacity(0.5),
+                                : CupertinoColors.white.withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(3),
                           ),
                         ),
@@ -416,7 +421,7 @@ class CupertinoHistorySection extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: CupertinoColors.black.withOpacity(isDark ? 0.2 : 0.08),
+            color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.08),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -461,21 +466,33 @@ class CupertinoHistorySection extends StatelessWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: CachedNetworkImage(
-                      imageUrl: history.first.picUrl,
-                      width: 60,
+                   ClipRRect(
+                     borderRadius: BorderRadius.circular(8),
+                     child: CachedNetworkImage(
+                       imageUrl: history.first.picUrl,
+                       httpHeaders: getImageHeaders(history.first.picUrl),
+                       width: 60,
                       height: 60,
                       fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(
-                        width: 60,
-                        height: 60,
-                        color: CupertinoColors.systemGrey6,
-                        child: const CupertinoActivityIndicator(),
-                      ),
-                    ),
-                  ),
+                      memCacheWidth: 128,
+                      memCacheHeight: 128,
+                       placeholder: (context, url) => Container(
+                         width: 60,
+                         height: 60,
+                         color: CupertinoColors.systemGrey6,
+                         child: const CupertinoActivityIndicator(),
+                        ),
+                       errorWidget: (context, url, error) => Container(
+                         width: 60,
+                         height: 60,
+                         color: CupertinoColors.systemGrey6,
+                         child: const Icon(
+                           CupertinoIcons.music_note,
+                           color: CupertinoColors.systemGrey,
+                         ),
+                       ),
+                     ),
+                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -525,7 +542,7 @@ class CupertinoGuessYouLikeSection extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: CupertinoColors.black.withOpacity(isDark ? 0.2 : 0.08),
+            color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.08),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -568,8 +585,8 @@ class CupertinoGuessYouLikeSection extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              SizedBox(
-                height: 64,
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 64),
                 child: guessYouLikeFuture != null
                     ? _buildGuessYouLikeContent(context, isDark)
                     : _buildGuessYouLikePlaceholder(context, isDark),
@@ -586,26 +603,47 @@ class CupertinoGuessYouLikeSection extends StatelessWidget {
       future: guessYouLikeFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CupertinoActivityIndicator());
+          return const SizedBox(
+            height: 64,
+            child: GuessYouLikeShimmerSkeleton(),
+          );
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-          return _buildGuessYouLikePlaceholder(context, isDark, isError: true);
+          return _buildGuessYouLikePlaceholder(context, isDark, isError: snapshot.hasError);
         }
 
-        final sampleTracks = snapshot.data!;
+        final sampleTracks = snapshot.data!.take(3).toList();
 
         return Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: CachedNetworkImage(
-                imageUrl: sampleTracks.first.picUrl,
-                width: 60,
-                height: 60,
-                fit: BoxFit.cover,
-              ),
-            ),
+             ClipRRect(
+               borderRadius: BorderRadius.circular(8),
+               child: CachedNetworkImage(
+                 imageUrl: sampleTracks.first.picUrl,
+                 httpHeaders: getImageHeaders(sampleTracks.first.picUrl),
+                 width: 60,
+                 height: 60,
+                 fit: BoxFit.cover,
+                 memCacheWidth: 128,
+                 memCacheHeight: 128,
+                 placeholder: (context, url) => Container(
+                   width: 60,
+                   height: 60,
+                   color: CupertinoColors.systemGrey6,
+                   child: const CupertinoActivityIndicator(),
+                 ),
+                 errorWidget: (context, url, error) => Container(
+                   width: 60,
+                   height: 60,
+                   color: CupertinoColors.systemGrey6,
+                   child: const Icon(
+                     CupertinoIcons.music_note,
+                     color: CupertinoColors.systemGrey,
+                   ),
+                 ),
+               ),
+             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -636,15 +674,14 @@ class CupertinoGuessYouLikeSection extends StatelessWidget {
 
   Widget _buildGuessYouLikePlaceholder(BuildContext context, bool isDark,
       {bool isError = false}) {
-    final message = isError ? '加载推荐失败' : '导入歌单查看更多';
-    return Center(
-      child: Text(
-        message,
-        style: TextStyle(
-          color: CupertinoColors.systemGrey,
-          fontSize: 14,
-        ),
-      ),
+    return WarmCompactEmptyCard(
+      title: isError ? '开启个性化推荐' : '定制专属心动单曲',
+      subtitle: isError ? '正在为你准备好听的音乐，轻触探索热门榜单' : '多听听歌或导入歌单，为你发现更多惊喜',
+      icon: isError ? Icons.auto_awesome_rounded : Icons.library_music_rounded,
+      actionLabel: '探索榜单',
+      onTap: () {
+        MusicService().fetchToplists();
+      },
     );
   }
 }
@@ -759,7 +796,7 @@ class CupertinoToplistsGrid extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: CupertinoColors.black.withOpacity(isDark ? 0.2 : 0.08),
+                color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.08),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               ),
@@ -786,9 +823,12 @@ class CupertinoToplistsGrid extends StatelessWidget {
                       ),
                       child: CachedNetworkImage(
                         imageUrl: track.picUrl,
+                        httpHeaders: getImageHeaders(track.picUrl),
                         width: coverSize,
                         height: coverSize,
                         fit: BoxFit.cover,
+                        memCacheWidth: 280,
+                        memCacheHeight: 280,
                         placeholder: (context, url) => Container(
                           width: coverSize,
                           height: coverSize,
@@ -902,55 +942,13 @@ class CupertinoErrorSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            CupertinoIcons.exclamationmark_circle,
-            size: 64,
-            color: CupertinoColors.systemRed,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            '加载失败',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            MusicService().errorMessage ?? '未知错误',
-            style: TextStyle(
-              color: CupertinoColors.systemGrey,
-              fontSize: 14,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          CupertinoButton.filled(
-            onPressed: () {
-              MusicService().refreshToplists();
-            },
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(CupertinoIcons.refresh, size: 18),
-                SizedBox(width: 6),
-                Text('重试'),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return WarmStateCard(
+      type: MusicService().errorMessage?.contains('HTTP 0') == true ||
+              MusicService().errorMessage?.contains('Socket') == true
+          ? WarmStateType.network
+          : WarmStateType.error,
+      technicalDetails: MusicService().errorMessage,
+      onRetry: () => MusicService().refreshToplists(),
     );
   }
 }
@@ -961,54 +959,10 @@ class CupertinoEmptySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            CupertinoIcons.music_note,
-            size: 64,
-            color: CupertinoColors.systemGrey,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            '暂无榜单',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '请检查后端服务是否正常',
-            style: TextStyle(
-              color: CupertinoColors.systemGrey,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 24),
-          CupertinoButton.filled(
-            onPressed: () {
-              MusicService().fetchToplists();
-            },
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(CupertinoIcons.refresh, size: 18),
-                SizedBox(width: 6),
-                Text('刷新'),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return WarmStateCard(
+      type: WarmStateType.empty,
+      retryText: '获取榜单',
+      onRetry: () => MusicService().refreshToplists(),
     );
   }
 }

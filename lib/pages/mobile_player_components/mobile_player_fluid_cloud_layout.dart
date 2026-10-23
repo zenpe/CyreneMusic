@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'dart:ui';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/player_service.dart';
 import '../../services/playlist_service.dart';
+import '../../widgets/playlist_membership_state.dart';
 import '../../services/download_service.dart';
 import '../../services/music_service.dart';
 import '../../models/lyric_line.dart';
@@ -15,12 +17,16 @@ import 'mobile_player_dialogs.dart';
 import 'mobile_player_settings_sheet.dart';
 import 'dart:async';
 import 'mobile_player_background.dart';
+import 'package:flutter/services.dart';
+import '../../services/playback_mode_service.dart';
 import '../../services/auto_collapse_service.dart';
 import '../../services/audio_quality_service.dart';
 import '../../services/audio_source_service.dart';
+import '../../utils/image_utils.dart';
 import '../../utils/toast_utils.dart';
 import '../../models/song_detail.dart';
-import '../../widgets/dynamic_cover_widget.dart';
+import '../../widgets/player_error_banner.dart';
+import '../../widgets/player_speed_selector.dart';
 
 /// 移动端流体云播放器布局
 /// 参考 HTML 设计：统一在同一页面显示歌曲信息、歌词、控制按钮
@@ -29,23 +35,32 @@ class MobilePlayerFluidCloudLayout extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final bool showTranslation;
+  final LyricLoadState lyricState;
   final VoidCallback onBackPressed;
   final VoidCallback? onPlaylistPressed;
+  final VoidCallback? onVolumeControlPressed;
 
   const MobilePlayerFluidCloudLayout({
     super.key,
     required this.lyrics,
     required this.currentLyricIndex,
     required this.showTranslation,
+    required this.lyricState,
     required this.onBackPressed,
     this.onPlaylistPressed,
+    this.onVolumeControlPressed,
   });
 
   @override
-  State<MobilePlayerFluidCloudLayout> createState() => _MobilePlayerFluidCloudLayoutState();
+  State<MobilePlayerFluidCloudLayout> createState() =>
+      _MobilePlayerFluidCloudLayoutState();
 }
 
-class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLayout> with TickerProviderStateMixin {
+class _MobilePlayerFluidCloudLayoutState
+    extends State<MobilePlayerFluidCloudLayout>
+    with TickerProviderStateMixin {
+  final GlobalKey _volumeButtonKey = GlobalKey();
+
   // 自动折叠逻辑
   bool _isControlsVisible = true;
   Timer? _collapseTimer;
@@ -60,7 +75,6 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
   late AnimationController _snapController;
   late Animation<double> _snapAnimation;
 
-  
   @override
   void initState() {
     super.initState();
@@ -69,7 +83,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     PlayerService().addListener(_onPlayerStateChanged);
     // 监听设置变化
     AutoCollapseService().addListener(_onSettingsChanged);
-    
+
     // 初始化时如果正在播放且开启了折叠，启动计时器
     if (_wasPlaying && AutoCollapseService().isAutoCollapseEnabled) {
       _resetCollapseTimer();
@@ -114,7 +128,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     final isPlaying = PlayerService().isPlaying;
     if (isPlaying != _wasPlaying) {
       _wasPlaying = isPlaying;
-      
+
       // Trigger rebuild for cover animation
       if (mounted) setState(() {});
 
@@ -138,8 +152,10 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     if (!_isControlsVisible) {
       setState(() => _isControlsVisible = true);
     }
-    
-    if (autoHide && AutoCollapseService().isAutoCollapseEnabled && PlayerService().isPlaying) {
+
+    if (autoHide &&
+        AutoCollapseService().isAutoCollapseEnabled &&
+        PlayerService().isPlaying) {
       _resetCollapseTimer();
     } else {
       _collapseTimer?.cancel();
@@ -148,7 +164,8 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
 
   void _resetCollapseTimer() {
     _collapseTimer?.cancel();
-    if (AutoCollapseService().isAutoCollapseEnabled && PlayerService().isPlaying) {
+    if (AutoCollapseService().isAutoCollapseEnabled &&
+        PlayerService().isPlaying) {
       _collapseTimer = Timer(const Duration(seconds: 5), () {
         if (mounted) {
           setState(() => _isControlsVisible = false);
@@ -183,13 +200,9 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
       widget.onBackPressed();
     } else {
       // 回弹
-      _snapAnimation = Tween<double>(
-        begin: _dragOffset,
-        end: 0,
-      ).animate(CurvedAnimation(
-        parent: _snapController,
-        curve: Curves.easeOutCubic,
-      ));
+      _snapAnimation = Tween<double>(begin: _dragOffset, end: 0).animate(
+        CurvedAnimation(parent: _snapController, curve: Curves.easeOutCubic),
+      );
       _snapController.forward(from: 0);
     }
   }
@@ -197,9 +210,11 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
   @override
   Widget build(BuildContext context) {
     final player = PlayerService();
-    final song = player.currentSong;
-    final track = player.currentTrack;
-    final imageUrl = song?.pic ?? track?.picUrl ?? '';
+    final isPending = player.isLoading && player.pendingTrack != null;
+    final displayTrack = player.displayTrack;
+    final song = isPending ? null : player.currentSong;
+    final track = displayTrack;
+    final imageUrl = player.displayCoverUrl ?? '';
 
     // 检测屏幕方向
     final orientation = MediaQuery.of(context).orientation;
@@ -210,49 +225,6 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     //   // 横屏模式：左右分栏布局
     //   return _buildLandscapeLayout(context, player, song, track, imageUrl);
     // }
-
-    // 竖屏模式：使用 Stack + AnimatedPositioned 实现丝滑切换
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final safePadding = MediaQuery.of(context).padding;
-    final topBarHeight = 50.0;
-    
-    // --- 封面模式参数计算 ---
-    // 预留底部高度 (标题+歌词+进度条+控制栏+底部导航+间距)
-    const reservedBottomHeight = 350.0;
-    
-    // 封面起始 Y 坐标 (绝对坐标)
-    // 保证在 TopBar 下方，且距离顶部有一定比例
-    // Modified: Reduced buffer and ideal top ratio to move cover up
-    final minCoverTop = safePadding.top + topBarHeight + 10;
-    final idealCoverTop = screenHeight * 0.10;
-    final bigCoverTop = idealCoverTop < minCoverTop ? minCoverTop : idealCoverTop;
-    
-    // 计算可用高度
-    final availableHeight = screenHeight - bigCoverTop - reservedBottomHeight;
-    // 封面尺寸：宽度限制(屏幕-64)，高度限制(可用高度)
-    final bigCoverSize = (screenWidth - 64).clamp(100.0, availableHeight < 100 ? 100.0 : availableHeight);
-    
-    // 水平居中
-    final bigCoverLeft = (screenWidth - bigCoverSize) / 2;
-
-    // --- 歌词模式参数 ---
-    final smallCoverSize = 56.0;
-    final smallCoverTop = safePadding.top + 24.0;
-    final smallCoverLeft = 16.0;
-
-    // Animation Logic: Shrink by 10% when paused in Cover Mode
-    final bool isPlaying = player.isPlaying;
-    final effectiveBigSize = isPlaying ? bigCoverSize : bigCoverSize * 0.9;
-    
-    final targetSize = _showCoverMode ? effectiveBigSize : smallCoverSize;
-    // When shrinking, keep centered relative to the original bigCover box
-    final targetTop = _showCoverMode 
-        ? bigCoverTop + (bigCoverSize - effectiveBigSize) / 2 
-        : smallCoverTop;
-    final targetLeft = _showCoverMode 
-        ? (screenWidth - effectiveBigSize) / 2 
-        : smallCoverLeft;
 
     return GestureDetector(
       onVerticalDragUpdate: _onVerticalDragUpdate,
@@ -269,286 +241,232 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
               // 0. 背景层 (现在作为布局的一部分，以便同步平移)
               MobilePlayerBackground(dragOffset: _dragOffset),
 
-              // 1. 歌词模式布局或横屏布局 (底层)
+              // 1. 横屏布局
               if (isLandscape)
                 _buildLandscapeLayout(context, player, song, track, imageUrl)
               else
                 SafeArea(
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 300),
-                    opacity: _showCoverMode ? 0.0 : 1.0,
-                    curve: Curves.easeInOut,
-                    child: IgnorePointer(
-                      ignoring: _showCoverMode,
-                      child: GestureDetector(
-                        onTap: _toggleControls, // 支持点击空白收起控制栏
-                        behavior: HitTestBehavior.translucent,
-                        child: Column(
+                  child: Column(
+                    children: [
+                      // 1.1 顶部操作栏（小白条居中，更多与百科靠右）
+                      _buildTopBar(context, track),
+
+                      // 1.2 中间展示舞台（封面 vs 歌词/百科，同位无缝平滑切换）
+                      Expanded(
+                        child: Stack(
+                          alignment: Alignment.center,
                           children: [
-                            // 顶部歌曲信息 (仅在歌词模式渲染内容)
-                            if (!_showCoverMode)
-                              _buildSongInfoSection(context, song, track, imageUrl, isGhost: true),
-                                
-                            // 中间区域：歌词或歌曲信息面板
-                            Expanded(
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 400),
-                                transitionBuilder: (Widget child, Animation<double> animation) {
-                                  return FadeTransition(opacity: animation, child: child);
-                                },
-                                child: _showSongWikiPanel
-                                    ? const MobilePlayerFluidCloudSongWikiPanel(key: ValueKey('wiki'))
-                                    : _buildLyricsSection(),
-                              ),
-                            ),
-                      
-                            // 底部控制 (上一首、播放、下一首等)
-                            AnimatedSize(
-                              duration: const Duration(milliseconds: 300),
+                            // 歌词与歌曲百科视图
+                            AnimatedOpacity(
+                              duration: const Duration(milliseconds: 250),
                               curve: Curves.easeInOut,
-                              alignment: Alignment.topCenter,
-                              child: AnimatedOpacity(
-                                duration: const Duration(milliseconds: 300),
-                                opacity: _isControlsVisible ? 1.0 : 0.0,
-                                child: _isControlsVisible
-                                    ? Padding(
-                                        padding: const EdgeInsets.only(top: 0), 
-                                        child: _buildControlsSection(player),
-                                      )
-                                    : const SizedBox.shrink(),
+                              opacity: _showCoverMode ? 0.0 : 1.0,
+                              child: IgnorePointer(
+                                ignoring: _showCoverMode,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    if (AutoCollapseService()
+                                        .isAutoCollapseEnabled) {
+                                      _toggleControls();
+                                    } else {
+                                      setState(() => _showCoverMode = true);
+                                    }
+                                  },
+                                  behavior: HitTestBehavior.translucent,
+                                  child: _showSongWikiPanel
+                                      ? const MobilePlayerFluidCloudSongWikiPanel(
+                                          key: ValueKey('wiki'),
+                                        )
+                                      : _buildLyricsSection(),
+                                ),
                               ),
                             ),
-                            
-                            if (!_isControlsVisible)
-                               const SizedBox(height: 16),
-                            
-                            // 留给底部导航的空间
-                            const SizedBox(height: 64),
+
+                            // 专辑封面视图
+                            AnimatedOpacity(
+                              duration: const Duration(milliseconds: 250),
+                              curve: Curves.easeInOut,
+                              opacity: _showCoverMode ? 1.0 : 0.0,
+                              child: IgnorePointer(
+                                ignoring: !_showCoverMode,
+                                child: GestureDetector(
+                                  onTap: () =>
+                                      setState(() => _showCoverMode = false),
+                                  child: Center(
+                                    child: _buildAlbumCoverView(
+                                      context,
+                                      player,
+                                      imageUrl,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    ),
-                  ),
-                ),
 
-              // 2. 封面模式布局 (仅在竖屏存在)
-              if (!isLandscape)
-                SafeArea(
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 300),
-                    opacity: _showCoverMode ? 1.0 : 0.0,
-                    curve: Curves.easeInOut,
-                    child: IgnorePointer(
-                      ignoring: !_showCoverMode,
-                      child: _buildCoverModeLayout(
-                        context, 
-                        player, 
-                        song, 
-                        track, 
-                        imageUrl, 
-                        coverSize: bigCoverSize,
-                        topSpacing: bigCoverTop - safePadding.top - topBarHeight, // 传递准确的间距
-                        isGhost: true,
+                      const SizedBox(height: 8),
+
+                      // 1.3 统一歌曲信息（标题、歌手、收藏、下载）—— 坐标与位置双模式完全锁死！
+                      _buildUnifiedSongInfoSection(context, song, track),
+
+                      const SizedBox(height: 10),
+
+                      // 1.4 控制区域（进度条、时间、播放按钮）—— 坐标与位置双模式完全锁死！
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeInOut,
+                        alignment: Alignment.topCenter,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 250),
+                          opacity: _isControlsVisible ? 1.0 : 0.0,
+                          child: _isControlsVisible
+                              ? _buildControlsSection(player)
+                              : const SizedBox.shrink(),
+                        ),
                       ),
-                    ),
+
+                      const SizedBox(height: 8),
+
+                      // 1.5 底部固定导航栏（歌词、模式、音量、队列）—— 4个图标双模式完全一致！
+                      _buildBottomNavigation(context, track),
+
+                      const SizedBox(height: 8),
+                    ],
                   ),
                 ),
-
-              // 3. 浮动封面 (顶层，负责动画，仅在竖屏启用)
-              if (!isLandscape)
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 500),
-                  curve: Curves.fastLinearToSlowEaseIn,
-                  top: targetTop,
-                  left: targetLeft,
-                  width: targetSize,
-                  height: targetSize,
-                  child: GestureDetector(
-                    onTap: () {
-                      // 点击切换模式
-                      setState(() => _showCoverMode = !_showCoverMode);
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 500),
-                      curve: Curves.fastLinearToSlowEaseIn,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(_showCoverMode ? 16 : 8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(_showCoverMode ? 0.4 : 0.3),
-                            blurRadius: _showCoverMode ? 40 : 10,
-                            offset: Offset(0, _showCoverMode ? 20 : 4),
-                          ),
-                        ],
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: imageUrl.isNotEmpty
-                          ? _buildCoverImage(imageUrl)
-                          : Container(
-                              color: Colors.grey[900],
-                              child: Icon(
-                                Icons.music_note, 
-                                color: Colors.white54,
-                                size: _showCoverMode ? 120 : 30,
-                              ),
-                            ),
-                    ),
-                  ),
-                ),
-
-            // 4. 顶层拖动条 (小白条)
-            Positioned(
-              top: safePadding.top + 10,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  width: 36,
-                  height: 4.5,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.35),
-                    borderRadius: BorderRadius.circular(2.25),
-                  ),
-                ),
-              ),
-            ),
-
-            // 5. 固定底部导航 (始终在屏幕底部固定位置，仅在竖屏显示)
-            if (!isLandscape)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: safePadding.bottom + 8,
-                child: _buildBottomNavigation(context, track),
-              ),
-          ],
+            ],
           ),
         ),
       ),
     );
   }
 
-  /// 构建封面模式布局 (大封面 + 控制器，无歌词)
-  Widget _buildCoverModeLayout(
-    BuildContext context,
-    PlayerService player,
-    dynamic song,
-    dynamic track,
-    String imageUrl, {
-    required double coverSize,
-    required double topSpacing,
-    bool isGhost = false,
-  }) {
-    final name = song?.name ?? track?.name ?? '未知歌曲';
-    final artists = song?.arName ?? track?.artists ?? '未知艺术家';
-    
-    return Column(
-      key: const ValueKey('CoverModeLayout'),
-      children: [
-          // 顶部栏
-          SizedBox(
-            height: 50, // 与 topBarHeight 一致
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end, 
-                children: [
-                   IconButton(
-                    icon: Icon(
-                      Icons.more_horiz,
-                      color: Colors.white.withOpacity(0.8),
-                    ),
-                    onPressed: () {
-                      MobilePlayerSettingsSheet.show(context, currentTrack: track);
-                    },
-                  ),
-                ],
+  /// 构建顶部操作栏（居中小白条，右侧为百科与更多设置）
+  Widget _buildTopBar(BuildContext context, Track? track) {
+    final isNetease = track != null && track.source == MusicSource.netease;
+
+    return SizedBox(
+      height: 48,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // 居中小白条
+          Center(
+            child: Container(
+              width: 36,
+              height: 4.5,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(2.25),
               ),
             ),
           ),
-          
-          // 精确控制封面位置，使其与 AnimatedPositioned 重合
-          SizedBox(height: topSpacing > 0 ? topSpacing : 0),
-          
-          // 大封面占位
-          GestureDetector(
-            onTap: () {
-               if (!isGhost) setState(() => _showCoverMode = false);
-            },
-            child: Container(
-              width: coverSize,
-              height: coverSize,
-              color: Colors.transparent, 
-            ),
-          ),
-          
-          // 剩余空间分配给控件
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
+
+          // 右侧操作按钮
+          Positioned(
+            right: 8,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const Spacer(),
-                
-                // 歌曲信息 (标题和歌手) - 左对齐
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              song?.name ?? track?.name ?? '未知歌曲',
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              song?.arName ?? track?.artists ?? '未知艺术家',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.white.withOpacity(0.7),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (track != null) _FavoriteButton(track: track),
-                    ],
+                if (isNetease)
+                  IconButton(
+                    icon: Icon(
+                      _showSongWikiPanel
+                          ? CupertinoIcons.text_quote
+                          : CupertinoIcons.info_circle,
+                      color: _showSongWikiPanel
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.7),
+                      size: 22,
+                    ),
+                    tooltip: _showSongWikiPanel ? '显示歌词' : '歌曲百科',
+                    onPressed: () {
+                      setState(() {
+                        _showSongWikiPanel = !_showSongWikiPanel;
+                        if (_showSongWikiPanel) {
+                          _showCoverMode = false;
+                        }
+                      });
+                    },
                   ),
+                IconButton(
+                  icon: Icon(
+                    Icons.more_horiz,
+                    color: Colors.white.withValues(alpha: 0.8),
+                    size: 24,
+                  ),
+                  tooltip: '播放器设置',
+                  onPressed: () {
+                    MobilePlayerSettingsSheet.show(
+                      context,
+                      currentTrack: track,
+                    );
+                  },
                 ),
-                
-                const SizedBox(height: 32),
-
-                // 控制区
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _buildControlsSection(player, isCoverMode: true), 
-                ),
-                
-                const SizedBox(height: 30),
-
-                // 留给底部导航的空间 (底部导航现在在 Stack 中固定位置)
-                const SizedBox(height: 64),
               ],
             ),
           ),
         ],
-      );
+      ),
+    );
   }
-  
 
-  /// 横屏模式布局 - 参考图片设计
-  /// 左侧：专辑封面 + 进度条 (统一水平线)
-  /// 右侧：歌曲信息 + 歌词 + 控制按钮 (统一水平线)
+  /// 构建居中的专辑封面视图 (带呼吸动画与投影)
+  Widget _buildAlbumCoverView(
+    BuildContext context,
+    PlayerService player,
+    String imageUrl,
+  ) {
+    final isPlaying = player.isPlaying;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxSide = min(
+          constraints.maxWidth - 48,
+          constraints.maxHeight - 20,
+        );
+        final baseCoverSize = maxSide.clamp(140.0, 360.0);
+        final targetCoverSize = isPlaying
+            ? baseCoverSize
+            : baseCoverSize * 0.92;
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic,
+          width: targetCoverSize,
+          height: targetCoverSize,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isPlaying ? 0.45 : 0.3),
+                blurRadius: isPlaying ? 36 : 24,
+                offset: Offset(0, isPlaying ? 16 : 8),
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: imageUrl.isNotEmpty
+              ? _buildCoverImage(imageUrl)
+              : Container(
+                  color: Colors.grey[900],
+                  child: const Icon(
+                    Icons.music_note,
+                    color: Colors.white54,
+                    size: 80,
+                  ),
+                ),
+        );
+      },
+    );
+  }
+
+  /// 横屏模式布局：左右平衡设计
+  /// 左侧：专辑封面 + 歌曲标题与歌手 + 音质/倍速标签
+  /// 右侧：顶部快捷操作 + 5行 Apple Music 沉浸式流体歌词 + 完整进度条与控制按键坞
   Widget _buildLandscapeLayout(
     BuildContext context,
     PlayerService player,
@@ -558,273 +476,402 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
   ) {
     final name = song?.name ?? track?.name ?? '未知歌曲';
     final artist = song?.arName ?? track?.artists ?? '未知艺术家';
-    
-    final screenHeight = MediaQuery.of(context).size.height;
-    final safeAreaBottom = MediaQuery.of(context).padding.bottom; // 底部安全区
-    
-    // 封面大小
-    final coverSize = (screenHeight - safeAreaBottom - 60) * 0.65;
-    final progressBarWidth = coverSize + 48; // 进度条比封面略宽
 
-    // 底部对齐的高度 (控制栏高度)
-    const bottomControlsHeight = 60.0;
-    // 底部留白
-    const bottomPadding = 24.0; 
+    final mediaQuery = MediaQuery.of(context);
+    final screenHeight = mediaQuery.size.height;
+    final screenWidth = mediaQuery.size.width;
+    final safePadding = mediaQuery.padding;
 
-    return Stack(
-      children: [
-        // 右上角更多按钮
-        Positioned(
-          top: 8,
-          right: 16,
-          child: IconButton(
-            icon: Icon(
-              Icons.more_horiz,
-              color: Colors.white.withOpacity(0.8),
-            ),
-            iconSize: 24,
-            onPressed: () {
-              MobilePlayerSettingsSheet.show(context, currentTrack: track);
-            },
-          ),
+    // 自适应封面尺寸：(屏幕高度 - 边距 - 歌曲信息留白)
+    final availableHeight = screenHeight - safePadding.top - safePadding.bottom;
+    final coverSize = (availableHeight - 110).clamp(150.0, 215.0);
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          safePadding.left > 0 ? 8 : 24,
+          6,
+          safePadding.right > 0 ? 8 : 24,
+          10,
         ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ──────────────────────────────────────────
+            // 1. 左侧面板：专辑封面展示与元数据
+            // ──────────────────────────────────────────
+            SizedBox(
+              width: (screenWidth * 0.36).clamp(240.0, 310.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const Spacer(flex: 2),
 
-        // 主布局
-        Padding(
-          padding: const EdgeInsets.only(bottom: bottomPadding),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end, // 底部对齐，保证进度条和控制栏在同一水平线
-            children: [
-              // 1. 左侧面板: 封面 + 进度条
-              Expanded(
-                flex: 4, 
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end, // 底部对齐
-                  children: [
-                    const Spacer(),
-                    // 封面
-                     Container(
-                      width: coverSize,
-                      height: coverSize,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.4),
-                            blurRadius: 24,
-                            offset: const Offset(0, 12),
-                          ),
-                        ],
+                  // 封面容器：圆角、高光边框、高斯投影
+                  Container(
+                    width: coverSize,
+                    height: coverSize,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        width: 0.8,
                       ),
-                      clipBehavior: Clip.antiAlias,
-                      child: imageUrl.isNotEmpty
-                          ? _buildCoverImage(imageUrl)
-                          : Container(
-                              color: Colors.grey[900],
-                              child: const Icon(
-                                Icons.music_note,
-                                size: 80,
-                                color: Colors.white54,
-                              ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.48),
+                          blurRadius: 26,
+                          offset: const Offset(0, 10),
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: imageUrl.isNotEmpty
+                        ? _buildCoverImage(imageUrl)
+                        : Container(
+                            color: Colors.grey[900],
+                            child: const Icon(
+                              Icons.music_note_rounded,
+                              size: 72,
+                              color: Colors.white54,
                             ),
-                    ),
-                    
-                    const Spacer(), // 封面和进度条之间的弹簧
+                          ),
+                  ),
 
-                    // 底部进度条 (高度与右侧控制栏对齐容器)
-                    SizedBox(
-                      height: bottomControlsHeight,
-                      child: Center(
-                        child: _buildLandscapeProgressBar(player, progressBarWidth),
+                  const SizedBox(height: 12),
+
+                  // 歌曲名称
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontFamily: 'Microsoft YaHei',
+                        letterSpacing: 0.3,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                  const SizedBox(height: 4),
 
-              // 2. 右侧面板: 信息 + 歌词 + 控制按钮
-              Expanded(
-                flex: 6,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(0, 24, 32, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  // 歌手名称
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Text(
+                      artist,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontFamily: 'Microsoft YaHei',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  // 音质 + 倍速标签
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // 顶部信息
-                      _buildLandscapeTitleSection(name, artist),
-                      const SizedBox(height: 16),
-                      
-                      // 歌词
-                      Expanded(
-                        child: _buildLandscapeLyricsSection(),
-                      ),
-                      
-                      const SizedBox(height: 12),
+                      _buildQualityButton(context),
+                      const SizedBox(width: 8),
+                      _buildSpeedButton(context),
+                    ],
+                  ),
 
-                      // 底部控制必须有固定高度，以便与左侧对齐
-                      SizedBox(
-                        height: bottomControlsHeight,
-                        child: _buildLandscapeBottomControls(context, player, track),
+                  const Spacer(flex: 3),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 16),
+
+            // ──────────────────────────────────────────
+            // 2. 右侧面板：快捷栏 + 5行流体歌词 + 进度条 + 控制坞
+            // ──────────────────────────────────────────
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 顶部快捷工具栏
+                  SizedBox(
+                    height: 36,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (track != null &&
+                            track.source == MusicSource.netease)
+                          IconButton(
+                            icon: Icon(
+                              _showSongWikiPanel
+                                  ? CupertinoIcons.text_quote
+                                  : CupertinoIcons.info_circle,
+                              color: _showSongWikiPanel
+                                  ? Colors.white
+                                  : Colors.white.withValues(alpha: 0.7),
+                              size: 20,
+                            ),
+                            tooltip: _showSongWikiPanel ? '歌词' : '歌曲百科',
+                            onPressed: () {
+                              setState(
+                                () => _showSongWikiPanel = !_showSongWikiPanel,
+                              );
+                            },
+                          ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.more_horiz,
+                            color: Colors.white.withValues(alpha: 0.85),
+                            size: 22,
+                          ),
+                          tooltip: '更多选项',
+                          onPressed: () {
+                            MobilePlayerSettingsSheet.show(
+                              context,
+                              currentTrack: track,
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // 歌词主展示区 (或歌曲百科)
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: _showSongWikiPanel
+                          ? const MobilePlayerFluidCloudSongWikiPanel(
+                              key: ValueKey('wiki_landscape'),
+                            )
+                          : _buildLandscapeLyricsSection(),
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  // 底部：准确进度条与完整控制按键
+                  _buildLandscapeControlsArea(context, player, track),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建横屏底部完整的控制区（进度条 + 播放控制坞）
+  Widget _buildLandscapeControlsArea(
+    BuildContext context,
+    PlayerService player,
+    Track? track,
+  ) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 1. 进度条 (两端准确显示起止时间)
+        AnimatedBuilder(
+          animation: Listenable.merge([player.positionNotifier, player]),
+          builder: (context, _) {
+            final position = player.positionNotifier.value;
+            final effectiveDuration = _getEffectiveDuration(player);
+            final durationMs = effectiveDuration.inMilliseconds.toDouble();
+            final positionMs = position.inMilliseconds.toDouble();
+            final progress = (durationMs > 0)
+                ? (positionMs / durationMs).clamp(0.0, 1.0)
+                : 0.0;
+            final bufferedProgress = durationMs > 0
+                ? (player.bufferedPosition.inMilliseconds / durationMs).clamp(
+                    0.0,
+                    1.0,
+                  )
+                : 0.0;
+
+            final totalStr = effectiveDuration.inSeconds > 0
+                ? _formatDurationCompact(effectiveDuration)
+                : '--:--';
+            final currentStr = _formatDurationCompact(position);
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 播放进度起止时间显示
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        currentStr,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.65),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Consolas',
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                      Text(
+                        totalStr,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.65),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Consolas',
+                          letterSpacing: 0.4,
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+                const SizedBox(height: 2),
 
-  /// 横屏标题区域
-  Widget _buildLandscapeTitleSection(String name, String artist) {
-    return Row(
-      children: [
-        Flexible(
-          child: Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(
-                  text: name,
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    fontFamily: 'Microsoft YaHei',
-                  ),
-                ),
-                const TextSpan(text: '  '),
-                TextSpan(
-                  text: artist,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withOpacity(0.7),
-                    fontFamily: 'Microsoft YaHei',
+                // 流体 Apple Music 进度滑块
+                SizedBox(
+                  height: 22,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        height: 3.5,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: bufferedProgress,
+                          child: Container(
+                            height: 3.5,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.35),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ),
+                      ),
+                      _AppleMusicSlider(
+                        value: progress,
+                        duration: Duration(milliseconds: durationMs.toInt()),
+                        onChanged: player.viewState.canSeek
+                            ? (v) {
+                                final pos = Duration(
+                                  milliseconds: (v * durationMs).round(),
+                                );
+                                player.seek(pos);
+                              }
+                            : null,
+                      ),
+                    ],
                   ),
                 ),
               ],
+            );
+          },
+        ),
+
+        const SizedBox(height: 6),
+
+        // 2. 完整播放控制按键行 (播放模式、上一首、播放/暂停、下一首、收藏、队列)
+        Row(
+          children: [
+            // 播放模式切换按钮 (单击切换，长按唤出模式面板)
+            _buildPlaybackModeButton(context),
+
+            const Spacer(),
+
+            // 上一首
+            IconButton(
+              icon: const Icon(CupertinoIcons.backward_fill),
+              color: Colors.white.withValues(alpha: 0.9),
+              iconSize: 32,
+              onPressed: player.hasPrevious
+                  ? () {
+                      HapticFeedback.lightImpact();
+                      player.playPrevious();
+                    }
+                  : null,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+            const SizedBox(width: 14),
+
+            // 播放 / 暂停
+            AnimatedBuilder(
+              animation: player,
+              builder: (context, _) {
+                return IconButton(
+                  icon: Icon(
+                    player.isPlaying
+                        ? CupertinoIcons.pause_fill
+                        : CupertinoIcons.play_fill,
+                    color: Colors.white,
+                  ),
+                  iconSize: 52,
+                  padding: EdgeInsets.zero,
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    player.togglePlayPause();
+                  },
+                );
+              },
+            ),
+            const SizedBox(width: 14),
+
+            // 下一首
+            IconButton(
+              icon: const Icon(CupertinoIcons.forward_fill),
+              color: Colors.white.withValues(alpha: 0.9),
+              iconSize: 32,
+              onPressed: player.hasNext
+                  ? () {
+                      HapticFeedback.lightImpact();
+                      player.playNext();
+                    }
+                  : null,
+            ),
+
+            const Spacer(),
+
+            // 收藏按钮
+            if (track != null) _FavoriteButton(track: track),
+            const SizedBox(width: 6),
+
+            // 播放队列抽屉入口
+            IconButton(
+              icon: const Icon(Icons.queue_music_rounded),
+              color: Colors.white.withValues(alpha: 0.85),
+              iconSize: 26,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              tooltip: '播放队列',
+              onPressed: widget.onPlaylistPressed,
+            ),
+          ],
         ),
       ],
     );
   }
-  
-  /// 横屏进度条 (用于左侧)
-  Widget _buildLandscapeProgressBar(PlayerService player, double width) {
-    return ValueListenableBuilder<List<Map<String, int>>?>(
-      valueListenable: player.chorusTimesNotifier,
-      builder: (context, chorusTimes, child) {
-        return AnimatedBuilder(
-          animation: player.positionNotifier,
-          builder: (context, _) {
-            final position = player.positionNotifier.value.inMilliseconds.toDouble();
-            final durationMs = player.duration.inMilliseconds.toDouble();
-            final progress = (durationMs > 0) ? (position / durationMs).clamp(0.0, 1.0) : 0.0;
 
-            return SizedBox(
-              width: width,
-              height: 24, // 增加点击热区
-              child: _AppleMusicSlider(
-                value: progress,
-                onChanged: (v) {
-                  final pos = Duration(milliseconds: (v * durationMs).round());
-                  player.seek(pos);
-                },
-                durationMs: durationMs,
-                activeColor: Colors.white,
-                inactiveColor: const Color(0x1FFFFFFF),
-                chorusTimes: chorusTimes,
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  /// 横屏底部控制区 (仅控制按钮 + 时间)
-  Widget _buildLandscapeBottomControls(BuildContext context, PlayerService player, Track? track) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center, // 垂直居中
-      children: [
-         // 时间 - 字体加大
-         AnimatedBuilder(
-           animation: player.positionNotifier,
-           builder: (context, _) => Text(
-             '${_formatDurationCompact(player.positionNotifier.value)}/${_formatDurationCompact(player.duration)}',
-             style: TextStyle(
-               color: Colors.white.withValues(alpha: 0.6),
-               fontSize: 16, // 加大字体
-               fontWeight: FontWeight.bold,
-               fontFamily: 'Consolas',
-               letterSpacing: 0.5,
-             ),
-           ),
-         ),
-
-         const SizedBox(width: 12),
-         _buildQualityButton(context),
-
-         // 控制按钮行 - 居中且使用 iOS 粗图标
-         Expanded(
-           child: Center(
-             child: AnimatedBuilder(
-               animation: player, // 只有播放/暂停等状态改变才需要重建按钮区域
-               builder: (context, _) {
-                 return Row(
-                   mainAxisSize: MainAxisSize.min,
-                   children: [
-                     // 上一首
-                     IconButton(
-                       icon: const Icon(CupertinoIcons.backward_fill), // iOS 风格粗图标
-                       color: Colors.white,
-                       iconSize: 36, // 图标加大
-                       onPressed: player.hasPrevious ? player.playPrevious : null,
-                     ),
-                     const SizedBox(width: 16),
-                     
-                     // 播放/暂停
-                     IconButton(
-                       icon: Icon(
-                         player.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
-                         color: Colors.white,
-                       ),
-                       iconSize: 56, // 加大图标尺寸，保持醒目
-                       padding: EdgeInsets.zero,
-                       onPressed: player.togglePlayPause,
-                     ),
-                     const SizedBox(width: 16),
-                     
-                     // 下一首
-                     IconButton(
-                       icon: const Icon(CupertinoIcons.forward_fill), // iOS 风格粗图标
-                       color: Colors.white,
-                       iconSize: 36, // 图标加大
-                       onPressed: player.hasNext ? player.playNext : null,
-                     ),
-                   ],
-                 );
-               },
-             ),
-           ),
-         ),
-         
-         // 喜欢按钮
-         if (track != null) _FavoriteButton(track: track),
-      ],
-    );
-  }
-
-  /// 横屏模式歌词区域
+  /// 横屏模式歌词区域 (5 行平滑流体云歌词 + 渐变遮罩)
   Widget _buildLandscapeLyricsSection() {
     return ShaderMask(
       shaderCallback: (Rect bounds) {
-        return LinearGradient(
+        return const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
@@ -833,48 +880,42 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
             Colors.black,
             Colors.transparent,
           ],
-          stops: const [0.0, 0.08, 0.92, 1.0],
+          stops: [0.0, 0.12, 0.88, 1.0],
         ).createShader(bounds);
       },
       blendMode: BlendMode.dstIn,
       child: MobilePlayerFluidCloudLyricsPanel(
         lyrics: widget.lyrics,
         currentLyricIndex: widget.currentLyricIndex,
+        lyricState: widget.lyricState,
         showTranslation: widget.showTranslation,
-        visibleLineCount: 3, 
+        visibleLineCount: 5,
       ),
     );
   }
 
   /// 格式化时间（紧凑格式：00:01）
   String _formatDurationCompact(Duration duration) {
+    if (duration.inSeconds <= 0) return '00:00';
     final minutes = duration.inMinutes.toString().padLeft(2, '0');
     final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
   }
 
-  /// 构建歌曲信息区域（参考 HTML section#song-info）
-  Widget _buildSongInfoSection(BuildContext context, dynamic song, dynamic track, String imageUrl, {bool isGhost = false}) {
+  /// 构建统一的歌曲信息区域（双模式完全复用，位置与尺寸绝对固定）
+  Widget _buildUnifiedSongInfoSection(
+    BuildContext context,
+    dynamic song,
+    dynamic track,
+  ) {
     final name = song?.name ?? track?.name ?? '未知歌曲';
     final artists = song?.arName ?? track?.artists ?? '未知艺术家';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+      padding: const EdgeInsets.symmetric(horizontal: 28),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // 专辑封面占位 (实际封面由顶层 Stack 处理)
-          GestureDetector(
-            onTap: () {
-               if (!isGhost) setState(() => _showCoverMode = true);
-            },
-            child: Container(
-              width: 56,
-              height: 56,
-              color: Colors.transparent, // 占位透明
-            ),
-          ),
-          const SizedBox(width: 12),
-
           // 歌曲标题和歌手
           Expanded(
             child: Column(
@@ -884,8 +925,8 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                 Text(
                   name,
                   style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
                     color: Colors.white,
                     fontFamily: 'Microsoft YaHei',
                   ),
@@ -896,8 +937,8 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                 Text(
                   artists,
                   style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 16,
+                    color: Colors.white.withValues(alpha: 0.7),
                     fontFamily: 'Microsoft YaHei',
                   ),
                   maxLines: 1,
@@ -907,25 +948,12 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
             ),
           ),
 
-          // 右侧操作按钮
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 收藏按钮
-              if (track != null)
-                _FavoriteButton(track: track),
-              // 更多选项 - 弹出设置侧边栏
-              IconButton(
-                icon: Icon(
-                  Icons.more_vert,
-                  color: Colors.white.withOpacity(0.8),
-                ),
-                onPressed: () {
-                  MobilePlayerSettingsSheet.show(context, currentTrack: track);
-                },
-              ),
-            ],
-          ),
+          // 右侧操作：收藏与下载
+          if (track != null) ...[
+            _FavoriteButton(track: track),
+            const SizedBox(width: 4),
+            _DownloadButton(track: track),
+          ],
         ],
       ),
     );
@@ -948,12 +976,12 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
             Colors.transparent,
           ],
           stops: const [
-            0.0,    // 顶部完全透明
-            0.15,   // 开始可见
-            0.5,    // 中心
-            0.85,   // 依然可见
-            0.95,   // 开始渐变
-            1.0,    // 底部完全透明
+            0.0, // 顶部完全透明
+            0.15, // 开始可见
+            0.5, // 中心
+            0.85, // 依然可见
+            0.95, // 开始渐变
+            1.0, // 底部完全透明
           ],
         ).createShader(bounds);
       },
@@ -961,16 +989,17 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
       child: MobilePlayerFluidCloudLyricsPanel(
         lyrics: widget.lyrics,
         currentLyricIndex: widget.currentLyricIndex,
+        lyricState: widget.lyricState,
         showTranslation: widget.showTranslation,
         // 当控制栏隐藏时，显示更多行数 (例如 9 行)，否则显示 5 行 (原有逻辑似乎是3行可见，但Panel默认7)
         // 这里的可见行数决定了字体大小和行高计算
-        visibleLineCount: _isControlsVisible ? 5 : 8, 
+        visibleLineCount: _isControlsVisible ? 5 : 8,
       ),
     );
   }
 
   /// 构建控制区域（进度条 + 播放按钮）
-  Widget _buildControlsSection(PlayerService player, {bool isCoverMode = false}) {
+  Widget _buildControlsSection(PlayerService player) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -978,36 +1007,66 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
           // 进度条
           Column(
             children: [
-            // 进度条 - Apple Music 风格
-            ValueListenableBuilder<List<Map<String, int>>?>(
-              valueListenable: player.chorusTimesNotifier,
-              builder: (context, chorusTimes, child) {
-                return AnimatedBuilder(
-                  animation: player.positionNotifier,
-                  builder: (context, _) {
-                    final position = player.positionNotifier.value.inMilliseconds.toDouble();
-                    final durationMs = player.duration.inMilliseconds.toDouble();
-                    final value = (durationMs > 0) ? (position / durationMs).clamp(0.0, 1.0) : 0.0;
-                    
-                    return SizedBox(
-                       height: 24, // 增加点击热区
-                       child: _AppleMusicSlider(
-                          value: value,
-                          onChanged: (v) {
-                            final pos = Duration(milliseconds: (v * durationMs).round());
-                            player.seek(pos);
-                          },
-                          durationMs: durationMs,
-                          activeColor: Colors.white,
-                          inactiveColor: const Color(0x1FFFFFFF),
-                          chorusTimes: chorusTimes,
+              // 进度条 - Apple Music 风格
+              AnimatedBuilder(
+                animation: Listenable.merge([player.positionNotifier, player]),
+                builder: (context, _) {
+                  final position = player.positionNotifier.value.inMilliseconds
+                      .toDouble();
+                  final effectiveDuration = _getEffectiveDuration(player);
+                  final duration = effectiveDuration.inMilliseconds.toDouble();
+                  final value = (duration > 0)
+                      ? (position / duration).clamp(0.0, 1.0)
+                      : 0.0;
+                  final bufferedValue = duration > 0
+                      ? (player.bufferedPosition.inMilliseconds / duration)
+                            .clamp(0.0, 1.0)
+                      : 0.0;
+
+                  return SizedBox(
+                    height: 24, // 增加点击热区
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          height: 3,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
                         ),
-                    );
-                  },
-                );
-              },
-            ),
-              
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: FractionallySizedBox(
+                            widthFactor: bufferedValue,
+                            child: Container(
+                              height: 3,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.32),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                          ),
+                        ),
+                        _AppleMusicSlider(
+                          value: value,
+                          duration: Duration(milliseconds: duration.toInt()),
+                          onChanged: player.viewState.canSeek
+                              ? (v) {
+                                  final pos = Duration(
+                                    milliseconds: (v * duration).round(),
+                                  );
+                                  player.seek(pos);
+                                }
+                              : null,
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+
               const SizedBox(height: 8),
 
               // 时间显示
@@ -1022,30 +1081,55 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
                         _formatDuration(player.positionNotifier.value),
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.6),
-                          fontSize: 13, 
+                          fontSize: 13,
                           fontWeight: FontWeight.bold,
                           fontFamily: 'Consolas',
                         ),
                       ),
                     ),
-                    
+
                     // --- 核心：音质切换按钮 ---
-                    _buildQualityButton(context),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildQualityButton(context),
+                        const SizedBox(width: 8),
+                        _buildSpeedButton(context),
+                      ],
+                    ),
 
                     AnimatedBuilder(
-                      animation: player,
-                      builder: (context, _) => Text(
-                        _formatDuration(player.duration),
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
-                          fontSize: 13, 
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Consolas',
-                        ),
-                      ),
+                      animation: Listenable.merge([
+                        player.positionNotifier,
+                        player,
+                      ]),
+                      builder: (context, _) {
+                        final effectiveDuration = _getEffectiveDuration(player);
+                        return Text(
+                          effectiveDuration.inSeconds > 0
+                              ? _formatDuration(effectiveDuration)
+                              : '--:--',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Consolas',
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
+              ),
+              PlayerErrorBanner(
+                message: player.isAudioSourceNotConfigured
+                    ? null
+                    : player.playbackProblemMessage,
+                nonBlocking: player.isPlaying,
+                margin: const EdgeInsets.only(top: 6),
+                onRetry: player.retryCurrentProblemAction,
+                showSkip: player.canSkipCurrentProblem,
+                onSkip: player.skipCurrentProblemAction,
               ),
             ],
           ),
@@ -1059,33 +1143,48 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
               // 上一首
               IconButton(
                 icon: const Icon(CupertinoIcons.backward_fill),
-                color: Colors.white.withOpacity(0.9),
-                iconSize: 42, 
-                onPressed: player.hasPrevious ? player.playPrevious : null,
+                color: Colors.white.withValues(alpha: 0.9),
+                iconSize: 42,
+                onPressed: player.hasPrevious
+                    ? () {
+                        HapticFeedback.lightImpact();
+                        player.playPrevious();
+                      }
+                    : null,
               ),
-              
+
               // 播放/暂停（大图标，无圆形背景）
               AnimatedBuilder(
                 animation: player,
                 builder: (context, _) {
                   return IconButton(
                     icon: Icon(
-                      player.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+                      player.isPlaying
+                          ? CupertinoIcons.pause_fill
+                          : CupertinoIcons.play_fill,
                       color: Colors.white,
                     ),
-                    iconSize: 72, 
+                    iconSize: 72,
                     padding: EdgeInsets.zero,
-                    onPressed: player.togglePlayPause,
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      player.togglePlayPause();
+                    },
                   );
                 },
               ),
-              
+
               // 下一首
               IconButton(
                 icon: const Icon(CupertinoIcons.forward_fill),
-                color: Colors.white.withOpacity(0.9),
-                iconSize: 42, 
-                onPressed: player.hasNext ? player.playNext : null,
+                color: Colors.white.withValues(alpha: 0.9),
+                iconSize: 42,
+                onPressed: player.hasNext
+                    ? () {
+                        HapticFeedback.lightImpact();
+                        player.playNext();
+                      }
+                    : null,
               ),
             ],
           ),
@@ -1096,7 +1195,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     );
   }
 
-  /// 构建底部导航（参考 HTML footer#bottom-nav）
+  /// 构建底部导航（4个固定导航按键：歌词切换、播放模式、音量调节、播放列表，双模式绝对一致）
   Widget _buildBottomNavigation(BuildContext context, Track? track) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
@@ -1107,76 +1206,134 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
           IconButton(
             icon: Icon(
               CupertinoIcons.quote_bubble,
-              color: !_showCoverMode ? Colors.white : Colors.white.withOpacity(0.4),
+              color: !_showCoverMode
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.5),
             ),
             iconSize: 24,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
+            tooltip: !_showCoverMode ? '显示封面' : '显示歌词',
             onPressed: () {
+              HapticFeedback.selectionClick();
               setState(() => _showCoverMode = !_showCoverMode);
             },
           ),
-          
-          // 2. 下载按钮
-          _buildNavButton(
-            icon: track != null 
-                ? _DownloadButton(track: track) 
-                : Icon(Icons.download_rounded, color: Colors.white.withOpacity(0.3), size: 24),
-            visible: !_showCoverMode && track != null,
-            placeholder: true,
+
+          // 2. 播放模式切换按钮 (居中：单点切换，长按呼出面板)
+          _buildPlaybackModeButton(context),
+
+          // 3. 音量控制按钮 (双模式始终显示，位置完全固定)
+          AnimatedBuilder(
+            animation: PlayerService(),
+            builder: (context, _) {
+              final volume = PlayerService().volume;
+              return IconButton(
+                key: _volumeButtonKey,
+                icon: Icon(
+                  volume == 0
+                      ? Icons.volume_off_rounded
+                      : volume < 0.5
+                      ? Icons.volume_down_rounded
+                      : Icons.volume_up_rounded,
+                  color: Colors.white.withValues(alpha: 0.85),
+                ),
+                iconSize: 24,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                tooltip: '音量调节',
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  MobilePlayerDialogs.showVolumePopup(
+                    context,
+                    buttonKey: _volumeButtonKey,
+                  );
+                },
+              );
+            },
           ),
-          
-          // 3. 歌曲信息按钮 (仅网易云歌曲显示)
-          _buildNavButton(
-            icon: IconButton(
-              icon: Icon(
-                _showSongWikiPanel ? CupertinoIcons.text_quote : CupertinoIcons.info_circle,
-                color: _showSongWikiPanel ? Colors.white : Colors.white.withOpacity(0.7),
-              ),
-              iconSize: 22,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              onPressed: () {
-                setState(() => _showSongWikiPanel = !_showSongWikiPanel);
-              },
-            ),
-            visible: !_showCoverMode && track != null && track.source == MusicSource.netease,
-            placeholder: true,
-          ),
-          
-          // 4. 播放列表按钮
+
+          // 4. 播放列表按钮 (最右侧)
           IconButton(
             icon: const Icon(Icons.queue_music_rounded),
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withValues(alpha: 0.85),
             iconSize: 26,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
-            onPressed: widget.onPlaylistPressed,
+            tooltip: '播放队列',
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              widget.onPlaylistPressed?.call();
+            },
           ),
         ],
       ),
     );
   }
 
-  /// 构建底部导航按钮（支持条件显示和占位）
-  Widget _buildNavButton({
-    required Widget icon,
-    required bool visible,
-    bool placeholder = false,
-  }) {
-    if (visible) {
-      return icon;
-    }
-    // 占位符保持间距一致
-    return placeholder ? const SizedBox(width: 24) : const SizedBox.shrink();
+  /// 构建播放模式按钮（1键切换，长按呼出模式面板）
+  Widget _buildPlaybackModeButton(BuildContext context) {
+    return AnimatedBuilder(
+      animation: PlaybackModeService(),
+      builder: (context, _) {
+        final modeService = PlaybackModeService();
+        final currentMode = modeService.currentMode;
+        final isLoopAll = currentMode == PlaybackMode.loopAll;
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              modeService.toggleMode();
+              ToastUtils.infoWithIcon(
+                modeService.getModeName(),
+                icon: modeService.getModeIcon(),
+              );
+            },
+            onLongPress: () {
+              HapticFeedback.mediumImpact();
+              MobilePlayerDialogs.showPlaybackModeSelector(context);
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Icon(
+                modeService.getModeIcon(),
+                color: isLoopAll
+                    ? Colors.white.withValues(alpha: 0.75)
+                    : Colors.white,
+                size: 24,
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
-
-
 
   String _formatDuration(Duration duration) {
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds % 60;
     return '${minutes.toString().padLeft(1, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  /// 获取有效时长，优先使用引擎时长，兜底使用歌词时间戳估算，并确保不低于当前播放进度
+  Duration _getEffectiveDuration(PlayerService player) {
+    Duration duration = player.duration;
+    if (duration.inSeconds <= 0 &&
+        player.lyricSnapshot != null &&
+        player.lyricSnapshot!.lines.isNotEmpty) {
+      final lastLine = player.lyricSnapshot!.lines.last;
+      duration =
+          lastLine.startTime +
+          (lastLine.lineDuration ?? const Duration(seconds: 4));
+    }
+    final position = player.positionNotifier.value;
+    if (duration.inSeconds > 0 && position > duration) {
+      duration = position;
+    }
+    return duration;
   }
 
   /// 构建音质选择按钮
@@ -1186,7 +1343,7 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
       builder: (context, _) {
         final qualityService = AudioQualityService();
         final label = qualityService.getShortLabel();
-        
+
         return GestureDetector(
           onTap: () => _showQualitySelectionSheet(context),
           child: Container(
@@ -1210,10 +1367,27 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     );
   }
 
+  Widget _buildSpeedButton(BuildContext context) {
+    final player = PlayerService();
+    return PlayerSpeedSelector(
+      speed: player.playbackSpeed,
+      onSelected: (value) => player.setPlaybackSpeed(value),
+      compact: true,
+      menuColor: Colors.black.withValues(alpha: 0.85),
+      borderColor: Colors.transparent,
+      fillColor: Colors.white.withValues(alpha: 0.1),
+      textColor: Colors.white.withValues(alpha: 0.7),
+      fontSize: 9.5,
+    );
+  }
+
   /// 显示音质选择底部菜单
   void _showQualitySelectionSheet(BuildContext context) {
     final qualityService = AudioQualityService();
     final sourceService = AudioSourceService();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
     final supportedQualities = sourceService.activeSource != null
         ? qualityService.getSupportedQualities(sourceService.sourceType)
         : [AudioQuality.standard, AudioQuality.exhigh, AudioQuality.lossless];
@@ -1221,77 +1395,161 @@ class _MobilePlayerFluidCloudLayoutState extends State<MobilePlayerFluidCloudLay
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Colors.grey[900]?.withValues(alpha: 0.95),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[800],
-                  borderRadius: BorderRadius.circular(2),
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (context) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+          child: Container(
+            decoration: BoxDecoration(
+              color: (isDark ? const Color(0xFF141418) : Colors.white)
+                  .withValues(alpha: 0.92),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(28),
+              ),
+              border: Border(
+                top: BorderSide(
+                  color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.4),
+                  width: 0.8,
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Text(
-                  '选择播放音质',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
+                  blurRadius: 30,
+                  offset: const Offset(0, -10),
                 ),
+              ],
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 38,
+                    height: 4.5,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(2.5),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+                    child: Row(
+                      children: [
+                        Text(
+                          '选择播放音质',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: Icon(
+                            Icons.close_rounded,
+                            color: colorScheme.onSurfaceVariant,
+                            size: 20,
+                          ),
+                          onPressed: () => Navigator.pop(context),
+                          style: IconButton.styleFrom(
+                            backgroundColor: isDark
+                                ? Colors.white.withValues(alpha: 0.08)
+                                : Colors.black.withValues(alpha: 0.05),
+                            padding: const EdgeInsets.all(6),
+                            minimumSize: const Size(32, 32),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(
+                    height: 1,
+                    thickness: 0.6,
+                    color: isDark
+                        ? Colors.white10
+                        : Colors.black.withValues(alpha: 0.06),
+                  ),
+                  ...supportedQualities.map((quality) {
+                    final isSelected = qualityService.currentQuality == quality;
+                    return ListTile(
+                      title: Text(
+                        qualityService.getQualityName(quality),
+                        style: TextStyle(
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.onSurface,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.w500,
+                        ),
+                      ),
+                      subtitle: Text(
+                        qualityService.getQualityDescription(quality),
+                        style: TextStyle(
+                          color: colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.7,
+                          ),
+                          fontSize: 12,
+                        ),
+                      ),
+                      trailing: isSelected
+                          ? Icon(
+                              Icons.check_circle_rounded,
+                              color: colorScheme.primary,
+                            )
+                          : null,
+                      onTap: () {
+                        qualityService.setQuality(quality);
+                        Navigator.pop(context);
+                        ToastUtils.success(
+                          '音质已设置为 ${qualityService.getQualityName(quality)}，将在下次切换歌曲时生效',
+                        );
+                      },
+                    );
+                  }),
+                  const SizedBox(height: 16),
+                ],
               ),
-              ...supportedQualities.map((quality) {
-                final isSelected = qualityService.currentQuality == quality;
-                return ListTile(
-                  title: Text(
-                    qualityService.getQualityName(quality),
-                    style: TextStyle(
-                      color: isSelected ? Colors.blueAccent : Colors.white,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                  subtitle: Text(
-                    qualityService.getQualityDescription(quality),
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 12,
-                    ),
-                  ),
-                  trailing: isSelected 
-                      ? const Icon(Icons.check, color: Colors.blueAccent) 
-                      : null,
-                  onTap: () {
-                    qualityService.setQuality(quality);
-                    Navigator.pop(context);
-                    ToastUtils.success('音质已设置为 ${qualityService.getQualityName(quality)}，将在下次切换歌曲时生效');
-                  },
-                );
-              }),
-              const SizedBox(height: 20),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// 构建封面图片（支持网络 URL、本地文件路径及动态视频封面）
+  /// 构建封面图片（支持网络 URL 和本地文件路径）
   Widget _buildCoverImage(String imageUrl) {
-    return DynamicCoverWidget(
-      imageUrl: imageUrl,
-      width: double.infinity,
-      height: double.infinity,
-    );
+    // 判断是网络 URL 还是本地文件路径
+    final isNetwork =
+        imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
+
+    if (isNetwork) {
+      return CachedNetworkImage(
+        imageUrl: imageUrl,
+        httpHeaders: getImageHeaders(imageUrl),
+        fit: BoxFit.cover,
+        memCacheWidth: 1080,
+        memCacheHeight: 1080,
+        placeholder: (context, url) => Container(color: Colors.grey[900]),
+        errorWidget: (context, url, error) => Container(
+          color: Colors.grey[900],
+          child: const Icon(Icons.music_note, color: Colors.white54),
+        ),
+      );
+    } else {
+      // 本地文件
+      return Image.file(
+        File(imageUrl),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: Colors.grey[900],
+          child: const Icon(Icons.music_note, color: Colors.white54),
+        ),
+      );
+    }
   }
 }
 
@@ -1305,106 +1563,166 @@ class _FavoriteButton extends StatefulWidget {
   State<_FavoriteButton> createState() => _FavoriteButtonState();
 }
 
-class _FavoriteButtonState extends State<_FavoriteButton> {
-  bool _isInPlaylist = false;
-  bool _isLoading = true;
-  List<String> _playlistNames = [];
-  List<int> _playlistIds = [];
-
+class _FavoriteButtonState extends State<_FavoriteButton>
+    with PlaylistMembershipState<_FavoriteButton> {
   @override
-  void initState() {
-    super.initState();
-    _checkIfInPlaylist();
-  }
+  Track get membershipTrack => widget.track;
+  bool get _isInPlaylist => membershipResult.inPlaylist;
+  bool get _isLoading => membershipLoading;
+  List<String> get _playlistNames => membershipResult.playlistNames;
+  List<int> get _playlistIds => membershipResult.playlistIds;
 
-  @override
-  void didUpdateWidget(_FavoriteButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.track.id != widget.track.id ||
-        oldWidget.track.source != widget.track.source) {
-      _checkIfInPlaylist();
-    }
-  }
-
-  Future<void> _checkIfInPlaylist() async {
-    setState(() => _isLoading = true);
-
-    final playlistService = PlaylistService();
-    final result = await playlistService.isTrackInAnyPlaylist(widget.track);
-
-    if (mounted) {
-      setState(() {
-        _isInPlaylist = result.inPlaylist;
-        _playlistNames = result.playlistNames;
-        _playlistIds = result.playlistIds;
-        _isLoading = false;
-      });
-    }
-  }
+  Future<void> _checkIfInPlaylist() => refreshMembership();
 
   Future<void> _removeFromPlaylists() async {
     if (_playlistIds.isEmpty) return;
-    
+
     final playlistService = PlaylistService();
-    
-    for (final playlistId in _playlistIds) {
-      await playlistService.removeTrackFromPlaylist(
-        playlistId,
-        widget.track.id.toString(),
-        widget.track.source.name,
-      );
+
+    final track = widget.track;
+    final contextIdentity = playlistService.membershipContext;
+    final membership = await playlistService.isTrackInAnyPlaylist(track);
+    if (!mounted || !membership.known || !membership.complete) return;
+    for (final match in membership.matches) {
+      if (playlistService.membershipContext != contextIdentity) return;
+      await playlistService.removeTrackMatch(match, track);
     }
-    
+
     // 刷新状态
     _checkIfInPlaylist();
   }
 
   void _showManageOptions(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.grey[900],
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 32,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[700],
-                borderRadius: BorderRadius.circular(2),
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (context) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+          child: Container(
+            decoration: BoxDecoration(
+              color: (isDark ? const Color(0xFF141418) : Colors.white)
+                  .withValues(alpha: 0.92),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(28),
+              ),
+              border: Border(
+                top: BorderSide(
+                  color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.4),
+                  width: 0.8,
+                ),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
+                  blurRadius: 30,
+                  offset: const Offset(0, -10),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 38,
+                    height: 4.5,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(2.5),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      '已收藏到: ${_playlistNames.join(", ")}',
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.75,
+                        ),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  Divider(
+                    height: 1,
+                    thickness: 0.6,
+                    color: isDark
+                        ? Colors.white10
+                        : Colors.black.withValues(alpha: 0.06),
+                  ),
+                  ListTile(
+                    leading: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.remove_circle_outline_rounded,
+                        color: Colors.redAccent,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      '从所有歌单移除',
+                      style: TextStyle(
+                        color: Colors.redAccent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      await _removeFromPlaylists();
+                    },
+                  ),
+                  ListTile(
+                    leading: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.playlist_add_rounded,
+                        color: colorScheme.primary,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      '添加到其他歌单',
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      MobilePlayerDialogs.showAddToPlaylist(
+                        context,
+                        widget.track,
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Text(
-                '已收藏到: ${_playlistNames.join(", ")}',
-                style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.remove_circle_outline, color: Colors.redAccent),
-              title: const Text('从所有歌单移除', style: TextStyle(color: Colors.white)),
-              onTap: () async {
-                Navigator.pop(context);
-                await _removeFromPlaylists();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.playlist_add, color: Colors.white70),
-              title: const Text('添加到其他歌单', style: TextStyle(color: Colors.white)),
-              onTap: () {
-                Navigator.pop(context);
-                MobilePlayerDialogs.showAddToPlaylist(context, widget.track);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
+          ),
         ),
       ),
     );
@@ -1426,6 +1744,7 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
       );
     }
 
+    if (!membershipResult.known) return buildUnknownMembershipButton();
     final tooltip = _isInPlaylist
         ? '已收藏到: ${_playlistNames.join(", ")}'
         : '添加到歌单';
@@ -1433,9 +1752,12 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
     return IconButton(
       icon: Icon(
         _isInPlaylist ? Icons.favorite : Icons.favorite_border,
-        color: _isInPlaylist ? Colors.redAccent : Colors.white.withOpacity(0.8),
+        color: _isInPlaylist
+            ? Colors.redAccent
+            : Colors.white.withValues(alpha: 0.8),
       ),
       onPressed: () {
+        HapticFeedback.mediumImpact();
         if (_isInPlaylist) {
           _showManageOptions(context);
         } else {
@@ -1487,12 +1809,12 @@ class _DownloadButtonState extends State<_DownloadButton> {
 
   void _onDownloadChanged() {
     if (!mounted) return;
-    
+
     final downloadService = DownloadService();
     final trackId = '${widget.track.source.name}_${widget.track.id}';
     final tasks = downloadService.downloadTasks;
     final task = tasks[trackId];
-    
+
     if (task != null) {
       setState(() {
         _isDownloading = !task.isCompleted && !task.isFailed;
@@ -1507,9 +1829,9 @@ class _DownloadButtonState extends State<_DownloadButton> {
 
   Future<void> _checkDownloadStatus() async {
     setState(() => _isLoading = true);
-    
+
     final isDownloaded = await DownloadService().isDownloaded(widget.track);
-    
+
     if (mounted) {
       setState(() {
         _isDownloaded = isDownloaded;
@@ -1520,12 +1842,12 @@ class _DownloadButtonState extends State<_DownloadButton> {
 
   Future<void> _startDownload() async {
     if (_isDownloading || _isDownloaded) return;
-    
+
     setState(() {
       _isDownloading = true;
       _progress = 0.0;
     });
-    
+
     try {
       // 获取歌曲详情
       final songDetail = PlayerService().currentSong;
@@ -1534,18 +1856,21 @@ class _DownloadButtonState extends State<_DownloadButton> {
         final detail = await MusicService().fetchSongDetail(
           songId: widget.track.id.toString(),
           source: widget.track.source,
+          sourceIds: widget.track.sourceIds,
+          title: widget.track.name,
+          artist: widget.track.artists,
         );
-        
+
         if (detail == null) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('获取歌曲信息失败')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('获取歌曲信息失败')));
             setState(() => _isDownloading = false);
           }
           return;
         }
-        
+
         final success = await DownloadService().downloadSong(
           widget.track,
           detail,
@@ -1555,7 +1880,7 @@ class _DownloadButtonState extends State<_DownloadButton> {
             }
           },
         );
-        
+
         if (mounted) {
           if (success) {
             setState(() {
@@ -1567,9 +1892,9 @@ class _DownloadButtonState extends State<_DownloadButton> {
             );
           } else {
             setState(() => _isDownloading = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('下载失败')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('下载失败')));
           }
         }
       } else {
@@ -1582,7 +1907,7 @@ class _DownloadButtonState extends State<_DownloadButton> {
             }
           },
         );
-        
+
         if (mounted) {
           if (success) {
             setState(() {
@@ -1594,18 +1919,18 @@ class _DownloadButtonState extends State<_DownloadButton> {
             );
           } else {
             setState(() => _isDownloading = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('下载失败或文件已存在')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('下载失败或文件已存在')));
           }
         }
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isDownloading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('下载失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('下载失败: $e')));
       }
     }
   }
@@ -1641,10 +1966,7 @@ class _DownloadButtonState extends State<_DownloadButton> {
             ),
             Text(
               '${(_progress * 100).toInt()}%',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 10),
             ),
           ],
         ),
@@ -1654,7 +1976,9 @@ class _DownloadButtonState extends State<_DownloadButton> {
     return IconButton(
       icon: Icon(
         _isDownloaded ? Icons.download_done_rounded : Icons.download_rounded,
-        color: _isDownloaded ? Colors.green : Colors.white.withOpacity(0.8),
+        color: _isDownloaded
+            ? Colors.green
+            : Colors.white.withValues(alpha: 0.8),
       ),
       onPressed: _isDownloaded ? null : _startDownload,
       tooltip: _isDownloaded ? '已下载' : '下载',
@@ -1663,214 +1987,297 @@ class _DownloadButtonState extends State<_DownloadButton> {
 }
 
 /// Apple Music 风格的 Slider 组件
-/// 1. 默认显示微弱滑块
+/// 1. 默认微弱滑块，触摸拖动时放大
 /// 2. 交互时激活轨道变亮
-/// 3. 使用圆形滑块，触摸拖动时放大
+/// 3. 拖动进度时上方弹出悬浮时间气泡，实时展示目标时间
+/// 4. 包含细腻的触觉反馈（开始、跨步、释放）
 class _AppleMusicSlider extends StatefulWidget {
   final double value;
-  final double min;
-  final double max;
   final ValueChanged<double>? onChanged;
-  final Color activeColor;
-  final Color inactiveColor;
-  final List<Map<String, int>>? chorusTimes;
-  final double? durationMs;
+  final Duration? duration;
+  static const double min = 0.0;
+  static const double max = 1.0;
+  static const Color activeColor = Colors.white;
+  static const Color inactiveColor = Color(0x1FFFFFFF); // 约 12% 不透明度
 
   const _AppleMusicSlider({
     required this.value,
-    this.min = 0.0,
-    this.max = 1.0,
     required this.onChanged,
-    required this.activeColor,
-    required this.inactiveColor,
-    this.chorusTimes,
-    this.durationMs,
+    this.duration,
   });
 
   @override
   State<_AppleMusicSlider> createState() => _AppleMusicSliderState();
 }
 
-class _AppleMusicSliderState extends State<_AppleMusicSlider> with SingleTickerProviderStateMixin {
-  bool _isInteracting = false;
-  double? _dragValue; // 保存拖动过程中的临时进度
-  
+class _AppleMusicSliderState extends State<_AppleMusicSlider>
+    with SingleTickerProviderStateMixin {
+  double? _dragValue; // 用于处理移动端拖动时的平滑感
   late AnimationController _controller;
   late Animation<double> _animation;
+  int? _lastHapticSecond;
+
+  @override
+  void didUpdateWidget(_AppleMusicSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.onChanged == null && oldWidget.onChanged != null) {
+      _dragValue = null;
+      _lastHapticSecond = null;
+      _controller.reset();
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 180),
     );
-    // 动画用于控制圆点大小和透明度
     _animation = CurvedAnimation(
       parent: _controller,
       curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
     );
   }
-  
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
+  String _formatBubbleTime(Duration duration) {
+    if (duration.inSeconds < 0) return '00:00';
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+    final seconds = duration.inSeconds % 60;
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        // 未交互时，由于圆点完全隐藏，我们使用稍微不同的颜色方案
-        // 交互时，已播放轨道变得明显更亮，背景轨道也略微变亮
-        final currentActiveColor = Color.lerp(
-          widget.activeColor.withOpacity(0.55), // 未交互时较淡
-          widget.activeColor.withOpacity(0.9),  // 交互时较亮
-          _animation.value
-        ) ?? widget.activeColor;
-        
-        final currentInactiveColor = Color.lerp(
-          widget.inactiveColor, // 未交互时使用传入极低透明度
-          Colors.white.withOpacity(0.25), // 交互时背景轨道显得更清晰一点
-          _animation.value
-        ) ?? widget.inactiveColor;
-
-        return SliderTheme(
-          data: SliderThemeData(
-            trackHeight: 6, 
-            trackShape: _ChorusSliderTrackShape(
-              chorusTimes: widget.chorusTimes,
-              durationMs: widget.durationMs ?? widget.max,
-            ),
-            thumbShape: _AppleMusicThumbShape(
-              scale: _animation.value, // 完全跟随动画，未交互时为 0 (隐藏)
-              opacity: _animation.value,
-            ),
-            overlayShape: SliderComponentShape.noOverlay,
-            activeTrackColor: currentActiveColor,
-            inactiveTrackColor: currentInactiveColor,
-          ),
-          child: Slider(
-            value: _dragValue ?? widget.value,
-            onChanged: (v) {
-              setState(() {
-                _dragValue = v; // 立即更新本地值以确保拖动流畅
-              });
-              if (widget.onChanged != null) widget.onChanged!(v);
-            },
-            onChangeStart: (_) {
-              setState(() {
-                _isInteracting = true;
-                _dragValue = widget.value;
-              });
-              _controller.forward();
-            },
-            onChangeEnd: (_) {
-              setState(() {
-                _isInteracting = false;
-                _dragValue = null; // 释放拖动，恢复跟随外部进度
-              });
-              _controller.reverse();
-            },
-            min: widget.min,
-            max: widget.max,
-          ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final currentValue = _dragValue ?? widget.value;
+        final totalDuration = widget.duration ?? Duration.zero;
+        final currentTargetMs =
+            (currentValue.clamp(0.0, 1.0) * totalDuration.inMilliseconds)
+                .round();
+        final timeStr = _formatBubbleTime(
+          Duration(milliseconds: currentTargetMs),
         );
-      }
+
+        final thumbRadius = _AppleMusicThumbShape.maxRadius; // 6.0
+        final availableTrackWidth = max(0.0, width - 2 * thumbRadius);
+        final thumbX =
+            thumbRadius + currentValue.clamp(0.0, 1.0) * availableTrackWidth;
+
+        final isHour = totalDuration.inHours > 0;
+        final bubbleWidth = isHour ? 70.0 : 56.0;
+        const bubbleHeight = 26.0;
+        const arrowHeight = 4.5;
+
+        final double bubbleLeft = (thumbX - bubbleWidth / 2)
+            .clamp(0.0, max(0.0, width - bubbleWidth))
+            .toDouble();
+        final double arrowCenterX = (thumbX - bubbleLeft)
+            .clamp(8.0, bubbleWidth - 8.0)
+            .toDouble();
+
+        return Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            // 1. 进度条主体
+            AnimatedBuilder(
+              animation: _animation,
+              builder: (context, child) {
+                final currentActiveColor = _AppleMusicSlider.activeColor
+                    .withValues(
+                      alpha: lerpDouble(0.65, 0.9, _animation.value) ?? 0.65,
+                    );
+
+                final currentInactiveColor =
+                    Color.lerp(
+                      _AppleMusicSlider.inactiveColor,
+                      Colors.white.withValues(alpha: 0.3),
+                      _animation.value,
+                    ) ??
+                    _AppleMusicSlider.inactiveColor;
+
+                return SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 6,
+                    trackShape: const RoundedRectSliderTrackShape(),
+                    thumbShape: _AppleMusicThumbShape(
+                      scale: _animation.value,
+                      opacity: _animation.value,
+                    ),
+                    overlayShape: SliderComponentShape.noOverlay,
+                    activeTrackColor: currentActiveColor,
+                    inactiveTrackColor: currentInactiveColor,
+                  ),
+                  child: Slider(
+                    value: _dragValue ?? widget.value.clamp(0.0, 1.0),
+                    onChanged: widget.onChanged == null
+                        ? null
+                        : (v) {
+                            setState(() {
+                              _dragValue = v;
+                            });
+                            if (widget.duration != null &&
+                                widget.duration!.inMilliseconds > 0) {
+                              final currentMs =
+                                  (v * widget.duration!.inMilliseconds).round();
+                              final currentSecond = currentMs ~/ 1000;
+                              if (_lastHapticSecond != null &&
+                                  (currentSecond ~/ 5) !=
+                                      (_lastHapticSecond! ~/ 5)) {
+                                HapticFeedback.selectionClick();
+                              }
+                              _lastHapticSecond = currentSecond;
+                            }
+                            if (widget.onChanged != null) widget.onChanged!(v);
+                          },
+                    onChangeStart: (_) {
+                      HapticFeedback.selectionClick();
+                      setState(() {
+                        _dragValue = widget.value;
+                      });
+                      if (widget.duration != null &&
+                          widget.duration!.inMilliseconds > 0) {
+                        _lastHapticSecond =
+                            ((widget.value * widget.duration!.inMilliseconds)
+                                .round()) ~/
+                            1000;
+                      }
+                      _controller.forward();
+                    },
+                    onChangeEnd: (_) {
+                      HapticFeedback.mediumImpact();
+                      setState(() {
+                        _dragValue = null;
+                        _lastHapticSecond = null;
+                      });
+                      _controller.reverse();
+                    },
+                    min: _AppleMusicSlider.min,
+                    max: _AppleMusicSlider.max,
+                  ),
+                );
+              },
+            ),
+
+            // 2. 拖拽时上方的悬浮时间气泡
+            Positioned(
+              top: -35,
+              left: bubbleLeft,
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _animation,
+                  builder: (context, _) {
+                    if (_animation.value <= 0.001) {
+                      return const SizedBox.shrink();
+                    }
+                    return Opacity(
+                      opacity: _animation.value,
+                      child: Transform.scale(
+                        scale: 0.75 + 0.25 * _animation.value,
+                        alignment: Alignment.bottomCenter,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: bubbleWidth,
+                              height: bubbleHeight,
+                              decoration: BoxDecoration(
+                                color: const Color(0xF21C1D26),
+                                borderRadius: BorderRadius.circular(13),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.22),
+                                  width: 0.8,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.45),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                timeStr,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  fontFamily: 'Consolas',
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: EdgeInsets.only(
+                                left: max(0.0, arrowCenterX - 4.5).toDouble(),
+                              ),
+                              child: CustomPaint(
+                                size: const Size(9, arrowHeight),
+                                painter: _BubbleArrowPainter(
+                                  color: const Color(0xF21C1D26),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
-/// 自定义轨道，支持渲染副歌高亮区间
-class _ChorusSliderTrackShape extends RoundedRectSliderTrackShape {
-  final List<Map<String, int>>? chorusTimes;
-  final double durationMs;
-
-  const _ChorusSliderTrackShape({
-    this.chorusTimes,
-    required this.durationMs,
-  });
+class _BubbleArrowPainter extends CustomPainter {
+  final Color color;
+  const _BubbleArrowPainter({required this.color});
 
   @override
-  void paint(
-    PaintingContext context,
-    Offset offset, {
-    required RenderBox parentBox,
-    required SliderThemeData sliderTheme,
-    required Animation<double> enableAnimation,
-    required TextDirection textDirection,
-    required Offset thumbCenter,
-    Offset? secondaryOffset,
-    bool isDiscrete = false,
-    bool isEnabled = false,
-    double additionalActiveTrackHeight = 2.0,
-  }) {
-    // 1. 绘制原始的背景轨和已播放轨
-    super.paint(
-      context,
-      offset,
-      parentBox: parentBox,
-      sliderTheme: sliderTheme,
-      enableAnimation: enableAnimation,
-      textDirection: textDirection,
-      thumbCenter: thumbCenter,
-      secondaryOffset: secondaryOffset,
-      isDiscrete: isDiscrete,
-      isEnabled: isEnabled,
-      additionalActiveTrackHeight: additionalActiveTrackHeight,
-    );
-
-    if (durationMs <= 0 || chorusTimes == null || chorusTimes!.isEmpty) return;
-
-    // 2. 在上方绘制副歌高亮区间
-    final Rect trackRect = getPreferredRect(
-      parentBox: parentBox,
-      offset: offset,
-      sliderTheme: sliderTheme,
-      isEnabled: isEnabled,
-      isDiscrete: isDiscrete,
-    );
-    
-    final Paint chorusPaint = Paint()
-      ..color = Colors.white.withOpacity(0.5)
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
       ..style = PaintingStyle.fill;
-      
-    final double trackWidth = trackRect.width;
-
-    for (final chorus in chorusTimes!) {
-      final startTimeMs = chorus['startTime']?.toDouble() ?? 0.0;
-      final endTimeMs = chorus['endTime']?.toDouble() ?? 0.0;
-      if (startTimeMs >= endTimeMs) continue;
-
-      final startFraction = (startTimeMs / durationMs).clamp(0.0, 1.0);
-      final endFraction = (endTimeMs / durationMs).clamp(0.0, 1.0);
-      
-      final startX = trackRect.left + startFraction * trackWidth;
-      final endX = trackRect.left + endFraction * trackWidth;
-      
-      final chorusRect = RRect.fromRectAndRadius(
-        Rect.fromLTRB(startX, trackRect.top, endX, trackRect.bottom),
-        const Radius.circular(3.0),
-      );
-
-      context.canvas.drawRRect(chorusRect, chorusPaint);
-    }
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..close();
+    canvas.drawPath(path, paint);
   }
+
+  @override
+  bool shouldRepaint(covariant _BubbleArrowPainter oldDelegate) =>
+      color != oldDelegate.color;
 }
 
 /// 自定义圆形滑块，支持缩放和透明度动画
 class _AppleMusicThumbShape extends SliderComponentShape {
   final double scale;
   final double opacity;
-  final double maxRadius;
+  static const double maxRadius = 6.0;
 
-  const _AppleMusicThumbShape({
-    required this.scale,
-    this.opacity = 1.0,
-    this.maxRadius = 6.0,
-  });
+  const _AppleMusicThumbShape({required this.scale, this.opacity = 1.0});
 
   @override
   Size getPreferredSize(bool isEnabled, bool isDiscrete) {
@@ -1895,18 +2302,23 @@ class _AppleMusicThumbShape extends SliderComponentShape {
     if (scale <= 0.01) return; // 隐藏不绘制
 
     final Canvas canvas = context.canvas;
-    
+
     // 绘制阴影
     final path = Path()
       ..addOval(Rect.fromCircle(center: center, radius: maxRadius * scale));
-    
-    canvas.drawShadow(path, Colors.black.withOpacity(0.3 * opacity), 3.0, true);
+
+    canvas.drawShadow(
+      path,
+      Colors.black.withValues(alpha: 0.3 * opacity),
+      3.0,
+      true,
+    );
 
     // 绘制白色圆点
     final Paint paint = Paint()
-      ..color = Colors.white.withOpacity(opacity)
+      ..color = Colors.white.withValues(alpha: opacity)
       ..style = PaintingStyle.fill;
-    
+
     canvas.drawCircle(center, maxRadius * scale, paint);
   }
 }

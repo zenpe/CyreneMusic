@@ -1,9 +1,7 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../services/player_service.dart';
 import '../../services/player_background_service.dart';
-import '../../models/track.dart';
-import '../../models/song_detail.dart';
 import 'mobile_player_app_bar.dart';
 import 'mobile_player_dialogs.dart';
 // import 'mobile_player_song_info.dart';
@@ -11,9 +9,9 @@ import 'mobile_player_karaoke_lyric.dart';
 import '../mobile_lyric_page.dart';
 import '../../models/lyric_line.dart';
 import '../../services/playback_mode_service.dart';
-import '../../services/download_service.dart';
-import '../../services/sleep_timer_service.dart';
 import '../../widgets/wavy_split_progress_bar.dart';
+import '../../widgets/player_error_banner.dart';
+import '../../widgets/player_speed_selector.dart';
 
 /// 移动端经典播放器布局 (Material Design Expressive)
 /// 特点：
@@ -24,32 +22,35 @@ import '../../widgets/wavy_split_progress_bar.dart';
 class MobilePlayerClassicLayout extends StatelessWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
+  final LyricLoadState lyricState;
   final VoidCallback onBackPressed;
   final VoidCallback? onPlaylistPressed;
+  final VoidCallback? onVolumeControlPressed;
 
   const MobilePlayerClassicLayout({
     super.key,
     required this.lyrics,
     required this.currentLyricIndex,
+    required this.lyricState,
     required this.onBackPressed,
     this.onPlaylistPressed,
+    this.onVolumeControlPressed,
   });
 
   @override
   Widget build(BuildContext context) {
     final player = PlayerService();
     final backgroundService = PlayerBackgroundService();
-    
+
     // 检查是否显示封面 (非自适应背景时)
-    final showCover = !backgroundService.enableGradient || 
-                      backgroundService.backgroundType != PlayerBackgroundType.adaptive;
+    final showCover =
+        !backgroundService.enableGradient ||
+        backgroundService.backgroundType != PlayerBackgroundType.adaptive;
 
     return Column(
       children: [
         // 顶部栏
-        MobilePlayerAppBar(
-          onBackPressed: onBackPressed,
-        ),
+        MobilePlayerAppBar(onBackPressed: onBackPressed),
 
         // 主要内容区域
         Expanded(
@@ -58,13 +59,11 @@ class MobilePlayerClassicLayout extends StatelessWidget {
               // 响应式布局参数
               final screenHeight = MediaQuery.of(context).size.height;
               final isSmallScreen = screenHeight < 700;
-              
+
               return SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight,
-                  ),
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
                     child: Column(
@@ -72,19 +71,26 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // 1. 专辑封面区域 (弹性空间，但有最大限制)
-                         if (showCover)
+                        if (showCover)
                           Padding(
-                            padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 16 : 32),
+                            padding: EdgeInsets.symmetric(
+                              vertical: isSmallScreen ? 16 : 32,
+                            ),
                             child: Center(
                               child: AspectRatio(
                                 aspectRatio: 1,
                                 child: Container(
-                                  constraints: const BoxConstraints(maxHeight: 380, maxWidth: 380),
+                                  constraints: const BoxConstraints(
+                                    maxHeight: 380,
+                                    maxWidth: 380,
+                                  ),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(24),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.3),
+                                        color: Colors.black.withValues(
+                                          alpha: 0.3,
+                                        ),
                                         blurRadius: 20,
                                         offset: const Offset(0, 10),
                                       ),
@@ -104,6 +110,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                             child: MobilePlayerKaraokeLyric(
                               lyrics: lyrics,
                               currentLyricIndex: currentLyricIndex,
+                              lyricState: lyricState,
                               onTap: () => Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -118,21 +125,20 @@ class MobilePlayerClassicLayout extends StatelessWidget {
 
                         // 2. 歌曲信息 (大标题)
                         _buildSongInfo(context, player),
-                        
+
                         const SizedBox(height: 24),
 
                         // 3. 进度条 (Expressive Style - 粗轨道)
                         _buildExpressiveProgressBar(context, player),
-                        
-                        const SizedBox(height: 12), // 时间标签和进度条之间的间距
 
+                        const SizedBox(height: 12), // 时间标签和进度条之间的间距
                         // 4. 控制区域 (分段式胶囊按钮)
                         _buildExpressiveControls(context, player),
 
                         // 5. 底部次要功能 (播放列表、更多等)
                         const SizedBox(height: 24),
                         _buildBottomActions(context),
-                        
+
                         const SizedBox(height: 48), // 底部安全留白
                       ],
                     ),
@@ -148,33 +154,44 @@ class MobilePlayerClassicLayout extends StatelessWidget {
 
   Widget _buildAlbumCover(PlayerService player) {
     // 复用现有逻辑获取封面URL
-    final song = player.currentSong;
-    final track = player.currentTrack;
-    final picUrl = song?.pic ?? track?.picUrl;
+    final picUrl = player.displayCoverUrl;
 
     if (picUrl == null || picUrl.isEmpty) {
       return Container(
         color: Colors.white10,
-        child: const Icon(Icons.music_note_rounded, size: 80, color: Colors.white24),
+        child: const Icon(
+          Icons.music_note_rounded,
+          size: 80,
+          color: Colors.white24,
+        ),
       );
     }
-    
+
     // 这里使用 Image.network 或 CachedNetworkImage，暂用简单的 Image via Network
     return Image.network(
       picUrl,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => Container(
+      errorBuilder: (_, _, _) => Container(
         color: Colors.white10,
-        child: const Icon(Icons.broken_image_rounded, size: 60, color: Colors.white24),
+        child: const Icon(
+          Icons.broken_image_rounded,
+          size: 60,
+          color: Colors.white24,
+        ),
       ),
     );
   }
 
   Widget _buildSongInfo(BuildContext context, PlayerService player) {
-    final song = player.currentSong;
-    final track = player.currentTrack;
-    final title = song?.name ?? track?.name ?? '未知歌曲';
-    final artist = song?.arName ?? track?.artists ?? '未知艺术家';
+    final isPending = player.isLoading && player.pendingTrack != null;
+    final song = isPending ? null : player.currentSong;
+    final track = player.displayTrack;
+    final title = player.displayTitle.isNotEmpty
+        ? player.displayTitle
+        : (song?.name ?? track?.name ?? '未知歌曲');
+    final artist = player.displayArtist.isNotEmpty
+        ? player.displayArtist
+        : (song?.arName ?? track?.artists ?? '未知艺术家');
 
     return Row(
       children: [
@@ -196,7 +213,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
               Text(
                 artist,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w500,
                 ),
                 maxLines: 1,
@@ -207,40 +224,82 @@ class MobilePlayerClassicLayout extends StatelessWidget {
         ),
         // 收藏/喜欢按钮
         if (track != null)
-           IconButton(
-            icon: const Icon(Icons.favorite_border_rounded, color: Colors.white), // TODO: 集成真实的喜欢状态
-            // icon: Icon(isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded, 
+          IconButton(
+            icon: const Icon(
+              Icons.favorite_border_rounded,
+              color: Colors.white,
+            ), // TODO: 集成真实的喜欢状态
+            // icon: Icon(isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
             //       color: isLiked ? Colors.redAccent : Colors.white),
             onPressed: () {
               // TODO: 喜欢逻辑
-               ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('功能开发中')),
-                );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('功能开发中')));
             },
           ),
       ],
     );
   }
 
-  Widget _buildExpressiveProgressBar(BuildContext context, PlayerService player) {
+  Widget _buildExpressiveProgressBar(
+    BuildContext context,
+    PlayerService player,
+  ) {
     return AnimatedBuilder(
-      animation: player.positionNotifier,
+      animation: Listenable.merge([player.positionNotifier, player]),
       builder: (context, _) {
         final position = player.positionNotifier.value;
         final duration = player.duration;
         final max = duration.inMilliseconds.toDouble();
-        final value = position.inMilliseconds.toDouble().clamp(0.0, max > 0 ? max : 0.0);
+        final value = position.inMilliseconds.toDouble().clamp(
+          0.0,
+          max > 0 ? max : 0.0,
+        );
+        final bufferedValue = duration.inMilliseconds > 0
+            ? (player.bufferedPosition.inMilliseconds / duration.inMilliseconds)
+                  .clamp(0.0, 1.0)
+            : 0.0;
 
         return Column(
           children: [
-            WavySplitProgressBar(
-              value: max > 0 ? (value / max).clamp(0.0, 1.0) : 0.0,
-              isPlaying: player.isPlaying,
-              onChanged: (v) {
-                player.seek(Duration(milliseconds: (v * max).toInt()));
-              },
-              activeColor: Colors.white,
-              inactiveColor: Colors.white.withOpacity(0.15),
+            SizedBox(
+              height: 24,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: bufferedValue,
+                      child: Container(
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                  ),
+                  WavySplitProgressBar(
+                    value: max > 0 ? (value / max).clamp(0.0, 1.0) : 0.0,
+                    duration: Duration(milliseconds: max.toInt()),
+                    isPlaying: player.isPlaying,
+                    onChanged: (v) {
+                      player.seek(Duration(milliseconds: (v * max).toInt()));
+                    },
+                    activeColor: Colors.white,
+                    inactiveColor: Colors.transparent,
+                  ),
+                ],
+              ),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -249,14 +308,32 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                 children: [
                   Text(
                     _formatDuration(position),
-                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   Text(
                     _formatDuration(duration),
-                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
+            ),
+            PlayerErrorBanner(
+              message: player.isAudioSourceNotConfigured
+                  ? null
+                  : player.playbackProblemMessage,
+              nonBlocking: player.isPlaying,
+              margin: const EdgeInsets.only(top: 6),
+              onRetry: player.retryCurrentProblemAction,
+              showSkip: player.canSkipCurrentProblem,
+              onSkip: player.skipCurrentProblemAction,
             ),
           ],
         );
@@ -266,7 +343,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
 
   Widget _buildExpressiveControls(BuildContext context, PlayerService player) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -274,13 +351,20 @@ class MobilePlayerClassicLayout extends StatelessWidget {
         _buildExpressiveControlButton(
           context: context,
           icon: Icons.skip_previous_rounded,
-          onTap: player.hasPrevious ? player.playPrevious : null,
+          onTap: player.hasPrevious
+              ? () {
+                  HapticFeedback.lightImpact();
+                  player.playPrevious();
+                }
+              : null,
           size: 64,
           iconSize: 32,
           color: colorScheme.surfaceContainerHighest,
-          iconColor: player.hasPrevious ? colorScheme.onSurface : colorScheme.onSurface.withOpacity(0.38),
+          iconColor: player.hasPrevious
+              ? colorScheme.onSurface
+              : colorScheme.onSurface.withValues(alpha: 0.38),
         ),
-        
+
         const SizedBox(width: 12),
 
         // 播放/暂停
@@ -288,8 +372,13 @@ class MobilePlayerClassicLayout extends StatelessWidget {
           animation: player,
           builder: (context, _) => _buildExpressiveControlButton(
             context: context,
-            icon: player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            onTap: player.togglePlayPause,
+            icon: player.isPlaying
+                ? Icons.pause_rounded
+                : Icons.play_arrow_rounded,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              player.togglePlayPause();
+            },
             size: 84,
             iconSize: 48,
             color: colorScheme.primaryContainer,
@@ -305,15 +394,23 @@ class MobilePlayerClassicLayout extends StatelessWidget {
         _buildExpressiveControlButton(
           context: context,
           icon: Icons.skip_next_rounded,
-          onTap: player.hasNext ? player.playNext : null,
+          onTap: player.hasNext
+              ? () {
+                  HapticFeedback.lightImpact();
+                  player.playNext();
+                }
+              : null,
           size: 64,
           iconSize: 32,
           color: colorScheme.surfaceContainerHighest,
-          iconColor: player.hasNext ? colorScheme.onSurface : colorScheme.onSurface.withOpacity(0.38),
+          iconColor: player.hasNext
+              ? colorScheme.onSurface
+              : colorScheme.onSurface.withValues(alpha: 0.38),
         ),
       ],
     );
   }
+
   Widget _buildExpressiveControlButton({
     required BuildContext context,
     required IconData icon,
@@ -326,7 +423,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
     double? borderRadius,
   }) {
     final effectiveBorderRadius = borderRadius ?? (isPrimary ? 28.0 : 24.0);
-    
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
@@ -337,13 +434,15 @@ class MobilePlayerClassicLayout extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(effectiveBorderRadius),
         ),
-        shadows: isPrimary ? [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ] : null,
+        shadows: isPrimary
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
       ),
       child: InkWell(
         onTap: onTap,
@@ -351,21 +450,18 @@ class MobilePlayerClassicLayout extends StatelessWidget {
           borderRadius: BorderRadius.circular(effectiveBorderRadius),
         ),
         child: Center(
-          child: Icon(
-            icon,
-            size: iconSize,
-            color: iconColor,
-          ),
+          child: Icon(icon, size: iconSize, color: iconColor),
         ),
       ),
     );
   }
 
   Widget _buildBottomActions(BuildContext context) {
+    final player = PlayerService();
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-         // 播放模式
+        // 播放模式
         AnimatedBuilder(
           animation: PlaybackModeService(),
           builder: (context, child) {
@@ -373,6 +469,9 @@ class MobilePlayerClassicLayout extends StatelessWidget {
             IconData icon;
             switch (mode) {
               case PlaybackMode.sequential:
+                icon = Icons.arrow_forward_rounded;
+                break;
+              case PlaybackMode.loopAll:
                 icon = Icons.repeat_rounded;
                 break;
               case PlaybackMode.repeatOne:
@@ -387,12 +486,14 @@ class MobilePlayerClassicLayout extends StatelessWidget {
               iconSize: 26,
               onPressed: () {
                 PlaybackModeService().toggleMode();
-                 ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('播放模式: ${PlaybackModeService().getModeName()}'),
-                      duration: const Duration(seconds: 1),
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      '播放模式: ${PlaybackModeService().getModeName()}',
                     ),
-                  );
+                    duration: const Duration(seconds: 1),
+                  ),
+                );
               },
             );
           },
@@ -405,20 +506,57 @@ class MobilePlayerClassicLayout extends StatelessWidget {
           onPressed: () => MobilePlayerDialogs.showSleepTimer(context),
         ),
 
+        PlayerSpeedSelector(
+          speed: player.playbackSpeed,
+          onSelected: (value) => player.setPlaybackSpeed(value),
+          menuColor: Colors.black.withValues(alpha: 0.85),
+          borderColor: Colors.white30,
+          textColor: Colors.white70,
+          fontSize: 11,
+        ),
+
         // 下载
         IconButton(
-           icon: const Icon(Icons.download_rounded, color: Colors.white70),
-           iconSize: 26,
-           onPressed: () {
-              final track = PlayerService().currentTrack;
-              if (track != null) {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('检查下载状态...')),
-                );
-                // 实际逻辑可参考 MobilePlayerControls
-              }
-           },
+          icon: const Icon(Icons.download_rounded, color: Colors.white70),
+          iconSize: 26,
+          onPressed: () {
+            final track = PlayerService().currentTrack;
+            if (track != null) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('检查下载状态...')));
+              // 实际逻辑可参考 MobilePlayerControls
+            }
+          },
         ),
+
+        // 音量控制
+        if (onVolumeControlPressed != null)
+          Builder(
+            builder: (btnContext) {
+              return AnimatedBuilder(
+                animation: PlayerService(),
+                builder: (context, _) {
+                  final volume = PlayerService().volume;
+                  return IconButton(
+                    icon: Icon(
+                      volume == 0
+                          ? Icons.volume_off_rounded
+                          : volume < 0.5
+                          ? Icons.volume_down_rounded
+                          : Icons.volume_up_rounded,
+                      color: Colors.white70,
+                    ),
+                    iconSize: 26,
+                    tooltip: '音量调节',
+                    onPressed: () {
+                      MobilePlayerDialogs.showVolumePopup(btnContext);
+                    },
+                  );
+                },
+              );
+            },
+          ),
 
         // 播放列表
         IconButton(

@@ -1,17 +1,18 @@
+import '../../widgets/floating_playback_insets.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../utils/image_utils.dart';
 import '../../models/track.dart';
 import '../../models/toplist.dart';
 import '../../services/player_service.dart';
 import '../../services/music_service.dart';
 import '../../utils/theme_manager.dart';
+import '../../utils/image_utils.dart';
 import 'home_widgets.dart';
 import 'toplist_detail.dart';
-import '../../widgets/oculus/oculus_home_widgets.dart';
 import '../../widgets/skeleton_loader.dart';
+import '../../widgets/warm_empty_state.dart';
 
 class ChartsTab extends StatelessWidget {
   final List<Track> cachedRandomTracks;
@@ -30,7 +31,7 @@ class ChartsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = Platform.isIOS || Platform.isAndroid;
-    
+
     if (MusicService().isLoading) {
       // 移动端使用移动端专用骨架屏
       if (isMobile) {
@@ -46,77 +47,78 @@ class ChartsTab extends StatelessWidget {
 
     if (MusicService().errorMessage != null) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('加载失败\n${MusicService().errorMessage}'),
-              const SizedBox(height: 16),
-              if (ThemeManager().isFluentFramework)
-                fluent.Button(
-                  onPressed: onRefresh,
-                  child: const Text('重试'),
-                )
-              else
-                ElevatedButton(
-                  onPressed: onRefresh,
-                  child: const Text('重试'),
-                ),
-            ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 32),
+          child: WarmStateCard(
+            type: MusicService().errorMessage?.contains('HTTP 0') == true ||
+                    MusicService().errorMessage?.contains('Socket') == true
+                ? WarmStateType.network
+                : WarmStateType.error,
+            technicalDetails: MusicService().errorMessage,
+            onRetry: onRefresh,
           ),
         ),
       );
     }
 
     if (MusicService().toplists.isEmpty) {
-      return const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('暂无榜单数据')));
+      return Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 32),
+          child: WarmStateCard(
+            type: WarmStateType.empty,
+            onRetry: onRefresh,
+            retryText: '获取榜单',
+          ),
+        ),
+      );
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 800;
-        
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 0. Expressive Page Title
-            Padding(
-              padding: const EdgeInsets.only(top: 16, bottom: 40),
-              child: Text(
-                '音乐榜单',
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -1.0,
-                  color: Theme.of(context).colorScheme.onSurface,
+            // 0. Expressive Page Title (仅宽屏桌面展示，移动端避免与顶部AppBar大标题层叠)
+            if (isWide)
+              Padding(
+                padding: const EdgeInsets.only(top: 16, bottom: 40),
+                child: Text(
+                  '音乐榜单',
+                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1.0,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
               ),
-            ),
 
             // 1. 顶部 BENTO GRID
             Padding(
-              padding: const EdgeInsets.only(bottom: 56),
+              padding: const EdgeInsets.only(bottom: 40),
               child: _buildFeaturedSection(context, constraints),
             ),
 
             // 2. 历史与推荐 (Quick Access)
             Padding(
-              padding: const EdgeInsets.only(bottom: 56),
+              padding: const EdgeInsets.only(bottom: 48),
               child: _buildQuickAccessSection(context, isWide),
             ),
 
             // 3. 榜单列表 (更具表现力的间距)
             ...MusicService().toplists.map((toplist) {
               return Padding(
-                padding: const EdgeInsets.only(bottom: 64.0),
+                padding: const EdgeInsets.only(bottom: 48.0),
                 child: _ToplistSection(
                   toplist: toplist,
                   checkLoginStatus: checkLoginStatus,
                 ),
               );
             }),
-            
-             SizedBox(height: MediaQuery.of(context).padding.bottom + 80),
+
+             const FloatingPlaybackBottomSpacer(fallback: 100),
           ],
         );
       },
@@ -128,10 +130,10 @@ class ChartsTab extends StatelessWidget {
 
     // 如果宽度足够，使用 Bento Grid 布局
     final isDesktop = constraints.maxWidth > 900;
-    
+
     if (isDesktop && cachedRandomTracks.length >= 3) {
       final height = 320.0;
-      
+
       return SizedBox(
         height: height,
         child: Row(
@@ -169,35 +171,25 @@ class ChartsTab extends StatelessWidget {
           ],
         ),
       );
-    } 
-    
-    // 窄屏布局
+    }
+
+    // 窄屏/移动端布局：使用平滑 Peek 轮播图，避免封面被压缩变形
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 24.0),
+          padding: const EdgeInsets.only(bottom: 16.0),
           child: Text(
             '今日推荐',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w800,
               letterSpacing: -0.5,
             ),
           ),
         ),
-        SizedBox(
-          height: 240,
-          child: CarouselView.weighted(
-            flexWeights: const [7, 2, 1], // 强制比例：一大(70%), 一中(20%), 一小(10%)
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            children: cachedRandomTracks.map((track) {
-              return _FeaturedCard(
-                track: track,
-                checkLoginStatus: checkLoginStatus,
-                showDetails: true,
-              );
-            }).toList(),
-          ),
+        _MobileFeaturedCarousel(
+          tracks: cachedRandomTracks,
+          checkLoginStatus: checkLoginStatus,
         ),
       ],
     );
@@ -228,6 +220,91 @@ class ChartsTab extends StatelessWidget {
         ],
       );
     }
+  }
+}
+
+/// 移动端平滑 Peek 轮播组件（主卡片 88% 宽度，下一张边缘自然窥探，防止比例变形）
+class _MobileFeaturedCarousel extends StatefulWidget {
+  final List<Track> tracks;
+  final Future<void> Function() checkLoginStatus;
+
+  const _MobileFeaturedCarousel({
+    required this.tracks,
+    required this.checkLoginStatus,
+  });
+
+  @override
+  State<_MobileFeaturedCarousel> createState() => _MobileFeaturedCarouselState();
+}
+
+class _MobileFeaturedCarouselState extends State<_MobileFeaturedCarousel> {
+  late final PageController _controller;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController(viewportFraction: 0.88);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final trackCount = widget.tracks.length;
+    if (trackCount == 0) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 205,
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: trackCount,
+            onPageChanged: (i) => setState(() => _currentIndex = i),
+            itemBuilder: (context, index) {
+              final track = widget.tracks[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                child: _FeaturedCard(
+                  track: track,
+                  checkLoginStatus: widget.checkLoginStatus,
+                  showDetails: true,
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
+        // 优雅的胶囊指示器
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            trackCount.clamp(0, 6),
+            (i) {
+              final isSelected = i == (_currentIndex % trackCount.clamp(1, 6));
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeOutCubic,
+                margin: const EdgeInsets.symmetric(horizontal: 2.5),
+                width: isSelected ? 16 : 5,
+                height: 4.5,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -269,7 +346,7 @@ class _FeaturedCardState extends State<_FeaturedCard> {
             boxShadow: _isHovering
                 ? [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withValues(alpha: 0.2),
                       blurRadius: 16,
                       offset: const Offset(0, 8),
                     )
@@ -286,15 +363,26 @@ class _FeaturedCardState extends State<_FeaturedCard> {
                   scale: _isHovering ? 1.1 : 1.0,
                   duration: const Duration(milliseconds: 700),
                   curve: Curves.easeOutCubic,
-                  child: CachedNetworkImage(
-                    imageUrl: widget.track.picUrl,
-                    httpHeaders: getImageHeaders(widget.track.picUrl),
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                ),
+                    child: CachedNetworkImage(
+                      imageUrl: widget.track.picUrl,
+                      httpHeaders: getImageHeaders(widget.track.picUrl),
+                      fit: BoxFit.cover,
+                     memCacheWidth: 280,
+                     memCacheHeight: 280,
+                     placeholder: (context, url) => Container(
+                       color: Colors.grey[800],
+                     ),
+                     errorWidget: (context, url, error) => Container(
+                       color: Colors.grey[800],
+                       alignment: Alignment.center,
+                       child: const Icon(
+                         Icons.music_note,
+                         color: Colors.white54,
+                         size: 40,
+                       ),
+                     ),
+                   ),
+                 ),
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -302,8 +390,8 @@ class _FeaturedCardState extends State<_FeaturedCard> {
                       end: Alignment.bottomCenter,
                       colors: [
                         Colors.transparent,
-                        Colors.black.withOpacity(0.35),
-                        Colors.black.withOpacity(0.85),
+                        Colors.black.withValues(alpha: 0.35),
+                        Colors.black.withValues(alpha: 0.85),
                       ],
                       stops: const [0.4, 0.7, 1.0],
                     ),
@@ -350,7 +438,7 @@ class _FeaturedCardState extends State<_FeaturedCard> {
                         Text(
                           '${widget.track.artists} • ${widget.track.album}',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.85),
+                            color: Colors.white.withValues(alpha: 0.85),
                             fontSize: widget.isLarge ? 16 : 14,
                           ),
                           maxLines: 1,
@@ -403,36 +491,6 @@ class _ToplistSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (ThemeManager().isOculusFramework) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          OculusSectionHeader(
-            title: toplist.name,
-            onMoreTap: () => showToplistDetail(context, toplist),
-            moreLabel: '全部',
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 220,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              itemCount: toplist.tracks.take(12).length,
-              separatorBuilder: (c, i) => const SizedBox(width: 16),
-              itemBuilder: (context, index) {
-                return _ToplistTrackCard(
-                  track: toplist.tracks[index],
-                  rank: index,
-                  checkLoginStatus: checkLoginStatus,
-                );
-              },
-            ),
-          ),
-        ],
-      );
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -459,7 +517,7 @@ class _ToplistSection extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             if (ThemeManager().isFluentFramework)
               fluent.HyperlinkButton(
                 onPressed: () => showToplistDetail(context, toplist),
@@ -481,7 +539,7 @@ class _ToplistSection extends StatelessWidget {
             separatorBuilder: (c, i) => const SizedBox(width: 16),
             itemBuilder: (context, index) {
               return _ToplistTrackCard(
-                track: toplist.tracks[index], 
+                track: toplist.tracks[index],
                 rank: index,
                 checkLoginStatus: checkLoginStatus,
               );
@@ -540,12 +598,26 @@ class _ToplistTrackCardState extends State<_ToplistTrackCard> {
                       child: AnimatedScale(
                         scale: _isHovering ? 1.05 : 1.0,
                         duration: const Duration(milliseconds: 200),
-                        child: CachedNetworkImage(
-                          imageUrl: widget.track.picUrl,
-                          httpHeaders: getImageHeaders(widget.track.picUrl),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
+                       child: CachedNetworkImage(
+                         imageUrl: widget.track.picUrl,
+                         httpHeaders: getImageHeaders(widget.track.picUrl),
+                         fit: BoxFit.cover,
+                         memCacheWidth: 280,
+                         memCacheHeight: 280,
+                         placeholder: (context, url) => Container(
+                           color: theme.colorScheme.surfaceContainerHighest,
+                         ),
+                         errorWidget: (context, url, error) => Container(
+                           color: theme.colorScheme.surfaceContainerHighest,
+                           alignment: Alignment.center,
+                           child: Icon(
+                             Icons.music_note,
+                             color: theme.colorScheme.onSurfaceVariant,
+                             size: 36,
+                           ),
+                         ),
+                       ),
+                     ),
                     ),
                     Positioned(
                       top: 4,
@@ -553,16 +625,16 @@ class _ToplistTrackCardState extends State<_ToplistTrackCard> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.7),
+                          color: Colors.black.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(12),
-                          border: widget.rank < 3 
-                              ? Border.all(color: theme.colorScheme.primary.withOpacity(0.5), width: 1.5)
+                          border: widget.rank < 3
+                              ? Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.5), width: 1.5)
                               : Border.all(color: Colors.white10, width: 1),
                         ),
                         child: Text(
                           '#${widget.rank + 1}',
                           style: TextStyle(
-                            color: widget.rank < 3 ? theme.colorScheme.primary : Colors.white.withOpacity(0.9),
+                            color: widget.rank < 3 ? theme.colorScheme.primary : Colors.white.withValues(alpha: 0.9),
                             fontSize: 14,
                             fontWeight: FontWeight.w900,
                             letterSpacing: -0.5,
@@ -575,7 +647,7 @@ class _ToplistTrackCardState extends State<_ToplistTrackCard> {
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withValues(alpha: 0.9),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
@@ -608,7 +680,7 @@ class _ToplistTrackCardState extends State<_ToplistTrackCard> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+                    color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
                     fontWeight: FontWeight.w500,
                   ),
                 ),

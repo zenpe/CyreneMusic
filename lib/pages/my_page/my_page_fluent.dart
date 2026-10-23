@@ -1,7 +1,7 @@
 part of 'my_page.dart';
 
 /// Fluent UI 构建方法
-extension MyPageFluentUI on _MyPageState {
+extension _MyPageFluentUI on _MyPageState {
   Widget _buildFluentPage(BuildContext context, bool isLoggedIn) {
     if (!isLoggedIn) {
       return fluent.ScaffoldPage(
@@ -62,17 +62,17 @@ extension MyPageFluentUI on _MyPageState {
               ),
             ],
           ),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: _buildRefreshButton()),
           Expanded(
             child: Theme(
               data: materialTheme,
               child: Material(
                 color: Colors.transparent,
                 child: RefreshIndicator(
-                  onRefresh: () async {
-                    await _playlistService.loadPlaylists();
-                    await _loadStats();
-                  },
+                  onRefresh: () => _refreshAll(),
                   child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -83,12 +83,13 @@ extension MyPageFluentUI on _MyPageState {
                           const fluent.Card(
                               padding: EdgeInsets.all(16),
                               child: Center(child: fluent.ProgressRing()))
-                        else if (_statsData == null)
+                        else if (_statsData == null && _statsError == null)
                           fluent.InfoBar(
                               title: const Text('暂无统计数据'),
                               severity: fluent.InfoBarSeverity.info)
-                        else
+                        else if (_statsData != null)
                           _buildFluentStatsCard(),
+                        if (_statsError != null) _buildStatsError(),
                         const SizedBox(height: 24),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -116,6 +117,7 @@ extension MyPageFluentUI on _MyPageState {
                           ],
                         ),
                         const SizedBox(height: 8),
+                        _buildPlaylistStatus(),
                         _buildFluentPlaylistsList(),
                         const SizedBox(height: 24),
                         if (_statsData != null &&
@@ -151,7 +153,7 @@ extension MyPageFluentUI on _MyPageState {
         return Stack(
           children: [
             ...previousChildren,
-            if (currentChild != null) currentChild,
+            ?currentChild,
           ],
         );
       },
@@ -239,6 +241,14 @@ extension MyPageFluentUI on _MyPageState {
                   const SizedBox(width: 8),
                   fluent.Button(onPressed: _toggleEditMode, child: const Text('取消')),
                 ] else ...[
+                  if (!playlist.isDefault)
+                    fluent.Tooltip(
+                      message: '重命名歌单',
+                      child: fluent.IconButton(
+                        icon: const Icon(fluent.FluentIcons.rename),
+                        onPressed: () => _showRenamePlaylistDialog(playlist),
+                      ),
+                    ),
                   if (allTracks.isNotEmpty) ...[
                     fluent.IconButton(
                         icon: Icon(_isSearchMode
@@ -247,54 +257,29 @@ extension MyPageFluentUI on _MyPageState {
                         onPressed: _toggleSearchMode),
                     const SizedBox(width: 4),
                   ],
-                  if (allTracks.isNotEmpty) ...[
+                  if (allTracks.isNotEmpty && playlist.isLocal) ...[
                     fluent.IconButton(
                         icon: const Icon(fluent.FluentIcons.switch_widget),
                         onPressed: () =>
                             _showSourceSwitchDialog(playlist, allTracks)),
                     const SizedBox(width: 4),
                   ],
-                  if (allTracks.isNotEmpty) ...[
+                  if (allTracks.isNotEmpty && playlist.isLocal) ...[
                     fluent.IconButton(
                         icon: const Icon(fluent.FluentIcons.edit),
                         onPressed: _toggleEditMode),
                     const SizedBox(width: 4),
                   ],
-                  fluent.IconButton(
-                    icon: const Icon(fluent.FluentIcons.sync),
-                    onPressed: () async {
-                      if (!_hasImportConfig(playlist)) {
-                        fluent.displayInfoBar(context,
-                            builder: (context, close) => fluent.InfoBar(
-                                title: const Text('同步'),
-                                content: const Text('请先在"导入管理"中绑定来源后再同步'),
-                                severity: fluent.InfoBarSeverity.warning,
-                                action: fluent.IconButton(
-                                    icon: const Icon(fluent.FluentIcons.clear),
-                                    onPressed: close)));
-                        return;
-                      }
-                      fluent.displayInfoBar(context,
-                          builder: (context, close) => fluent.InfoBar(
-                              title: const Text('同步'),
-                              content: const Text('正在同步...'),
-                              severity: fluent.InfoBarSeverity.info,
-                              action: fluent.IconButton(
-                                  icon: const Icon(fluent.FluentIcons.clear),
-                                  onPressed: close)));
-                      final result = await _playlistService.syncPlaylist(playlist.id);
-                      if (!mounted) return;
-                      fluent.displayInfoBar(context,
-                          builder: (context, close) => fluent.InfoBar(
-                              title: const Text('同步完成'),
-                              content: Text(_formatSyncResultMessage(result)),
-                              severity: fluent.InfoBarSeverity.success,
-                              action: fluent.IconButton(
-                                  icon: const Icon(fluent.FluentIcons.clear),
-                                  onPressed: close)));
-                      await _playlistService.loadPlaylistTracks(playlist.id);
-                    },
-                  ),
+                  if (playlist.isSynced) ...[
+                    fluent.IconButton(
+                      icon: const Icon(fluent.FluentIcons.copy),
+                      onPressed: () => _copySyncedPlaylist(playlist),
+                    ),
+                    fluent.IconButton(
+                      icon: const Icon(fluent.FluentIcons.sync),
+                      onPressed: () => _syncPlaylistFromList(playlist),
+                    ),
+                  ],
                 ],
               ],
             ),
@@ -331,6 +316,7 @@ extension MyPageFluentUI on _MyPageState {
                       item: track,
                       index: originalIndex,
                       isEditMode: _isEditMode,
+                      isReadOnly: playlist.isSynced,
                       isSelected: isSelected,
                       onToggleSelection: () => _toggleTrackSelection(track),
                       onPlay: () => _playDetailTrack(originalIndex),
@@ -338,7 +324,7 @@ extension MyPageFluentUI on _MyPageState {
                     ),
                   );
                 },
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemCount: filteredTracks.length,
               ),
             ),
@@ -402,6 +388,7 @@ class _FluentMyTrackTile extends StatelessWidget {
   final PlaylistTrack item;
   final int index;
   final bool isEditMode;
+  final bool isReadOnly;
   final bool isSelected;
   final VoidCallback onToggleSelection;
   final VoidCallback onPlay;
@@ -411,6 +398,7 @@ class _FluentMyTrackTile extends StatelessWidget {
     required this.item,
     required this.index,
     required this.isEditMode,
+    required this.isReadOnly,
     required this.isSelected,
     required this.onToggleSelection,
     required this.onPlay,
@@ -464,14 +452,14 @@ class _FluentMyTrackTile extends StatelessWidget {
                     memCacheWidth: 128,
                     memCacheHeight: 128,
                     fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(
+                    placeholder: (_, _) => Container(
                       width: 64,
                       height: 64,
                       color: resources.controlAltFillColorSecondary,
                       alignment: Alignment.center,
                       child: const fluent.ProgressRing(strokeWidth: 2),
                     ),
-                    errorWidget: (_, __, ___) => Container(
+                    errorWidget: (_, _, _) => Container(
                       width: 64,
                       height: 64,
                       color: resources.controlAltFillColorSecondary,
@@ -511,20 +499,13 @@ class _FluentMyTrackTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (!isEditMode) ...[
+                if (!isEditMode && !isReadOnly) ...[
                   const SizedBox(width: 12),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      fluent.IconButton(
-                        icon: const Icon(fluent.FluentIcons.play),
-                        onPressed: onPlay,
-                      ),
-                      fluent.IconButton(
-                        icon: const Icon(fluent.FluentIcons.delete),
-                        onPressed: onDelete,
-                      ),
-                    ],
+                  TrackMoreButton(
+                    track: item.toTrack(),
+                    onPlay: onPlay,
+                    onDelete: onDelete,
+                    size: 32,
                   ),
                 ],
               ],
@@ -536,7 +517,7 @@ class _FluentMyTrackTile extends StatelessWidget {
   }
 }
 
-extension MyPageFluentUIComponents on _MyPageState {
+extension _MyPageFluentUIComponents on _MyPageState {
 
   Widget _buildFluentStatsCard() {
     final stats = _statsData!;
@@ -579,6 +560,9 @@ extension MyPageFluentUIComponents on _MyPageState {
 
   Widget _buildFluentPlaylistsList() {
     final playlists = _playlistService.playlists;
+    if (playlists.isEmpty && !_playlistService.hasLoadedPlaylists) {
+      return const SizedBox.shrink();
+    }
     final theme = fluent.FluentTheme.of(context);
 
     if (playlists.isEmpty) {
@@ -606,6 +590,7 @@ extension MyPageFluentUIComponents on _MyPageState {
             onTap: () => _openPlaylistDetail(playlist),
             onSync: () => _syncPlaylistFromList(playlist),
             onDelete: () => _confirmDeletePlaylist(playlist),
+            onRename: () => _showRenamePlaylistDialog(playlist),
           ),
         );
       }).toList(),
@@ -620,6 +605,7 @@ class _FluentMyPlaylistTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onSync;
   final VoidCallback onDelete;
+  final VoidCallback onRename;
 
   const _FluentMyPlaylistTile({
     required this.playlist,
@@ -627,6 +613,7 @@ class _FluentMyPlaylistTile extends StatelessWidget {
     required this.onTap,
     required this.onSync,
     required this.onDelete,
+    required this.onRename,
   });
 
   @override
@@ -680,6 +667,13 @@ class _FluentMyPlaylistTile extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (!playlist.isDefault) ...[
+                      fluent.Tooltip(
+                        message: '重命名歌单',
+                        child: fluent.IconButton(
+                          icon: const Icon(fluent.FluentIcons.rename),
+                          onPressed: onRename,
+                        ),
+                      ),
                       fluent.IconButton(
                         icon: Icon(
                           fluent.FluentIcons.sync,
@@ -724,14 +718,14 @@ class _FluentMyPlaylistTile extends StatelessWidget {
               memCacheWidth: 128,
               memCacheHeight: 128,
               fit: BoxFit.cover,
-              placeholder: (_, __) => Container(
+              placeholder: (_, _) => Container(
                 width: 64,
                 height: 64,
                 color: resources.controlAltFillColorSecondary,
                 alignment: Alignment.center,
                 child: const fluent.ProgressRing(strokeWidth: 2),
               ),
-              errorWidget: (_, __, ___) => Container(
+              errorWidget: (_, _, _) => Container(
                 width: 64,
                 height: 64,
                 color: resources.controlAltFillColorSecondary,
@@ -750,7 +744,7 @@ class _FluentMyPlaylistTile extends StatelessWidget {
   }
 }
 
-extension MyPageFluentUITopPlays on _MyPageState {
+extension _MyPageFluentUITopPlays on _MyPageState {
 
   Widget _buildFluentTopPlaysList() {
     final topPlays = _statsData!.playCounts.take(10).toList();
@@ -762,9 +756,13 @@ extension MyPageFluentUITopPlays on _MyPageState {
         final item = entry.value;
         final rank = index + 1;
         Color? rankColor;
-        if (rank == 1) rankColor = Colors.amber;
-        else if (rank == 2) rankColor = Colors.grey[400];
-        else if (rank == 3) rankColor = Colors.orange[300];
+        if (rank == 1) {
+          rankColor = Colors.amber;
+        } else if (rank == 2) {
+          rankColor = Colors.grey[400];
+        } else if (rank == 3) {
+          rankColor = Colors.orange[300];
+        }
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
@@ -800,14 +798,14 @@ extension MyPageFluentUITopPlays on _MyPageState {
                         memCacheWidth: 128,
                         memCacheHeight: 128,
                         fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(
+                        placeholder: (_, _) => Container(
                           width: 56,
                           height: 56,
                           color: theme.resources.controlAltFillColorSecondary,
                           alignment: Alignment.center,
                           child: const fluent.ProgressRing(strokeWidth: 2),
                         ),
-                        errorWidget: (_, __, ___) => Container(
+                        errorWidget: (_, _, _) => Container(
                           width: 56,
                           height: 56,
                           color: theme.resources.controlAltFillColorSecondary,
@@ -858,6 +856,12 @@ extension MyPageFluentUITopPlays on _MyPageState {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(width: 4),
+                    TrackMoreButton(
+                      track: item.toTrack(),
+                      onPlay: () => _playTrack(item),
+                      size: 28,
                     ),
                   ],
                 ),

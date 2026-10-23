@@ -6,22 +6,24 @@ import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../../services/player_service.dart';
 import '../../services/playlist_service.dart';
+import '../../widgets/playlist_membership_state.dart';
 import '../../services/netease_artist_service.dart';
 import '../../utils/theme_manager.dart';
+import '../../utils/image_utils.dart';
 import '../../models/lyric_line.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/search_widget.dart';
+import '../../widgets/player_error_banner.dart';
+import '../../widgets/player_speed_selector.dart';
 import '../artist_detail_page.dart';
 import 'player_fluid_cloud_background.dart';
 import 'player_window_controls.dart';
 import 'player_fluid_cloud_lyrics_panel.dart';
 import 'player_fluid_cloud_queue_panel.dart';
-import 'player_fluid_cloud_queue_panel.dart';
 import 'player_fluid_cloud_song_wiki_panel.dart';
 import '../mobile_player_components/mobile_player_settings_sheet.dart';
 import 'player_dialogs.dart';
-import '../../widgets/dynamic_cover_widget.dart';
 
 /// 流体云全屏布局
 /// 模仿 Apple Music 的左右分栏设计
@@ -31,6 +33,7 @@ class PlayerFluidCloudLayout extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final bool showTranslation;
+  final LyricLoadState lyricState;
   final bool isMaximized;
   final VoidCallback onBackPressed;
   final VoidCallback onPlaylistPressed;
@@ -44,6 +47,7 @@ class PlayerFluidCloudLayout extends StatefulWidget {
     required this.lyrics,
     required this.currentLyricIndex,
     required this.showTranslation,
+    required this.lyricState,
     required this.isMaximized,
     required this.onBackPressed,
     required this.onPlaylistPressed,
@@ -62,37 +66,34 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   // 缓存当前歌曲的封面 URL，用于检测歌曲变化
   String? _currentImageUrl;
 
-  Future<void>? _pendingCoverPrecache;
-  
   // 歌词折叠状态
   bool _isLyricsCollapsed = false;
-  
+
   // 折叠按钮显示状态（鼠标悬停时显示）
   bool _showCollapseButton = false;
 
   // 是否显示待播播放队列 (代替歌词显示)
   bool _showQueue = false;
 
-
   // 是否显示歌曲百科 (代替歌词显示)
   bool _showWiki = false;
-  
+
   // 折叠动画控制器
   AnimationController? _collapseController;
   Animation<double>? _collapseAnimation;
-  
+
   // 获取动画值，未初始化时返回 0
   double get _collapseAnimationValue => _collapseAnimation?.value ?? 0.0;
-  
+
   // 下滑关闭相关 (平板模式胶囊拖动)
   double _dragOffset = 0;
   late AnimationController _snapController;
   late Animation<double> _snapAnimation;
-  
+
   @override
   void initState() {
     super.initState();
-    
+
     // 先初始化折叠动画控制器（在其他操作之前）
     _collapseController = AnimationController(
       vsync: this,
@@ -102,7 +103,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
       parent: _collapseController!,
       curve: Curves.easeInOutCubic,
     );
-    
+
     PlayerService().addListener(_onPlayerChanged);
     _updateCurrentImageUrl();
 
@@ -117,7 +118,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
       });
     });
   }
-  
+
   @override
   void dispose() {
     _collapseController?.dispose();
@@ -125,7 +126,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
     PlayerService().removeListener(_onPlayerChanged);
     super.dispose();
   }
-  
+
   /// 切换歌词折叠状态
   void _toggleLyricsCollapse() {
     setState(() {
@@ -137,12 +138,12 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
       _collapseController?.reverse();
     }
   }
-  
+
   void _onPlayerChanged() {
     // 检查封面 URL 是否变化
     final player = PlayerService();
-    final newImageUrl = player.currentCoverUrl ?? '';
-    
+    final newImageUrl = player.displayCoverUrl ?? '';
+
     if (_currentImageUrl != newImageUrl) {
       setState(() {
         _currentImageUrl = newImageUrl;
@@ -150,17 +151,13 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
 
       final provider = player.currentCoverImageProvider;
       if (provider != null) {
-        _pendingCoverPrecache = precacheImage(
-          provider,
-          context,
-          size: const Size(512, 512),
-        );
+        precacheImage(provider, context, size: const Size(512, 512));
       }
     }
   }
-  
+
   void _updateCurrentImageUrl() {
-    _currentImageUrl = PlayerService().currentCoverUrl ?? '';
+    _currentImageUrl = PlayerService().displayCoverUrl ?? '';
   }
 
   /// 处理胶囊拖动更新
@@ -178,13 +175,9 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
       widget.onBackPressed();
     } else {
       // 回弹
-      _snapAnimation = Tween<double>(
-        begin: _dragOffset,
-        end: 0,
-      ).animate(CurvedAnimation(
-        parent: _snapController,
-        curve: Curves.easeOutCubic,
-      ));
+      _snapAnimation = Tween<double>(begin: _dragOffset, end: 0).animate(
+        CurvedAnimation(parent: _snapController, curve: Curves.easeOutCubic),
+      );
       _snapController.forward(from: 0);
     }
   }
@@ -197,200 +190,222 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
         child: Stack(
           clipBehavior: Clip.hardEdge,
           children: [
-        // 1. 全局背景（流体云专用背景：自适应模式下始终显示专辑封面 100% 填充）
-        Positioned.fill(child: const PlayerFluidCloudBackground()),
-        
-        // 2. 玻璃拟态遮罩 (整个容器)
-        Positioned.fill(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-            child: Container(
-              color: Colors.black.withOpacity(0.2), // 降低亮度以突出内容
-            ),
-          ),
-        ),
+            // 1. 全局背景（流体云专用背景：自适应模式下始终显示专辑封面 100% 填充）
+            Positioned.fill(child: const PlayerFluidCloudBackground()),
 
-        // 3. 主要内容区域
-        SafeArea(
-          child: Column(
-            children: [
-              // 顶部窗口控制
-              Builder(
-                builder: (context) {
-                  final player = PlayerService();
-                  return PlayerWindowControls(
-                    isMaximized: widget.isMaximized,
-                    onBackPressed: widget.onBackPressed,
-                    onSleepTimerPressed: widget.onSleepTimerPressed,
-                    // 译文按钮相关
-                    showTranslationButton: _shouldShowTranslationButton(),
-                    showTranslation: widget.showTranslation,
-                    onTranslationToggle: widget.onTranslationToggle,
-                    // 下载按钮相关
-                    currentTrack: player.currentTrack,
-                    currentSong: player.currentSong,
-                    isLyricsActive: !_isLyricsCollapsed && !_showQueue && !_showWiki,
-                    isQueueActive: !_isLyricsCollapsed && _showQueue,
-                    isWikiActive: !_isLyricsCollapsed && _showWiki,
-                    onLyricsToggle: () {
-                      setState(() {
-                        if (!_isLyricsCollapsed && !_showQueue && !_showWiki) {
-                          // 如果当前已经是歌词，点击则折叠
-                          _toggleLyricsCollapse();
-                        } else if (_isLyricsCollapsed) {
-                          // 如果目前处于折叠状态，则展开并显示歌词
-                          _showQueue = false;
-                          _showWiki = false;
-                          _toggleLyricsCollapse();
-                        } else {
-                          // 如果目前在显示其他，则切换到歌词
-                          _showQueue = false;
-                          _showWiki = false;
-                        }
-                      });
-                    },
-                    onQueueToggle: () {
-                      setState(() {
-                        if (!_isLyricsCollapsed && _showQueue) {
-                          // 如果当前已经是队列，点击则折叠
-                          _toggleLyricsCollapse();
-                        } else if (_isLyricsCollapsed) {
-                          // 如果目前处于折叠状态，则展开并显示队列
-                          _showQueue = true;
-                          _showWiki = false;
-                          _toggleLyricsCollapse();
-                        } else {
-                          // 如果目前在显示其他，则切换到队列
-                          _showQueue = true;
-                          _showWiki = false;
-                        }
-                      });
-                    },
-                    onWikiToggle: () {
-                      setState(() {
-                        if (!_isLyricsCollapsed && _showWiki) {
-                          // 如果当前已经是百科，点击则折叠
-                          _toggleLyricsCollapse();
-                        } else if (_isLyricsCollapsed) {
-                          // 如果目前处于折叠状态，则展开并显示百科
-                          _showWiki = true;
-                          _showQueue = false;
-                          _toggleLyricsCollapse();
-                        } else {
-                          // 如果目前在显示其他，则切换到百科
-                          _showWiki = true;
-                          _showQueue = false;
-                        }
-                      });
-                    },
-                    isTabletMode: ThemeManager().isTablet,
-                    onMorePressed: () => MobilePlayerSettingsSheet.show(
-                      context, 
-                      currentTrack: player.currentTrack
-                    ),
-
-                    // 传递拖动回调
-                    onCapsuleDragUpdate: _handleCapsuleDragUpdate,
-                    onCapsuleDragEnd: _handleCapsuleDragEnd,
-                  );
-                },
-              ),
-              
-              // 主体布局 - 支持歌词折叠
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return Padding(
-                      padding: const EdgeInsets.only(left: 60, right: 40, top: 20, bottom: 20),
-                      child: AnimatedBuilder(
-                        animation: _collapseController ?? const AlwaysStoppedAnimation(0.0),
-                        builder: (context, child) {
-                          // 计算动态布局比例
-                          // 展开时: 左侧 42%, 右侧 58%
-                          // 折叠时: 左侧占据全部空间居中
-                          final animValue = _collapseAnimationValue;
-                          final leftFlex = (42 + (58 * animValue)).round();
-                          final rightFlex = (58 * (1 - animValue)).round();
-                          final rightOpacity = 1.0 - animValue;
-                          
-                          return Stack(
-                            children: [
-                              // 主要内容 Row
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  // 左侧：控制面板 (动态宽度)
-                                  Expanded(
-                                    flex: leftFlex,
-                                    child: Padding(
-                                      // 折叠时减少右侧 padding
-                                      padding: EdgeInsets.only(
-                                        right: 60 * (1 - animValue) + 20 * animValue,
-                                      ),
-                                      child: _buildLeftPanel(context),
-                                    ),
-                                  ),
-                                  
-                                  // 折叠按钮占位（实际按钮在 Stack 中）
-                                  const SizedBox(width: 48),
-                                  
-                                  // 右侧：歌词面板 (动态宽度，折叠时隐藏)
-                                  if (rightFlex > 0)
-                                    Expanded(
-                                      flex: rightFlex,
-                                      child: MouseRegion(
-                                        onEnter: (_) => setState(() => _showCollapseButton = true),
-                                        onExit: (_) => setState(() => _showCollapseButton = false),
-                                        child: Opacity(
-                                          opacity: rightOpacity,
-                                          child: Padding(
-                                            padding: const EdgeInsets.only(left: 40),
-                                            child: _buildRightPanel(),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              
-                              // 折叠按钮（浮动在 Stack 中）
-                              // 未折叠时：在歌词区域左侧
-                              // 折叠时：在窗口右侧
-                              Positioned(
-                                right: _isLyricsCollapsed 
-                                    ? 0  // 折叠时靠右
-                                    : constraints.maxWidth * 0.58 - 16, // 未折叠时在歌词区域左边
-                                top: 0,
-                                bottom: 0,
-                                child: _isLyricsCollapsed
-                                    // 折叠时：右侧热区
-                                    ? MouseRegion(
-                                        onEnter: (_) => setState(() => _showCollapseButton = true),
-                                        onExit: (_) => setState(() => _showCollapseButton = false),
-                                        child: SizedBox(
-                                          width: 60,
-                                          child: Center(
-                                            child: _buildCollapseButton(),
-                                          ),
-                                        ),
-                                      )
-                                    // 未折叠时：按钮直接显示（由歌词区域的 MouseRegion 控制）
-                                    : Center(
-                                        child: _buildCollapseButton(),
-                                      ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    );
-                  },
+            // 2. 玻璃拟态遮罩 (整个容器)
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.2), // 降低亮度以突出内容
                 ),
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+
+            // 3. 主要内容区域
+            SafeArea(
+              child: Column(
+                children: [
+                  // 顶部窗口控制
+                  Builder(
+                    builder: (context) {
+                      final player = PlayerService();
+                      return PlayerWindowControls(
+                        isMaximized: widget.isMaximized,
+                        onBackPressed: widget.onBackPressed,
+                        onSleepTimerPressed: widget.onSleepTimerPressed,
+                        // 译文按钮相关
+                        showTranslationButton: _shouldShowTranslationButton(),
+                        showTranslation: widget.showTranslation,
+                        onTranslationToggle: widget.onTranslationToggle,
+                        // 下载按钮相关
+                        currentTrack: player.currentTrack,
+                        currentSong: player.currentSong,
+                        isLyricsActive:
+                            !_isLyricsCollapsed && !_showQueue && !_showWiki,
+                        isQueueActive: !_isLyricsCollapsed && _showQueue,
+                        isWikiActive: !_isLyricsCollapsed && _showWiki,
+                        onLyricsToggle: () {
+                          setState(() {
+                            if (!_isLyricsCollapsed &&
+                                !_showQueue &&
+                                !_showWiki) {
+                              // 如果当前已经是歌词，点击则折叠
+                              _toggleLyricsCollapse();
+                            } else if (_isLyricsCollapsed) {
+                              // 如果目前处于折叠状态，则展开并显示歌词
+                              _showQueue = false;
+                              _showWiki = false;
+                              _toggleLyricsCollapse();
+                            } else {
+                              // 如果目前在显示其他，则切换到歌词
+                              _showQueue = false;
+                              _showWiki = false;
+                            }
+                          });
+                        },
+                        onQueueToggle: () {
+                          setState(() {
+                            if (!_isLyricsCollapsed && _showQueue) {
+                              // 如果当前已经是队列，点击则折叠
+                              _toggleLyricsCollapse();
+                            } else if (_isLyricsCollapsed) {
+                              // 如果目前处于折叠状态，则展开并显示队列
+                              _showQueue = true;
+                              _showWiki = false;
+                              _toggleLyricsCollapse();
+                            } else {
+                              // 如果目前在显示其他，则切换到队列
+                              _showQueue = true;
+                              _showWiki = false;
+                            }
+                          });
+                        },
+                        onWikiToggle: () {
+                          setState(() {
+                            if (!_isLyricsCollapsed && _showWiki) {
+                              // 如果当前已经是百科，点击则折叠
+                              _toggleLyricsCollapse();
+                            } else if (_isLyricsCollapsed) {
+                              // 如果目前处于折叠状态，则展开并显示百科
+                              _showWiki = true;
+                              _showQueue = false;
+                              _toggleLyricsCollapse();
+                            } else {
+                              // 如果目前在显示其他，则切换到百科
+                              _showWiki = true;
+                              _showQueue = false;
+                            }
+                          });
+                        },
+                        isTabletMode: ThemeManager().isTablet,
+                        onMorePressed: () => MobilePlayerSettingsSheet.show(
+                          context,
+                          currentTrack: player.currentTrack,
+                        ),
+
+                        // 传递拖动回调
+                        onCapsuleDragUpdate: _handleCapsuleDragUpdate,
+                        onCapsuleDragEnd: _handleCapsuleDragEnd,
+                      );
+                    },
+                  ),
+
+                  // 主体布局 - 支持歌词折叠
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return Padding(
+                          padding: const EdgeInsets.only(
+                            left: 60,
+                            right: 40,
+                            top: 20,
+                            bottom: 20,
+                          ),
+                          child: AnimatedBuilder(
+                            animation:
+                                _collapseController ??
+                                const AlwaysStoppedAnimation(0.0),
+                            builder: (context, child) {
+                              // 计算动态布局比例
+                              // 展开时: 左侧 42%, 右侧 58%
+                              // 折叠时: 左侧占据全部空间居中
+                              final animValue = _collapseAnimationValue;
+                              final leftFlex = (42 + (58 * animValue)).round();
+                              final rightFlex = (58 * (1 - animValue)).round();
+                              final rightOpacity = 1.0 - animValue;
+
+                              return Stack(
+                                children: [
+                                  // 主要内容 Row
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      // 左侧：控制面板 (动态宽度)
+                                      Expanded(
+                                        flex: leftFlex,
+                                        child: Padding(
+                                          // 折叠时减少右侧 padding
+                                          padding: EdgeInsets.only(
+                                            right:
+                                                60 * (1 - animValue) +
+                                                20 * animValue,
+                                          ),
+                                          child: _buildLeftPanel(context),
+                                        ),
+                                      ),
+
+                                      // 折叠按钮占位（实际按钮在 Stack 中）
+                                      const SizedBox(width: 48),
+
+                                      // 右侧：歌词面板 (动态宽度，折叠时隐藏)
+                                      if (rightFlex > 0)
+                                        Expanded(
+                                          flex: rightFlex,
+                                          child: MouseRegion(
+                                            onEnter: (_) => setState(
+                                              () => _showCollapseButton = true,
+                                            ),
+                                            onExit: (_) => setState(
+                                              () => _showCollapseButton = false,
+                                            ),
+                                            child: Opacity(
+                                              opacity: rightOpacity,
+                                              child: Padding(
+                                                padding: const EdgeInsets.only(
+                                                  left: 40,
+                                                ),
+                                                child: _buildRightPanel(),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+
+                                  // 折叠按钮（浮动在 Stack 中）
+                                  // 未折叠时：在歌词区域左侧
+                                  // 折叠时：在窗口右侧
+                                  Positioned(
+                                    right: _isLyricsCollapsed
+                                        ? 0 // 折叠时靠右
+                                        : constraints.maxWidth * 0.58 -
+                                              16, // 未折叠时在歌词区域左边
+                                    top: 0,
+                                    bottom: 0,
+                                    child: _isLyricsCollapsed
+                                        // 折叠时：右侧热区
+                                        ? MouseRegion(
+                                            onEnter: (_) => setState(
+                                              () => _showCollapseButton = true,
+                                            ),
+                                            onExit: (_) => setState(
+                                              () => _showCollapseButton = false,
+                                            ),
+                                            child: SizedBox(
+                                              width: 60,
+                                              child: Center(
+                                                child: _buildCollapseButton(),
+                                              ),
+                                            ),
+                                          )
+                                        // 未折叠时：按钮直接显示（由歌词区域的 MouseRegion 控制）
+                                        : Center(child: _buildCollapseButton()),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -411,10 +426,10 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
             width: 32,
             height: 80,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: Colors.white.withOpacity(0.25),
+                color: Colors.white.withValues(alpha: 0.25),
                 width: 1,
               ),
             ),
@@ -424,7 +439,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                 turns: _isLyricsCollapsed ? 0.5 : 0,
                 child: Icon(
                   CupertinoIcons.chevron_right,
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                   size: 20,
                 ),
               ),
@@ -438,12 +453,12 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   /// 构建左侧面板
   Widget _buildLeftPanel(BuildContext context) {
     final player = PlayerService();
-    final song = player.currentSong;
-    final track = player.currentTrack;
+    final isPending = player.isTrackSwitchPending;
+    final track = player.displayTrack;
     // ✅ 关键修复：使用 PlayerService 的封面 URL 和 Provider，避免详情加载导致重新请求
-    final imageUrl = player.currentCoverUrl ?? track?.picUrl ?? '';
-    final coverProvider = player.currentCoverImageProvider;
-    
+    final imageUrl = player.displayCoverUrl ?? '';
+    final coverProvider = isPending ? null : player.currentCoverImageProvider;
+
     // 获取折叠动画值
     final animValue = _collapseAnimationValue;
     // 是否处于折叠状态（动画进行中或已折叠）
@@ -457,7 +472,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withValues(alpha: 0.4),
               blurRadius: 40,
               offset: const Offset(0, 20),
             ),
@@ -465,11 +480,30 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
         ),
         clipBehavior: Clip.antiAlias,
         // ✨ Apple Music 风格：使用 AnimatedSwitcher 实现封面渐变切换
-        // 这里为了更好地支持视频动态封面，使用 DynamicCoverWidget 内部的逻辑
-        child: DynamicCoverWidget(
-          imageUrl: imageUrl,
-          width: double.infinity,
-          height: double.infinity,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 600),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          transitionBuilder: (Widget child, Animation<double> animation) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          child: imageUrl.isNotEmpty
+              ? RepaintBoundary(
+                  key: ValueKey(imageUrl),
+                  child: _buildCoverImage(
+                    imageUrl,
+                    preferProvider: coverProvider,
+                  ),
+                )
+              : Container(
+                  key: const ValueKey('placeholder'),
+                  color: Colors.grey[900],
+                  child: const Icon(
+                    Icons.music_note,
+                    size: 80,
+                    color: Colors.white54,
+                  ),
+                ),
         ),
       ),
     );
@@ -483,19 +517,268 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
           scale: 0.9,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 450),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // 封面
-                cover,
-                const SizedBox(height: 40),
-                
-                // 歌曲信息
-                Row(
+            child: LayoutBuilder(
+              builder: (context, collapsedConstraints) {
+                final maxCoverByWidth = collapsedConstraints.hasBoundedWidth
+                    ? collapsedConstraints.maxWidth
+                    : 450.0;
+                final maxCoverByHeight = collapsedConstraints.hasBoundedHeight
+                    ? collapsedConstraints.maxHeight * 0.5
+                    : maxCoverByWidth;
+                final coverSize = maxCoverByHeight
+                    .clamp(200.0, maxCoverByWidth)
+                    .toDouble();
+
+                return SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: collapsedConstraints.hasBoundedHeight
+                          ? collapsedConstraints.maxHeight
+                          : 0,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox(width: coverSize, child: cover),
+                        const SizedBox(height: 40),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.max,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  track?.name ?? '未知歌曲',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                    letterSpacing: -0.5,
+                                    fontFamily: 'Microsoft YaHei',
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (track != null) ...[
+                                const SizedBox(width: 8),
+                                _FavoriteButton(track: track),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildArtistsRow(
+                          context,
+                          track?.artists ?? '未知歌手',
+                          player.currentSong,
+                          enabled: !isPending,
+                        ),
+                        const SizedBox(height: 30),
+                        AnimatedBuilder(
+                          animation: Listenable.merge([
+                            player.positionNotifier,
+                            player,
+                          ]),
+                          builder: (context, _) {
+                            final position = player
+                                .positionNotifier
+                                .value
+                                .inMilliseconds
+                                .toDouble();
+                            final duration = player.duration.inMilliseconds
+                                .toDouble();
+                            final value = (duration > 0)
+                                ? (position / duration).clamp(0.0, 1.0)
+                                : 0.0;
+                            final bufferedValue = duration > 0
+                                ? (player.bufferedPosition.inMilliseconds /
+                                          duration)
+                                      .clamp(0.0, 1.0)
+                                : 0.0;
+
+                            return Column(
+                              children: [
+                                SizedBox(
+                                  height: 24,
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Container(
+                                        height: 3,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.14,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                      ),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: FractionallySizedBox(
+                                          widthFactor: bufferedValue,
+                                          child: Container(
+                                            height: 3,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.32,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      _AppleMusicSlider(
+                                        value: value,
+                                        onChanged: player.viewState.canSeek
+                                            ? (v) {
+                                                final pos = Duration(
+                                                  milliseconds: (v * duration)
+                                                      .round(),
+                                                );
+                                                player.seek(pos);
+                                              }
+                                            : null,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      _formatDuration(
+                                        player.positionNotifier.value,
+                                      ),
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.6,
+                                        ),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        fontFamily: 'Consolas',
+                                      ),
+                                    ),
+                                    Text(
+                                      _formatDuration(player.duration),
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.6,
+                                        ),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        fontFamily: 'Consolas',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                PlayerErrorBanner(
+                                  message: player.isAudioSourceNotConfigured
+                                      ? null
+                                      : player.playbackProblemMessage,
+                                  nonBlocking: player.isPlaying,
+                                  margin: const EdgeInsets.only(top: 8),
+                                  onRetry: player.retryCurrentProblemAction,
+                                  showSkip: player.canSkipCurrentProblem,
+                                  onSkip: player.canSkipCurrentProblem
+                                      ? () {
+                                          player.skipFailedTrack(
+                                            expectedProblem:
+                                                player.currentProblem,
+                                          );
+                                        }
+                                      : null,
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconButton(
+                              icon: const Icon(CupertinoIcons.backward_fill),
+                              color: Colors.white.withValues(alpha: 0.9),
+                              iconSize: 36,
+                              onPressed: player.hasPrevious
+                                  ? player.playPrevious
+                                  : null,
+                            ),
+                            const SizedBox(width: 24),
+                            AnimatedBuilder(
+                              animation: player,
+                              builder: (context, _) {
+                                return IconButton(
+                                  icon: Icon(
+                                    player.isPlaying
+                                        ? CupertinoIcons.pause_fill
+                                        : CupertinoIcons.play_fill,
+                                    color: Colors.white,
+                                  ),
+                                  iconSize: 56,
+                                  padding: EdgeInsets.zero,
+                                  onPressed: player.togglePlayPause,
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 24),
+                            IconButton(
+                              icon: const Icon(CupertinoIcons.forward_fill),
+                              color: Colors.white.withValues(alpha: 0.9),
+                              iconSize: 36,
+                              onPressed: player.hasNext
+                                  ? player.playNext
+                                  : null,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _buildSpeedSelector(player),
+                        const SizedBox(height: 20),
+                        _buildVolumeSlider(player),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 未折叠时：原有布局
+    return Transform.scale(
+      scale: widget.leftPanelScale,
+      child: Center(
+        child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // 1. 专辑封面
+              cover,
+
+              const SizedBox(height: 30), // 缩小间距 (40 -> 30)
+              // 2. 歌曲信息（歌曲名 + 收藏按钮）
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize: MainAxisSize.max,
                   children: [
                     Flexible(
                       child: Text(
@@ -518,227 +801,116 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                     ],
                   ],
                 ),
-                const SizedBox(height: 8),
-                _buildArtistsRow(context, track?.artists ?? '未知歌手', player.currentSong),
-                
-                const SizedBox(height: 30),
-                
-                // 进度条
-                ValueListenableBuilder<List<Map<String, int>>?>(
-                  valueListenable: player.chorusTimesNotifier,
-                  builder: (context, chorusTimes, child) {
-                    return AnimatedBuilder(
-                      animation: player.positionNotifier,
-                      builder: (context, _) {
-                        final position = player.positionNotifier.value.inMilliseconds.toDouble();
-                        final durationMs = player.duration.inMilliseconds.toDouble();
-                        final safeDuration = durationMs > 0 ? durationMs : 1.0;
-                        final value = position.clamp(0.0, safeDuration);
-                        
-                        return Column(
-                          children: [
-                            SizedBox(
-                              height: 24,
-                              child: _AppleMusicSlider(
-                                value: value,
-                                onChanged: (v) {
-                                  final pos = Duration(milliseconds: v.round());
-                                  player.seek(pos);
-                                },
-                                max: safeDuration,
-                                activeColor: Colors.white,
-                                inactiveColor: const Color(0x1FFFFFFF),
-                                chorusTimes: chorusTimes,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  _formatDuration(player.positionNotifier.value),
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.6),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    fontFamily: 'Consolas',
-                                  ),
-                                ),
-                                Text(
-                                  _formatDuration(player.duration),
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.6),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    fontFamily: 'Consolas',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
-                
-                const SizedBox(height: 16),
-                
-                // 控制按钮
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    IconButton(
-                      icon: const Icon(CupertinoIcons.backward_fill),
-                      color: Colors.white.withOpacity(0.9),
-                      iconSize: 36,
-                      onPressed: player.hasPrevious ? player.playPrevious : null,
-                    ),
-                    const SizedBox(width: 24),
-                    AnimatedBuilder(
-                      animation: player,
-                      builder: (context, _) {
-                        return IconButton(
-                          icon: Icon(
-                            player.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
-                            color: Colors.white,
-                          ),
-                          iconSize: 56,
-                          padding: EdgeInsets.zero,
-                          onPressed: player.togglePlayPause,
-                        );
-                      },
-                    ),
-                    const SizedBox(width: 24),
-                    IconButton(
-                      icon: const Icon(CupertinoIcons.forward_fill),
-                      color: Colors.white.withOpacity(0.9),
-                      iconSize: 36,
-                      onPressed: player.hasNext ? player.playNext : null,
-                    ),
-                  ],
-                ),
-                
-                const SizedBox(height: 20),
-                
-                // 音量控制
-                _buildVolumeSlider(player),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-    
-    // 未折叠时：原有布局
-    return Transform.scale(
-      scale: widget.leftPanelScale,
-      child: Center(
-        child: SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // 1. 专辑封面
-              cover,
-              
-              const SizedBox(height: 30), // 缩小间距 (40 -> 30)
-              
-              // 2. 歌曲信息（歌曲名 + 收藏按钮）
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                      track?.name ?? '未知歌曲',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: -0.5,
-                        fontFamily: 'Microsoft YaHei',
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (track != null) ...[
-                    const SizedBox(width: 8),
-                    _FavoriteButton(track: track),
-                  ],
-                ],
               ),
               const SizedBox(height: 8),
               // 歌手名（可点击）
-              _buildArtistsRow(context, track?.artists ?? '未知歌手', player.currentSong),
-              
-              const SizedBox(height: 24), // 缩小间距 (30 -> 24)
-              
-              // 3. 进度条 - Apple Music 风格 (Hover 显现滑块)
-              ValueListenableBuilder<List<Map<String, int>>?>(
-                valueListenable: player.chorusTimesNotifier,
-                builder: (context, chorusTimes, child) {
-                  return AnimatedBuilder(
-                    animation: player.positionNotifier,
-                    builder: (context, _) {
-                      final position = player.positionNotifier.value.inMilliseconds.toDouble();
-                      final durationMs = player.duration.inMilliseconds.toDouble();
-                      final safeDuration = durationMs > 0 ? durationMs : 1.0;
-                      final value = position.clamp(0.0, safeDuration);
-                      
-                      return Column(
-                        children: [
-                          _AppleMusicSlider(
-                            value: value,
-                            onChanged: (v) {
-                              final pos = Duration(milliseconds: v.round());
-                              player.seek(pos);
-                            },
-                            max: safeDuration,
-                            activeColor: Colors.white,
-                            inactiveColor: const Color(0x1FFFFFFF),
-                            chorusTimes: chorusTimes,
-                          ),
-                          const SizedBox(height: 4),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  _formatDuration(player.positionNotifier.value),
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.6), 
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    fontFamily: 'Consolas',
-                                  ),
-                                ),
-                                Text(
-                                  _formatDuration(player.duration),
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.6), 
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    fontFamily: 'Consolas',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
-                    }
-                  );
-                }
+              _buildArtistsRow(
+                context,
+                track?.artists ?? '未知歌手',
+                player.currentSong,
+                enabled: !isPending,
               ),
-              
+
+              const SizedBox(height: 24), // 缩小间距 (30 -> 24)
+              // 3. 进度条 - Apple Music 风格 (Hover 显现滑块)
+              AnimatedBuilder(
+                animation: Listenable.merge([player.positionNotifier, player]),
+                builder: (context, _) {
+                  final position = player.positionNotifier.value.inMilliseconds
+                      .toDouble();
+                  final duration = player.duration.inMilliseconds.toDouble();
+                  final value = (duration > 0)
+                      ? (position / duration).clamp(0.0, 1.0)
+                      : 0.0;
+                  final bufferedValue = duration > 0
+                      ? (player.bufferedPosition.inMilliseconds / duration)
+                            .clamp(0.0, 1.0)
+                      : 0.0;
+
+                  return Column(
+                    children: [
+                      SizedBox(
+                        height: 24,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              height: 3,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: bufferedValue,
+                                child: Container(
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.32),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            _AppleMusicSlider(
+                              value: value,
+                              onChanged: player.viewState.canSeek
+                                  ? (v) {
+                                      final pos = Duration(
+                                        milliseconds: (v * duration).round(),
+                                      );
+                                      player.seek(pos);
+                                    }
+                                  : null,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _formatDuration(player.positionNotifier.value),
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Consolas',
+                              ),
+                            ),
+                            Text(
+                              _formatDuration(player.duration),
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Consolas',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      PlayerErrorBanner(
+                        message: player.isAudioSourceNotConfigured
+                            ? null
+                            : player.playbackProblemMessage,
+                        nonBlocking: player.isPlaying,
+                        margin: const EdgeInsets.only(top: 8),
+                        onRetry: player.retryCurrentProblemAction,
+                        showSkip: player.canSkipCurrentProblem,
+                        onSkip: player.skipCurrentProblemAction,
+                      ),
+                    ],
+                  );
+                },
+              ),
+
               const SizedBox(height: 12), // 缩小间距 (16 -> 12)
-              
               // 4. 控制按钮 (居中，作为一个整体) - iOS/Cupertino 风格图标，与移动端一致
               Center(
                 child: Row(
@@ -748,52 +920,56 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                     // 上一首 - iOS 风格粗图标
                     IconButton(
                       icon: const Icon(CupertinoIcons.backward_fill),
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       iconSize: 36,
-                      onPressed: player.hasPrevious ? player.playPrevious : null,
+                      onPressed: player.hasPrevious
+                          ? player.playPrevious
+                          : null,
                     ),
                     const SizedBox(width: 24),
-                    
+
                     // 播放/暂停 - iOS 风格粗图标
                     AnimatedBuilder(
                       animation: player,
                       builder: (context, _) {
                         return IconButton(
                           icon: Icon(
-                            player.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+                            player.isPlaying
+                                ? CupertinoIcons.pause_fill
+                                : CupertinoIcons.play_fill,
                             color: Colors.white,
                           ),
                           iconSize: 56,
                           padding: EdgeInsets.zero,
                           onPressed: player.togglePlayPause,
                         );
-                      }
+                      },
                     ),
                     const SizedBox(width: 24),
-                    
+
                     // 下一首 - iOS 风格粗图标
                     IconButton(
                       icon: const Icon(CupertinoIcons.forward_fill),
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       iconSize: 36,
                       onPressed: player.hasNext ? player.playNext : null,
                     ),
                   ],
                 ),
               ),
-              
+              const SizedBox(height: 12),
+              _buildSpeedSelector(player),
+
               const SizedBox(height: 16), // 缩小间距 (20 -> 16)
-              
               // 5. 音量控制 (与进度条样式一致)
               _buildVolumeSlider(player),
-              
             ],
           ),
         ),
       ),
     );
   }
-  
+
   /// 构建音量滑条 - MD3 风格 (竖线滑块 + 分离式轨道，与移动端一致)
   Widget _buildVolumeSlider(PlayerService player) {
     return AnimatedBuilder(
@@ -804,11 +980,11 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
             // 静音图标
             Icon(
               CupertinoIcons.speaker_fill,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               size: 16,
             ),
             const SizedBox(width: 8),
-            
+
             // 音量滑条 - Apple Music 风格
             Expanded(
               child: _AppleMusicSlider(
@@ -818,21 +994,35 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                 onChanged: (v) {
                   player.setVolume(v);
                 },
-                activeColor: Colors.white,
-                inactiveColor: const Color(0x3FFFFFFF),
               ),
             ),
-            
+
             const SizedBox(width: 8),
             // 最大音量图标
             Icon(
               CupertinoIcons.speaker_3_fill,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               size: 16,
             ),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildSpeedSelector(PlayerService player) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        PlayerSpeedSelector(
+          speed: player.playbackSpeed,
+          onSelected: (value) => player.setPlaybackSpeed(value),
+          menuColor: Colors.black.withValues(alpha: 0.85),
+          borderColor: Colors.white24,
+          textColor: Colors.white,
+          fontSize: 12,
+        ),
+      ],
     );
   }
 
@@ -855,16 +1045,13 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 500),
         transitionBuilder: (Widget child, Animation<double> animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
+          return FadeTransition(opacity: animation, child: child);
         },
         child: _showWiki
             ? const PlayerFluidCloudSongWikiPanel(key: ValueKey('wiki'))
-            : _showQueue 
-                ? const PlayerFluidCloudQueuePanel(key: ValueKey('queue'))
-                : _buildLyricsContent(),
+            : _showQueue
+            ? const PlayerFluidCloudQueuePanel(key: ValueKey('queue'))
+            : _buildLyricsContent(),
       ),
     );
   }
@@ -875,6 +1062,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
       lyrics: widget.lyrics,
       currentLyricIndex: widget.currentLyricIndex,
       showTranslation: widget.showTranslation,
+      lyricState: widget.lyricState,
     );
   }
 
@@ -882,8 +1070,9 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   /// [preferProvider] 优先使用的预缓存 ImageProvider，避免重复请求
   Widget _buildCoverImage(String imageUrl, {ImageProvider? preferProvider}) {
     // 判断是网络 URL 还是本地文件路径
-    final isNetwork = imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
-    
+    final isNetwork =
+        imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
+
     if (isNetwork) {
       // ✅ 优先使用预缓存的 provider，避免歌曲详情加载时因 URL 轻微变化导致重新请求
       if (preferProvider != null) {
@@ -892,25 +1081,22 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
           image: preferProvider,
           fit: BoxFit.cover,
           filterQuality: FilterQuality.medium,
-          errorBuilder: (context, error, stackTrace) => Container(
-            color: Colors.grey[900],
-          ),
+          errorBuilder: (context, error, stackTrace) =>
+              Container(color: Colors.grey[900]),
         );
       }
       // 降级：无 provider 时使用 CachedNetworkImage
       return CachedNetworkImage(
         key: ValueKey(imageUrl),
         imageUrl: imageUrl,
+        httpHeaders: getImageHeaders(imageUrl),
         fit: BoxFit.cover,
         memCacheWidth: 1024,
         memCacheHeight: 1024,
         filterQuality: FilterQuality.medium,
-        placeholder: (context, url) => Container(
-          color: Colors.grey[900],
-        ),
-        errorWidget: (context, url, error) => Container(
-          color: Colors.grey[900],
-        ),
+        placeholder: (context, url) => Container(color: Colors.grey[900]),
+        errorWidget: (context, url, error) =>
+            Container(color: Colors.grey[900]),
       );
     } else {
       // 本地文件
@@ -921,11 +1107,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
         filterQuality: FilterQuality.medium,
         errorBuilder: (context, error, stackTrace) => Container(
           color: Colors.grey[900],
-          child: const Icon(
-            Icons.music_note,
-            size: 80,
-            color: Colors.white54,
-          ),
+          child: const Icon(Icons.music_note, size: 80, color: Colors.white54),
         ),
       );
     }
@@ -941,86 +1123,107 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   /// 只有当歌词非中文且存在翻译时才显示
   bool _shouldShowTranslationButton() {
     if (widget.lyrics.isEmpty) return false;
-    
+
     // 检查是否有翻译
-    final hasTranslation = widget.lyrics.any((lyric) => 
-      lyric.translation != null && lyric.translation!.isNotEmpty
+    final hasTranslation = widget.lyrics.any(
+      (lyric) => lyric.translation != null && lyric.translation!.isNotEmpty,
     );
-    
+
     if (!hasTranslation) return false;
-    
+
     // 检查原文是否为中文（检查前几行非空歌词）
     final sampleLyrics = widget.lyrics
         .where((lyric) => lyric.text.trim().isNotEmpty)
         .take(5)
         .map((lyric) => lyric.text)
         .join('');
-    
+
     if (sampleLyrics.isEmpty) return false;
-    
+
     // 判断是否主要为中文（中文字符占比）
     final chineseCount = sampleLyrics.runes.where((rune) {
       return (rune >= 0x4E00 && rune <= 0x9FFF) || // 基本汉字
-             (rune >= 0x3400 && rune <= 0x4DBF) || // 扩展A
-             (rune >= 0x20000 && rune <= 0x2A6DF); // 扩展B
+          (rune >= 0x3400 && rune <= 0x4DBF) || // 扩展A
+          (rune >= 0x20000 && rune <= 0x2A6DF); // 扩展B
     }).length;
-    
+
     final totalCount = sampleLyrics.runes.length;
     final chineseRatio = totalCount > 0 ? chineseCount / totalCount : 0;
-    
+
     // 如果中文字符占比小于30%，认为是非中文歌词
     return chineseRatio < 0.3;
   }
 
   /// 构建歌手行（支持多歌手点击）
-  Widget _buildArtistsRow(BuildContext context, String artistsStr, SongDetail? song) {
+  Widget _buildArtistsRow(
+    BuildContext context,
+    String artistsStr,
+    SongDetail? song, {
+    bool enabled = true,
+  }) {
     final artists = _splitArtists(artistsStr);
-    
-    return Wrap(
-      alignment: WrapAlignment.center,
-      children: artists.asMap().entries.map((entry) {
-        final index = entry.key;
-        final artist = entry.value;
-        
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxArtistWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth * 0.9
+            : 320.0;
+        final children = <Widget>[];
+
+        for (var index = 0; index < artists.length; index++) {
+          final artist = artists[index];
+          children.add(
             GestureDetector(
-              onTap: () => _onArtistTap(context, artist, song),
+              onTap: enabled ? () => _onArtistTap(context, artist, song) : null,
               child: MouseRegion(
                 cursor: SystemMouseCursors.click,
-                child: Text(
-                  artist,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w400,
-                    color: Colors.white.withOpacity(0.6),
-                    fontFamily: 'Microsoft YaHei',
-                    decoration: TextDecoration.underline,
-                    decorationColor: Colors.white.withOpacity(0.3),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxArtistWidth),
+                  child: Text(
+                    artist,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w400,
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontFamily: 'Microsoft YaHei',
+                      decoration: TextDecoration.underline,
+                      decorationColor: Colors.white.withValues(alpha: 0.3),
+                    ),
                   ),
                 ),
               ),
             ),
-            if (index < artists.length - 1)
+          );
+          if (index < artists.length - 1) {
+            children.add(
               Text(
                 ' / ',
                 style: TextStyle(
                   fontSize: 18,
-                  color: Colors.white.withOpacity(0.6),
+                  color: Colors.white.withValues(alpha: 0.6),
                   fontFamily: 'Microsoft YaHei',
                 ),
               ),
-          ],
+            );
+          }
+        }
+
+        return Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: children,
         );
-      }).toList(),
+      },
     );
   }
 
   /// 分割歌手字符串（支持多种分隔符）
   List<String> _splitArtists(String artistsStr) {
     final separators = ['/', ',', '、'];
-    
+
     for (final separator in separators) {
       if (artistsStr.contains(separator)) {
         return artistsStr
@@ -1030,33 +1233,39 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
             .toList();
       }
     }
-    
+
     return [artistsStr];
   }
 
   /// 歌手点击处理
-  Future<void> _onArtistTap(BuildContext context, String artistName, SongDetail? song) async {
+  Future<void> _onArtistTap(
+    BuildContext context,
+    String artistName,
+    SongDetail? song,
+  ) async {
     // 仅在网易云音乐来源时跳转歌手详情，否则沿用搜索
     if (song?.source != MusicSource.netease) {
       _searchInDialog(context, artistName);
       return;
     }
     // 解析歌手ID（后端无返回ID时，通过搜索解析）
-    final id = await NeteaseArtistDetailService().resolveArtistIdByName(artistName);
+    final id = await NeteaseArtistDetailService().resolveArtistIdByName(
+      artistName,
+    );
     if (id == null) {
+      if (!context.mounted) return;
       _searchInDialog(context, artistName);
       return;
     }
     if (!context.mounted) return;
-    
+
     final isFluent = ThemeManager().isFluentFramework;
-    
+
     if (isFluent) {
       // Fluent UI 样式对话框
       final fluentTheme = fluent.FluentTheme.of(context);
-      final backgroundColor = fluentTheme.micaBackgroundColor ?? 
-          fluentTheme.scaffoldBackgroundColor;
-      
+      final backgroundColor = fluentTheme.micaBackgroundColor;
+
       fluent.showDialog(
         context: context,
         barrierDismissible: true,
@@ -1113,13 +1322,12 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
   /// 在对话框中打开搜索
   void _searchInDialog(BuildContext context, String keyword) {
     final isFluent = ThemeManager().isFluentFramework;
-    
+
     if (isFluent) {
       // Fluent UI 样式对话框
       final fluentTheme = fluent.FluentTheme.of(context);
-      final backgroundColor = fluentTheme.micaBackgroundColor ?? 
-          fluentTheme.scaffoldBackgroundColor;
-      
+      final backgroundColor = fluentTheme.micaBackgroundColor;
+
       fluent.showDialog(
         context: context,
         barrierDismissible: true,
@@ -1161,10 +1369,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.all(16),
           child: Container(
-            constraints: const BoxConstraints(
-              maxWidth: 800,
-              maxHeight: 700,
-            ),
+            constraints: const BoxConstraints(maxWidth: 800, maxHeight: 700),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(28),
@@ -1194,66 +1399,39 @@ class _FavoriteButton extends StatefulWidget {
   State<_FavoriteButton> createState() => _FavoriteButtonState();
 }
 
-class _FavoriteButtonState extends State<_FavoriteButton> {
-  bool _isInPlaylist = false;
-  bool _isLoading = true;
-  List<String> _playlistNames = [];
-  List<int> _playlistIds = [];
-
+class _FavoriteButtonState extends State<_FavoriteButton>
+    with PlaylistMembershipState<_FavoriteButton> {
   @override
-  void initState() {
-    super.initState();
-    _checkIfInPlaylist();
-  }
+  Track get membershipTrack => widget.track;
+  bool get _isInPlaylist => membershipResult.inPlaylist;
+  bool get _isLoading => membershipLoading;
+  List<String> get _playlistNames => membershipResult.playlistNames;
+  List<int> get _playlistIds => membershipResult.playlistIds;
 
-  @override
-  void didUpdateWidget(_FavoriteButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // 当歌曲变化时重新检查
-    if (oldWidget.track.id != widget.track.id || 
-        oldWidget.track.source != widget.track.source) {
-      _checkIfInPlaylist();
-    }
-  }
-
-  Future<void> _checkIfInPlaylist() async {
-    setState(() => _isLoading = true);
-    
-    final playlistService = PlaylistService();
-    
-    // 调用后端 API 检查歌曲是否在任何歌单中
-    final result = await playlistService.isTrackInAnyPlaylist(widget.track);
-    
-    if (mounted) {
-      setState(() {
-        _isInPlaylist = result.inPlaylist;
-        _playlistNames = result.playlistNames;
-        _playlistIds = result.playlistIds;
-        _isLoading = false;
-      });
-    }
-  }
+  Future<void> _checkIfInPlaylist() => refreshMembership();
 
   Future<void> _removeFromPlaylists() async {
     if (_playlistIds.isEmpty) return;
-    
+
     final playlistService = PlaylistService();
-    
-    for (final playlistId in _playlistIds) {
-      await playlistService.removeTrackFromPlaylist(
-        playlistId,
-        widget.track.id.toString(),
-        widget.track.source.name,
-      );
+
+    final track = widget.track;
+    final contextIdentity = playlistService.membershipContext;
+    final membership = await playlistService.isTrackInAnyPlaylist(track);
+    if (!mounted || !membership.known || !membership.complete) return;
+    for (final match in membership.matches) {
+      if (playlistService.membershipContext != contextIdentity) return;
+      await playlistService.removeTrackMatch(match, track);
     }
-    
+
     // 刷新状态
     _checkIfInPlaylist();
   }
 
   void _showManageMenu(BuildContext context, Offset position) {
-    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+
     showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
@@ -1268,7 +1446,10 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
           enabled: false,
           child: Text(
             '已收藏到: ${_playlistNames.join(", ")}',
-            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.6),
+              fontSize: 12,
+            ),
           ),
         ),
         const PopupMenuDivider(),
@@ -1276,7 +1457,11 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
           value: 'remove',
           child: Row(
             children: [
-              Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 18),
+              Icon(
+                Icons.remove_circle_outline,
+                color: Colors.redAccent,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               const Text('从所有歌单移除', style: TextStyle(color: Colors.white)),
             ],
@@ -1297,6 +1482,7 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
       if (value == 'remove') {
         _removeFromPlaylists();
       } else if (value == 'add') {
+        if (!context.mounted) return;
         PlayerDialogs.showAddToPlaylist(context, widget.track);
       }
     });
@@ -1318,8 +1504,9 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
       );
     }
 
-    final tooltip = _isInPlaylist 
-        ? '已收藏到: ${_playlistNames.join(", ")}' 
+    if (!membershipResult.known) return buildUnknownMembershipButton();
+    final tooltip = _isInPlaylist
+        ? '已收藏到: ${_playlistNames.join(", ")}'
         : '添加到歌单';
 
     return GestureDetector(
@@ -1338,7 +1525,9 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
           alignment: Alignment.center,
           child: Icon(
             _isInPlaylist ? Icons.favorite : Icons.favorite_border,
-            color: _isInPlaylist ? Colors.redAccent : Colors.white.withOpacity(0.7),
+            color: _isInPlaylist
+                ? Colors.redAccent
+                : Colors.white.withValues(alpha: 0.7),
             size: 26,
           ),
         ),
@@ -1353,28 +1542,27 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
 /// 3. 使用圆形滑块，略微放大动画
 class _AppleMusicSlider extends StatefulWidget {
   final double value;
+  final ValueChanged<double>? onChanged;
   final double min;
   final double max;
-  final ValueChanged<double>? onChanged;
-  final Color activeColor;
-  final Color inactiveColor;
-  final List<Map<String, int>>? chorusTimes;
 
   const _AppleMusicSlider({
     required this.value,
-    this.min = 0.0,
-    required this.max,
     required this.onChanged,
-    required this.activeColor,
-    required this.inactiveColor,
-    this.chorusTimes,
+    this.min = 0.0,
+    this.max = 1.0,
   });
+
+  Color get activeColor => Colors.white;
+
+  Color get inactiveColor => const Color(0x1FFFFFFF); // 约 12% 不透明度
 
   @override
   State<_AppleMusicSlider> createState() => _AppleMusicSliderState();
 }
 
-class _AppleMusicSliderState extends State<_AppleMusicSlider> with SingleTickerProviderStateMixin {
+class _AppleMusicSliderState extends State<_AppleMusicSlider>
+    with SingleTickerProviderStateMixin {
   bool _isHovering = false;
   late AnimationController _controller;
   late Animation<double> _thumbScaleAnimation;
@@ -1391,7 +1579,7 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider> with SingleTickerP
       curve: Curves.easeOutCubic,
     );
   }
-  
+
   @override
   void dispose() {
     _controller.dispose();
@@ -1402,143 +1590,62 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider> with SingleTickerP
   Widget build(BuildContext context) {
     return MouseRegion(
       onEnter: (_) {
-         setState(() => _isHovering = true);
-         _controller.forward();
+        setState(() => _isHovering = true);
+        _controller.forward();
       },
       onExit: (_) {
-         setState(() => _isHovering = false);
-         _controller.reverse();
+        setState(() => _isHovering = false);
+        _controller.reverse();
       },
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, child) {
           // 非悬停时，active track 颜色变得非常淡 (约 45%)，背景轨道则保持极致透明
-          final currentActiveColor = _isHovering 
-              ? widget.activeColor.withOpacity(0.8) 
-              : widget.activeColor.withOpacity(0.45);
-              
+          final currentActiveColor = _isHovering
+              ? widget.activeColor.withValues(alpha: 0.8)
+              : widget.activeColor.withValues(alpha: 0.45);
+
           final currentInactiveColor = _isHovering
-              ? Colors.white.withOpacity(0.3)
+              ? Colors.white.withValues(alpha: 0.3)
               : widget.inactiveColor; // 默认即为 12%
 
           return SliderTheme(
             data: SliderThemeData(
-              trackHeight: 6, 
-              trackShape: _ChorusSliderTrackShape(
-                chorusTimes: widget.chorusTimes,
-                durationMs: widget.max,
+              trackHeight: 6,
+              trackShape: const RoundedRectSliderTrackShape(),
+              thumbShape: _AppleMusicThumbShape(
+                scale: _thumbScaleAnimation.value,
               ),
-              thumbShape: _AppleMusicThumbShape(scale: _thumbScaleAnimation.value),
               overlayShape: SliderComponentShape.noOverlay,
               activeTrackColor: currentActiveColor,
               inactiveTrackColor: currentInactiveColor,
             ),
             child: SizedBox(
-               height: 20, // 增加热区高度方便点击
-               child: Slider(
-                 value: widget.value,
-                 onChanged: widget.onChanged,
-                 min: widget.min,
-                 max: widget.max,
-               ),
+              height: 20, // 增加热区高度方便点击
+              child: Slider(
+                value: widget.value,
+                onChanged: widget.onChanged,
+                min: widget.min,
+                max: widget.max,
+              ),
             ),
           );
-        }
+        },
       ),
     );
   }
 }
 
-/// 自定义轨道，支持渲染副歌高亮区间
-class _ChorusSliderTrackShape extends RoundedRectSliderTrackShape {
-  final List<Map<String, int>>? chorusTimes;
-  final double durationMs;
-
-  const _ChorusSliderTrackShape({
-    this.chorusTimes,
-    required this.durationMs,
-  });
-
-  @override
-  void paint(
-    PaintingContext context,
-    Offset offset, {
-    required RenderBox parentBox,
-    required SliderThemeData sliderTheme,
-    required Animation<double> enableAnimation,
-    required TextDirection textDirection,
-    required Offset thumbCenter,
-    Offset? secondaryOffset,
-    bool isDiscrete = false,
-    bool isEnabled = false,
-    double additionalActiveTrackHeight = 2.0,
-  }) {
-    // 1. 绘制原始的背景轨和已播放轨
-    super.paint(
-      context,
-      offset,
-      parentBox: parentBox,
-      sliderTheme: sliderTheme,
-      enableAnimation: enableAnimation,
-      textDirection: textDirection,
-      thumbCenter: thumbCenter,
-      secondaryOffset: secondaryOffset,
-      isDiscrete: isDiscrete,
-      isEnabled: isEnabled,
-      additionalActiveTrackHeight: additionalActiveTrackHeight,
-    );
-
-    if (durationMs <= 0 || chorusTimes == null || chorusTimes!.isEmpty) return;
-
-    // 2. 在上方绘制副歌高亮区间
-    final Rect trackRect = getPreferredRect(
-      parentBox: parentBox,
-      offset: offset,
-      sliderTheme: sliderTheme,
-      isEnabled: isEnabled,
-      isDiscrete: isDiscrete,
-    );
-    
-    final Paint chorusPaint = Paint()
-      ..color = Colors.white.withOpacity(0.5)
-      ..style = PaintingStyle.fill;
-      
-    final double trackWidth = trackRect.width;
-
-    for (final chorus in chorusTimes!) {
-      final startTimeMs = chorus['startTime']?.toDouble() ?? 0.0;
-      final endTimeMs = chorus['endTime']?.toDouble() ?? 0.0;
-      if (startTimeMs >= endTimeMs) continue;
-
-      final startFraction = (startTimeMs / durationMs).clamp(0.0, 1.0);
-      final endFraction = (endTimeMs / durationMs).clamp(0.0, 1.0);
-      
-      final startX = trackRect.left + startFraction * trackWidth;
-      final endX = trackRect.left + endFraction * trackWidth;
-      
-      final chorusRect = RRect.fromRectAndRadius(
-        Rect.fromLTRB(startX, trackRect.top, endX, trackRect.bottom),
-        const Radius.circular(3.0),
-      );
-
-      context.canvas.drawRRect(chorusRect, chorusPaint);
-    }
-  }
-}
-
 /// 自定义圆形滑块，支持缩放动画
 class _AppleMusicThumbShape extends SliderComponentShape {
+  static const maxRadius = 6.0;
   final double scale;
-  final double maxRadius;
 
-  const _AppleMusicThumbShape({
-    required this.scale,
-    this.maxRadius = 6.0,
-  });
+  const _AppleMusicThumbShape({required this.scale});
 
   @override
   Size getPreferredSize(bool isEnabled, bool isDiscrete) {
-    return Size.fromRadius(maxRadius * scale);
+    return Size.fromRadius(6.0 * scale);
   }
 
   @override
@@ -1559,19 +1666,18 @@ class _AppleMusicThumbShape extends SliderComponentShape {
     if (scale <= 0.1) return; // 几乎隐藏时不绘制
 
     final Canvas canvas = context.canvas;
-    
+
     // 绘制阴影 (可选，Apple Music 通常比较扁平，但微弱阴影增加立体感)
     final path = Path()
       ..addOval(Rect.fromCircle(center: center, radius: maxRadius * scale));
-    
-    canvas.drawShadow(path, Colors.black.withOpacity(0.3), 3.0, true);
+
+    canvas.drawShadow(path, Colors.black.withValues(alpha: 0.3), 3.0, true);
 
     // 绘制白色圆点
     final Paint paint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.fill;
-    
+
     canvas.drawCircle(center, maxRadius * scale, paint);
   }
 }
-

@@ -1,3 +1,4 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -11,6 +12,7 @@ class PlayHistoryItem {
   final String album;        // 专辑
   final String picUrl;       // 封面图片URL
   final MusicSource source;  // 音乐平台
+  final TrackSourceIds sourceIds;
   final DateTime playedAt;   // 播放时间
 
   PlayHistoryItem({
@@ -20,6 +22,7 @@ class PlayHistoryItem {
     required this.album,
     required this.picUrl,
     required this.source,
+    this.sourceIds = const TrackSourceIds(),
     required this.playedAt,
   });
 
@@ -32,6 +35,7 @@ class PlayHistoryItem {
       album: track.album,
       picUrl: track.picUrl,
       source: track.source,
+      sourceIds: track.sourceIds,
       playedAt: DateTime.now(),
     );
   }
@@ -45,6 +49,7 @@ class PlayHistoryItem {
       album: album,
       picUrl: picUrl,
       source: source,
+      sourceIds: sourceIds,
     );
   }
 
@@ -57,6 +62,7 @@ class PlayHistoryItem {
       'album': album,
       'picUrl': picUrl,
       'source': source.toString().split('.').last,
+      if (!sourceIds.isEmpty) 'sourceIds': sourceIds.toJson(),
       'playedAt': playedAt.toIso8601String(),
     };
   }
@@ -73,6 +79,7 @@ class PlayHistoryItem {
         (e) => e.toString().split('.').last == json['source'],
         orElse: () => MusicSource.netease,
       ),
+      sourceIds: TrackSourceIds.fromJson(json['sourceIds']),
       playedAt: DateTime.parse(json['playedAt'] as String),
     );
   }
@@ -97,17 +104,17 @@ class PlayHistoryService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final historyJson = prefs.getString(_historyKey);
-      
+
       if (historyJson != null) {
         final List<dynamic> decoded = json.decode(historyJson);
         _history = decoded
             .map((item) => PlayHistoryItem.fromJson(item as Map<String, dynamic>))
             .toList();
-        
-        print('📚 [PlayHistoryService] 加载播放历史: ${_history.length} 条');
+
+        StructuredLogService.log('📚 [PlayHistoryService] 加载播放历史: ${_history.length} 条');
       }
     } catch (e) {
-      print('❌ [PlayHistoryService] 加载播放历史失败: $e');
+      StructuredLogService.log('❌ [PlayHistoryService] 加载播放历史失败: $e');
       _history = [];
     }
   }
@@ -116,27 +123,27 @@ class PlayHistoryService extends ChangeNotifier {
   Future<void> addToHistory(Track track) async {
     try {
       final historyItem = PlayHistoryItem.fromTrack(track);
-      
+
       // 检查是否已存在相同的歌曲（同一平台、同一ID）
-      _history.removeWhere((item) => 
+      _history.removeWhere((item) =>
         item.id == historyItem.id && item.source == historyItem.source
       );
-      
+
       // 添加到列表开头
       _history.insert(0, historyItem);
-      
+
       // 限制历史记录数量
       if (_history.length > _maxHistoryCount) {
         _history = _history.sublist(0, _maxHistoryCount);
       }
-      
+
       // 保存到本地
       await _saveHistory();
-      
-      print('💾 [PlayHistoryService] 添加播放记录: ${track.name}');
+
+      StructuredLogService.log('💾 [PlayHistoryService] 添加播放记录: ${track.name}');
       notifyListeners();
     } catch (e) {
-      print('❌ [PlayHistoryService] 添加播放记录失败: $e');
+      StructuredLogService.log('❌ [PlayHistoryService] 添加播放记录失败: $e');
     }
   }
 
@@ -149,7 +156,7 @@ class PlayHistoryService extends ChangeNotifier {
       );
       await prefs.setString(_historyKey, historyJson);
     } catch (e) {
-      print('❌ [PlayHistoryService] 保存播放历史失败: $e');
+      StructuredLogService.log('❌ [PlayHistoryService] 保存播放历史失败: $e');
     }
   }
 
@@ -158,11 +165,11 @@ class PlayHistoryService extends ChangeNotifier {
     try {
       _history.remove(item);
       await _saveHistory();
-      
-      print('🗑️ [PlayHistoryService] 删除播放记录: ${item.name}');
+
+      StructuredLogService.log('🗑️ [PlayHistoryService] 删除播放记录: ${item.name}');
       notifyListeners();
     } catch (e) {
-      print('❌ [PlayHistoryService] 删除播放记录失败: $e');
+      StructuredLogService.log('❌ [PlayHistoryService] 删除播放记录失败: $e');
     }
   }
 
@@ -170,14 +177,14 @@ class PlayHistoryService extends ChangeNotifier {
   Future<void> clearHistory() async {
     try {
       _history.clear();
-      
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_historyKey);
-      
-      print('🗑️ [PlayHistoryService] 清空所有播放历史');
+
+      StructuredLogService.log('🗑️ [PlayHistoryService] 清空所有播放历史');
       notifyListeners();
     } catch (e) {
-      print('❌ [PlayHistoryService] 清空播放历史失败: $e');
+      StructuredLogService.log('❌ [PlayHistoryService] 清空播放历史失败: $e');
     }
   }
 
@@ -187,7 +194,7 @@ class PlayHistoryService extends ChangeNotifier {
     if (_history.length < 2) {
       return null;
     }
-    
+
     // 返回历史记录中的第二首（索引1）
     return _history[1].toTrack();
   }
@@ -212,15 +219,15 @@ class PlayHistoryService extends ChangeNotifier {
   /// 获取最常播放的歌曲 Top 10
   List<MapEntry<String, int>> getTopTracks({int limit = 10}) {
     final Map<String, int> trackCounts = {};
-    
+
     for (final item in _history) {
       final key = '${item.name}|${item.artists}';
       trackCounts[key] = (trackCounts[key] ?? 0) + 1;
     }
-    
+
     final sorted = trackCounts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-    
+
     return sorted.take(limit).toList();
   }
 }

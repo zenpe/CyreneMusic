@@ -1,11 +1,9 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../utils/image_utils.dart';
 import '../../models/track.dart';
 import '../../services/player_service.dart';
 import '../../services/playlist_queue_service.dart';
-import '../../utils/theme_manager.dart';
+import '../../utils/image_utils.dart';
 
 /// 转换为 Track 对象
 Track convertToTrack(Map<String, dynamic> song) {
@@ -26,7 +24,7 @@ class HeroSection extends StatelessWidget {
   final List<Map<String, dynamic>> dailySongs;
   final List<Map<String, dynamic>> fmList;
   final VoidCallback? onOpenDailyDetail;
-  
+
   const HeroSection({
     super.key,
     required this.dailySongs,
@@ -80,11 +78,9 @@ class _DailyRecommendHeroCardState extends State<DailyRecommendHeroCard> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final themeManager = ThemeManager();
-    final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final now = DateTime.now();
-    
+
     final coverImages = widget.tracks.take(6).map((s) {
       final al = (s['al'] ?? s['album'] ?? {}) as Map<String, dynamic>;
       return (al['picUrl'] ?? '').toString();
@@ -104,14 +100,14 @@ class _DailyRecommendHeroCardState extends State<DailyRecommendHeroCard> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: isDark 
-                  ? [cs.primary.withOpacity(0.3), cs.primaryContainer.withOpacity(0.2)]
-                  : [cs.primary.withOpacity(0.15), cs.primaryContainer.withOpacity(0.3)],
+              colors: isDark
+                  ? [cs.primary.withValues(alpha: 0.3), cs.primaryContainer.withValues(alpha: 0.2)]
+                  : [cs.primary.withValues(alpha: 0.15), cs.primaryContainer.withValues(alpha: 0.3)],
             ),
             boxShadow: _hovering ? [
-              BoxShadow(color: cs.primary.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8)),
+              BoxShadow(color: cs.primary.withValues(alpha: 0.2), blurRadius: 20, offset: const Offset(0, 8)),
             ] : [
-              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
           child: ClipRRect(
@@ -139,7 +135,7 @@ class _DailyRecommendHeroCardState extends State<DailyRecommendHeroCard> {
                       begin: Alignment.centerLeft,
                       end: Alignment.centerRight,
                       colors: [
-                        isDark ? Colors.black.withOpacity(0.8) : Colors.white.withOpacity(0.9),
+                        isDark ? Colors.black.withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.9),
                         Colors.transparent,
                       ],
                     ),
@@ -163,7 +159,7 @@ class _DailyRecommendHeroCardState extends State<DailyRecommendHeroCard> {
                           children: [
                             Icon(Icons.calendar_today, size: 14, color: cs.onPrimary),
                             const SizedBox(width: 6),
-                            Text('${now.month}月${now.day}日', 
+                            Text('${now.month}月${now.day}日',
                               style: TextStyle(color: cs.onPrimary, fontWeight: FontWeight.w600, fontSize: 13)),
                           ],
                         ),
@@ -218,7 +214,13 @@ class _DailyRecommendHeroCardState extends State<DailyRecommendHeroCard> {
       itemBuilder: (context, i) {
         return ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: CachedNetworkImage(imageUrl: covers[i], httpHeaders: getImageHeaders(covers[i]), fit: BoxFit.cover),
+          child: CachedNetworkImage(
+            imageUrl: covers[i],
+            httpHeaders: getImageHeaders(covers[i]),
+            fit: BoxFit.cover,
+            memCacheWidth: 280,
+            memCacheHeight: 280,
+          ),
         );
       },
     );
@@ -233,11 +235,10 @@ class PersonalFmCompactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final themeManager = ThemeManager();
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     if (list.isEmpty) return const SizedBox.shrink();
-    
+
     return AnimatedBuilder(
       animation: PlayerService(),
       builder: (context, _) {
@@ -265,7 +266,7 @@ class PersonalFmCompactCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 10, offset: const Offset(0, 4))],
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
@@ -276,7 +277,13 @@ class PersonalFmCompactCard extends StatelessWidget {
                   Positioned.fill(
                     child: Opacity(
                       opacity: 0.15,
-                      child: CachedNetworkImage(imageUrl: pic, httpHeaders: getImageHeaders(pic), fit: BoxFit.cover),
+                      child: CachedNetworkImage(
+                        imageUrl: pic,
+                        httpHeaders: getImageHeaders(pic),
+                        fit: BoxFit.cover,
+                        memCacheWidth: 200,
+                        memCacheHeight: 200,
+                      ),
                     ),
                   ),
                 Padding(
@@ -299,10 +306,16 @@ class PersonalFmCompactCard extends StatelessWidget {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: SizedBox(
-                                width: 100, height: 100,
-                                child: pic.isNotEmpty 
-                                    ? CachedNetworkImage(imageUrl: pic, httpHeaders: getImageHeaders(pic), fit: BoxFit.cover)
-                                    : Container(color: cs.surfaceContainerHighest, child: Icon(Icons.music_note, color: cs.onSurface.withOpacity(0.3))),
+                                 width: 100, height: 100,
+                                 child: pic.isNotEmpty
+                                    ? CachedNetworkImage(
+                                        imageUrl: pic,
+                                        httpHeaders: getImageHeaders(pic),
+                                        fit: BoxFit.cover,
+                                        memCacheWidth: 200,
+                                        memCacheHeight: 200,
+                                      )
+                                    : Container(color: cs.surfaceContainerHighest, child: Icon(Icons.music_note, color: cs.onSurface.withValues(alpha: 0.3))),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -315,7 +328,7 @@ class PersonalFmCompactCard extends StatelessWidget {
                                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
                                   const SizedBox(height: 4),
                                   Text(artistsText, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.6))),
+                                    style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6))),
                                 ],
                               ),
                             ),
@@ -401,7 +414,7 @@ class FmControlButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Material(
-      color: cs.primaryContainer.withOpacity(0.5),
+      color: cs.primaryContainer.withValues(alpha: 0.5),
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -451,10 +464,10 @@ class _GradientPlayButtonState extends State<GradientPlayButton> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [cs.primary, cs.primary.withOpacity(0.7)],
+              colors: [cs.primary, cs.primary.withValues(alpha: 0.7)],
             ),
             boxShadow: _hovering ? [
-              BoxShadow(color: cs.primary.withOpacity(0.4), blurRadius: 16, offset: const Offset(0, 4)),
+              BoxShadow(color: cs.primary.withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 4)),
             ] : [],
           ),
           child: Icon(Icons.play_arrow_rounded, color: cs.onPrimary, size: 28),

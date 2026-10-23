@@ -1,7 +1,7 @@
+import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/song_detail.dart';
-import '../models/track.dart';
 import 'audio_source_service.dart';
 import 'lx_music_runtime_service.dart';
 
@@ -13,13 +13,14 @@ class AudioQualityService extends ChangeNotifier {
     _loadQuality();
   }
 
-  AudioQuality _currentQuality = AudioQuality.exhigh; // 默认极高音质
+  static const AudioQuality _defaultQuality = AudioQuality.standard; // 128k
+  AudioQuality _currentQuality = _defaultQuality;
   AudioQuality get currentQuality => _currentQuality;
 
   static const String _qualityKey = 'audio_quality';
 
   // ==================== 各音源支持的音质列表 ====================
-  
+
   /// 音质优先级顺序（从低到高）
   static const List<AudioQuality> _qualityPriority = [
     AudioQuality.standard,   // 128k
@@ -28,23 +29,6 @@ class AudioQualityService extends ChangeNotifier {
     AudioQuality.hires,      // Hi-Res (24bit/96kHz)
     AudioQuality.jyeffect,   // Audio Vivid
     AudioQuality.jymaster,   // 超清母带
-  ];
-  
-  /// TuneHub 音源支持的音质（128k, 320k, flac, flac24bit）
-  static const List<AudioQuality> tuneHubQualities = [
-    AudioQuality.standard,   // 128k
-    AudioQuality.exhigh,     // 320k
-    AudioQuality.lossless,   // flac
-    AudioQuality.hires,      // flac24bit
-  ];
-
-  /// OmniParse 音源支持的音质
-  static const List<AudioQuality> omniParseQualities = [
-    AudioQuality.standard,
-    AudioQuality.exhigh,
-    AudioQuality.lossless,
-    AudioQuality.hires,      // Hi-Res (24bit/96kHz) - 仅支持网易云
-    AudioQuality.jyeffect,   // Audio Vivid - 仅支持网易云
   ];
 
   /// 字符串音质转换为枚举
@@ -67,7 +51,7 @@ class AudioQualityService extends ChangeNotifier {
         return null;
     }
   }
-  
+
   /// 枚举转换为字符串音质（用于 API 请求）
   static String qualityToString(AudioQuality quality) {
     switch (quality) {
@@ -91,8 +75,6 @@ class AudioQualityService extends ChangeNotifier {
   /// 根据音源类型获取支持的音质列表
   List<AudioQuality> getSupportedQualities(AudioSourceType sourceType) {
     switch (sourceType) {
-      case AudioSourceType.tunehub:
-        return tuneHubQualities;
       case AudioSourceType.lxmusic:
         // 从洛雪运行时动态获取音质列表
         final runtime = LxMusicRuntimeService();
@@ -108,27 +90,12 @@ class AudioQualityService extends ChangeNotifier {
         }
         // 回退默认值
         return [AudioQuality.standard, AudioQuality.exhigh, AudioQuality.lossless];
-      case AudioSourceType.omniparse:
-        return omniParseQualities;
+      case AudioSourceType.navidrome:
+        // Navidrome 以服务端实际文件为准，这里给出全量可选
+        return _qualityPriority;
     }
   }
-  
-  /// 获取 OmniParse 音源针对特定平台支持的音质列表
-  /// hires 和 jyeffect 只支持网易云平台，其他平台需要降级
-  /// [source] - 音乐平台
-  List<AudioQuality> getOmniParseQualitiesForPlatform(MusicSource source) {
-    if (source == MusicSource.netease) {
-      // 网易云平台支持所有 OmniParse 音质
-      return omniParseQualities;
-    }
-    // 其他平台只支持基础音质
-    return [
-      AudioQuality.standard,
-      AudioQuality.exhigh,
-      AudioQuality.lossless,
-    ];
-  }
-  
+
   /// 获取指定平台支持的音质列表（洛雪音源专用）
   /// [lxPlatform] - 洛雪格式的平台代码 (wy, tx, kg, kw)
   List<AudioQuality> getQualitiesForPlatform(String lxPlatform) {
@@ -145,7 +112,7 @@ class AudioQualityService extends ChangeNotifier {
     }
     return [AudioQuality.standard, AudioQuality.exhigh, AudioQuality.lossless];
   }
-  
+
   /// 获取降级后的音质
   /// 当用户选择的音质不被当前平台支持时，返回最接近的较低音质
   /// [selectedQuality] - 用户选择的音质
@@ -153,25 +120,25 @@ class AudioQualityService extends ChangeNotifier {
   AudioQuality getEffectiveQuality(AudioQuality selectedQuality, List<AudioQuality> supportedQualities) {
     // 如果支持的音质列表为空，返回默认音质
     if (supportedQualities.isEmpty) {
-      return AudioQuality.exhigh;
+      return _defaultQuality;
     }
-    
+
     // 如果选择的音质被支持，直接返回
     if (supportedQualities.contains(selectedQuality)) {
       return selectedQuality;
     }
-    
+
     // 否则降级到最接近的较低音质
     final selectedIndex = _qualityPriority.indexOf(selectedQuality);
-    
+
     // 从选择的音质向下查找
     for (int i = selectedIndex - 1; i >= 0; i--) {
       if (supportedQualities.contains(_qualityPriority[i])) {
-        print('⚠️ [AudioQualityService] 音质降级: ${selectedQuality.displayName} -> ${_qualityPriority[i].displayName}');
+        StructuredLogService.log('⚠️ [AudioQualityService] 音质降级: ${selectedQuality.displayName} -> ${_qualityPriority[i].displayName}');
         return _qualityPriority[i];
       }
     }
-    
+
     // 如果没有更低的，返回支持列表中的第一个
     return supportedQualities.first;
   }
@@ -182,18 +149,18 @@ class AudioQualityService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final qualityString = prefs.getString(_qualityKey);
-      
+
       if (qualityString != null) {
         _currentQuality = AudioQuality.values.firstWhere(
           (e) => e.toString() == qualityString,
-          orElse: () => AudioQuality.exhigh,
+          orElse: () => _defaultQuality,
         );
       }
-      
-      print('🎵 [AudioQualityService] 加载音质设置: ${getQualityName()}');
+
+      StructuredLogService.log('🎵 [AudioQualityService] 加载音质设置: ${getQualityName()}');
     } catch (e) {
-      print('❌ [AudioQualityService] 加载音质设置失败: $e');
-      _currentQuality = AudioQuality.exhigh;
+      StructuredLogService.log('❌ [AudioQualityService] 加载音质设置失败: $e');
+      _currentQuality = _defaultQuality;
     }
     notifyListeners();
   }
@@ -203,15 +170,15 @@ class AudioQualityService extends ChangeNotifier {
     if (_currentQuality == quality) return;
 
     _currentQuality = quality;
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_qualityKey, quality.toString());
-      print('🎵 [AudioQualityService] 音质已设置: ${getQualityName()}');
+      StructuredLogService.log('🎵 [AudioQualityService] 音质已设置: ${getQualityName()}');
     } catch (e) {
-      print('❌ [AudioQualityService] 保存音质设置失败: $e');
+      StructuredLogService.log('❌ [AudioQualityService] 保存音质设置失败: $e');
     }
-    
+
     notifyListeners();
   }
 
@@ -279,9 +246,8 @@ class AudioQualityService extends ChangeNotifier {
   }
 
   /// 获取QQ音乐的音质键名
-  String getQQMusicQualityKey([AudioQuality? quality]) {
-    final q = quality ?? _currentQuality;
-    switch (q) {
+  String getQQMusicQualityKey() {
+    switch (_currentQuality) {
       case AudioQuality.standard:
         return '128';
       case AudioQuality.exhigh:
@@ -295,53 +261,52 @@ class AudioQualityService extends ChangeNotifier {
 
   /// 从QQ音乐的music_urls中选择最佳可用音质
   /// 优先选择用户设定的音质，如果不存在则降级选择
-  String? selectBestQQMusicUrl(Map<String, dynamic> musicUrls, [AudioQuality? requestedQuality]) {
-    final preferredKey = getQQMusicQualityKey(requestedQuality);
-    
+  String? selectBestQQMusicUrl(Map<String, dynamic> musicUrls) {
+    final preferredKey = getQQMusicQualityKey();
+
     // 音质优先级（从高到低）
     final qualityPriority = ['flac', '320', '128'];
-    
+
     // 首先尝试用户选择的音质
     if (musicUrls.containsKey(preferredKey)) {
       final urlData = musicUrls[preferredKey];
       if (urlData is Map && urlData['url'] != null && urlData['url'].isNotEmpty) {
-        print('🎵 [AudioQualityService] QQ音乐使用音质: $preferredKey');
+        StructuredLogService.log('🎵 [AudioQualityService] QQ音乐使用音质: $preferredKey');
         return urlData['url'];
       }
     }
-    
+
     // 如果用户选择的音质不可用，按优先级降级
     for (final key in qualityPriority) {
       if (musicUrls.containsKey(key)) {
         final urlData = musicUrls[key];
         if (urlData is Map && urlData['url'] != null && urlData['url'].isNotEmpty) {
-          print('⚠️ [AudioQualityService] QQ音乐音质降级到: $key');
+          StructuredLogService.log('⚠️ [AudioQualityService] QQ音乐音质降级到: $key');
           return urlData['url'];
         }
       }
     }
-    
-  print('❌ [AudioQualityService] QQ音乐无可用音质');
+
+  StructuredLogService.log('❌ [AudioQualityService] QQ音乐无可用音质');
     return null;
   }
 
   /// 根据音质/级别字符串获取文件后缀
   static String getExtensionFromLevel(String? level) {
     if (level == null || level.isEmpty) return 'mp3';
-    
+
     // 尝试直接通过字符串特征判断（更鲁棒，因为 level 可能包含多种格式）
     final lowerLevel = level.toLowerCase();
     if (lowerLevel.contains('flac') || lowerLevel.contains('hires') || lowerLevel.contains('lossless')) {
       return 'flac';
     }
-    
+
     // 尝试通过枚举转换
     final quality = stringToQuality(level);
     if (quality != null) {
       return quality.extension;
     }
-    
+
     return 'mp3';
   }
 }
-

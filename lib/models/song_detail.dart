@@ -16,7 +16,6 @@ class SongDetail {
   final String ytlrc; // YRC对应的翻译歌词（时间戳与YRC匹配）
   final String qrc; // QQ音乐逐字歌词（QRC格式）
   final String qrcTrans; // QRC对应的翻译歌词
-  final String? decryptionKey; // 解密密钥（用于 Amazon Music 等加密流）
   final MusicSource source;
 
   SongDetail({
@@ -34,7 +33,6 @@ class SongDetail {
     this.ytlrc = '',
     this.qrc = '',
     this.qrcTrans = '',
-    this.decryptionKey,
     this.source = MusicSource.netease,
   });
 
@@ -105,7 +103,6 @@ class SongDetail {
       ytlrc: ytlrcText,
       qrc: qrcText,
       qrcTrans: qrcTransText,
-      decryptionKey: json['decryptionKey'] as String?,
       source: source ?? MusicSource.netease,
     );
   }
@@ -123,7 +120,6 @@ class SongDetail {
       'url': url,
       'lyric': lyric,
       'tlyric': tlyric,
-      'decryptionKey': decryptionKey,
       'source': source.name,
     };
   }

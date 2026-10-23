@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../../services/sleep_timer_service.dart';
@@ -12,7 +11,7 @@ class PlayerDialogs {
   /// 显示睡眠定时器对话框
   static void showSleepTimer(BuildContext context) {
     final isFluentUI = ThemeManager().isDesktopFluentUI;
-    
+
     if (isFluentUI) {
       fluent.showDialog(
         context: context,
@@ -29,7 +28,7 @@ class PlayerDialogs {
   /// 显示添加到歌单对话框
   static Future<void> showAddToPlaylist(BuildContext context, Track track) {
     final playlistService = PlaylistService();
-    
+
     // 确保已加载歌单列表
     if (playlistService.playlists.isEmpty) {
       playlistService.loadPlaylists();
@@ -40,8 +39,8 @@ class PlayerDialogs {
       builder: (context) => AnimatedBuilder(
         animation: playlistService,
         builder: (context, child) {
-          final playlists = playlistService.playlists;
-          
+          final playlists = playlistService.playlists.where((p) => p.isLocal).toList();
+
           if (playlists.isEmpty) {
             return const Center(
               child: Padding(
@@ -85,8 +84,8 @@ class PlayerDialogs {
                       return ListTile(
                         leading: CircleAvatar(
                           backgroundColor: playlist.isDefault
-                              ? Colors.red.withOpacity(0.2)
-                              : Colors.blue.withOpacity(0.2),
+                              ? Colors.red.withValues(alpha: 0.2)
+                              : Colors.blue.withValues(alpha: 0.2),
                           child: Icon(
                             playlist.isDefault
                                 ? Icons.favorite
@@ -441,7 +440,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
           children: _durationOptions.map((duration) {
             final isSelected = duration == _selectedDuration;
             return FilterChip(
-              label: Text('${duration}分钟'),
+              label: Text('$duration分钟'),
               selected: isSelected,
               onSelected: (selected) {
                 if (selected) {
@@ -452,7 +451,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('定时器已设置: ${duration}分钟后停止播放'),
+                      content: Text('定时器已设置: $duration分钟后停止播放'),
                     ),
                   );
                 }
@@ -518,7 +517,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
           '音乐将在指定时间自动停止播放',
           style: TextStyle(
             fontSize: 12,
-            color: colorScheme.onSurface.withOpacity(0.6),
+            color: colorScheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
       ],
@@ -555,26 +554,26 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                 if (messenger != null) {
                   messenger.showSnackBar(
                     SnackBar(
-                      content: Text('定时器已设置: ${duration}分钟后停止播放'),
+                      content: Text('定时器已设置: $duration分钟后停止播放'),
                     ),
                   );
                 }
               },
               style: fluent.ButtonStyle(
-                backgroundColor: fluent.ButtonState.resolveWith((states) {
+                backgroundColor: WidgetStateProperty.resolveWith((states) {
                   if (isSelected) {
                     return fluentTheme.accentColor;
                   }
                   return fluentTheme.resources.controlFillColorDefault;
                 }),
-                foregroundColor: fluent.ButtonState.resolveWith((states) {
+                foregroundColor: WidgetStateProperty.resolveWith((states) {
                   if (isSelected) {
                     return Colors.white;
                   }
                   return fluentTheme.resources.textFillColorPrimary;
                 }),
               ),
-              child: Text('${duration}分钟'),
+              child: Text('$duration分钟'),
             );
           }).toList(),
         ),
@@ -585,7 +584,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
   /// 显示 Fluent UI 时间选择器
   Future<TimeOfDay?> _showFluentTimePicker(BuildContext context) async {
     DateTime selectedDate = DateTime.now();
-    
+
     final result = await fluent.showDialog<DateTime>(
       context: context,
       builder: (context) {

@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
-import 'package:http/http.dart' as http;
+import '../../features/audio_source/audio_source_feature.dart';
 import '../../services/url_service.dart';
-import '../../services/audio_source_service.dart';
+import '../../services/api/api_client.dart';
 import '../../widgets/fluent_settings_card.dart';
 import '../../widgets/cupertino/cupertino_settings_widgets.dart';
 import '../../utils/theme_manager.dart';
@@ -15,7 +15,7 @@ import '../../widgets/material/material_settings_widgets.dart';
 class NetworkSettings extends StatefulWidget {
   /// 点击音源设置时的回调，用于在设置页面中打开子页面
   final VoidCallback? onAudioSourceTap;
-  
+
   const NetworkSettings({super.key, this.onAudioSourceTap});
 
   @override
@@ -23,6 +23,8 @@ class NetworkSettings extends StatefulWidget {
 }
 
 class _NetworkSettingsState extends State<NetworkSettings> {
+  final AudioSourceReadController _audioSourceReadController =
+      AudioSourceReadController();
   bool _isTesting = false;
   int? _latencyMs;
   String? _errorMessage;
@@ -32,6 +34,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
   void initState() {
     super.initState();
     UrlService().addListener(_handleUrlChanged);
+    _audioSourceReadController.addListener(_handleAudioSourceChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _testConnection();
       _startAutoRefresh();
@@ -41,6 +44,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
   @override
   void dispose() {
     UrlService().removeListener(_handleUrlChanged);
+    _audioSourceReadController.removeListener(_handleAudioSourceChanged);
     _autoRefreshTimer?.cancel();
     super.dispose();
   }
@@ -53,6 +57,11 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       _testConnection();
       _startAutoRefresh();
     });
+  }
+
+  void _handleAudioSourceChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _startAutoRefresh() {
@@ -83,18 +92,14 @@ class _NetworkSettingsState extends State<NetworkSettings> {
           FluentSettingsTile(
             icon: Icons.music_note,
             title: '音源设置',
-            subtitle: AudioSourceService().isConfigured
-                ? AudioSourceService().getSourceDescription()
-                : '未配置（点击配置）',
+            subtitle: _audioSourceReadController.sourceSummary,
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onAudioSourceTap,
           ),
           FluentSettingsTile(
             icon: Icons.wifi_tethering,
             title: '测试连接',
-            subtitle: _errorMessage != null
-                ? '无法连接后端服务器'
-                : '自动检测与后端服务器的连接',
+            subtitle: _errorMessage != null ? '无法连接后端服务器' : '自动检测与后端服务器的连接',
             trailing: _buildLatencyIndicator(context),
           ),
         ],
@@ -117,18 +122,14 @@ class _NetworkSettingsState extends State<NetworkSettings> {
         MD3SettingsTile(
           leading: const Icon(Icons.music_note_outlined),
           title: '音源设置',
-          subtitle: AudioSourceService().isConfigured
-              ? AudioSourceService().getSourceDescription()
-              : '未配置（点击配置）',
+          subtitle: _audioSourceReadController.sourceSummary,
           trailing: const Icon(Icons.chevron_right),
           onTap: widget.onAudioSourceTap,
         ),
         MD3SettingsTile(
           leading: const Icon(Icons.wifi_tethering_outlined),
           title: '测试连接',
-          subtitle: _errorMessage != null
-              ? '无法连接后端服务器'
-              : '自动检测与后端服务器的连接',
+          subtitle: _errorMessage != null ? '无法连接后端服务器' : '自动检测与后端服务器的连接',
           trailing: _buildLatencyIndicator(context),
         ),
       ],
@@ -152,9 +153,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
           icon: CupertinoIcons.music_note,
           iconColor: CupertinoColors.systemPurple,
           title: '音源设置',
-          subtitle: AudioSourceService().isConfigured
-              ? AudioSourceService().getSourceDescription()
-              : '未配置（点击配置）',
+          subtitle: _audioSourceReadController.sourceSummary,
           showChevron: true,
           onTap: widget.onAudioSourceTap,
         ),
@@ -163,9 +162,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
           icon: CupertinoIcons.wifi,
           iconColor: CupertinoColors.systemGreen,
           title: '测试连接',
-          subtitle: _errorMessage != null
-              ? '无法连接后端服务器'
-              : '自动检测与后端服务器的连接',
+          subtitle: _errorMessage != null ? '无法连接后端服务器' : '自动检测与后端服务器的连接',
           trailing: _buildLatencyIndicatorCupertino(context),
         ),
       ],
@@ -190,11 +187,8 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       }
 
       return Text(
-        '${latency} ms',
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          color: displayColor,
-        ),
+        '$latency ms',
+        style: TextStyle(fontWeight: FontWeight.bold, color: displayColor),
       );
     }
 
@@ -217,18 +211,6 @@ class _NetworkSettingsState extends State<NetworkSettings> {
     );
   }
 
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0, left: 4.0),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-      ),
-    );
-  }
 
   void _showCustomUrlDialogFluent(BuildContext context) {
     final controller = TextEditingController(text: UrlService().customBaseUrl);
@@ -306,45 +288,50 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       builder: (context) {
         return fluent_ui.ContentDialog(
           title: const Text('选择后端源'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              fluent_ui.RadioButton(
-                content: const Text('官方源'),
-                checked: UrlService().sourceType == BackendSourceType.official,
-                onChanged: (v) {
-                  UrlService().useOfficialSource();
-                  Navigator.pop(context);
-                  final messenger = ScaffoldMessenger.maybeOf(context);
-                  if (messenger != null) {
-                    messenger.showSnackBar(
-                      const SnackBar(content: Text('已切换到官方源')),
-                    );
-                  } 
-                },
-              ),
-              const SizedBox(height: 8),
-              fluent_ui.RadioButton(
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('自定义源'),
-                    Text(
-                      UrlService().customBaseUrl.isNotEmpty
-                          ? UrlService().customBaseUrl
-                          : '点击设置自定义地址',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+          content: fluent_ui.RadioGroup<BackendSourceType>(
+            groupValue: UrlService().sourceType,
+            onChanged: (value) {
+              if (value == null) return;
+              if (value == BackendSourceType.official) {
+                UrlService().useOfficialSource();
+                Navigator.pop(context);
+                final messenger = ScaffoldMessenger.maybeOf(context);
+                if (messenger != null) {
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('已切换到官方源')),
+                  );
+                }
+                return;
+              }
+              Navigator.pop(context);
+              _showCustomUrlDialogFluent(context);
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const fluent_ui.RadioButton<BackendSourceType>(
+                  value: BackendSourceType.official,
+                  content: Text('官方源'),
                 ),
-                checked: UrlService().sourceType == BackendSourceType.custom,
-                onChanged: (v) {
-                  Navigator.pop(context);
-                  _showCustomUrlDialogFluent(context);
-                },
-              ),
-            ],
+                const SizedBox(height: 8),
+                fluent_ui.RadioButton<BackendSourceType>(
+                  value: BackendSourceType.custom,
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('自定义源'),
+                      Text(
+                        UrlService().customBaseUrl.isNotEmpty
+                            ? UrlService().customBaseUrl
+                            : '点击设置自定义地址',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             fluent_ui.Button(
@@ -365,36 +352,40 @@ class _NetworkSettingsState extends State<NetworkSettings> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            RadioListTile<BackendSourceType>(
-              title: const Text('官方源'),
-              subtitle: Text(
-                '默认后端服务',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              value: BackendSourceType.official,
+            RadioGroup<BackendSourceType>(
               groupValue: UrlService().sourceType,
               onChanged: (value) {
                 UrlService().useOfficialSource();
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已切换到官方源')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('已切换到官方源')));
               },
-            ),
-            RadioListTile<BackendSourceType>(
-              title: const Text('自定义源'),
-              subtitle: Text(
-                UrlService().customBaseUrl.isNotEmpty 
-                    ? UrlService().customBaseUrl 
-                    : '点击设置自定义地址',
-                style: Theme.of(context).textTheme.bodySmall,
+              child: RadioListTile<BackendSourceType>(
+                title: const Text('官方源'),
+                subtitle: Text(
+                  UrlService.officialBaseUrl,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                value: BackendSourceType.official,
               ),
-              value: BackendSourceType.custom,
+            ),
+            RadioGroup<BackendSourceType>(
               groupValue: UrlService().sourceType,
               onChanged: (value) {
                 Navigator.pop(context);
                 _showCustomUrlDialog(context);
               },
+              child: RadioListTile<BackendSourceType>(
+                title: const Text('自定义源'),
+                subtitle: Text(
+                  UrlService().customBaseUrl.isNotEmpty
+                      ? UrlService().customBaseUrl
+                      : '点击设置自定义地址',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                value: BackendSourceType.custom,
+              ),
             ),
           ],
         ),
@@ -410,7 +401,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
 
   void _showCustomUrlDialog(BuildContext context) {
     final controller = TextEditingController(text: UrlService().customBaseUrl);
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -422,7 +413,9 @@ class _NetworkSettingsState extends State<NetworkSettings> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primaryContainer.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -435,7 +428,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '请确保自定义源符合 OmniParse 标准',
+                      '请确保自定义源兼容 Cyrene API',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onPrimaryContainer,
                       ),
@@ -564,7 +557,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
   /// 显示 Cupertino 风格的自定义 URL 对话框
   void _showCustomUrlDialogCupertino(BuildContext context) {
     final controller = TextEditingController(text: UrlService().customBaseUrl);
-    
+
     showCupertinoDialog<void>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
@@ -639,11 +632,8 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       }
 
       return Text(
-        '${latency} ms',
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          color: displayColor,
-        ),
+        '$latency ms',
+        style: TextStyle(fontWeight: FontWeight.bold, color: displayColor),
       );
     }
 
@@ -662,10 +652,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
 
     return Text(
       '--',
-      style: TextStyle(
-        color: colorScheme.outline,
-        fontWeight: FontWeight.bold,
-      ),
+      style: TextStyle(color: colorScheme.outline, fontWeight: FontWeight.bold),
     );
   }
 
@@ -690,21 +677,30 @@ class _NetworkSettingsState extends State<NetworkSettings> {
 
     final stopwatch = Stopwatch()..start();
     try {
-      final uri = Uri.parse('$baseUrl/info');
-      await http
-          .get(uri)
-          .timeout(const Duration(seconds: 10));
+      final result = await ApiClient().getJson(
+        '/info',
+        auth: false,
+        timeout: const Duration(seconds: 10),
+      );
 
       stopwatch.stop();
       if (!mounted) return;
 
-      setState(() {
-        _latencyMs = stopwatch.elapsedMilliseconds == 0
-            ? 1
-            : stopwatch.elapsedMilliseconds;
-        _isTesting = false;
-        _errorMessage = null;
-      });
+      if (result.ok) {
+        setState(() {
+          _latencyMs = stopwatch.elapsedMilliseconds == 0
+              ? 1
+              : stopwatch.elapsedMilliseconds;
+          _isTesting = false;
+          _errorMessage = null;
+        });
+      } else {
+        setState(() {
+          _isTesting = false;
+          _latencyMs = null;
+          _errorMessage = 'HTTP ${result.statusCode}';
+        });
+      }
     } catch (e) {
       stopwatch.stop();
       if (!mounted) return;
@@ -716,4 +712,3 @@ class _NetworkSettingsState extends State<NetworkSettings> {
     }
   }
 }
-

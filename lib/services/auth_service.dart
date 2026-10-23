@@ -1,12 +1,12 @@
+import 'structured_log_service.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'developer_mode_service.dart';
-import 'url_service.dart';
-import 'auth_overlay_service.dart';
+import 'api/api_client.dart';
+import 'api/auth_token_store.dart';
 import 'location_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
@@ -19,8 +19,6 @@ class User {
   final bool isVerified;
   final String? lastLogin;
   final String? avatarUrl;
-  final bool isSponsor;
-  final String? sponsorSince;
 
   User({
     required this.id,
@@ -29,12 +27,10 @@ class User {
     required this.isVerified,
     this.lastLogin,
     this.avatarUrl,
-    this.isSponsor = false,
-    this.sponsorSince,
   });
 
   /// 获取用于显示的邮箱
-  /// 
+  ///
   /// 如果是 Linux DO 邮箱（通常由于过长且不具辨识度），则不显示
   String? get displayEmail {
     if (email.toLowerCase().contains('linux.do')) {
@@ -42,7 +38,6 @@ class User {
     }
     return email;
   }
-
 
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
@@ -52,8 +47,6 @@ class User {
       isVerified: json['isVerified'] as bool? ?? false,
       lastLogin: json['lastLogin'] as String?,
       avatarUrl: json['avatarUrl'] as String?,
-      isSponsor: json['isSponsor'] as bool? ?? false,
-      sponsorSince: json['sponsorSince'] as String?,
     );
   }
 
@@ -65,8 +58,6 @@ class User {
       'isVerified': isVerified,
       'lastLogin': lastLogin,
       'avatarUrl': avatarUrl,
-      'isSponsor': isSponsor,
-      'sponsorSince': sponsorSince,
     };
   }
 }
@@ -76,13 +67,35 @@ class AuthService extends ChangeNotifier {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
   AuthService._internal() {
-    _loadUserFromStorage();
+    AuthTokenStore.onUnauthorized = handleUnauthorized;
+    _initialization = _loadUserFromStorage();
   }
+
+  late final Future<void> _initialization;
+
+  /// Completes after the persisted user and API token have been restored.
+  Future<void> ensureInitialized() => _initialization;
+
+  /// 外部触发状态刷新（代替直接调用 notifyListeners）
+  void refresh() => notifyListeners();
 
   User? _currentUser;
   bool _isLoggedIn = false;
   String? _authToken;
-  
+  bool _isHandlingUnauthorized = false;
+  int _sessionRevision = 0;
+
+  /// Registered by the playback service without constructing it during logout.
+  Future<void> Function()? onSessionEnded;
+
+  String? get sessionIdentity =>
+      !_isLoggedIn ? null : '${_currentUser?.id}:$_sessionRevision:$_authToken';
+
+  /// Data survives credential renewal, but never logout/re-login.
+  String? get dataSessionIdentity => !_isLoggedIn || _currentUser == null
+      ? null
+      : '${_currentUser!.id}:$_sessionRevision';
+
   // 用于跟踪 Linux Do OAuth 登录的本地服务器
   // 确保在启动新登录前关闭旧服务器，避免端口占用
   HttpServer? _oauthServer;
@@ -90,7 +103,7 @@ class AuthService extends ChangeNotifier {
 
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
-  
+
   String? get token => _authToken;
 
   /// 从本地存储加载用户信息
@@ -99,70 +112,91 @@ class AuthService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final userJson = prefs.getString('current_user');
       final savedToken = prefs.getString('auth_token');
-      
+      AuthTokenStore.token = savedToken;
+
       if (userJson != null && userJson.isNotEmpty) {
         final userData = jsonDecode(userJson);
         _currentUser = User.fromJson(userData);
         _authToken = savedToken;
         _isLoggedIn = _authToken != null && _authToken!.isNotEmpty;
-        print('👤 [AuthService] 从本地存储加载用户: ${_currentUser?.username}');
+        StructuredLogService.log(
+          '👤 [AuthService] 从本地存储加载用户: ${_currentUser?.username}',
+        );
         notifyListeners();
       }
     } catch (e) {
-      print('❌ [AuthService] 加载用户信息失败: $e');
+      StructuredLogService.log('❌ [AuthService] 加载用户信息失败: $e');
     }
   }
 
   /// 保存用户信息到本地存储
   Future<void> _saveUserToStorage(User user) async {
+    final revision = _sessionRevision;
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (revision != _sessionRevision) return;
       await prefs.setString('current_user', jsonEncode(user.toJson()));
-      print('💾 [AuthService] 用户信息已保存到本地');
+      StructuredLogService.log('💾 [AuthService] 用户信息已保存到本地');
     } catch (e) {
-      print('❌ [AuthService] 保存用户信息失败: $e');
+      StructuredLogService.log('❌ [AuthService] 保存用户信息失败: $e');
     }
   }
 
   Future<void> _saveTokenToStorage(String token) async {
+    final revision = _sessionRevision;
+    AuthTokenStore.token = token;
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (revision != _sessionRevision) return;
       await prefs.setString('auth_token', token);
     } catch (_) {}
   }
 
   /// 清除本地存储的用户信息
-  Future<void> _clearUserFromStorage() async {
+  Future<void> _clearUserFromStorage(int revision) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (revision != _sessionRevision) return;
       await prefs.remove('current_user');
-      print('🗑️ [AuthService] 已清除本地用户信息');
+      StructuredLogService.log('🗑️ [AuthService] 已清除本地用户信息');
     } catch (e) {
-      print('❌ [AuthService] 清除用户信息失败: $e');
+      StructuredLogService.log('❌ [AuthService] 清除用户信息失败: $e');
     }
   }
 
-  Future<void> _clearTokenFromStorage() async {
+  Future<void> _clearTokenFromStorage(int revision) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (revision != _sessionRevision) return;
       await prefs.remove('auth_token');
     } catch (_) {}
   }
 
-  Future<void> loginWithToken({required String token, Map<String, dynamic>? userJson}) async {
+  Future<void> loginWithToken({
+    required String token,
+    Map<String, dynamic>? userJson,
+  }) async {
+    await ensureInitialized();
+    final user = userJson != null && userJson.isNotEmpty
+        ? User.fromJson(userJson)
+        : null;
+    final revision = ++_sessionRevision;
     _authToken = token;
+    _currentUser = user;
+    _isLoggedIn = user != null;
     await _saveTokenToStorage(token);
+    if (revision != _sessionRevision) return;
 
-    if (userJson != null && userJson.isNotEmpty) {
-      _currentUser = User.fromJson(userJson);
-      _isLoggedIn = true;
+    if (user != null) {
       await _saveUserToStorage(_currentUser!);
+      if (revision != _sessionRevision) return;
       notifyListeners();
       return;
     }
 
     // 兜底：通过后端校验 token 并获取用户信息
     final ok = await validateToken();
+    if (revision != _sessionRevision) return;
     if (!ok) {
       await logout();
     }
@@ -171,60 +205,36 @@ class AuthService extends ChangeNotifier {
   /// 检查注册状态
   Future<Map<String, dynamic>> checkRegistrationStatus() async {
     try {
-      final url = '${UrlService().baseUrl}/auth/registration-status';
-
-      DeveloperModeService().addLog('🌐 [Network] GET $url');
-
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
+      final result = await ApiClient().getJson(
+        '/auth/registration-status',
+        auth: false,
       );
 
-      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
-      DeveloperModeService().addLog('📄 [Network] 响应体: ${response.body}');
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200) {
-        return {
-          'success': true,
-          'enabled': data['data']['enabled'] ?? false,
-        };
+      if (result.ok) {
+        final body = result.bodyData as Map<String, dynamic>?;
+        return {'success': true, 'enabled': body?['enabled'] ?? false};
       } else {
-        return {
-          'success': false,
-          'enabled': false,
-        };
+        return {'success': false, 'enabled': false};
       }
     } catch (e) {
       DeveloperModeService().addLog('❌ [AuthService] 检查注册状态失败: $e');
-      return {
-        'success': false,
-        'enabled': false,
-      };
+      return {'success': false, 'enabled': false};
     }
   }
 
   /// 检查 Linux Do 登录状态
   Future<Map<String, dynamic>> checkLinuxDoStatus() async {
     try {
-      final url = '${UrlService().baseUrl}/auth/linuxdo-status';
-
-      DeveloperModeService().addLog('🌐 [Network] GET $url');
-
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
+      final result = await ApiClient().getJson(
+        '/auth/linuxdo-status',
+        auth: false,
       );
 
-      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200) {
+      if (result.ok) {
+        final body = result.bodyData as Map<String, dynamic>?;
         return {
           'success': true,
-          'enabled': data['data']['enabled'] ?? true, // 默认启用
+          'enabled': body?['enabled'] ?? true, // 默认启用
         };
       } else {
         return {
@@ -247,46 +257,26 @@ class AuthService extends ChangeNotifier {
     required String username,
   }) async {
     try {
-      final url = '${UrlService().baseUrl}/auth/register/send-code';
-      final requestBody = {
-        'email': email,
-        'username': username,
-      };
-      
-      DeveloperModeService().addLog('🌐 [Network] POST $url');
-      DeveloperModeService().addLog('📤 [Network] 请求体: ${jsonEncode(requestBody)}');
-      
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
+      final result = await ApiClient().postJson(
+        '/auth/register/send-code',
+        data: {'email': email, 'username': username},
+        auth: false,
       );
 
-      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
-      DeveloperModeService().addLog('📄 [Network] 响应体: ${response.body}');
-      
-      final data = jsonDecode(response.body);
-      
-      if (response.statusCode == 200) {
+      if (result.ok) {
         DeveloperModeService().addLog('✅ [AuthService] 验证码发送成功');
         return {
           'success': true,
-          'message': data['message'],
-          'data': data['data'],
+          'message': result.message,
+          'data': result.bodyData,
         };
       } else {
         DeveloperModeService().addLog('❌ [AuthService] 验证码发送失败');
-        return {
-          'success': false,
-          'message': data['message'] ?? '发送验证码失败',
-        };
+        return {'success': false, 'message': result.message ?? '发送验证码失败'};
       }
     } catch (e) {
       DeveloperModeService().addLog('❌ [AuthService] 网络错误: $e');
-      return {
-        'success': false,
-        'message': '网络错误: ${e.toString()}',
-      };
+      return {'success': false, 'message': '网络错误: ${e.toString()}'};
     }
   }
 
@@ -298,53 +288,31 @@ class AuthService extends ChangeNotifier {
     required String code,
   }) async {
     try {
-      final url = '${UrlService().baseUrl}/auth/register';
-      final requestBody = {
-        'email': email,
-        'username': username,
-        'password': '***', // 密码不记录
-        'code': code,
-      };
-      
-      DeveloperModeService().addLog('🌐 [Network] POST $url');
-      DeveloperModeService().addLog('📤 [Network] 请求体: ${jsonEncode(requestBody)}');
-      
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
+      final result = await ApiClient().postJson(
+        '/auth/register',
+        data: {
           'email': email,
           'username': username,
           'password': password,
           'code': code,
-        }),
+        },
+        auth: false,
       );
 
-      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
-      DeveloperModeService().addLog('📄 [Network] 响应体: ${response.body}');
-      
-      final data = jsonDecode(response.body);
-      
-      if (response.statusCode == 200) {
+      if (result.ok) {
         DeveloperModeService().addLog('✅ [AuthService] 用户注册成功: $username');
         return {
           'success': true,
-          'message': data['message'],
-          'data': data['data'],
+          'message': result.message,
+          'data': result.bodyData,
         };
       } else {
         DeveloperModeService().addLog('❌ [AuthService] 注册失败');
-        return {
-          'success': false,
-          'message': data['message'] ?? '注册失败',
-        };
+        return {'success': false, 'message': result.message ?? '注册失败'};
       }
     } catch (e) {
       DeveloperModeService().addLog('❌ [AuthService] 网络错误: $e');
-      return {
-        'success': false,
-        'message': '网络错误: ${e.toString()}',
-      };
+      return {'success': false, 'message': '网络错误: ${e.toString()}'};
     }
   }
 
@@ -353,47 +321,53 @@ class AuthService extends ChangeNotifier {
     required String account,
     required String password,
   }) async {
+    await ensureInitialized();
+    final revision = ++_sessionRevision;
     try {
-      final response = await http.post(
-        Uri.parse('${UrlService().baseUrl}/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'account': account,
-          'password': password,
-        }),
+      final result = await ApiClient().postJson(
+        '/auth/login',
+        data: {'account': account, 'password': password},
+        auth: false,
       );
 
-      final data = jsonDecode(response.body);
-      
-      if (response.statusCode == 200) {
+      if (revision != _sessionRevision) {
+        return {'success': false, 'message': '登录状态已变化，请重试'};
+      }
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
         _currentUser = User.fromJson(data['data']);
         _authToken = data['data']['token'];
         _isLoggedIn = true;
-        
+
         // 保存用户信息到本地
         await _saveUserToStorage(_currentUser!);
+        if (revision != _sessionRevision) {
+          return {'success': false, 'message': '登录状态已变化，请重试'};
+        }
         if (_authToken != null) {
           await _saveTokenToStorage(_authToken!);
         }
-        
+        if (revision != _sessionRevision) {
+          return {'success': false, 'message': '登录状态已变化，请重试'};
+        }
+
         notifyListeners();
-        
+
         return {
           'success': true,
-          'message': data['message'],
+          'message': result.message,
           'user': _currentUser,
         };
       } else {
         return {
           'success': false,
-          'message': data['message'] ?? '登录失败',
+          'message': result.statusCode >= 500
+              ? '登录服务暂时不可用，请稍后重试'
+              : result.message ?? '登录失败',
         };
       }
     } catch (e) {
-      return {
-        'success': false,
-        'message': '网络错误: ${e.toString()}',
-      };
+      return {'success': false, 'message': '网络错误: ${e.toString()}'};
     }
   }
 
@@ -401,52 +375,66 @@ class AuthService extends ChangeNotifier {
   Future<Map<String, dynamic>> loginWithLinuxDo() async {
     const clientId = '92bIhRkScTeJvJkb3a6w69xX7RoO7wbB';
     const redirectUri = 'http://127.0.0.1:40555/oauth/callback';
-    const authUrl = 'https://connect.linux.do/oauth2/authorize?response_type=code&client_id=$clientId&redirect_uri=$redirectUri&state=login';
+    const authUrl =
+        'https://connect.linux.do/oauth2/authorize?response_type=code&client_id=$clientId&redirect_uri=$redirectUri&state=login';
 
     try {
-      print('🚀 [AuthService] 准备启动本地服务器...');
+      StructuredLogService.log('🚀 [AuthService] 准备启动本地服务器...');
       DeveloperModeService().addLog('🚀 [AuthService] 准备启动本地服务器...');
-      
+
       // 先关闭可能存在的旧服务器（用户多次点击登录时）
       if (_oauthServer != null) {
-        print('� [AuthService] 检测到旧服务器，正在关闭...');
-        DeveloperModeService().addLog('� [AuthService] 关闭旧的 OAuth 服务器...');
+        StructuredLogService.log('🔄 [AuthService] 检测到旧服务器，正在关闭...');
+        DeveloperModeService().addLog('🔄 [AuthService] 关闭旧的 OAuth 服务器...');
         try {
           await _oauthServer!.close(force: true);
         } catch (_) {}
         _oauthServer = null;
       }
-      
+
       // 取消旧的 completer（如果存在）
       if (_oauthCompleter != null && !_oauthCompleter!.isCompleted) {
         _oauthCompleter!.complete(null);
       }
       _oauthCompleter = Completer<String?>();
-      
+
       // 绑定到 127.0.0.1 端口 40555，使用 shared: true 避免端口占用问题
       _oauthServer = await HttpServer.bind(
-        InternetAddress.loopbackIPv4, 
+        InternetAddress.loopbackIPv4,
         40555,
         shared: true, // 允许共享端口，解决多次绑定问题
       );
-      print('🌐 [AuthService] 本地监听器运行中: http://127.0.0.1:40555');
-      DeveloperModeService().addLog('🌐 [AuthService] 本地监听器运行中: http://127.0.0.1:40555');
+      StructuredLogService.log(
+        '🌐 [AuthService] 本地监听器运行中: http://127.0.0.1:40555',
+      );
+      DeveloperModeService().addLog(
+        '🌐 [AuthService] 本地监听器运行中: http://127.0.0.1:40555',
+      );
 
-      _oauthServer!.listen((HttpRequest request) async {
-        final path = request.uri.path;
-        final params = request.uri.queryParameters;
-        print('📩 [AuthService] 收到 HTTP 请求: $path, 参数: $params');
-        DeveloperModeService().addLog('📩 [AuthService] 收到本地 HTTP 请求: $path, 参数: $params');
+      _oauthServer!.listen(
+        (HttpRequest request) async {
+          final path = request.uri.path;
+          final params = request.uri.queryParameters;
+          StructuredLogService.log(
+            '📩 [AuthService] 收到 HTTP 请求: $path, 参数: $params',
+          );
+          DeveloperModeService().addLog(
+            '📩 [AuthService] 收到本地 HTTP 请求: $path, 参数: $params',
+          );
 
-        if (path == '/oauth/callback' || path == 'oauth/callback') {
-          final code = params['code'];
-          print('✅ [AuthService] 识别到授权码: ${code?.substring(0, 5)}...');
-          DeveloperModeService().addLog('✅ [AuthService] 识别到回调! code: ${code?.substring(0, 5)}...');
-          
-          request.response
-            ..statusCode = 200
-            ..headers.contentType = ContentType.html
-            ..write('''
+          if (path == '/oauth/callback' || path == 'oauth/callback') {
+            final code = params['code'];
+            StructuredLogService.log(
+              '✅ [AuthService] 识别到授权码: ${code?.substring(0, 5)}...',
+            );
+            DeveloperModeService().addLog(
+              '✅ [AuthService] 识别到回调! code: ${code?.substring(0, 5)}...',
+            );
+
+            request.response
+              ..statusCode = 200
+              ..headers.contentType = ContentType.html
+              ..write('''
 <!DOCTYPE html>
 <html>
 <head>
@@ -524,7 +512,7 @@ class AuthService extends ChangeNotifier {
     </div>
     <script>
         var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        
+
         if (isMobile) {
             // 移动端：不自动跳转 Deep Link，因为这可能导致应用状态丢失
             // 授权码已被本地服务器捕获，用户只需返回应用即可
@@ -538,62 +526,66 @@ class AuthService extends ChangeNotifier {
 </body>
 </html>
 ''');
-          
-          await request.response.close();
-          print('📤 [AuthService] 已发送响应给浏览器');
-          
-          // 桌面端：收到回调后自动激活并置顶窗口
-          if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-            try {
-              await windowManager.show();
-              await windowManager.focus();
-              print('🪟 [AuthService] 已尝试激活并置顶桌面端窗口');
-            } catch (e) {
-              print('⚠️ [AuthService] 激活窗口失败: $e');
+
+            await request.response.close();
+            StructuredLogService.log('📤 [AuthService] 已发送响应给浏览器');
+
+            // 桌面端：收到回调后自动激活并置顶窗口
+            if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+              try {
+                await windowManager.show();
+                await windowManager.focus();
+                StructuredLogService.log('🪟 [AuthService] 已尝试激活并置顶桌面端窗口');
+              } catch (e) {
+                StructuredLogService.log('⚠️ [AuthService] 激活窗口失败: $e');
+              }
             }
+
+            if (!_oauthCompleter!.isCompleted) {
+              _oauthCompleter!.complete(code);
+              StructuredLogService.log('🔔 [AuthService] Completer 已触发完结');
+            }
+          } else {
+            request.response
+              ..statusCode = 404
+              ..write('Not Found');
+            await request.response.close();
           }
-          
-          if (!_oauthCompleter!.isCompleted) {
-            _oauthCompleter!.complete(code);
-            print('🔔 [AuthService] Completer 已触发完结');
-          }
-        } else {
-          request.response
-            ..statusCode = 404
-            ..write('Not Found');
-          await request.response.close();
-        }
-      }, onError: (e) {
-        print('❌ [AuthService] HttpServer 监听出错: $e');
-      });
+        },
+        onError: (e) {
+          StructuredLogService.log('❌ [AuthService] HttpServer 监听出错: $e');
+        },
+      );
 
       // 直接尝试启动浏览器，不依赖 canLaunchUrl 的预检查
       // 原因: canLaunchUrl 在 Android 11+ 和某些 Windows 设备上可能误报 false
-      print('🔗 [AuthService] 正在打开浏览器...');
+      StructuredLogService.log('🔗 [AuthService] 正在打开浏览器...');
       DeveloperModeService().addLog('🔗 [AuthService] 正在打开浏览器: $authUrl');
-      
+
       try {
         final launched = await launchUrl(
-          Uri.parse(authUrl), 
+          Uri.parse(authUrl),
           mode: LaunchMode.externalApplication,
         );
         if (!launched) {
-          print('❌ [AuthService] launchUrl 返回 false');
-          DeveloperModeService().addLog('❌ [AuthService] launchUrl 返回 false，浏览器可能未正确启动');
+          StructuredLogService.log('❌ [AuthService] launchUrl 返回 false');
+          DeveloperModeService().addLog(
+            '❌ [AuthService] launchUrl 返回 false，浏览器可能未正确启动',
+          );
           // 不立即抛出异常，给用户一个机会手动打开链接
           // 某些设备上 launchUrl 返回 false 但浏览器实际上已经打开
         }
       } catch (launchError) {
-        print('❌ [AuthService] 启动浏览器失败: $launchError');
+        StructuredLogService.log('❌ [AuthService] 启动浏览器失败: $launchError');
         DeveloperModeService().addLog('❌ [AuthService] 启动浏览器失败: $launchError');
         throw '无法启动浏览器: $launchError';
       }
 
-      print('⏳ [AuthService] 等待授权码返回...');
+      StructuredLogService.log('⏳ [AuthService] 等待授权码返回...');
       final code = await _oauthCompleter!.future.timeout(
         const Duration(minutes: 5),
         onTimeout: () {
-          print('⏰ [AuthService] 登录超时');
+          StructuredLogService.log('⏰ [AuthService] 登录超时');
           return null;
         },
       );
@@ -602,41 +594,51 @@ class AuthService extends ChangeNotifier {
         return {'success': false, 'message': '登录超时'};
       }
 
-      print('🔑 [AuthService] 获得授权码，开始请求后端登录...');
-      final response = await http.post(
-        Uri.parse('${UrlService().baseUrl}/auth/linuxdo/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'code': code}),
+      StructuredLogService.log('🔑 [AuthService] 获得授权码，开始请求后端登录...');
+      final result = await ApiClient().postJson(
+        '/auth/linuxdo/login',
+        data: {'code': code},
+        auth: false,
       );
 
-      print('📥 [AuthService] 后端响应状态: ${response.statusCode}');
-      final data = jsonDecode(response.body);
-      print('🔍 [AuthService] 后端返回数据: ${jsonEncode(data['data'])}');
-      print('🖼️ [AuthService] 头像URL: ${data['data']?['avatarUrl']}');
-      DeveloperModeService().addLog('🖼️ [Auth] Linux Do 头像 URL: ${data['data']?['avatarUrl']}');
-      
-      if (response.statusCode == 200) {
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
+        StructuredLogService.log(
+          '🔍 [AuthService] 后端返回数据: ${jsonEncode(data['data'])}',
+        );
+        StructuredLogService.log(
+          '🖼️ [AuthService] 头像URL: ${data['data']?['avatarUrl']}',
+        );
+        DeveloperModeService().addLog(
+          '🖼️ [Auth] Linux Do 头像 URL: ${data['data']?['avatarUrl']}',
+        );
+
         _currentUser = User.fromJson(data['data']);
         _authToken = data['data']['token'];
         _isLoggedIn = true;
-        
+
         await _saveUserToStorage(_currentUser!);
         if (_authToken != null) {
           await _saveTokenToStorage(_authToken!);
         }
-        
+
         notifyListeners();
-        print('🎉 [AuthService] Linux Do 最终登录成功: ${_currentUser?.username}');
+        StructuredLogService.log(
+          '🎉 [AuthService] Linux Do 最终登录成功: ${_currentUser?.username}',
+        );
         return {'success': true, 'message': '登录成功'};
       } else {
-        print('❌ [AuthService] 后端通过授权码登录失败: ${data['message']}');
-        return {'success': false, 'message': data['message'] ?? '验证失败'};
+        final data = result.data as Map<String, dynamic>?;
+        StructuredLogService.log(
+          '❌ [AuthService] 后端通过授权码登录失败: ${data?['message']}',
+        );
+        return {'success': false, 'message': data?['message'] ?? '验证失败'};
       }
     } catch (e) {
-      print('💥 [AuthService] 异常: $e');
+      StructuredLogService.log('💥 [AuthService] 异常: $e');
       return {'success': false, 'message': '登录异常: $e'};
     } finally {
-      print('🏁 [AuthService] 关闭本地监听服务器');
+      StructuredLogService.log('🏁 [AuthService] 关闭本地监听服务器');
       try {
         await _oauthServer?.close(force: true);
       } catch (_) {}
@@ -645,26 +647,31 @@ class AuthService extends ChangeNotifier {
   }
 
   /// Linux Do 授权登录 - 使用授权码（适用于 WebView 方式）
-  /// 
+  ///
   /// 当通过 WebView 获取到授权码后，调用此方法完成登录
   Future<Map<String, dynamic>> loginWithLinuxDoCode(String code) async {
     try {
-      print('🔑 [AuthService] 使用授权码登录 Linux Do...');
+      StructuredLogService.log('🔑 [AuthService] 使用授权码登录 Linux Do...');
       DeveloperModeService().addLog('🔑 [AuthService] 使用授权码登录...');
 
-      final response = await http.post(
-        Uri.parse('${UrlService().baseUrl}/auth/linuxdo/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'code': code}),
+      final result = await ApiClient().postJson(
+        '/auth/linuxdo/login',
+        data: {'code': code},
+        auth: false,
       );
 
-      print('📥 [AuthService] 后端响应状态: ${response.statusCode}');
-      final data = jsonDecode(response.body);
-      print('🔍 [AuthService] 后端返回数据: ${jsonEncode(data['data'])}');
-      print('🖼️ [AuthService] 头像URL: ${data['data']?['avatarUrl']}');
-      DeveloperModeService().addLog('🖼️ [Auth] Linux Do 头像 URL: ${data['data']?['avatarUrl']}');
+      if (result.ok) {
+        final data = result.data as Map<String, dynamic>;
+        StructuredLogService.log(
+          '🔍 [AuthService] 后端返回数据: ${jsonEncode(data['data'])}',
+        );
+        StructuredLogService.log(
+          '🖼️ [AuthService] 头像URL: ${data['data']?['avatarUrl']}',
+        );
+        DeveloperModeService().addLog(
+          '🖼️ [Auth] Linux Do 头像 URL: ${data['data']?['avatarUrl']}',
+        );
 
-      if (response.statusCode == 200) {
         _currentUser = User.fromJson(data['data']);
         _authToken = data['data']['token'];
         _isLoggedIn = true;
@@ -675,63 +682,47 @@ class AuthService extends ChangeNotifier {
         }
 
         notifyListeners();
-        print('🎉 [AuthService] Linux Do 授权码登录成功: ${_currentUser?.username}');
+        StructuredLogService.log(
+          '🎉 [AuthService] Linux Do 授权码登录成功: ${_currentUser?.username}',
+        );
         DeveloperModeService().addLog('🎉 [AuthService] Linux Do 授权码登录成功');
         return {'success': true, 'message': '登录成功'};
       } else {
-        print('❌ [AuthService] 后端通过授权码登录失败: ${data['message']}');
-        DeveloperModeService().addLog('❌ [AuthService] 授权码登录失败: ${data['message']}');
-        return {'success': false, 'message': data['message'] ?? '验证失败'};
+        final data = result.data as Map<String, dynamic>?;
+        StructuredLogService.log(
+          '❌ [AuthService] 后端通过授权码登录失败: ${data?['message']}',
+        );
+        DeveloperModeService().addLog(
+          '❌ [AuthService] 授权码登录失败: ${data?['message']}',
+        );
+        return {'success': false, 'message': data?['message'] ?? '验证失败'};
       }
     } catch (e) {
-      print('💥 [AuthService] 授权码登录异常: $e');
+      StructuredLogService.log('💥 [AuthService] 授权码登录异常: $e');
       DeveloperModeService().addLog('💥 [AuthService] 授权码登录异常: $e');
       return {'success': false, 'message': '登录异常: $e'};
     }
   }
 
-
   /// 发送重置密码验证码
-  Future<Map<String, dynamic>> sendResetCode({
-    required String email,
-  }) async {
+  Future<Map<String, dynamic>> sendResetCode({required String email}) async {
     try {
-      final url = '${UrlService().baseUrl}/auth/reset-password/send-code';
-      final requestBody = {'email': email};
-      
-      DeveloperModeService().addLog('🌐 [Network] POST $url');
-      DeveloperModeService().addLog('📤 [Network] 请求体: ${jsonEncode(requestBody)}');
-      
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
+      final result = await ApiClient().postJson(
+        '/auth/reset-password/send-code',
+        data: {'email': email},
+        auth: false,
       );
 
-      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
-      DeveloperModeService().addLog('📄 [Network] 响应体: ${response.body}');
-      
-      final data = jsonDecode(response.body);
-      
-      if (response.statusCode == 200) {
+      if (result.ok) {
         DeveloperModeService().addLog('✅ [AuthService] 重置验证码发送成功');
-        return {
-          'success': true,
-          'message': data['message'],
-        };
+        return {'success': true, 'message': result.message};
       } else {
         DeveloperModeService().addLog('❌ [AuthService] 验证码发送失败');
-        return {
-          'success': false,
-          'message': data['message'] ?? '发送验证码失败',
-        };
+        return {'success': false, 'message': result.message ?? '发送验证码失败'};
       }
     } catch (e) {
       DeveloperModeService().addLog('❌ [AuthService] 网络错误: $e');
-      return {
-        'success': false,
-        'message': '网络错误: ${e.toString()}',
-      };
+      return {'success': false, 'message': '网络错误: ${e.toString()}'};
     }
   }
 
@@ -742,68 +733,55 @@ class AuthService extends ChangeNotifier {
     required String newPassword,
   }) async {
     try {
-      final url = '${UrlService().baseUrl}/auth/reset-password';
-      final requestBody = {
-        'email': email,
-        'code': code,
-        'newPassword': '***', // 密码不记录
-      };
-      
-      DeveloperModeService().addLog('🌐 [Network] POST $url');
-      DeveloperModeService().addLog('📤 [Network] 请求体: ${jsonEncode(requestBody)}');
-      
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          'code': code,
-          'newPassword': newPassword,
-        }),
+      final result = await ApiClient().postJson(
+        '/auth/reset-password',
+        data: {'email': email, 'code': code, 'newPassword': newPassword},
+        auth: false,
       );
 
-      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
-      DeveloperModeService().addLog('📄 [Network] 响应体: ${response.body}');
-      
-      final data = jsonDecode(response.body);
-      
-      if (response.statusCode == 200) {
+      if (result.ok) {
         DeveloperModeService().addLog('✅ [AuthService] 密码重置成功');
-        return {
-          'success': true,
-          'message': data['message'],
-        };
+        return {'success': true, 'message': result.message};
       } else {
         DeveloperModeService().addLog('❌ [AuthService] 密码重置失败');
-        return {
-          'success': false,
-          'message': data['message'] ?? '重置密码失败',
-        };
+        return {'success': false, 'message': result.message ?? '重置密码失败'};
       }
     } catch (e) {
       DeveloperModeService().addLog('❌ [AuthService] 网络错误: $e');
-      return {
-        'success': false,
-        'message': '网络错误: ${e.toString()}',
-      };
+      return {'success': false, 'message': '网络错误: ${e.toString()}'};
     }
   }
 
   /// 登出
   Future<void> logout() async {
     final username = _currentUser?.username;
+    final revision = ++_sessionRevision;
     _currentUser = null;
     _isLoggedIn = false;
     _authToken = null;
-    
+    AuthTokenStore.token = null;
+    notifyListeners();
+
+    // stop() invalidates pending playback synchronously before its first await.
+    Future<void> stopPlayback() async {
+      try {
+        await onSessionEnded?.call();
+      } catch (e) {
+        StructuredLogService.log('停止退出会话播放失败: $e', level: LogLevel.error);
+      }
+    }
+
+    final stopping = stopPlayback();
+
     // 清除本地存储
-    await _clearUserFromStorage();
-    await _clearTokenFromStorage();
-    
+    await _clearUserFromStorage(revision);
+    await _clearTokenFromStorage(revision);
+    await stopping;
+
     // 清除收藏列表（需要在这里导入 FavoriteService，但为避免循环依赖，改为在 FavoriteService 中监听登出）
-    
+
     DeveloperModeService().addLog('👋 [AuthService] 用户退出登录: $username');
-    
+
     notifyListeners();
   }
 
@@ -811,56 +789,74 @@ class AuthService extends ChangeNotifier {
     if (_authToken == null || _authToken!.isEmpty) {
       return false;
     }
+    final revision = _sessionRevision;
+    final requestToken = _authToken;
+    bool isCurrent() =>
+        revision == _sessionRevision && requestToken == _authToken;
     try {
-      final url = '${UrlService().baseUrl}/auth/validate-token';
-      final r = await http.get(
-        Uri.parse(url),
-        headers: {'Authorization': 'Bearer $_authToken'},
-      );
-      if (r.statusCode == 200) {
-        final data = jsonDecode(r.body);
-        _currentUser = User.fromJson(data['data']);
+      final result = await ApiClient().getJson('/auth/validate-token');
+      if (!isCurrent()) return _isLoggedIn;
+      if (result.ok) {
+        final body = result.bodyData as Map<String, dynamic>;
+        _currentUser = User.fromJson(body);
+        final refreshedToken = body['token'] as String?;
+        if (refreshedToken != null && refreshedToken.isNotEmpty) {
+          _authToken = refreshedToken;
+          await _saveTokenToStorage(refreshedToken);
+          if (revision != _sessionRevision) return _isLoggedIn;
+        }
         _isLoggedIn = true;
         notifyListeners();
         return true;
       }
-      await handleUnauthorized();
-      return false;
-    } catch (_) {
-      return false;
+      // 仅在明确 401 时清理登录态，避免后端瞬时异常/网关错误导致误登出
+      if (result.statusCode == 401 && isCurrent()) {
+        await handleUnauthorized();
+        return false;
+      }
+      DeveloperModeService().addLog(
+        '⚠️ [AuthService] validate-token 非401失败，保留当前登录态: ${result.statusCode}',
+      );
+      return _isLoggedIn;
+    } catch (e) {
+      if (!isCurrent()) return _isLoggedIn;
+      DeveloperModeService().addLog(
+        '⚠️ [AuthService] validate-token 异常，保留当前登录态: $e',
+      );
+      return _isLoggedIn;
     }
   }
 
   Future<void> handleUnauthorized() async {
-    await logout();
-    print('当前登录态已失效，请重新登录');
-    AuthOverlayService().show();
+    if (_isHandlingUnauthorized) return;
+    _isHandlingUnauthorized = true;
+    try {
+      await logout();
+      DeveloperModeService().addLog('[Auth] 登录态已失效');
+      // AppGate observes authentication and owns the re-login page on all platforms.
+    } finally {
+      _isHandlingUnauthorized = false;
+    }
   }
 
   /// 更新用户名
   Future<Map<String, dynamic>> updateUsername(String newUsername) async {
     if (_authToken == null || _authToken!.isEmpty) {
-      return {
-        'success': false,
-        'message': '未登录',
-      };
+      return {'success': false, 'message': '未登录'};
     }
+    final session = sessionIdentity;
 
     try {
-      final response = await http.post(
-        Uri.parse('${UrlService().baseUrl}/auth/update-username'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_authToken',
-        },
-        body: jsonEncode({
-          'newUsername': newUsername,
-        }),
+      final result = await ApiClient().postJson(
+        '/auth/update-username',
+        data: {'newUsername': newUsername},
       );
 
-      final data = jsonDecode(response.body);
-      
-      if (response.statusCode == 200) {
+      if (session == null || session != sessionIdentity) {
+        return {'success': false, 'message': '登录状态已变化，请重试'};
+      }
+
+      if (result.ok) {
         // 更新本地用户信息
         if (_currentUser != null) {
           _currentUser = User(
@@ -870,28 +866,20 @@ class AuthService extends ChangeNotifier {
             isVerified: _currentUser!.isVerified,
             lastLogin: _currentUser!.lastLogin,
             avatarUrl: _currentUser!.avatarUrl,
-            isSponsor: _currentUser!.isSponsor,
-            sponsorSince: _currentUser!.sponsorSince,
           );
           await _saveUserToStorage(_currentUser!);
+          if (session != sessionIdentity) {
+            return {'success': false, 'message': '登录状态已变化，请重试'};
+          }
           notifyListeners();
         }
-        
-        return {
-          'success': true,
-          'message': data['message'] ?? '用户名更新成功',
-        };
+
+        return {'success': true, 'message': result.message ?? '用户名更新成功'};
       } else {
-        return {
-          'success': false,
-          'message': data['message'] ?? '更新用户名失败',
-        };
+        return {'success': false, 'message': result.message ?? '更新用户名失败'};
       }
     } catch (e) {
-      return {
-        'success': false,
-        'message': '网络错误: ${e.toString()}',
-      };
+      return {'success': false, 'message': '网络错误: ${e.toString()}'};
     }
   }
 
@@ -900,52 +888,38 @@ class AuthService extends ChangeNotifier {
     // 检查用户是否已登录
     if (!_isLoggedIn || _currentUser == null) {
       DeveloperModeService().addLog('⚠️ [AuthService] 用户未登录，无法更新IP归属地');
-      return {
-        'success': false,
-        'message': '用户未登录',
-      };
+      return {'success': false, 'message': '用户未登录'};
     }
 
     try {
       // 获取IP归属地信息
       DeveloperModeService().addLog('🌍 [AuthService] 开始获取IP归属地...');
       final locationInfo = await LocationService().fetchLocation();
-      
+
       if (locationInfo == null) {
         DeveloperModeService().addLog('❌ [AuthService] 获取IP归属地失败');
-        return {
-          'success': false,
-          'message': '获取IP归属地失败',
-        };
+        return {'success': false, 'message': '获取IP归属地失败'};
       }
 
       // 准备发送到后端的数据
-      final url = '${UrlService().baseUrl}/auth/update-location';
       final requestBody = {
         'userId': _currentUser!.id,
         'ip': locationInfo.ip,
         'location': locationInfo.shortDescription,
       };
 
-      DeveloperModeService().addLog('🌐 [Network] POST $url');
-      DeveloperModeService().addLog('📤 [Network] 请求体: ${jsonEncode(requestBody)}');
-
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
+      final result = await ApiClient().postJson(
+        '/auth/update-location',
+        data: requestBody,
       );
 
-      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
-      DeveloperModeService().addLog('📄 [Network] 响应体: ${response.body}');
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200) {
-        DeveloperModeService().addLog('✅ [AuthService] IP归属地更新成功: ${locationInfo.shortDescription}');
+      if (result.ok) {
+        DeveloperModeService().addLog(
+          '✅ [AuthService] IP归属地更新成功: ${locationInfo.shortDescription}',
+        );
         return {
           'success': true,
-          'message': data['message'],
+          'message': result.message,
           'data': {
             'ip': locationInfo.ip,
             'location': locationInfo.shortDescription,
@@ -953,17 +927,11 @@ class AuthService extends ChangeNotifier {
         };
       } else {
         DeveloperModeService().addLog('❌ [AuthService] IP归属地更新失败');
-        return {
-          'success': false,
-          'message': data['message'] ?? '更新IP归属地失败',
-        };
+        return {'success': false, 'message': result.message ?? '更新IP归属地失败'};
       }
     } catch (e) {
       DeveloperModeService().addLog('❌ [AuthService] 更新IP归属地异常: $e');
-      return {
-        'success': false,
-        'message': '网络错误: ${e.toString()}',
-      };
+      return {'success': false, 'message': '网络错误: ${e.toString()}'};
     }
   }
 }

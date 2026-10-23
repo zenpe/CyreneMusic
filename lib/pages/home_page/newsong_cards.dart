@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../utils/image_utils.dart';
 import '../../services/player_service.dart';
 import '../../services/playlist_queue_service.dart';
+import '../../utils/image_utils.dart';
 import 'hero_section.dart'; // 复用 convertToTrack 函数
 
 /// 新歌卡片网格
@@ -23,7 +23,7 @@ class NewsongCards extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             clipBehavior: Clip.none,
             itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, i) => NewsongCard(song: list[i]),
           ),
         );
@@ -72,9 +72,9 @@ class _NewsongCardState extends State<NewsongCard> {
             borderRadius: BorderRadius.circular(16),
             color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
             boxShadow: _hovering ? [
-              BoxShadow(color: cs.shadow.withOpacity(0.12), blurRadius: 12, offset: const Offset(0, 4)),
+              BoxShadow(color: cs.shadow.withValues(alpha: 0.12), blurRadius: 12, offset: const Offset(0, 4)),
             ] : [
-              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 6, offset: const Offset(0, 2)),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 6, offset: const Offset(0, 2)),
             ],
           ),
           child: Column(
@@ -94,18 +94,20 @@ class _NewsongCardState extends State<NewsongCard> {
                             imageUrl: pic,
                             httpHeaders: getImageHeaders(pic),
                             fit: BoxFit.cover,
+                            memCacheWidth: 280,
+                            memCacheHeight: 280,
                           ),
                         ),
                       ),
                       if (_hovering)
                         Positioned.fill(
                           child: Container(
-                            color: Colors.black.withOpacity(0.3),
+                            color: Colors.black.withValues(alpha: 0.3),
                             child: Center(
                               child: Container(
                                 width: 36, height: 36,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.9),
+                                  color: Colors.white.withValues(alpha: 0.9),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(Icons.play_arrow_rounded, color: cs.primary, size: 22),
@@ -122,7 +124,7 @@ class _NewsongCardState extends State<NewsongCard> {
                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
               const SizedBox(height: 2),
               Text(artists, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 10, color: cs.onSurface.withOpacity(0.6))),
+                style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: 0.6))),
             ],
           ),
         ),

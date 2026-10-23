@@ -12,9 +12,9 @@ import '../../widgets/android_floating_lyric_settings.dart';
 class LyricSettingsContent extends StatefulWidget {
   final VoidCallback onBack;
   final bool embed;
-  
+
   const LyricSettingsContent({
-    super.key, 
+    super.key,
     required this.onBack,
     this.embed = false,
   });
@@ -23,7 +23,7 @@ class LyricSettingsContent extends StatefulWidget {
   Widget buildFluentBreadcrumb(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
     final typography = theme.typography;
-    
+
     return Row(
       children: [
         // 父级：设置（颜色较浅，可点击）
@@ -64,7 +64,7 @@ class _LyricSettingsContentState extends State<LyricSettingsContent> {
   @override
   Widget build(BuildContext context) {
     final isFluentUI = (Platform.isWindows || Platform.isMacOS || Platform.isLinux) && ThemeManager().isFluentFramework;
-    
+
     if (isFluentUI) {
       return _buildFluentUI(context);
     }
@@ -72,13 +72,13 @@ class _LyricSettingsContentState extends State<LyricSettingsContent> {
     if (ThemeManager().isCupertinoFramework) {
       return _buildCupertinoUI(context);
     }
-    
+
     return _buildMaterialUI(context);
   }
 
   Widget _buildMaterialUI(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 120),
       children: [
         // 平台特定的歌词设置
         if (Platform.isWindows) ...[
@@ -104,28 +104,6 @@ class _LyricSettingsContentState extends State<LyricSettingsContent> {
   }
 
   /// 构建 Material UI 分组
-  Widget _buildMaterialSection(
-    BuildContext context, {
-    required String title,
-    required List<Widget> children,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8.0, left: 4.0),
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-        ),
-        ...children,
-      ],
-    );
-  }
 
   /// 构建 Fluent UI 版本
   Widget _buildFluentUI(BuildContext context) {

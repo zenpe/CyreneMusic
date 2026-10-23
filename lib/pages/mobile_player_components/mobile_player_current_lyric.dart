@@ -1,3 +1,4 @@
+import '../../widgets/lyric_status_text.dart';
 import 'package:flutter/material.dart';
 import '../../services/player_service.dart';
 import '../../models/lyric_line.dart';
@@ -7,12 +8,14 @@ import '../../models/lyric_line.dart';
 class MobilePlayerCurrentLyric extends StatelessWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
+  final LyricLoadState lyricState;
   final VoidCallback onTap;
 
   const MobilePlayerCurrentLyric({
     super.key,
     required this.lyrics,
     required this.currentLyricIndex,
+    this.lyricState = LyricLoadState.empty,
     required this.onTap,
   });
 
@@ -21,7 +24,7 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final screenWidth = MediaQuery.of(context).size.width;
-        
+
         return GestureDetector(
           onTap: onTap,
           child: Container(
@@ -39,22 +42,18 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
   /// 构建无歌词提示
   Widget _buildNoLyric(double screenWidth) {
     final lyricFontSize = (screenWidth * 0.038).clamp(14.0, 16.0);
-    
+
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
-        final textColor = _getAdaptiveLyricColor(themeColor, false).withOpacity(0.5);
-        
+        final textColor = _getAdaptiveLyricColor(themeColor, false).withValues(alpha: 0.5);
+
         return Center(
-          child: Text(
-            '暂无歌词',
-            style: TextStyle(
+          child: LyricStatusText(state: lyricState, style: TextStyle(
               color: textColor,
               fontSize: lyricFontSize,
               fontFamily: 'Microsoft YaHei',
-            ),
-            textAlign: TextAlign.center,
-          ),
+            )),
         );
       },
     );
@@ -65,19 +64,19 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
     const int totalVisibleLines = 3; // 总共显示3行
     const int currentLinePosition = 1; // 当前歌词在第2行（索引1）
     const double lineHeight = 30.0; // 每行高度
-    
+
     final lyricFontSize = (screenWidth * 0.038).clamp(14.0, 16.0);
     final smallFontSize = lyricFontSize * 0.85;
-    
+
     // 计算显示范围
     int startIndex = currentLyricIndex - currentLinePosition;
-    
+
     // 生成要显示的歌词列表
     List<Widget> lyricWidgets = [];
-    
+
     for (int i = 0; i < totalVisibleLines; i++) {
       int lyricIndex = startIndex + i;
-      
+
       // 判断是否在有效范围内
       if (lyricIndex < 0 || lyricIndex >= lyrics.length) {
         // 空行占位
@@ -91,13 +90,13 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
         // 显示歌词
         final lyric = lyrics[lyricIndex];
         final isCurrent = lyricIndex == currentLyricIndex;
-        
+
         lyricWidgets.add(
           ValueListenableBuilder<Color?>(
             valueListenable: PlayerService().themeColorNotifier,
             builder: (context, themeColor, child) {
               final lyricColor = _getAdaptiveLyricColor(themeColor, isCurrent);
-              
+
               return SizedBox(
                 height: lineHeight,
                 key: ValueKey('lyric_$lyricIndex'),
@@ -124,7 +123,7 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
         );
       }
     }
-    
+
     // 使用 AnimatedSwitcher 实现丝滑滚动效果
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
@@ -132,7 +131,7 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
         return Stack(
           alignment: Alignment.center,
           children: <Widget>[
-            if (currentChild != null) currentChild,
+            ?currentChild,
           ],
         );
       },
@@ -145,7 +144,7 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
           parent: animation,
           curve: Curves.easeOutCubic,
         ));
-        
+
         return SlideTransition(
           position: offsetAnimation,
           child: child,
@@ -165,7 +164,7 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
     // 计算颜色的相对亮度 (0.0 - 1.0)
     // 使用 W3C 推荐的计算公式
     final luminance = backgroundColor.computeLuminance();
-    
+
     // 如果亮度大于 0.5，认为是亮色背景，应该用深色文字
     return luminance > 0.5;
   }
@@ -174,17 +173,17 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
   Color _getAdaptiveLyricColor(Color? themeColor, bool isCurrent) {
     final color = themeColor ?? Colors.grey[700]!;
     final useDarkText = _shouldUseDarkText(color);
-    
+
     if (useDarkText) {
       // 亮色背景，使用深色文字
-      return isCurrent 
-          ? Colors.black87 
+      return isCurrent
+          ? Colors.black87
           : Colors.black54;
     } else {
       // 暗色背景，使用浅色文字
-      return isCurrent 
-          ? Colors.white 
-          : Colors.white.withOpacity(0.5);
+      return isCurrent
+          ? Colors.white
+          : Colors.white.withValues(alpha: 0.5);
     }
   }
 }
