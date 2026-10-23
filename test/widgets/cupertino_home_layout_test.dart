@@ -36,8 +36,8 @@ void main() {
             ),
           ),
         );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
         expect(find.text('1. 歌曲0 - 歌手'), findsOneWidget);
         expect(find.text('4. 歌曲3 - 歌手'), findsNothing);
         expect(tester.takeException(), isNull, reason: 'text scale $scale');
