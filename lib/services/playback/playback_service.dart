@@ -328,7 +328,9 @@ class PlaybackService extends ChangeNotifier {
   Track? _stableCacheTrack;
   SongDetail? _stableCacheSong;
   String? _stableCacheQuality;
-  double _volume = 0.7;
+  ({String key, int epoch})? _stableCacheRefresh;
+  ({Map<String, String> identity, int epoch})? _activeAudioRefresh;
+  double _volume = 1.0;
   double _playbackSpeed = 1.0;
   bool _isAudioSourceNotConfigured = false;
   String? _retriedTrackKey;
@@ -1113,6 +1115,7 @@ class PlaybackService extends ChangeNotifier {
         _schedulePreloadNextTrack();
         break;
       case EngineState.paused:
+        _releaseDeferredCacheProtection();
         _engineBuffering = false;
         _controlIntent.acknowledge(false);
         _updateSessionPhase(PlaybackPhase.paused);
@@ -1129,6 +1132,7 @@ class PlaybackService extends ChangeNotifier {
         _scheduleSessionPersist();
         break;
       case EngineState.idle:
+        _releaseDeferredCacheProtection();
         _engineBuffering = false;
         _updateSessionPhase(PlaybackPhase.idle);
         _state = PBState.idle;
@@ -1155,11 +1159,40 @@ class PlaybackService extends ChangeNotifier {
     final track = _stableCacheTrack;
     final song = _stableCacheSong;
     final quality = _stableCacheQuality;
+    final refresh = _stableCacheRefresh;
+    _clearDeferredCache(cancelRefresh: false);
+    if (track != null && song != null && quality != null) {
+      unawaited(
+        _cacheSongInBackground(track, song, quality, refreshRequest: refresh),
+      );
+    }
+  }
+
+  void _releaseDeferredCacheProtection() {
+    final refresh = _stableCacheRefresh;
+    if (refresh != null) CacheService().releaseAudioRefreshProtection(refresh);
+  }
+
+  void _cancelActiveAudioRefresh() {
+    final refresh = _activeAudioRefresh;
+    _activeAudioRefresh = null;
+    if (refresh != null) {
+      unawaited(
+        CacheService()
+            .cancelAudioRefreshByIdentity(refresh.identity, refresh.epoch)
+            .catchError((Object _) {}),
+      );
+    }
+  }
+
+  void _clearDeferredCache({bool cancelRefresh = true}) {
+    final refresh = _stableCacheRefresh;
     _stableCacheTrack = null;
     _stableCacheSong = null;
     _stableCacheQuality = null;
-    if (track != null && song != null && quality != null) {
-      unawaited(_cacheSongInBackground(track, song, quality));
+    _stableCacheRefresh = null;
+    if (cancelRefresh && refresh != null) {
+      CacheService().releaseAudioRefreshProtection(refresh);
     }
   }
 
@@ -2299,6 +2332,8 @@ class PlaybackService extends ChangeNotifier {
       }
       _invalidatePreparedWindow(reschedule: !removal.removedCurrent);
       if (removal.becameEmpty) {
+        _cancelActiveAudioRefresh();
+        _clearDeferredCache();
         await _engine.stop();
         _state = PBState.idle;
         _activeTrack = null;
@@ -2459,6 +2494,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> pause() async {
+    _releaseDeferredCacheProtection();
     if (_pendingTrack != null ||
         _currentSession?.phase == PlaybackPhase.resolving) {
       _cancelPendingTrackTransition();
@@ -2618,6 +2654,69 @@ class PlaybackService extends ChangeNotifier {
       if (_manualRetryRequestEpoch == requestEpoch) {
         _manualRetryRequestEpoch = null;
       }
+    }
+  }
+
+  /// Explicitly refresh the displayed song, never a previous failed selection.
+  bool get canRefreshCurrentAudio =>
+      _activeTrack != null &&
+      _activeTrack!.source != MusicSource.local &&
+      _source != QueueSource.radio &&
+      _pendingTrack == null &&
+      !_manualRetryInFlight;
+
+  Future<void> refreshCurrentAudio(Track expectedTrack) async {
+    if (!AuthService().isLoggedIn ||
+        !canRefreshCurrentAudio ||
+        !_matchesTrackIdentity(
+          _activeTrack,
+          _buildTrackIdentity(expectedTrack),
+        ) ||
+        expectedTrack.source == MusicSource.local) {
+      return;
+    }
+    final track = _activeTrack!;
+    final entryId = _queueController.currentEntryId;
+    final quality = AudioQualityService().currentQuality.value;
+    final refreshIdentity = audioCacheIdentityFor(
+      track,
+      CacheService.normalizeQualityValue(quality),
+    );
+    final epoch = _requestRouter.begin();
+    _manualRetryRequestEpoch = epoch;
+    var committed = false;
+    int? refreshEpoch;
+    try {
+      try {
+        refreshEpoch = await CacheService().beginAudioRefresh(track, quality);
+      } catch (_) {
+        /* Optional cache cannot prevent remote playback. */
+      }
+      if (!_requestRouter.isCurrent(epoch) || _activeTrack != track) return;
+      final result = await _attemptTrackSwitch(
+        reason: 'refresh-audio',
+        intent: PlaybackRequestIntent.retry,
+        requestEpoch: epoch,
+        candidateTrack: track,
+        candidateEntryId: entryId,
+        forceRemoteResolution: true,
+      );
+      committed =
+          result.status == PlaybackCandidateAttemptStatus.committed &&
+          _requestRouter.isCurrent(epoch);
+      if (committed && refreshEpoch != null) {
+        _activeAudioRefresh = (identity: refreshIdentity, epoch: refreshEpoch);
+      }
+    } finally {
+      if (!committed && refreshEpoch != null) {
+        try {
+          await CacheService().cancelAudioRefreshByIdentity(
+            refreshIdentity,
+            refreshEpoch,
+          );
+        } catch (_) {}
+      }
+      if (_manualRetryRequestEpoch == epoch) _manualRetryRequestEpoch = null;
     }
   }
 
@@ -2788,6 +2887,7 @@ class PlaybackService extends ChangeNotifier {
     required PlaybackRequestIntent intent,
     Duration initialPosition = Duration.zero,
   }) {
+    _clearDeferredCache();
     _pendingTrack = track;
     _pendingQueueEntryId = queueEntryId;
     _pendingReason = reason;
@@ -2851,6 +2951,9 @@ class PlaybackService extends ChangeNotifier {
     PlaybackRequestIntent intent = PlaybackRequestIntent.manual,
     bool notify = true,
   }) {
+    // A seek or pause keeps this playback source. Only a real source commit
+    // ends the previous refresh; native DataSource.close is not that boundary.
+    _cancelActiveAudioRefresh();
     _lyricProjection.promote(
       trackKey: _buildTrackIdentity(track),
       generation: playbackToken,
@@ -3096,6 +3199,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _invalidateCurrentPlayback() {
+    _cancelActiveAudioRefresh();
     _rollbackQueueReplacement();
     _failedReplacementQueue = null;
     _clearPlaybackProblem();
@@ -3110,9 +3214,7 @@ class PlaybackService extends ChangeNotifier {
     _scanningRequestEpoch = null;
     _engineStateCommitGate.discard();
     _stabilityTracker.onPlaybackInterrupted();
-    _stableCacheTrack = null;
-    _stableCacheSong = null;
-    _stableCacheQuality = null;
+    _clearDeferredCache();
     _updateSessionPhase(PlaybackPhase.idle);
   }
 
@@ -3840,9 +3942,7 @@ class PlaybackService extends ChangeNotifier {
       └─ 预备槽位激活:             ${timing.preparedActivationMs} ms
 ================================ 🏁 真实总耗时: ${timing.totalSw.elapsedMilliseconds} ms
 ''');
-    _stableCacheTrack = null;
-    _stableCacheSong = null;
-    _stableCacheQuality = null;
+    _clearDeferredCache();
     _loadLyricsForFloatingDisplay();
 
     final coverRefreshUrl = plan.coverRefreshUrl;
@@ -3858,6 +3958,12 @@ class PlaybackService extends ChangeNotifier {
       );
     }
 
+    if (!Platform.isAndroid && !plan.shouldWriteBackgroundCache) {
+      final refresh = CacheService().audioRefreshFor(track, tx.qualityStr);
+      if (refresh != null) {
+        CacheService().releaseAudioRefreshProtection(refresh);
+      }
+    }
     if (plan.usesCachedFile && plan.resolvedSong.shouldRefreshCachedMetadata) {
       return true;
     }
@@ -3866,6 +3972,11 @@ class PlaybackService extends ChangeNotifier {
       _stableCacheTrack = track;
       _stableCacheSong = songDetail;
       _stableCacheQuality = tx.qualityStr;
+      _stableCacheRefresh = CacheService().audioRefreshFor(
+        track,
+        tx.qualityStr,
+      );
+      if (!_desiredPlaying) _releaseDeferredCacheProtection();
       return true;
     }
 
@@ -6183,6 +6294,7 @@ class PlaybackService extends ChangeNotifier {
             ? audioCacheIdentityFor(
                 track,
                 CacheService.normalizeQualityValue(quality),
+                includeOrigin: true,
               )
             : null,
         requestHeaders: needsHeaders
@@ -6242,8 +6354,9 @@ class PlaybackService extends ChangeNotifier {
   Future<bool> _cacheSongInBackground(
     Track track,
     SongDetail detail,
-    String quality,
-  ) async {
+    String quality, {
+    ({String key, int epoch})? refreshRequest,
+  }) async {
     if (Platform.isAndroid) return false;
     final key = _trackLogKey(track, quality);
     try {
@@ -6252,7 +6365,12 @@ class PlaybackService extends ChangeNotifier {
         'source=${track.source.name}',
         toDeveloperPanel: true,
       );
-      final cached = await CacheService().cacheSong(track, detail, quality);
+      final cached = await CacheService().cacheSong(
+        track,
+        detail,
+        quality,
+        refreshRequest: refreshRequest,
+      );
       if (!cached) {
         _logPlaybackDebug(
           '[PlaybackService] 后台缓存未写入: $key',
@@ -6504,6 +6622,8 @@ class PlaybackService extends ChangeNotifier {
   Future<void> forceDispose() async {
     AuthService().onSessionEnded = null;
     _controlIntent.invalidate();
+    _cancelActiveAudioRefresh();
+    _clearDeferredCache();
     try {
       _resetPreloadState();
       await _cleanupCurrentTempFile();
@@ -6539,6 +6659,8 @@ class PlaybackService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _cancelActiveAudioRefresh();
+    _clearDeferredCache();
     AuthService().onSessionEnded = null;
     // Lyrics are independent of native loads and may still be awaiting HTTP.
     // Invalidate their callbacks before disposing this presentation owner.

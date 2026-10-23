@@ -30,6 +30,17 @@ void main() {
     expect(identity(quality: 'lossless'), isNot(value));
     expect(identity(source: 'netease'), isNot(value));
     expect(identity(origin: 'other'), isNot(value));
+    expect(
+      completeAudioCacheKey(identity(origin: 'other')),
+      completeAudioCacheKey(value),
+    );
+    for (final other in [
+      identity(song: 'abc'),
+      identity(quality: 'lossless'),
+      identity(source: 'netease'),
+    ]) {
+      expect(completeAudioCacheKey(other), isNot(completeAudioCacheKey(value)));
+    }
   });
   test(
     'private libraries isolate server and user without storing credentials',

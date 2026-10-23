@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/track.dart';
+import '../../services/player_service.dart';
 import 'settings_sections/settings_sections.dart';
 
 /// 移动端播放器设置底部弹出板 - Material Design Expressive 风格
@@ -83,8 +84,8 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
               end: Alignment.bottomCenter,
               colors: [
                 colorScheme.surfaceContainerHigh,
-                colorScheme.surfaceContainerHighest.withValues(alpha:
-                  isDark ? 0.95 : 0.98,
+                colorScheme.surfaceContainerHighest.withValues(
+                  alpha: isDark ? 0.95 : 0.98,
                 ),
               ],
             ),
@@ -134,6 +135,20 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
                   cacheExtent: 500,
                   // 子组件使用 RepaintBoundary 隔离重绘
                   children: [
+                    if (PlayerService().canRefreshCurrentAudio &&
+                        widget.currentTrack != null &&
+                        widget.currentTrack!.source != MusicSource.local)
+                      ListTile(
+                        leading: const Icon(Icons.refresh_rounded),
+                        title: const Text('重新获取音频'),
+                        subtitle: const Text('重新联网获取，成功后替换缓存'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          PlayerService().refreshCurrentAudio(
+                            widget.currentTrack!,
+                          );
+                        },
+                      ),
                     // 播放顺序
                     RepaintBoundary(child: PlaybackModeSection()),
 

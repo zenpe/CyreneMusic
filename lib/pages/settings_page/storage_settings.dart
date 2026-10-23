@@ -18,9 +18,11 @@ String get _audioCacheDescription =>
 
 String get _audioCacheLabel => '音频缓存';
 
-String _audioCacheSummary(CacheStats stats) => Platform.isAndroid
-    ? '完整缓存 ${stats.completeFiles ?? 0} 首 · 部分缓存 ${stats.partialFiles ?? 0} 首'
-    : '$_audioCacheLabel ${stats.totalFiles} 首歌曲';
+String _audioCacheSummary(CacheStats stats) =>
+    '完整 ${stats.completeFiles ?? stats.totalFiles} 首（${formatFileSize(stats.completeSize)}）'
+    '${Platform.isAndroid ? ' · 片段 ${formatFileSize(stats.partialSize)}' : ''}'
+    '${stats.temporarySize > 0 ? ' · 写入/待释放 ${formatFileSize(stats.temporarySize)}' : ''}'
+    '\n音频占用 ${stats.formattedSize} / ${CacheService().formattedMaxCacheSize}';
 
 /// 存储设置组件
 class StorageSettings extends StatefulWidget {
@@ -436,7 +438,7 @@ class _StorageSettingsState extends State<StorageSettings> {
           '歌词详情 可用 ${stats.lyric.readyCount} / 空结果 ${stats.lyric.emptyCount} / 失败退避 ${stats.lyric.failedCount}',
         ),
         actions: [
-          if (stats.totalFiles > 0)
+          if (stats.totalFiles > 0 || stats.totalSize > 0)
             CupertinoActionSheetAction(
               isDestructiveAction: true,
               onPressed: () {
@@ -591,9 +593,11 @@ class _StorageSettingsState extends State<StorageSettings> {
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  _audioCacheSummary(stats.audio),
-                  style: Theme.of(context).textTheme.bodyMedium,
+                Expanded(
+                  child: Text(
+                    _audioCacheSummary(stats.audio),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
                 ),
               ],
             ),
@@ -649,7 +653,7 @@ class _StorageSettingsState extends State<StorageSettings> {
             onPressed: () => Navigator.pop(context),
             child: const Text('关闭'),
           ),
-          if (stats.totalFiles > 0)
+          if (stats.totalFiles > 0 || stats.totalSize > 0)
             FilledButton.icon(
               onPressed: () {
                 Navigator.pop(context);
@@ -785,7 +789,7 @@ class _StorageSettingsState extends State<StorageSettings> {
             onPressed: () => Navigator.pop(context),
             child: const Text('关闭'),
           ),
-          if (stats.totalFiles > 0)
+          if (stats.totalFiles > 0 || stats.totalSize > 0)
             fluent_ui.FilledButton(
               onPressed: () {
                 Navigator.pop(context);

@@ -9,10 +9,12 @@ import android.media.MediaFormat;
 import androidx.media3.common.C;
 import androidx.media3.database.StandaloneDatabaseProvider;
 import androidx.media3.datasource.DataSource;
+import androidx.media3.datasource.DataSink;
 import androidx.media3.datasource.DataSpec;
 import androidx.media3.datasource.TransferListener;
 import androidx.media3.datasource.cache.Cache;
 import androidx.media3.datasource.cache.CacheDataSource;
+import androidx.media3.datasource.cache.CacheDataSink;
 import androidx.media3.datasource.cache.CacheEvictor;
 import androidx.media3.datasource.cache.CacheSpan;
 import androidx.media3.datasource.cache.ContentMetadataMutations;
@@ -32,7 +34,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantLock;
 import org.json.JSONObject;
-import org.json.JSONArray;
 
 /** Process-wide cache. Player disposal/recreation never releases a live store. */
 final class StreamCacheManager {
@@ -51,7 +52,7 @@ final class StreamCacheManager {
     private final ReentrantLock stateLock = new ReentrantLock();
     private final Map<String, Map<String, String>> registrations = new LinkedHashMap<>();
     private final Map<String, Integer> readers = new HashMap<>();
-    private final Set<String> pendingRemoval = new HashSet<>();
+    private final Set<String> pendingRemoval = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private volatile SimpleCache cache;
     private volatile boolean enabled;
     private String directory;
@@ -60,6 +61,8 @@ final class StreamCacheManager {
     private long quota;
     private boolean copying;
     private long reservedBytes;
+    private String copyingKey;
+    private final Set<String> refreshTargets = new HashSet<>();
 
     boolean handle(Context context, MethodCall call, Result result) {
         if (!call.method.startsWith("streamCache.")) return false;
@@ -106,7 +109,7 @@ final class StreamCacheManager {
                     } else if (!requested.equals(directory)) {
                         throw new IllegalStateException("Cache directory changes require process restart");
                     }
-                    if (complete == null) complete = new CompleteAudioStore(new File(requested + "-complete-v1"));
+                    if (complete == null) complete = new CompleteAudioStore(new File(requested + "-complete-v2"));
                     stateLock.lock();
                     try {
                         if (quota != bytes) complete.invalidateJobs();
@@ -114,6 +117,7 @@ final class StreamCacheManager {
                         complete.trim(bytes);
                         updateQuota();
                         enabled = nextEnabled;
+                        pruneIdle();
                     } finally { stateLock.unlock(); }
                     break;
                 }
@@ -123,9 +127,25 @@ final class StreamCacheManager {
                     break;
                 }
                 case "streamCache.stats": value = stats(); break;
-                case "streamCache.clear": remove(null, null, null); break;
+                case "streamCache.clear": remove(null, null, null, null); break;
+                case "streamCache.refresh": {
+                    Map<String, String> identity = call.argument("identity");
+                    stateLock.lock();
+                    try {
+                        if (complete != null) complete.invalidateJobs();
+                        refreshTargets.clear();
+                        refreshTargets.add(CompleteAudioStore.identity(identity));
+                        removeFragments(identity.get("source"), identity.get("songId"), identity.get("quality"), identity.get("owner"));
+                    } finally { stateLock.unlock(); }
+                    break;
+                }
+                case "streamCache.cancelRefresh": {
+                    Map<String, String> identity = call.argument("identity");
+                    refreshTargets.remove(CompleteAudioStore.identity(identity));
+                    break;
+                }
                 case "streamCache.delete": remove(call.argument("source"),
-                        call.argument("songId"), call.argument("quality")); break;
+                        call.argument("songId"), call.argument("quality"), call.argument("owner")); break;
                 default: main.post(result::notImplemented); return;
                 }
                 final Object reply = value;
@@ -146,22 +166,39 @@ final class StreamCacheManager {
     DataSource.Factory wrap(DataSource.Factory upstream, String uri,
             Map<?, ?> headers, Map<String, String> metadata) {
         if (metadata == null || !(uri.startsWith("https://") || uri.startsWith("http://"))) return upstream;
-        // Exact URL + representation + identity. Never join different signed URLs.
-        TreeMap<String, String> normalized = new TreeMap<>();
-        if (headers != null) for (Map.Entry<?, ?> entry : headers.entrySet()) {
-            normalized.put(entry.getKey().toString().toLowerCase(Locale.ROOT), entry.getValue().toString());
-        }
-        TreeMap<String, String> identity = new TreeMap<>();
-        for (String field : new String[]{"source", "songId", "quality", "scope", "owner", "origin"})
-            if (metadata.containsKey(field)) identity.put(field, metadata.get(field));
-        final String key = digest(new JSONArray(Arrays.asList(uri,
-                new JSONObject(normalized).toString(), new JSONObject(identity).toString())
-                ).toString());
+        final String key = fragmentKey(uri, metadata.get("owner"));
         // Metadata contains no URL or headers; scope need not be persisted in clear.
         Map<String, String> stored = new HashMap<>(metadata);
         stored.remove("scope");
         final String payload = new JSONObject(stored).toString();
-        return () -> new StreamDataSource(upstream, key, payload);
+        final long epoch = complete == null ? -1 : complete.epoch();
+        worker.execute(this::makeRoomForIncoming);
+        return () -> new StreamDataSource(upstream, key, payload, epoch);
+    }
+
+    private void makeRoomForIncoming() {
+        stateLock.lock();
+        try {
+            if (!enabled || complete == null || cache == null) return;
+            pruneIdle();
+            synchronized (cache) {
+                complete.trim(Math.max(0, quota - cache.getCacheSpace() - reservedBytes
+                        - evictor.pendingBytes() - Math.min(quota / 5, 32L * 1024 * 1024)), refreshTargets);
+            }
+            updateQuota();
+        } catch (Exception ignored) { }
+        finally { stateLock.unlock(); }
+    }
+
+    static String fragmentKey(String uri, String owner) {
+        return digest(owner == null || "public".equals(owner) ? uri : owner + "\u0000" + uri);
+    }
+
+    private void pruneIdle() {
+        if (cache == null) return;
+        synchronized (cache) {
+            evictor.pruneIdle(cache, System.currentTimeMillis(), Math.min(quota / 5, 128L * 1024 * 1024));
+        }
     }
 
     /** MediaSource lifetime includes paused/current/prepared slots and all seeks. */
@@ -201,6 +238,8 @@ final class StreamCacheManager {
     // Management stays responsive while a separate, single copier does disk IO.
     // No upstream factory: missing bytes cannot cause a hidden network request.
     private void tryPromoteAny() {
+        stateLock.lock();
+        try {
         if (!enabled || copying || complete == null || cache == null) return;
         for (String key : cache.getKeys()) {
             try {
@@ -210,23 +249,35 @@ final class StreamCacheManager {
                 long length = ContentMetadata.getContentLength(content);
                 if (length <= 0 || length > quota / 2 || !cache.isCached(key, 0, length)) continue;
                 JSONObject json = new JSONObject(content.get(META, "{}"));
-                if (!json.has("owner") || !json.has("origin")) continue;
+                if (!json.has("owner")) continue;
                 Map<String, String> metadata = new HashMap<>();
                 for (Iterator<String> fields = json.keys(); fields.hasNext();) {
                     String field = fields.next(); metadata.put(field, json.getString(field));
                 }
-                if (complete.lookup(metadata) != null) continue;
-                complete.trim(Math.max(0, quota - 2 * length));
-                if (complete.bytes() + 2 * length > quota) continue;
+                if (complete.lookup(metadata) != null && !refreshTargets.contains(CompleteAudioStore.identity(metadata))) {
+                    if (!readers.containsKey(key)) finishRemoval(cache, key);
+                    continue;
+                }
                 synchronized (cache) { evictor.pinned.add(key); }
                 reservedBytes = length;
                 updateQuota();
+                synchronized (cache) {
+                    complete.trim(Math.max(0, quota - cache.getCacheSpace() - evictor.pendingBytes() - length), refreshTargets);
+                    if (complete.bytes() + cache.getCacheSpace() + evictor.pendingBytes() + length > quota) {
+                        reservedBytes = 0;
+                        if (!readers.containsKey(key)) evictor.pinned.remove(key);
+                        updateQuota();
+                        continue;
+                    }
+                }
                 copying = true;
+                copyingKey = key;
                 long epoch = complete.epoch();
                 copier.execute(() -> copyComplete(key, length, metadata, epoch));
                 return;
             } catch (Exception ignored) { /* Optional cache cannot fail playback. */ }
         }
+        } finally { stateLock.unlock(); }
     }
 
     private void copyComplete(String key, long length, Map<String, String> metadata, long epoch) {
@@ -268,8 +319,10 @@ final class StreamCacheManager {
         } catch (Exception ignored) { }
         File output = staged; String hash = checksum; JSONObject properties = format;
         worker.execute(() -> {
+            stateLock.lock();
             try {
                 if (properties != null && enabled && complete.publish(output, metadata, hash, properties, epoch)) {
+                    refreshTargets.remove(CompleteAudioStore.identity(metadata));
                     // Remove redundant fragments only after the complete object commits.
                     pendingRemoval.add(key);
                     cache.applyContentMetadataMutations(key,
@@ -285,9 +338,17 @@ final class StreamCacheManager {
             } catch (Exception ignored) { }
             finally {
                 if (output != null) output.delete();
-                synchronized (cache) { evictor.pinned.remove(key); }
-                copying = false; reservedBytes = 0; updateQuota();
+                if (complete.epoch() == epoch) refreshTargets.remove(CompleteAudioStore.identity(metadata));
+                synchronized (cache) { if (!readers.containsKey(key)) evictor.pinned.remove(key); }
+                copying = false; copyingKey = null; reservedBytes = 0; updateQuota();
+                try {
+                    if (pendingRemoval.contains(key) && !readers.containsKey(key)) {
+                        finishRemoval(cache, key); pendingRemoval.remove(key);
+                    }
+                } catch (IOException ignored) { }
                 tryPromoteAny();
+                pruneIdle();
+                stateLock.unlock();
             }
         });
     }
@@ -326,6 +387,7 @@ final class StreamCacheManager {
     private Map<String, Object> stats() throws Exception {
         stateLock.lock();
         try {
+            pruneIdle();
             Map<String, Object> result = new HashMap<>();
             Map<String, Set<String>> groups = new HashMap<>();
             long bytes = 0;
@@ -357,14 +419,28 @@ final class StreamCacheManager {
             result.put("completeFiles", completeIdentities.size());
             result.put("partialFiles", Math.max(0, count - completeIdentities.size()));
             result.put("totalSize", bytes);
+            result.put("completeSize", complete == null ? 0L : complete.bytes());
+            result.put("partialSize", cache == null ? 0L : cache.getCacheSpace());
+            long temporary = reservedBytes;
+            if (cache != null) synchronized (cache) { temporary += evictor.pendingBytes(); }
+            result.put("temporarySize", temporary);
+            result.put("totalSize", (complete == null ? 0 : complete.bytes())
+                    + (cache == null ? 0 : cache.getCacheSpace()) + temporary);
             return result;
         } finally { stateLock.unlock(); }
     }
 
-    private void remove(String source, String songId, String quality) throws Exception {
+    private void remove(String source, String songId, String quality, String owner) throws Exception {
         stateLock.lock();
         try {
-            if (complete != null) complete.remove(source, songId, quality);
+            if (complete != null) complete.remove(source, songId, quality, owner);
+            if (source == null) refreshTargets.clear();
+            removeFragments(source, songId, quality, owner);
+            updateQuota();
+        } finally { stateLock.unlock(); }
+    }
+
+    private void removeFragments(String source, String songId, String quality, String owner) throws Exception {
             if (cache == null) return;
             Set<String> keys = new HashSet<>(cache.getKeys());
             keys.addAll(readers.keySet());
@@ -372,19 +448,18 @@ final class StreamCacheManager {
                 JSONObject meta = new JSONObject(cache.getContentMetadata(key).get(META, "{}"));
                 if (source != null && (!source.equals(meta.optString("source")) ||
                         !songId.equals(meta.optString("songId")) ||
-                        (quality != null && !quality.equals(meta.optString("quality"))))) continue;
+                        (quality != null && !quality.equals(meta.optString("quality"))) ||
+                        (owner != null && !owner.equals(meta.optString("owner"))))) continue;
                 // Preserve the current read/connection. Persist the deletion so
                 // even process death before close cannot resurrect these bytes.
                 pendingRemoval.add(key);
                 cache.applyContentMetadataMutations(key,
                         new ContentMetadataMutations().set(PENDING_REMOVAL, 1L));
-                if (!readers.containsKey(key)) {
+                if (!readers.containsKey(key) && !key.equals(copyingKey)) {
                     finishRemoval(cache, key);
                     pendingRemoval.remove(key);
                 }
             }
-            updateQuota();
-        } finally { stateLock.unlock(); }
     }
 
     private boolean acquire(String key, String metadata) throws IOException {
@@ -396,6 +471,7 @@ final class StreamCacheManager {
             mutations.set(META, metadata);
             cache.applyContentMetadataMutations(key, mutations);
             readers.put(key, readers.getOrDefault(key, 0) + 1);
+            synchronized (cache) { evictor.pinned.add(key); }
             return true;
         } finally { stateLock.unlock(); }
     }
@@ -415,7 +491,8 @@ final class StreamCacheManager {
                 if (count > 0) readers.put(key, count);
                 else {
                     readers.remove(key);
-                    if (pendingRemoval.contains(key)) {
+                    synchronized (cache) { if (!key.equals(copyingKey)) evictor.pinned.remove(key); }
+                    if (pendingRemoval.contains(key) && !key.equals(copyingKey)) {
                         finishRemoval(cache, key);
                         pendingRemoval.remove(key);
                     }
@@ -430,6 +507,11 @@ final class StreamCacheManager {
                 // the next process initialization will finish the removal.
             } finally { stateLock.unlock(); }
             tryPromoteAny();
+            // Extractor repositioning and seeks close/reopen DataSources.
+            // Refresh intent belongs to playback, which cancels it explicitly
+            // on source replacement/stop. A stream close must not consume it.
+            pruneIdle();
+            updateQuota();
         });
     }
 
@@ -437,6 +519,46 @@ final class StreamCacheManager {
         cache.removeResource(key);
         cache.applyContentMetadataMutations(key,
                 new ContentMetadataMutations().remove(PENDING_REMOVAL));
+    }
+
+    /** Cache capacity is optional: stop writing without reopening the HTTP stream. */
+    private final class BudgetedSink implements DataSink {
+        private final String key;
+        private final long epoch;
+        private DataSink sink;
+        private boolean owned;
+        BudgetedSink(String key, long epoch) { this.key = key; this.epoch = epoch; }
+        @Override public void open(DataSpec spec) throws IOException {
+            synchronized (cache) {
+                owned = evictor.writers.add(key);
+            }
+            if (!owned) return;
+            sink = new CacheDataSink.Factory().setCache(cache)
+                    .setFragmentSize(2 * 1024 * 1024).createDataSink();
+            try { sink.open(spec); } catch (IOException error) { close(); }
+        }
+        @Override public void write(byte[] data, int offset, int length) throws IOException {
+            if (sink == null) return;
+            // Memory-only admission does not contend with statistics or disk maintenance.
+            boolean admitted = enabled && complete.epoch() == epoch
+                    && !pendingRemoval.contains(key) && evictor.reserve(key, length);
+            if (!admitted) {
+                close();
+                // Reclaim on the worker, never on the native playback thread.
+                worker.execute(StreamCacheManager.this::makeRoomForIncoming);
+                return;
+            }
+            try { sink.write(data, offset, length); } catch (IOException error) { close(); }
+        }
+        @Override public void close() {
+            try { if (sink != null) sink.close(); } catch (IOException ignored) { }
+            finally {
+                sink = null;
+                if (owned) synchronized (cache) {
+                    evictor.releaseReservation(key); evictor.writers.remove(key); owned = false;
+                }
+            }
+        }
     }
 
     private final class StreamDataSource implements DataSource {
@@ -454,9 +576,10 @@ final class StreamCacheManager {
         private boolean changedResource;
         private boolean validated;
         private int upstreamOpens;
+        private final long epoch;
 
-        StreamDataSource(DataSource.Factory upstream, String key, String metadata) {
-            this.upstream = upstream; this.key = key; this.metadata = metadata;
+        StreamDataSource(DataSource.Factory upstream, String key, String metadata, long epoch) {
+            this.upstream = upstream; this.key = key; this.metadata = metadata; this.epoch = epoch;
         }
         @Override public void addTransferListener(TransferListener listener) {
             listeners.add(listener);
@@ -467,14 +590,16 @@ final class StreamCacheManager {
             return source;
         }
         @Override public long open(DataSpec dataSpec) throws IOException {
-            spec = dataSpec.buildUpon().setKey(key).build(); consumed = 0;
+            spec = dataSpec.buildUpon().setKey(key)
+                    .setFlags(dataSpec.flags | DataSpec.FLAG_ALLOW_CACHE_FRAGMENTATION).build(); consumed = 0;
             reachedEnd = false; openedLength = C.LENGTH_UNSET;
             changedResource = false; validated = true; upstreamOpens = 0;
             try {
-                try { leased = acquire(key, metadata); }
+                try { leased = complete != null && epoch == complete.epoch() && acquire(key, metadata); }
                 catch (IOException ignored) { leased = false; }
                 hadSpans = leased && !cache.getCachedSpans(key).isEmpty();
                 delegate = listen(leased ? new CacheDataSource.Factory().setCache(cache)
+                        .setCacheWriteDataSinkFactory(() -> new BudgetedSink(key, epoch))
                         .setUpstreamDataSourceFactory(() -> observe(upstream.createDataSource()))
                         .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
                         .createDataSource() : upstream.createDataSource());
@@ -572,7 +697,7 @@ final class StreamCacheManager {
     }
 
     /** Same span LRU policy as Media3, with a live quota to avoid reopening locks. */
-    private static final class MutableLruEvictor implements CacheEvictor {
+    static final class MutableLruEvictor implements CacheEvictor {
         private final TreeSet<CacheSpan> spans = new TreeSet<>((a, b) -> {
             int order = Long.compare(a.lastTouchTimestamp, b.lastTouchTimestamp);
             return order == 0 ? a.compareTo(b) : order;
@@ -580,27 +705,61 @@ final class StreamCacheManager {
         private long bytes;
         private long maxBytes;
         final Set<String> pinned = new HashSet<>();
+        final Set<String> writers = new HashSet<>();
+        private final Map<String, Long> pending = new HashMap<>();
+        synchronized long pendingBytes() { long sum = 0; for (long value : pending.values()) sum += value; return sum; }
+        // This monitor protects only byte counters and reservations. Never perform
+        // cache/disk operations while holding it (cache callbacks enter this monitor).
+        synchronized boolean reserve(String key, long incoming) {
+            if (incoming < 0 || incoming > maxBytes - bytes - pendingBytes()) return false;
+            pending.merge(key, incoming, Long::sum);
+            return true;
+        }
+        synchronized void releaseReservation(String key) { pending.remove(key); }
+        private synchronized List<CacheSpan> snapshot() { return new ArrayList<>(spans); }
+        private synchronized boolean fits(long incoming) {
+            return bytes + pendingBytes() + incoming <= maxBytes;
+        }
+        void pruneIdle(Cache cache, long now, long cap) {
+            long idle = 0;
+            for (CacheSpan span : snapshot()) {
+                if (pinned.contains(span.key)) continue;
+                if (now - span.lastTouchTimestamp >= 24L * 60 * 60 * 1000) cache.removeSpan(span);
+                else idle += span.length;
+            }
+            for (CacheSpan span : snapshot()) {
+                if (idle <= cap) break;
+                if (!pinned.contains(span.key)) { cache.removeSpan(span); idle -= span.length; }
+            }
+        }
         MutableLruEvictor(long maxBytes) { this.maxBytes = maxBytes; }
-        void setMaxBytes(Cache cache, long value) { maxBytes = value; evict(cache, 0); }
+        void setMaxBytes(Cache cache, long value) {
+            synchronized (this) { maxBytes = value; }
+            evict(cache, 0);
+        }
         private void evict(Cache cache, long incoming) {
-            for (CacheSpan span : new ArrayList<>(spans)) {
-                if (bytes + incoming <= maxBytes) break;
+            for (CacheSpan span : snapshot()) {
+                if (fits(incoming)) break;
                 if (!pinned.contains(span.key)) cache.removeSpan(span);
             }
         }
         @Override public boolean requiresCacheSpanTouches() { return true; }
         @Override public void onCacheInitialized() { }
         @Override public void onStartFile(Cache cache, String key, long position, long length) {
-            if (length != C.LENGTH_UNSET) evict(cache, length);
+            // Actual writes reserve bytes; declared fragment length is not an allocation.
         }
         @Override public void onSpanAdded(Cache cache, CacheSpan span) {
-            spans.add(span); bytes += span.length; evict(cache, 0);
+            synchronized (this) {
+                pending.computeIfPresent(span.key, (key, value) -> Math.max(0, value - span.length));
+                spans.add(span); bytes += span.length;
+            }
+            evict(cache, 0);
         }
-        @Override public void onSpanRemoved(Cache cache, CacheSpan span) {
+        @Override public synchronized void onSpanRemoved(Cache cache, CacheSpan span) {
             spans.remove(span); bytes -= span.length;
         }
-        @Override public void onSpanTouched(Cache cache, CacheSpan oldSpan, CacheSpan newSpan) {
-            onSpanRemoved(cache, oldSpan); onSpanAdded(cache, newSpan);
+        @Override public synchronized void onSpanTouched(Cache cache, CacheSpan oldSpan, CacheSpan newSpan) {
+            spans.remove(oldSpan); spans.add(newSpan);
         }
     }
 }

@@ -71,6 +71,228 @@ void main() {
   );
 
   test(
+    'explicit audio refresh bypasses both caches and cannot replace a newer selection',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()..playable.addAll(['0', '1']);
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      final tracks = _remoteTracks(2);
+      final late = Completer<TrackResolutionResult>();
+      try {
+        await playback.playNow(tracks, 0, QueueSource.none);
+        resolver.memoryPlayable.add('0');
+        resolver.requests.clear();
+        await playback.refreshCurrentAudio(tracks[0]);
+        expect(resolver.requests, contains('0'));
+        expect(resolver.cacheBypasses.last, isTrue);
+        expect(resolver.memoryBypasses.last, isTrue);
+        expect(playback.activeTrack?.id, '0');
+
+        resolver.requests.clear();
+        resolver.gates['0'] = late;
+        final refreshing = playback.refreshCurrentAudio(tracks[0]);
+        await waitUntil(() => resolver.requests.contains('0'));
+        await playback.jumpTo(1);
+        final loaded = engine.loadedUrls.length;
+        late.complete(
+          resolver.peekResolved(
+            songId: '0',
+            quality: AudioQuality.standard,
+            source: MusicSource.netease,
+          )!,
+        );
+        await refreshing;
+        expect(playback.activeTrack?.id, '1');
+        expect(engine.loadedUrls.length, loaded);
+        expect(playback.isTrackSwitchPending, isFalse);
+        resolver.requests.clear();
+        await playback.refreshCurrentAudio(tracks[0]);
+        expect(
+          resolver.requests,
+          isEmpty,
+          reason: 'an old settings sheet must not refresh a different song',
+        );
+      } finally {
+        if (!late.isCompleted) late.complete(_Resolver.failure);
+        playback.dispose();
+      }
+    },
+  );
+
+  for (final action in [
+    'pause',
+    'stop',
+    'switch',
+    'dispose',
+    'clear',
+    'remove',
+  ]) {
+    test('abandoned deferred refresh releases protection on $action', () async {
+      await configureTestSource();
+      final cache = CacheService();
+      await cache.initialize();
+      await cache.setCacheEnabled(true);
+      final targets = _remoteTracks(2);
+      final resolver = _Resolver()..playable.addAll(['0', '1']);
+      final playback = _createPlayback(resolver);
+      var disposed = false;
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType('audio', 'mpeg');
+        request.response.add([0x49, 0x44, 0x33, 0, 0, 0, 0, 0]);
+        await request.response.close();
+      });
+      await HttpOverrides.runZoned(() async {
+        try {
+          final target = targets[0];
+          final detail = SongDetail(
+            id: target.id,
+            name: target.name,
+            pic: '',
+            arName: 'Artist',
+            alName: '',
+            level: 'standard',
+            size: '',
+            url: 'http://127.0.0.1:${server.port}/song.mp3',
+            lyric: '',
+            tlyric: '',
+            source: target.source,
+          );
+          expect(await cache.cacheSong(target, detail, 'standard'), isTrue);
+          await playback.playNow(targets, 0, QueueSource.none);
+          await playback.refreshCurrentAudio(target);
+          expect(cache.audioRefreshFor(target, 'standard'), isNotNull);
+          switch (action) {
+            case 'pause':
+              await playback.pause();
+            case 'stop':
+              await playback.stop();
+            case 'switch':
+              await playback.jumpTo(1);
+            case 'dispose':
+              playback.dispose();
+              disposed = true;
+            case 'clear':
+              await playback.clearSession();
+            case 'remove':
+              await playback.removeAt(1);
+              await playback.removeAt(0);
+          }
+          expect(cache.audioRefreshFor(target, 'standard'), isNull);
+          expect(
+            cache.isCached(target),
+            isTrue,
+            reason: 'releasing protection does not delete the old file',
+          );
+          await cache.setMaxCacheSizeBytes(1);
+          expect(
+            cache.isCached(target),
+            isFalse,
+            reason: 'abandoned refresh must not block quota eviction',
+          );
+        } finally {
+          if (!disposed) playback.dispose();
+          await cache.clearAllCache();
+          await cache.setMaxCacheSizeBytes(512 * 1024 * 1024);
+          await cache.setCacheEnabled(false);
+          await server.close(force: true);
+        }
+      }, createHttpClient: _RealHttpOverrides().createHttpClient);
+    });
+  }
+
+  for (final scenario in ['ordinary', 'refresh', 'clear']) {
+    final refresh = scenario != 'ordinary';
+    test(
+      'pause resume preserves ${scenario == 'clear'
+          ? 'explicit cache clearing'
+          : refresh
+          ? 'refresh replacement'
+          : 'ordinary deferred caching'}',
+      () async {
+        await configureTestSource();
+        final cache = CacheService();
+        await cache.initialize();
+        await cache.setCacheEnabled(true);
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        var downloads = 0;
+        server.listen((request) async {
+          downloads++;
+          request.response.headers.contentType = ContentType('audio', 'mpeg');
+          request.response.add([
+            0x49,
+            0x44,
+            0x33,
+            ...List.filled(13, downloads),
+          ]);
+          await request.response.close();
+        });
+        final resolver = _Resolver()
+          ..playable.add('0')
+          ..urlOverride = 'http://127.0.0.1:${server.port}/song.mp3';
+        final target = _remoteTracks(1).single;
+        await HttpOverrides.runZoned(() async {
+          final engine = _Engine();
+          final playback = _createPlayback(resolver, engine: engine);
+          try {
+            String? oldPath;
+            if (refresh) {
+              final result = await resolver.resolve(
+                songId: '0',
+                quality: AudioQuality.standard,
+                source: target.source,
+                title: target.name,
+                artist: 'Artist',
+                timeout: const Duration(seconds: 1),
+              );
+              expect(
+                await cache.cacheSong(target, result.detail!, 'standard'),
+                isTrue,
+              );
+              oldPath = cache.getCachedAudioFilePath(target);
+            }
+            await playback.playNow([target], 0, QueueSource.none);
+            if (refresh) await playback.refreshCurrentAudio(target);
+            await playback.pause();
+            expect(cache.audioRefreshFor(target, 'standard'), isNull);
+            expect(downloads, refresh ? 1 : 0);
+            if (scenario == 'clear') await cache.clearAllCache();
+            await playback.resume();
+            engine.positionValue = const Duration(seconds: 1);
+            engine._positions.add(engine.positionValue);
+            if (scenario == 'clear') {
+              await Future<void>.delayed(const Duration(milliseconds: 3500));
+              expect(cache.isCached(target), isFalse);
+              expect(downloads, 1);
+              expect(cache.audioRefreshFor(target, 'standard'), isNull);
+              return;
+            }
+            for (var i = 0; i < 110; i++) {
+              if (cache.isCached(target) &&
+                  cache.getCachedAudioFilePath(target) != oldPath &&
+                  cache.audioRefreshFor(target, 'standard') == null) {
+                break;
+              }
+              await Future<void>.delayed(const Duration(milliseconds: 50));
+            }
+            expect(cache.isCached(target), isTrue);
+            expect(cache.getCachedAudioFilePath(target), isNot(oldPath));
+            expect(downloads, refresh ? 2 : 1);
+            expect(cache.audioRefreshFor(target, 'standard'), isNull);
+            expect(engine.resumeCount, 1);
+          } finally {
+            playback.dispose();
+            await cache.clearAllCache();
+            await cache.setCacheEnabled(false);
+            await server.close(force: true);
+          }
+        }, createHttpClient: _RealHttpOverrides().createHttpClient);
+      },
+    );
+  }
+
+  test(
     'remote playback writes an uncached song through background cache',
     () async {
       await configureTestSource();
@@ -1845,6 +2067,8 @@ class _RealHttpOverrides extends HttpOverrides {
 }
 
 class _Resolver extends TrackResolver {
+  final cacheBypasses = <bool>[];
+  final memoryBypasses = <bool>[];
   String? urlOverride;
   bool refreshUrl = false;
   final memoryPlayable = <String>{};
@@ -1893,13 +2117,16 @@ class _Resolver extends TrackResolver {
     required String quality,
     String? resolverFingerprint,
     bool skipCache = false,
-  }) async => const TrackLookupResult(
-    resolvedDetail: null,
-    cacheInfo: null,
-    isCached: false,
-    localFileMissing: false,
-    shouldRefreshCachedMetadata: false,
-  );
+  }) async {
+    cacheBypasses.add(skipCache);
+    return const TrackLookupResult(
+      resolvedDetail: null,
+      cacheInfo: null,
+      isCached: false,
+      localFileMissing: false,
+      shouldRefreshCachedMetadata: false,
+    );
+  }
 
   @override
   Future<TrackResolutionResult> resolve({
@@ -1916,6 +2143,7 @@ class _Resolver extends TrackResolver {
     bool Function()? acceptResult,
   }) async {
     final id = songId.toString();
+    memoryBypasses.add(skipMemoryCache);
     requests.add(id);
     if (!fetchLyrics) urlRequests.add(id);
     final gate = gates.remove(id);

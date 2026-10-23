@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import '../../services/sleep_timer_service.dart';
 import '../../services/playback_mode_service.dart';
 import '../../services/download_service.dart';
+import '../../services/player_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/lyric_style_service.dart';
 import '../../services/lyric_font_service.dart';
@@ -473,6 +474,18 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                 ),
                 _buildSectionDivider(),
               ],
+
+              if (PlayerService().activeTrack case final track?
+                  when PlayerService().canRefreshCurrentAudio)
+                _buildMenuItem(
+                  icon: Icons.refresh_rounded,
+                  label: '重新获取音频',
+                  subtitle: '重新联网获取，成功后替换缓存',
+                  onTap: () {
+                    _hideMenu();
+                    PlayerService().refreshCurrentAudio(track);
+                  },
+                ),
 
               // ======= 外观设置分组 =======
               _buildSectionTitle('外观'),

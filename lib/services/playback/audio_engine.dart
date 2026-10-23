@@ -570,7 +570,7 @@ class JustAudioEngine
 
     if (!_volumeInitialized) {
       final savedVolume = PersistentStorageService().getDouble('player_volume');
-      _currentVolume = (savedVolume ?? 0.7).clamp(0.0, 1.0);
+      _currentVolume = (savedVolume ?? 1.0).clamp(0.0, 1.0);
       _volumeInitialized = true;
     }
     await _awaitNative(
@@ -2204,7 +2204,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   static Future<void>? _mediaKitInitFuture;
 
   mk.Player? _player;
-  double _currentVolume = 70; // MediaKit 音量 0-100
+  double _currentVolume = 100; // MediaKit 音量 0-100
   double _playbackSpeed = 1.0;
   bool _hasMedia = false;
   EngineStartupTiming? _lastStartupTiming;
@@ -2392,13 +2392,8 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     unawaited(EqualizerService().applyEqualizer());
 
     final savedVolume = PersistentStorageService().getDouble('player_volume');
-    if (savedVolume != null) {
-      _currentVolume = (savedVolume.clamp(0.0, 1.0)) * 100;
-      await _player!.setVolume(_currentVolume);
-    } else {
-      _currentVolume = 70;
-      await _player!.setVolume(70);
-    }
+    _currentVolume = (savedVolume ?? 1.0).clamp(0.0, 1.0) * 100;
+    await _player!.setVolume(_currentVolume);
     await _player!.setRate(_playbackSpeed);
 
     _playingSub = _player!.stream.playing.listen((playing) {

@@ -40,12 +40,25 @@ class AndroidStreamCache {
       .invokeMethod<void>('streamCache.clear')
       .timeout(const Duration(seconds: 10));
 
-  static Future<void> delete(String source, String songId, String? quality) =>
-      channel
-          .invokeMethod<void>('streamCache.delete', {
-            'source': source,
-            'songId': songId,
-            'quality': quality,
-          })
-          .timeout(const Duration(seconds: 10));
+  static Future<void> refresh(Map<String, String> identity) => channel
+      .invokeMethod<void>('streamCache.refresh', {'identity': identity})
+      .timeout(const Duration(seconds: 2));
+
+  static Future<void> cancelRefresh(Map<String, String> identity) => channel
+      .invokeMethod<void>('streamCache.cancelRefresh', {'identity': identity})
+      .timeout(const Duration(seconds: 2));
+
+  static Future<void> delete(
+    String source,
+    String songId,
+    String? quality, {
+    String? owner,
+  }) => channel
+      .invokeMethod<void>('streamCache.delete', {
+        'source': source,
+        'songId': songId,
+        'quality': quality,
+        'owner': ?owner,
+      })
+      .timeout(const Duration(seconds: 10));
 }

@@ -30,6 +30,7 @@ void main() {
         await playback.previous();
         await playback.jumpTo(0);
         await playback.retryCurrentTrack();
+        await playback.refreshCurrentAudio(track);
         await playback.playRadioStream('https://example.invalid/audio', track);
         expect(playback.queue, isEmpty);
         expect(playback.state, PBState.idle);

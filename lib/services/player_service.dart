@@ -251,6 +251,9 @@ class PlayerService extends ChangeNotifier {
       _pb.retryCurrentTrack(expectedProblem: expectedProblem);
   Future<void> retryCurrentForRemoteSource() =>
       _pb.retryCurrentTrack(forceRemoteResolution: true);
+  Future<void> refreshCurrentAudio(Track expectedTrack) =>
+      _pb.refreshCurrentAudio(expectedTrack);
+  bool get canRefreshCurrentAudio => _pb.canRefreshCurrentAudio;
   Future<bool> revalidateActiveSource() => _pb.revalidateActiveSource();
   Future<void> stop() => _pb.stop();
   Future<void> togglePlayPause() => _pb.togglePlayPause();

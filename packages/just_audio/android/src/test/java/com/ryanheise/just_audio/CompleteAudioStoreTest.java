@@ -34,10 +34,59 @@ public class CompleteAudioStoreTest {
     }
     @Test public void identitiesIsolateQualityServerAndSource() throws Exception {
         publish(store.epoch());
-        for (String key : List.of("quality", "owner", "source", "songId", "origin")) {
+        for (String key : List.of("quality", "owner", "source", "songId")) {
             Map<String,String> changed = new HashMap<>(identity); changed.put(key, "other");
             assertNull(store.lookup(changed));
         }
+        Map<String,String> otherResolver = new HashMap<>(identity);
+        otherResolver.put("origin", "other-script");
+        assertEquals(store.lookup(identity).get("path"), store.lookup(otherResolver).get("path"));
+    }
+    @Test public void failedRefreshPreservesOldFileAndSuccessfulReplacementRetainsReaders() throws Exception {
+        publish(store.epoch());
+        String oldPath = (String)store.lookup(identity).get("path");
+        store.retainPath(oldPath);
+        long stale = store.epoch();
+        store.invalidateJobs();
+        assertFalse(publish(stale));
+        assertEquals(oldPath, store.lookup(identity).get("path"));
+        File staged = store.temporary();
+        Files.write(staged.toPath(), new byte[]{5,6,7,8});
+        assertTrue(store.publish(staged, identity, "new-checksum", new JSONObject().put("mime", "audio/mpeg"), store.epoch()));
+        assertNotEquals(oldPath, store.lookup(identity).get("path"));
+        assertTrue(new File(oldPath).exists());
+        assertEquals(1, store.identities().size());
+        store.releasePath(oldPath);
+        assertFalse(new File(oldPath).exists());
+        assertNotNull(new CompleteAudioStore(root).lookup(identity));
+    }
+
+    @Test public void refreshReservationDoesNotEvictPreviousGoodObject() throws Exception {
+        publish(store.epoch());
+        store.trim(0, Set.of(CompleteAudioStore.identity(identity)));
+        assertNotNull(store.lookup(identity));
+        store.trim(0);
+        assertNull(store.lookup(identity));
+    }
+
+    @Test public void restartKeepsNewestCommitAfterInterruptedReplacement() throws Exception {
+        publish(store.epoch());
+        Map<String,Object> old = store.lookup(identity);
+        File oldAudio = new File((String)old.get("path"));
+        File oldRecord = new File(root, old.get("key") + ".json");
+        byte[] record = Files.readAllBytes(oldRecord.toPath());
+        long modified = oldAudio.lastModified();
+        File staged = store.temporary(); Files.write(staged.toPath(), new byte[]{9,8,7,6});
+        assertTrue(store.publish(staged, identity, "replacement", new JSONObject().put("mime", "audio/mpeg"), store.epoch()));
+        String expected = (String)store.lookup(identity).get("path");
+        // Simulate process death before the previous record was retired.
+        Files.write(oldAudio.toPath(), new byte[]{1,2,3,4});
+        oldAudio.setLastModified(modified);
+        Files.write(oldRecord.toPath(), record);
+        store = new CompleteAudioStore(root);
+        assertEquals(expected, store.lookup(identity).get("path"));
+        assertEquals(1, store.identities().size());
+        assertFalse(oldAudio.exists());
     }
     @Test public void clearHidesImmediatelyButKeepsAllReadersUntilRelease() throws Exception {
         publish(store.epoch()); String path = (String)store.lookup(identity).get("path");
