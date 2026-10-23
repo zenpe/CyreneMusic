@@ -494,8 +494,16 @@ class _MyAppState extends State<MyApp> {
     // 此回调，只有最终失败才会到这里。
     PlayerService().onPlaybackFailure = (problem) {
       if (problem.kind == PlaybackProblemKind.sourceNotConfigured) return;
-      ToastUtils.error('${problem.message}\n《${problem.track.name}》');
+      final player = PlayerService();
+      if (player.isPlaying) {
+        ToastUtils.show(
+          '《${problem.track.name}》播放失败，继续播放《${player.displayTitle}》',
+        );
+      } else {
+        ToastUtils.error('${problem.message}\n《${problem.track.name}》');
+      }
     };
+    PlayerService().onPlaybackNotice = ToastUtils.show;
     final currentProblem = PlayerService().currentProblem;
     if (_shouldPresentPlaybackDialog(currentProblem)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -601,6 +609,7 @@ class _MyAppState extends State<MyApp> {
     PlayerService().problemNotifier.removeListener(_onPlaybackProblemChanged);
     PlayerService().onAudioSourceNotConfigured = null;
     PlayerService().onPlaybackFailure = null;
+    PlayerService().onPlaybackNotice = null;
     super.dispose();
   }
 

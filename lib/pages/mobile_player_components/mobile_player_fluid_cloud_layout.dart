@@ -428,7 +428,9 @@ class _MobilePlayerFluidCloudLayoutState
           constraints.maxHeight - 20,
         );
         final baseCoverSize = maxSide.clamp(140.0, 360.0);
-        final targetCoverSize = isPlaying ? baseCoverSize : baseCoverSize * 0.92;
+        final targetCoverSize = isPlaying
+            ? baseCoverSize
+            : baseCoverSize * 0.92;
 
         return AnimatedContainer(
           duration: const Duration(milliseconds: 350),
@@ -609,7 +611,8 @@ class _MobilePlayerFluidCloudLayoutState
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        if (track != null && track.source == MusicSource.netease)
+                        if (track != null &&
+                            track.source == MusicSource.netease)
                           IconButton(
                             icon: Icon(
                               _showSongWikiPanel
@@ -622,7 +625,9 @@ class _MobilePlayerFluidCloudLayoutState
                             ),
                             tooltip: _showSongWikiPanel ? '歌词' : '歌曲百科',
                             onPressed: () {
-                              setState(() => _showSongWikiPanel = !_showSongWikiPanel);
+                              setState(
+                                () => _showSongWikiPanel = !_showSongWikiPanel,
+                              );
                             },
                           ),
                         IconButton(
@@ -689,8 +694,10 @@ class _MobilePlayerFluidCloudLayoutState
                 ? (positionMs / durationMs).clamp(0.0, 1.0)
                 : 0.0;
             final bufferedProgress = durationMs > 0
-                ? (player.bufferedPosition.inMilliseconds / durationMs)
-                    .clamp(0.0, 1.0)
+                ? (player.bufferedPosition.inMilliseconds / durationMs).clamp(
+                    0.0,
+                    1.0,
+                  )
                 : 0.0;
 
             final totalStr = effectiveDuration.inSeconds > 0
@@ -1092,7 +1099,10 @@ class _MobilePlayerFluidCloudLayoutState
                     ),
 
                     AnimatedBuilder(
-                      animation: Listenable.merge([player.positionNotifier, player]),
+                      animation: Listenable.merge([
+                        player.positionNotifier,
+                        player,
+                      ]),
                       builder: (context, _) {
                         final effectiveDuration = _getEffectiveDuration(player);
                         return Text(
@@ -1114,19 +1124,12 @@ class _MobilePlayerFluidCloudLayoutState
               PlayerErrorBanner(
                 message: player.isAudioSourceNotConfigured
                     ? null
-                    : player.errorMessage,
+                    : player.playbackProblemMessage,
+                nonBlocking: player.isPlaying,
                 margin: const EdgeInsets.only(top: 6),
-                onRetry: player.canRetryCurrentProblem
-                    ? () {
-                        player.retryCurrent();
-                      }
-                    : null,
+                onRetry: player.retryCurrentProblemAction,
                 showSkip: player.canSkipCurrentProblem,
-                onSkip: player.canSkipCurrentProblem
-                    ? () {
-                        player.playNext();
-                      }
-                    : null,
+                onSkip: player.skipCurrentProblemAction,
               ),
             ],
           ),
@@ -1231,8 +1234,8 @@ class _MobilePlayerFluidCloudLayoutState
                   volume == 0
                       ? Icons.volume_off_rounded
                       : volume < 0.5
-                          ? Icons.volume_down_rounded
-                          : Icons.volume_up_rounded,
+                      ? Icons.volume_down_rounded
+                      : Icons.volume_up_rounded,
                   color: Colors.white.withValues(alpha: 0.85),
                 ),
                 iconSize: 24,
@@ -1322,7 +1325,8 @@ class _MobilePlayerFluidCloudLayoutState
         player.lyricSnapshot != null &&
         player.lyricSnapshot!.lines.isNotEmpty) {
       final lastLine = player.lyricSnapshot!.lines.last;
-      duration = lastLine.startTime +
+      duration =
+          lastLine.startTime +
           (lastLine.lineDuration ?? const Duration(seconds: 4));
     }
     final position = player.positionNotifier.value;
@@ -1400,8 +1404,9 @@ class _MobilePlayerFluidCloudLayoutState
             decoration: BoxDecoration(
               color: (isDark ? const Color(0xFF141418) : Colors.white)
                   .withValues(alpha: 0.92),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(28)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(28),
+              ),
               border: Border(
                 top: BorderSide(
                   color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.4),
@@ -1443,8 +1448,11 @@ class _MobilePlayerFluidCloudLayoutState
                         ),
                         const Spacer(),
                         IconButton(
-                          icon: Icon(Icons.close_rounded,
-                              color: colorScheme.onSurfaceVariant, size: 20),
+                          icon: Icon(
+                            Icons.close_rounded,
+                            color: colorScheme.onSurfaceVariant,
+                            size: 20,
+                          ),
                           onPressed: () => Navigator.pop(context),
                           style: IconButton.styleFrom(
                             backgroundColor: isDark
@@ -1465,8 +1473,7 @@ class _MobilePlayerFluidCloudLayoutState
                         : Colors.black.withValues(alpha: 0.06),
                   ),
                   ...supportedQualities.map((quality) {
-                    final isSelected =
-                        qualityService.currentQuality == quality;
+                    final isSelected = qualityService.currentQuality == quality;
                     return ListTile(
                       title: Text(
                         qualityService.getQualityName(quality),
@@ -1474,21 +1481,25 @@ class _MobilePlayerFluidCloudLayoutState
                           color: isSelected
                               ? colorScheme.primary
                               : colorScheme.onSurface,
-                          fontWeight:
-                              isSelected ? FontWeight.bold : FontWeight.w500,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.w500,
                         ),
                       ),
                       subtitle: Text(
                         qualityService.getQualityDescription(quality),
                         style: TextStyle(
-                          color:
-                              colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          color: colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.7,
+                          ),
                           fontSize: 12,
                         ),
                       ),
                       trailing: isSelected
-                          ? Icon(Icons.check_circle_rounded,
-                              color: colorScheme.primary)
+                          ? Icon(
+                              Icons.check_circle_rounded,
+                              color: colorScheme.primary,
+                            )
                           : null,
                       onTap: () {
                         qualityService.setQuality(quality);
@@ -1965,7 +1976,9 @@ class _DownloadButtonState extends State<_DownloadButton> {
     return IconButton(
       icon: Icon(
         _isDownloaded ? Icons.download_done_rounded : Icons.download_rounded,
-        color: _isDownloaded ? Colors.green : Colors.white.withValues(alpha: 0.8),
+        color: _isDownloaded
+            ? Colors.green
+            : Colors.white.withValues(alpha: 0.8),
       ),
       onPressed: _isDownloaded ? null : _startDownload,
       tooltip: _isDownloaded ? '已下载' : '下载',
@@ -2053,22 +2066,28 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider>
         final currentValue = _dragValue ?? widget.value;
         final totalDuration = widget.duration ?? Duration.zero;
         final currentTargetMs =
-            (currentValue.clamp(0.0, 1.0) * totalDuration.inMilliseconds).round();
-        final timeStr = _formatBubbleTime(Duration(milliseconds: currentTargetMs));
+            (currentValue.clamp(0.0, 1.0) * totalDuration.inMilliseconds)
+                .round();
+        final timeStr = _formatBubbleTime(
+          Duration(milliseconds: currentTargetMs),
+        );
 
         final thumbRadius = _AppleMusicThumbShape.maxRadius; // 6.0
         final availableTrackWidth = max(0.0, width - 2 * thumbRadius);
-        final thumbX = thumbRadius + currentValue.clamp(0.0, 1.0) * availableTrackWidth;
+        final thumbX =
+            thumbRadius + currentValue.clamp(0.0, 1.0) * availableTrackWidth;
 
         final isHour = totalDuration.inHours > 0;
         final bubbleWidth = isHour ? 70.0 : 56.0;
         const bubbleHeight = 26.0;
         const arrowHeight = 4.5;
 
-        final double bubbleLeft =
-            (thumbX - bubbleWidth / 2).clamp(0.0, max(0.0, width - bubbleWidth)).toDouble();
-        final double arrowCenterX =
-            (thumbX - bubbleLeft).clamp(8.0, bubbleWidth - 8.0).toDouble();
+        final double bubbleLeft = (thumbX - bubbleWidth / 2)
+            .clamp(0.0, max(0.0, width - bubbleWidth))
+            .toDouble();
+        final double arrowCenterX = (thumbX - bubbleLeft)
+            .clamp(8.0, bubbleWidth - 8.0)
+            .toDouble();
 
         return Stack(
           clipBehavior: Clip.none,
@@ -2078,9 +2097,10 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider>
             AnimatedBuilder(
               animation: _animation,
               builder: (context, child) {
-                final currentActiveColor = _AppleMusicSlider.activeColor.withValues(
-                  alpha: lerpDouble(0.65, 0.9, _animation.value) ?? 0.65,
-                );
+                final currentActiveColor = _AppleMusicSlider.activeColor
+                    .withValues(
+                      alpha: lerpDouble(0.65, 0.9, _animation.value) ?? 0.65,
+                    );
 
                 final currentInactiveColor =
                     Color.lerp(
@@ -2133,8 +2153,8 @@ class _AppleMusicSliderState extends State<_AppleMusicSlider>
                           widget.duration!.inMilliseconds > 0) {
                         _lastHapticSecond =
                             ((widget.value * widget.duration!.inMilliseconds)
-                                    .round()) ~/
-                                1000;
+                                .round()) ~/
+                            1000;
                       }
                       _controller.forward();
                     },
@@ -2257,10 +2277,7 @@ class _AppleMusicThumbShape extends SliderComponentShape {
   final double opacity;
   static const double maxRadius = 6.0;
 
-  const _AppleMusicThumbShape({
-    required this.scale,
-    this.opacity = 1.0,
-  });
+  const _AppleMusicThumbShape({required this.scale, this.opacity = 1.0});
 
   @override
   Size getPreferredSize(bool isEnabled, bool isDiscrete) {
@@ -2290,7 +2307,12 @@ class _AppleMusicThumbShape extends SliderComponentShape {
     final path = Path()
       ..addOval(Rect.fromCircle(center: center, radius: maxRadius * scale));
 
-    canvas.drawShadow(path, Colors.black.withValues(alpha: 0.3 * opacity), 3.0, true);
+    canvas.drawShadow(
+      path,
+      Colors.black.withValues(alpha: 0.3 * opacity),
+      3.0,
+      true,
+    );
 
     // 绘制白色圆点
     final Paint paint = Paint()

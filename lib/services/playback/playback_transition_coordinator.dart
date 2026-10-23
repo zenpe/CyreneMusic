@@ -72,12 +72,22 @@ class PlaybackTransitionCoordinator {
     PlaybackQueueEntry? lastFailed;
     var skippedCount = 0;
     var remoteBudgetExhausted = false;
+    var consideredCount = 0;
 
     for (var index = 0; index < plan.candidates.length; index++) {
       final candidate = plan.candidates[index];
       if (!isCurrent()) {
         return _result(
           PlaybackTransitionResultStatus.cancelled,
+          lastFailed: lastFailed,
+          skippedCount: skippedCount,
+        );
+      }
+      if (consideredCount >= budget.maxCandidateAttempts) {
+        return _result(
+          remoteBudgetExhausted
+              ? PlaybackTransitionResultStatus.budgetExhausted
+              : PlaybackTransitionResultStatus.exhausted,
           lastFailed: lastFailed,
           skippedCount: skippedCount,
         );
@@ -93,9 +103,11 @@ class PlaybackTransitionCoordinator {
         continue;
       }
 
+      consideredCount++;
+
       budget.prepareCandidate(
         remainingCandidates: plan.candidates.length - index,
-        failedCandidates: skippedCount,
+        failedCandidates: consideredCount - 1,
       );
       final outcome = await attempt(candidate, budget, isCurrent);
       if (!isCurrent() ||
@@ -145,9 +157,8 @@ class PlaybackTransitionCoordinator {
         );
       }
       if (outcome.status == PlaybackCandidateAttemptStatus.budgetExhausted) {
-        // The remote request cap must not hide a later local or cached entry.
-        // Candidate attempts still perform their local lookup before reporting
-        // that another remote request cannot be started.
+        // A cached entry may still play, but only inside the same bounded
+        // candidate window. Never walk the entire queue looking for a cache hit.
         remoteBudgetExhausted = true;
       }
     }

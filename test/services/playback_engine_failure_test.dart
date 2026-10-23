@@ -70,9 +70,9 @@ void main() {
             await playback.playNow([track, second], 0, QueueSource.none);
             engine.loads = 0;
             await playback.next().timeout(const Duration(seconds: 2));
-            // Navigation gives each candidate one load attempt instead of
-            // spending its budget rebuilding the same failed candidate.
-            expect(engine.loads, 2);
+            // Manual navigation selects one target and never scans backwards
+            // to the original entry after a native failure.
+            expect(engine.loads, 1);
             expect(playback.state, PBState.error);
             expect(playback.isTrackSwitchPending, isFalse);
             expect(playback.pendingPlaybackIntent, isNull);

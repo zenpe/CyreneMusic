@@ -685,17 +685,17 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                 PlayerErrorBanner(
                                   message: player.isAudioSourceNotConfigured
                                       ? null
-                                      : player.errorMessage,
+                                      : player.playbackProblemMessage,
+                                  nonBlocking: player.isPlaying,
                                   margin: const EdgeInsets.only(top: 8),
-                                  onRetry: player.canRetryCurrentProblem
-                                      ? () {
-                                          player.retryCurrent();
-                                        }
-                                      : null,
+                                  onRetry: player.retryCurrentProblemAction,
                                   showSkip: player.canSkipCurrentProblem,
                                   onSkip: player.canSkipCurrentProblem
                                       ? () {
-                                          player.playNext();
+                                          player.skipFailedTrack(
+                                            expectedProblem:
+                                                player.currentProblem,
+                                          );
                                         }
                                       : null,
                                 ),
@@ -898,19 +898,12 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                       PlayerErrorBanner(
                         message: player.isAudioSourceNotConfigured
                             ? null
-                            : player.errorMessage,
+                            : player.playbackProblemMessage,
+                        nonBlocking: player.isPlaying,
                         margin: const EdgeInsets.only(top: 8),
-                        onRetry: player.canRetryCurrentProblem
-                            ? () {
-                                player.retryCurrent();
-                              }
-                            : null,
+                        onRetry: player.retryCurrentProblemAction,
                         showSkip: player.canSkipCurrentProblem,
-                        onSkip: player.canSkipCurrentProblem
-                            ? () {
-                                player.playNext();
-                              }
-                            : null,
+                        onSkip: player.skipCurrentProblemAction,
                       ),
                     ],
                   );

@@ -37,6 +37,26 @@ class QueueRemovalResult {
   );
 }
 
+/// In-memory rollback point. Entry IDs remain stable; revisions never rewind.
+class QueueCheckpoint {
+  final List<Track> tracks;
+  final List<int> entryIds;
+  final int currentIndex;
+  final QueueSource source;
+  final Map<String, ImageProvider> coverProviders;
+  final List<int> shuffledIndices;
+  final int shufflePosition;
+
+  QueueCheckpoint._(QueueController queue)
+    : tracks = List.unmodifiable(queue._tracks),
+      entryIds = List.unmodifiable(queue._entryIds),
+      currentIndex = queue._currentIndex,
+      source = queue._source,
+      coverProviders = Map.unmodifiable(queue._coverProviders),
+      shuffledIndices = List.unmodifiable(queue._shuffledIndices),
+      shufflePosition = queue._shufflePosition;
+}
+
 class QueueController {
   QueueController({Random? random}) : _random = random ?? Random();
 
@@ -100,24 +120,30 @@ class QueueController {
         ? requestedActiveIndex
         : _currentIndex;
     final order = <int>[];
-    if (_shuffledIndices.isNotEmpty &&
-        _shufflePosition >= 0 &&
-        _shufflePosition < _shuffledIndices.length &&
-        _shuffledIndices[_shufflePosition] == activeIndex) {
+    final activePosition = _shuffledIndices.indexOf(activeIndex);
+    if (_shuffledIndices.isNotEmpty && activePosition >= 0) {
       if (direction == PlaybackTransitionDirection.forward) {
-        order.addAll(_shuffledIndices.skip(_shufflePosition + 1));
-        order.addAll(_shuffledIndices.take(_shufflePosition));
+        order.addAll(_shuffledIndices.skip(activePosition + 1));
+        order.addAll(_shuffledIndices.take(activePosition));
       } else {
-        order.addAll(_shuffledIndices.take(_shufflePosition).toList().reversed);
+        order.addAll(_shuffledIndices.take(activePosition).toList().reversed);
         order.addAll(
-          _shuffledIndices.skip(_shufflePosition + 1).toList().reversed,
+          _shuffledIndices.skip(activePosition + 1).toList().reversed,
         );
       }
     } else {
       final indices = List<int>.generate(length, (index) => index)
         ..remove(activeIndex)
         ..shuffle(_random);
-      order.addAll(indices);
+      // Keep one order for previews, button capabilities and actual navigation.
+      // Reading a capability must never choose a different random target.
+      _shuffledIndices = [if (activeIndex >= 0) activeIndex, ...indices];
+      _shufflePosition = activeIndex >= 0 ? 0 : -1;
+      order.addAll(
+        direction == PlaybackTransitionDirection.forward
+            ? indices
+            : indices.reversed,
+      );
     }
     return List<int>.unmodifiable(order.map((index) => _entryIds[index]));
   }
@@ -125,6 +151,25 @@ class QueueController {
   int indexOfEntryId(int entryId) => _entryIds.indexOf(entryId);
 
   int _allocateEntryId() => ++_nextEntryId;
+
+  QueueCheckpoint checkpoint() => QueueCheckpoint._(this);
+
+  void restore(QueueCheckpoint checkpoint) {
+    _tracks
+      ..clear()
+      ..addAll(checkpoint.tracks);
+    _entryIds
+      ..clear()
+      ..addAll(checkpoint.entryIds);
+    _currentIndex = checkpoint.currentIndex;
+    _source = checkpoint.source;
+    _coverProviders
+      ..clear()
+      ..addAll(checkpoint.coverProviders);
+    _shuffledIndices = List.of(checkpoint.shuffledIndices);
+    _shufflePosition = checkpoint.shufflePosition;
+    _structureRevision++;
+  }
 
   void replace(
     Iterable<Track> tracks,

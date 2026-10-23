@@ -224,13 +224,11 @@ class CyreneAudioHandler extends BaseAudioHandler
             action: MediaAction.custom,
             customAction: CustomMediaAction(name: 'cycle_repeat_mode'),
           ),
-          MediaControl.skipToPrevious, // 上一首
           MediaControl(
             androidIcon: 'drawable/audio_service_play_arrow',
             label: '播放',
             action: MediaAction.playPause,
           ),
-          MediaControl.skipToNext, // 下一首
           MediaControl(
             androidIcon: 'drawable/ic_notification_lyric',
             label: '桌面歌词',
@@ -242,12 +240,10 @@ class CyreneAudioHandler extends BaseAudioHandler
           MediaAction.seek,
           MediaAction.play, // 🎯 蓝牙耳机控制必需
           MediaAction.pause, // 🎯 蓝牙耳机控制必需
-          MediaAction.skipToNext, // 🎯 蓝牙耳机控制必需
-          MediaAction.skipToPrevious, // 🎯 蓝牙耳机控制必需
           MediaAction.setRepeatMode,
           MediaAction.setShuffleMode,
         },
-        androidCompactActionIndices: const [1, 2, 3], // 紧凑视图：上一首、播放、下一首
+        androidCompactActionIndices: const [1],
         processingState: AudioProcessingState.idle,
         playing: false,
         repeatMode: AudioServiceRepeatMode.all,
@@ -949,7 +945,7 @@ class CyreneAudioHandler extends BaseAudioHandler
         action: MediaAction.custom,
         customAction: const CustomMediaAction(name: 'cycle_repeat_mode'),
       ),
-      MediaControl.skipToPrevious, // 上一首
+      if (_player.hasPrevious) MediaControl.skipToPrevious,
       MediaControl(
         androidIcon: playing
             ? 'drawable/audio_service_pause'
@@ -957,7 +953,7 @@ class CyreneAudioHandler extends BaseAudioHandler
         label: playing ? '暂停' : '播放',
         action: MediaAction.playPause,
       ),
-      MediaControl.skipToNext, // 下一首
+      if (_player.hasNext) MediaControl.skipToNext,
       const MediaControl(
         androidIcon: 'drawable/ic_notification_lyric',
         label: '桌面歌词',
@@ -984,18 +980,24 @@ class CyreneAudioHandler extends BaseAudioHandler
       playbackState.add(
         currentState.copyWith(
           controls: controls,
-          systemActions: const {
+          systemActions: {
             MediaAction.seek,
             MediaAction.seekForward,
             MediaAction.seekBackward,
             MediaAction.play, // 🎯 蓝牙耳机控制必需
             MediaAction.pause, // 🎯 蓝牙耳机控制必需
-            MediaAction.skipToNext, // 🎯 蓝牙耳机控制必需
-            MediaAction.skipToPrevious, // 🎯 蓝牙耳机控制必需
+            if (_player.hasNext) MediaAction.skipToNext,
+            if (_player.hasPrevious) MediaAction.skipToPrevious,
             MediaAction.setRepeatMode,
             MediaAction.setShuffleMode,
           },
-          androidCompactActionIndices: const [1, 2, 3], // 紧凑视图：上一首、播放、下一首
+          androidCompactActionIndices: [
+            for (var i = 0; i < controls.length; i++)
+              if (controls[i].action == MediaAction.skipToPrevious ||
+                  controls[i].action == MediaAction.playPause ||
+                  controls[i].action == MediaAction.skipToNext)
+                i,
+          ],
           processingState: processingState,
           playing: playing,
           repeatMode: repeatMode,

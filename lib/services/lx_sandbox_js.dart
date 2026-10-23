@@ -641,12 +641,12 @@ const String lxSandboxJs = r'''
       pendingHttpRequests.delete(data.requestId);
       if (data.success) {
         // 获取 body，优先使用 data.body，如果没有则使用 data.response.body
-        var body = data.body || (data.response && data.response.body);
-        // 如果 body 是对象，转换为 JSON 字符串（脚本期望字符串）
-        if (body && typeof body === 'object') {
-          body = JSON.stringify(body);
-        }
-        console.log('[LxMusic] Calling callback with success, body: ' + (body ? body.substring(0, 100) : 'null'));
+        var body = Object.prototype.hasOwnProperty.call(data, 'body')
+          ? data.body : (data.response && data.response.body);
+        // Match LX: parsed JSON stays parsed; text stays text. Both callback
+        // arguments expose the same value, including null/false/0/empty text.
+        if (data.response) data.response.body = body;
+        console.log('[LxMusic] Calling callback with success, body type: ' + typeof body);
         callback(null, data.response, body);
       } else {
         console.log('[LxMusic] Calling callback with error: ' + data.error);

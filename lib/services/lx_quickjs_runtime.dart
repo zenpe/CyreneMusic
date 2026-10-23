@@ -398,6 +398,9 @@ class LxQuickJsRuntime implements LxRuntime {
           'source': source,
           'quality': quality,
           'failure_kind': failure.kind.name,
+          'last_http_status': owner.lastHttpResponse?.status,
+          'last_body_type': owner.lastHttpResponse?.bodyType,
+          'last_business_code': owner.lastHttpResponse?.businessCode,
           'elapsed_ms': requestClock.elapsedMilliseconds,
           'deadline_exceeded': !DateTime.now().isBefore(deadline),
         },
@@ -771,6 +774,25 @@ class LxQuickJsRuntime implements LxRuntime {
         resolutionId: ownerKey,
       );
       final responseBody = result['body'];
+      final bodyType = switch (responseBody) {
+        null => 'null',
+        Map() => 'object',
+        List() => 'array',
+        String() => 'string',
+        bool() => 'boolean',
+        num() => 'number',
+        _ => 'unknown',
+      };
+      final resolutionOwner = _owners[ownerKey];
+      if (resolutionOwner != null && !resolutionOwner.isCancelled) {
+        resolutionOwner.lastHttpResponse = (
+          status: result['statusCode'] as int,
+          bodyType: bodyType,
+          businessCode: responseBody is Map && responseBody['code'] is int
+              ? responseBody['code'] as int
+              : null,
+        );
+      }
       final endpoint = Uri.tryParse(url);
       StructuredLogService.event(
         'lx.http_response',
@@ -782,17 +804,14 @@ class LxQuickJsRuntime implements LxRuntime {
           'resolution_id': ownerKey,
           'host': endpoint?.host,
           'status': result['statusCode'],
+          'body_type': bodyType,
           'business_code': responseBody is Map ? responseBody['code'] : null,
           'elapsed_ms': httpClock.elapsedMilliseconds,
         },
       );
       _debug('✅ [LxQuickJsRuntime] HTTP 请求成功，准备回调 JS');
       _debug('   requestId: $requestId');
-      final bodyPreview = result['body']?.toString() ?? '';
-      final preview = bodyPreview.length > 100
-          ? bodyPreview.substring(0, 100)
-          : bodyPreview;
-      _debug('   body: $preview...');
+      _debug('   body type: $bodyType');
 
       final responseData = jsonEncode({
         'requestId': requestId,

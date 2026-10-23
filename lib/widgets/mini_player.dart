@@ -2355,18 +2355,14 @@ class _MiniPlayerState extends State<MiniPlayer> {
     final history = PlayHistoryService().history;
     final historyTracks = history.map((h) => h.toTrack()).toList();
 
-    bool isHighlightedTrack(Track track) {
+    bool isHighlightedTrack(Track track, int index) {
+      if (queueService.hasQueue) return queueService.currentIndex == index;
       final activeTrack = PlayerService().activeTrack;
-      final pendingTrack = PlayerService().pendingTrack;
       final isActive =
           activeTrack != null &&
           track.id.toString() == activeTrack.id.toString() &&
           track.source == activeTrack.source;
-      final isPending =
-          pendingTrack != null &&
-          track.id.toString() == pendingTrack.id.toString() &&
-          track.source == pendingTrack.source;
-      return isActive || isPending;
+      return isActive;
     }
 
     if (ThemeManager().isFluentFramework) {
@@ -2392,7 +2388,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             final Track t = displayListNow[i] as Track;
-                            final isCurrent = isHighlightedTrack(t);
+                            final isCurrent = isHighlightedTrack(t, i);
                             return fluent.Card(
                               padding: const EdgeInsets.all(8),
                               child: fluent.ListTile(
@@ -2402,7 +2398,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 subtitle: Text(
-                                  t.artists,
+                                  queueService.hasQueue &&
+                                          queueService.pendingIndex == i
+                                      ? '正在准备 · ${t.artists}'
+                                      : t.artists,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -2622,7 +2621,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                             itemBuilder: (context, i) {
                                               final Track t = list[i];
                                               final isCurrent =
-                                                  isHighlightedTrack(t);
+                                                  isHighlightedTrack(t, i);
                                               final content = Container(
                                                 padding:
                                                     const EdgeInsets.symmetric(
@@ -2771,7 +2770,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                             ),
                                                           ),
                                                           Text(
-                                                            t.artists,
+                                                            queueService.hasQueue &&
+                                                                    queueService
+                                                                            .pendingIndex ==
+                                                                        i
+                                                                ? '正在准备 · ${t.artists}'
+                                                                : t.artists,
                                                             maxLines: 1,
                                                             overflow:
                                                                 TextOverflow
@@ -2827,7 +2831,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                 ),
                                               );
                                               return Dismissible(
-                                                key: ObjectKey(t),
+                                                key: ValueKey(
+                                                  queueService.entryIdAt(i),
+                                                ),
                                                 direction:
                                                     DismissDirection.endToStart,
                                                 background: Container(
@@ -2884,7 +2890,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                             itemBuilder: (context, i) {
                                               final Track t = list[i];
                                               final isCurrent =
-                                                  isHighlightedTrack(t);
+                                                  isHighlightedTrack(t, i);
                                               return GestureDetector(
                                                 behavior:
                                                     HitTestBehavior.opaque,
@@ -3054,7 +3060,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                               ),
                                                             ),
                                                             Text(
-                                                              t.artists,
+                                                              queueService.hasQueue &&
+                                                                      queueService
+                                                                              .pendingIndex ==
+                                                                          i
+                                                                  ? '正在准备 · ${t.artists}'
+                                                                  : t.artists,
                                                               maxLines: 1,
                                                               overflow:
                                                                   TextOverflow
@@ -3178,6 +3189,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                           final Track t = list[i];
                                           final isCurrent = isHighlightedTrack(
                                             t,
+                                            i,
                                           );
 
                                           final tile = ListTile(
@@ -3275,7 +3287,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                             subtitle: Text(
-                                              t.artists,
+                                              queueService.hasQueue &&
+                                                      queueService
+                                                              .pendingIndex ==
+                                                          i
+                                                  ? '正在准备 · ${t.artists}'
+                                                  : t.artists,
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
@@ -3351,7 +3368,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                           );
 
                                           return Dismissible(
-                                            key: ObjectKey(t),
+                                            key: ValueKey(
+                                              queueService.entryIdAt(i),
+                                            ),
                                             direction:
                                                 DismissDirection.endToStart,
                                             background: Container(
@@ -3390,6 +3409,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                           final Track t = list[i];
                                           final isCurrent = isHighlightedTrack(
                                             t,
+                                            i,
                                           );
 
                                           return ListTile(
@@ -3487,7 +3507,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                             subtitle: Text(
-                                              t.artists,
+                                              queueService.hasQueue &&
+                                                      queueService
+                                                              .pendingIndex ==
+                                                          i
+                                                  ? '正在准备 · ${t.artists}'
+                                                  : t.artists,
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),

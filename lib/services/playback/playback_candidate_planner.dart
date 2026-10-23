@@ -58,8 +58,18 @@ class PlaybackCandidatePlanner {
       );
     }
 
+    final manual = intent == PlaybackTransitionIntent.manualAdvance;
     if (mode == PlaybackMode.shuffle) {
-      return _planShuffle(queue, shuffleEntryOrder ?? const <int>[]);
+      final plan = _planShuffle(queue, shuffleEntryOrder ?? const <int>[]);
+      return PlaybackCandidatePlan(
+        candidates: manual
+            ? plan.candidates
+                  .where((entry) => entry.entryId != queue.activeEntryId)
+                  .take(1)
+                  .toList()
+            : plan.candidates,
+        stopsAtQueueEnd: false,
+      );
     }
 
     final activeIndex = queue.activeEntryId == null
@@ -67,21 +77,22 @@ class PlaybackCandidatePlanner {
         : queue.indexOfEntry(queue.activeEntryId!);
     if (activeIndex < 0) {
       return PlaybackCandidatePlan(
-        candidates: List.unmodifiable(queue.entries),
+        candidates: List.unmodifiable(
+          manual ? queue.entries.take(1) : queue.entries,
+        ),
         stopsAtQueueEnd: mode == PlaybackMode.sequential,
       );
     }
 
     final step = direction == PlaybackTransitionDirection.forward ? 1 : -1;
-    final wraps =
-        mode != PlaybackMode.sequential ||
-        intent == PlaybackTransitionIntent.manualAdvance ||
-        intent == PlaybackTransitionIntent.removeCurrent;
+    final wraps = mode != PlaybackMode.sequential;
     final candidates = <PlaybackQueueEntry>[];
     var index = activeIndex + step;
-    final candidateLimit = wraps
-        ? queue.entries.length
-        : queue.entries.length - 1;
+    // Never turn a failed navigation into apparent success by selecting the
+    // active entry again. A one-item automatic loop is the only exception.
+    final candidateLimit = manual
+        ? (queue.entries.length > 1 ? 1 : 0)
+        : (wraps && queue.entries.length == 1 ? 1 : queue.entries.length - 1);
     while (candidates.length < candidateLimit) {
       if (index < 0 || index >= queue.entries.length) {
         if (!wraps) break;
@@ -123,7 +134,7 @@ class PlaybackCandidatePlanner {
     for (final entry in queue.entries) {
       if (seen.add(entry.entryId)) ordered.add(entry);
     }
-    if (activeId != null) {
+    if (activeId != null && queue.entries.length == 1) {
       final active = byId[activeId];
       if (active != null) ordered.add(active);
     }

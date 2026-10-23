@@ -52,10 +52,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
       );
     }
 
-    return Align(
-      alignment: Alignment.centerRight,
-      child: _buildPanel(context),
-    );
+    return Align(alignment: Alignment.centerRight, child: _buildPanel(context));
   }
 
   Widget _buildPanel(BuildContext context) {
@@ -73,14 +70,19 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
         : '播放历史';
 
     // 根据搜索关键词过滤列表
-    final List<dynamic> displayList = _searchQuery.isEmpty
-        ? fullList
-        : fullList.where((item) {
-            final track = item is Track ? item : (item as PlayHistoryItem).toTrack();
-            final query = _searchQuery.toLowerCase();
-            return track.name.toLowerCase().contains(query) ||
-                   track.artists.toLowerCase().contains(query);
-          }).toList();
+    final visibleIndices = List.generate(fullList.length, (index) => index)
+        .where((index) {
+          if (_searchQuery.isEmpty) return true;
+          final item = fullList[index];
+          final track = item is Track
+              ? item
+              : (item as PlayHistoryItem).toTrack();
+          final query = _searchQuery.toLowerCase();
+          return track.name.toLowerCase().contains(query) ||
+              track.artists.toLowerCase().contains(query);
+        })
+        .toList();
+    final displayList = visibleIndices.map((index) => fullList[index]).toList();
 
     return ClipRRect(
       borderRadius: const BorderRadius.only(
@@ -170,7 +172,10 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                       tooltip: _isSearchExpanded ? '关闭搜索' : '搜索',
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, color: Colors.white),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                      ),
                       onPressed: widget.onClose,
                       tooltip: '关闭',
                     ),
@@ -197,49 +202,63 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                 child: displayList.isEmpty
                     ? _buildEmptyState()
                     : hasQueue && _searchQuery.isEmpty
-                        ? ReorderableListView.builder(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            buildDefaultDragHandles: false,
-                            onReorder: (oldIndex, newIndex) {
-                              if (newIndex > oldIndex) newIndex--;
-                              PlaybackService().reorder(oldIndex, newIndex);
-                            },
-                            itemCount: displayList.length,
-                            itemBuilder: (context, index) {
-                              final item = displayList[index];
-                              final track = item is Track ? item : (item as PlayHistoryItem).toTrack();
-                              final originalIndex = fullList.indexOf(item);
-                              final isCurrentTrack = currentTrack != null &&
-                                  track.id.toString() == currentTrack.id.toString() &&
-                                  track.source == currentTrack.source;
-                              return _buildPlaylistItem(
-                                context, track, originalIndex, isCurrentTrack,
-                                key: ValueKey('${track.source.name}_${track.id}'),
-                                hasQueue: true,
-                                queueIndex: index,
-                              );
-                            },
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            itemCount: displayList.length,
-                            itemExtent: 74,
-                            cacheExtent: 500,
-                            addAutomaticKeepAlives: true,
-                            addRepaintBoundaries: true,
-                            itemBuilder: (context, index) {
-                              final item = displayList[index];
-                              final track = item is Track ? item : (item as PlayHistoryItem).toTrack();
-                              final originalIndex = fullList.indexOf(item);
-                              final isCurrentTrack = currentTrack != null &&
-                                  track.id.toString() == currentTrack.id.toString() &&
-                                  track.source == currentTrack.source;
-                              return _buildPlaylistItem(
-                                context, track, originalIndex, isCurrentTrack,
-                                hasQueue: false,
-                              );
-                            },
-                          ),
+                    ? ReorderableListView.builder(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        buildDefaultDragHandles: false,
+                        onReorder: (oldIndex, newIndex) {
+                          if (newIndex > oldIndex) newIndex--;
+                          PlaybackService().reorder(oldIndex, newIndex);
+                        },
+                        itemCount: displayList.length,
+                        itemBuilder: (context, index) {
+                          final item = displayList[index];
+                          final track = item is Track
+                              ? item
+                              : (item as PlayHistoryItem).toTrack();
+                          final originalIndex = index;
+                          final isCurrentTrack =
+                              queueService.currentIndex == originalIndex;
+                          return _buildPlaylistItem(
+                            context,
+                            track,
+                            originalIndex,
+                            isCurrentTrack,
+                            key: ValueKey(
+                              queueService.entryIdAt(originalIndex),
+                            ),
+                            hasQueue: true,
+                            queueIndex: index,
+                          );
+                        },
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: displayList.length,
+                        itemExtent: 74,
+                        cacheExtent: 500,
+                        addAutomaticKeepAlives: true,
+                        addRepaintBoundaries: true,
+                        itemBuilder: (context, index) {
+                          final item = displayList[index];
+                          final track = item is Track
+                              ? item
+                              : (item as PlayHistoryItem).toTrack();
+                          final originalIndex = visibleIndices[index];
+                          final isCurrentTrack = hasQueue
+                              ? queueService.currentIndex == originalIndex
+                              : currentTrack != null &&
+                                    track.id.toString() ==
+                                        currentTrack.id.toString() &&
+                                    track.source == currentTrack.source;
+                          return _buildPlaylistItem(
+                            context,
+                            track,
+                            originalIndex,
+                            isCurrentTrack,
+                            hasQueue: false,
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -300,7 +319,10 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                 )
               : null,
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 10,
+          ),
         ),
         cursorColor: Colors.white,
       ),
@@ -312,15 +334,21 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
     final isSearching = _searchQuery.isNotEmpty;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.hasBoundedHeight && constraints.maxHeight < 180;
-        final minHeight = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+        final compact =
+            constraints.hasBoundedHeight && constraints.maxHeight < 180;
+        final minHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 0.0;
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -372,7 +400,10 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
 
   /// 构建播放列表项
   Widget _buildPlaylistItem(
-    BuildContext context, Track track, int index, bool isCurrentTrack, {
+    BuildContext context,
+    Track track,
+    int index,
+    bool isCurrentTrack, {
     Key? key,
     bool hasQueue = false,
     int? queueIndex,
@@ -422,11 +453,8 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                   width: 50,
                   height: 50,
                   fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    width: 50,
-                    height: 50,
-                    color: Colors.white12,
-                  ),
+                  placeholder: (context, url) =>
+                      Container(width: 50, height: 50, color: Colors.white12),
                   errorWidget: (context, url, error) => Container(
                     width: 50,
                     height: 50,
@@ -457,9 +485,13 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: isCurrentTrack ? Colors.white : Colors.white.withValues(alpha: 0.9),
+                        color: isCurrentTrack
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.9),
                         fontSize: 15,
-                        fontWeight: isCurrentTrack ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: isCurrentTrack
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                         fontFamily: 'Microsoft YaHei',
                       ),
                     ),
@@ -482,8 +514,13 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
               TrackMoreButton(
                 track: track,
                 onPlay: () {
-                  final coverProvider = PlaylistQueueService().getCoverProvider(track);
-                  PlayerService().playTrack(track, coverProvider: coverProvider);
+                  final coverProvider = PlaylistQueueService().getCoverProvider(
+                    track,
+                  );
+                  PlayerService().playTrack(
+                    track,
+                    coverProvider: coverProvider,
+                  );
                 },
                 size: 32,
               ),
@@ -496,7 +533,10 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                     color: Colors.white.withValues(alpha: 0.5),
                     size: 18,
                   ),
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
                   padding: EdgeInsets.zero,
                   onPressed: () {
                     PlaybackService().removeAt(queueIndex);

@@ -50,6 +50,31 @@ void main() {
   );
 
   test(
+    'notification actions follow navigation capabilities at queue boundaries',
+    () {
+      player.hasNext = false;
+      player.hasPrevious = false;
+      player.changed();
+      var state = handler.playbackState.value;
+      expect(
+        state.controls.map((c) => c.action),
+        isNot(contains(MediaAction.skipToNext)),
+      );
+      expect(state.systemActions, isNot(contains(MediaAction.skipToPrevious)));
+      expect(state.androidCompactActionIndices, [1]);
+      player.hasNext = true;
+      player.changed();
+      state = handler.playbackState.value;
+      expect(
+        state.controls.map((c) => c.action),
+        contains(MediaAction.skipToNext),
+      );
+      expect(state.systemActions, contains(MediaAction.skipToNext));
+      expect(state.androidCompactActionIndices, [1, 2]);
+    },
+  );
+
+  test(
     'loading toggle pauses; paused toggle resumes; explicit actions stay explicit',
     () async {
       player.phase = PlaybackSwitchPhase.loadingSource;
@@ -194,6 +219,10 @@ void main() {
 }
 
 class TransportPlayer extends ChangeNotifier implements PlayerService {
+  @override
+  bool hasNext = true;
+  @override
+  bool hasPrevious = true;
   PlaybackSwitchPhase phase = PlaybackSwitchPhase.paused;
   bool desired = true;
   int pauseCalls = 0;

@@ -25,6 +25,41 @@ void main() {
     expect(queue.source, QueueSource.playlist);
   });
 
+  test(
+    'checkpoint restores identity without reusing revisions or entry IDs',
+    () {
+      final queue = QueueController()
+        ..replace([track(1), track(2)], 1, QueueSource.favorites);
+      final before = queue.checkpoint();
+      queue.replace([track(3), track(4)], 0, QueueSource.album);
+      final discarded = queue.checkpoint();
+      final revision = queue.structureRevision;
+      queue.restore(before);
+      expect(queue.currentEntryId, before.entryIds[1]);
+      expect(queue.source, QueueSource.favorites);
+      expect(queue.structureRevision, greaterThan(revision));
+      queue.append(track(5));
+      expect(queue.entryIdAt(2), greaterThan(discarded.entryIds.last));
+    },
+  );
+
+  test('shuffle previews keep a stable order without moving the pointer', () {
+    final queue = QueueController(random: Random(7))
+      ..replace(List.generate(6, track), 2, QueueSource.playlist);
+    final forward = queue.shuffleTraversalEntryIds(
+      PlaybackTransitionDirection.forward,
+    );
+    expect(
+      queue.shuffleTraversalEntryIds(PlaybackTransitionDirection.forward),
+      forward,
+    );
+    expect(
+      queue.shuffleTraversalEntryIds(PlaybackTransitionDirection.backward),
+      forward.reversed,
+    );
+    expect(queue.currentIndex, 2);
+  });
+
   test('removing current track keeps pointer valid', () {
     final queue = QueueController();
     queue.replace([track(1), track(2), track(3)], 1, QueueSource.album);

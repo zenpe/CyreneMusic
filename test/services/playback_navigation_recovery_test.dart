@@ -19,6 +19,7 @@ import 'package:cyrene_music/services/playback/queue_controller.dart';
 import 'package:cyrene_music/services/playback/track_resolver.dart';
 import 'package:cyrene_music/services/playback/startup_network_gate.dart';
 import 'package:cyrene_music/services/playback/playback_transition.dart';
+import 'package:cyrene_music/services/playback_mode_service.dart';
 import 'package:cyrene_music/services/structured_log_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
@@ -569,7 +570,7 @@ void main() {
       expect(resolver.requests, ['2', '3']);
       expectFinished(playback);
       expect(playback.currentProblem?.track.id, '3');
-      await playback.next();
+      await playback.skipFailedTrack(expectedProblem: playback.currentProblem);
       expect(playback.currentTrack?.id, '4');
       expect(playback.state, PBState.playing);
     } finally {
@@ -865,7 +866,7 @@ void main() {
   );
 
   test(
-    'navigation spends requests on distinct tracks and preserves the actual failure target',
+    'manual navigation attempts one target and retry stays on that failure',
     () async {
       final resolver = _Resolver();
       final playback = _createPlayback(resolver);
@@ -878,22 +879,22 @@ void main() {
         ]); // Explicit selection retries once.
         resolver.requests.clear();
         await playback.next();
-        expect(resolver.requests, ['1', '2']);
+        expect(resolver.requests, ['1']);
         expectFinished(playback);
-        expect(playback.problemNotifier.value?.track.id, '2');
+        expect(playback.problemNotifier.value?.track.id, '1');
         resolver.requests.clear();
         await playback.retryCurrentTrack();
         expect(resolver.requests, [
-          '2',
-          '2',
+          '1',
+          '1',
         ]); // Unrequested 3/4/5 are not failed.
         resolver.requests.clear();
         await playback.next();
-        expect(resolver.requests, ['3', '4']);
+        expect(resolver.requests, ['2']);
         expectFinished(playback);
         resolver.requests.clear();
         await playback.previous();
-        expect(resolver.requests, ['3', '2']);
+        expect(resolver.requests, ['1']);
       } finally {
         playback.dispose();
       }
@@ -901,7 +902,7 @@ void main() {
   );
 
   test(
-    'a failed candidate is skipped and the next playable track commits',
+    'manual failure requires explicit skip before trying a later playable track',
     () async {
       final resolver = _Resolver()..playable.add('2');
       final playback = _createPlayback(resolver);
@@ -909,6 +910,11 @@ void main() {
         await playback.playNow(List.generate(3, track), 0, QueueSource.none);
         resolver.requests.clear();
         await playback.next();
+        expect(resolver.requests, ['1']);
+        expect(playback.currentTrack, isNull);
+        await playback.skipFailedTrack(
+          expectedProblem: playback.currentProblem,
+        );
         expect(resolver.requests, ['1', '2']);
         expect(playback.currentTrack?.id, '2');
         expect(playback.isTrackSwitchPending, isFalse);
@@ -920,14 +926,18 @@ void main() {
   );
 
   test(
-    'memory URL remains playable after the remote request allowance is spent',
+    'automatic recovery can use memory URL inside its candidate window',
     () async {
-      final resolver = _Resolver()..memoryPlayable.add('3');
-      final playback = _createPlayback(resolver);
+      final resolver = _Resolver()
+        ..playable.add('0')
+        ..memoryPlayable.add('3');
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
       try {
         await playback.playNow(List.generate(4, track), 0, QueueSource.none);
         resolver.requests.clear();
-        await playback.next();
+        engine.complete();
+        await waitUntil(() => playback.currentTrack?.id == '3');
         expect(resolver.requests, ['1', '2']);
         expect(playback.currentTrack?.id, '3');
         expect(playback.state, PBState.playing);
@@ -960,7 +970,7 @@ void main() {
   );
 
   test(
-    'failed navigation preserves audio and later next starts after failure',
+    'failed navigation preserves audio and normal next stays anchored to audio',
     () async {
       final resolver = _Resolver()..playable.add('0');
       final playback = _createPlayback(resolver);
@@ -968,16 +978,25 @@ void main() {
         await playback.playNow(List.generate(6, track), 0, QueueSource.none);
         resolver.requests.clear();
         await playback.next();
-        expect(resolver.requests, ['1', '2']);
+        expect(resolver.requests, ['1']);
         expect(playback.currentTrack?.id, '0');
         expect(playback.state, PBState.playing);
         expect(playback.isTrackSwitchPending, isFalse);
-        expect(playback.currentProblem?.track.id, '2');
-        resolver.playable.add('3');
+        expect(playback.currentProblem?.track.id, '1');
+        final staleProblem = playback.currentProblem!;
+        expect(playback.isCurrentPlaybackProblem(staleProblem), isTrue);
         resolver.requests.clear();
         await playback.next();
-        expect(resolver.requests, ['3']);
-        expect(playback.currentTrack?.id, '3');
+        expect(resolver.requests, ['1']);
+        expect(playback.currentTrack?.id, '0');
+        resolver.playable.add('2');
+        await playback.skipFailedTrack(expectedProblem: staleProblem);
+        expect(resolver.requests, ['1']);
+        await playback.skipFailedTrack(
+          expectedProblem: playback.currentProblem,
+        );
+        expect(resolver.requests, ['1', '2']);
+        expect(playback.currentTrack?.id, '2');
       } finally {
         playback.dispose();
       }
@@ -1308,38 +1327,41 @@ void main() {
     }
   });
 
-  test('failed error presentation preserves offline failure and retry', () async {
-    await configureTestSource();
-    final resolver = _Resolver()
-      ..failureResponse = const TrackResolutionResult(
-        detail: null,
-        lxFailure: LxRuntimeFailure(
-          kind: LxRuntimeFailureKind.networkUnavailable,
-          message: 'Network is unreachable',
-        ),
-      );
-    final playback = _createPlayback(resolver);
-    var feedbackCalls = 0;
-    playback.onPlaybackFailure = (_) {
-      feedbackCalls++;
-      throw StateError('disposed feedback context');
-    };
-    try {
-      await playback.playNow(_remoteTracks(1), 0, QueueSource.none);
-      expectFinished(playback);
-      expect(playback.errorMessage, '网络尚未连接，请联网后重试');
-      expect(playback.currentProblem?.message, playback.errorMessage);
-      expect(feedbackCalls, 1);
-      expect(resolver.urlRequests, ['0']);
-      resolver.playable.add('0');
-      await playback.retryCurrentTrack();
-      expect(playback.state, PBState.playing);
-      expect(playback.isTrackSwitchPending, isFalse);
-      expect(playback.currentProblem, isNull);
-    } finally {
-      playback.dispose();
-    }
-  });
+  test(
+    'failed error presentation preserves offline failure and retry',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()
+        ..failureResponse = const TrackResolutionResult(
+          detail: null,
+          lxFailure: LxRuntimeFailure(
+            kind: LxRuntimeFailureKind.networkUnavailable,
+            message: 'Network is unreachable',
+          ),
+        );
+      final playback = _createPlayback(resolver);
+      var feedbackCalls = 0;
+      playback.onPlaybackFailure = (_) {
+        feedbackCalls++;
+        throw StateError('disposed feedback context');
+      };
+      try {
+        await playback.playNow(_remoteTracks(1), 0, QueueSource.none);
+        expectFinished(playback);
+        expect(playback.errorMessage, '网络尚未连接，请联网后重试');
+        expect(playback.currentProblem?.message, playback.errorMessage);
+        expect(feedbackCalls, 1);
+        expect(resolver.urlRequests, ['0']);
+        resolver.playable.add('0');
+        await playback.retryCurrentTrack();
+        expect(playback.state, PBState.playing);
+        expect(playback.isTrackSwitchPending, isFalse);
+        expect(playback.currentProblem, isNull);
+      } finally {
+        playback.dispose();
+      }
+    },
+  );
 
   test('startup with cached detail never waits for connectivity', () async {
     await configureTestSource();
@@ -1446,7 +1468,7 @@ void main() {
         await playback.removeAt(1);
         resolver.requests.clear();
         await playback.next();
-        expect(resolver.requests, ['2', '3']);
+        expect(resolver.requests, ['0']);
         await playback.playNow([track(10), track(11)], 0, QueueSource.none);
         resolver.requests.clear();
         await playback.next();
@@ -1492,6 +1514,267 @@ void main() {
         expect(engine.loadedUrls, hasLength(1));
       } finally {
         if (!lateResponse.isCompleted) lateResponse.complete(_Resolver.failure);
+        playback.dispose();
+      }
+    },
+  );
+  test(
+    'failed replacement restores original queue and retry commits new queue',
+    () async {
+      final resolver = _Resolver()..playable.add('0');
+      final playback = _createPlayback(resolver);
+      try {
+        await playback.playNow([track(0), track(1)], 0, QueueSource.favorites);
+        final originalEntry = playback.activeQueueEntryId;
+        await playback.playNow([track(10), track(11)], 0, QueueSource.playlist);
+        expect(playback.currentTrack?.id, '0');
+        expect(playback.queue.map((t) => t.id), ['0', '1']);
+        expect(playback.activeQueueEntryId, originalEntry);
+        expect(playback.currentIndex, 0);
+        expect(playback.source, QueueSource.favorites);
+        final problem = playback.currentProblem!;
+        expect(playback.isCurrentPlaybackProblem(problem), isTrue);
+        resolver.playable.add('10');
+        await playback.retryCurrentTrack(expectedProblem: problem);
+        expect(playback.currentTrack?.id, '10');
+        expect(playback.queue.map((t) => t.id), ['10', '11']);
+        expect(playback.currentIndex, 0);
+        expect(playback.source, QueueSource.playlist);
+        expect(playback.isCurrentPlaybackProblem(problem), isFalse);
+      } finally {
+        playback.dispose();
+      }
+    },
+  );
+
+  test('queue edits during failed replacement are not rolled back', () async {
+    final resolver = _Resolver()..playable.add('0');
+    final gate = Completer<TrackResolutionResult>();
+    final playback = _createPlayback(resolver);
+    try {
+      await playback.playNow([track(0), track(1)], 0, QueueSource.favorites);
+      resolver.gates['10'] = gate;
+      final switching = playback.playNow(
+        [track(10), track(11)],
+        0,
+        QueueSource.playlist,
+      );
+      await waitUntil(() => resolver.requests.contains('10'));
+      expect(playback.currentIndex, -1); // New target is not the audible item.
+      await playback.addToQueue(track(12));
+      gate.complete(_Resolver.failure);
+      await switching;
+      expect(playback.queue.map((t) => t.id), ['10', '11', '12']);
+      expect(playback.currentTrack?.id, '0');
+      expect(playback.currentIndex, -1);
+    } finally {
+      if (!gate.isCompleted) gate.complete(_Resolver.failure);
+      playback.dispose();
+    }
+  });
+
+  test(
+    'late replacement failure cannot roll back a newer committed queue',
+    () async {
+      final resolver = _Resolver()..playable.addAll(['0', '20']);
+      final gate = Completer<TrackResolutionResult>();
+      final playback = _createPlayback(resolver);
+      try {
+        await playback.playNow([track(0), track(1)], 0, QueueSource.favorites);
+        resolver.gates['10'] = gate;
+        final old = playback.playNow(
+          [track(10), track(11)],
+          0,
+          QueueSource.playlist,
+        );
+        await waitUntil(() => resolver.requests.contains('10'));
+        await playback.playNow([track(20), track(21)], 0, QueueSource.album);
+        gate.complete(_Resolver.failure);
+        await old;
+        expect(playback.currentTrack?.id, '20');
+        expect(playback.queue.map((t) => t.id), ['20', '21']);
+        expect(playback.currentIndex, 0);
+        expect(playback.currentProblem, isNull);
+      } finally {
+        if (!gate.isCompleted) gate.complete(_Resolver.failure);
+        playback.dispose();
+      }
+    },
+  );
+
+  test('manual retry after audio fallback remains actionable', () async {
+    final resolver = _Resolver()..playable.add('0');
+    final engine = _Engine();
+    final playback = _createPlayback(resolver, engine: engine);
+    try {
+      await playback.playNow([track(0), track(1)], 0, QueueSource.favorites);
+      await playback.next();
+      final problem = playback.currentProblem!;
+      expect(playback.currentTrack?.id, '0');
+      expect(playback.isCurrentPlaybackProblem(problem), isTrue);
+      engine._states.add(EngineState.playing);
+      await Future<void>.delayed(Duration.zero);
+      expect(playback.isCurrentPlaybackProblem(problem), isTrue);
+      resolver.playable.add('1');
+      await playback.retryCurrentTrack(expectedProblem: problem);
+      expect(playback.currentTrack?.id, '1');
+      expect(playback.currentIndex, 1);
+      expect(playback.isCurrentPlaybackProblem(problem), isFalse);
+    } finally {
+      playback.dispose();
+    }
+  });
+
+  test('shuffle previous followed by next returns to the same entry', () async {
+    final mode = PlaybackModeService();
+    final original = mode.currentMode;
+    final resolver = _Resolver()..playable.addAll(['0', '1', '2', '3']);
+    final playback = _createPlayback(resolver);
+    try {
+      await mode.setMode(PlaybackMode.shuffle);
+      await playback.playNow(List.generate(4, track), 0, QueueSource.favorites);
+      await playback.next();
+      final second = playback.activeQueueEntryId;
+      await playback.previous();
+      expect(playback.currentTrack?.id, '0');
+      await playback.next();
+      expect(playback.activeQueueEntryId, second);
+    } finally {
+      playback.dispose();
+      await mode.setMode(original);
+    }
+  });
+
+  test(
+    'changing source invalidates retry and preserves the active track',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()..playable.add('0');
+      final playback = _createPlayback(resolver);
+      try {
+        await playback.playNow(_remoteTracks(2), 0, QueueSource.favorites);
+        await playback.next();
+        final problem = playback.currentProblem!;
+        await AudioSourceService().removeSource('playback-test-source');
+        expect(playback.isCurrentPlaybackProblem(problem), isFalse);
+        expect(playback.currentTrack?.id, '0');
+        resolver.requests.clear();
+        await playback.retryCurrentTrack(expectedProblem: problem);
+        expect(resolver.requests, isEmpty);
+      } finally {
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
+
+  test(
+    'transport capabilities and commands agree at mode boundaries',
+    () async {
+      final mode = PlaybackModeService();
+      final original = mode.currentMode;
+      final resolver = _Resolver()..playable.addAll(['0', '1']);
+      final playback = _createPlayback(resolver);
+      try {
+        await mode.setMode(PlaybackMode.sequential);
+        await playback.playNow([track(0), track(1)], 1, QueueSource.favorites);
+        expect(playback.hasNext, isFalse);
+        resolver.requests.clear();
+        await playback.next();
+        expect(resolver.requests, isEmpty);
+        expect(playback.hasPrevious, isTrue);
+        await mode.setMode(PlaybackMode.loopAll);
+        expect(playback.hasNext, isTrue);
+        await playback.next();
+        expect(playback.currentTrack?.id, '0');
+        await mode.setMode(PlaybackMode.sequential);
+        expect(playback.hasPrevious, isFalse);
+        await mode.setMode(PlaybackMode.repeatOne);
+        await playback.next();
+        expect(playback.currentTrack?.id, '1');
+      } finally {
+        playback.dispose();
+        await mode.setMode(original);
+      }
+    },
+  );
+
+  test(
+    'rapid next commands stage successive targets and only commit the latest',
+    () async {
+      final resolver = _Resolver()..playable.addAll(['0', '1', '2', '3']);
+      final playback = _createPlayback(resolver);
+      try {
+        await playback.playNow(
+          List.generate(4, track),
+          0,
+          QueueSource.favorites,
+        );
+        resolver.requests.clear();
+        final first = playback.next();
+        expect(playback.pendingTrack?.id, '1');
+        final second = playback.next();
+        expect(playback.pendingTrack?.id, '2');
+        final third = playback.next();
+        expect(playback.pendingTrack?.id, '3');
+        await Future.wait([first, second, third]);
+        expect(playback.currentTrack?.id, '3');
+        expect(resolver.requests, ['3']);
+        expect(playback.currentIndex, 3);
+      } finally {
+        playback.dispose();
+      }
+    },
+  );
+
+  test('pause during navigation debounce cancels the staged target', () async {
+    final resolver = _Resolver()..playable.addAll(['0', '1']);
+    final playback = _createPlayback(resolver);
+    try {
+      await playback.playNow([track(0), track(1)], 0, QueueSource.favorites);
+      resolver.requests.clear();
+      final switching = playback.next();
+      await playback.pause();
+      await switching;
+      expect(resolver.requests, isEmpty);
+      expect(playback.pendingTrack, isNull);
+      expect(playback.currentTrack?.id, '0');
+      expect(playback.state, PBState.paused);
+    } finally {
+      playback.dispose();
+    }
+  });
+
+  test(
+    'deleted pending entry cannot commit after its response arrives',
+    () async {
+      final resolver = _Resolver()..playable.add('0');
+      final gate = Completer<TrackResolutionResult>();
+      final playback = _createPlayback(resolver);
+      try {
+        await playback.playNow(
+          List.generate(3, track),
+          0,
+          QueueSource.favorites,
+        );
+        resolver.gates['1'] = gate;
+        final switching = playback.jumpTo(1);
+        await waitUntil(() => resolver.requests.contains('1'));
+        await playback.removeAt(1);
+        resolver.memoryPlayable.add('1');
+        gate.complete(
+          resolver.peekResolved(
+            songId: '1',
+            quality: AudioQuality.standard,
+            source: MusicSource.local,
+          ),
+        );
+        await switching;
+        expect(playback.currentTrack?.id, '0');
+        expect(playback.pendingTrack, isNull);
+        expect(playback.queue.map((t) => t.id), ['0', '2']);
+      } finally {
+        if (!gate.isCompleted) gate.complete(_Resolver.failure);
         playback.dispose();
       }
     },

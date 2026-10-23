@@ -4,6 +4,9 @@ import 'lx_runtime_interface.dart';
 /// Ownership follows Dart asynchronous work without changing source adapters.
 class ResolutionRequest {
   LxRuntimeFailure? failure;
+  // Diagnostic facts only; a script can make several HTTP calls, so the last
+  // response alone must never decide source health or automatic recovery.
+  ({int status, String bodyType, int? businessCode})? lastHttpResponse;
   static final Object _zoneKey = Object();
   static ResolutionRequest? get current =>
       Zone.current[_zoneKey] as ResolutionRequest?;

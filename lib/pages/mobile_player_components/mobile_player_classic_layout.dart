@@ -88,7 +88,9 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(24),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.3),
+                                        color: Colors.black.withValues(
+                                          alpha: 0.3,
+                                        ),
                                         blurRadius: 20,
                                         offset: const Offset(0, 10),
                                       ),
@@ -326,19 +328,12 @@ class MobilePlayerClassicLayout extends StatelessWidget {
             PlayerErrorBanner(
               message: player.isAudioSourceNotConfigured
                   ? null
-                  : player.errorMessage,
+                  : player.playbackProblemMessage,
+              nonBlocking: player.isPlaying,
               margin: const EdgeInsets.only(top: 6),
-              onRetry: player.canRetryCurrentProblem
-                  ? () {
-                      player.retryCurrent();
-                    }
-                  : null,
+              onRetry: player.retryCurrentProblemAction,
               showSkip: player.canSkipCurrentProblem,
-              onSkip: player.canSkipCurrentProblem
-                  ? () {
-                      player.playNext();
-                    }
-                  : null,
+              onSkip: player.skipCurrentProblemAction,
             ),
           ],
         );
@@ -548,8 +543,8 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                       volume == 0
                           ? Icons.volume_off_rounded
                           : volume < 0.5
-                              ? Icons.volume_down_rounded
-                              : Icons.volume_up_rounded,
+                          ? Icons.volume_down_rounded
+                          : Icons.volume_up_rounded,
                       color: Colors.white70,
                     ),
                     iconSize: 26,

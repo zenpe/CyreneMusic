@@ -21,7 +21,9 @@ class PlaylistQueueService extends ChangeNotifier {
   }
 
   List<Track> get queue => _pb.queue;
-  int get currentIndex => _pb.currentIndex; // 队列指针，不等于主播放器展示态
+  int get currentIndex => _pb.currentIndex; // 已提交播放项；待加载项不冒充正在播放
+  int get pendingIndex => _pb.pendingIndex;
+  int? entryIdAt(int index) => _pb.queueEntryIdAt(index);
   QueueSource get source => _pb.source;
   bool get hasQueue => _pb.hasQueue;
   bool get hasNext => _pb.hasNext;
@@ -82,18 +84,6 @@ class PlaylistQueueService extends ChangeNotifier {
       _pb.jumpTo(index);
     }
   }
-
-  /// 获取下一首歌曲
-  Track? getNext() => _pb.peekAndAdvanceNext();
-
-  /// 获取上一首歌曲
-  Track? getPrevious() => _pb.peekAndAdvancePrevious();
-
-  /// 获取随机歌曲
-  Track? getRandomTrack() => _pb.getRandomTrack();
-
-  /// 获取随机播放的上一首
-  Track? getRandomPrevious() => _pb.getRandomPrevious();
 
   /// 预测下一首歌曲（不改变当前索引）
   Track? peekNext(dynamic mode) => _pb.peekNext(mode);

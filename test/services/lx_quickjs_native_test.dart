@@ -12,6 +12,62 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test(
+    'native callback preserves JSON and failures retain safe HTTP facts',
+    () async {
+      final overrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = overrides);
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final subscription = server.listen((request) async {
+        request.response.write(
+          jsonEncode({'code': 200, 'url': 'https://example.invalid/audio.mp3'}),
+        );
+        await request.response.close();
+      });
+      final events = <Map<String, dynamic>>[];
+      StructuredLogService.sink = (line) =>
+          events.add(jsonDecode(line) as Map<String, dynamic>);
+      final runtime = LxQuickJsRuntime();
+      addTearDown(() async {
+        StructuredLogService.sink = null;
+        await runtime.dispose();
+        await subscription.cancel();
+        await server.close(force: true);
+      });
+      await runtime.loadScript('''
+      lx.on(lx.EVENT_NAMES.request, ({info}) => new Promise((resolve, reject) => {
+        lx.request('http://127.0.0.1:${server.port}/music', {}, (err, resp, body) => {
+          if (err) return reject(err);
+          if (body !== resp.body || body.code !== 200) return reject(new Error('body contract'));
+          if (info.musicInfo.songmid === 'bad') return reject(new Error('script rejected result'));
+          resolve(body.url);
+        });
+      }));
+      lx.send(lx.EVENT_NAMES.inited, {sources: {wy: {qualitys: ['128k']}}});
+    ''');
+      expect(
+        await runtime.getMusicUrl(
+          source: 'wy',
+          songId: 'good',
+          quality: '128k',
+        ),
+        'https://example.invalid/audio.mp3',
+      );
+      expect(
+        await runtime.getMusicUrl(source: 'wy', songId: 'bad', quality: '128k'),
+        isNull,
+      );
+      final failure = events.lastWhere(
+        (event) => event['event'] == 'lx.music_url_failed',
+      );
+      expect(failure['last_http_status'], 200);
+      expect(failure['last_body_type'], 'object');
+      expect(failure['last_business_code'], 200);
+      expect(jsonEncode(failure), isNot(contains('audio.mp3')));
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
+  test(
     'outer deadline abort retains HTTP phase and warning diagnostics',
     () async {
       final overrides = HttpOverrides.current;
@@ -37,7 +93,7 @@ void main() {
       await runtime.loadScript('''
         lx.on(lx.EVENT_NAMES.request, async () => {
           const response = await lx.request('http://127.0.0.1:${server.port}/slow', {});
-          return JSON.parse(response.body).url;
+          return response.body.url;
         });
         lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
       ''');
@@ -105,7 +161,7 @@ void main() {
           return 'unused';
         }
         const response = await lx.request('http://127.0.0.1:${server.port}/' + info.musicInfo.songmid, {});
-        return JSON.parse(response.body).url;
+        return response.body.url;
       });
       lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
     ''');
@@ -187,7 +243,7 @@ void main() {
         const response = await lx.request('http://127.0.0.1:${server.port}/' + id, {});
         // Exercise a second HTTP request after a Promise/timer continuation.
         await new Promise(resolve => setTimeout(resolve, 20));
-        return lx.request('http://127.0.0.1:${server.port}/' + id + '-final', {}).then(response => JSON.parse(response.body).url);
+        return lx.request('http://127.0.0.1:${server.port}/' + id + '-final', {}).then(response => response.body.url);
       });
       lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
     ''');

@@ -60,19 +60,12 @@ class PlayerControls extends StatelessWidget {
                   PlayerErrorBanner(
                     message: player.isAudioSourceNotConfigured
                         ? null
-                        : player.errorMessage,
+                        : player.playbackProblemMessage,
+                    nonBlocking: player.isPlaying,
                     margin: const EdgeInsets.only(bottom: 10),
-                    onRetry: player.canRetryCurrentProblem
-                        ? () {
-                            player.retryCurrent();
-                          }
-                        : null,
+                    onRetry: player.retryCurrentProblemAction,
                     showSkip: player.canSkipCurrentProblem,
-                    onSkip: player.canSkipCurrentProblem
-                        ? () {
-                            player.playNext();
-                          }
-                        : null,
+                    onSkip: player.skipCurrentProblemAction,
                   ),
                   // 进度条
                   SliderTheme(

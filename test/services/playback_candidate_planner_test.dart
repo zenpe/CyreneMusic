@@ -13,15 +13,15 @@ void main() {
     structureRevision: 7,
   );
 
-  test('manual next scans forward once and wraps without repeating active', () {
+  test('manual next selects only the adjacent target', () {
     final plan = planner.plan(
       queue: queue(),
       mode: PlaybackMode.sequential,
       intent: PlaybackTransitionIntent.manualAdvance,
     );
 
-    expect(plan.candidates.map((item) => item.entryId), [3, 4, 1, 2]);
-    expect(plan.stopsAtQueueEnd, isFalse);
+    expect(plan.candidates.map((item) => item.entryId), [3]);
+    expect(plan.stopsAtQueueEnd, isTrue);
   });
 
   test('automatic sequential advance stops at the queue end', () {
@@ -42,14 +42,14 @@ void main() {
       intent: PlaybackTransitionIntent.automaticAdvance,
     );
 
-    expect(plan.candidates.map((item) => item.entryId), [1, 2, 3, 4]);
+    expect(plan.candidates.map((item) => item.entryId), [1, 2, 3]);
   });
 
   test('duplicate tracks remain distinct candidates by entry id', () {
     final plan = planner.plan(
       queue: queue(active: 4),
       mode: PlaybackMode.loopAll,
-      intent: PlaybackTransitionIntent.manualAdvance,
+      intent: PlaybackTransitionIntent.automaticAdvance,
     );
 
     expect(plan.candidates.take(2).map((item) => item.entryId), [1, 2]);
@@ -60,11 +60,11 @@ void main() {
     final plan = planner.plan(
       queue: queue(),
       mode: PlaybackMode.shuffle,
-      intent: PlaybackTransitionIntent.manualAdvance,
+      intent: PlaybackTransitionIntent.automaticAdvance,
       shuffleEntryOrder: const [4, 3, 4, 2, 1],
     );
 
-    expect(plan.candidates.map((item) => item.entryId), [4, 3, 1, 2]);
+    expect(plan.candidates.map((item) => item.entryId), [4, 3, 1]);
   });
 
   test('direct selection never scans adjacent entries', () {
@@ -77,7 +77,7 @@ void main() {
     expect(plan.candidates.map((item) => item.entryId), [2]);
   });
 
-  test('manual next in a one-item loop retries that single entry once', () {
+  test('manual next in a one-item loop has no adjacent target', () {
     final plan = planner.plan(
       queue: PlaybackQueueSnapshot(
         entries: [entry(1, 10)],
@@ -88,7 +88,50 @@ void main() {
       intent: PlaybackTransitionIntent.manualAdvance,
     );
 
-    expect(plan.candidates.map((item) => item.entryId), [1]);
+    expect(plan.candidates, isEmpty);
+  });
+
+  test('manual boundaries follow sequential mode in both directions', () {
+    for (final pair in [
+      (4, PlaybackTransitionDirection.forward),
+      (1, PlaybackTransitionDirection.backward),
+    ]) {
+      expect(
+        planner
+            .plan(
+              queue: queue(active: pair.$1),
+              mode: PlaybackMode.sequential,
+              intent: PlaybackTransitionIntent.manualAdvance,
+              direction: pair.$2,
+            )
+            .candidates,
+        isEmpty,
+      );
+    }
+    expect(
+      planner
+          .plan(
+            queue: queue(active: 4),
+            mode: PlaybackMode.loopAll,
+            intent: PlaybackTransitionIntent.manualAdvance,
+          )
+          .candidates
+          .single
+          .entryId,
+      1,
+    );
+    expect(
+      planner
+          .plan(
+            queue: queue(),
+            mode: PlaybackMode.repeatOne,
+            intent: PlaybackTransitionIntent.manualAdvance,
+          )
+          .candidates
+          .single
+          .entryId,
+      3,
+    );
   });
 
   test('transition budget bounds time, requests, and duplicate visits', () {

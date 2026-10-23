@@ -223,6 +223,34 @@ void main() {
     expect(result.skippedCount, 0);
   });
 
+  test(
+    'unrequested candidates cannot bypass the bound to find distant cache',
+    () async {
+      final visited = <int>[];
+      final result = await coordinator.run(
+        plan: PlaybackCandidatePlan(
+          candidates: List.generate(24, entry),
+          stopsAtQueueEnd: false,
+        ),
+        budget: fixedBudget(),
+        isCurrent: () => true,
+        attempt: (candidate, budget, _) async {
+          visited.add(candidate.entryId);
+          if (candidate.entryId == 23) {
+            return PlaybackCandidateAttemptResult.committed;
+          }
+          return const PlaybackCandidateAttemptResult(
+            PlaybackCandidateAttemptStatus.budgetExhausted,
+            attempted: false,
+          );
+        },
+      );
+      expect(visited, [0, 1, 2]);
+      expect(result.status, PlaybackTransitionResultStatus.budgetExhausted);
+      expect(result.skippedCount, 0);
+    },
+  );
+
   test('time exhaustion stops after the actual failed candidate', () async {
     var elapsed = Duration.zero;
     final attempted = <int>[];

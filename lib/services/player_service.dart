@@ -99,6 +99,18 @@ class PlayerService extends ChangeNotifier {
   Duration get position => viewState.position;
   Duration get bufferedPosition => viewState.bufferedPosition;
   String? get errorMessage => _pb.errorMessage;
+  String? get playbackProblemMessage {
+    final problem = currentProblem;
+    if (problem == null ||
+        !_pb.isCurrentPlaybackProblem(problem) ||
+        isTrackSwitchPending) {
+      return errorMessage;
+    }
+    return isPlaying
+        ? '《${problem.track.name}》播放失败，继续播放《${_pb.displayTitle}》'
+        : '《${problem.track.name}》：${problem.message}';
+  }
+
   bool get isPlaying => viewState.effectivePlaying;
   bool get isPaused => !viewState.effectivePlaying;
   bool get isLoading => _pb.isLoading;
@@ -122,9 +134,32 @@ class PlayerService extends ChangeNotifier {
       _pb.bufferedPositionNotifier;
   ValueNotifier<PlaybackProblem?> get problemNotifier => _pb.problemNotifier;
   PlaybackProblem? get currentProblem => _pb.currentProblem;
-  bool get canRetryCurrentProblem => currentProblem?.canRetry ?? false;
-  bool get canSkipCurrentProblem =>
-      hasNext && (currentProblem?.allowsManualSkip ?? false);
+  bool get canRetryCurrentProblem {
+    final problem = currentProblem;
+    return problem != null &&
+        problem.canRetry &&
+        _pb.isCurrentPlaybackProblem(problem);
+  }
+
+  bool get canSkipCurrentProblem => _pb.canSkipCurrentProblem;
+  VoidCallback? get retryCurrentProblemAction {
+    final problem = currentProblem;
+    return canRetryCurrentProblem && problem != null
+        ? () {
+            retryCurrent(expectedProblem: problem);
+          }
+        : null;
+  }
+
+  VoidCallback? get skipCurrentProblemAction {
+    final problem = currentProblem;
+    return canSkipCurrentProblem && problem != null
+        ? () {
+            skipFailedTrack(expectedProblem: problem);
+          }
+        : null;
+  }
+
   bool isCurrentPlaybackProblem(PlaybackProblem problem) =>
       _pb.isCurrentPlaybackProblem(problem);
   ValueNotifier<SourceHealthSnapshot?> get sourceHealthNotifier =>
@@ -163,6 +198,10 @@ class PlayerService extends ChangeNotifier {
       _pb.onPlaybackFailure;
   set onPlaybackFailure(void Function(PlaybackProblem problem)? callback) {
     _pb.onPlaybackFailure = callback;
+  }
+
+  set onPlaybackNotice(void Function(String message)? callback) {
+    _pb.onPlaybackNotice = callback;
   }
 
   // ══════════════════════════════════════════════════════
@@ -205,6 +244,8 @@ class PlayerService extends ChangeNotifier {
   Future<void> resume() => _pb.resume();
   Future<void> seek(Duration position) => _pb.seek(position);
   Future<void> playNext() => _pb.next();
+  Future<void> skipFailedTrack({PlaybackProblem? expectedProblem}) =>
+      _pb.skipFailedTrack(expectedProblem: expectedProblem);
   Future<void> playPrevious() => _pb.previous();
   Future<void> retryCurrent({PlaybackProblem? expectedProblem}) =>
       _pb.retryCurrentTrack(expectedProblem: expectedProblem);
