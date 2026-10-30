@@ -143,7 +143,7 @@ jobs:
   # Windows 构建
   build-windows:
     name: Build Windows
-    runs-on: windows-latest
+    runs-on: windows-2022
     needs: quality
     timeout-minutes: 45
     if: ${{ github.event_name == 'push' || inputs.build_windows }}
@@ -199,7 +199,7 @@ jobs:
             gstreamer1.0-plugins-bad gstreamer1.0-libav \
             libayatana-appindicator3-dev \
             libmpv-dev \
-            libasound2-dev
+            libasound2-dev libsecret-1-dev
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -242,7 +242,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: amd64
-          Depends: libgtk-3-0, liblzma5, libmpv2 | libmpv1, libasound2
+          Depends: libgtk-3-0, liblzma5, libmpv2 | libmpv1, libasound2, libsecret-1-0
           Maintainer: Moraxs
           Description: A smooth music player built with Flutter.
           EOF
