@@ -1,3 +1,4 @@
+import '../../utils/netease_track.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/track.dart';
@@ -6,18 +7,7 @@ import '../../services/playlist_queue_service.dart';
 import '../../utils/image_utils.dart';
 
 /// 转换为 Track 对象
-Track convertToTrack(Map<String, dynamic> song) {
-  final album = (song['al'] ?? song['album'] ?? {}) as Map<String, dynamic>;
-  final artists = (song['ar'] ?? song['artists'] ?? []) as List<dynamic>;
-  return Track(
-    id: song['id'] ?? 0,
-    name: song['name']?.toString() ?? '',
-    artists: artists.map((e) => (e as Map<String, dynamic>)['name']?.toString() ?? '').where((e) => e.isNotEmpty).join(' / '),
-    album: album['name']?.toString() ?? '',
-    picUrl: album['picUrl']?.toString() ?? '',
-    source: MusicSource.netease,
-  );
-}
+Track convertToTrack(Map<String, dynamic> song) => neteaseSongToTrack(song);
 
 /// Hero 双卡区域 - 每日推荐 + 私人FM 并排
 class HeroSection extends StatelessWidget {

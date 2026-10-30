@@ -471,7 +471,9 @@ class MobilePlayerDialogs {
               child: AnimatedBuilder(
                 animation: playlistService,
                 builder: (context, child) {
-                  final playlists = playlistService.playlists.where((p) => p.isLocal).toList();
+                  final playlists = playlistService.playlists
+                      .where((p) => p.isLocal)
+                      .toList();
 
                   if (playlists.isEmpty) {
                     return Center(
@@ -627,6 +629,8 @@ class MobilePlayerDialogs {
         return '播放历史';
       case QueueSource.search:
         return '播放队列 · 搜索';
+      case QueueSource.neteaseFm:
+        return '播放队列 · 私人 FM';
       case QueueSource.radio:
         return '播放队列 · 电台';
       case QueueSource.toplist:
@@ -1530,12 +1534,8 @@ class _MobileVolumePopupCardState extends State<_MobileVolumePopupCard> {
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
               trackHeight: 3.5,
-              thumbShape: const RoundSliderThumbShape(
-                enabledThumbRadius: 6,
-              ),
-              overlayShape: const RoundSliderOverlayShape(
-                overlayRadius: 13,
-              ),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 13),
               activeTrackColor: Colors.white,
               inactiveTrackColor: Colors.white.withValues(alpha: 0.18),
               thumbColor: Colors.white,
@@ -1586,10 +1586,7 @@ class _MobileVolumePopupCardState extends State<_MobileVolumePopupCard> {
             filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
             child: Container(
               width: widget.cardWidth,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: const Color(0xD9161620),
                 borderRadius: BorderRadius.circular(22),

@@ -17,6 +17,7 @@ enum QueueSource {
   search,
   radio,
   toplist,
+  neteaseFm,
 }
 
 class QueueRemovalResult {

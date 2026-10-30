@@ -1,5 +1,35 @@
 import 'package:flutter/foundation.dart';
 import 'api/api_client.dart';
+import 'auth_service.dart';
+import 'url_service.dart';
+
+/// A same-machine loopback connection does not transmit credentials over a LAN.
+/// Every other server must use HTTPS.
+bool isNeteaseCredentialTransportAllowed(String address) {
+  final uri = Uri.tryParse(address);
+  if (uri == null ||
+      !uri.hasAuthority ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty) {
+    return false;
+  }
+  if (uri.scheme == 'https') return true;
+  return uri.scheme == 'http' &&
+      [
+        'localhost',
+        '127.0.0.1',
+        '::1',
+        '[::1]',
+      ].contains(uri.host.toLowerCase());
+}
+
+class NeteaseAccountException implements Exception {
+  final String code;
+  final String message;
+  const NeteaseAccountException(this.code, this.message);
+  @override
+  String toString() => message;
+}
 
 class NeteaseQrCreateResult {
   final String key;
@@ -9,153 +39,190 @@ class NeteaseQrCreateResult {
 }
 
 class NeteaseQrCheckResult {
-  final int code; // 800 801 802 803
+  final int code;
   final String? message;
   final Map<String, dynamic>? profile;
   NeteaseQrCheckResult({required this.code, this.message, this.profile});
 }
 
 class NeteaseLoginService extends ChangeNotifier {
-  static final NeteaseLoginService _instance = NeteaseLoginService._internal();
+  static final NeteaseLoginService _instance = NeteaseLoginService._();
   factory NeteaseLoginService() => _instance;
-  NeteaseLoginService._internal();
-
-  Future<NeteaseQrCreateResult> createQrKey() async {
-    // align with reference: first get key, then build login url; optional create
-    final keyResult = await ApiClient().getJson(
-      '/login/qr/key',
-      timeout: const Duration(seconds: 10),
-    );
-    if (!keyResult.ok) {
-      throw Exception('HTTP ${keyResult.statusCode}');
-    }
-    final keyData = keyResult.data as Map<String, dynamic>;
-    if ((keyData['code'] as int?) != 200) {
-      throw Exception(keyData['message'] ?? '获取二维码 key 失败');
-    }
-    final unikey = (keyData['data'] as Map<String, dynamic>)['unikey'] as String;
-    final qrUrl = 'https://music.163.com/login?codekey=$unikey';
-
-    // optional: try create image (not required since we render locally)
-    try {
-      await ApiClient().getJson(
-        '/login/qr/create',
-        queryParameters: {
-          'key': unikey,
-          'qrimg': 'true',
-          'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
-        },
-      );
-    } catch (_) {}
-
-    return NeteaseQrCreateResult(key: unikey, qrUrl: qrUrl);
+  NeteaseLoginService._() {
+    AuthService().addListener(_scopeChanged);
+    UrlService().addListener(_scopeChanged);
+  }
+  String get scope =>
+      '${UrlService().baseUrl}:${UrlService().backendRevision}:${AuthService().dataSessionIdentity}';
+  String? _lastScope;
+  int? bindingRevision;
+  void _scopeChanged() {
+    if (_lastScope == scope) return;
+    _lastScope = scope;
+    bindingRevision = null;
+    notifyListeners();
   }
 
-  Future<NeteaseQrCheckResult> checkQrStatus({required String key, int? userId}) async {
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    final queryParams = <String, dynamic>{
-      'key': key,
-      if (userId != null) 'userId': userId.toString(),
-      'timestamp': ts.toString(),
-    };
-
-    Future<Map<String, dynamic>> doGet(String path) async {
-      final r = await ApiClient().getJson(
-        path,
-        queryParameters: queryParams,
-        timeout: const Duration(seconds: 10),
-      );
-      if (!r.ok) {
-        throw Exception('HTTP ${r.statusCode}');
-      }
-      return r.data as Map<String, dynamic>;
-    }
-
-    Map<String, dynamic> data = await doGet('/login/qr/check');
-
-    // 兼容老服务路径：若返回 404/接口未找到，则尝试 /netease/login/qr/check
-    final codeVal = data['code'];
-    final msgVal = (data['message'] ?? data['msg']) as String?;
-    if (codeVal == 404 || (msgVal != null && msgVal.contains('接口未找到'))) {
-      data = await doGet('/netease/login/qr/check');
-    }
-
-    // 后端直接返回二维码状态码：800/801/802/803
-    final statusCode = (data['code'] as num?)?.toInt();
-    if (statusCode == null) {
-      throw Exception('无效响应');
-    }
-
-    final result = NeteaseQrCheckResult(
-      code: statusCode,
-      message: (data['message'] ?? data['msg']) as String?,
-      profile: data['profile'] as Map<String, dynamic>?,
+  Future<Map<String, dynamic>> _request(
+    String path, {
+    String method = 'GET',
+    Map<String, dynamic>? data,
+  }) async {
+    final identity = scope;
+    final result = await ApiClient().requestJson(
+      path,
+      method: method,
+      data: data,
+      dedupe: false,
     );
+    if (identity != scope) {
+      throw const NeteaseAccountException('SESSION_CHANGED', '服务器或登录账号已变化');
+    }
+    if (!result.ok) {
+      final body = result.data;
+      throw NeteaseAccountException(
+        body is Map
+            ? '${body['error'] ?? (body['code'] is String ? body['code'] : 'REQUEST_FAILED')}'
+            : 'REQUEST_FAILED',
+        result.message ?? '网易云请求失败，请稍后重试',
+      );
+    }
+    return Map<String, dynamic>.from(result.data as Map);
+  }
 
-    // 如果绑定成功（803），通知监听者刷新 UI
-    if (statusCode == 803) {
+  Future<Map<String, dynamic>> startBinding(String method) async =>
+      Map<String, dynamic>.from(
+        (await _request(
+              '/accounts/netease/bind-sessions',
+              method: 'POST',
+              data: {'method': method},
+            ))['data']
+            as Map,
+      );
+  Future<Map<String, dynamic>> pollBinding(String id) async =>
+      Map<String, dynamic>.from(
+        (await _request('/accounts/netease/bind-sessions/$id'))['data'] as Map,
+      );
+  Future<void> cancelBinding(String id) async {
+    await _request('/accounts/netease/bind-sessions/$id', method: 'DELETE');
+  }
+
+  Future<void> completeBinding(String id, String cookie) async {
+    // Credentials require HTTPS, except for a connection on this same machine.
+    if (!isNeteaseCredentialTransportAllowed(UrlService().baseUrl)) {
+      throw const NeteaseAccountException(
+        'HTTPS_REQUIRED',
+        '网页登录绑定需要使用 HTTPS 服务器地址',
+      );
+    }
+    final result = await _request(
+      '/accounts/netease/bind-sessions/$id/complete',
+      method: 'POST',
+      data: {'cookie': cookie},
+    );
+    bindingRevision = (result['data'] as Map?)?['revision'] as int?;
+    notifyListeners();
+  }
+
+  Future<NeteaseQrCreateResult> createQrKey() async {
+    final session = await startBinding('qr');
+    final id = session['id'] as String;
+    try {
+      final state = await pollBinding(id);
+      final url = state['qrUrl'] as String?;
+      if (url == null || url.isEmpty) {
+        throw const NeteaseAccountException('QR_UNAVAILABLE', '无法获取二维码，请重试');
+      }
+      return NeteaseQrCreateResult(key: id, qrUrl: url);
+    } catch (_) {
+      try {
+        await cancelBinding(id);
+      } catch (_) {}
+      rethrow;
+    }
+  }
+
+  Future<NeteaseQrCheckResult> checkQrStatus({
+    required String key,
+    int? userId,
+  }) async {
+    final data = await pollBinding(key);
+    final state = data['status'];
+    if (state == 'bound') {
+      await fetchBindings();
       notifyListeners();
     }
+    return NeteaseQrCheckResult(
+      code: switch (state) {
+        'expired' => 800,
+        'scanned' => 802,
+        'bound' => 803,
+        _ => 801,
+      },
+    );
+  }
 
+  Future<Map<String, dynamic>> fetchBindings() async {
+    final result = await _request('/accounts/bindings');
+    final b = (result['data'] as Map?)?['netease'] as Map?;
+    final revision = b?['revision'] as int?;
+    if (revision != bindingRevision) {
+      bindingRevision = revision;
+      notifyListeners();
+    }
     return result;
   }
 
-  // ===== Third-party accounts =====
-  Future<Map<String, dynamic>> fetchBindings() async {
-    final r = await ApiClient().getJson(
-      '/accounts/bindings',
-      timeout: const Duration(seconds: 10),
-    );
-    return r.data as Map<String, dynamic>;
-  }
-
   Future<bool> unbindNetease() async {
-    final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000; // 秒级时间戳
-    final r = await ApiClient().postJson(
-      '/accounts/netease/unbind',
-      data: {'timestamp': timestamp},
-      timeout: const Duration(seconds: 10),
-    );
-    final success = r.ok;
-    if (success) {
-      notifyListeners();
-    }
-    return success;
+    await _request('/accounts/netease/unbind', method: 'POST');
+    await fetchBindings();
+    notifyListeners();
+    return true;
   }
 
-  /// 检查是否已绑定网易云账号
-  Future<bool> isNeteaseBound() async {
-    try {
-      final resp = await fetchBindings();
-      // 后端返回格式: { code: 200, data: { netease: { bound: true, nickname: ... } } }
-      final data = resp['data'] as Map<String, dynamic>?;
-      final netease = data?['netease'] as Map<String, dynamic>?;
-      return netease != null && netease['bound'] == true;
-    } catch (e) {
-      debugPrint('❌ [NeteaseLoginService] 检查绑定状态失败: $e');
-      return false;
-    }
-  }
-
-  /// 获取用户网易云歌单列表
-  Future<List<NeteasePlaylistInfo>> fetchUserPlaylists({int limit = 50, int offset = 0}) async {
-    final r = await ApiClient().getJson(
-      '/netease/user/playlists',
-      queryParameters: {
-        'limit': limit.toString(),
-        'offset': offset.toString(),
+  Future<bool> isNeteaseBound() async =>
+      ((await fetchBindings())['data'] as Map?)?['netease']?['bound'] == true;
+  Future<Map<String, dynamic>> fetchPlaylistPage({
+    int limit = 100,
+    int offset = 0,
+  }) async => Map<String, dynamic>.from(
+    (await _request(
+          '/netease/user/playlists?limit=$limit&offset=$offset',
+        ))['data']
+        as Map,
+  );
+  Future<void> importPlaylist({
+    required String id,
+    required String name,
+    required bool follow,
+    required String operationId,
+  }) async {
+    await _request(
+      follow ? '/playlists/follow' : '/playlists/import',
+      method: 'POST',
+      data: {
+        'source': 'netease',
+        'sourcePlaylistId': id,
+        'name': name,
+        'operationId': operationId,
       },
-      timeout: const Duration(seconds: 15),
     );
+  }
 
-    final data = r.data as Map<String, dynamic>;
-
-    if (!r.ok || data['code'] != 200) {
-      throw Exception(data['message'] ?? '获取歌单列表失败');
-    }
-
-    final playlistsData = data['data']?['playlists'] as List<dynamic>? ?? [];
-    return playlistsData.map((p) => NeteasePlaylistInfo.fromJson(p as Map<String, dynamic>)).toList();
+  Future<List<NeteasePlaylistInfo>> fetchUserPlaylists({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final result = await _request(
+      '/netease/user/playlists?limit=$limit&offset=$offset',
+    );
+    final rows = (result['data'] as Map)['playlists'] as List;
+    return rows
+        .map(
+          (p) =>
+              NeteasePlaylistInfo.fromJson(Map<String, dynamic>.from(p as Map)),
+        )
+        .toList();
   }
 }
 
@@ -169,7 +236,7 @@ class NeteasePlaylistInfo {
   final String creator;
   final String creatorId;
   final String? description;
-  final bool subscribed;  // 是否为收藏的歌单（非自己创建）
+  final bool subscribed; // 是否为收藏的歌单（非自己创建）
 
   NeteasePlaylistInfo({
     required this.id,
@@ -188,8 +255,12 @@ class NeteasePlaylistInfo {
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? '未命名歌单',
       coverImgUrl: json['coverImgUrl']?.toString() ?? '',
-      trackCount: (json['trackCount'] is int) ? json['trackCount'] : int.tryParse(json['trackCount']?.toString() ?? '0') ?? 0,
-      playCount: (json['playCount'] is int) ? json['playCount'] : int.tryParse(json['playCount']?.toString() ?? '0') ?? 0,
+      trackCount: (json['trackCount'] is int)
+          ? json['trackCount']
+          : int.tryParse(json['trackCount']?.toString() ?? '0') ?? 0,
+      playCount: (json['playCount'] is int)
+          ? json['playCount']
+          : int.tryParse(json['playCount']?.toString() ?? '0') ?? 0,
       creator: json['creator']?.toString() ?? '',
       creatorId: json['creatorId']?.toString() ?? '',
       description: json['description']?.toString(),

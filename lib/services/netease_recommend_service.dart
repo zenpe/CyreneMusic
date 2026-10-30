@@ -1,3 +1,4 @@
+import 'netease_login_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'api/api_client.dart';
@@ -18,10 +19,16 @@ class NeteaseRecommendService extends ChangeNotifier {
     final result = await _api.getJson(
       '/recommend/songs',
       timeout: const Duration(seconds: 15),
-      cacheTtl: const Duration(seconds: 10),
+      dedupe: false,
       cancelToken: cancelToken,
     );
-    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+    if (!result.ok) {
+      final body = result.data;
+      throw NeteaseAccountException(
+        body is Map ? '${body['error'] ?? 'REQUEST_FAILED'}' : 'REQUEST_FAILED',
+        result.message ?? '网易云暂时不可用',
+      );
+    }
     final data = result.data as Map<String, dynamic>;
     if ((data['code'] as num?)?.toInt() != 200) {
       throw Exception('code ${data['code']}');
@@ -37,10 +44,16 @@ class NeteaseRecommendService extends ChangeNotifier {
     final result = await _api.getJson(
       '/recommend/resource',
       timeout: const Duration(seconds: 15),
-      cacheTtl: const Duration(seconds: 10),
+      dedupe: false,
       cancelToken: cancelToken,
     );
-    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+    if (!result.ok) {
+      final body = result.data;
+      throw NeteaseAccountException(
+        body is Map ? '${body['error'] ?? 'REQUEST_FAILED'}' : 'REQUEST_FAILED',
+        result.message ?? '网易云暂时不可用',
+      );
+    }
     final data = result.data as Map<String, dynamic>;
     if ((data['code'] as num?)?.toInt() != 200) {
       throw Exception('code ${data['code']}');
@@ -56,10 +69,16 @@ class NeteaseRecommendService extends ChangeNotifier {
     final result = await _api.getJson(
       '/personal_fm',
       timeout: const Duration(seconds: 15),
-      cacheTtl: const Duration(seconds: 10),
+      dedupe: false,
       cancelToken: cancelToken,
     );
-    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+    if (!result.ok) {
+      final body = result.data;
+      throw NeteaseAccountException(
+        body is Map ? '${body['error'] ?? 'REQUEST_FAILED'}' : 'REQUEST_FAILED',
+        result.message ?? '网易云暂时不可用',
+      );
+    }
     final data = result.data as Map<String, dynamic>;
     if ((data['code'] as num?)?.toInt() != 200) {
       throw Exception('code ${data['code']}');
@@ -76,7 +95,13 @@ class NeteaseRecommendService extends ChangeNotifier {
       data: 'id=$id',
       timeout: const Duration(seconds: 15),
     );
-    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+    if (!result.ok) {
+      final body = result.data;
+      throw NeteaseAccountException(
+        body is Map ? '${body['error'] ?? 'REQUEST_FAILED'}' : 'REQUEST_FAILED',
+        result.message ?? '网易云暂时不可用',
+      );
+    }
   }
 
   Future<List<Map<String, dynamic>>> fetchPersonalizedPlaylists({
@@ -90,7 +115,13 @@ class NeteaseRecommendService extends ChangeNotifier {
       cacheTtl: const Duration(seconds: 10),
       cancelToken: cancelToken,
     );
-    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+    if (!result.ok) {
+      final body = result.data;
+      throw NeteaseAccountException(
+        body is Map ? '${body['error'] ?? 'REQUEST_FAILED'}' : 'REQUEST_FAILED',
+        result.message ?? '网易云暂时不可用',
+      );
+    }
     final data = result.data as Map<String, dynamic>;
     if ((data['code'] as num?)?.toInt() != 200) {
       throw Exception('code ${data['code']}');
@@ -111,7 +142,13 @@ class NeteaseRecommendService extends ChangeNotifier {
       cacheTtl: const Duration(seconds: 10),
       cancelToken: cancelToken,
     );
-    if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+    if (!result.ok) {
+      final body = result.data;
+      throw NeteaseAccountException(
+        body is Map ? '${body['error'] ?? 'REQUEST_FAILED'}' : 'REQUEST_FAILED',
+        result.message ?? '网易云暂时不可用',
+      );
+    }
     final data = result.data as Map<String, dynamic>;
     if ((data['code'] as num?)?.toInt() != 200) {
       throw Exception('code ${data['code']}');
@@ -144,7 +181,15 @@ class NeteaseRecommendService extends ChangeNotifier {
         cacheTtl: const Duration(seconds: 12),
         cancelToken: cancelToken,
       );
-      if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+      if (!result.ok) {
+        final body = result.data;
+        throw NeteaseAccountException(
+          body is Map
+              ? '${body['error'] ?? 'REQUEST_FAILED'}'
+              : 'REQUEST_FAILED',
+          result.message ?? '网易云暂时不可用',
+        );
+      }
       final data = result.data as Map<String, dynamic>;
       if ((data['status'] as num?)?.toInt() != 200) {
         throw Exception('status ${data['status']}');
@@ -194,7 +239,15 @@ class NeteaseRecommendService extends ChangeNotifier {
       if (!_isCurrentForYouCombinedRequest(requestId, cancelToken)) {
         throw StateError('request_cancelled');
       }
-      if (!result.ok) throw Exception('HTTP ${result.statusCode}');
+      if (!result.ok) {
+        final body = result.data;
+        throw NeteaseAccountException(
+          body is Map
+              ? '${body['error'] ?? 'REQUEST_FAILED'}'
+              : 'REQUEST_FAILED',
+          result.message ?? '网易云暂时不可用',
+        );
+      }
       final data = result.data as Map<String, dynamic>;
       if ((data['status'] as num?)?.toInt() != 200 || data['data'] == null) {
         throw Exception('status ${data['status']}');

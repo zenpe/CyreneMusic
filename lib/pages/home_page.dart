@@ -1,3 +1,6 @@
+import 'home_for_you_tab.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/url_service.dart';
 import '../widgets/floating_playback_insets.dart';
 import '../services/structured_log_service.dart';
 import 'dart:async';
@@ -64,9 +67,75 @@ class _HomePageState extends State<HomePage>
   @override
   bool get wantKeepAlive => true; // 保持页面状态
 
+  bool _forYou = false;
+  String get _tabKey =>
+      'home-tab:${UrlService().baseUrl}:${_authFacade.currentUser?.id}';
+  Future<void> _restoreHomeTab() async {
+    final key = _tabKey;
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted && key == _tabKey) {
+      setState(() => _forYou = prefs.getBool(key) ?? false);
+    }
+  }
+
+  void _selectHomeTab(bool value) {
+    setState(() => _forYou = value);
+    final key = _tabKey;
+    unawaited(
+      SharedPreferences.getInstance().then((p) => p.setBool(key, value)),
+    );
+  }
+
+  Widget _homeSelector() {
+    if (ThemeManager().isDesktopFluentUI) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Row(
+          children: [
+            fluent.ToggleButton(
+              checked: !_forYou,
+              onChanged: (_) => _selectHomeTab(false),
+              child: const Text('发现'),
+            ),
+            const SizedBox(width: 8),
+            fluent.ToggleButton(
+              checked: _forYou,
+              onChanged: (_) => _selectHomeTab(true),
+              child: const Text('为你推荐'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (ThemeManager().isCupertinoFramework) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: CupertinoSlidingSegmentedControl<bool>(
+          groupValue: _forYou,
+          children: const {false: Text('发现'), true: Text('为你推荐')},
+          onValueChanged: (v) {
+            if (v != null) _selectHomeTab(v);
+          },
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(value: false, label: Text('发现')),
+          ButtonSegment(value: true, label: Text('为你推荐')),
+        ],
+        selected: {_forYou},
+        onSelectionChanged: (v) => _selectHomeTab(v.first),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
+    unawaited(_restoreHomeTab());
 
     // 添加应用生命周期监听
     WidgetsBinding.instance.addObserver(this);
@@ -119,6 +188,7 @@ class _HomePageState extends State<HomePage>
   }
 
   void _onAuthChanged() {
+    unawaited(_restoreHomeTab());
     if (mounted) {
       setState(() {
         // 登录状态变化时，重新加载“猜你喜欢”
@@ -1381,7 +1451,10 @@ class _HomePageState extends State<HomePage>
         padding: const EdgeInsets.all(16.0),
         sliver: SliverList(
           delegate: SliverChildListDelegate([
-            if (MusicService().isLoading)
+            _homeSelector(),
+            if (_forYou)
+              const HomeForYouTab()
+            else if (MusicService().isLoading)
               const CupertinoLoadingSection()
             else if (MusicService().errorMessage != null)
               const CupertinoErrorSection()
@@ -1624,12 +1697,7 @@ class _HomePageState extends State<HomePage>
       transitionBuilder: (child, animation) =>
           _buildSlideTransition(child, animation),
       layoutBuilder: (currentChild, previousChildren) {
-        return Stack(
-          children: [
-            ...previousChildren,
-            ?currentChild,
-          ],
-        );
+        return Stack(children: [...previousChildren, ?currentChild]);
       },
       child: child,
     );
@@ -1820,12 +1888,16 @@ class _HomePageState extends State<HomePage>
       padding: EdgeInsets.fromLTRB(24.0, topPad, 24.0, 24.0),
       sliver: SliverList(
         delegate: SliverChildListDelegate([
-          ChartsTab(
-            cachedRandomTracks: _cachedRandomTracks,
-            checkLoginStatus: _checkLoginStatus,
-            guessYouLikeFuture: _guessYouLikeFuture,
-            onRefresh: _onRefresh,
-          ),
+          _homeSelector(),
+          if (_forYou)
+            const HomeForYouTab()
+          else
+            ChartsTab(
+              cachedRandomTracks: _cachedRandomTracks,
+              checkLoginStatus: _checkLoginStatus,
+              guessYouLikeFuture: _guessYouLikeFuture,
+              onRefresh: _onRefresh,
+            ),
         ]),
       ),
     );
@@ -2003,6 +2075,7 @@ class _HomePageState extends State<HomePage>
         });
         _syncGlobalBackHandler();
       }
+
       _homeOverlayController.setBackHandler(handler);
       GlobalBackHandlerService().register('home_overlay', () {
         handler();
