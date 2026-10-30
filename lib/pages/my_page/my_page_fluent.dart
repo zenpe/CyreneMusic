@@ -505,6 +505,7 @@ class _FluentMyTrackTile extends StatelessWidget {
                     track: item.toTrack(),
                     onPlay: onPlay,
                     onDelete: onDelete,
+                    deleteLabel: '从歌单移除',
                     size: 32,
                   ),
                 ],

@@ -691,7 +691,8 @@ class _MyPageState extends State<MyPage> {
   }
 
   Future<void> _confirmRemoveTrack(PlaylistTrack track) async {
-    if (_selectedPlaylist?.isLocal != true) return;
+    final playlist = _selectedPlaylist;
+    if (playlist == null || !playlist.isLocal) return;
 
     bool? confirmed;
     if (_themeManager.isFluentFramework) {
@@ -706,6 +707,25 @@ class _MyPageState extends State<MyPage> {
               child: const Text('取消'),
             ),
             fluent.FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('移除'),
+            ),
+          ],
+        ),
+      );
+    } else if (ThemeManager().isCupertinoFramework) {
+      confirmed = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text('移除歌曲'),
+          content: Text('确定要从歌单中移除「${track.name}」吗？'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
               onPressed: () => Navigator.pop(context, true),
               child: const Text('移除'),
             ),
@@ -733,10 +753,10 @@ class _MyPageState extends State<MyPage> {
       );
     }
 
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
 
     final success = await _playlistService.removePlaylistTrack(
-      _selectedPlaylist!.id,
+      playlist.id,
       track,
     );
 

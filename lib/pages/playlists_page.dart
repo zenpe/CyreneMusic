@@ -1064,6 +1064,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
                 track: item.toTrack(),
                 onPlay: () => _playTrack(index),
                 onDelete: () => _confirmRemoveTrack(item),
+                            deleteLabel: '从歌单移除',
               ),
         onTap: _isEditMode
             ? () => _toggleTrackSelection(item)

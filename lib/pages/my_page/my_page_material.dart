@@ -1949,6 +1949,7 @@ extension _MyPageMaterialUI on _MyPageState {
                             track: item.toTrack(),
                             onPlay: () => _playDetailTrack(index),
                             onDelete: () => _confirmRemoveTrack(item),
+                            deleteLabel: '从歌单移除',
                             size: 32,
                           ),
                         ],

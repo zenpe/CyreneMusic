@@ -15,17 +15,23 @@ import '../../widgets/material/material_settings_widgets.dart';
 class NetworkSettings extends StatefulWidget {
   /// 点击音源设置时的回调，用于在设置页面中打开子页面
   final VoidCallback? onAudioSourceTap;
+  final bool serverOnly;
 
-  const NetworkSettings({super.key, this.onAudioSourceTap});
+  const NetworkSettings({
+    super.key,
+    this.onAudioSourceTap,
+    this.serverOnly = false,
+  });
 
   @override
   State<NetworkSettings> createState() => _NetworkSettingsState();
 }
 
 class _NetworkSettingsState extends State<NetworkSettings> {
-  final AudioSourceReadController _audioSourceReadController =
+  late final AudioSourceReadController _audioSourceReadController =
       AudioSourceReadController();
   bool _isTesting = false;
+  int _connectionTestId = 0;
   int? _latencyMs;
   String? _errorMessage;
   Timer? _autoRefreshTimer;
@@ -34,7 +40,9 @@ class _NetworkSettingsState extends State<NetworkSettings> {
   void initState() {
     super.initState();
     UrlService().addListener(_handleUrlChanged);
-    _audioSourceReadController.addListener(_handleAudioSourceChanged);
+    if (!widget.serverOnly) {
+      _audioSourceReadController.addListener(_handleAudioSourceChanged);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _testConnection();
       _startAutoRefresh();
@@ -44,13 +52,19 @@ class _NetworkSettingsState extends State<NetworkSettings> {
   @override
   void dispose() {
     UrlService().removeListener(_handleUrlChanged);
-    _audioSourceReadController.removeListener(_handleAudioSourceChanged);
+    if (!widget.serverOnly) {
+      _audioSourceReadController.removeListener(_handleAudioSourceChanged);
+    }
     _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
   void _handleUrlChanged() {
     if (!mounted) return;
+    _connectionTestId++;
+    _isTesting = false;
+    _latencyMs = null;
+    _errorMessage = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() {});
@@ -80,26 +94,27 @@ class _NetworkSettingsState extends State<NetworkSettings> {
 
     if (isFluent) {
       return FluentSettingsGroup(
-        title: '网络',
+        title: widget.serverOnly ? '服务器' : '网络',
         children: [
           FluentSettingsTile(
             icon: Icons.dns,
-            title: '后端源',
+            title: '服务器设置',
             subtitle: UrlService().getSourceDescription(),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showBackendSourceDialogFluent(context),
           ),
-          FluentSettingsTile(
-            icon: Icons.music_note,
-            title: '音源设置',
-            subtitle: _audioSourceReadController.sourceSummary,
-            trailing: const Icon(Icons.chevron_right),
-            onTap: widget.onAudioSourceTap,
-          ),
+          if (!widget.serverOnly)
+            FluentSettingsTile(
+              icon: Icons.music_note,
+              title: '音源设置',
+              subtitle: _audioSourceReadController.sourceSummary,
+              trailing: const Icon(Icons.chevron_right),
+              onTap: widget.onAudioSourceTap,
+            ),
           FluentSettingsTile(
             icon: Icons.wifi_tethering,
             title: '测试连接',
-            subtitle: _errorMessage != null ? '无法连接后端服务器' : '自动检测与后端服务器的连接',
+            subtitle: _errorMessage != null ? '无法连接服务器' : '自动检测与服务器的连接',
             trailing: _buildLatencyIndicator(context),
           ),
         ],
@@ -114,22 +129,23 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       children: [
         MD3SettingsTile(
           leading: const Icon(Icons.dns_outlined),
-          title: '后端源',
+          title: '服务器设置',
           subtitle: UrlService().getSourceDescription(),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _showBackendSourceDialog(context),
         ),
-        MD3SettingsTile(
-          leading: const Icon(Icons.music_note_outlined),
-          title: '音源设置',
-          subtitle: _audioSourceReadController.sourceSummary,
-          trailing: const Icon(Icons.chevron_right),
-          onTap: widget.onAudioSourceTap,
-        ),
+        if (!widget.serverOnly)
+          MD3SettingsTile(
+            leading: const Icon(Icons.music_note_outlined),
+            title: '音源设置',
+            subtitle: _audioSourceReadController.sourceSummary,
+            trailing: const Icon(Icons.chevron_right),
+            onTap: widget.onAudioSourceTap,
+          ),
         MD3SettingsTile(
           leading: const Icon(Icons.wifi_tethering_outlined),
           title: '测试连接',
-          subtitle: _errorMessage != null ? '无法连接后端服务器' : '自动检测与后端服务器的连接',
+          subtitle: _errorMessage != null ? '无法连接服务器' : '自动检测与服务器的连接',
           trailing: _buildLatencyIndicator(context),
         ),
       ],
@@ -143,26 +159,27 @@ class _NetworkSettingsState extends State<NetworkSettings> {
         CupertinoSettingsTile(
           icon: CupertinoIcons.globe,
           iconColor: CupertinoColors.systemBlue,
-          title: '后端源',
+          title: '服务器设置',
           subtitle: UrlService().getSourceDescription(),
           showChevron: true,
           onTap: () => _showBackendSourceDialogCupertino(context),
         ),
         const SizedBox(height: 1),
-        CupertinoSettingsTile(
-          icon: CupertinoIcons.music_note,
-          iconColor: CupertinoColors.systemPurple,
-          title: '音源设置',
-          subtitle: _audioSourceReadController.sourceSummary,
-          showChevron: true,
-          onTap: widget.onAudioSourceTap,
-        ),
+        if (!widget.serverOnly)
+          CupertinoSettingsTile(
+            icon: CupertinoIcons.music_note,
+            iconColor: CupertinoColors.systemPurple,
+            title: '音源设置',
+            subtitle: _audioSourceReadController.sourceSummary,
+            showChevron: true,
+            onTap: widget.onAudioSourceTap,
+          ),
         const SizedBox(height: 1),
         CupertinoSettingsTile(
           icon: CupertinoIcons.wifi,
           iconColor: CupertinoColors.systemGreen,
           title: '测试连接',
-          subtitle: _errorMessage != null ? '无法连接后端服务器' : '自动检测与后端服务器的连接',
+          subtitle: _errorMessage != null ? '无法连接服务器' : '自动检测与服务器的连接',
           trailing: _buildLatencyIndicatorCupertino(context),
         ),
       ],
@@ -211,7 +228,6 @@ class _NetworkSettingsState extends State<NetworkSettings> {
     );
   }
 
-
   void _showCustomUrlDialogFluent(BuildContext context) {
     final controller = TextEditingController(text: UrlService().customBaseUrl);
 
@@ -219,14 +235,14 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       context: context,
       builder: (context) {
         return fluent_ui.ContentDialog(
-          title: const Text('自定义后端源'),
+          title: const Text('自定义服务器'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               fluent_ui.TextBox(
                 controller: controller,
-                placeholder: 'http://example.com:4055',
+                placeholder: UrlService.defaultCustomBaseUrl,
                 prefix: const Padding(
                   padding: EdgeInsets.only(left: 8.0),
                   child: Icon(Icons.link),
@@ -249,7 +265,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                   final messenger = ScaffoldMessenger.maybeOf(context);
                   if (messenger != null) {
                     messenger.showSnackBar(
-                      const SnackBar(content: Text('请输入后端地址')),
+                      const SnackBar(content: Text('请输入服务器地址')),
                     );
                   }
                   return;
@@ -270,7 +286,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                 final messenger = ScaffoldMessenger.maybeOf(context);
                 if (messenger != null) {
                   messenger.showSnackBar(
-                    SnackBar(content: Text('已切换到自定义源: $url')),
+                    SnackBar(content: Text('已切换到自定义服务器: $url')),
                   );
                 }
               },
@@ -287,7 +303,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       context: context,
       builder: (context) {
         return fluent_ui.ContentDialog(
-          title: const Text('选择后端源'),
+          title: const Text('服务器设置'),
           content: fluent_ui.RadioGroup<BackendSourceType>(
             groupValue: UrlService().sourceType,
             onChanged: (value) {
@@ -298,7 +314,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                 final messenger = ScaffoldMessenger.maybeOf(context);
                 if (messenger != null) {
                   messenger.showSnackBar(
-                    const SnackBar(content: Text('已切换到官方源')),
+                    const SnackBar(content: Text('已切换到官方服务器')),
                   );
                 }
                 return;
@@ -312,7 +328,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
               children: [
                 const fluent_ui.RadioButton<BackendSourceType>(
                   value: BackendSourceType.official,
-                  content: Text('官方源'),
+                  content: Text('官方服务器'),
                 ),
                 const SizedBox(height: 8),
                 fluent_ui.RadioButton<BackendSourceType>(
@@ -320,7 +336,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                   content: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('自定义源'),
+                      const Text('自定义服务器'),
                       Text(
                         UrlService().customBaseUrl.isNotEmpty
                             ? UrlService().customBaseUrl
@@ -348,7 +364,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('选择后端源'),
+        title: const Text('服务器设置'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -359,10 +375,10 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(
                   context,
-                ).showSnackBar(const SnackBar(content: Text('已切换到官方源')));
+                ).showSnackBar(const SnackBar(content: Text('已切换到官方服务器')));
               },
               child: RadioListTile<BackendSourceType>(
-                title: const Text('官方源'),
+                title: const Text('官方服务器'),
                 subtitle: Text(
                   UrlService.officialBaseUrl,
                   style: Theme.of(context).textTheme.bodySmall,
@@ -377,7 +393,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                 _showCustomUrlDialog(context);
               },
               child: RadioListTile<BackendSourceType>(
-                title: const Text('自定义源'),
+                title: const Text('自定义服务器'),
                 subtitle: Text(
                   UrlService().customBaseUrl.isNotEmpty
                       ? UrlService().customBaseUrl
@@ -405,7 +421,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('自定义后端源'),
+        title: const Text('自定义服务器'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -428,7 +444,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '请确保自定义源兼容 Cyrene API',
+                      '请填写兼容 Cyrene API 的服务器地址',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onPrimaryContainer,
                       ),
@@ -441,8 +457,8 @@ class _NetworkSettingsState extends State<NetworkSettings> {
             TextField(
               controller: controller,
               decoration: const InputDecoration(
-                labelText: '后端地址',
-                hintText: 'http://example.com:4055',
+                labelText: '服务器地址',
+                hintText: UrlService.defaultCustomBaseUrl,
                 prefixIcon: Icon(Icons.link),
                 border: OutlineInputBorder(),
                 helperText: '不要在末尾添加斜杠',
@@ -463,7 +479,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                 final messenger = ScaffoldMessenger.maybeOf(context);
                 if (messenger != null) {
                   messenger.showSnackBar(
-                    const SnackBar(content: Text('请输入后端地址')),
+                    const SnackBar(content: Text('请输入服务器地址')),
                   );
                 }
                 return;
@@ -482,7 +498,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
               final messenger = ScaffoldMessenger.maybeOf(context);
               if (messenger != null) {
                 messenger.showSnackBar(
-                  SnackBar(content: Text('已切换到自定义源: $url')),
+                  SnackBar(content: Text('已切换到自定义服务器: $url')),
                 );
               }
             },
@@ -498,7 +514,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
     showCupertinoModalPopup<void>(
       context: context,
       builder: (context) => CupertinoActionSheet(
-        title: const Text('选择后端源'),
+        title: const Text('服务器设置'),
         actions: [
           CupertinoActionSheetAction(
             onPressed: () {
@@ -513,7 +529,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                     padding: EdgeInsets.only(right: 8),
                     child: Icon(CupertinoIcons.checkmark, size: 18),
                   ),
-                const Text('官方源'),
+                const Text('官方服务器'),
               ],
             ),
           ),
@@ -530,7 +546,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                     padding: EdgeInsets.only(right: 8),
                     child: Icon(CupertinoIcons.checkmark, size: 18),
                   ),
-                const Text('自定义源'),
+                const Text('自定义服务器'),
                 if (UrlService().customBaseUrl.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   Text(
@@ -561,14 +577,14 @@ class _NetworkSettingsState extends State<NetworkSettings> {
     showCupertinoDialog<void>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
-        title: const Text('自定义后端源'),
+        title: const Text('自定义服务器'),
         content: Padding(
           padding: const EdgeInsets.only(top: 16),
           child: Column(
             children: [
               CupertinoTextField(
                 controller: controller,
-                placeholder: 'http://example.com:4055',
+                placeholder: UrlService.defaultCustomBaseUrl,
                 keyboardType: TextInputType.url,
                 clearButtonMode: OverlayVisibilityMode.editing,
               ),
@@ -664,7 +680,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       if (!mounted) return;
       setState(() {
         _latencyMs = null;
-        _errorMessage = '未设置后端地址';
+        _errorMessage = '未设置服务器地址';
       });
       return;
     }
@@ -675,6 +691,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       _errorMessage = null;
     });
 
+    final testId = ++_connectionTestId;
     final stopwatch = Stopwatch()..start();
     try {
       final result = await ApiClient().getJson(
@@ -684,7 +701,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       );
 
       stopwatch.stop();
-      if (!mounted) return;
+      if (!mounted || testId != _connectionTestId) return;
 
       if (result.ok) {
         setState(() {
@@ -703,7 +720,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       }
     } catch (e) {
       stopwatch.stop();
-      if (!mounted) return;
+      if (!mounted || testId != _connectionTestId) return;
       setState(() {
         _isTesting = false;
         _latencyMs = null;

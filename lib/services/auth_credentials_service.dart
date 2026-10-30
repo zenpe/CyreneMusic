@@ -7,10 +7,7 @@ class RememberedLoginCredentials {
   final String? account;
   final String? password;
 
-  const RememberedLoginCredentials({
-    this.account,
-    this.password,
-  });
+  const RememberedLoginCredentials({this.account, this.password});
 
   bool get hasCredentials =>
       (account != null && account!.isNotEmpty) ||
@@ -46,8 +43,9 @@ class AuthCredentialsService extends ChangeNotifier {
       return const RememberedLoginCredentials();
     }
 
-    final account =
-        PersistentStorageService().getString(_rememberedLoginAccountKey);
+    final account = PersistentStorageService().getString(
+      _rememberedLoginAccountKey,
+    );
     String? password;
 
     try {
@@ -56,10 +54,7 @@ class AuthCredentialsService extends ChangeNotifier {
       password = null;
     }
 
-    return RememberedLoginCredentials(
-      account: account,
-      password: password,
-    );
+    return RememberedLoginCredentials(account: account, password: password);
   }
 
   Future<void> saveCredentials({
@@ -92,6 +87,14 @@ class AuthCredentialsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Do not offer a saved password to a different server.
+  Future<void> clearPassword() async {
+    try {
+      await _secureStorage.delete(key: _rememberedLoginPasswordKey);
+    } catch (_) {}
+    notifyListeners();
+  }
+
   Future<void> clearCredentials() async {
     await PersistentStorageService().remove(_rememberedLoginAccountKey);
     try {
@@ -103,18 +106,12 @@ class AuthCredentialsService extends ChangeNotifier {
   static FlutterSecureStorage _createSecureStorage() {
     if (kIsWeb) {
       return const FlutterSecureStorage(
-        webOptions: WebOptions(
-          dbName: 'CyreneMusic',
-          publicKey: 'CyreneMusic',
-        ),
+        webOptions: WebOptions(dbName: 'CyreneMusic', publicKey: 'CyreneMusic'),
       );
     }
 
     if (Platform.isAndroid) {
-      return const FlutterSecureStorage(
-        aOptions: AndroidOptions(
-        ),
-      );
+      return const FlutterSecureStorage(aOptions: AndroidOptions());
     }
 
     if (Platform.isIOS || Platform.isMacOS) {
@@ -129,16 +126,11 @@ class AuthCredentialsService extends ChangeNotifier {
     }
 
     if (Platform.isLinux) {
-      return const FlutterSecureStorage(
-        lOptions: LinuxOptions(),
-      );
+      return const FlutterSecureStorage(lOptions: LinuxOptions());
     }
 
     return const FlutterSecureStorage(
-      webOptions: WebOptions(
-        dbName: 'CyreneMusic',
-        publicKey: 'CyreneMusic',
-      ),
+      webOptions: WebOptions(dbName: 'CyreneMusic', publicKey: 'CyreneMusic'),
     );
   }
 }

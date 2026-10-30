@@ -463,7 +463,13 @@ extension _MyPageCupertinoUI on _MyPageState {
                   ],
                 ),
               ),
-
+              if (!_isEditMode && _selectedPlaylist?.isLocal == true)
+                TrackMoreButton(
+                  track: item.toTrack(),
+                  onPlay: () => _playDetailTrack(index),
+                  onDelete: () => _confirmRemoveTrack(item),
+                  deleteLabel: '从歌单移除',
+                ),
             ],
           ),
         ),

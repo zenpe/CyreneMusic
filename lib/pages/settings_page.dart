@@ -24,6 +24,7 @@ import 'settings_page/appearance_settings.dart';
 import 'settings_page/lyric_settings.dart';
 import 'settings_page/playback_settings.dart';
 import 'settings_page/network_settings.dart';
+import 'settings_page/server_settings_page.dart';
 import 'settings_page/storage_settings.dart';
 import 'settings_page/about_settings.dart';
 import 'settings_page/other_settings.dart';
@@ -610,6 +611,21 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle:
                 '${AudioQualityService().getQualityName()} - ${AudioQualityService().getQualityDescription()}',
             onTap: () => _showAudioQualityDialogMaterial(context),
+          ),
+        ),
+        ListenableBuilder(
+          listenable: UrlService(),
+          builder: (context, _) => _buildMaterialSettingsItem(
+            context,
+            icon: Icons.dns_outlined,
+            iconColor: const Color(0xFF007AFF),
+            title: '服务器设置',
+            subtitle: UrlService().getSourceDescription(),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ServerSettingsPage(),
+              ),
+            ),
           ),
         ),
         _buildMaterialSettingsItem(

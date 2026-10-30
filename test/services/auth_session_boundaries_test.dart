@@ -66,6 +66,61 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test(
+    'changing server cancels a pending login before its reply arrives',
+    () async {
+      final received = Completer<void>();
+      final release = Completer<void>();
+      await withServer(
+        (request) async {
+          received.complete();
+          await release.future;
+          await reply(request, {
+            'code': 200,
+            'data': {...user(1), 'token': 'old-server-token'},
+          });
+        },
+        (auth) async {
+          await auth.logout();
+          final pending = auth.login(account: 'test', password: 'password123');
+          await received.future.timeout(const Duration(seconds: 5));
+          try {
+            UrlService().useCustomSource('http://127.0.0.1:1');
+            final result = await pending.timeout(const Duration(seconds: 2));
+            expect(result['success'], false);
+            expect(auth.isLoggedIn, false);
+            expect(AuthTokenStore.token, isNull);
+            expect(
+              (await SharedPreferences.getInstance()).getString('auth_token'),
+              isNull,
+            );
+          } finally {
+            release.complete();
+          }
+        },
+      );
+    },
+  );
+
+  test(
+    'same server preserves session; different server clears credentials',
+    () async {
+      await withServer((request) async => reply(request, {}), (auth) async {
+        UrlService().useCustomSource(UrlService().baseUrl);
+        expect(auth.isLoggedIn, true);
+        expect(AuthTokenStore.token, 'token-a');
+        UrlService().useCustomSource('http://127.0.0.1:2');
+        expect(auth.isLoggedIn, false);
+        expect(auth.currentUser, isNull);
+        expect(AuthTokenStore.token, isNull);
+        await Future<void>.delayed(Duration.zero);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('auth_token'), isNull);
+        expect(prefs.getString('current_user'), isNull);
+      });
+    },
+  );
+
   for (final status in [429, 503]) {
     test(
       'password login failure $status leaves session logged out and explains the failure',

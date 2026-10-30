@@ -9,7 +9,6 @@ import '../services/playback/playback_service.dart';
 import '../utils/image_utils.dart';
 import '../utils/theme_manager.dart';
 
-
 /// 歌曲操作菜单组件
 /// 用于搜索结果页面中歌曲列表项的"更多"按钮
 class TrackActionMenu {
@@ -23,21 +22,23 @@ class TrackActionMenu {
     required Track track,
     VoidCallback? onPlay,
     VoidCallback? onDelete,
+    String deleteLabel = '移除',
     Offset? anchor,
   }) {
     final themeManager = ThemeManager();
-    final isExpressive = !themeManager.isCupertinoFramework &&
-                        !themeManager.isFluentFramework &&
-                        (Platform.isAndroid || Platform.isIOS);
+    final isExpressive =
+        !themeManager.isCupertinoFramework &&
+        !themeManager.isFluentFramework &&
+        (Platform.isAndroid || Platform.isIOS);
 
     if (themeManager.isCupertinoFramework) {
-      _showCupertinoActionSheet(context, track, onPlay);
+      _showCupertinoActionSheet(context, track, onPlay, onDelete, deleteLabel);
     } else if (themeManager.isFluentFramework && Platform.isWindows) {
-      _showFluentMenu(context, track, onPlay, anchor);
+      _showFluentMenu(context, track, onPlay, anchor, onDelete, deleteLabel);
     } else if (isExpressive) {
-      _showExpressiveBottomSheet(context, track, onPlay, onDelete);
+      _showExpressiveBottomSheet(context, track, onPlay, onDelete, deleteLabel);
     } else {
-      _showMaterialMenu(context, track, onPlay);
+      _showMaterialMenu(context, track, onPlay, onDelete, deleteLabel);
     }
   }
 
@@ -46,12 +47,15 @@ class TrackActionMenu {
     BuildContext context,
     Track track,
     VoidCallback? onPlay,
+    VoidCallback? onDelete,
+    String deleteLabel,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
 
     // 获取按钮位置
     final RenderBox? button = context.findRenderObject() as RenderBox?;
-    final Offset buttonPosition = button?.localToGlobal(Offset.zero) ?? Offset.zero;
+    final Offset buttonPosition =
+        button?.localToGlobal(Offset.zero) ?? Offset.zero;
     final Size buttonSize = button?.size ?? const Size(40, 40);
 
     // 计算菜单位置
@@ -66,9 +70,7 @@ class TrackActionMenu {
       context: context,
       position: menuPosition,
       elevation: 8,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: colorScheme.surface,
       items: [
         // 歌曲信息头部
@@ -132,10 +134,7 @@ class TrackActionMenu {
                   ],
                 ),
               ),
-              Text(
-                track.getSourceIcon(),
-                style: const TextStyle(fontSize: 16),
-              ),
+              Text(track.getSourceIcon(), style: const TextStyle(fontSize: 16)),
             ],
           ),
         ),
@@ -154,10 +153,7 @@ class TrackActionMenu {
               const SizedBox(width: 12),
               Text(
                 '立即播放',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: colorScheme.onSurface,
-                ),
+                style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
               ),
             ],
           ),
@@ -176,10 +172,7 @@ class TrackActionMenu {
               const SizedBox(width: 12),
               Text(
                 '下一首播放',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: colorScheme.onSurface,
-                ),
+                style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
               ),
             ],
           ),
@@ -198,10 +191,7 @@ class TrackActionMenu {
               const SizedBox(width: 12),
               Text(
                 '添加到播放队列',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: colorScheme.onSurface,
-                ),
+                style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
               ),
             ],
           ),
@@ -224,10 +214,7 @@ class TrackActionMenu {
               const SizedBox(width: 12),
               Text(
                 PlaylistService().isFavorite(track) ? '取消收藏' : '收藏',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: colorScheme.onSurface,
-                ),
+                style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
               ),
             ],
           ),
@@ -246,20 +233,37 @@ class TrackActionMenu {
               const SizedBox(width: 12),
               Text(
                 '添加到歌单',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: colorScheme.onSurface,
-                ),
+                style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
               ),
             ],
           ),
         ),
+        if (onDelete != null) ...[
+          const PopupMenuDivider(),
+          PopupMenuItem<String>(
+            value: 'delete',
+            child: Row(
+              children: [
+                Icon(
+                  Icons.remove_circle_outline,
+                  size: 20,
+                  color: colorScheme.error,
+                ),
+                const SizedBox(width: 12),
+                Text(deleteLabel, style: TextStyle(color: colorScheme.error)),
+              ],
+            ),
+          ),
+        ],
       ],
     ).then((value) {
       if (value == null) return;
       if (!context.mounted) return;
 
       switch (value) {
+        case 'delete':
+          onDelete?.call();
+          break;
         case 'play':
           onPlay?.call();
           break;
@@ -279,13 +283,13 @@ class TrackActionMenu {
     });
   }
 
-
   /// Material Design Expressive 风格底部操作板
   static void _showExpressiveBottomSheet(
     BuildContext context,
     Track track,
     VoidCallback? onPlay,
     VoidCallback? onDelete,
+    String deleteLabel,
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -307,7 +311,9 @@ class TrackActionMenu {
               end: Alignment.bottomCenter,
               colors: [
                 colorScheme.surfaceContainerHigh,
-                colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.95 : 0.98),
+                colorScheme.surfaceContainerHighest.withValues(
+                  alpha: isDark ? 0.95 : 0.98,
+                ),
               ],
             ),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
@@ -389,7 +395,9 @@ class TrackActionMenu {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                              color: colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.7,
+                              ),
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                             ),
@@ -422,7 +430,10 @@ class TrackActionMenu {
               Expanded(
                 child: ListView(
                   controller: scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   children: [
                     _buildExpressiveActionItem(
                       context,
@@ -456,7 +467,9 @@ class TrackActionMenu {
                       icon: PlaylistService().isFavorite(track)
                           ? Icons.favorite_rounded
                           : Icons.favorite_border_rounded,
-                      label: PlaylistService().isFavorite(track) ? '取消收藏' : '收藏',
+                      label: PlaylistService().isFavorite(track)
+                          ? '取消收藏'
+                          : '收藏',
                       onTap: () {
                         Navigator.pop(context);
                         _toggleFavorite(context, track);
@@ -475,11 +488,11 @@ class TrackActionMenu {
                       _buildExpressiveActionItem(
                         context,
                         icon: Icons.delete_outline_rounded,
-                        label: '从历史记录中删除',
+                        label: deleteLabel,
                         isDestructive: true,
                         onTap: () {
                           Navigator.pop(context);
-                           onDelete();
+                          onDelete();
                         },
                       ),
                   ],
@@ -545,9 +558,10 @@ class TrackActionMenu {
     BuildContext context,
     Track track,
     VoidCallback? onPlay,
+    VoidCallback? onDelete,
+    String deleteLabel,
   ) {
     final isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
-
 
     showCupertinoModalPopup(
       context: context,
@@ -704,6 +718,15 @@ class TrackActionMenu {
               ],
             ),
           ),
+          if (onDelete != null)
+            CupertinoActionSheetAction(
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.pop(context);
+                onDelete();
+              },
+              child: Text(deleteLabel),
+            ),
         ],
         cancelButton: CupertinoActionSheetAction(
           isDestructiveAction: false,
@@ -733,14 +756,18 @@ class TrackActionMenu {
       builder: (context) => AnimatedBuilder(
         animation: playlistService,
         builder: (context, child) {
-          final playlists = playlistService.playlists.where((p) => p.isLocal).toList();
+          final playlists = playlistService.playlists
+              .where((p) => p.isLocal)
+              .toList();
 
           return Container(
             decoration: BoxDecoration(
               color: isDark
                   ? const Color(0xFF1C1C1E)
                   : CupertinoColors.systemBackground,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
             ),
             child: SafeArea(
               top: false,
@@ -760,7 +787,10 @@ class TrackActionMenu {
 
                   // 标题
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     child: Row(
                       children: [
                         Text(
@@ -804,16 +834,12 @@ class TrackActionMenu {
                             padding: EdgeInsets.zero,
                             onPressed: () async {
                               Navigator.pop(context);
-                              final success = await playlistService.addTrackToPlaylist(
-                                playlist.id,
-                                track,
-                              );
+                              final success = await playlistService
+                                  .addTrackToPlaylist(playlist.id, track);
                               if (context.mounted) {
                                 _showCupertinoToast(
                                   context,
-                                  success
-                                      ? '已添加到「${playlist.name}」'
-                                      : '添加失败',
+                                  success ? '已添加到「${playlist.name}」' : '添加失败',
                                   success,
                                 );
                               }
@@ -827,8 +853,10 @@ class TrackActionMenu {
                                     height: 44,
                                     decoration: BoxDecoration(
                                       color: playlist.isDefault
-                                          ? CupertinoColors.systemRed.withValues(alpha: 0.15)
-                                          : CupertinoColors.systemBlue.withValues(alpha: 0.15),
+                                          ? CupertinoColors.systemRed
+                                                .withValues(alpha: 0.15)
+                                          : CupertinoColors.systemBlue
+                                                .withValues(alpha: 0.15),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Icon(
@@ -844,7 +872,8 @@ class TrackActionMenu {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           playlist.name,
@@ -894,13 +923,16 @@ class TrackActionMenu {
     Track track,
     VoidCallback? onPlay,
     Offset? anchor,
+    VoidCallback? onDelete,
+    String deleteLabel,
   ) {
     final fluentTheme = fluent.FluentTheme.of(context);
     final isDark = fluentTheme.brightness == Brightness.dark;
 
     // 获取按钮位置
     final RenderBox? button = context.findRenderObject() as RenderBox?;
-    final Offset buttonPosition = button?.localToGlobal(Offset.zero) ?? Offset.zero;
+    final Offset buttonPosition =
+        button?.localToGlobal(Offset.zero) ?? Offset.zero;
     final Size buttonSize = button?.size ?? const Size(40, 40);
 
     // 获取屏幕尺寸
@@ -950,10 +982,7 @@ class TrackActionMenu {
                   return Transform.scale(
                     scale: 0.95 + (0.05 * value),
                     alignment: Alignment.topLeft,
-                    child: Opacity(
-                      opacity: value,
-                      child: child,
-                    ),
+                    child: Opacity(opacity: value, child: child),
                   );
                 },
                 child: fluent.Acrylic(
@@ -1008,7 +1037,9 @@ class TrackActionMenu {
                           icon: PlaylistService().isFavorite(track)
                               ? fluent.FluentIcons.heart_fill
                               : fluent.FluentIcons.heart,
-                          label: PlaylistService().isFavorite(track) ? '取消收藏' : '收藏',
+                          label: PlaylistService().isFavorite(track)
+                              ? '取消收藏'
+                              : '收藏',
                           isDark: isDark,
                           onTap: () {
                             overlayEntry.remove();
@@ -1017,7 +1048,10 @@ class TrackActionMenu {
                         ),
                         // 分隔线
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
                           child: Divider(
                             height: 1,
                             color: isDark
@@ -1035,6 +1069,16 @@ class TrackActionMenu {
                             _showFluentAddToPlaylistDialog(context, track);
                           },
                         ),
+                        if (onDelete != null)
+                          _buildWin11MenuItem(
+                            icon: fluent.FluentIcons.delete,
+                            label: deleteLabel,
+                            isDark: isDark,
+                            onTap: () {
+                              overlayEntry.remove();
+                              onDelete();
+                            },
+                          ),
                       ],
                     ),
                   ),
@@ -1064,8 +1108,8 @@ class TrackActionMenu {
           decoration: BoxDecoration(
             color: states.contains(WidgetState.hovered)
                 ? (isDark
-                    ? Colors.white.withValues(alpha: 0.06)
-                    : Colors.black.withValues(alpha: 0.04))
+                      ? Colors.white.withValues(alpha: 0.06)
+                      : Colors.black.withValues(alpha: 0.04))
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(4),
           ),
@@ -1093,9 +1137,11 @@ class TrackActionMenu {
     );
   }
 
-
   /// Fluent 添加到歌单对话框
-  static void _showFluentAddToPlaylistDialog(BuildContext context, Track track) {
+  static void _showFluentAddToPlaylistDialog(
+    BuildContext context,
+    Track track,
+  ) {
     final playlistService = PlaylistService();
 
     // 确保已加载歌单列表
@@ -1113,7 +1159,9 @@ class TrackActionMenu {
         content: AnimatedBuilder(
           animation: playlistService,
           builder: (context, child) {
-            final playlists = playlistService.playlists.where((p) => p.isLocal).toList();
+            final playlists = playlistService.playlists
+                .where((p) => p.isLocal)
+                .toList();
 
             if (playlists.isEmpty) {
               return const Center(
@@ -1169,9 +1217,7 @@ class TrackActionMenu {
                       if (context.mounted) {
                         _showFluentToast(
                           context,
-                          success
-                              ? '已添加到「${playlist.name}」'
-                              : '添加失败',
+                          success ? '已添加到「${playlist.name}」' : '添加失败',
                           success,
                         );
                       }
@@ -1212,7 +1258,9 @@ class TrackActionMenu {
       builder: (context) => AnimatedBuilder(
         animation: playlistService,
         builder: (context, child) {
-          final playlists = playlistService.playlists.where((p) => p.isLocal).toList();
+          final playlists = playlistService.playlists
+              .where((p) => p.isLocal)
+              .toList();
 
           return SafeArea(
             child: Column(
@@ -1231,7 +1279,10 @@ class TrackActionMenu {
 
                 // 标题
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 8,
+                  ),
                   child: Row(
                     children: [
                       Text(
@@ -1292,17 +1343,13 @@ class TrackActionMenu {
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () async {
                             Navigator.pop(context);
-                            final success = await playlistService.addTrackToPlaylist(
-                              playlist.id,
-                              track,
-                            );
+                            final success = await playlistService
+                                .addTrackToPlaylist(playlist.id, track);
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                    success
-                                        ? '已添加到「${playlist.name}」'
-                                        : '添加失败',
+                                    success ? '已添加到「${playlist.name}」' : '添加失败',
                                   ),
                                   duration: const Duration(seconds: 1),
                                 ),
@@ -1336,10 +1383,7 @@ class TrackActionMenu {
       _showFluentToast(context, message, true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(message),
-          duration: Duration(seconds: 1),
-        ),
+        const SnackBar(content: Text(message), duration: Duration(seconds: 1)),
       );
     }
   }
@@ -1357,10 +1401,7 @@ class TrackActionMenu {
       _showFluentToast(context, message, true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(message),
-          duration: Duration(seconds: 1),
-        ),
+        const SnackBar(content: Text(message), duration: Duration(seconds: 1)),
       );
     }
   }
@@ -1381,17 +1422,17 @@ class TrackActionMenu {
       _showFluentToast(context, message, true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 1),
-        ),
+        SnackBar(content: Text(message), duration: const Duration(seconds: 1)),
       );
     }
   }
 
-
   /// iOS 风格 Toast 提示
-  static void _showCupertinoToast(BuildContext context, String message, bool success) {
+  static void _showCupertinoToast(
+    BuildContext context,
+    String message,
+    bool success,
+  ) {
     showCupertinoModalPopup(
       context: context,
       builder: (context) {
@@ -1413,17 +1454,18 @@ class TrackActionMenu {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                success ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.xmark_circle_fill,
-                color: success ? CupertinoColors.systemGreen : CupertinoColors.systemRed,
+                success
+                    ? CupertinoIcons.checkmark_circle_fill
+                    : CupertinoIcons.xmark_circle_fill,
+                color: success
+                    ? CupertinoColors.systemGreen
+                    : CupertinoColors.systemRed,
                 size: 20,
               ),
               const SizedBox(width: 8),
               Text(
                 message,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                ),
+                style: const TextStyle(color: Colors.white, fontSize: 15),
               ),
             ],
           ),
@@ -1433,15 +1475,16 @@ class TrackActionMenu {
   }
 
   /// Fluent 风格 Toast 提示
-  static void _showFluentToast(BuildContext context, String message, bool success) {
+  static void _showFluentToast(
+    BuildContext context,
+    String message,
+    bool success,
+  ) {
     // 使用 ScaffoldMessenger 作为后备方案
     final messenger = ScaffoldMessenger.maybeOf(context);
     if (messenger != null) {
       messenger.showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 1),
-        ),
+        SnackBar(content: Text(message), duration: const Duration(seconds: 1)),
       );
     }
   }
@@ -1453,6 +1496,7 @@ class TrackMoreButton extends StatelessWidget {
   final Track track;
   final VoidCallback? onPlay;
   final VoidCallback? onDelete;
+  final String deleteLabel;
   final double? size;
 
   const TrackMoreButton({
@@ -1460,6 +1504,7 @@ class TrackMoreButton extends StatelessWidget {
     required this.track,
     this.onPlay,
     this.onDelete,
+    this.deleteLabel = '移除',
     this.size,
   });
 
@@ -1476,6 +1521,7 @@ class TrackMoreButton extends StatelessWidget {
           track: track,
           onPlay: onPlay,
           onDelete: onDelete,
+          deleteLabel: deleteLabel,
         ),
         child: Icon(
           CupertinoIcons.ellipsis,
@@ -1494,6 +1540,7 @@ class TrackMoreButton extends StatelessWidget {
           track: track,
           onPlay: onPlay,
           onDelete: onDelete,
+          deleteLabel: deleteLabel,
         ),
       );
     } else {
@@ -1513,6 +1560,7 @@ class TrackMoreButton extends StatelessWidget {
           track: track,
           onPlay: onPlay,
           onDelete: onDelete,
+          deleteLabel: deleteLabel,
         ),
         tooltip: '更多操作',
       );

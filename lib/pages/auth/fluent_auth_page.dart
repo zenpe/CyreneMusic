@@ -1,3 +1,5 @@
+import '../../widgets/server_selection.dart';
+import '../../services/url_service.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
@@ -183,6 +185,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  int _backendRevision = UrlService().backendRevision;
   String? _loginError;
   bool _obscurePassword = true;
   bool _rememberLoginEnabled = true;
@@ -191,14 +194,27 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
   @override
   void initState() {
     super.initState();
+    UrlService().addListener(_handleServerChanged);
     _loadRememberedCredentials();
   }
 
+  void _handleServerChanged() {
+    final revision = UrlService().backendRevision;
+    if (revision == _backendRevision || !mounted) return;
+    setState(() {
+      _backendRevision = revision;
+      _passwordController.clear();
+      _isLoading = false;
+      _loginError = null;
+    });
+  }
+
   Future<void> _loadRememberedCredentials() async {
+    final revision = _backendRevision;
     final credentialsService = AuthCredentialsService();
     final enabled = credentialsService.isRememberLoginEnabled;
     final credentials = await credentialsService.loadCredentials();
-    if (!mounted) return;
+    if (!mounted || revision != _backendRevision) return;
     setState(() {
       _rememberLoginEnabled = enabled;
       _rememberCredentials = enabled;
@@ -233,6 +249,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
 
   @override
   void dispose() {
+    UrlService().removeListener(_handleServerChanged);
     _accountController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -240,8 +257,9 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
 
   Future<void> _handleLogin() async {
     if (_isLoading) return;
+    final revision = _backendRevision;
     if (!await TermsConsentScope.ensureAccepted(context)) return;
-    if (!mounted || _isLoading) return;
+    if (!mounted || _isLoading || revision != _backendRevision) return;
     if (_accountController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
       _showInfoBar('请填写完整信息', fluent.InfoBarSeverity.warning);
@@ -261,6 +279,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
       account: account,
       password: password,
     );
+    if (!mounted || revision != _backendRevision) return;
 
     if (result['success'] == true) {
       await _syncRememberedCredentials(
@@ -269,7 +288,7 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
         remember: remember,
       );
     }
-    if (!mounted) return;
+    if (!mounted || revision != _backendRevision) return;
     setState(() {
       _isLoading = false;
       _loginError = result['success'] == true
@@ -321,6 +340,9 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const ServerSelection(fluentStyle: true),
+          const SizedBox(height: 16),
+
           // 账号输入
           fluent.InfoLabel(
             label: '邮箱 / 用户名',

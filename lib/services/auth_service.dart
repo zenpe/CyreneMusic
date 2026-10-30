@@ -1,5 +1,8 @@
 import 'structured_log_service.dart';
 import 'dart:convert';
+import 'package:dio/dio.dart';
+import 'url_service.dart';
+import 'auth_credentials_service.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -69,6 +72,7 @@ class AuthService extends ChangeNotifier {
   AuthService._internal() {
     AuthTokenStore.onUnauthorized = handleUnauthorized;
     _initialization = _loadUserFromStorage();
+    UrlService().addListener(_handleBackendChanged);
   }
 
   late final Future<void> _initialization;
@@ -84,6 +88,17 @@ class AuthService extends ChangeNotifier {
   String? _authToken;
   bool _isHandlingUnauthorized = false;
   int _sessionRevision = 0;
+  int _backendRevision = UrlService().backendRevision;
+  CancelToken? _loginCancelToken;
+
+  void _handleBackendChanged() {
+    final revision = UrlService().backendRevision;
+    if (revision == _backendRevision) return;
+    _backendRevision = revision;
+    _loginCancelToken?.cancel('服务器已更换');
+    unawaited(logout());
+    unawaited(AuthCredentialsService().clearPassword());
+  }
 
   /// Registered by the playback service without constructing it during logout.
   Future<void> Function()? onSessionEnded;
@@ -108,8 +123,10 @@ class AuthService extends ChangeNotifier {
 
   /// 从本地存储加载用户信息
   Future<void> _loadUserFromStorage() async {
+    final revision = _sessionRevision;
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (revision != _sessionRevision) return;
       final userJson = prefs.getString('current_user');
       final savedToken = prefs.getString('auth_token');
       AuthTokenStore.token = savedToken;
@@ -321,13 +338,21 @@ class AuthService extends ChangeNotifier {
     required String account,
     required String password,
   }) async {
+    final backendRevision = UrlService().backendRevision;
     await ensureInitialized();
+    if (backendRevision != UrlService().backendRevision) {
+      return {'success': false, 'message': '服务器已更换，请重新登录'};
+    }
     final revision = ++_sessionRevision;
+    _loginCancelToken?.cancel('新的登录请求');
+    final cancelToken = CancelToken();
+    _loginCancelToken = cancelToken;
     try {
       final result = await ApiClient().postJson(
         '/auth/login',
         data: {'account': account, 'password': password},
         auth: false,
+        cancelToken: cancelToken,
       );
 
       if (revision != _sessionRevision) {
@@ -368,6 +393,8 @@ class AuthService extends ChangeNotifier {
       }
     } catch (e) {
       return {'success': false, 'message': '网络错误: ${e.toString()}'};
+    } finally {
+      if (identical(_loginCancelToken, cancelToken)) _loginCancelToken = null;
     }
   }
 
@@ -754,6 +781,7 @@ class AuthService extends ChangeNotifier {
 
   /// 登出
   Future<void> logout() async {
+    _loginCancelToken?.cancel('登录状态已变化');
     final username = _currentUser?.username;
     final revision = ++_sessionRevision;
     _currentUser = null;

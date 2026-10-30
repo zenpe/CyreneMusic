@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 后端源类型
 enum BackendSourceType {
   official, // 官方源
-  custom,   // 自定义源
+  custom, // 自定义源
 }
 
 /// URL 服务 - 管理所有后端 API 地址
@@ -15,13 +15,14 @@ class UrlService extends ChangeNotifier {
   UrlService._internal();
 
   /// 官方源地址
-  static const String officialBaseUrl = 'https://niba.cc.cd';
+  static const String officialBaseUrl = 'https://cyapi.zenn.cc.cd:8443';
+  static const String defaultCustomBaseUrl = 'https://cyapi4.zenn.cc.cd:59028';
 
   /// 当前源类型
   BackendSourceType _sourceType = BackendSourceType.official;
 
   /// 自定义源地址
-  String _customBaseUrl = '';
+  String _customBaseUrl = defaultCustomBaseUrl;
 
   /// 是否已初始化
   bool _isInitialized = false;
@@ -70,14 +71,15 @@ class UrlService extends ChangeNotifier {
       }
 
       // 加载自定义源地址
-      _customBaseUrl = prefs.getString('custom_base_url') ?? '';
+      final savedCustomUrl = prefs.getString('custom_base_url');
+      _customBaseUrl =
+          savedCustomUrl != null && savedCustomUrl.trim().isNotEmpty
+          ? savedCustomUrl
+          : defaultCustomBaseUrl;
 
-      // 迁移保护：如果被误切到 custom 但地址为空，回退官方
-      if (_sourceType == BackendSourceType.custom && _customBaseUrl.isEmpty) {
-        _sourceType = BackendSourceType.official;
-      }
-
-      StructuredLogService.log('🌐 [UrlService] 从本地加载配置: ${_sourceType.name}, 自定义源: $_customBaseUrl');
+      StructuredLogService.log(
+        '🌐 [UrlService] 从本地加载配置: ${_sourceType.name}, 自定义源: $_customBaseUrl',
+      );
       _notifySettingsChanged(previousBaseUrl);
     } catch (e) {
       StructuredLogService.log('❌ [UrlService] 加载配置失败: $e');
@@ -184,6 +186,7 @@ class UrlService extends ChangeNotifier {
   String get neteaseFmTrashUrl => '$baseUrl/fm_trash';
   String get neteasePersonalizedPlaylistsUrl => '$baseUrl/personalized';
   String get neteasePersonalizedNewsongUrl => '$baseUrl/personalized/newsong';
+
   /// Aggregated For You endpoint
   String get neteaseForYouUrl => '$baseUrl/recommend/for_you';
   // Netease playlist detail
@@ -253,9 +256,9 @@ class UrlService extends ChangeNotifier {
   String getSourceDescription() {
     switch (_sourceType) {
       case BackendSourceType.official:
-        return '官方源（默认后端服务）';
+        return '官方服务器 (${Uri.parse(officialBaseUrl).authority})';
       case BackendSourceType.custom:
-        return '自定义源 (${_customBaseUrl.isNotEmpty ? _customBaseUrl : '未设置'})';
+        return '自定义服务器 (${_customBaseUrl.isNotEmpty ? _customBaseUrl : '未设置'})';
     }
   }
 
