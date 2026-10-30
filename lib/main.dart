@@ -10,8 +10,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
 import 'package:window_manager/window_manager.dart';
-import 'package:cyrene_music/layouts/main_layout.dart';
-import 'package:cyrene_music/layouts/navidrome_main_layout.dart';
 import 'package:cyrene_music/services/android_floating_lyric_service.dart';
 import 'package:cyrene_music/services/announcement_service.dart';
 import 'package:cyrene_music/services/auto_update_service.dart';
@@ -35,7 +33,6 @@ import 'package:cyrene_music/services/system_media_service.dart';
 import 'package:cyrene_music/services/tray_service.dart';
 import 'package:cyrene_music/services/url_service.dart';
 import 'package:cyrene_music/services/audio_source_service.dart';
-import 'package:cyrene_music/features/audio_source/audio_source_feature.dart';
 import 'package:cyrene_music/services/version_service.dart';
 import 'package:cyrene_music/services/mini_player_window_service.dart';
 import 'package:cyrene_music/services/local_library_service.dart';
@@ -49,7 +46,6 @@ import 'package:media_kit/media_kit.dart';
 import 'package:cyrene_music/pages/settings_page/audio_source_settings.dart';
 import 'package:cyrene_music/pages/mobile_app_gate.dart';
 import 'package:cyrene_music/pages/desktop_app_gate.dart';
-import 'package:cyrene_music/pages/navidrome_setup_page.dart';
 
 // 条件导入 flutter_displaymode（仅 Android）
 import 'package:flutter_displaymode/flutter_displaymode.dart'
@@ -422,19 +418,6 @@ class _MyAppState extends State<MyApp> {
   int? _lastPresentedPlaybackProblemId;
   bool _isPresentingPlaybackProblem = false;
   PlaybackProblem? _queuedPlaybackProblem;
-  final AudioSourceFacade _audioSourceFacade = AudioSourceFacade();
-
-  Widget _buildDesktopMaterialHomeByRoute(AppGateRoute route) {
-    // 保持当前桌面 Material 分支的既有行为：
-    // 非 Navidrome 情况统一进入 MainLayout。
-    return switch (route) {
-      AppGateRoute.navidromeMain => const NavidromeMainLayout(),
-      AppGateRoute.navidromeSetup => const NavidromeSetupPage(),
-      AppGateRoute.regularMain => const MainLayout(),
-      AppGateRoute.regularSetup => const MainLayout(),
-    };
-  }
-
   @override
   void initState() {
     super.initState();
@@ -757,7 +740,7 @@ class _MyAppState extends State<MyApp> {
           );
         }
 
-        // 桌面端直接进入主布局
+        // 桌面 Material 与 Fluent 共用登录状态入口。
         return MaterialApp(
           title: 'Cyrene Music',
           debugShowCheckedModeBanner: false,
@@ -788,20 +771,11 @@ class _MyAppState extends State<MyApp> {
             }
             return content;
           },
-          home: AnimatedBuilder(
-            animation: Listenable.merge([
-              AudioSourceService(),
-              NavidromeSessionService(),
-            ]),
-            builder: (context, _) {
-              final route = _audioSourceFacade.resolveEntryRoute();
-              final home = _buildDesktopMaterialHomeByRoute(route);
-
-              return Platform.isWindows
-                  ? _WindowsRoundedContainer(child: home)
-                  : home;
-            },
-          ),
+          home: Platform.isWindows
+              ? const _WindowsRoundedContainer(
+                  child: DesktopAppGate(useMaterialLayout: true),
+                )
+              : const DesktopAppGate(useMaterialLayout: true),
         );
       },
     );
