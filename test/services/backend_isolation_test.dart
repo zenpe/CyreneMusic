@@ -66,6 +66,16 @@ Future<void> withBackends(
   }, createHttpClient: _RealHttp().createHttpClient);
 }
 
+Future<void> loginToCurrentBackend(AuthService auth) => auth.loginWithToken(
+  token: 'new-backend-token',
+  userJson: {
+    'id': 1,
+    'email': 'test@example.invalid',
+    'username': 'test',
+    'isVerified': true,
+  },
+);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -215,6 +225,8 @@ void main() {
             await oldStarted.future;
             UrlService().useCustomSource(b);
             UrlService().useCustomSource(a);
+            expect(auth.isLoggedIn, false);
+            await loginToCurrentBackend(auth);
             final fresh = api.getJson('/probe');
             await newStarted.future;
             releaseOld.complete();
@@ -317,12 +329,16 @@ void main() {
           final old = service.fetchStats(forceRefresh: true);
           await started.future;
           UrlService().useCustomSource(b);
+          expect(auth.isLoggedIn, false);
           expect(service.statsData, isNull);
+          await loginToCurrentBackend(auth);
           expect((await service.fetchStats())?.totalPlayCount, 2);
           release.complete();
           expect(await old, isNull);
           expect(service.statsData?.totalPlayCount, 2);
           UrlService().useCustomSource(a);
+          expect(auth.isLoggedIn, false);
+          await loginToCurrentBackend(auth);
           expect((await service.fetchStats())?.totalPlayCount, 1);
           expect(aCalls, 3);
         },
@@ -354,6 +370,8 @@ void main() {
           final old = service.syncNow();
           await started.future;
           UrlService().useCustomSource(b);
+          expect(auth.isLoggedIn, false);
+          await loginToCurrentBackend(auth);
           service.accumulateListeningTime(5);
           release.complete();
           await old;

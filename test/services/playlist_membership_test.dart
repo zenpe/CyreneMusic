@@ -178,6 +178,11 @@ void main() {
         final url = UrlService().baseUrl;
         UrlService().useCustomSource('http://127.0.0.1:1');
         UrlService().useCustomSource(url);
+        expect(AuthService().isLoggedIn, false);
+        await AuthService().loginWithToken(
+          token: 'returned-backend',
+          userJson: _user(1),
+        );
         f.gate!.complete();
         expect((await read).known, isFalse);
         expect(f.service.cachedTrackMembership(_track).known, isFalse);
