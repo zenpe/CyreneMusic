@@ -58,8 +58,7 @@ class _FavoritesPageState extends State<FavoritesPage>
           slivers: [
             _buildAppBar(colorScheme),
             SliverFillRemaining(
-              child: _buildLoginPrompt(colorScheme),
-            ),
+              child: _buildLoginPrompt(colorScheme)),
           ],
         ),
       );
@@ -79,14 +78,12 @@ class _FavoritesPageState extends State<FavoritesPage>
           if (isLoading && favorites.isEmpty)
             const SliverFillRemaining(
               child: Center(
-                child: CircularProgressIndicator(),
-              ),
+                child: CircularProgressIndicator()),
             )
           // 收藏列表
           else if (favorites.isEmpty)
             SliverFillRemaining(
-              child: _buildEmptyState(colorScheme),
-            )
+              child: _buildEmptyState(colorScheme))
           else ...[
             // 统计信息
             SliverToBoxAdapter(
@@ -105,15 +102,13 @@ class _FavoritesPageState extends State<FavoritesPage>
                     final item = favorites[index];
                     return _buildFavoriteItem(item, index, colorScheme);
                   },
-                  childCount: favorites.length,
-                ),
+                  childCount: favorites.length),
               ),
             ),
 
             // 底部留白
             const SliverToBoxAdapter(
-              child: SizedBox(height: 16),
-            ),
+              child: SizedBox(height: 16)),
           ],
         ],
       ),
@@ -140,12 +135,6 @@ class _FavoritesPageState extends State<FavoritesPage>
           onPressed: () {
             if (_authFacade.isLoggedIn) {
               _favoriteService.loadFavorites();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('正在刷新...'),
-                  duration: Duration(seconds: 1),
-                ),
-              );
             }
           },
           tooltip: '刷新',
@@ -164,14 +153,13 @@ class _FavoritesPageState extends State<FavoritesPage>
             Icon(
               Icons.favorite,
               size: 24,
-              color: colorScheme.primary,
-            ),
+              color: colorScheme.primary),
             const SizedBox(width: 12),
             Text(
               '共收藏 $count 首歌曲',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: Theme.of(context,
+              ).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -181,7 +169,8 @@ class _FavoritesPageState extends State<FavoritesPage>
 
   /// 构建收藏项
   Widget _buildFavoriteItem(
-      FavoriteTrack item, int index, ColorScheme colorScheme) {
+      FavoriteTrack item, int index, ColorScheme colorScheme,
+  ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
@@ -246,8 +235,7 @@ class _FavoritesPageState extends State<FavoritesPage>
         title: Text(
           item.name,
           maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+          overflow: TextOverflow.ellipsis),
         subtitle: Row(
           children: [
             Expanded(
@@ -280,14 +268,6 @@ class _FavoritesPageState extends State<FavoritesPage>
               color: Colors.redAccent,
               onPressed: () async {
                 await _favoriteService.removeFavorite(item.toTrack());
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('已取消收藏'),
-                      duration: Duration(seconds: 1),
-                    ),
-                  );
-                }
               },
               tooltip: '取消收藏',
             ),
@@ -312,8 +292,7 @@ class _FavoritesPageState extends State<FavoritesPage>
     PlaylistQueueService().setQueue(
       trackList,
       index,
-      QueueSource.favorites,
-    );
+      QueueSource.favorites);
 
     // 播放选中的歌曲
     PlayerService().playTrack(trackList[index]);
@@ -354,14 +333,16 @@ class _FavoritesPageState extends State<FavoritesPage>
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       Icons.favorite_border,
                       size: compact ? 56 : 80,
-                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3,
+                      ),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -380,7 +361,8 @@ class _FavoritesPageState extends State<FavoritesPage>
                       maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7,
+                        ),
                       ),
                     ),
                   ],
@@ -406,14 +388,16 @@ class _FavoritesPageState extends State<FavoritesPage>
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       Icons.login,
                       size: compact ? 56 : 80,
-                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3,
+                      ),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -432,7 +416,8 @@ class _FavoritesPageState extends State<FavoritesPage>
                       maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7,
+                        ),
                       ),
                     ),
                   ],
@@ -445,4 +430,3 @@ class _FavoritesPageState extends State<FavoritesPage>
     );
   }
 }
-

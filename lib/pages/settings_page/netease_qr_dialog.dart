@@ -100,13 +100,6 @@ Future<bool?> showNeteaseQrDialog(BuildContext context, int userId) async {
     );
   }
 
-  if (success == true && context.mounted) {
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (messenger != null) {
-      messenger.showSnackBar(const SnackBar(content: Text('网易云账号绑定成功')));
-    }
-  }
-
   return success;
 }
 

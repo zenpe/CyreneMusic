@@ -1,3 +1,5 @@
+import '../../widgets/server_address_editor.dart';
+import '../../utils/app_feedback.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -229,72 +231,10 @@ class _NetworkSettingsState extends State<NetworkSettings> {
   }
 
   void _showCustomUrlDialogFluent(BuildContext context) {
-    final controller = TextEditingController(text: UrlService().customBaseUrl);
-
-    fluent_ui.showDialog(
+    fluent_ui.showDialog<void>(
       context: context,
-      builder: (context) {
-        return fluent_ui.ContentDialog(
-          title: const Text('自定义服务器'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              fluent_ui.TextBox(
-                controller: controller,
-                placeholder: UrlService.defaultCustomBaseUrl,
-                prefix: const Padding(
-                  padding: EdgeInsets.only(left: 8.0),
-                  child: Icon(Icons.link),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text('不要在末尾添加斜杠'),
-            ],
-          ),
-          actions: [
-            fluent_ui.Button(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            fluent_ui.FilledButton(
-              onPressed: () {
-                final url = controller.text.trim();
-
-                if (url.isEmpty) {
-                  final messenger = ScaffoldMessenger.maybeOf(context);
-                  if (messenger != null) {
-                    messenger.showSnackBar(
-                      const SnackBar(content: Text('请输入服务器地址')),
-                    );
-                  }
-                  return;
-                }
-
-                if (!UrlService.isValidUrl(url)) {
-                  final messenger = ScaffoldMessenger.maybeOf(context);
-                  if (messenger != null) {
-                    messenger.showSnackBar(
-                      const SnackBar(content: Text('URL 格式不正确')),
-                    );
-                  }
-                  return;
-                }
-
-                UrlService().useCustomSource(url);
-                Navigator.pop(context);
-                final messenger = ScaffoldMessenger.maybeOf(context);
-                if (messenger != null) {
-                  messenger.showSnackBar(
-                    SnackBar(content: Text('已切换到自定义服务器: $url')),
-                  );
-                }
-              },
-              child: const Text('保存'),
-            ),
-          ],
-        );
-      },
+      builder: (_) =>
+          const ServerAddressEditor(style: ServerEditorStyle.fluent),
     );
   }
 
@@ -311,7 +251,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
               if (value == BackendSourceType.official) {
                 UrlService().useOfficialSource();
                 Navigator.pop(context);
-                final messenger = ScaffoldMessenger.maybeOf(context);
+                final messenger = AppFeedback.maybeOf(context);
                 if (messenger != null) {
                   messenger.showSnackBar(
                     const SnackBar(content: Text('已切换到官方服务器')),
@@ -373,7 +313,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
               onChanged: (value) {
                 UrlService().useOfficialSource();
                 Navigator.pop(context);
-                ScaffoldMessenger.of(
+                AppFeedback.of(
                   context,
                 ).showSnackBar(const SnackBar(content: Text('已切换到官方服务器')));
               },
@@ -416,96 +356,10 @@ class _NetworkSettingsState extends State<NetworkSettings> {
   }
 
   void _showCustomUrlDialog(BuildContext context) {
-    final controller = TextEditingController(text: UrlService().customBaseUrl);
-
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('自定义服务器'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.primaryContainer.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 20,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '请填写兼容 Cyrene API 的服务器地址',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                labelText: '服务器地址',
-                hintText: UrlService.defaultCustomBaseUrl,
-                prefixIcon: Icon(Icons.link),
-                border: OutlineInputBorder(),
-                helperText: '不要在末尾添加斜杠',
-              ),
-              keyboardType: TextInputType.url,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final url = controller.text.trim();
-              if (url.isEmpty) {
-                final messenger = ScaffoldMessenger.maybeOf(context);
-                if (messenger != null) {
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text('请输入服务器地址')),
-                  );
-                }
-                return;
-              }
-              if (!UrlService.isValidUrl(url)) {
-                final messenger = ScaffoldMessenger.maybeOf(context);
-                if (messenger != null) {
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text('URL 格式不正确')),
-                  );
-                }
-                return;
-              }
-              UrlService().useCustomSource(url);
-              Navigator.pop(context);
-              final messenger = ScaffoldMessenger.maybeOf(context);
-              if (messenger != null) {
-                messenger.showSnackBar(
-                  SnackBar(content: Text('已切换到自定义服务器: $url')),
-                );
-              }
-            },
-            child: const Text('保存'),
-          ),
-        ],
-      ),
+      builder: (_) =>
+          const ServerAddressEditor(style: ServerEditorStyle.material),
     );
   }
 
@@ -572,56 +426,10 @@ class _NetworkSettingsState extends State<NetworkSettings> {
 
   /// 显示 Cupertino 风格的自定义 URL 对话框
   void _showCustomUrlDialogCupertino(BuildContext context) {
-    final controller = TextEditingController(text: UrlService().customBaseUrl);
-
     showCupertinoDialog<void>(
       context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('自定义服务器'),
-        content: Padding(
-          padding: const EdgeInsets.only(top: 16),
-          child: Column(
-            children: [
-              CupertinoTextField(
-                controller: controller,
-                placeholder: UrlService.defaultCustomBaseUrl,
-                keyboardType: TextInputType.url,
-                clearButtonMode: OverlayVisibilityMode.editing,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '不要在末尾添加斜杠',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: CupertinoColors.systemGrey,
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            isDestructiveAction: false,
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () {
-              final url = controller.text.trim();
-              if (url.isEmpty) {
-                return;
-              }
-              if (!UrlService.isValidUrl(url)) {
-                return;
-              }
-              UrlService().useCustomSource(url);
-              Navigator.pop(context);
-            },
-            child: const Text('保存'),
-          ),
-        ],
-      ),
+      builder: (_) =>
+          const ServerAddressEditor(style: ServerEditorStyle.cupertino),
     );
   }
 

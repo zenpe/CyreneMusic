@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -1346,13 +1347,14 @@ class TrackActionMenu {
                             final success = await playlistService
                                 .addTrackToPlaylist(playlist.id, track);
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              AppFeedback.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
                                     success ? '已添加到「${playlist.name}」' : '添加失败',
                                   ),
                                   duration: const Duration(seconds: 1),
                                 ),
+                                kind: success ? FeedbackKind.info : FeedbackKind.error,
                               );
                             }
                           },
@@ -1373,57 +1375,20 @@ class TrackActionMenu {
   /// 添加到播放队列
   static void _addToQueue(BuildContext context, Track track) {
     PlaybackService().addToQueue(track);
-
-    final themeManager = ThemeManager();
-    const message = '已添加到播放队列';
-
-    if (themeManager.isCupertinoFramework) {
-      _showCupertinoToast(context, message, true);
-    } else if (themeManager.isFluentFramework && Platform.isWindows) {
-      _showFluentToast(context, message, true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(message), duration: Duration(seconds: 1)),
-      );
-    }
+    AppFeedback.of(context).info('已加入播放队列 · 共 ${PlaybackService().queue.length} 首', operationKey: 'queue-add');
   }
 
   /// 下一首播放
   static void _playNext(BuildContext context, Track track) {
     PlaybackService().playNext(track);
-
-    final themeManager = ThemeManager();
-    const message = '将在下一首播放';
-
-    if (themeManager.isCupertinoFramework) {
-      _showCupertinoToast(context, message, true);
-    } else if (themeManager.isFluentFramework && Platform.isWindows) {
-      _showFluentToast(context, message, true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(message), duration: Duration(seconds: 1)),
-      );
-    }
+    AppFeedback.of(context).info('将在下一首播放', operationKey: 'queue-next');
   }
 
   /// 收藏 / 取消收藏
   static Future<void> _toggleFavorite(BuildContext context, Track track) async {
-    await PlaylistService().toggleFavorite(track);
-    final isFav = PlaylistService().isFavorite(track);
-
-    if (!context.mounted) return;
-
-    final themeManager = ThemeManager();
-    final message = isFav ? '已添加到收藏' : '已取消收藏';
-
-    if (themeManager.isCupertinoFramework) {
-      _showCupertinoToast(context, message, true);
-    } else if (themeManager.isFluentFramework && Platform.isWindows) {
-      _showFluentToast(context, message, true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(seconds: 1)),
-      );
+    final succeeded = await PlaylistService().toggleFavorite(track);
+    if (!succeeded && context.mounted) {
+      AppFeedback.of(context).error('收藏操作失败，请稍后重试');
     }
   }
 
@@ -1433,45 +1398,11 @@ class TrackActionMenu {
     String message,
     bool success,
   ) {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (context) {
-        // 自动关闭
-        Future.delayed(const Duration(seconds: 1), () {
-          if (context.mounted) {
-            Navigator.of(context).maybePop();
-          }
-        });
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 100),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.75),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                success
-                    ? CupertinoIcons.checkmark_circle_fill
-                    : CupertinoIcons.xmark_circle_fill,
-                color: success
-                    ? CupertinoColors.systemGreen
-                    : CupertinoColors.systemRed,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                message,
-                style: const TextStyle(color: Colors.white, fontSize: 15),
-              ),
-            ],
-          ),
-        );
-      },
-    );
+    if (success) {
+      AppFeedback.of(context).success(message);
+    } else {
+      AppFeedback.of(context).error(message);
+    }
   }
 
   /// Fluent 风格 Toast 提示
@@ -1480,12 +1411,10 @@ class TrackActionMenu {
     String message,
     bool success,
   ) {
-    // 使用 ScaffoldMessenger 作为后备方案
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (messenger != null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(seconds: 1)),
-      );
+    if (success) {
+      AppFeedback.of(context).success(message);
+    } else {
+      AppFeedback.of(context).error(message);
     }
   }
 }

@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import '../widgets/floating_playback_insets.dart';
 import 'dart:async';
 import 'dart:io';
@@ -141,10 +142,10 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     final item = history[index];
-                    return _buildHistoryItem(item, index, colorScheme, isExpressive);
+                    return _buildHistoryItem(item, index, colorScheme, isExpressive,
+                  );
                   },
-                  childCount: history.length,
-                ),
+                  childCount: history.length),
               ),
             ),
 
@@ -223,7 +224,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
   }
 
   /// iOS Cupertino 风格页面
-  Widget _buildCupertinoPage(BuildContext context, List<PlayHistoryItem> history) {
+  Widget _buildCupertinoPage(BuildContext context, List<PlayHistoryItem> history,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
       type: MaterialType.transparency,
@@ -254,7 +256,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                     ...history.asMap().entries.map((entry) {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: _buildCupertinoHistoryItem(entry.value, entry.key, isDark),
+                        child: _buildCupertinoHistoryItem(entry.value, entry.key, isDark,
+                        ),
                       );
                     }),
                     // 底部留白给迷你播放器
@@ -282,7 +285,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
         children: [
           Row(
             children: [
-              Icon(CupertinoIcons.chart_bar_fill, size: 18, color: CupertinoColors.activeBlue),
+              Icon(CupertinoIcons.chart_bar_fill, size: 18, color: CupertinoColors.activeBlue,
+              ),
               const SizedBox(width: 8),
               Text(
                 '播放统计',
@@ -324,14 +328,14 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
           label,
           style: TextStyle(
             fontSize: 12,
-            color: CupertinoColors.systemGrey,
-          ),
+            color: CupertinoColors.systemGrey),
         ),
       ],
     );
   }
 
-  Widget _buildCupertinoHistoryItem(PlayHistoryItem item, int index, bool isDark) {
+  Widget _buildCupertinoHistoryItem(PlayHistoryItem item, int index, bool isDark,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
@@ -368,7 +372,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                         width: 50,
                         height: 50,
                         color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5,
-                        child: Icon(CupertinoIcons.music_note, color: CupertinoColors.systemGrey),
+                        child: Icon(CupertinoIcons.music_note, color: CupertinoColors.systemGrey,
+                        ),
                       ),
                     ),
                   ),
@@ -376,10 +381,12 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                     bottom: 0,
                     right: 0,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: CupertinoColors.activeBlue,
-                        borderRadius: const BorderRadius.only(topLeft: Radius.circular(4)),
+                        borderRadius: const BorderRadius.only(topLeft: Radius.circular(4),
+                        ),
                       ),
                       child: Text(
                         '#${index + 1}',
@@ -466,7 +473,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -562,8 +570,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
         color: isExpressive ? Colors.transparent : null,
         margin: EdgeInsets.zero,
         shape: isExpressive ? RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ) : null,
+          borderRadius: BorderRadius.circular(24)) : null,
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Column(
@@ -610,7 +617,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
   }
 
   /// 构建单个统计项
-  Widget _buildStatItem(String label, int count, ColorScheme colorScheme, bool isExpressive) {
+  Widget _buildStatItem(String label, int count, ColorScheme colorScheme, bool isExpressive,
+  ) {
     return Column(
       children: [
         Text(
@@ -633,7 +641,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
   }
 
   /// 构建历史记录项
-  Widget _buildHistoryItem(PlayHistoryItem item, int index, ColorScheme colorScheme, bool isExpressive) {
+  Widget _buildHistoryItem(PlayHistoryItem item, int index, ColorScheme colorScheme, bool isExpressive,
+  ) {
     if (isExpressive) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
@@ -693,7 +702,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                           bottom: 0,
                           right: 0,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: colorScheme.primary,
                               borderRadius: const BorderRadius.only(
@@ -736,7 +746,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 13,
-                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8,
+                              ),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -752,7 +763,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                                 _formatTime(item.playedAt),
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: colorScheme.primary.withValues(alpha: 0.7),
+                                  color: colorScheme.primary.withValues(alpha: 0.7,
+                                  ),
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -767,11 +779,12 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                       onPlay: () => PlayerService().playTrack(item.toTrack()),
                       onDelete: () {
                         _historyService.removeHistoryItem(item);
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppFeedback.of(context).showSnackBar(
                           SnackBar(
                             content: const Text('已从历史记录中移除'),
                             behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12),
+                            ),
                             duration: const Duration(seconds: 1),
                           ),
                         );
@@ -850,8 +863,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
         title: Text(
           item.name,
           maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+          overflow: TextOverflow.ellipsis),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -887,7 +899,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
           },
           onDelete: () {
             _historyService.removeHistoryItem(item);
-            ScaffoldMessenger.of(context).showSnackBar(
+            AppFeedback.of(context).showSnackBar(
               SnackBar(
                 content: const Text('已删除'),
                 duration: const Duration(seconds: 1),
@@ -956,14 +968,16 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       Icons.history,
                       size: compact ? 56 : 80,
-                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3,
+                      ),
                     ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
@@ -982,7 +996,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
                       maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7,
+                        ),
                       ),
                     ),
                   ],
@@ -1011,9 +1026,10 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
             onPressed: () {
               _historyService.clearHistory();
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已清空播放历史')),
-              );
+              AppFeedback.of(
+                context,
+              ).showSnackBar(
+                const SnackBar(content: Text('已清空播放历史')));
             },
             child: const Text('清空'),
           ),
@@ -1046,7 +1062,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
     );
   }
 
-  void _showFluentInfo(String text, [fluent.InfoBarSeverity severity = fluent.InfoBarSeverity.info]) {
+  void _showFluentInfo(String text, [fluent.InfoBarSeverity severity = fluent.InfoBarSeverity.info,
+  ]) {
     _infoBarTimer?.cancel();
     setState(() {
       _fluentInfoText = text;
@@ -1075,8 +1092,7 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
               SizedBox(width: 8),
               Text(
                 '播放统计',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+                style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 16),
@@ -1122,7 +1138,8 @@ class _HistoryPageState extends State<HistoryPage> with AutomaticKeepAliveClient
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -1295,4 +1312,3 @@ class _FluentHistoryTile extends StatelessWidget {
     }
   }
 }
-

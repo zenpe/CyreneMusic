@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import '../../widgets/lyric_status_text.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -58,11 +59,11 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
     );
     _timeCapsuleFadeAnimation = Tween<double>(
       begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
+      end: 1.0).animate(CurvedAnimation(
       parent: _timeCapsuleAnimationController!,
       curve: Curves.easeInOut,
-    ));
+    ),
+    );
   }
 
   /// 开始手动模式
@@ -103,7 +104,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
 
       final selectedLyric = widget.lyrics[_selectedLyricIndex!];
       PlayerService().seek(selectedLyric.startTime);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.of(context).showSnackBar(
         SnackBar(
           content: Text('已跳转到: ${selectedLyric.text}'),
           duration: const Duration(seconds: 1),
@@ -155,10 +156,12 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
 
                   if (linesToMove > 0) {
                     // 向下滑动，选择更前面的歌词
-                    newIndex = (currentIndex - linesToMove).clamp(0, widget.lyrics.length - 1);
+                    newIndex = (currentIndex - linesToMove).clamp(0, widget.lyrics.length - 1,
+                    );
                   } else {
                     // 向上滑动，选择更后面的歌词
-                    newIndex = (currentIndex - linesToMove).clamp(0, widget.lyrics.length - 1);
+                    newIndex = (currentIndex - linesToMove).clamp(0, widget.lyrics.length - 1,
+                    );
                   }
 
                   if (newIndex != currentIndex) {
@@ -207,14 +210,16 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
-        final textColor = _getAdaptiveLyricColor(themeColor, false).withValues(alpha: 0.5);
+        final textColor = _getAdaptiveLyricColor(themeColor, false,
+        ).withValues(alpha: 0.5);
 
         return Center(
           child: LyricStatusText(state: widget.lyricState, style: TextStyle(
               color: textColor,
               fontSize: lyricFontSize,
               fontFamily: 'Microsoft YaHei',
-            )),
+            ),
+          ),
         );
       },
     );
@@ -267,7 +272,8 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
                 flex: mainFlex,
                 child: Center(
                   child: isCurrent
-                      ? _buildKaraokeLyricLine(lyric, lyricFontSize, isActuallyPlaying)
+                      ? _buildKaraokeLyricLine(lyric, lyricFontSize, isActuallyPlaying,
+                        )
                       : _buildNormalLyricLine(lyric, smallFontSize, false),
                 ),
               ),
@@ -276,7 +282,8 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
                   flex: transFlex,
                   child: Center(
                     child: (lyric.translation != null && lyric.translation!.trim().isNotEmpty)
-                        ? _buildTranslationLine(lyric.translation!, smallFontSize * 0.95)
+                        ? _buildTranslationLine(lyric.translation!, smallFontSize * 0.95,
+                          )
                         : const SizedBox.shrink(),
                   ),
                 ),
@@ -292,8 +299,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
         return Stack(
           alignment: Alignment.center,
           children: <Widget>[
-            ?currentChild,
-          ],
+            ?currentChild],
         );
       },
       transitionBuilder: (Widget child, Animation<double> animation) {
@@ -302,8 +308,8 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
           end: Offset.zero,
         ).animate(CurvedAnimation(
           parent: animation,
-          curve: Curves.easeOutCubic,
-        ));
+          curve: Curves.easeOutCubic),
+            );
         return SlideTransition(position: offsetAnimation, child: child);
       },
       child: Column(
@@ -315,7 +321,8 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
   }
 
   /// 构建卡拉OK样式的歌词行（当前歌词）
-  Widget _buildKaraokeLyricLine(LyricLine lyric, double fontSize, bool isActuallyPlaying) {
+  Widget _buildKaraokeLyricLine(LyricLine lyric, double fontSize, bool isActuallyPlaying,
+  ) {
     final text = lyric.text.trim().isEmpty ? '♪' : lyric.text;
 
     return ValueListenableBuilder<Color?>(
@@ -346,7 +353,8 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
   }
 
   /// 构建普通歌词行（非当前歌词）
-  Widget _buildNormalLyricLine(LyricLine lyric, double fontSize, bool isCurrent) {
+  Widget _buildNormalLyricLine(LyricLine lyric, double fontSize, bool isCurrent,
+  ) {
     final text = lyric.text.trim().isEmpty ? '♪' : lyric.text;
 
     return ValueListenableBuilder<Color?>(
@@ -380,7 +388,8 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
-        final baseColor = _getAdaptiveLyricColor(themeColor, false).withValues(alpha: 0.75);
+        final baseColor = _getAdaptiveLyricColor(themeColor, false,
+        ).withValues(alpha: 0.75);
         return Center(
           child: Text(
             translation,
@@ -495,7 +504,8 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
           wordProgress = 1.0;
         } else {
           final wordElapsed = currentPosition - word.startTime;
-          wordProgress = (wordElapsed.inMilliseconds / word.duration.inMilliseconds).clamp(0.0, 1.0);
+          wordProgress = (wordElapsed.inMilliseconds / word.duration.inMilliseconds).clamp(0.0, 1.0,
+              );
         }
 
         return _MobileKaraokeWordWidget(
@@ -586,8 +596,7 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
                   '点击跳转',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 11,
-                  ),
+                    fontSize: 11),
                 ),
               ],
             ),

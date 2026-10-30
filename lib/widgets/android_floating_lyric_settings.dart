@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -65,14 +66,6 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
                         final granted = await _lyricService.requestPermissionWithDialog(context);
                         if (granted) {
                           await _checkPermission();
-                          if (mounted && context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('✅ 权限已授予'),
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
                         }
                       },
                       child: const Text('去授权'),
@@ -98,34 +91,19 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
                   if (granted) {
                     await _lyricService.show();
                     await _checkPermission();
-                    if (mounted && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('✅ 悬浮歌词已启用'),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    }
                   } else {
                     if (mounted && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppFeedback.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('❌ 需要悬浮窗权限才能启用悬浮歌词'),
+                          content: Text('需要悬浮窗权限才能启用悬浮歌词'),
                           duration: Duration(seconds: 3),
                         ),
+                        kind: FeedbackKind.error,
                       );
                     }
                   }
                 } else {
                   await _lyricService.hide();
-                  if (mounted && context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('悬浮歌词已关闭'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  }
                 }
                 setState(() {});
               },
@@ -243,7 +221,8 @@ class _AndroidFloatingLyricSettingsState extends State<AndroidFloatingLyricSetti
             value: _lyricService.isVisible,
             onChanged: (value) async {
               if (value) {
-                final granted = await _lyricService.requestPermissionWithDialog(context);
+                final granted = await _lyricService.requestPermissionWithDialog(context,
+                );
                 if (granted) {
                   await _lyricService.show();
                   await _checkPermission();

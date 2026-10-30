@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
@@ -98,7 +99,7 @@ class PlaybackSettings extends StatelessWidget {
                     if (value != null) {
                       qualityService.setQuality(value);
                       Navigator.pop(context);
-                      final messenger = ScaffoldMessenger.maybeOf(context);
+                      final messenger = AppFeedback.maybeOf(context);
                       if (messenger != null) {
                         messenger.showSnackBar(
                           const SnackBar(

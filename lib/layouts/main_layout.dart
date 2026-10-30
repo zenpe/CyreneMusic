@@ -1,3 +1,4 @@
+import '../widgets/feedback_boundary.dart';
 import '../services/structured_log_service.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -282,7 +283,7 @@ class _MainLayoutState extends State<MainLayout>
           ),
 
           // 迷你播放器
-          const MiniPlayer(),
+          const FeedbackAvoidance(child: MiniPlayer()),
         ],
       ),
     );
@@ -358,7 +359,9 @@ class _MainLayoutState extends State<MainLayout>
                                 if (!hasMiniPlayer) {
                                   return const SizedBox.shrink();
                                 }
-                                return const MiniPlayer();
+                                return const FeedbackAvoidance(
+                                  child: MiniPlayer(),
+                                );
                               },
                             ),
                           ),
@@ -427,9 +430,11 @@ class _MainLayoutState extends State<MainLayout>
                               );
                             },
                             child: hasMiniPlayer
-                                ? const MiniPlayer(
-                                    key: ValueKey(
-                                      'cupertino_floating_mini_player',
+                                ? const FeedbackAvoidance(
+                                    child: MiniPlayer(
+                                      key: ValueKey(
+                                        'cupertino_floating_mini_player',
+                                      ),
                                     ),
                                   )
                                 : const SizedBox.shrink(
@@ -444,7 +449,7 @@ class _MainLayoutState extends State<MainLayout>
                       left: 0,
                       right: 0,
                       bottom: 0,
-                      child: _buildCupertinoTabBar(context),
+                      child: FeedbackAvoidance(child: _buildCupertinoTabBar(context)),
                     ),
                   ] else if (isLandscape) ...[
                     Positioned(
@@ -458,7 +463,7 @@ class _MainLayoutState extends State<MainLayout>
                               PlayerService().currentTrack != null ||
                               PlayerService().currentSong != null;
                           if (!hasMiniPlayer) return const SizedBox.shrink();
-                          return const MiniPlayer();
+                          return const FeedbackAvoidance(child: MiniPlayer());
                         },
                       ),
                     ),
@@ -1069,7 +1074,7 @@ class _MainLayoutState extends State<MainLayout>
       navWidget = SizedBox(height: navHeight, child: navWidget);
     }
 
-    if (!useGlass) return navWidget;
+    if (!useGlass) return FeedbackAvoidance(child: navWidget);
 
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
@@ -1242,10 +1247,12 @@ class _MainLayoutState extends State<MainLayout>
                               duration: const Duration(milliseconds: 250),
                               curve: Curves.easeOutCubic,
                               child: hasMiniPlayer
-                                  ? const MiniPlayer(transparent: true)
+                                  ? const FeedbackAvoidance(
+                                      child: MiniPlayer(transparent: true),
+                                    )
                                   : const SizedBox.shrink(),
                             ),
-                            navWidget,
+                            FeedbackAvoidance(child: navWidget),
                           ],
                         ),
                       );

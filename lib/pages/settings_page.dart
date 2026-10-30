@@ -848,15 +848,6 @@ class _SettingsPageState extends State<SettingsPage> {
           onTap: () {
             qualityService.setQuality(quality);
             Navigator.pop(context);
-            final messenger = ScaffoldMessenger.maybeOf(context);
-            if (messenger != null) {
-              messenger.showSnackBar(
-                const SnackBar(
-                  content: Text('音质设置已更新'),
-                  duration: Duration(seconds: 1),
-                ),
-              );
-            }
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

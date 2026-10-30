@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import '../models/navidrome_models.dart';
 import '../models/track.dart';
@@ -69,8 +70,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
           query,
           artistCount: 50,
           albumCount: 50,
-          songCount: 100,
-        ),
+          songCount: 100),
         api.getInternetRadioStations(),
       ]);
 
@@ -167,9 +167,10 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     PlaylistQueueService().appendToQueue(tracks);
     final pageContext = context;
     if (pageContext.mounted) {
-      ScaffoldMessenger.of(pageContext).showSnackBar(
-        const SnackBar(content: Text('已加入播放队列')),
-      );
+      AppFeedback.of(
+        pageContext,
+      ).showSnackBar(
+        const SnackBar(content: Text('已加入播放队列')));
     }
   }
 
@@ -289,8 +290,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
                 if (_result != null && (!_result!.isEmpty || _radioStations.isNotEmpty))
                   _buildTabChips(colorScheme, width),
                 Expanded(
-                  child: _buildBody(theme, colorScheme),
-                ),
+                  child: _buildBody(theme, colorScheme)),
               ],
             );
           },
@@ -315,8 +315,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
         suffixIcon: _controller.text.isNotEmpty
             ? IconButton(
                 icon: const Icon(Icons.clear),
-                onPressed: _clearSearch,
-              )
+                onPressed: _clearSearch)
             : null,
         border: OutlineInputBorder(
           borderRadius: borderRadius,
@@ -328,7 +327,8 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: borderRadius,
-          borderSide: const BorderSide(color: NavidromeColors.activeBlue, width: 2),
+          borderSide: const BorderSide(color: NavidromeColors.activeBlue, width: 2,
+          ),
         ),
         filled: true,
         fillColor: navTheme.card,
@@ -353,8 +353,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
             padding.left,
             2,
             padding.right,
-            4,
-          ),
+            4),
           child: Row(
             children: List.generate(_tabs.length, (index) {
               final selected = _tabController.index == index;
@@ -390,11 +389,13 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
               constraints: BoxConstraints(minHeight: minHeight),
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.error_outline, size: 48, color: colorScheme.error),
+                      Icon(Icons.error_outline, size: 48, color: colorScheme.error,
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         _error!,
@@ -422,7 +423,8 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
               constraints: BoxConstraints(minHeight: minHeight),
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -460,7 +462,8 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
               constraints: BoxConstraints(minHeight: minHeight),
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -531,8 +534,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
                   padding.left,
                   8,
                   padding.right,
-                  4,
-                ),
+                  4),
               ),
               SizedBox(
                 height: 100,
@@ -562,8 +564,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
                   padding.left,
                   8,
                   padding.right,
-                  4,
-                ),
+                  4),
               ),
               SizedBox(
                 height: 184,
@@ -601,8 +602,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
                   padding.left,
                   8,
                   padding.right,
-                  4,
-                ),
+                  4),
               ),
               ...songs.take(5).map((song) {
                 final songIndex = songs.indexOf(song);
@@ -632,8 +632,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
                   padding.left,
                   8,
                   padding.right,
-                  4,
-                ),
+                  4),
               ),
               ...radios.take(3).map((station) {
                 return Padding(
@@ -823,8 +822,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
     showNavidromeAlbumSheet(
       context: context,
       album: album,
-      api: _api,
-    );
+      api: _api);
   }
 
   Widget _buildRadioTab(ThemeData theme, ColorScheme colorScheme) {
@@ -908,7 +906,8 @@ class _ArtistChip extends StatelessWidget {
                 radius: 26,
                 backgroundColor: colorScheme.primaryContainer,
                 backgroundImage: artist.coverArt != null && api != null
-                    ? NetworkImage(api!.buildCoverUrl(artist.coverArt!, size: 100))
+                    ? NetworkImage(api!.buildCoverUrl(artist.coverArt!, size: 100),
+                      )
                     : null,
                 child: artist.coverArt == null
                     ? Icon(Icons.person, color: colorScheme.onPrimaryContainer)
@@ -939,8 +938,7 @@ class _RadioStationTile extends StatelessWidget {
 
   const _RadioStationTile({
     required this.station,
-    required this.onTap,
-  });
+    required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1002,8 +1000,7 @@ class _RadioStationTile extends StatelessWidget {
             child: const Icon(
               Icons.play_arrow,
               color: Colors.white,
-              size: 22,
-            ),
+              size: 22),
           ),
         ],
       ),

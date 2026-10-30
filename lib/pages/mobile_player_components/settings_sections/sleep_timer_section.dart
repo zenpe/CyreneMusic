@@ -1,3 +1,4 @@
+import '../../../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import '../../../services/sleep_timer_service.dart';
 import '../mobile_player_dialogs.dart';
@@ -23,7 +24,8 @@ class SleepTimerSection extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8,
+              ),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
                 color: colorScheme.outlineVariant.withValues(alpha: 0.3),
@@ -75,7 +77,8 @@ class SleepTimerSection extends StatelessWidget {
   }
 
   /// 活跃状态指示器
-  Widget _buildActiveIndicator(SleepTimerService timer, ColorScheme colorScheme) {
+  Widget _buildActiveIndicator(SleepTimerService timer, ColorScheme colorScheme,
+  ) {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.8, end: 1.0),
       duration: const Duration(milliseconds: 800),
@@ -148,7 +151,7 @@ class SleepTimerSection extends StatelessWidget {
             label: '+15分钟',
             onTap: () {
               timer.extend(15);
-              ScaffoldMessenger.of(context).showSnackBar(
+              AppFeedback.of(context).showSnackBar(
                 SnackBar(
                   content: const Text('已延长15分钟'),
                   behavior: SnackBarBehavior.floating,
@@ -171,7 +174,7 @@ class SleepTimerSection extends StatelessWidget {
             label: '取消',
             onTap: () {
               timer.cancel();
-              ScaffoldMessenger.of(context).showSnackBar(
+              AppFeedback.of(context).showSnackBar(
                 SnackBar(
                   content: const Text('定时器已取消'),
                   behavior: SnackBarBehavior.floating,
@@ -207,7 +210,7 @@ class SleepTimerSection extends StatelessWidget {
           minutes: minutes,
           onTap: () {
             timer.setTimerByDuration(minutes);
-            ScaffoldMessenger.of(context).showSnackBar(
+                AppFeedback.of(context).showSnackBar(
               SnackBar(
                 content: Text('定时器已设置: $minutes分钟后停止播放'),
                 behavior: SnackBarBehavior.floating,

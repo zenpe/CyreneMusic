@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import '../../widgets/server_selection.dart';
 import '../../services/url_service.dart';
 import 'dart:async';
@@ -262,7 +263,9 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
     if (!mounted || _isLoading || revision != _backendRevision) return;
     if (_accountController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
-      _showInfoBar('请填写完整信息', fluent.InfoBarSeverity.warning);
+      setState(() {
+        _loginError = '请填写账号和密码';
+      });
       return;
     }
 
@@ -298,12 +301,9 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
 
     if (mounted) {
       if (result['success']) {
-        _showInfoBar(result['message'], fluent.InfoBarSeverity.success);
         // 登录成功后，自动上报IP归属地
         _authFacade.updateLocation();
         _closeAuthEntry();
-      } else {
-        _showInfoBar(result['message'], fluent.InfoBarSeverity.error);
       }
     }
   }
@@ -318,17 +318,6 @@ class _FluentLoginViewState extends State<_FluentLoginView> {
     if (nav.canPop()) {
       nav.pop(true);
     }
-  }
-
-  void _showInfoBar(String message, fluent.InfoBarSeverity severity) {
-    fluent.displayInfoBar(
-      context,
-      builder: (context, close) => fluent.InfoBar(
-        title: Text(message),
-        severity: severity,
-        onClose: close,
-      ),
-    );
   }
 
   @override
@@ -591,14 +580,12 @@ class _FluentRegisterViewState extends State<_FluentRegisterView> {
   }
 
   void _showInfoBar(String message, fluent.InfoBarSeverity severity) {
-    fluent.displayInfoBar(
-      context,
-      builder: (context, close) => fluent.InfoBar(
-        title: Text(message),
-        severity: severity,
-        onClose: close,
-      ),
-    );
+    if (severity == fluent.InfoBarSeverity.error ||
+        severity == fluent.InfoBarSeverity.warning) {
+      AppFeedback.of(context).error(message);
+    } else {
+      AppFeedback.of(context).info(message);
+    }
   }
 
   @override
@@ -940,14 +927,12 @@ class _FluentForgotPasswordViewState extends State<_FluentForgotPasswordView> {
   }
 
   void _showInfoBar(String message, fluent.InfoBarSeverity severity) {
-    fluent.displayInfoBar(
-      context,
-      builder: (context, close) => fluent.InfoBar(
-        title: Text(message),
-        severity: severity,
-        onClose: close,
-      ),
-    );
+    if (severity == fluent.InfoBarSeverity.error ||
+        severity == fluent.InfoBarSeverity.warning) {
+      AppFeedback.of(context).error(message);
+    } else {
+      AppFeedback.of(context).info(message);
+    }
   }
 
   @override

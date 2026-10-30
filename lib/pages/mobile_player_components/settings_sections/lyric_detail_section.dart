@@ -1,3 +1,4 @@
+import '../../../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import '../../../services/lyric_style_service.dart';
 import '../../../services/lyric_font_service.dart';
@@ -22,7 +23,8 @@ class LyricDetailSection extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8,
+              ),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
                 color: colorScheme.outlineVariant.withValues(alpha: 0.3),
@@ -289,7 +291,8 @@ class LyricDetailSection extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerRight,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
@@ -331,7 +334,8 @@ class LyricDetailSection extends StatelessWidget {
               enabledThumbRadius: 10,
               elevation: 4,
             ),
-            disabledActiveTrackColor: colorScheme.outline.withValues(alpha: 0.3),
+            disabledActiveTrackColor: colorScheme.outline.withValues(alpha: 0.3,
+            ),
             disabledInactiveTrackColor: colorScheme.surfaceContainerHigh,
             disabledThumbColor: colorScheme.outline.withValues(alpha: 0.5),
           ),
@@ -411,7 +415,8 @@ class LyricDetailSection extends StatelessWidget {
               color: accentColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(Icons.font_download_rounded, color: accentColor, size: 18),
+            child: Icon(Icons.font_download_rounded, color: accentColor, size: 18,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -448,7 +453,8 @@ class LyricDetailSection extends StatelessWidget {
   }
 
   /// 显示歌词字体选择器
-  void _showFontPicker(BuildContext context, ColorScheme colorScheme, bool isDark) {
+  void _showFontPicker(BuildContext context, ColorScheme colorScheme, bool isDark,
+  ) {
     final fontService = LyricFontService();
 
     showModalBottomSheet(
@@ -465,7 +471,8 @@ class LyricDetailSection extends StatelessWidget {
                   height: MediaQuery.of(context).size.height * 0.6,
                   decoration: BoxDecoration(
                     color: colorScheme.surfaceContainerHigh,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(28),
+                    ),
                   ),
                   child: Column(
                     children: [
@@ -481,7 +488,8 @@ class LyricDetailSection extends StatelessWidget {
                       ),
                       // 标题
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12,
+                        ),
                         child: Row(
                           children: [
                             Icon(
@@ -512,7 +520,8 @@ class LyricDetailSection extends StatelessWidget {
                       ),
                       // 分隔线
                       Divider(
-                        color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                        color: colorScheme.outlineVariant.withValues(alpha: 0.3,
+                        ),
                         height: 1,
                       ),
                       // 字体列表
@@ -529,7 +538,8 @@ class LyricDetailSection extends StatelessWidget {
 
                             // 分隔线
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8,
+                              ),
                               child: Row(
                                 children: [
                                   Expanded(
@@ -538,7 +548,8 @@ class LyricDetailSection extends StatelessWidget {
                                     ),
                                   ),
                                   Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12,
+                                    ),
                                     child: Text(
                                       '系统字体',
                                       style: TextStyle(
@@ -566,13 +577,15 @@ class LyricDetailSection extends StatelessWidget {
                                 onTap: () {
                                   fontService.setPresetFont(font.id);
                                 },
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4,
+                                ),
                                 leading: Container(
                                   width: 40,
                                   height: 40,
                                   decoration: BoxDecoration(
                                     color: isSelected
-                                        ? colorScheme.primary.withValues(alpha: 0.15)
+                                        ? colorScheme.primary.withValues(alpha: 0.15,
+                                          )
                                         : colorScheme.surfaceContainerHighest,
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -671,15 +684,18 @@ class LyricDetailSection extends StatelessWidget {
               // 选中自定义字体
               fontService.loadCustomFont(fontService.customFontPath!);
             },
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4,
+            ),
             leading: Container(
               width: 40,
               height: 40,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: isCustomSelected
-                      ? [colorScheme.tertiary.withValues(alpha: 0.2), colorScheme.tertiary.withValues(alpha: 0.1)]
-                      : [colorScheme.surfaceContainerHighest, colorScheme.surfaceContainerHighest],
+                      ? [colorScheme.tertiary.withValues(alpha: 0.2), colorScheme.tertiary.withValues(alpha: 0.1),
+                        ]
+                      : [colorScheme.surfaceContainerHighest, colorScheme.surfaceContainerHighest,
+                        ],
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -711,8 +727,7 @@ class LyricDetailSection extends StatelessWidget {
                 if (isCustomSelected)
                   Icon(
                     Icons.check_circle_rounded,
-                    color: colorScheme.tertiary,
-                  ),
+                    color: colorScheme.tertiary),
                 const SizedBox(width: 8),
                 // 删除按钮
                 IconButton(
@@ -736,17 +751,19 @@ class LyricDetailSection extends StatelessWidget {
           onTap: () async {
             final success = await fontService.pickAndLoadCustomFont();
             if (success && context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              AppFeedback.of(context).showSnackBar(
                 SnackBar(
                   content: const Text('字体导入成功'),
                   backgroundColor: colorScheme.primary,
                   behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               );
             }
           },
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4,
+          ),
           leading: Container(
             width: 40,
             height: 40,

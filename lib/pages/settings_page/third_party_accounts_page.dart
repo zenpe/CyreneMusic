@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -67,6 +68,8 @@ class ThirdPartyAccountsContent extends StatefulWidget {
 class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
   final AuthFacade _authFacade = AuthFacade();
   int _refreshKey = 0;
+  bool _unbindBusy = false;
+  String? _unbindError;
   late Future<Map<String, dynamic>> _bindingsFuture;
 
   Future<Map<String, dynamic>> _loadBindings() => _authFacade.isLoggedIn
@@ -454,26 +457,23 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
   // ========== 绑定/解绑逻辑 ==========
 
   Future<bool> _tryUnbind() async {
+    if (_unbindBusy || !mounted) return false;
+    setState(() { _unbindBusy = true; _unbindError = null; });
+    var succeeded = false;
     try {
-      return await NeteaseLoginService().unbindNetease();
-    } catch (e) {
-      if (mounted && ThemeManager().isCupertinoFramework) {
-        await showCupertinoDialog<void>(
-          context: context,
-          builder: (c) => CupertinoAlertDialog(
-            title: const Text('解绑失败'),
-            content: Text(e.toString()),
-            actions: [
-              CupertinoDialogAction(
-                onPressed: () => Navigator.pop(c),
-                child: const Text('确定'),
-              ),
-            ],
-          ),
-        );
+      succeeded = await NeteaseLoginService().unbindNetease();
+    } catch (_) {
+      succeeded = false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _unbindBusy = false;
+          _unbindError = succeeded ? null : '解绑失败，请重试';
+        });
       }
-      return false;
     }
+    if (succeeded) _refresh();
+    return succeeded;
   }
 
   Future<void> _bindNetease(BuildContext context, int userId) async {
@@ -481,7 +481,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
     if (success == true) {
       _refresh();
       if (context.mounted) {
-        final messenger = ScaffoldMessenger.maybeOf(context);
+        final messenger = AppFeedback.maybeOf(context);
         if (messenger != null) {
           messenger.showSnackBar(
             const SnackBar(
@@ -496,114 +496,35 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
   }
 
   void _showUnbindDialog(BuildContext context) {
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded),
-            SizedBox(width: 8),
-            Text('解绑网易云账号'),
-          ],
-        ),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('解绑网易云账号'),
         content: const Text('解绑后将无法为您定制首页推荐内容，确定要解绑吗？'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消')),
           FilledButton(
-            onPressed: () async {
-              Navigator.pop(context);
-
-              if (context.mounted) {
-                final messenger = ScaffoldMessenger.maybeOf(context);
-                if (messenger != null) {
-                  messenger.showSnackBar(
-                    const SnackBar(
-                      content: Row(
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          ),
-                          SizedBox(width: 16),
-                          Text('正在解绑...'),
-                        ],
-                      ),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                }
-              }
-
-              final ok = await _tryUnbind();
-
-              if (context.mounted) {
-                final messenger = ScaffoldMessenger.maybeOf(context);
-                if (messenger != null) {
-                  messenger.hideCurrentSnackBar();
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(ok ? '已解绑网易云账号' : '解绑失败，请重试'),
-                      backgroundColor: ok ? Colors.orange : Colors.red,
-                    ),
-                  );
-                }
-
-                if (ok) {
-                  _refresh();
-                }
-              }
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('解绑'),
-          ),
-        ],
-      ),
-    );
+            onPressed: () { Navigator.pop(dialogContext); _tryUnbind(); },
+            child: const Text('解绑')),
+      ]));
   }
 
   void _showUnbindDialogFluent(BuildContext context) {
-    fluent_ui.showDialog(
+    fluent_ui.showDialog<void>(
       context: context,
-      builder: (context) => fluent_ui.ContentDialog(
+      builder: (dialogContext) => fluent_ui.ContentDialog(
         title: const Text('解绑网易云账号'),
         content: const Text('解绑后将无法为您定制首页推荐内容，确定要解绑吗？'),
         actions: [
           fluent_ui.Button(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消')),
           fluent_ui.FilledButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              final ok = await _tryUnbind();
-              if (!context.mounted) return;
-              if (ok) {
-                _refresh();
-              }
-              final messenger = ScaffoldMessenger.maybeOf(context);
-              if (messenger != null) {
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text(ok ? '已解绑网易云账号' : '解绑失败，请重试'),
-                    backgroundColor: ok ? Colors.orange : Colors.red,
-                  ),
-                );
-              }
-            },
-            child: const Text('解绑'),
-          ),
-        ],
-      ),
-    );
+            onPressed: () { Navigator.pop(dialogContext); _tryUnbind(); },
+            child: const Text('解绑')),
+      ]));
   }
 
   Widget _accountButton(String title, VoidCallback action) {
@@ -647,6 +568,11 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_unbindBusy) const Text('正在解绑…'),
+              if (_unbindError != null) Semantics(liveRegion: true, child: Row(children: [
+                Expanded(child: Text(_unbindError!)),
+                _accountButton('重试', () { _tryUnbind(); }),
+              ])),
               Row(
                 children: [
                   CircleAvatar(
@@ -678,7 +604,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
                 ],
               ),
               const SizedBox(height: 12),
-              Wrap(
+              IgnorePointer(ignoring: _unbindBusy, child: Opacity(opacity: _unbindBusy ? .5 : 1, child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
@@ -718,7 +644,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
                       }
                     }),
                 ],
-              ),
+              ))),
             ],
           ),
         );

@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import '../../widgets/floating_playback_insets.dart';
 import 'dart:io';
 import 'dart:ui';
@@ -571,7 +572,7 @@ class _FluentTrackListTileState extends State<_FluentTrackListTile> {
     // 尝试寻找 ScaffoldMessenger，如果没有则忽略（或实现自定义 overlay）
     // Fluent 应用如果嵌套在 MaterialApp 下通常有 ScaffoldMessenger
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
           duration: const Duration(milliseconds: 1000),
@@ -792,7 +793,7 @@ class _ToplistDetailContent extends StatelessWidget {
                                   toplist.tracks.first,
                                 );
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  AppFeedback.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text('开始播放：${toplist.name}'),
                                       duration: const Duration(seconds: 1),

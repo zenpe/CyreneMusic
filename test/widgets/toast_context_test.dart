@@ -2,7 +2,7 @@ import 'package:cyrene_music/main.dart';
 import 'package:cyrene_music/utils/toast_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:cyrene_music/utils/app_feedback.dart';
 
 void main() {
   testWidgets(
@@ -10,7 +10,6 @@ void main() {
     (tester) async {
       Widget app() => MaterialApp(
         navigatorKey: MyApp.navigatorKey,
-        builder: FToastBuilder(),
         home: const Scaffold(body: Text('home')),
       );
 
@@ -35,7 +34,7 @@ void main() {
       await tester.pump();
       expect(find.text('retry failed'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      FToast().removeQueuedCustomToasts();
+      AppFeedback.dismissAll();
       await tester.pump();
     },
   );

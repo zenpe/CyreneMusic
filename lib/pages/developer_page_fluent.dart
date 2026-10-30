@@ -124,12 +124,7 @@ extension _DeveloperPageFluent on _DeveloperPageState {
   }
 
   void _showFluentSnackbar(String message) {
-    fluent.displayInfoBar(
-      context,
-      builder: (context, close) {
-        return fluent.InfoBar(title: Text(message), onClose: close);
-      },
-    );
+    AppFeedback.of(context).info(message);
   }
 
   Widget _buildFluentDataTab() {

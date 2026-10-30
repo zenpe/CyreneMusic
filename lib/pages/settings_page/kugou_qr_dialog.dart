@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import '../../services/structured_log_service.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -12,10 +13,11 @@ Future<bool?> showKugouQrDialog(BuildContext context, int userId) async {
     created = await KugouLoginService().createQrKey();
   } catch (e) {
     if (!context.mounted) return null;
-    final messenger = ScaffoldMessenger.maybeOf(context);
+    final messenger = AppFeedback.maybeOf(context);
     if (messenger != null) {
       messenger.showSnackBar(
         SnackBar(content: Text('获取二维码失败: $e')),
+        kind: FeedbackKind.error,
       );
     }
     return null;
@@ -48,11 +50,10 @@ Future<bool?> showKugouQrDialog(BuildContext context, int userId) async {
   }
 
   if (success == true && context.mounted) {
-    final messenger = ScaffoldMessenger.maybeOf(context);
+    final messenger = AppFeedback.maybeOf(context);
     if (messenger != null) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('酷狗音乐账号绑定成功')),
-      );
+        const SnackBar(content: Text('酷狗音乐账号绑定成功')));
     }
   }
 
@@ -91,7 +92,8 @@ class _KugouQrDialogState extends State<KugouQrDialog> {
           qrcode: widget.qrcode,
           userId: widget.userId,
         );
-        StructuredLogService.log('[KugouQrDialog] 收到状态: ${r.status}, message: ${r.message}');
+        StructuredLogService.log('[KugouQrDialog] 收到状态: ${r.status}, message: ${r.message}',
+        );
         String nextStatus = _statusText;
         bool success = false;
         switch (r.status) {
@@ -173,13 +175,11 @@ class _KugouQrDialogState extends State<KugouQrDialog> {
               const SizedBox(height: 8),
               SelectableText(
                 widget.qrUrl,
-                style: typo.caption,
-              ),
+                style: typo.caption),
               const SizedBox(height: 12),
               Text(
                 _statusText,
-                style: typo.caption,
-              ),
+                style: typo.caption),
             ],
           ),
         ),
@@ -225,8 +225,7 @@ class _KugouQrDialogState extends State<KugouQrDialog> {
             const SizedBox(height: 12),
             Text(
               _statusText,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+              style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
       ),

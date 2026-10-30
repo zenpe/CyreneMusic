@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../../services/sleep_timer_service.dart';
@@ -100,10 +101,9 @@ class PlayerDialogs {
                           Navigator.pop(context);
                           final success = await playlistService.addTrackToPlaylist(
                             playlist.id,
-                            track,
-                          );
+                            track);
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            AppFeedback.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
                                   success
@@ -112,6 +112,7 @@ class PlayerDialogs {
                                 ),
                                 duration: const Duration(seconds: 1),
                               ),
+                              kind: success ? FeedbackKind.info : FeedbackKind.error,
                             );
                           }
                         },
@@ -168,15 +169,15 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
               onPressed: () {
                 timer.cancel();
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('定时器已取消')),
-                );
+                AppFeedback.of(
+                  context,
+                ).showSnackBar(
+                  const SnackBar(content: Text('定时器已取消')));
               },
               icon: const Icon(Icons.cancel),
               label: const Text('取消定时'),
               style: TextButton.styleFrom(
-                foregroundColor: Colors.red,
-              ),
+                foregroundColor: Colors.red),
             ),
         ],
       ),
@@ -198,8 +199,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                   children: [
                     Icon(
                       Icons.bedtime,
-                      color: colorScheme.onPrimaryContainer,
-                    ),
+                      color: colorScheme.onPrimaryContainer),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -232,7 +232,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                         icon: const Icon(Icons.add_circle_outline),
                         onPressed: () {
                           timer.extend(15);
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          AppFeedback.of(context).showSnackBar(
                             const SnackBar(content: Text('已延长15分钟')),
                           );
                         },
@@ -296,7 +296,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
               onPressed: () {
                 timer.cancel();
                 Navigator.pop(context);
-                final messenger = ScaffoldMessenger.maybeOf(context);
+                final messenger = AppFeedback.maybeOf(context);
                 if (messenger != null) {
                   messenger.showSnackBar(
                     const SnackBar(content: Text('定时器已取消')),
@@ -359,7 +359,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                         icon: const Icon(fluent.FluentIcons.add_to),
                         onPressed: () {
                           timer.extend(15);
-                          final messenger = ScaffoldMessenger.maybeOf(context);
+                          final messenger = AppFeedback.maybeOf(context);
                           if (messenger != null) {
                             messenger.showSnackBar(
                               const SnackBar(content: Text('已延长15分钟')),
@@ -449,10 +449,9 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                   });
                   SleepTimerService().setTimerByDuration(duration);
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  AppFeedback.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('定时器已设置: $duration分钟后停止播放'),
-                    ),
+                      content: Text('定时器已设置: $duration分钟后停止播放')),
                   );
                 }
               },
@@ -487,9 +486,8 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                 initialTime: TimeOfDay.now(),
                 builder: (context, child) {
                   return MediaQuery(
-                    data: MediaQuery.of(context).copyWith(
-                      alwaysUse24HourFormat: true,
-                    ),
+                    data: MediaQuery.of(context,
+                    ).copyWith(alwaysUse24HourFormat: true),
                     child: child!,
                   );
                 },
@@ -499,7 +497,7 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                 SleepTimerService().setTimerByTime(selectedTime);
                 if (!context.mounted) return;
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
+                AppFeedback.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
                       '定时器已设置: ${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')} 停止播放',
@@ -550,12 +548,11 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
                 });
                 SleepTimerService().setTimerByDuration(duration);
                 Navigator.pop(context);
-                final messenger = ScaffoldMessenger.maybeOf(context);
+                final messenger = AppFeedback.maybeOf(context);
                 if (messenger != null) {
                   messenger.showSnackBar(
                     SnackBar(
-                      content: Text('定时器已设置: $duration分钟后停止播放'),
-                    ),
+                      content: Text('定时器已设置: $duration分钟后停止播放')),
                   );
                 }
               },
@@ -624,7 +621,8 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
   }
 
   /// Fluent UI 时间选择标签页
-  Widget _buildFluentTimeTab(BuildContext context, fluent.FluentThemeData fluentTheme) {
+  Widget _buildFluentTimeTab(BuildContext context, fluent.FluentThemeData fluentTheme,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -641,13 +639,14 @@ class _SleepTimerDialogState extends State<SleepTimerDialog> {
           width: double.infinity,
           child: fluent.FilledButton(
             onPressed: () async {
-              final TimeOfDay? selectedTime = await _showFluentTimePicker(context);
+              final TimeOfDay? selectedTime = await _showFluentTimePicker(context,
+              );
 
               if (selectedTime != null) {
                 SleepTimerService().setTimerByTime(selectedTime);
                 if (!context.mounted) return;
                 Navigator.pop(context);
-                final messenger = ScaffoldMessenger.maybeOf(context);
+                final messenger = AppFeedback.maybeOf(context);
                 if (messenger != null) {
                   messenger.showSnackBar(
                     SnackBar(

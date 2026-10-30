@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/player_service.dart';
@@ -174,7 +175,7 @@ class MobilePlayerControls extends StatelessWidget {
                       onPressed: () {
                         HapticFeedback.selectionClick();
                         PlaybackModeService().toggleMode();
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppFeedback.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
                               '播放模式: ${PlaybackModeService().getModeName()}',
@@ -392,7 +393,7 @@ class MobilePlayerControls extends StatelessWidget {
 
       if (isDownloaded) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppFeedback.of(context).showSnackBar(
             const SnackBar(
               content: Text('该歌曲已下载'),
               duration: Duration(seconds: 2),
@@ -406,20 +407,22 @@ class MobilePlayerControls extends StatelessWidget {
       final success = await DownloadService().downloadSong(track, song);
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text(success ? '开始下载' : '下载失败'),
             duration: const Duration(seconds: 2),
           ),
+          kind: success ? FeedbackKind.info : FeedbackKind.error,
         );
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text('下载失败: $e'),
             duration: const Duration(seconds: 2),
           ),
+          kind: FeedbackKind.error,
         );
       }
     }

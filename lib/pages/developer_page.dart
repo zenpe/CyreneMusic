@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import '../widgets/floating_playback_insets.dart';
 import 'dart:io';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
@@ -137,8 +138,7 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
         children: [
           _buildLogTab(),
           _buildDataTab(),
-          _buildSettingsTab(),
-        ],
+          _buildSettingsTab()],
       ),
     );
   }

@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import '../../widgets/floating_playback_insets.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -39,6 +40,11 @@ class MyPage extends StatefulWidget {
 }
 
 class _MyPageState extends State<MyPage> {
+  Playlist? _syncTarget;
+  bool _syncBusy = false;
+  bool _syncFailed = false;
+  String? _syncMessage;
+
   final AuthFacade _authFacade = AuthFacade();
   final PlaylistService _playlistService = PlaylistService();
   final ThemeManager _themeManager = ThemeManager();
@@ -90,6 +96,9 @@ class _MyPageState extends State<MyPage> {
     final context = _playlistService.contextIdentity;
     if (context != _pageContext) {
       _pageContext = context;
+      _syncTarget = null;
+      _syncMessage = null;
+      _syncBusy = false;
       _selectedPlaylist = null;
       _selectedTrackIds.clear();
       _isEditMode = false;
@@ -201,7 +210,13 @@ class _MyPageState extends State<MyPage> {
       page = _buildMaterialPage(context, colorScheme, isLoggedIn);
     }
 
-    return page;
+    if (!isLoggedIn) return page;
+    return Column(
+      children: [
+        Expanded(child: page),
+        _buildSyncStatus(),
+      ],
+    );
   }
 
   // ==================== 工具方法 ====================
@@ -213,28 +228,15 @@ class _MyPageState extends State<MyPage> {
     Color? materialBackground,
   }) {
     if (!mounted) return;
-    if (_themeManager.isFluentFramework) {
-      fluent.displayInfoBar(
-        context,
-        builder: (context, close) => fluent.InfoBar(
-          title: const Text('提示'),
-          content: Text(message),
-          severity: severity,
-          action: fluent.IconButton(
-            icon: const Icon(fluent.FluentIcons.clear),
-            onPressed: close,
-          ),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
+    AppFeedback.of(context).showSnackBar(
         SnackBar(
-          content: Text(message),
-          duration: duration,
-          backgroundColor: materialBackground,
-        ),
-      );
-    }
+          content: Text(message)),
+      kind:
+          severity == fluent.InfoBarSeverity.error ||
+              severity == fluent.InfoBarSeverity.warning
+          ? FeedbackKind.error
+          : FeedbackKind.info,
+    );
   }
 
   bool _hasImportConfig(Playlist playlist) {
@@ -420,21 +422,62 @@ class _MyPageState extends State<MyPage> {
   }
 
   Future<void> _syncPlaylistFromList(Playlist playlist) async {
-    if (!_hasImportConfig(playlist)) {
-      _showUserNotification(
-        '请先在"导入管理"中绑定歌单来源后再同步',
-        severity: fluent.InfoBarSeverity.warning,
-      );
-      return;
+    if (!_hasImportConfig(playlist) || _syncBusy) return;
+    final identity = _playlistService.contextIdentity;
+    setState(() {
+      _syncTarget = playlist;
+      _syncBusy = true;
+      _syncFailed = false;
+      _syncMessage = null;
+    });
+    try {
+      final result = await _playlistService.syncPlaylist(playlist.id);
+      if (!mounted || identity != _playlistService.contextIdentity) return;
+      setState(() {
+        _syncFailed = !result.succeeded;
+        _syncMessage = _formatSyncResultMessage(result);
+      });
+    } catch (_) {
+      if (!mounted || identity != _playlistService.contextIdentity) return;
+      setState(() {
+        _syncFailed = true;
+        _syncMessage = '同步失败，请重试';
+      });
+    } finally {
+      if (mounted && identity == _playlistService.contextIdentity) {
+        setState(() {
+          _syncBusy = false;
+        });
+      }
     }
+  }
 
-    _showUserNotification('正在同步...', duration: const Duration(seconds: 1));
-    final result = await _playlistService.syncPlaylist(playlist.id);
-    _showUserNotification(
-      _formatSyncResultMessage(result),
-      severity: result.succeeded
-          ? fluent.InfoBarSeverity.success
-          : fluent.InfoBarSeverity.info,
+  Widget _buildSyncStatus() {
+    final target = _syncTarget;
+    if (target == null) return const SizedBox.shrink();
+    return Semantics(
+      liveRegion: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '「${target.name}」${_syncBusy ? '正在同步…' : _syncMessage ?? ''}',
+              ),
+            ),
+            if (!_syncBusy && _syncFailed)
+              _actionButton('重试', () => _syncPlaylistFromList(target)),
+            if (!_syncBusy)
+              _actionButton(
+                '关闭',
+                () => setState(() {
+                  _syncTarget = null;
+                }),
+              ),
+          ],
+        ),
+      ),
     );
   }
 

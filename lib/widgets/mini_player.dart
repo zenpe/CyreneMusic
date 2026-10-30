@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -1123,7 +1124,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
             ),
             onPressed: () {
               modeService.toggleMode();
-              ScaffoldMessenger.of(context).showSnackBar(
+              AppFeedback.of(context).showSnackBar(
                 SnackBar(
                   content: Text('播放模式: ${modeService.getModeName()}'),
                   duration: const Duration(seconds: 1),
@@ -1140,7 +1141,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
             minimumSize: Size.zero,
             onPressed: () {
               modeService.toggleMode();
-              ScaffoldMessenger.of(context).showSnackBar(
+              AppFeedback.of(context).showSnackBar(
                 SnackBar(
                   content: Text('播放模式: ${modeService.getModeName()}'),
                   duration: const Duration(seconds: 1),
@@ -1167,7 +1168,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
           tooltip: modeService.getModeName(),
           onPressed: () {
             modeService.toggleMode();
-            ScaffoldMessenger.of(context).showSnackBar(
+            AppFeedback.of(context).showSnackBar(
               SnackBar(
                 content: Text('播放模式: ${modeService.getModeName()}'),
                 duration: const Duration(seconds: 1),
@@ -2853,16 +2854,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                 ),
                                                 onDismissed: (_) {
                                                   queueService.removeAt(i);
-                                                  ScaffoldMessenger.of(
-                                                    context,
-                                                  ).showSnackBar(
-                                                    const SnackBar(
-                                                      content: Text('已移除'),
-                                                      duration: Duration(
-                                                        seconds: 1,
-                                                      ),
-                                                    ),
-                                                  );
                                                 },
                                                 child: GestureDetector(
                                                   behavior:
@@ -3331,16 +3322,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                   padding: EdgeInsets.zero,
                                                   onPressed: () {
                                                     queueService.removeAt(i);
-                                                    ScaffoldMessenger.of(
-                                                      context,
-                                                    ).showSnackBar(
-                                                      const SnackBar(
-                                                        content: Text('已移除'),
-                                                        duration: Duration(
-                                                          seconds: 1,
-                                                        ),
-                                                      ),
-                                                    );
                                                   },
                                                   tooltip: '移除',
                                                 ),
@@ -3386,16 +3367,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                             ),
                                             onDismissed: (_) {
                                               queueService.removeAt(i);
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text('已移除'),
-                                                  duration: Duration(
-                                                    seconds: 1,
-                                                  ),
-                                                ),
-                                              );
                                             },
                                             child: tile,
                                           );

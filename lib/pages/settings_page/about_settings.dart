@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
@@ -209,7 +210,8 @@ class _AboutSettingsState extends State<AboutSettings> {
       barrierDismissible: false,
       builder: (context) => const fluent_ui.ContentDialog(
         title: Text('检查更新'),
-        content: SizedBox(height: 56, child: Center(child: fluent_ui.ProgressRing())),
+        content: SizedBox(height: 56, child: Center(child: fluent_ui.ProgressRing()),
+        ),
       ),
     );
 
@@ -277,7 +279,6 @@ class _AboutSettingsState extends State<AboutSettings> {
   Future<void> _toggleAutoUpdate(BuildContext context, bool value) async {
     await _autoUpdateService.setEnabled(value);
     if (!mounted || !context.mounted) return;
-    ToastUtils.show(value ? '已开启自动更新' : '已关闭自动更新');
   }
 
   Future<void> _triggerQuickUpdate(BuildContext context) async {
@@ -353,10 +354,11 @@ class _AboutSettingsState extends State<AboutSettings> {
           if (!isForceUpdate)
             fluent_ui.Button(
               onPressed: () async {
-                await _versionService.ignoreCurrentVersion(versionInfo.version);
+                await _versionService.ignoreCurrentVersion(versionInfo.version,
+                  );
                 if (!mounted || !context.mounted) return;
                 Navigator.of(context).pop();
-                final messenger = ScaffoldMessenger.maybeOf(context);
+                final messenger = AppFeedback.maybeOf(context);
                 if (messenger != null) {
                   messenger.showSnackBar(
                     SnackBar(
@@ -378,7 +380,7 @@ class _AboutSettingsState extends State<AboutSettings> {
                     autoTriggered: false,
                   );
                   if (!mounted || !context.mounted) return;
-                  final messenger = ScaffoldMessenger.maybeOf(context);
+                  final messenger = AppFeedback.maybeOf(context);
                   if (messenger != null) {
                     messenger.showSnackBar(
                       const SnackBar(
@@ -394,7 +396,8 @@ class _AboutSettingsState extends State<AboutSettings> {
               child: Text(platformSupported ? '一键更新' : '前往下载'),
             ),
         ],
-      )),
+      ),
+      ),
     );
   }
 
@@ -408,7 +411,7 @@ class _AboutSettingsState extends State<AboutSettings> {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
       if (!mounted || !context.mounted) return;
-      final messenger = ScaffoldMessenger.maybeOf(context);
+      final messenger = AppFeedback.maybeOf(context);
       if (messenger != null) {
         messenger.showSnackBar(
           SnackBar(
@@ -421,6 +424,7 @@ class _AboutSettingsState extends State<AboutSettings> {
             ),
             backgroundColor: Colors.red,
           ),
+          kind: FeedbackKind.error,
         );
       }
     }

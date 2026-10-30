@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/player_service.dart';
@@ -233,7 +234,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
             //       color: isLiked ? Colors.redAccent : Colors.white),
             onPressed: () {
               // TODO: 喜欢逻辑
-              ScaffoldMessenger.of(
+              AppFeedback.of(
                 context,
               ).showSnackBar(const SnackBar(content: Text('功能开发中')));
             },
@@ -486,7 +487,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
               iconSize: 26,
               onPressed: () {
                 PlaybackModeService().toggleMode();
-                ScaffoldMessenger.of(context).showSnackBar(
+                AppFeedback.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
                       '播放模式: ${PlaybackModeService().getModeName()}',
@@ -522,7 +523,7 @@ class MobilePlayerClassicLayout extends StatelessWidget {
           onPressed: () {
             final track = PlayerService().currentTrack;
             if (track != null) {
-              ScaffoldMessenger.of(
+              AppFeedback.of(
                 context,
               ).showSnackBar(const SnackBar(content: Text('检查下载状态...')));
               // 实际逻辑可参考 MobilePlayerControls

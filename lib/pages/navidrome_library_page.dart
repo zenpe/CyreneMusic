@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import '../models/navidrome_models.dart';
 import '../models/track.dart';
@@ -17,8 +18,7 @@ class NavidromeLibraryPage extends StatefulWidget {
 
   const NavidromeLibraryPage({
     super.key,
-    this.onSearchTap,
-  });
+    this.onSearchTap});
 
   @override
   State<NavidromeLibraryPage> createState() => _NavidromeLibraryPageState();
@@ -202,7 +202,8 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
   void _switchTab(_LibraryTab tab) {
     if (_currentTab == tab) return;
     setState(() => _currentTab = tab);
-    PageStorage.maybeOf(context)
+    PageStorage.maybeOf(context,
+    )
         ?.writeState(context, _currentTab.index, identifier: _tabStorageKey);
     _loadCurrentTab();
   }
@@ -270,8 +271,7 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
                   ),
                 ),
                 Expanded(
-                  child: _buildContent(theme, colorScheme, width),
-                ),
+                  child: _buildContent(theme, colorScheme, width)),
               ],
             );
           },
@@ -283,8 +283,7 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
   Widget _buildContent(
     ThemeData theme,
     ColorScheme colorScheme,
-    double width,
-  ) {
+    double width) {
     final isLoading = _loading[_currentTab] ?? false;
     final error = _errors[_currentTab];
 
@@ -302,11 +301,13 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
               constraints: BoxConstraints(minHeight: minHeight),
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.error_outline, size: 48, color: colorScheme.error),
+                      Icon(Icons.error_outline, size: 48, color: colorScheme.error,
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         error,
@@ -452,7 +453,8 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
                   backgroundImage:
                       coverUrl.isNotEmpty ? NetworkImage(coverUrl) : null,
                   child: coverUrl.isEmpty
-                      ? Icon(Icons.person, color: colorScheme.onPrimaryContainer)
+                      ? Icon(Icons.person, color: colorScheme.onPrimaryContainer,
+                        )
                       : null,
                 ),
                 const SizedBox(width: 12),
@@ -566,7 +568,8 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
                     color: colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.radio, color: colorScheme.onPrimaryContainer),
+                  child: Icon(Icons.radio, color: colorScheme.onPrimaryContainer,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -647,11 +650,13 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(icon, size: compact ? 52 : 64, color: navTheme.textSecondary),
+                    Icon(icon, size: compact ? 52 : 64, color: navTheme.textSecondary,
+                    ),
                     SizedBox(height: compact ? 10 : 16),
                     Text(
                       message,
@@ -687,8 +692,7 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
     showNavidromeAlbumSheet(
       context: context,
       album: album,
-      api: _api,
-    );
+      api: _api);
   }
 
   void _playRadioStation(NavidromeRadioStation station) {
@@ -760,9 +764,10 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
     PlaylistQueueService().appendToQueue(tracks);
     final pageContext = context;
     if (pageContext.mounted) {
-      ScaffoldMessenger.of(pageContext).showSnackBar(
-        const SnackBar(content: Text('已加入播放队列')),
-      );
+      AppFeedback.of(
+        pageContext,
+      ).showSnackBar(
+        const SnackBar(content: Text('已加入播放队列')));
     }
   }
 
@@ -871,7 +876,8 @@ class _CoverImage extends StatelessWidget {
           color: colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Icon(icon, size: size * 0.5, color: colorScheme.onSurfaceVariant),
+        child: Icon(icon, size: size * 0.5, color: colorScheme.onSurfaceVariant,
+        ),
       );
     }
 
@@ -886,7 +892,8 @@ class _CoverImage extends StatelessWidget {
           width: size,
           height: size,
           color: colorScheme.surfaceContainerHighest,
-          child: Icon(icon, size: size * 0.5, color: colorScheme.onSurfaceVariant),
+          child: Icon(icon, size: size * 0.5, color: colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );
@@ -1067,7 +1074,8 @@ class _NavidromeAlbumPageState extends State<NavidromeAlbumPage> {
                               gradient: LinearGradient(
                                 colors: [
                                   navTheme.isDark
-                                      ? colorScheme.primaryContainer.withValues(alpha: 0.45)
+                                      ? colorScheme.primaryContainer.withValues(alpha: 0.45,
+                                    )
                                       : NavidromeColors.lightBackground,
                                   navTheme.isDark
                                       ? colorScheme.surface
@@ -1197,8 +1205,7 @@ class _NavidromeAlbumPageState extends State<NavidromeAlbumPage> {
                                   },
                                 );
                               },
-                              childCount: _songs.length,
-                            ),
+                              childCount: _songs.length),
                           ),
                         ),
                       ],

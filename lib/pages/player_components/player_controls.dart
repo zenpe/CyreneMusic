@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import '../../services/structured_log_service.dart';
 import 'package:flutter/material.dart';
 import '../../services/player_service.dart';
@@ -209,7 +210,7 @@ class PlayerControls extends StatelessWidget {
                     iconSize: 30,
                     onPressed: () {
                       PlaybackModeService().toggleMode();
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppFeedback.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
                             '播放模式: ${PlaybackModeService().getModeName()}',
@@ -449,7 +450,7 @@ class PlayerControls extends StatelessWidget {
 
       if (isDownloaded) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppFeedback.of(context).showSnackBar(
             const SnackBar(
               content: Text('该歌曲已下载'),
               duration: Duration(seconds: 2),
@@ -492,21 +493,23 @@ class PlayerControls extends StatelessWidget {
       );
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text(success ? '下载成功！' : '下载失败'),
             duration: const Duration(seconds: 2),
           ),
+          kind: success ? FeedbackKind.info : FeedbackKind.error,
         );
       }
     } catch (e) {
       StructuredLogService.log('❌ [PlayerControls] 下载失败: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text('下载失败: $e'),
             duration: const Duration(seconds: 2),
           ),
+          kind: FeedbackKind.error,
         );
       }
     }

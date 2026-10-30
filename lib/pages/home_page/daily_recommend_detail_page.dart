@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import '../../widgets/floating_playback_insets.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -119,10 +120,12 @@ class DailyRecommendDetailPage extends StatelessWidget {
                             if (tracks.isNotEmpty)
                               FilledButton.icon(
                                 onPressed: () => _playAll(context),
-                                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                                icon: const Icon(Icons.play_arrow_rounded, size: 18,
+                                ),
                                 label: const Text('播放'),
                                 style: FilledButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
                                   ),
@@ -161,7 +164,8 @@ class DailyRecommendDetailPage extends StatelessWidget {
           return Scaffold(
             backgroundColor: colorScheme.surfaceContainerLow,
             body: CustomScrollView(
-              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics(),
+              ),
               slivers: [
                 // Expressive 风格的 SliverAppBar
                 SliverAppBar(
@@ -187,7 +191,8 @@ class DailyRecommendDetailPage extends StatelessWidget {
                           color: colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Icon(Icons.arrow_back_rounded, color: colorScheme.onSurfaceVariant),
+                        child: Icon(Icons.arrow_back_rounded, color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       onPressed: () {
                         if (onClose != null) {
@@ -238,7 +243,8 @@ class DailyRecommendDetailPage extends StatelessWidget {
                         ),
                       ),
                 // 底部留白
-                const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 100)),
+                const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 100),
+                ),
               ],
             ),
           );
@@ -262,14 +268,16 @@ class DailyRecommendDetailPage extends StatelessWidget {
             constraints: BoxConstraints(minHeight: minHeight),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
                       padding: EdgeInsets.all(compact ? 18 : 28),
                       decoration: BoxDecoration(
-                        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                        color: cs.surfaceContainerHighest.withValues(alpha: 0.5,
+                        ),
                         borderRadius: BorderRadius.circular(compact ? 24 : 32),
                       ),
                       child: Icon(
@@ -476,7 +484,8 @@ class DailyRecommendDetailPage extends StatelessWidget {
               color: cs.primaryContainer,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(Icons.music_note_rounded, size: 22, color: cs.onPrimaryContainer),
+            child: Icon(Icons.music_note_rounded, size: 22, color: cs.onPrimaryContainer,
+            ),
           ),
           const SizedBox(width: 16),
           Column(
@@ -504,10 +513,12 @@ class DailyRecommendDetailPage extends StatelessWidget {
           FilledButton.icon(
             onPressed: () => _playAll(context),
             icon: const Icon(Icons.play_arrow_rounded, size: 20),
-            label: const Text('播放全部', style: TextStyle(fontWeight: FontWeight.w700)),
+            label: const Text('播放全部', style: TextStyle(fontWeight: FontWeight.w700),
+            ),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16),
+              ),
             ),
           ),
         ],
@@ -587,7 +598,8 @@ class DailyRecommendDetailPage extends StatelessWidget {
                               child: SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(strokeWidth: 2,
+                                ),
                               ),
                             ),
                           ),
@@ -595,7 +607,8 @@ class DailyRecommendDetailPage extends StatelessWidget {
                             width: 56,
                             height: 56,
                             color: cs.surfaceContainerHighest,
-                            child: Icon(Icons.music_note, size: 24, color: cs.onSurface.withValues(alpha: 0.3)),
+                            child: Icon(Icons.music_note, size: 24, color: cs.onSurface.withValues(alpha: 0.3),
+                            ),
                           ),
                         ),
                       ),
@@ -605,7 +618,8 @@ class DailyRecommendDetailPage extends StatelessWidget {
                       bottom: 0,
                       right: 0,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: cs.primary,
                           borderRadius: const BorderRadius.only(
@@ -664,7 +678,8 @@ class DailyRecommendDetailPage extends StatelessWidget {
                       color: cs.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(Icons.more_horiz, size: 18, color: cs.onSurfaceVariant),
+                    child: Icon(Icons.more_horiz, size: 18, color: cs.onSurfaceVariant,
+                    ),
                   ),
                   onPressed: () => _showTrackMenu(context, song),
                   tooltip: '更多',
@@ -694,22 +709,14 @@ class DailyRecommendDetailPage extends StatelessWidget {
 
       // 播放歌曲
       await PlayerService().playTrack(track);
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('开始播放: ${track.name}'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text('播放失败: $e'),
             duration: const Duration(seconds: 2),
           ),
+          kind: FeedbackKind.error,
         );
       }
     }
@@ -727,22 +734,14 @@ class DailyRecommendDetailPage extends StatelessWidget {
 
       // 播放第一首
       await PlayerService().playTrack(allTracks.first);
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('开始播放全部'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text('播放失败: $e'),
             duration: const Duration(seconds: 2),
           ),
+          kind: FeedbackKind.error,
         );
       }
     }
@@ -770,13 +769,13 @@ class DailyRecommendDetailPage extends StatelessWidget {
                     PlaylistQueueService().currentIndex,
                     QueueSource.playlist,
                   );
-                  ScaffoldMessenger.of(
+                  AppFeedback.of(
                     context,
                   ).showSnackBar(const SnackBar(content: Text('已添加到播放队列')));
                 } catch (e) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('添加失败: $e')));
+                  AppFeedback.of(context).showSnackBar(SnackBar(content: Text('添加失败: $e')),
+                    kind: FeedbackKind.error,
+                  );
                 }
               },
             ),
@@ -785,7 +784,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
               title: const Text('收藏'),
               onTap: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(
+                AppFeedback.of(
                   context,
                 ).showSnackBar(const SnackBar(content: Text('收藏功能开发中...')));
               },

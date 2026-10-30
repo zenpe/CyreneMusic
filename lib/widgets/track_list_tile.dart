@@ -203,8 +203,7 @@ class _TrackListTileState extends State<TrackListTile> {
                 )
               : Icon(
                   Icons.play_circle_outline,
-                  color: colorScheme.primary,
-                )),
+                  color: colorScheme.primary)),
       onTap: widget.onTap ?? () async {
         // 检查登录状态
         final isLoggedIn = await _checkLoginStatus();
@@ -218,14 +217,8 @@ class _TrackListTileState extends State<TrackListTile> {
             );
           }
           PlayerService().playTrack(widget.track, coverProvider: provider);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('正在加载：${widget.track.name}'),
-              duration: const Duration(seconds: 1),
-            ),
-          );
-        }
-      },
+            }
+          },
     );
   }
 }

@@ -25,7 +25,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                     tooltip: '复制全部',
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: logs.join('\n')));
-                      ScaffoldMessenger.of(
+                      AppFeedback.of(
                         context,
                       ).showSnackBar(const SnackBar(content: Text('已复制到剪贴板')));
                     },
@@ -196,7 +196,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
 
     if (mounted) {
       if (result['success']) {
-        ScaffoldMessenger.of(
+        AppFeedback.of(
           context,
         ).showSnackBar(SnackBar(content: Text(result['message'])));
 
@@ -213,11 +213,12 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
           }
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
+          kind: FeedbackKind.error,
         );
       }
     }
@@ -254,13 +255,14 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
                                   await AdminService().fetchStats();
                                 } catch (e) {
                                   if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
+                                    AppFeedback.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text('刷新失败: ${e.toString()}'),
                                         backgroundColor: Theme.of(
                                           context,
                                         ).colorScheme.error,
                                       ),
+                                      kind: FeedbackKind.error,
                                     );
                                   }
                                 }
@@ -782,13 +784,14 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
               Navigator.pop(context);
               final success = await AdminService().deleteUser(user.id);
               if (mounted && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                AppFeedback.of(context).showSnackBar(
                   SnackBar(
                     content: Text(success ? '用户已删除' : '删除失败'),
                     backgroundColor: success
                         ? Colors.green
                         : Theme.of(context).colorScheme.error,
                   ),
+                  kind: success ? FeedbackKind.info : FeedbackKind.error,
                 );
               }
             },
@@ -1028,9 +1031,9 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
     BuildContext dialogContext,
   ) async {
     if (account.trim().isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请输入账号和密码')));
+      AppFeedback.of(context).showSnackBar(const SnackBar(content: Text('请输入账号和密码')),
+        kind: FeedbackKind.error,
+      );
       return;
     }
 
@@ -1043,7 +1046,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
       Navigator.pop(dialogContext);
 
       if (loginResult['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           const SnackBar(
             content: Text('✅ 登录成功'),
             backgroundColor: Colors.green,
@@ -1059,11 +1062,12 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
           }
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text('登录失败: ${loginResult['message']}'),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
+          kind: FeedbackKind.error,
         );
       }
     }
@@ -1092,7 +1096,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
       DeveloperModeService().addLog('✅ 播放恢复通知已发送');
 
       if (mounted) {
-        ScaffoldMessenger.of(
+        AppFeedback.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('播放恢复通知已发送')));
       }
@@ -1100,9 +1104,9 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
       DeveloperModeService().addLog('❌ 发送播放恢复通知失败: $e');
 
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('发送失败: $e')));
+        AppFeedback.of(context).showSnackBar(SnackBar(content: Text('发送失败: $e')),
+          kind: FeedbackKind.error,
+        );
       }
     }
   }
@@ -1176,7 +1180,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
       if (isFluent) {
         _showFluentSnackbar('✅ 本地播放状态已清除');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           const SnackBar(
             content: Text('✅ 本地播放状态已清除'),
             backgroundColor: Colors.green,

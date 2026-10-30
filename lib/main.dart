@@ -1,3 +1,5 @@
+import 'utils/app_feedback.dart';
+import 'widgets/feedback_boundary.dart';
 import 'services/structured_log_service.dart';
 import 'dart:async';
 import 'dart:io';
@@ -620,6 +622,7 @@ class _MyAppState extends State<MyApp> {
                 title: 'Cyrene Music',
                 debugShowCheckedModeBanner: false,
                 navigatorKey: MyApp.navigatorKey,
+                navigatorObservers: [FeedbackNavigatorObserver()],
                 showPerformanceOverlay:
                     DeveloperModeService().showPerformanceOverlay,
                 theme: themeManager.buildFluentThemeData(Brightness.light),
@@ -639,7 +642,7 @@ class _MyAppState extends State<MyApp> {
                           OverlayEntry(
                             builder: (innerContext) {
                               GlobalContextHolder._context = innerContext;
-                              return child!;
+                              return FeedbackBoundary(child: child!);
                             },
                           ),
                         ],
@@ -676,6 +679,7 @@ class _MyAppState extends State<MyApp> {
             showPerformanceOverlay:
                 DeveloperModeService().showPerformanceOverlay,
             navigatorKey: MyApp.navigatorKey,
+            navigatorObservers: [FeedbackNavigatorObserver()],
             theme: lightTheme.copyWith(
               cupertinoOverrideTheme: themeManager.buildCupertinoThemeData(
                 Brightness.light,
@@ -698,7 +702,7 @@ class _MyAppState extends State<MyApp> {
                       OverlayEntry(
                         builder: (innerContext) {
                           GlobalContextHolder._context = innerContext;
-                          return child!;
+                          return FeedbackBoundary(child: child!);
                         },
                       ),
                     ],
@@ -717,6 +721,7 @@ class _MyAppState extends State<MyApp> {
             title: 'Cyrene Music',
             debugShowCheckedModeBanner: false,
             navigatorKey: MyApp.navigatorKey,
+            navigatorObservers: [FeedbackNavigatorObserver()],
             theme: lightTheme,
             darkTheme: darkTheme,
             themeMode: themeManager.themeMode,
@@ -729,7 +734,7 @@ class _MyAppState extends State<MyApp> {
                     OverlayEntry(
                       builder: (innerContext) {
                         GlobalContextHolder._context = innerContext;
-                        return child!;
+                        return FeedbackBoundary(child: child!);
                       },
                     ),
                   ],
@@ -746,6 +751,7 @@ class _MyAppState extends State<MyApp> {
           debugShowCheckedModeBanner: false,
           showPerformanceOverlay: DeveloperModeService().showPerformanceOverlay,
           navigatorKey: MyApp.navigatorKey,
+          navigatorObservers: [FeedbackNavigatorObserver()],
           theme: lightTheme,
           darkTheme: darkTheme,
           themeMode: themeManager.themeMode,
@@ -758,7 +764,7 @@ class _MyAppState extends State<MyApp> {
                   OverlayEntry(
                     builder: (innerContext) {
                       GlobalContextHolder._context = innerContext;
-                      return child!;
+                      return FeedbackBoundary(child: child!);
                     },
                   ),
                 ],

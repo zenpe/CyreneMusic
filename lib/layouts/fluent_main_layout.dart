@@ -1,3 +1,4 @@
+import '../widgets/feedback_boundary.dart';
 import 'dart:io';
 import 'dart:ui';
 import 'dart:typed_data';
@@ -678,7 +679,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout>
                     ],
                   ),
                 ),
-                const MiniPlayer(),
+                const FeedbackAvoidance(child: MiniPlayer()),
               ],
             ),
             if (overlay.isVisible)

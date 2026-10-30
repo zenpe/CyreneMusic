@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -87,7 +88,7 @@ class _StorageSettingsState extends State<StorageSettings> {
       return;
     }
 
-    final messenger = ScaffoldMessenger.maybeOf(context);
+    final messenger = AppFeedback.maybeOf(context);
     if (messenger != null) {
       messenger.showSnackBar(
         SnackBar(
@@ -676,7 +677,7 @@ class _StorageSettingsState extends State<StorageSettings> {
 
     if (stats.totalFiles == 0) {
       if (mounted) {
-        final messenger = ScaffoldMessenger.maybeOf(context);
+        final messenger = AppFeedback.maybeOf(context);
         if (messenger != null) {
           messenger.showSnackBar(const SnackBar(content: Text('暂无缓存可清除')));
         }
@@ -707,7 +708,7 @@ class _StorageSettingsState extends State<StorageSettings> {
 
               final clearContext = context;
               if (mounted && clearContext.mounted) {
-                final messenger = ScaffoldMessenger.maybeOf(clearContext);
+                final messenger = AppFeedback.maybeOf(clearContext);
                 if (messenger != null) {
                   messenger.showSnackBar(
                     const SnackBar(
@@ -735,7 +736,7 @@ class _StorageSettingsState extends State<StorageSettings> {
 
               final pageContext = context;
               if (mounted && pageContext.mounted) {
-                final messenger = ScaffoldMessenger.maybeOf(pageContext);
+                final messenger = AppFeedback.maybeOf(pageContext);
                 if (messenger != null) {
                   messenger.hideCurrentSnackBar();
                   messenger.showSnackBar(
@@ -961,7 +962,7 @@ class _StorageSettingsState extends State<StorageSettings> {
               Navigator.pop(context);
               if (!await _clearAllCaches()) return;
               if (!context.mounted) return;
-              final messenger = ScaffoldMessenger.maybeOf(context);
+              final messenger = AppFeedback.maybeOf(context);
               if (messenger != null) {
                 messenger.showSnackBar(
                   SnackBar(
@@ -1116,7 +1117,7 @@ class _StorageSettingsState extends State<StorageSettings> {
                   final success = await CacheService().setCustomCacheDir(null);
                   if (success && context.mounted) {
                     Navigator.pop(context);
-                    final messenger = ScaffoldMessenger.maybeOf(context);
+                    final messenger = AppFeedback.maybeOf(context);
                     if (messenger != null) {
                       messenger.showSnackBar(
                         const SnackBar(content: Text('已恢复默认目录，请重启应用生效')),
@@ -1147,13 +1148,14 @@ class _StorageSettingsState extends State<StorageSettings> {
                   if (success) {
                     _showRestartDialog(newDir);
                   } else {
-                    final messenger = ScaffoldMessenger.maybeOf(context);
+                    final messenger = AppFeedback.maybeOf(context);
                     if (messenger != null) {
                       messenger.showSnackBar(
                         SnackBar(
                           content: const Text('目录设置失败，请检查路径是否正确'),
                           backgroundColor: Theme.of(context).colorScheme.error,
                         ),
+                        kind: FeedbackKind.error,
                       );
                     }
                   }
@@ -1217,7 +1219,7 @@ class _StorageSettingsState extends State<StorageSettings> {
                 if (success) {
                   if (!context.mounted) return;
                   Navigator.pop(context);
-                  final messenger = ScaffoldMessenger.maybeOf(context);
+                  final messenger = AppFeedback.maybeOf(context);
                   if (messenger != null) {
                     messenger.showSnackBar(
                       const SnackBar(content: Text('已恢复默认目录，请重启应用生效')),
@@ -1244,10 +1246,11 @@ class _StorageSettingsState extends State<StorageSettings> {
                 if (success) {
                   _showRestartDialogFluent(newDir);
                 } else {
-                  final messenger = ScaffoldMessenger.maybeOf(context);
+                  final messenger = AppFeedback.maybeOf(context);
                   if (messenger != null) {
                     messenger.showSnackBar(
                       const SnackBar(content: Text('目录设置失败，请检查路径是否正确')),
+                      kind: FeedbackKind.error,
                     );
                   }
                 }
@@ -1440,7 +1443,7 @@ class _StorageSettingsState extends State<StorageSettings> {
               final newDir = dirController.text.trim();
 
               if (newDir.isEmpty) {
-                final messenger = ScaffoldMessenger.maybeOf(context);
+                final messenger = AppFeedback.maybeOf(context);
                 if (messenger != null) {
                   messenger.showSnackBar(
                     const SnackBar(content: Text('请选择下载目录')),
@@ -1453,7 +1456,7 @@ class _StorageSettingsState extends State<StorageSettings> {
 
               if (context.mounted) {
                 Navigator.pop(context);
-                final messenger = ScaffoldMessenger.maybeOf(context);
+                final messenger = AppFeedback.maybeOf(context);
                 if (messenger != null) {
                   if (success) {
                     messenger.showSnackBar(
@@ -1462,6 +1465,7 @@ class _StorageSettingsState extends State<StorageSettings> {
                   } else {
                     messenger.showSnackBar(
                       const SnackBar(content: Text('设置下载目录失败')),
+                      kind: FeedbackKind.error,
                     );
                   }
                 }
@@ -1520,7 +1524,7 @@ class _StorageSettingsState extends State<StorageSettings> {
             onPressed: () async {
               final newDir = dirController.text.trim();
               if (newDir.isEmpty) {
-                final messenger = ScaffoldMessenger.maybeOf(context);
+                final messenger = AppFeedback.maybeOf(context);
                 if (messenger != null) {
                   messenger.showSnackBar(
                     const SnackBar(content: Text('请选择下载目录')),
@@ -1531,10 +1535,11 @@ class _StorageSettingsState extends State<StorageSettings> {
               final success = await DownloadService().setDownloadPath(newDir);
               if (context.mounted) {
                 Navigator.pop(context);
-                final messenger = ScaffoldMessenger.maybeOf(context);
+                final messenger = AppFeedback.maybeOf(context);
                 if (messenger != null) {
                   messenger.showSnackBar(
                     SnackBar(content: Text(success ? '下载目录已更新' : '设置下载目录失败')),
+                    kind: success ? FeedbackKind.info : FeedbackKind.error,
                   );
                 }
               }

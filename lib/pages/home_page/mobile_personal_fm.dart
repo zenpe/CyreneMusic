@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -20,7 +21,9 @@ class MobilePersonalFm extends StatelessWidget {
     final isCupertino = (Platform.isIOS || Platform.isAndroid) && themeManager.isCupertinoFramework;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    if (list.isEmpty) return Text('暂无数据', style: Theme.of(context).textTheme.bodySmall);
+    if (list.isEmpty) {
+      return Text('暂无数据', style: Theme.of(context).textTheme.bodySmall);
+    }
 
     return AnimatedBuilder(
       animation: PlayerService(),
@@ -56,7 +59,8 @@ class MobilePersonalFm extends StatelessWidget {
         if (themeManager.isFluentFramework) {
           return fluent.Card(
             padding: EdgeInsets.zero,
-            child: _buildOldCardContent(context, pic, display, artistsText, isFmPlaying, fmTracks, isFmQueue, isFmCurrent, cs, isCupertino),
+            child: _buildOldCardContent(context, pic, display, artistsText, isFmPlaying, fmTracks, isFmQueue, isFmCurrent, cs, isCupertino,
+            ),
           );
         }
 
@@ -67,13 +71,15 @@ class MobilePersonalFm extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.08),
+                  color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.08,
+                  ),
                   blurRadius: 10,
                   offset: const Offset(0, 2),
                 ),
               ],
             ),
-            child: _buildOldCardContent(context, pic, display, artistsText, isFmPlaying, fmTracks, isFmQueue, isFmCurrent, cs, isCupertino),
+            child: _buildOldCardContent(context, pic, display, artistsText, isFmPlaying, fmTracks, isFmQueue, isFmCurrent, cs, isCupertino,
+            ),
           );
         }
 
@@ -102,7 +108,8 @@ class MobilePersonalFm extends StatelessWidget {
             child: InkWell(
               onTap: onOpenPlayer,
               borderRadius: BorderRadius.circular(32),
-              child: _buildMaterialFmContent(context, pic, display, artistsText, isFmPlaying, fmTracks, isFmQueue, isFmCurrent, cs),
+              child: _buildMaterialFmContent(context, pic, display, artistsText, isFmPlaying, fmTracks, isFmQueue, isFmCurrent, cs,
+              ),
             ),
           ),
         );
@@ -129,21 +136,26 @@ class MobilePersonalFm extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: Image.network(pic, width: 120, height: 120, fit: BoxFit.cover),
+            child: Image.network(pic, width: 120, height: 120, fit: BoxFit.cover,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(display['name']?.toString() ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                Text(display['name']?.toString() ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 6),
-                Text(artistsText, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
+                Text(artistsText, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          _buildControls(context, isFmPlaying, fmTracks, isFmQueue, isFmCurrent, cs, isCupertino),
+          _buildControls(context, isFmPlaying, fmTracks, isFmQueue, isFmCurrent, cs, isCupertino,
+          ),
         ],
       ),
     );
@@ -180,7 +192,8 @@ class MobilePersonalFm extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
-              child: Image.network(pic, width: 120, height: 120, fit: BoxFit.cover),
+              child: Image.network(pic, width: 120, height: 120, fit: BoxFit.cover,
+              ),
             ),
           ),
           const SizedBox(width: 20),
@@ -222,15 +235,19 @@ class MobilePersonalFm extends StatelessWidget {
                       // Skip Button - Subtle Surface
                       _buildMaterialControlBtn(
                         onPressed: () => _handleSkipAction(fmTracks),
-                        icon: Icon(Icons.skip_next_rounded, color: cs.onSurface.withValues(alpha: 0.8), size: 26),
-                        bgColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                        icon: Icon(Icons.skip_next_rounded, color: cs.onSurface.withValues(alpha: 0.8), size: 26,
+                        ),
+                        bgColor: cs.surfaceContainerHighest.withValues(alpha: 0.5,
+                        ),
                         size: 40,
                       ),
                       const SizedBox(width: 12),
                       // Play Button - Primary Prominent
                       _buildMaterialControlBtn(
-                        onPressed: () => _handlePlayAction(context, fmTracks, isFmPlaying, isFmQueue, isFmCurrent),
-                        icon: Icon(isFmPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: cs.onPrimary, size: 30),
+                        onPressed: () => _handlePlayAction(context, fmTracks, isFmPlaying, isFmQueue, isFmCurrent,
+                        ),
+                        icon: Icon(isFmPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: cs.onPrimary, size: 30,
+                        ),
                         bgColor: cs.primary,
                         size: 52,
                       ),
@@ -277,14 +294,16 @@ class MobilePersonalFm extends StatelessWidget {
     );
   }
 
-  Widget _buildControls(BuildContext context, bool isFmPlaying, List<Track> fmTracks, bool isFmQueue, bool isFmCurrent, ColorScheme cs, bool isCupertino) {
+  Widget _buildControls(BuildContext context, bool isFmPlaying, List<Track> fmTracks, bool isFmQueue, bool isFmCurrent, ColorScheme cs, bool isCupertino,
+  ) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         isCupertino
             ? CupertinoButton(
                 padding: const EdgeInsets.all(8),
-                onPressed: () => _handlePlayAction(context, fmTracks, isFmPlaying, isFmQueue, isFmCurrent),
+                onPressed: () => _handlePlayAction(context, fmTracks, isFmPlaying, isFmQueue, isFmCurrent,
+                ),
                 child: Icon(
                   isFmPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
                   color: ThemeManager.iosBlue,
@@ -292,11 +311,14 @@ class MobilePersonalFm extends StatelessWidget {
                 ),
               )
             : IconButton(
-                onPressed: () => _handlePlayAction(context, fmTracks, isFmPlaying, isFmQueue, isFmCurrent),
-                style: IconButton.styleFrom(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                onPressed: () => _handlePlayAction(context, fmTracks, isFmPlaying, isFmQueue, isFmCurrent,
                 ),
-                icon: Icon(isFmPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: cs.onSurface),
+                style: IconButton.styleFrom(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                icon: Icon(isFmPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: cs.onSurface,
+                ),
               ),
         const SizedBox(width: 8),
         isCupertino
@@ -312,7 +334,8 @@ class MobilePersonalFm extends StatelessWidget {
             : IconButton(
                 onPressed: () => _handleSkipAction(fmTracks),
                 style: IconButton.styleFrom(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 icon: Icon(Icons.skip_next_rounded, color: cs.onSurface),
               ),
@@ -320,7 +343,8 @@ class MobilePersonalFm extends StatelessWidget {
     );
   }
 
-  Future<void> _handlePlayAction(BuildContext context, List<Track> fmTracks, bool isFmPlaying, bool isFmQueue, bool isFmCurrent) async {
+  Future<void> _handlePlayAction(BuildContext context, List<Track> fmTracks, bool isFmPlaying, bool isFmQueue, bool isFmCurrent,
+  ) async {
     final tracks = fmTracks;
     if (tracks.isEmpty) return;
     final ps = PlayerService();
@@ -333,8 +357,9 @@ class MobilePersonalFm extends StatelessWidget {
       await ps.playTrack(tracks.first);
       if (context.mounted) {
          try {
-           ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(content: Text('开始播放私人FM'), duration: Duration(seconds: 1)),
+          AppFeedback.of(context).showSnackBar(
+             const SnackBar(content: Text('开始播放私人FM'), duration: Duration(seconds: 1),
+            ),
            );
          } catch (_) {}
       }
@@ -371,6 +396,7 @@ class MobilePersonalFm extends StatelessWidget {
   bool _currentTrackInList(List<Track> tracks) {
     final ct = PlayerService().currentTrack;
     if (ct == null) return false;
-    return tracks.any((t) => t.id.toString() == ct.id.toString() && t.source == ct.source);
+    return tracks.any((t) => t.id.toString() == ct.id.toString() && t.source == ct.source,
+    );
   }
 }

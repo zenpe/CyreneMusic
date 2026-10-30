@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import '../../services/structured_log_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cyrene_music/models/toplist.dart';
@@ -162,7 +163,8 @@ class TrackBannerCard extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withValues(alpha: 0.8)],
+                  colors: [Colors.transparent, Colors.black.withValues(alpha: 0.8),
+                  ],
                 ),
               ),
             ),
@@ -347,7 +349,7 @@ class BannerSection extends StatelessWidget {
                           if (isLoggedIn && context.mounted) {
                             // 播放歌曲
                             PlayerService().playTrack(track);
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            AppFeedback.of(context).showSnackBar(
                               SnackBar(
                                 content: Text('正在加载：${track.name}'),
                                 duration: const Duration(seconds: 1),
@@ -445,7 +447,8 @@ class HistorySection extends StatelessWidget {
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        color: Theme.of(context,
+        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
         child: Column(
           children: [
             // Header Area - View All
@@ -460,7 +463,7 @@ class HistorySection extends StatelessWidget {
                     Icon(
                       Icons.history_rounded,
                       size: 20,
-                      color: Theme.of(context).colorScheme.primary
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: 8),
                     Text(
@@ -475,7 +478,7 @@ class HistorySection extends StatelessWidget {
                       Icons.arrow_forward_ios_rounded,
                       size: 14,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    )
+                    ),
                   ],
                 ),
               ),
@@ -506,7 +509,8 @@ class HistorySection extends StatelessWidget {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child: _HistoryCover(url: history.first.picUrl, size: 88),
+                          child: _HistoryCover(url: history.first.picUrl, size: 88,
+                          ),
                         ),
                       ),
                     ),
@@ -522,7 +526,7 @@ class HistorySection extends StatelessWidget {
                         return InkWell(
                           onTap: () async {
                               PlayerService().playTrack(item.toTrack());
-                              ScaffoldMessenger.of(context).showSnackBar(
+                            AppFeedback.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text('正在加载：${item.name}'),
                                   duration: const Duration(seconds: 1),
@@ -531,7 +535,8 @@ class HistorySection extends StatelessWidget {
                           },
                           borderRadius: BorderRadius.circular(8),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
+                            padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0,
+                            ),
                             child: Row(
                               children: [
                                 Text(
@@ -541,7 +546,8 @@ class HistorySection extends StatelessWidget {
                                     fontSize: 14,
                                     color: index == 0
                                       ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                                      : Theme.of(context,
+                                          ).colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -552,19 +558,22 @@ class HistorySection extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                       fontWeight: FontWeight.w600,
-                                      color: Theme.of(context).colorScheme.onSurface,
+                                      color: Theme.of(context,
+                                          ).colorScheme.onSurface,
                                     ),
                                   ),
                                 ),
                                 const SizedBox(width: 4),
                                 ConstrainedBox(
-                                  constraints: const BoxConstraints(maxWidth: 60),
+                                  constraints: const BoxConstraints(maxWidth: 60,
+                                  ),
                                   child: Text(
                                     item.artists,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      color: Theme.of(context,
+                                          ).colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                                 ),
@@ -685,7 +694,8 @@ class GuessYouLikeSection extends StatelessWidget {
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        color: Theme.of(context,
+        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
         child: Column(
           children: [
             InkWell(
@@ -700,7 +710,7 @@ class GuessYouLikeSection extends StatelessWidget {
                     Icon(
                       Icons.auto_awesome_rounded,
                       size: 20,
-                      color: Theme.of(context).colorScheme.primary
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: 8),
                     Text(
@@ -715,7 +725,7 @@ class GuessYouLikeSection extends StatelessWidget {
                       Icons.arrow_forward_ios_rounded,
                       size: 14,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    )
+                    ),
                   ],
                 ),
               ),
@@ -727,7 +737,7 @@ class GuessYouLikeSection extends StatelessWidget {
                       ? _buildExpressiveContent(context)
                       : _buildGuessYouLikePlaceholder(context),
                ),
-            )
+            ),
           ],
         ),
       );
@@ -790,7 +800,8 @@ class GuessYouLikeSection extends StatelessWidget {
           return const Center(child: Padding(
             padding: EdgeInsets.all(16.0),
             child: CircularProgressIndicator(),
-          ));
+          ),
+          );
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
@@ -847,7 +858,7 @@ class GuessYouLikeSection extends StatelessWidget {
                   return InkWell(
                     onTap: () async {
                        PlayerService().playTrack(track);
-                       ScaffoldMessenger.of(context).showSnackBar(
+                      AppFeedback.of(context).showSnackBar(
                           SnackBar(
                             content: Text('正在加载：${track.name}'),
                             duration: const Duration(seconds: 1),
@@ -856,7 +867,8 @@ class GuessYouLikeSection extends StatelessWidget {
                     },
                     borderRadius: BorderRadius.circular(8),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
+                      padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0,
+                      ),
                       child: Row(
                         children: [
                           Text(
@@ -866,7 +878,8 @@ class GuessYouLikeSection extends StatelessWidget {
                               fontSize: 14,
                               color: index == 0
                                 ? Theme.of(context).colorScheme.primary
-                                : Theme.of(context).colorScheme.onSurfaceVariant,
+                                : Theme.of(context,
+                                    ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -877,7 +890,8 @@ class GuessYouLikeSection extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 fontWeight: FontWeight.w600,
-                                color: Theme.of(context).colorScheme.onSurface,
+                                color: Theme.of(context,
+                                    ).colorScheme.onSurface,
                               ),
                             ),
                           ),
@@ -889,7 +903,8 @@ class GuessYouLikeSection extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                color: Theme.of(context,
+                                    ).colorScheme.onSurfaceVariant,
                               ),
                              ),
                            ),
@@ -915,7 +930,8 @@ class GuessYouLikeSection extends StatelessWidget {
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-          return _buildGuessYouLikePlaceholder(context, isError: snapshot.hasError);
+          return _buildGuessYouLikePlaceholder(context, isError: snapshot.hasError,
+          );
         }
 
         final sampleTracks = snapshot.data!;
@@ -969,7 +985,8 @@ class GuessYouLikeSection extends StatelessWidget {
     );
   }
 
-  Widget _buildGuessYouLikePlaceholder(BuildContext context, {bool isError = false, bool isLegacy = false}) {
+  Widget _buildGuessYouLikePlaceholder(BuildContext context, {bool isError = false, bool isLegacy = false,
+  }) {
     return WarmCompactEmptyCard(
       title: isError ? '开启个性化推荐' : '定制专属心动单曲',
       subtitle: isError ? '正在为你准备好听的音乐，轻触探索热门榜单' : '多听听歌或导入歌单，为你发现更多惊喜',
@@ -1079,7 +1096,7 @@ class ToplistsGrid extends StatelessWidget {
               final isLoggedIn = await checkLoginStatus();
               if (isLoggedIn && context.mounted) {
                 PlayerService().playTrack(track);
-                ScaffoldMessenger.of(context).showSnackBar(
+                AppFeedback.of(context).showSnackBar(
                   SnackBar(
                     content: Text('正在加载：${track.name}'),
                     duration: const Duration(seconds: 1),
@@ -1176,7 +1193,8 @@ class ToplistsGrid extends StatelessWidget {
                                     child: Icon(
                                       Icons.play_arrow,
                                       size: coverSize * 0.28,
-                                      color: Colors.white.withValues(alpha: 0.95),
+                                      color: Colors.white.withValues(alpha: 0.95,
+                                      ),
                                     ),
                                   ),
                                 ),

@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import '../widgets/navidrome_config_form.dart';
 
@@ -12,7 +13,7 @@ class NavidromeSetupPage extends StatelessWidget {
         saveLabel: '保存并进入',
         onSaved: () {
           if (!context.mounted) return;
-          ScaffoldMessenger.of(
+          AppFeedback.of(
             context,
           ).showSnackBar(const SnackBar(content: Text('已保存，可以开始使用')));
         },

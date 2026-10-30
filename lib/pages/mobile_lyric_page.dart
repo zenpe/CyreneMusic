@@ -167,7 +167,8 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
     final screenHeight = MediaQuery.of(context).size.height;
     // 根据屏幕大小和是否显示译文动态调整行高
     final baseHeight = _showTranslation ? 72.0 : 52.0;
-    final itemHeight = (screenHeight * 0.08).clamp(baseHeight, baseHeight + 20.0);
+    final itemHeight = (screenHeight * 0.08).clamp(baseHeight, baseHeight + 20.0,
+    );
     final targetOffset = _currentLyricIndex * itemHeight - screenHeight / 2 + itemHeight / 2;
 
     _scrollController.animateTo(
@@ -186,7 +187,7 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
 
     // 检查是否有翻译
     final hasTranslation = _lyrics.any((lyric) =>
-      lyric.translation != null && lyric.translation!.isNotEmpty
+      lyric.translation != null && lyric.translation!.isNotEmpty,
     );
 
     if (!hasTranslation) return false;
@@ -269,7 +270,8 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
                           child: LyricStatusText(state: _lyricState, style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 16,
-                            )),
+                            ),
+                            ),
                         )
                       : _buildLyricList(),
                 ),
@@ -302,8 +304,7 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(
         vertical: 100,
-        horizontal: 24,
-      ),
+        horizontal: 24),
       itemCount: _lyrics.length,
       itemBuilder: (context, index) {
         return _buildLyricItem(_lyrics[index], index);
@@ -359,12 +360,6 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
                     setState(() {
                       _showTranslation = !_showTranslation;
                     });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(_showTranslation ? '已显示译文' : '已隐藏译文'),
-                        duration: const Duration(seconds: 1),
-                      ),
-                    );
                   },
                 )
               : const SizedBox(width: 48), // 占位，保持布局平衡

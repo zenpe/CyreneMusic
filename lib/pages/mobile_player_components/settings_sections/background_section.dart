@@ -1,3 +1,4 @@
+import '../../../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -29,7 +30,8 @@ class _BackgroundSectionState extends State<BackgroundSection> {
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8,
+              ),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
                 color: colorScheme.outlineVariant.withValues(alpha: 0.3),
@@ -70,21 +72,24 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                       icon: Icons.auto_awesome_rounded,
                       label: '自适应',
                       isSelected: currentType == PlayerBackgroundType.adaptive,
-                      onTap: () => bgService.setBackgroundType(PlayerBackgroundType.adaptive),
+                      onTap: () => bgService.setBackgroundType(PlayerBackgroundType.adaptive,
+                      ),
                       colorScheme: colorScheme,
                     ),
                     _buildPillChip(
                       icon: Icons.blur_on_rounded,
                       label: '动态',
                       isSelected: currentType == PlayerBackgroundType.dynamic,
-                      onTap: () => bgService.setBackgroundType(PlayerBackgroundType.dynamic),
+                      onTap: () => bgService.setBackgroundType(PlayerBackgroundType.dynamic,
+                      ),
                       colorScheme: colorScheme,
                     ),
                     _buildPillChip(
                       icon: Icons.palette_rounded,
                       label: '纯色',
                       isSelected: currentType == PlayerBackgroundType.solidColor,
-                      onTap: () => bgService.setBackgroundType(PlayerBackgroundType.solidColor),
+                      onTap: () => bgService.setBackgroundType(PlayerBackgroundType.solidColor,
+                      ),
                       colorScheme: colorScheme,
                     ),
                   ],
@@ -108,7 +113,8 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                       label: bgService.mediaPath != null && bgService.isImage
                           ? '图片 ✓' : '图片',
                       isSelected: currentType == PlayerBackgroundType.image,
-                      onTap: () => bgService.setBackgroundType(PlayerBackgroundType.image),
+                      onTap: () => bgService.setBackgroundType(PlayerBackgroundType.image,
+                      ),
                       colorScheme: colorScheme,
                     ),
                     _buildPillChip(
@@ -116,7 +122,8 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                       label: bgService.mediaPath != null && bgService.isVideo
                           ? '视频 ✓' : '视频',
                       isSelected: currentType == PlayerBackgroundType.video,
-                      onTap: () => bgService.setBackgroundType(PlayerBackgroundType.video),
+                      onTap: () => bgService.setBackgroundType(PlayerBackgroundType.video,
+                      ),
                       colorScheme: colorScheme,
                     ),
                   ],
@@ -126,7 +133,8 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                 if ((currentType == PlayerBackgroundType.image ||
                      currentType == PlayerBackgroundType.video)) ...[
                   const SizedBox(height: 16),
-                  _buildMediaBackgroundSettings(bgService, currentType, colorScheme, isDark),
+                  _buildMediaBackgroundSettings(bgService, currentType, colorScheme, isDark,
+                  ),
                 ],
               ],
             ),
@@ -187,8 +195,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
             Icon(
               icon,
               color: effectiveColor,
-              size: 18,
-            ),
+              size: 18),
             const SizedBox(width: 8),
             Text(
               label,
@@ -251,7 +258,8 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                   setState(() {});
                 },
                 colorScheme: colorScheme,
-              )),
+              ),
+              ),
               // 自定义颜色按钮
               GestureDetector(
                 onTap: () => _showCustomColorPicker(bgService, colorScheme),
@@ -274,7 +282,8 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.colorize, color: Colors.white, size: 20),
+                  child: const Icon(Icons.colorize, color: Colors.white, size: 20,
+                  ),
                 ),
               ),
             ],
@@ -481,7 +490,8 @@ class _BackgroundSectionState extends State<BackgroundSection> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
@@ -530,8 +540,7 @@ class _BackgroundSectionState extends State<BackgroundSection> {
             '0 = 清晰，50 = 最模糊',
             style: TextStyle(
               color: colorScheme.outline,
-              fontSize: 11,
-            ),
+              fontSize: 11),
           ),
         ],
       ),
@@ -557,11 +566,12 @@ class _BackgroundSectionState extends State<BackgroundSection> {
       setState(() {});
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text(isVideo ? '背景视频已设置' : '背景图片已设置'),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12),
+            ),
             duration: const Duration(seconds: 2),
           ),
         );

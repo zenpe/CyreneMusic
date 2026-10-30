@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent_ui;
@@ -56,8 +57,7 @@ class AboutSettingsContent extends StatefulWidget {
         // 当前页面：关于（正常颜色）
         Text(
           '关于',
-          style: typography.title,
-        ),
+          style: typography.title),
       ],
     );
   }
@@ -163,7 +163,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const UserAgreementPage()),
+                MaterialPageRoute(builder: (context) => const UserAgreementPage(),
+                ),
               ),
             ),
             MD3SettingsTile(
@@ -193,12 +194,14 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
             if (showStatus)
               Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16,
+                ),
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: _autoUpdateService.lastError != null
-                        ? Theme.of(context)
+                        ? Theme.of(context,
+                          )
                             .colorScheme
                             .errorContainer
                             .withValues(alpha: 0.5)
@@ -272,7 +275,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                           '最后更新: ${_formatDateTime(_autoUpdateService.lastSuccessAt!)}',
                           style:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: Theme.of(context)
+                                    color: Theme.of(context,
+                                )
                                         .colorScheme
                                         .onSurfaceVariant,
                                   ),
@@ -460,9 +464,11 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                         _autoUpdateService.progress < 1
                     ? _autoUpdateService.progress
                     : null,
-                backgroundColor: CupertinoColors.systemGrey.withValues(alpha: 0.3),
+                backgroundColor: CupertinoColors.systemGrey.withValues(alpha: 0.3,
+                ),
                 valueColor:
-                    const AlwaysStoppedAnimation<Color>(CupertinoColors.systemBlue),
+                    const AlwaysStoppedAnimation<Color>(CupertinoColors.systemBlue,
+                ),
               ),
             ),
           ],
@@ -623,7 +629,6 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
   Future<void> _toggleAutoUpdate(BuildContext context, bool value) async {
     await _autoUpdateService.setEnabled(value);
     if (!mounted || !context.mounted) return;
-    ToastUtils.show(value ? '已开启自动更新' : '已关闭自动更新');
   }
 
 
@@ -657,7 +662,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Theme.of(context)
+                    color: Theme.of(context,
+                    )
                         .colorScheme
                         .primaryContainer
                         .withValues(alpha: 0.5),
@@ -673,7 +679,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                             '最新版本',
                             style:
                                 Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context)
+                                      color: Theme.of(context,
+                                  )
                                           .colorScheme
                                           .onSurfaceVariant,
                                     ),
@@ -697,7 +704,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                             '当前版本',
                             style:
                                 Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context)
+                                      color: Theme.of(context,
+                                  )
                                           .colorScheme
                                           .onSurfaceVariant,
                                     ),
@@ -723,7 +731,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: Theme.of(context,
+                    ).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -752,7 +761,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                             '此版本为强制更新\n请尽快完成安装',
                             style: TextStyle(
                               color:
-                                  Theme.of(context).colorScheme.onErrorContainer,
+                                  Theme.of(context,
+                              ).colorScheme.onErrorContainer,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -798,10 +808,11 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
             if (!isForceUpdate)
               TextButton(
                 onPressed: () async {
-                  await _versionService.ignoreCurrentVersion(versionInfo.version);
+                  await _versionService.ignoreCurrentVersion(versionInfo.version,
+                  );
                   if (!mounted || !context.mounted) return;
                   Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  AppFeedback.of(context).showSnackBar(
                     SnackBar(
                       content: Text('已忽略版本 ${versionInfo.version}，后续将不再提示'),
                       duration: const Duration(seconds: 2),
@@ -821,7 +832,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                       autoTriggered: false,
                     );
                     if (!mounted || !context.mounted) return;
-                    final messenger = ScaffoldMessenger.maybeOf(context);
+                    final messenger = AppFeedback.maybeOf(context);
                     if (messenger != null) {
                       messenger.showSnackBar(
                         SnackBar(
@@ -849,7 +860,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
     );
   }
 
-  void _showUpdateDialogCupertino(BuildContext context, VersionInfo versionInfo) {
+  void _showUpdateDialogCupertino(BuildContext context, VersionInfo versionInfo,
+  ) {
     final isForceUpdate = versionInfo.forceUpdate;
     final isFixing = versionInfo.fixing;
     final platformSupported = _autoUpdateService.isPlatformSupported;
@@ -869,7 +881,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                 const SizedBox(height: 4),
                 Text('当前版本: ${_versionService.currentVersion}'),
                 const SizedBox(height: 12),
-                const Text('更新内容', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('更新内容', style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 4),
                 Text(versionInfo.changelog),
                 if (isForceUpdate && !isFixing) ...[
@@ -900,7 +913,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
               CupertinoDialogAction(
                 isDestructiveAction: false,
                 onPressed: () async {
-                  await _versionService.ignoreCurrentVersion(versionInfo.version);
+                  await _versionService.ignoreCurrentVersion(versionInfo.version,
+                  );
                 if (!mounted || !context.mounted) return;
                   Navigator.of(context).pop();
                 },
@@ -938,7 +952,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
       if (!mounted || !context.mounted) return;
-      final messenger = ScaffoldMessenger.maybeOf(context);
+      final messenger = AppFeedback.maybeOf(context);
       if (messenger != null) {
         messenger.showSnackBar(
           SnackBar(
@@ -951,6 +965,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
             ),
             backgroundColor: Colors.red,
           ),
+          kind: FeedbackKind.error,
         );
       }
     }

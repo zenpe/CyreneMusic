@@ -233,12 +233,6 @@ class _PlayerPageState extends State<PlayerPage>
     setState(() {
       _showTranslation = !_showTranslation;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_showTranslation ? '已显示译文' : '已隐藏译文'),
-        duration: const Duration(seconds: 1),
-      ),
-    );
   }
 
   void _syncLyricsFromSnapshot({bool force = false}) {

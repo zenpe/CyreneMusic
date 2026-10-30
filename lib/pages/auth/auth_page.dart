@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import '../../widgets/server_selection.dart';
 import '../../services/url_service.dart';
 import '../../services/structured_log_service.dart';
@@ -532,17 +533,6 @@ class _LoginViewState extends State<_LoginView> {
 
     if (mounted) {
       if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message']),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
-
         // 登录成功后，自动上报IP归属地
         _authFacade
             .updateLocation()
@@ -568,17 +558,6 @@ class _LoginViewState extends State<_LoginView> {
             }
           }
         }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message']),
-            backgroundColor: Theme.of(context).colorScheme.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
       }
     }
   }
@@ -783,7 +762,7 @@ class _RegisterViewState extends State<_RegisterView> {
     if (!mounted || _isLoading) return;
     if (_qqNumberController.text.trim().isEmpty ||
         _usernameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.of(context).showSnackBar(
         SnackBar(
           content: const Text('请先填写 QQ 号和用户名'),
           behavior: SnackBarBehavior.floating,
@@ -807,7 +786,7 @@ class _RegisterViewState extends State<_RegisterView> {
 
     if (mounted) {
       if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
             backgroundColor: Colors.green,
@@ -819,7 +798,7 @@ class _RegisterViewState extends State<_RegisterView> {
         );
         _startCountdown();
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
             backgroundColor: Theme.of(context).colorScheme.error,
@@ -828,6 +807,7 @@ class _RegisterViewState extends State<_RegisterView> {
               borderRadius: BorderRadius.circular(12),
             ),
           ),
+          kind: FeedbackKind.error,
         );
       }
     }
@@ -842,7 +822,7 @@ class _RegisterViewState extends State<_RegisterView> {
     }
 
     if (_codeController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.of(context).showSnackBar(
         SnackBar(
           content: const Text('请输入验证码'),
           behavior: SnackBarBehavior.floating,
@@ -850,6 +830,7 @@ class _RegisterViewState extends State<_RegisterView> {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
+        kind: FeedbackKind.error,
       );
       return;
     }
@@ -868,7 +849,7 @@ class _RegisterViewState extends State<_RegisterView> {
 
     if (mounted) {
       if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
             backgroundColor: Colors.green,
@@ -891,7 +872,7 @@ class _RegisterViewState extends State<_RegisterView> {
           }
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
             backgroundColor: Theme.of(context).colorScheme.error,
@@ -900,6 +881,7 @@ class _RegisterViewState extends State<_RegisterView> {
               borderRadius: BorderRadius.circular(12),
             ),
           ),
+          kind: FeedbackKind.error,
         );
       }
     }
@@ -1250,7 +1232,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
     if (!await TermsConsentScope.ensureAccepted(context)) return;
     if (!mounted || _isLoading) return;
     if (_emailController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.of(context).showSnackBar(
         SnackBar(
           content: const Text('请输入邮箱'),
           behavior: SnackBarBehavior.floating,
@@ -1258,6 +1240,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
+        kind: FeedbackKind.error,
       );
       return;
     }
@@ -1273,7 +1256,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
 
     if (mounted) {
       if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
             backgroundColor: Colors.green,
@@ -1285,7 +1268,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
         );
         _startCountdown();
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
             backgroundColor: Theme.of(context).colorScheme.error,
@@ -1294,6 +1277,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
               borderRadius: BorderRadius.circular(12),
             ),
           ),
+          kind: FeedbackKind.error,
         );
       }
     }
@@ -1308,7 +1292,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
     }
 
     if (_codeController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.of(context).showSnackBar(
         SnackBar(
           content: const Text('请输入验证码'),
           behavior: SnackBarBehavior.floating,
@@ -1316,6 +1300,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
+        kind: FeedbackKind.error,
       );
       return;
     }
@@ -1333,7 +1318,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
 
     if (mounted) {
       if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
             backgroundColor: Colors.green,
@@ -1356,7 +1341,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
           }
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
             backgroundColor: Theme.of(context).colorScheme.error,
@@ -1365,6 +1350,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
               borderRadius: BorderRadius.circular(12),
             ),
           ),
+          kind: FeedbackKind.error,
         );
       }
     }
@@ -1697,6 +1683,7 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  String? _loginError;
   int _backendRevision = UrlService().backendRevision;
   bool _obscurePassword = true;
   bool _rememberLoginEnabled = true;
@@ -1716,6 +1703,7 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
       _backendRevision = revision;
       _passwordController.clear();
       _isLoading = false;
+      _loginError = null;
     });
   }
 
@@ -1772,11 +1760,16 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
     if (!mounted || _isLoading || revision != _backendRevision) return;
     if (_accountController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
-      _showCupertinoAlert('请填写完整信息');
+      setState(() {
+        _loginError = '请填写账号和密码';
+      });
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loginError = null;
+    });
 
     final account = _accountController.text.trim();
     final password = _passwordController.text;
@@ -1799,7 +1792,6 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
 
     if (mounted) {
       if (result['success']) {
-        _showCupertinoToast(result['message'], isSuccess: true);
         _authFacade.updateLocation();
         if (!widget.embedded) {
           if (AuthOverlayService().isVisible) {
@@ -1814,41 +1806,11 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
           }
         }
       } else {
-        _showCupertinoAlert(result['message']);
+        setState(() {
+          _loginError = result['message'] as String? ?? '登录失败';
+        });
       }
     }
-  }
-
-  void _showCupertinoAlert(String message) {
-    showCupertinoDialog(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('提示'),
-        content: Text(message),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text('确定'),
-            onPressed: () {
-              final nav = Navigator.of(context);
-              if (nav.canPop()) {
-                nav.pop();
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showCupertinoToast(String message, {bool isSuccess = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isSuccess ? CupertinoColors.activeGreen : null,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
   }
 
   @override
@@ -1914,6 +1876,20 @@ class _CupertinoLoginViewState extends State<_CupertinoLoginView> {
           ),
         ],
         const SizedBox(height: 28),
+
+        if (_loginError != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                _loginError!,
+                style: TextStyle(
+                  color: CupertinoColors.systemRed.resolveFrom(context),
+                ),
+              ),
+            ),
+          ),
 
         // 登录按钮
         const TermsConsentTile(),
@@ -2115,7 +2091,7 @@ class _CupertinoRegisterViewState extends State<_CupertinoRegisterView> {
   }
 
   void _showCupertinoToast(String message, {bool isSuccess = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppFeedback.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: isSuccess ? CupertinoColors.activeGreen : null,
@@ -2495,7 +2471,7 @@ class _CupertinoForgotPasswordViewState
   }
 
   void _showCupertinoToast(String message, {bool isSuccess = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppFeedback.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: isSuccess ? CupertinoColors.activeGreen : null,

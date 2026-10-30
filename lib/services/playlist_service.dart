@@ -1080,18 +1080,17 @@ class PlaylistService extends ChangeNotifier {
     return isTrackInPlaylist(defaultPlaylist!.id, track);
   }
 
-  Future<void> toggleFavorite(Track? track) async {
+  Future<bool> toggleFavorite(Track? track) async {
     final favorite = defaultPlaylist;
-    if (track == null || favorite == null) return;
+    if (track == null || favorite == null) return false;
     final result = await isTrackInAnyPlaylist(track);
-    if (!result.known) return;
+    if (!result.known) return false;
     final itemId = result.itemIdFor(favorite.id);
     if (itemId == null) {
-      await addTrackToPlaylist(favorite.id, track);
-      return;
+      return addTrackToPlaylist(favorite.id, track);
     }
     final current = PlaylistTrack.fromTrack(track);
-    await removePlaylistTrack(
+    return removePlaylistTrack(
       favorite.id,
       PlaylistTrack(
         itemId: itemId,

@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import '../pages/settings_page/netease_playlists_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -824,8 +825,9 @@ class ImportPlaylistDialog {
                   }
                   final input = controller.text.trim();
                   if (input.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    AppFeedback.of(context).showSnackBar(
                       const SnackBar(content: Text('请输入歌单ID或URL')),
+                      kind: FeedbackKind.error,
                     );
                     return;
                   }
@@ -840,7 +842,7 @@ class ImportPlaylistDialog {
                     playlistId = _parseApplePlaylistId(input);
                   }
                   if (playlistId == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    AppFeedback.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
                           '无效的${selectedPlatform.name}歌单ID或URL格式\n请检查输入是否正确',

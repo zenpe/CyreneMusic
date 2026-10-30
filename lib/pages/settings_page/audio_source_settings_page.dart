@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -498,104 +499,14 @@ class _AudioSourceSettingsContentState
 
   void _showActionError(String message, {Future<void> Function()? onRetry}) {
     if (!mounted) return;
-    final themeManager = ThemeManager();
-    if (themeManager.isFluentFramework && Platform.isWindows) {
-      fluent.displayInfoBar(
-        context,
-        duration: const Duration(seconds: 4),
-        builder: (context, close) => fluent.InfoBar(
-          title: const Text('操作失败'),
-          content: Text(message),
-          severity: fluent.InfoBarSeverity.error,
-          action: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (onRetry != null)
-                fluent.Button(
-                  onPressed: () {
-                    close();
+    AppFeedback.of(context).error(
+      message,
+      operationKey: 'source-action',
+      onRetry: onRetry == null
+          ? null
+          : () {
                     onRetry();
                   },
-                  child: const Text('重试'),
-                ),
-              fluent.IconButton(
-                icon: const Icon(fluent.FluentIcons.clear),
-                onPressed: close,
-              ),
-            ],
-          ),
-        ),
-      );
-      return;
-    }
-
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (messenger != null) {
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-          action: onRetry == null
-              ? null
-              : SnackBarAction(
-                  label: '重试',
-                  onPressed: () {
-                    onRetry();
-                  },
-                ),
-        ),
-      );
-      return;
-    }
-
-    if (themeManager.isCupertinoFramework &&
-        (Platform.isIOS || Platform.isAndroid || Platform.isMacOS)) {
-      showCupertinoDialog<void>(
-        context: context,
-        builder: (dialogContext) => CupertinoAlertDialog(
-          title: const Text('操作失败'),
-          content: Text(message),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('知道了'),
-            ),
-            if (onRetry != null)
-              CupertinoDialogAction(
-                isDefaultAction: true,
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                  onRetry();
-                },
-                child: const Text('重试'),
-              ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('操作失败'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('知道了'),
-          ),
-          if (onRetry != null)
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                onRetry();
-              },
-              child: const Text('重试'),
-            ),
-        ],
-      ),
     );
   }
 

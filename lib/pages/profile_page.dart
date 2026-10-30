@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../features/auth/auth_feature.dart';
@@ -77,7 +78,8 @@ class _ProfilePageState extends State<ProfilePage> {
       final results = await Future.wait<Object?>([
         service.fetchStats(forceRefresh: forceRefresh),
         service.fetchRecords().then<PlayCountPage?>((page) => page,
-          onError: (Object _) => null),
+          onError: (Object _) => null,
+        ),
       ]);
       if (!mounted || generation != _generation ||
           session != ListeningStatsService().contextIdentity) {
@@ -119,8 +121,11 @@ class _ProfilePageState extends State<ProfilePage> {
     final session = ListeningStatsService().contextIdentity;
     setState(() { _loadingRecords = true; _recordsError = null; });
     try {
-      final page = await ListeningStatsService().fetchRecords(page: _recordsPage + 1);
-      if (!mounted || generation != _generation || session != ListeningStatsService().contextIdentity) return;
+      final page = await ListeningStatsService().fetchRecords(page: _recordsPage + 1,
+      );
+      if (!mounted || generation != _generation || session != ListeningStatsService().contextIdentity) {
+        return;
+      }
       setState(() {
         final keys = _records.map((r) => (r.source, r.trackId)).toSet();
         final added = page.records.where((r) => keys.add((r.source, r.trackId))).toList();
@@ -130,7 +135,9 @@ class _ProfilePageState extends State<ProfilePage> {
         _loadingRecords = false;
       });
     } catch (_) {
-      if (!mounted || generation != _generation || session != ListeningStatsService().contextIdentity) return;
+      if (!mounted || generation != _generation || session != ListeningStatsService().contextIdentity) {
+        return;
+      }
       setState(() { _loadingRecords = false; _recordsError = '播放记录加载失败，请重试'; });
     }
   }
@@ -140,22 +147,13 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final track = item.toTrack();
       await PlayerService().playTrack(track);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('开始播放: ${item.trackName}'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.of(context).showSnackBar(
           SnackBar(
             content: Text('播放失败: $e'),
-            backgroundColor: Colors.red,
-          ),
+            backgroundColor: Colors.red),
+          kind: FeedbackKind.error,
         );
       }
     }
@@ -177,8 +175,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       Icon(
                         Icons.error_outline,
                         size: 64,
-                        color: colorScheme.error,
-                      ),
+                        color: colorScheme.error),
                       const SizedBox(height: 16),
                       Text(
                         _errorMessage!,
@@ -207,7 +204,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       _buildStatsCard(colorScheme),
                       if (_errorMessage != null)
                         TextButton(onPressed: () => _loadStats(forceRefresh: true),
-                          child: const Text('统计更新失败，点击重试')),
+                          child: const Text('统计更新失败，点击重试'),
+                    ),
 
                       const SizedBox(height: 16),
 
@@ -281,8 +279,7 @@ class _ProfilePageState extends State<ProfilePage> {
           children: [
             Text(
               '听歌统计',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+              style: Theme.of(context).textTheme.titleMedium),
 
             const SizedBox(height: 16),
 
@@ -348,8 +345,7 @@ class _ProfilePageState extends State<ProfilePage> {
             value,
             style: const TextStyle(
               fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+              fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -391,8 +387,7 @@ class _ProfilePageState extends State<ProfilePage> {
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Text(
             '播放排行榜',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+            style: Theme.of(context).textTheme.titleMedium),
         ),
 
         const SizedBox(height: 8),
@@ -411,11 +406,13 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         if (_recordsError != null) Text(_recordsError!),
         if (_loadingRecords)
-          const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())
+          const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(),
+          )
         else if (_hasMoreRecords || _recordsError != null)
           TextButton(onPressed: _recordsNeedRefresh
               ? () => _loadStats(forceRefresh: true) : _loadMoreRecords,
-            child: Text(_recordsError == null ? '加载更多' : '重试')),
+            child: Text(_recordsError == null ? '加载更多' : '重试'),
+          ),
       ],
     );
   }
@@ -492,15 +489,13 @@ class _ProfilePageState extends State<ProfilePage> {
       title: Text(
         item.trackName,
         maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+        overflow: TextOverflow.ellipsis),
       subtitle: Text(
         item.artists.isNotEmpty ? item.artists : '未知艺术家',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: colorScheme.onSurface.withValues(alpha: 0.6),
-        ),
+          color: colorScheme.onSurface.withValues(alpha: 0.6)),
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -512,8 +507,7 @@ class _ProfilePageState extends State<ProfilePage> {
               Text(
                 '${item.playCount} 次',
                 style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                ),
+                  fontWeight: FontWeight.bold),
               ),
               Text(
                 item.toTrack().getSourceName(),
@@ -535,4 +529,3 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 }
-

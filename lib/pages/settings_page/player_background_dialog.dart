@@ -737,26 +737,7 @@ class _PlayerBackgroundDialogState extends State<PlayerBackgroundDialog> {
       setState(() {});
       widget.onChanged();
 
-      if (mounted) {
-        final isFluent = ThemeManager().isDesktopFluentUI;
 
-        if (isFluent) {
-          fluent_ui.displayInfoBar(
-            context,
-            builder: (context, close) => fluent_ui.InfoBar(
-              title: Text(isVideo ? '背景视频已设置' : '背景图片已设置'),
-              severity: fluent_ui.InfoBarSeverity.success,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(isVideo ? '背景视频已设置' : '背景图片已设置'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      }
     }
   }
 

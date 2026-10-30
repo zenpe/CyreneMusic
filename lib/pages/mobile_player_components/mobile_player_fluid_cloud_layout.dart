@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import 'dart:io';
 import 'dart:ui';
 import 'dart:math';
@@ -1863,9 +1864,9 @@ class _DownloadButtonState extends State<_DownloadButton> {
 
         if (detail == null) {
           if (mounted) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text('获取歌曲信息失败')));
+            AppFeedback.of(context).showSnackBar(const SnackBar(content: Text('获取歌曲信息失败')),
+              kind: FeedbackKind.error,
+            );
             setState(() => _isDownloading = false);
           }
           return;
@@ -1887,14 +1888,14 @@ class _DownloadButtonState extends State<_DownloadButton> {
               _isDownloaded = true;
               _isDownloading = false;
             });
-            ScaffoldMessenger.of(context).showSnackBar(
+            AppFeedback.of(context).showSnackBar(
               SnackBar(content: Text('${widget.track.name} 下载完成')),
             );
           } else {
             setState(() => _isDownloading = false);
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text('下载失败')));
+            AppFeedback.of(context).showSnackBar(const SnackBar(content: Text('下载失败')),
+              kind: FeedbackKind.error,
+            );
           }
         }
       } else {
@@ -1914,23 +1915,23 @@ class _DownloadButtonState extends State<_DownloadButton> {
               _isDownloaded = true;
               _isDownloading = false;
             });
-            ScaffoldMessenger.of(context).showSnackBar(
+            AppFeedback.of(context).showSnackBar(
               SnackBar(content: Text('${widget.track.name} 下载完成')),
             );
           } else {
             setState(() => _isDownloading = false);
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text('下载失败或文件已存在')));
+            AppFeedback.of(context).showSnackBar(const SnackBar(content: Text('下载失败或文件已存在')),
+              kind: FeedbackKind.error,
+            );
           }
         }
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isDownloading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('下载失败: $e')));
+        AppFeedback.of(context).showSnackBar(SnackBar(content: Text('下载失败: $e')),
+          kind: FeedbackKind.error,
+        );
       }
     }
   }

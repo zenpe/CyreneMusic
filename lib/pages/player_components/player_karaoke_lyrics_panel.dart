@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import '../../widgets/lyric_status_text.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -109,7 +110,7 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel>
         _selectedLyricIndex! < widget.lyrics.length) {
       final selectedLyric = widget.lyrics[_selectedLyricIndex!];
       PlayerService().seek(selectedLyric.startTime);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.of(context).showSnackBar(
         SnackBar(
           content: Text('已跳转到: ${selectedLyric.text}'),
           duration: const Duration(seconds: 1),
@@ -186,7 +187,8 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel>
           false,
         ).withValues(alpha: 0.5);
         return Center(
-          child: LyricStatusText(state: widget.lyricState, style: TextStyle(color: textColor, fontSize: 16)),
+          child: LyricStatusText(state: widget.lyricState, style: TextStyle(color: textColor, fontSize: 16),
+          ),
         );
       },
     );
@@ -265,8 +267,7 @@ class _PlayerKaraokeLyricsPanelState extends State<PlayerKaraokeLyricsPanel>
                       return Stack(
                         alignment: Alignment.center,
                         children: <Widget>[
-                          ?currentChild,
-                        ],
+                          ?currentChild],
                       );
                     },
                 transitionBuilder: (Widget child, Animation<double> animation) {

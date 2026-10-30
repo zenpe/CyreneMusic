@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
@@ -590,7 +591,7 @@ class MobilePlayerDialogs {
                                 final success = await playlistService
                                     .addTrackToPlaylist(playlist.id, track);
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  AppFeedback.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
                                         success
@@ -599,6 +600,7 @@ class MobilePlayerDialogs {
                                       ),
                                       duration: const Duration(seconds: 1),
                                     ),
+                                    kind: success ? FeedbackKind.info : FeedbackKind.error,
                                   );
                                 }
                               },
@@ -1239,7 +1241,7 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
               onPressed: () {
                 timer.cancel();
                 Navigator.pop(context);
-                ScaffoldMessenger.of(
+                AppFeedback.of(
                   context,
                 ).showSnackBar(const SnackBar(content: Text('定时器已取消')));
               },
@@ -1298,7 +1300,7 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
                         icon: const Icon(Icons.add_circle_outline),
                         onPressed: () {
                           timer.extend(15);
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          AppFeedback.of(context).showSnackBar(
                             const SnackBar(content: Text('已延长15分钟')),
                           );
                         },
@@ -1377,7 +1379,7 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
                   });
                   SleepTimerService().setTimerByDuration(duration);
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  AppFeedback.of(context).showSnackBar(
                     SnackBar(content: Text('定时器已设置: $duration分钟后停止播放')),
                   );
                 }
@@ -1425,7 +1427,7 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
               if (selectedTime != null) {
                 SleepTimerService().setTimerByTime(selectedTime);
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
+                AppFeedback.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
                       '定时器已设置: ${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')} 停止播放',

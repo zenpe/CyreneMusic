@@ -4,7 +4,8 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
   Widget _buildCupertinoPage(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // 底部 Tab 栏高度（悬浮 Tab 栏约 60 + 底部安全区）
-    final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 80);
+    final bottomPadding = FloatingPlaybackInsets.bottomPadding(context, fallback: 80,
+    );
 
     return Material(
       type: MaterialType.transparency,
@@ -696,7 +697,7 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
 
   /// 显示 Cupertino Toast
   void _showCupertinoToast(String message, {bool isSuccess = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppFeedback.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: isSuccess ? CupertinoColors.activeGreen : null,

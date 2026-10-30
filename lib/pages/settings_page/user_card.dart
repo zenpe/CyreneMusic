@@ -1,3 +1,4 @@
+import '../../utils/app_feedback.dart';
 import '../../services/structured_log_service.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -24,8 +25,7 @@ class UserCard extends StatefulWidget {
   const UserCard({
     super.key,
     this.margin,
-    this.padding,
-  });
+    this.padding});
 
   @override
   State<UserCard> createState() => _UserCardState();
@@ -137,13 +137,16 @@ class _UserCardState extends State<UserCard> {
                         _usernameError = null;
                       });
 
-                      final result = await _authFacade.updateUsername(newUsername);
+                      final result = await _authFacade.updateUsername(newUsername,
+                      );
 
-                      if (!mounted || !dialogContext.mounted || !context.mounted) return;
+                      if (!mounted || !dialogContext.mounted || !context.mounted) {
+                        return;
+                      }
 
                       if (result['success'] == true) {
                         Navigator.pop(dialogContext);
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppFeedback.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('用户名更新成功'),
                             backgroundColor: Colors.green,
@@ -246,20 +249,15 @@ class _UserCardState extends State<UserCard> {
                         _usernameError = null;
                       });
 
-                      final result = await _authFacade.updateUsername(newUsername);
+                      final result = await _authFacade.updateUsername(newUsername,
+                      );
 
-                      if (!mounted || !dialogContext.mounted || !context.mounted) return;
+                      if (!mounted || !dialogContext.mounted || !context.mounted) {
+                        return;
+                      }
 
                       if (result['success'] == true) {
                         Navigator.pop(dialogContext);
-                        fluent_ui.displayInfoBar(
-                          context,
-                          builder: (context, close) => fluent_ui.InfoBar(
-                            title: const Text('成功'),
-                            content: const Text('用户名更新成功'),
-                            severity: fluent_ui.InfoBarSeverity.success,
-                          ),
-                        );
                       } else {
                         setDialogState(() {
                           _isUpdatingUsername = false;
@@ -363,7 +361,8 @@ class _UserCardState extends State<UserCard> {
     // 优先使用服务器返回的头像 URL（如 Linux Do 用户），否则尝试从 QQ 邮箱生成
     final qqNumber = _extractQQNumber(user.email);
     final avatarUrl = user.avatarUrl ?? _getQQAvatarUrl(qqNumber);
-    StructuredLogService.log('🖼️ [UserCard] user.avatarUrl: ${user.avatarUrl}');
+    StructuredLogService.log('🖼️ [UserCard] user.avatarUrl: ${user.avatarUrl}',
+    );
     StructuredLogService.log('🖼️ [UserCard] 最终使用的 avatarUrl: $avatarUrl');
 
     return AnimatedBuilder(
@@ -442,7 +441,8 @@ class _UserCardState extends State<UserCard> {
                                                 width: 60,
                                                 height: 60,
                                                 fit: BoxFit.cover,
-                                                errorBuilder: (context, error, stackTrace) => Icon(
+                                                errorBuilder: (context, error, stackTrace,
+                                                      ) => Icon(
                                                   Icons.person,
                                                   size: 32,
                                                   color: colorScheme.onPrimaryContainer,
@@ -511,7 +511,8 @@ class _UserCardState extends State<UserCard> {
                             const SizedBox(height: 6),
                             // 邮箱胶囊气泡 (与我的页面对齐)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3,
+                              ),
                               decoration: BoxDecoration(
                                 color: Theme.of(context).brightness == Brightness.dark
                                     ? Colors.white.withValues(alpha: 0.08)
@@ -595,7 +596,8 @@ class _UserCardState extends State<UserCard> {
                                       const SizedBox(width: 4),
                                       InkWell(
                                         onTap: () {
-                                          StructuredLogService.log('🔄 [UserCard] 手动刷新IP归属地...');
+                                          StructuredLogService.log('🔄 [UserCard] 手动刷新IP归属地...',
+                                          );
                                           LocationService().fetchLocation();
                                         },
                                         child: Icon(
@@ -616,7 +618,8 @@ class _UserCardState extends State<UserCard> {
                     // 退出按钮
                     IconButton(
                       onPressed: () => _authFacade.logout(),
-                      icon: Icon(Icons.logout_rounded, color: colorScheme.error),
+                      icon: Icon(Icons.logout_rounded, color: colorScheme.error,
+                      ),
                       tooltip: '退出登录',
                     ),
                   ],
@@ -683,7 +686,8 @@ class _UserCardState extends State<UserCard> {
                 color: CupertinoColors.systemGrey4,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(CupertinoIcons.person_fill, size: 36, color: CupertinoColors.white),
+              child: const Icon(CupertinoIcons.person_fill, size: 36, color: CupertinoColors.white,
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -705,7 +709,8 @@ class _UserCardState extends State<UserCard> {
                     '登录以同步数据',
                     style: TextStyle(
                       fontSize: 15,
-                      color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                      color: CupertinoColors.secondaryLabel.resolveFrom(context,
+                      ),
                       fontFamily: '.SF Pro Text',
                       decoration: TextDecoration.none,
                     ),
@@ -713,7 +718,8 @@ class _UserCardState extends State<UserCard> {
                 ],
               ),
             ),
-            const Icon(CupertinoIcons.chevron_forward, color: CupertinoColors.systemGrey3),
+            const Icon(CupertinoIcons.chevron_forward, color: CupertinoColors.systemGrey3,
+            ),
           ],
         ),
       ),
@@ -747,7 +753,8 @@ class _UserCardState extends State<UserCard> {
                 color: avatarUrl == null ? CupertinoColors.systemBlue : null,
               ),
               child: avatarUrl == null
-                  ? const Icon(CupertinoIcons.person_fill, size: 32, color: CupertinoColors.white)
+                  ? const Icon(CupertinoIcons.person_fill, size: 32, color: CupertinoColors.white,
+                    )
                   : null,
             ),
             const SizedBox(width: 16),
@@ -775,7 +782,8 @@ class _UserCardState extends State<UserCard> {
                       user.displayEmail!,
                       style: TextStyle(
                         fontSize: 15,
-                        color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                        color: CupertinoColors.secondaryLabel.resolveFrom(context,
+                        ),
                         decoration: TextDecoration.none,
                       ),
                       maxLines: 1,
@@ -786,7 +794,8 @@ class _UserCardState extends State<UserCard> {
                 ],
               ),
             ),
-            const Icon(CupertinoIcons.chevron_forward, color: CupertinoColors.systemGrey3),
+            const Icon(CupertinoIcons.chevron_forward, color: CupertinoColors.systemGrey3,
+            ),
           ],
         ),
       ),
@@ -875,7 +884,8 @@ class _UserCardState extends State<UserCard> {
                   controller: _usernameController,
                   placeholder: '2-20位，中文/字母/数字/下划线',
                   autofocus: true,
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12,
+                  ),
                 ),
               ],
             ),
@@ -888,7 +898,9 @@ class _UserCardState extends State<UserCard> {
             CupertinoDialogAction(
               onPressed: () async {
                 final newUsername = _usernameController.text.trim();
-                if (newUsername.isEmpty || newUsername == currentUser.username) return;
+                if (newUsername.isEmpty || newUsername == currentUser.username) {
+                  return;
+                }
 
                 final result = await _authFacade.updateUsername(newUsername);
                 if (result['success'] == true && context.mounted) {
@@ -932,7 +944,8 @@ class _UserCardState extends State<UserCard> {
                 children: [
                   Text(
                     '未登录',
-                    style: fluent_ui.FluentTheme.of(context).typography.subtitle,
+                    style: fluent_ui.FluentTheme.of(context,
+                    ).typography.subtitle,
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -959,9 +972,14 @@ class _UserCardState extends State<UserCard> {
     final avatarUrl = user.avatarUrl ?? _getQQAvatarUrl(qqNumber);
     final isLinuxDoAvatar = avatarUrl != null && avatarUrl.contains('linux.do');
 
-    StructuredLogService.log('🖼️ [UserCard-Fluent] user.avatarUrl: ${user.avatarUrl}');
-    StructuredLogService.log('🖼️ [UserCard-Fluent] 最终使用的 avatarUrl: $avatarUrl');
-    StructuredLogService.log('🖼️ [UserCard-Fluent] 是否为 Linux Do 头像: $isLinuxDoAvatar');
+    StructuredLogService.log('🖼️ [UserCard-Fluent] user.avatarUrl: ${user.avatarUrl}',
+    );
+    StructuredLogService.log(
+      '🖼️ [UserCard-Fluent] 最终使用的 avatarUrl: $avatarUrl',
+    );
+    StructuredLogService.log(
+      '🖼️ [UserCard-Fluent] 是否为 Linux Do 头像: $isLinuxDoAvatar',
+    );
 
     return AnimatedBuilder(
       animation: LocationService(),
@@ -983,8 +1001,7 @@ class _UserCardState extends State<UserCard> {
                     child: isLinuxDoAvatar
                         ? _LinuxDoAvatarWidget(
                              url: avatarUrl,
-                            userId: user.id,
-                          )
+                            userId: user.id)
                         : avatarUrl != null
                             ? Image.network(
                                 avatarUrl,
@@ -1016,11 +1033,13 @@ class _UserCardState extends State<UserCard> {
                         children: [
                           Text(
                             user.username,
-                            style: fluent_ui.FluentTheme.of(context).typography.subtitle,
+                            style: fluent_ui.FluentTheme.of(context,
+                            ).typography.subtitle,
                           ),
                           const SizedBox(width: 4),
                           fluent_ui.IconButton(
-                            icon: const Icon(fluent_ui.FluentIcons.edit, size: 14),
+                            icon: const Icon(fluent_ui.FluentIcons.edit, size: 14,
+                            ),
                             onPressed: () => _showUpdateUsernameDialogFluent(context),
                           ),
                         ],
@@ -1032,13 +1051,13 @@ class _UserCardState extends State<UserCard> {
                           children: [
                             const Icon(
                               fluent_ui.FluentIcons.mail,
-                              size: 14,
-                            ),
+                              size: 14),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
                                 user.displayEmail!,
-                                style: fluent_ui.FluentTheme.of(context).typography.caption,
+                                style: fluent_ui.FluentTheme.of(context,
+                                ).typography.caption,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -1052,8 +1071,7 @@ class _UserCardState extends State<UserCard> {
                         children: [
                           const Icon(
                             fluent_ui.FluentIcons.location,
-                            size: 14,
-                          ),
+                            size: 14),
                           const SizedBox(width: 4),
                           if (isLoadingLocation)
                             Row(
@@ -1067,7 +1085,8 @@ class _UserCardState extends State<UserCard> {
                                 const SizedBox(width: 4),
                                 Text(
                                   '获取中...',
-                                  style: fluent_ui.FluentTheme.of(context).typography.caption,
+                                  style: fluent_ui.FluentTheme.of(context,
+                                  ).typography.caption,
                                 ),
                               ],
                             )
@@ -1075,7 +1094,8 @@ class _UserCardState extends State<UserCard> {
                             Expanded(
                               child: Text(
                                 location.shortDescription,
-                                style: fluent_ui.FluentTheme.of(context).typography.caption,
+                                style: fluent_ui.FluentTheme.of(context,
+                                ).typography.caption,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             )
@@ -1086,14 +1106,15 @@ class _UserCardState extends State<UserCard> {
                                   Text(
                                     '获取失败',
                                     style: fluent_ui.FluentTheme.of(context).typography.caption?.copyWith(
-                                      color: Colors.red,
-                                    ),
+                                      color: Colors.red),
                                   ),
                                   const SizedBox(width: 4),
                                   fluent_ui.IconButton(
-                                    icon: const Icon(fluent_ui.FluentIcons.refresh, size: 14),
+                                    icon: const Icon(fluent_ui.FluentIcons.refresh, size: 14,
+                                    ),
                                     onPressed: () {
-                                      StructuredLogService.log('🔄 [UserCard] 手动刷新IP归属地...');
+                                      StructuredLogService.log('🔄 [UserCard] 手动刷新IP归属地...',
+                                      );
                                       LocationService().fetchLocation();
                                     },
                                   ),
@@ -1153,8 +1174,7 @@ class _LinuxDoAvatarWidget extends StatefulWidget {
 
   const _LinuxDoAvatarWidget({
     required this.url,
-    required this.userId,
-  });
+    required this.userId});
 
   @override
   State<_LinuxDoAvatarWidget> createState() => _LinuxDoAvatarWidgetState();

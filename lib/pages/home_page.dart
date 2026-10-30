@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import 'home_for_you_tab.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/url_service.dart';
@@ -449,11 +450,11 @@ class _HomePageState extends State<HomePage>
 
         if (isAutoHandled) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+            AppFeedback.of(context).showSnackBar(
               SnackBar(
                 content: Row(
                   children: [
-                    const Icon(Icons.system_update_alt, color: Colors.white),
+                    const Icon(Icons.system_update_alt),
                     const SizedBox(width: 12),
                     const Expanded(child: Text('检测到新版本，已在后台自动更新')),
                   ],
@@ -626,7 +627,7 @@ class _HomePageState extends State<HomePage>
                   VersionService().markVersionReminded(versionInfo.version);
                   if (context.mounted) {
                     Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    AppFeedback.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('本次启动将不再提醒，下次启动时会再次提示'),
                         duration: Duration(seconds: 2),
@@ -647,7 +648,7 @@ class _HomePageState extends State<HomePage>
                   );
                   if (context.mounted) {
                     Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    AppFeedback.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
                           '已忽略版本 ${versionInfo.version}，有新版本时将再次提醒',
@@ -764,7 +765,7 @@ class _HomePageState extends State<HomePage>
                   VersionService().markVersionReminded(versionInfo.version);
                   if (context.mounted) {
                     Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    AppFeedback.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('本次启动将不再提醒，下次启动时会再次提示'),
                         duration: Duration(seconds: 2),
@@ -784,7 +785,7 @@ class _HomePageState extends State<HomePage>
                   );
                   if (context.mounted) {
                     Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    AppFeedback.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
                           '已忽略版本 ${versionInfo.version}，有新版本时将再次提醒',
@@ -856,15 +857,16 @@ class _HomePageState extends State<HomePage>
                     Navigator.of(context).pop();
 
                     if (hasError) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppFeedback.of(context).showSnackBar(
                         SnackBar(
                           content: Text('更新失败: ${service.lastError}'),
                           backgroundColor: Colors.red,
                           duration: const Duration(seconds: 5),
                         ),
+                        kind: FeedbackKind.error,
                       );
                     } else if (requiresRestart) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppFeedback.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('更新完成！应用即将重启...'),
                           backgroundColor: Colors.green,
@@ -983,15 +985,16 @@ class _HomePageState extends State<HomePage>
                     Navigator.of(context).pop();
 
                     if (hasError) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppFeedback.of(context).showSnackBar(
                         SnackBar(
                           content: Text('更新失败: ${service.lastError}'),
                           backgroundColor: Colors.red,
                           duration: const Duration(seconds: 5),
                         ),
+                        kind: FeedbackKind.error,
                       );
                     } else if (requiresRestart) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppFeedback.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('更新完成！应用即将重启...'),
                           backgroundColor: Colors.green,
@@ -1061,17 +1064,17 @@ class _HomePageState extends State<HomePage>
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('无法打开下载链接')));
+          AppFeedback.of(context).showSnackBar(const SnackBar(content: Text('无法打开下载链接')),
+            kind: FeedbackKind.error,
+          );
         }
       }
     } catch (e) {
       StructuredLogService.log('❌ [HomePage] 打开下载链接失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('打开链接失败: $e')));
+        AppFeedback.of(context).showSnackBar(SnackBar(content: Text('打开链接失败: $e')),
+          kind: FeedbackKind.error,
+        );
       }
     }
   }
@@ -1156,7 +1159,7 @@ class _HomePageState extends State<HomePage>
 
     if (shouldGoToSettings == true && mounted) {
       // 显示提示信息
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.of(context).showSnackBar(
         const SnackBar(
           content: Text('请点击左侧菜单栏的「设置」进行登录'),
           duration: Duration(seconds: 3),

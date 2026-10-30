@@ -5,8 +5,7 @@ class _SelectTargetPlaylistDialog extends StatefulWidget {
   final UniversalPlaylist sourcePlaylist;
 
   const _SelectTargetPlaylistDialog({
-    required this.sourcePlaylist,
-  });
+    required this.sourcePlaylist});
 
   @override
   State<_SelectTargetPlaylistDialog> createState() =>
@@ -129,8 +128,7 @@ class _SelectTargetPlaylistDialogState
                 backgroundColor: colorScheme.secondaryContainer,
                 child: Icon(
                   Icons.add,
-                  color: colorScheme.onSecondaryContainer,
-                ),
+                  color: colorScheme.onSecondaryContainer),
               ),
               title: const Text('新建歌单'),
               subtitle: const Text('创建一个新歌单来导入'),
@@ -177,7 +175,8 @@ class _SelectTargetPlaylistDialogState
                         if (playlist.isDefault)
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
+                                horizontal: 8, vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: colorScheme.primaryContainer,
                               borderRadius: BorderRadius.circular(12),
@@ -238,8 +237,9 @@ class _SelectTargetPlaylistDialogState
             onPressed: () {
               final name = controller.text.trim();
               if (name.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                AppFeedback.of(context).showSnackBar(
                   const SnackBar(content: Text('歌单名称不能为空')),
+                  kind: FeedbackKind.error,
                 );
                 return;
               }
@@ -284,8 +284,7 @@ class _ImportProgressDialog extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 '正在导入歌曲...',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+                style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -337,14 +336,16 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
           return AnimatedPadding(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
             child: Material(
             type: MaterialType.transparency,
             child: Container(
               height: MediaQuery.of(context).size.height * 0.7,
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16),
+                ),
               ),
               child: SafeArea(
                 top: false,
@@ -362,7 +363,8 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                     ),
                     // 标题栏
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12,
+                      ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -405,16 +407,21 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                               }
                               String? playlistId;
                               if (selectedPlatform == MusicPlatform.netease) {
-                                playlistId = ImportPlaylistDialog._parseNeteasePlaylistId(input);
+                                playlistId = ImportPlaylistDialog._parseNeteasePlaylistId(input,
+                                    );
                               } else if (selectedPlatform == MusicPlatform.qq) {
-                                playlistId = ImportPlaylistDialog._parseQQPlaylistId(input);
+                                playlistId = ImportPlaylistDialog._parseQQPlaylistId(input,
+                                    );
                               } else if (selectedPlatform == MusicPlatform.kuwo) {
-                                playlistId = ImportPlaylistDialog._parseKuwoPlaylistId(input);
+                                playlistId = ImportPlaylistDialog._parseKuwoPlaylistId(input,
+                                    );
                               } else if (selectedPlatform == MusicPlatform.apple) {
-                                playlistId = ImportPlaylistDialog._parseApplePlaylistId(input);
+                                playlistId = ImportPlaylistDialog._parseApplePlaylistId(input,
+                                    );
                               }
                               if (playlistId == null) {
-                                _showCupertinoToastImpl(context, '无效的${selectedPlatform.name}歌单ID或URL格式');
+                                _showCupertinoToastImpl(context, '无效的${selectedPlatform.name}歌单ID或URL格式',
+                                );
                                 return;
                               }
                               Navigator.pop(context, {
@@ -422,7 +429,8 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                                 'playlistId': playlistId,
                               });
                             },
-                            child: const Text('下一步', style: TextStyle(fontWeight: FontWeight.w600)),
+                            child: const Text('下一步', style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                           ),
                         ],
                       ),
@@ -468,7 +476,8 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                                           });
                                         },
                                         child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12,
+                                                  ),
                                           child: Row(
                                             children: [
                                               Expanded(
@@ -481,15 +490,18 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                                                 ),
                                               ),
                                               if (isSelected)
-                                                const Icon(CupertinoIcons.checkmark, color: CupertinoColors.systemBlue, size: 20),
+                                                const Icon(CupertinoIcons.checkmark, color: CupertinoColors.systemBlue, size: 20,
+                                                    ),
                                             ],
                                           ),
                                         ),
                                       ),
                                       if (!isLast)
                                         Padding(
-                                          padding: const EdgeInsets.only(left: 48),
-                                          child: Container(height: 0.5, color: CupertinoColors.systemGrey4),
+                                          padding: const EdgeInsets.only(left: 48,
+                                              ),
+                                          child: Container(height: 0.5, color: CupertinoColors.systemGrey4,
+                                              ),
                                         ),
                                     ],
                                   );
@@ -502,17 +514,20 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                               Container(
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: CupertinoColors.systemBlue.withValues(alpha: 0.1),
+                                  color: CupertinoColors.systemBlue.withValues(alpha: 0.1,
+                                  ),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Row(
                                   children: [
-                                    Icon(CupertinoIcons.info_circle, color: CupertinoColors.systemBlue, size: 22),
+                                    Icon(CupertinoIcons.info_circle, color: CupertinoColors.systemBlue, size: 22,
+                                    ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
                                         '点击"下一步"将显示您绑定的酷狗账号中的歌单',
-                                        style: TextStyle(fontSize: 15, color: isDark ? CupertinoColors.white : CupertinoColors.black),
+                                        style: TextStyle(fontSize: 15, color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -521,7 +536,8 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                             ] else if (selectedPlatform == MusicPlatform.netease) ...[
                               Text(
                                 '导入方式',
-                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: CupertinoColors.systemGrey),
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: CupertinoColors.systemGrey,
+                                ),
                               ),
                               const SizedBox(height: 8),
                               Container(
@@ -538,40 +554,48 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                                         controller.clear();
                                       }),
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12,
+                                        ),
                                         child: Row(
                                           children: [
                                             Expanded(
                                               child: Text(
                                                 '从绑定账号导入',
-                                                style: TextStyle(fontSize: 17, color: isDark ? CupertinoColors.white : CupertinoColors.black),
+                                                style: TextStyle(fontSize: 17, color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                                ),
                                               ),
                                             ),
                                             if (neteaseImportMode == 'account')
-                                              const Icon(CupertinoIcons.checkmark, color: CupertinoColors.systemBlue, size: 20),
+                                              const Icon(CupertinoIcons.checkmark, color: CupertinoColors.systemBlue, size: 20,
+                                              ),
                                           ],
                                         ),
                                       ),
                                     ),
                                     Padding(
                                       padding: const EdgeInsets.only(left: 16),
-                                      child: Container(height: 0.5, color: CupertinoColors.systemGrey4),
+                                      child: Container(height: 0.5, color: CupertinoColors.systemGrey4,
+                                      ),
                                     ),
                                     CupertinoButton(
                                       padding: EdgeInsets.zero,
-                                      onPressed: () => setState(() => neteaseImportMode = 'url'),
+                                      onPressed: () => setState(() => neteaseImportMode = 'url',
+                                      ),
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12,
+                                        ),
                                         child: Row(
                                           children: [
                                             Expanded(
                                               child: Text(
                                                 '输入歌单ID/URL',
-                                                style: TextStyle(fontSize: 17, color: isDark ? CupertinoColors.white : CupertinoColors.black),
+                                                style: TextStyle(fontSize: 17, color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                                ),
                                               ),
                                             ),
                                             if (neteaseImportMode == 'url')
-                                              const Icon(CupertinoIcons.checkmark, color: CupertinoColors.systemBlue, size: 20),
+                                              const Icon(CupertinoIcons.checkmark, color: CupertinoColors.systemBlue, size: 20,
+                                              ),
                                           ],
                                         ),
                                       ),
@@ -589,12 +613,14 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                                   ),
                                   child: Row(
                                     children: [
-                                      Icon(CupertinoIcons.info_circle, color: CupertinoColors.systemBlue, size: 22),
+                                      Icon(CupertinoIcons.info_circle, color: CupertinoColors.systemBlue, size: 22,
+                                      ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Text(
                                           '点击"下一步"将显示您绑定的网易云账号中的歌单',
-                                          style: TextStyle(fontSize: 15, color: isDark ? CupertinoColors.white : CupertinoColors.black),
+                                          style: TextStyle(fontSize: 15, color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -603,7 +629,8 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                               ] else ...[
                                 Text(
                                   _getInputHintTextImpl(selectedPlatform),
-                                  style: TextStyle(fontSize: 13, color: CupertinoColors.systemGrey),
+                                  style: TextStyle(fontSize: 13, color: CupertinoColors.systemGrey,
+                                  ),
                                 ),
                                 const SizedBox(height: 12),
                                 CupertinoTextField(
@@ -616,12 +643,15 @@ Future<Map<String, dynamic>?> _showCupertinoImportDialogImpl(
                             ] else ...[
                               Text(
                                 '输入歌单信息',
-                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: CupertinoColors.systemGrey),
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: CupertinoColors.systemGrey,
+                                ),
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                ImportPlaylistDialog._getInputHintText(selectedPlatform),
-                                style: TextStyle(fontSize: 13, color: CupertinoColors.systemGrey),
+                                ImportPlaylistDialog._getInputHintText(selectedPlatform,
+                                ),
+                                style: TextStyle(fontSize: 13, color: CupertinoColors.systemGrey,
+                                ),
                               ),
                               const SizedBox(height: 12),
                               CupertinoTextField(

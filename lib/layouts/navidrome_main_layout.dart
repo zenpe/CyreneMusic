@@ -1,3 +1,4 @@
+import '../widgets/feedback_boundary.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -71,8 +72,7 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
                 Expanded(
                   child: IndexedStack(
                     index: _selectedIndex,
-                    children: _pages,
-                  ),
+                    children: _pages),
                 ),
               ],
             ),
@@ -95,8 +95,7 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
       decoration: BoxDecoration(
         color: backgroundColor,
         border: Border(
-          right: BorderSide(color: borderColor, width: 0.5),
-        ),
+          right: BorderSide(color: borderColor, width: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,8 +146,7 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
                 _buildSidebarItem(
                   index: 1,
                   icon: Icons.search,
-                  label: '搜索',
-                ),
+                  label: '搜索'),
                 _buildSidebarItem(
                   index: 2,
                   icon: Icons.queue_music,
@@ -184,8 +182,7 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
                 _buildSidebarItem(
                   index: 3,
                   icon: Icons.settings,
-                  label: '设置',
-                ),
+                  label: '设置'),
               ],
             ),
           ),
@@ -226,7 +223,8 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
     final isSelected = onTap == null && _selectedIndex == index;
 
     final backgroundColor = isSelected
-        ? NavidromeColors.activeBlue.withValues(alpha: navTheme.isDark ? 0.15 : 0.1)
+        ? NavidromeColors.activeBlue.withValues(alpha: navTheme.isDark ? 0.15 : 0.1,
+          )
         : Colors.transparent;
     final foregroundColor = isSelected
         ? NavidromeColors.activeBlue
@@ -257,7 +255,8 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
                 ),
                 if (badge != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: navTheme.isDark ? NavidromeColors.cardBackground : NavidromeColors.lightCardBackground,
                       borderRadius: BorderRadius.circular(10),
@@ -289,9 +288,7 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
         border: Border(
           top: BorderSide(
             color: navTheme.divider,
-            width: 0.5,
-          ),
-        ),
+            width: 0.5)),
       ),
       child: Row(
         children: [
@@ -443,8 +440,7 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
                 Positioned.fill(
                   child: IndexedStack(
                     index: _selectedIndex,
-                    children: _pages,
-                  ),
+                    children: _pages),
                 ),
                 Positioned(
                   left: 0,
@@ -454,7 +450,9 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
                 ),
               ],
             ),
-            bottomNavigationBar: _buildGlassBottomNavigationBar(context),
+            bottomNavigationBar: FeedbackAvoidance(
+              child: _buildGlassBottomNavigationBar(context),
+            ),
           );
 
     if (!Platform.isAndroid) {
@@ -519,7 +517,8 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
                       end: Alignment.bottomRight,
                       colors: [
                         Colors.white.withValues(alpha: 0.24),
-                        (themeTint ?? colorScheme.primary).withValues(alpha: 0.08),
+                        (themeTint ?? colorScheme.primary).withValues(alpha: 0.08,
+                        ),
                         Colors.white.withValues(alpha: 0.06),
                       ],
                     ),
@@ -719,7 +718,7 @@ class _NavidromeMainLayoutState extends State<NavidromeMainLayout> {
         final hasMiniPlayer = PlayerService().currentTrack != null ||
             PlayerService().currentSong != null;
         if (!hasMiniPlayer) return const SizedBox.shrink();
-        return const MiniPlayer();
+        return const FeedbackAvoidance(child: MiniPlayer());
       },
     );
   }

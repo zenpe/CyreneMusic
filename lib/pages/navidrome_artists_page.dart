@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import '../models/navidrome_models.dart';
 import '../models/track.dart';
@@ -80,8 +81,7 @@ class _NavidromeArtistsPageState extends State<NavidromeArtistsPage> {
         backgroundColor: navTheme.background,
         body: NavidromeErrorState(
           message: _error!,
-          onRetry: _loadArtists,
-        ),
+          onRetry: _loadArtists),
       );
     }
 
@@ -382,7 +382,8 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
       final matched = songs
           .where((song) =>
               song.artistId == widget.artist.id ||
-              song.artist == widget.artist.name)
+              song.artist == widget.artist.name,
+          )
           .toList();
 
       setState(() {
@@ -466,9 +467,10 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
 
       PlaylistQueueService().appendToQueue(tracks);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已加入播放队列')),
-        );
+        AppFeedback.of(
+          context,
+        ).showSnackBar(
+          const SnackBar(content: Text('已加入播放队列')));
       }
     } catch (_) {
       // ignore add failures
@@ -606,8 +608,7 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
     showNavidromeAlbumSheet(
       context: context,
       album: album,
-      api: _api,
-    );
+      api: _api);
   }
 
   @override
@@ -673,7 +674,8 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
     ThemeData theme,
     ColorScheme colorScheme,
     double width,
-    {ScrollController? scrollController}
+    {ScrollController? scrollController,
+  }
   ) {
     final albums = _artistInfo?.albums ?? [];
     final padding = NavidromeLayout.pagePadding(width);
@@ -698,7 +700,8 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
                   backgroundColor: colorScheme.primaryContainer,
                   backgroundImage: widget.artist.coverArt != null && _api != null
                       ? NetworkImage(
-                          _api!.buildCoverUrl(widget.artist.coverArt!, size: 200),
+                          _api!.buildCoverUrl(widget.artist.coverArt!, size: 200,
+                          ),
                         )
                       : null,
                   child: widget.artist.coverArt == null
@@ -742,8 +745,7 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
                 padding.left,
                 8,
                 padding.right,
-                4,
-              ),
+                4),
             ),
           ),
           SliverToBoxAdapter(
@@ -752,8 +754,7 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
                 padding.left,
                 0,
                 padding.right,
-                12,
-              ),
+                12),
               child: Column(
                 children: _topSongs.take(5).map((song) {
                   final index = _topSongs.indexOf(song);
@@ -780,8 +781,7 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
               padding.left,
               8,
               padding.right,
-              4,
-            ),
+              4),
           ),
         ),
         if (albums.isEmpty)
@@ -791,8 +791,7 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
                 padding.left,
                 8,
                 padding.right,
-                24,
-              ),
+                24),
               child: Text(
                 '暂无专辑',
                 style: theme.textTheme.bodyMedium?.copyWith(
@@ -854,8 +853,7 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
                     ),
                   );
                 },
-                childCount: albums.length,
-              ),
+                childCount: albums.length),
             ),
           ),
         const SliverPadding(padding: EdgeInsets.only(bottom: 16)),

@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import '../widgets/floating_playback_insets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -333,14 +334,6 @@ class _DiscoverPlaylistDetailContentState
                   track,
                   coverProvider: coverProvider,
                 );
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('正在加载：${track.name}'),
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                }
               },
             );
           }, childCount: detail.tracks.length),
@@ -408,17 +401,7 @@ class _DiscoverPlaylistDetailContentState
         throw Exception('部分歌曲导入失败');
       }
       if (!context.mounted) return;
-      fluent.displayInfoBar(
-        context,
-        builder: (context, close) => fluent.InfoBar(
-          title: const Text('导入完成'),
-          content: Text('目标歌单：${target.name}'),
-          action: fluent.IconButton(
-            icon: const Icon(fluent.FluentIcons.clear),
-            onPressed: close,
-          ),
-        ),
-      );
+      AppFeedback.of(context).success('已导入到歌单：${target.name}');
     } catch (e) {
       if (!context.mounted) return;
       final themeManager = ThemeManager();
@@ -584,7 +567,8 @@ class _DiscoverPlaylistDetailContentState
             ),
           ),
           // 底部留白
-          const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 100)),
+          const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 100),
+          ),
         ],
       ),
     );
@@ -1364,7 +1348,8 @@ class _DiscoverPlaylistDetailContentState
               ),
             ),
             // 底部留白
-            const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 100)),
+            const SliverToBoxAdapter(child: FloatingPlaybackBottomSpacer(fallback: 100),
+            ),
           ],
         ),
       ),
@@ -1862,19 +1847,6 @@ class _DiscoverPlaylistDetailContentState
 
     final coverProvider = _coverProviderCache[_coverKey(track)];
     await PlayerService().playTrack(track, coverProvider: coverProvider);
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('正在加载：${track.name}'),
-          duration: const Duration(seconds: 1),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
-    }
   }
 
   Widget _buildFluentDetail(BuildContext context) {
@@ -2070,20 +2042,6 @@ class _DiscoverPlaylistDetailContentState
     final track = allTracks[index];
     final coverProvider = _coverProviderCache[_coverKey(track)];
     await PlayerService().playTrack(track, coverProvider: coverProvider);
-
-    if (context.mounted) {
-      fluent.displayInfoBar(
-        context,
-        builder: (context, close) => fluent.InfoBar(
-          title: const Text('播放提示'),
-          content: Text('正在加载：${track.name}'),
-          action: fluent.IconButton(
-            icon: const Icon(fluent.FluentIcons.clear),
-            onPressed: close,
-          ),
-        ),
-      );
-    }
   }
 
   // Fluent UI 单曲列表项

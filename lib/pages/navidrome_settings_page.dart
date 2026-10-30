@@ -1,3 +1,4 @@
+import '../utils/app_feedback.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -45,8 +46,7 @@ class NavidromeSettingsPage extends StatelessWidget {
               const SizedBox(height: 16),
               NavidromeSectionHeader(
                 title: '账户与连接',
-                padding: EdgeInsets.zero,
-              ),
+                padding: EdgeInsets.zero),
             ],
           ),
           footer: Column(
@@ -54,8 +54,7 @@ class NavidromeSettingsPage extends StatelessWidget {
             children: [
               NavidromeSectionHeader(
                 title: '音源',
-                padding: EdgeInsets.zero,
-              ),
+                padding: EdgeInsets.zero),
               NavidromeCard(
                 onTap: () {
                   Navigator.of(context).push(
@@ -140,8 +139,7 @@ class NavidromeSettingsPage extends StatelessWidget {
               const SizedBox(height: 16),
               NavidromeSectionHeader(
                 title: '应用',
-                padding: EdgeInsets.zero,
-              ),
+                padding: EdgeInsets.zero),
               NavidromeCard(
                 onTap: () => _confirmExit(context),
                 padding: const EdgeInsets.all(12),
@@ -172,15 +170,17 @@ class NavidromeSettingsPage extends StatelessWidget {
           ),
           onSaved: () {
             if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('设置已保存')),
-            );
+            AppFeedback.of(
+              context,
+            ).showSnackBar(
+              const SnackBar(content: Text('设置已保存')));
           },
           onCleared: () {
             if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('登录信息已清除')),
-            );
+            AppFeedback.of(
+              context,
+            ).showSnackBar(
+              const SnackBar(content: Text('登录信息已清除')));
           },
         ),
       ),
