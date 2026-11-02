@@ -1,3 +1,4 @@
+import '../../widgets/collection_play_controls.dart';
 import '../../widgets/lyric_status_text.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -318,8 +319,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
   }
 
   Widget _buildPlaybackModeButton() {
-    return ListenableBuilder(
-      listenable: PlaybackModeService(),
+    return OrdinaryPlaybackModeBuilder(
       builder: (context, _) {
         final mode = PlaybackModeService().currentMode;
         IconData icon;

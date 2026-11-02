@@ -738,9 +738,9 @@ class PlaylistService extends ChangeNotifier {
     }
   }
 
-  Future<void> loadPlaylistTracks(int playlistId) async {
+  Future<bool> loadPlaylistTracks(int playlistId) async {
     final session = _sessionIdentity();
-    if (session == null) return;
+    if (session == null) return false;
     final generation = (_trackLoadGenerations[playlistId] ?? 0) + 1;
     _trackLoadGenerations[playlistId] = generation;
     _currentPlaylistId = playlistId;
@@ -761,7 +761,7 @@ class PlaylistService extends ChangeNotifier {
       }
       if (!_isCurrentSession(session) ||
           _trackLoadGenerations[playlistId] != generation) {
-        return;
+        return false;
       }
       final tracks = (data['tracks'] as List<dynamic>? ?? const [])
           .map((item) => PlaylistTrack.fromJson(item as Map<String, dynamic>))
@@ -783,8 +783,10 @@ class PlaylistService extends ChangeNotifier {
           ),
         );
       }
+      return true;
     } catch (error) {
       StructuredLogService.log('[PlaylistService] 加载歌曲失败: $error');
+      return false;
     } finally {
       if (_isCurrentSession(session) &&
           _trackLoadGenerations[playlistId] == generation &&

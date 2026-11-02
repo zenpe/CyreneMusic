@@ -278,8 +278,12 @@ class _NavidromePlaylistDetailPageState
           ),
         )
         .toList();
-    PlaylistQueueService().setQueue(tracks, index, QueueSource.playlist);
-    PlayerService().playTrack(tracks[index]);
+
+    PlayerService().playCollection(
+      tracks,
+      index: index,
+      source: QueueSource.playlist,
+    );
   }
 
   @override

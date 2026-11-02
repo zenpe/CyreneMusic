@@ -1062,12 +1062,11 @@ extension _MyPageMaterialUI on _MyPageState {
             ),
             const Divider(indent: 24, endIndent: 24),
             ListTile(
-              leading: const Icon(Icons.play_circle_outline),
-              title: const Text('播放全部'),
+              leading: const PlayAllIcon(Icons.play_circle_outline),
+              title: const PlayAllLabel('播放全部'),
               onTap: () {
                 Navigator.pop(context);
-                _openPlaylistDetail(playlist);
-                // 等待加载完成后播放的逻辑通常在详情页，这里仅打开详情
+                _playPlaylistFromMenu(playlist);
               },
             ),
             ListTile(
@@ -1673,9 +1672,9 @@ extension _MyPageMaterialUI on _MyPageState {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.play_arrow_rounded, size: 17, color: textColor),
+                                    PlayAllIcon(Icons.play_arrow_rounded, size: 17, color: textColor),
                                     const SizedBox(width: 4),
-                                    Text(
+                                    PlayAllLabel(
                                       '播放全部',
                                       style: TextStyle(
                                         fontSize: 12,

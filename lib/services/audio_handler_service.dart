@@ -184,7 +184,7 @@ class CyreneAudioHandler extends BaseAudioHandler
   }
 
   AudioServiceRepeatMode _getRepeatMode() {
-    switch (PlaybackModeService().currentMode) {
+    switch (_player.playbackMode) {
       case PlaybackMode.sequential:
         return AudioServiceRepeatMode.none;
       case PlaybackMode.repeatOne:
@@ -196,7 +196,7 @@ class CyreneAudioHandler extends BaseAudioHandler
   }
 
   AudioServiceShuffleMode _getShuffleMode() {
-    return PlaybackModeService().currentMode == PlaybackMode.shuffle
+    return _player.playbackMode == PlaybackMode.shuffle
         ? AudioServiceShuffleMode.all
         : AudioServiceShuffleMode.none;
   }
@@ -925,7 +925,7 @@ class CyreneAudioHandler extends BaseAudioHandler
     final position = player.position;
     final bufferedPosition = player.bufferedPosition;
     final playbackSpeed = player.playbackSpeed;
-    final mode = PlaybackModeService().currentMode;
+    final mode = _player.playbackMode;
     final modeLabel = switch (mode) {
       PlaybackMode.sequential => '顺序播放',
       PlaybackMode.repeatOne => '单曲循环',
@@ -939,7 +939,7 @@ class CyreneAudioHandler extends BaseAudioHandler
     };
 
     final controls = [
-      MediaControl(
+      if (!_player.isPersonalFm) MediaControl(
         androidIcon: modeIcon,
         label: modeLabel,
         action: MediaAction.custom,
@@ -1095,6 +1095,7 @@ class CyreneAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
+    if (_player.isPersonalFm) return;
     switch (repeatMode) {
       case AudioServiceRepeatMode.none:
         await PlaybackModeService().setMode(PlaybackMode.sequential);
@@ -1111,6 +1112,7 @@ class CyreneAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
+    if (_player.isPersonalFm) return;
     if (shuffleMode == AudioServiceShuffleMode.all ||
         shuffleMode == AudioServiceShuffleMode.group) {
       await PlaybackModeService().setMode(PlaybackMode.shuffle);
@@ -1132,6 +1134,7 @@ class CyreneAudioHandler extends BaseAudioHandler
     }
 
     if (name == 'cycle_repeat_mode') {
+      if (_player.isPersonalFm) return;
       // 来自系统媒体控件“循环模式”按钮的指令
       StructuredLogService.log('🎮 [AudioHandler] 系统媒体控件: 切换循环模式');
       await PlaybackModeService().toggleMode();

@@ -289,13 +289,14 @@ class _FavoritesPageState extends State<FavoritesPage>
     final trackList = favorites.map((f) => f.toTrack()).toList();
 
     // 设置播放队列
-    PlaylistQueueService().setQueue(
-      trackList,
-      index,
-      QueueSource.favorites);
+
 
     // 播放选中的歌曲
-    PlayerService().playTrack(trackList[index]);
+    PlayerService().playCollection(
+      trackList,
+      index: index,
+      source: QueueSource.favorites,
+    );
   }
 
   /// 获取音乐平台图标

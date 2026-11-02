@@ -1,3 +1,4 @@
+import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
 import 'dart:io';
 import 'dart:ui';
@@ -1274,8 +1275,7 @@ class _MobilePlayerFluidCloudLayoutState
 
   /// 构建播放模式按钮（1键切换，长按呼出模式面板）
   Widget _buildPlaybackModeButton(BuildContext context) {
-    return AnimatedBuilder(
-      animation: PlaybackModeService(),
+    return OrdinaryPlaybackModeBuilder(
       builder: (context, _) {
         final modeService = PlaybackModeService();
         final currentMode = modeService.currentMode;

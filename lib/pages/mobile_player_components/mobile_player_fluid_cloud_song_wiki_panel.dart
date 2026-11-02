@@ -1,3 +1,4 @@
+import '../../widgets/collection_play_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -1222,8 +1223,13 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
         GestureDetector(
           onTap: () {
             if (detail.tracks.isNotEmpty) {
-              PlaylistQueueService().setQueue(detail.tracks, 0, QueueSource.playlist);
-              PlayerService().playTrack(detail.tracks[0], fromPlaylist: true);
+
+              PlayerService().playCollection(
+                detail.tracks,
+                index: 0,
+                source: QueueSource.playlist,
+                playAll: true,
+              );
             }
           },
           child: Container(
@@ -1236,9 +1242,9 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.play_arrow_rounded, color: Colors.white.withValues(alpha: 0.85), size: 20),
+                PlayAllIcon(Icons.play_arrow_rounded, color: Colors.white.withValues(alpha: 0.85), size: 20),
                 const SizedBox(width: 6),
-                Text(
+                PlayAllLabel(
                   '播放全部',
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 13, fontWeight: FontWeight.w600),
                 ),
@@ -1264,8 +1270,12 @@ class _MobilePlayerFluidCloudSongWikiPanelState extends State<MobilePlayerFluidC
       onTap: () {
         final index = allTracks.indexOf(track);
         final startIndex = index >= 0 ? index : 0;
-        PlaylistQueueService().setQueue(allTracks, startIndex, QueueSource.playlist);
-        PlayerService().playTrack(allTracks[startIndex], fromPlaylist: true);
+
+        PlayerService().playCollection(
+          allTracks,
+          index: startIndex,
+          source: QueueSource.playlist,
+        );
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),

@@ -54,11 +54,15 @@ class PlaylistQueueService extends ChangeNotifier {
   }
 
   /// 追加歌曲到当前队列
-  void appendToQueue(List<Track> tracks) {
-    for (final t in tracks) {
-      _pb.addToQueue(t);
-    }
-  }
+  Future<void> appendToQueue(
+    List<Track> tracks, {
+    QueueSource? expectedSource,
+    int? expectedTail,
+  }) => _pb.addAllToQueue(
+    tracks,
+    expectedSource: expectedSource,
+    expectedTail: expectedTail,
+  );
 
   /// 插入为下一首播放
   void insertNext(Track track) {
@@ -66,9 +70,7 @@ class PlaylistQueueService extends ChangeNotifier {
   }
 
   /// 移除队列中的歌曲
-  void removeAt(int index) {
-    _pb.removeAt(index);
-  }
+  Future<void> removeAt(int index) => _pb.removeAt(index);
 
   /// 调整队列顺序
   void move(int oldIndex, int newIndex) {

@@ -1,3 +1,4 @@
+import 'services/netease_fm_service.dart';
 import 'utils/app_feedback.dart';
 import 'widgets/feedback_boundary.dart';
 import 'services/structured_log_service.dart';
@@ -348,6 +349,7 @@ Future<void> main() async {
             'StartupPlaybackCoordinator.restorePlaybackOnStartup',
             () async {
               await StartupPlaybackCoordinator().restorePlaybackOnStartup();
+              unawaited(NeteaseFmService().resumeRestoredQueue());
             },
           );
           log(' 启动播放会话恢复流程已完成');

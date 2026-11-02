@@ -168,11 +168,16 @@ class _HomeForYouTabState extends State<HomeForYouTab>
     }
   }
 
-  Future<void> _playDaily(int index) async {
+  Future<void> _playDaily(int index, {bool playAll = false}) async {
     final tracks = songs.map(neteaseSongToTrack).toList();
     if (index < 0 || index >= tracks.length) return;
-    PlaylistQueueService().setQueue(tracks, index, QueueSource.playlist);
-    await PlayerService().playTrack(tracks[index]);
+
+    await PlayerService().playCollection(
+      tracks,
+      index: index,
+      source: QueueSource.playlist,
+      playAll: playAll,
+    );
   }
 
   Widget button(String text, VoidCallback? action) {
@@ -283,6 +288,7 @@ class _HomeForYouTabState extends State<HomeForYouTab>
           DailySongsPreview(
             songs: songs,
             onPlay: (index) => unawaited(_playDaily(index)),
+            onPlayAll: () => unawaited(_playDaily(0, playAll: true)),
             onOpenAll: () {
               if (widget.onOpenDailyDetail != null) {
                 widget.onOpenDailyDetail!(songs);

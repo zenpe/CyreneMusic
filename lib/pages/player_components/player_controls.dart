@@ -1,3 +1,4 @@
+import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
 import '../../services/structured_log_service.dart';
 import 'package:flutter/material.dart';
@@ -185,8 +186,7 @@ class PlayerControls extends StatelessWidget {
               ],
 
               // 播放模式切换
-              AnimatedBuilder(
-                animation: PlaybackModeService(),
+              OrdinaryPlaybackModeBuilder(
                 builder: (context, child) {
                   final mode = PlaybackModeService().currentMode;
                   IconData icon;

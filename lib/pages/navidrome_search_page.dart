@@ -128,7 +128,7 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
         )
         .toList();
 
-    PlaylistQueueService().setQueue(tracks, index, QueueSource.search);
+    if (index < 0 || index >= tracks.length) return;
     PlayerService().playTrack(tracks[index]);
   }
 
@@ -157,8 +157,13 @@ class _NavidromeSearchPageState extends State<NavidromeSearchPage>
   Future<void> _playAlbumQuick(NavidromeAlbum album) async {
     final tracks = await _buildAlbumTracks(album);
     if (tracks.isEmpty) return;
-    PlaylistQueueService().setQueue(tracks, 0, QueueSource.album);
-    PlayerService().playTrack(tracks[0]);
+
+    PlayerService().playCollection(
+      tracks,
+      index: 0,
+      source: QueueSource.album,
+      playAll: true,
+    );
   }
 
   Future<void> _addAlbumToQueue(NavidromeAlbum album) async {

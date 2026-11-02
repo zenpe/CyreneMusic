@@ -409,7 +409,7 @@ extension _MyPageCupertinoUI on _MyPageState {
               color: CupertinoColors.systemBlue,
               borderRadius: BorderRadius.circular(18),
               onPressed: _playAll,
-              child: Row(mainAxisSize: MainAxisSize.min, children: const [Icon(CupertinoIcons.play_fill, size: 16, color: CupertinoColors.white), SizedBox(width: 6), Text('播放全部', style: TextStyle(fontSize: 14, color: CupertinoColors.white))]),
+              child: Row(mainAxisSize: MainAxisSize.min, children: const [PlayAllIcon(CupertinoIcons.play_fill, size: 16, color: CupertinoColors.white), SizedBox(width: 6), PlayAllLabel('播放全部', style: TextStyle(fontSize: 14, color: CupertinoColors.white))]),
             ),
         ],
       ),
@@ -588,7 +588,7 @@ extension _MyPageCupertinoUI on _MyPageState {
               Navigator.pop(context);
               _openPlaylistDetail(playlist);
             },
-            child: const Text('播放全部'),
+            child: const PlayAllLabel('播放全部'),
           ),
           if (_hasImportConfig(playlist))
             CupertinoActionSheetAction(

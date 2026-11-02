@@ -55,6 +55,208 @@ void main() {
     await testDirectory.delete(recursive: true);
   });
 
+  for (final mode in PlaybackMode.values) {
+    test(
+      'collection play-all respects $mode and selects a valid first entry',
+      () async {
+        final modes = PlaybackModeService();
+        final original = modes.currentMode;
+        final resolver = _Resolver()..playable.addAll(['0', '1', '2', '3']);
+        final playback = _createPlayback(resolver);
+        try {
+          await modes.setMode(mode);
+          await playback.playCollection(
+            List.generate(4, track),
+            playAll: true,
+            source: QueueSource.album,
+          );
+          expect(playback.queue.length, 4);
+          expect(playback.source, QueueSource.album);
+          expect(
+            modes.currentMode,
+            mode == PlaybackMode.repeatOne ? PlaybackMode.loopAll : mode,
+          );
+          expect(playback.currentIndex, inInclusiveRange(0, 3));
+          if (mode != PlaybackMode.shuffle) expect(playback.currentIndex, 0);
+          await playback.playCollection(List.generate(4, track), index: 2);
+          expect(playback.currentTrack?.id, '2');
+          expect(
+            modes.currentMode,
+            mode == PlaybackMode.repeatOne ? PlaybackMode.loopAll : mode,
+          );
+          await modes.setMode(mode);
+          await playback.playCollection(List.generate(4, track), index: 1);
+          expect(
+            modes.currentMode,
+            mode,
+            reason: 'direct selection preserves every mode',
+          );
+          expect(playback.currentTrack?.id, '1');
+          final entry = playback.activeQueueEntryId;
+          await playback.playCollection([], playAll: true);
+          await playback.playCollection([track(0)], index: -1);
+          expect(playback.activeQueueEntryId, entry);
+          expect(modes.currentMode, mode);
+          await playback.playCollection(List.generate(4, track), shuffle: true);
+          expect(modes.currentMode, PlaybackMode.shuffle);
+          expect(playback.queue.map((t) => t.id), ['0', '1', '2', '3']);
+          expect(playback.currentIndex, inInclusiveRange(0, 3));
+        } finally {
+          playback.dispose();
+          await modes.setMode(original);
+        }
+      },
+    );
+
+    test('FM uses sequential playback without overwriting $mode', () async {
+      final modes = PlaybackModeService();
+      final original = modes.currentMode;
+      final resolver = _Resolver()..playable.addAll(['0', '1', '2']);
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      try {
+        await modes.setMode(mode);
+        await playback.playCollection([
+          track(0),
+          track(1),
+        ], source: QueueSource.neteaseFm);
+        expect(playback.effectivePlaybackMode, PlaybackMode.sequential);
+        engine.complete();
+        await waitUntil(() => playback.currentTrack?.id == '1');
+        expect(playback.hasNext, isFalse);
+        engine.complete();
+        await waitUntil(() => playback.state == PBState.idle);
+        expect(modes.currentMode, mode);
+        await playback.playCollection([track(2)], source: QueueSource.album);
+        expect(playback.effectivePlaybackMode, mode);
+      } finally {
+        playback.dispose();
+        await modes.setMode(original);
+      }
+    });
+  }
+
+  test(
+    'queue entry selection distinguishes duplicate songs and ignores removed entries',
+    () async {
+      final resolver = _Resolver()..playable.addAll(['0', '1']);
+      final playback = _createPlayback(resolver);
+      try {
+        await playback.playCollection([track(0), track(1), track(0)]);
+        final duplicate = playback.queueEntryIdAt(2)!;
+        await playback.playQueueEntry(duplicate);
+        expect(playback.currentIndex, 2);
+        expect(playback.activeQueueEntryId, duplicate);
+        await playback.removeAt(2);
+        final active = playback.activeQueueEntryId;
+        await playback.playQueueEntry(duplicate);
+        expect(playback.activeQueueEntryId, active);
+      } finally {
+        playback.dispose();
+      }
+    },
+  );
+
+  test(
+    'failed collection cannot overwrite a newer explicit choice of the same mode',
+    () async {
+      final modes = PlaybackModeService();
+      final original = modes.currentMode;
+      final resolver = _Resolver()..playable.add('0');
+      final gate = Completer<TrackResolutionResult>();
+      final playback = _createPlayback(resolver);
+      try {
+        await modes.setMode(PlaybackMode.repeatOne);
+        await playback.playCollection([track(0)]);
+        resolver.gates['1'] = gate;
+        final request = playback.playCollection([track(1)], playAll: true);
+        await waitUntil(() => resolver.requests.contains('1'));
+        expect(modes.currentMode, PlaybackMode.loopAll);
+        await modes.setMode(PlaybackMode.loopAll);
+        gate.complete(_Resolver.failure);
+        await request;
+        expect(modes.currentMode, PlaybackMode.loopAll);
+        expect(playback.currentTrack?.id, '0');
+      } finally {
+        if (!gate.isCompleted) gate.complete(_Resolver.failure);
+        playback.dispose();
+        await modes.setMode(original);
+      }
+    },
+  );
+
+  test(
+    'failed play-all rolls back its temporary repeat-one mode change',
+    () async {
+      final modes = PlaybackModeService();
+      final original = modes.currentMode;
+      final resolver = _Resolver()..playable.add('0');
+      final playback = _createPlayback(resolver);
+      try {
+        await modes.setMode(PlaybackMode.repeatOne);
+        await playback.playCollection([track(0)], source: QueueSource.album);
+        await playback.playCollection([track(1)], playAll: true);
+        expect(playback.currentTrack?.id, '0');
+        expect(playback.source, QueueSource.album);
+        expect(modes.currentMode, PlaybackMode.repeatOne);
+      } finally {
+        playback.dispose();
+        await modes.setMode(original);
+      }
+    },
+  );
+
+  for (final mode in [
+    PlaybackMode.sequential,
+    PlaybackMode.loopAll,
+    PlaybackMode.repeatOne,
+  ]) {
+    test('removing the final active entry respects $mode boundary', () async {
+      final modes = PlaybackModeService();
+      final original = modes.currentMode;
+      final resolver = _Resolver()..playable.addAll(['0', '1', '2']);
+      final playback = _createPlayback(resolver);
+      try {
+        await modes.setMode(mode);
+        await playback.playCollection(List.generate(3, track), index: 2);
+        await playback.removeAt(2);
+        if (mode == PlaybackMode.sequential) {
+          expect(playback.state, PBState.idle);
+        } else {
+          expect(playback.currentTrack?.id, '0');
+        }
+        expect(modes.currentMode, mode);
+      } finally {
+        playback.dispose();
+        await modes.setMode(original);
+      }
+    });
+  }
+
+  test(
+    'shuffle play-next keeps its priority and previous-next history',
+    () async {
+      final modes = PlaybackModeService();
+      final original = modes.currentMode;
+      final resolver = _Resolver()..playable.addAll(['0', '1', '2', '3', '9']);
+      final playback = _createPlayback(resolver);
+      try {
+        await modes.setMode(PlaybackMode.shuffle);
+        await playback.playCollection(List.generate(4, track));
+        await playback.playNext(track(9));
+        await playback.next();
+        expect(playback.currentTrack?.id, '9');
+        await playback.previous();
+        expect(playback.currentTrack?.id, '0');
+        await playback.next();
+        expect(playback.currentTrack?.id, '9');
+      } finally {
+        playback.dispose();
+        await modes.setMode(original);
+      }
+    },
+  );
+
   test(
     'local playback without lyrics does not retain the resolving lyric state',
     () async {

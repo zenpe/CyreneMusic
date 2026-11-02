@@ -361,7 +361,7 @@ extension _MyPageFluentUI on _MyPageState {
           const SizedBox(width: 6),
           Text(countText),
           const Spacer(),
-          if (count > 0) fluent.FilledButton(onPressed: _playAll, child: const Text('播放全部')),
+          if (count > 0) fluent.FilledButton(onPressed: _playAll, child: const PlayAllLabel('播放全部')),
         ],
       ),
     );

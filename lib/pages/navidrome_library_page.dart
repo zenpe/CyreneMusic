@@ -1,3 +1,4 @@
+import '../widgets/collection_play_controls.dart';
 import '../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import '../models/navidrome_models.dart';
@@ -598,7 +599,7 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
                 ),
                 IconButton.filledTonal(
                   onPressed: () => _playRadioStation(station),
-                  icon: const Icon(Icons.play_arrow),
+                  icon: const PlayAllIcon(Icons.play_arrow),
                 ),
               ],
             ),
@@ -725,8 +726,11 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
         )
         .toList();
 
-    PlaylistQueueService().setQueue(tracks, index, QueueSource.search);
-    PlayerService().playTrack(tracks[index]);
+    PlayerService().playCollection(
+      tracks,
+      index: index,
+      source: QueueSource.search,
+    );
   }
 
   Future<List<Track>> _buildAlbumTracks(NavidromeAlbum album) async {
@@ -754,8 +758,13 @@ class _NavidromeLibraryPageState extends State<NavidromeLibraryPage>
   Future<void> _playAlbumQuick(NavidromeAlbum album) async {
     final tracks = await _buildAlbumTracks(album);
     if (tracks.isEmpty) return;
-    PlaylistQueueService().setQueue(tracks, 0, QueueSource.album);
-    PlayerService().playTrack(tracks[0]);
+
+    PlayerService().playCollection(
+      tracks,
+      index: 0,
+      source: QueueSource.album,
+      playAll: true,
+    );
   }
 
   Future<void> _addAlbumToQueue(NavidromeAlbum album) async {
@@ -1016,7 +1025,7 @@ class _NavidromeAlbumPageState extends State<NavidromeAlbumPage> {
     }
   }
 
-  void _playSongs(int index) {
+  void _playSongs(int index, {bool playAll = false}) {
     if (_songs.isEmpty) return;
     final api = _api;
     if (api == null) return;
@@ -1034,8 +1043,12 @@ class _NavidromeAlbumPageState extends State<NavidromeAlbumPage> {
         )
         .toList();
 
-    PlaylistQueueService().setQueue(tracks, index, QueueSource.album);
-    PlayerService().playTrack(tracks[index]);
+    PlayerService().playCollection(
+      tracks,
+      index: index,
+      source: QueueSource.album,
+      playAll: playAll,
+    );
   }
 
   @override
@@ -1134,10 +1147,10 @@ class _NavidromeAlbumPageState extends State<NavidromeAlbumPage> {
                                     children: [
                                       FilledButton.icon(
                                         onPressed: _songs.isNotEmpty
-                                            ? () => _playSongs(0)
+                                            ? () => _playSongs(0, playAll: true)
                                             : null,
-                                        icon: const Icon(Icons.play_arrow),
-                                        label: const Text('播放'),
+                                        icon: const PlayAllIcon(Icons.play_arrow),
+                                        label: const PlayAllLabel('播放全部'),
                                         style: FilledButton.styleFrom(
                                           shape: const StadiumBorder(),
                                         ),
@@ -1233,9 +1246,11 @@ class _NavidromeAlbumPageState extends State<NavidromeAlbumPage> {
         )
         .toList();
 
-    tracks.shuffle();
-    PlaylistQueueService().setQueue(tracks, 0, QueueSource.album);
-    PlayerService().playTrack(tracks[0]);
+    PlayerService().playCollection(
+      tracks,
+      source: QueueSource.album,
+      shuffle: true,
+    );
   }
 }
 
@@ -1291,7 +1306,7 @@ class _PlaylistDetailPageState extends State<_PlaylistDetailPage> {
     }
   }
 
-  void _playSongs(int index) {
+  void _playSongs(int index, {bool playAll = false}) {
     if (_songs.isEmpty) return;
     final api = _api;
     if (api == null) return;
@@ -1309,8 +1324,11 @@ class _PlaylistDetailPageState extends State<_PlaylistDetailPage> {
         )
         .toList();
 
-    PlaylistQueueService().setQueue(tracks, index, QueueSource.playlist);
-    PlayerService().playTrack(tracks[index]);
+    PlayerService().playCollection(
+      tracks,
+      index: index,
+      source: QueueSource.playlist,
+    );
   }
 
   @override

@@ -16,6 +16,45 @@ void main() {
     source: MusicSource.netease,
   );
 
+  test(
+    'shuffle insert-next preserves the current entry and prioritizes insertion',
+    () {
+      final queue = QueueController(random: Random(7))
+        ..replace(List.generate(5, track), 2, QueueSource.album);
+      final active = queue.currentEntryId;
+      final before = queue.shuffleTraversalEntryIds(
+        PlaybackTransitionDirection.forward,
+      );
+      queue.insertNext(track(9));
+      final inserted = queue.entryIdAt(3);
+      final after = queue.shuffleTraversalEntryIds(
+        PlaybackTransitionDirection.forward,
+      );
+      expect(queue.currentEntryId, active);
+      expect(after, [inserted, ...before]);
+      queue.commitEntry(inserted!);
+      expect(
+        queue
+            .shuffleTraversalEntryIds(PlaybackTransitionDirection.backward)
+            .first,
+        active,
+      );
+      queue.insertNext(track(9));
+      expect(
+        queue.currentEntryId,
+        inserted,
+        reason: 'inserting the active song is a no-op',
+      );
+      queue.append(track(10));
+      expect(
+        queue
+            .shuffleTraversalEntryIds(PlaybackTransitionDirection.backward)
+            .first,
+        active,
+      );
+    },
+  );
+
   test('replace clamps index and exposes current track', () {
     final queue = QueueController();
     queue.replace([track(1), track(2)], 9, QueueSource.playlist);

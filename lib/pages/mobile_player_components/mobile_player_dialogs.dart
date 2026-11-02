@@ -1,3 +1,4 @@
+import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
 import 'dart:async';
 import 'dart:io';
@@ -129,6 +130,7 @@ class MobilePlayerDialogs {
 
   /// 显示播放模式选择弹窗
   static void showPlaybackModeSelector(BuildContext context) {
+    if (PlaylistQueueService().source == QueueSource.neteaseFm) return;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final colorScheme = theme.colorScheme;
@@ -729,8 +731,7 @@ class MobilePlayerDialogs {
                               padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
                               child: Row(
                                 children: [
-                                  AnimatedBuilder(
-                                    animation: PlaybackModeService(),
+                                  OrdinaryPlaybackModeBuilder(
                                     builder: (context, _) {
                                       final modeService = PlaybackModeService();
                                       final modeName = modeService
@@ -1023,7 +1024,7 @@ class MobilePlayerDialogs {
           : Colors.transparent,
       child: InkWell(
         onTap: () {
-          PlayerService().playTrack(track);
+          PlayerService().playTrack(track, queueEntryId: hasQueue ? queueService?.entryIdAt(index) : null);
           Navigator.pop(context);
         },
         child: Container(

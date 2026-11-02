@@ -1,3 +1,5 @@
+import '../../services/netease_fm_service.dart';
+import '../../widgets/collection_play_controls.dart';
 import '../../utils/netease_track.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -170,8 +172,13 @@ class _DailyRecommendHeroCardState extends State<DailyRecommendHeroCard> {
                             onPressed: () async {
                               final tracks = widget.tracks.map((m) => convertToTrack(m)).toList();
                               if (tracks.isEmpty) return;
-                              PlaylistQueueService().setQueue(tracks, 0, QueueSource.playlist);
-                              await PlayerService().playTrack(tracks.first);
+
+                              await PlayerService().playCollection(
+                                tracks,
+                                index: 0,
+                                source: QueueSource.playlist,
+                                playAll: true,
+                              );
                             },
                           ),
                           const SizedBox(width: 12),
@@ -341,8 +348,8 @@ class PersonalFmCompactCard extends StatelessWidget {
                                 } else if (ps.isPaused && _currentTrackInList(fmTracks)) {
                                   await ps.resume();
                                 } else {
-                                  PlaylistQueueService().setQueue(fmTracks, 0, QueueSource.playlist);
-                                  await ps.playTrack(fmTracks.first);
+
+                                  await NeteaseFmService().startTracks(fmTracks, index: 0);
                                 }
                               },
                             ),
@@ -358,8 +365,8 @@ class PersonalFmCompactCard extends StatelessWidget {
                                   await PlayerService().playNext();
                                 } else {
                                   final startIndex = fmTracks.length > 1 ? 1 : 0;
-                                  PlaylistQueueService().setQueue(fmTracks, startIndex, QueueSource.playlist);
-                                  await PlayerService().playTrack(fmTracks[startIndex]);
+
+                                  await NeteaseFmService().startTracks(fmTracks, index: startIndex);
                                 }
                               },
                             ),
@@ -384,6 +391,7 @@ class PersonalFmCompactCard extends StatelessWidget {
   }
 
   bool _isSameQueueAs(List<Track> tracks) {
+    if (PlaylistQueueService().source == QueueSource.neteaseFm && NeteaseFmService().active) return true;
     final q = PlaylistQueueService().queue;
     if (q.length != tracks.length) return false;
     for (var i = 0; i < q.length; i++) {
@@ -460,7 +468,7 @@ class _GradientPlayButtonState extends State<GradientPlayButton> {
               BoxShadow(color: cs.primary.withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 4)),
             ] : [],
           ),
-          child: Icon(Icons.play_arrow_rounded, color: cs.onPrimary, size: 28),
+          child: PlayAllIcon(Icons.play_arrow_rounded, color: cs.onPrimary, size: 28),
         ),
       ),
     );

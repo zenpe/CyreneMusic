@@ -9,6 +9,7 @@ import '../utils/theme_manager.dart';
 import '../services/netease_album_service.dart';
 import '../models/track.dart';
 import '../services/player_service.dart';
+import '../services/playlist_queue_service.dart';
 import '../widgets/track_action_menu.dart';
 
 class AlbumDetailPage extends StatefulWidget {
@@ -321,6 +322,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
           (s0) => _buildSongListItem(
             context: context,
             song: s0 as Map<String, dynamic>,
+            songs: songs.cast<Map<String, dynamic>>(),
             album: album,
             isFluent: isFluent,
             placeholderColor: placeholderColor,
@@ -421,9 +423,23 @@ Widget _buildAdaptiveProgressIndicator(bool isFluent) {
       : const CircularProgressIndicator();
 }
 
+Future<void> _playAlbumSong(List<Map<String, dynamic>> songs,
+    Map<String, dynamic> album, Track selected) {
+  final tracks = songs.map((song) => Track(
+    id: song['id'], name: song['name']?.toString() ?? '',
+    artists: song['artists']?.toString() ?? '',
+    album: song['album']?.toString() ?? album['name']?.toString() ?? '',
+    picUrl: song['picUrl']?.toString() ?? album['coverImgUrl']?.toString() ?? '',
+    source: MusicSource.netease,
+  )).toList();
+  final index = tracks.indexWhere((t) => t.id.toString() == selected.id.toString());
+  return PlayerService().playCollection(tracks, index: index, source: QueueSource.album);
+}
+
 Widget _buildSongListItem({
   required BuildContext context,
   required Map<String, dynamic> song,
+  required List<Map<String, dynamic>> songs,
   required Map<String, dynamic> album,
   required bool isFluent,
   required Color placeholderColor,
@@ -492,7 +508,7 @@ Widget _buildSongListItem({
 
   final trailing = TrackMoreButton(
     track: track,
-    onPlay: () => PlayerService().playTrack(track),
+    onPlay: () => _playAlbumSong(songs, album, track),
     size: 32,
   );
 
@@ -502,7 +518,7 @@ Widget _buildSongListItem({
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => PlayerService().playTrack(track),
+          onTap: () => _playAlbumSong(songs, album, track),
           borderRadius: BorderRadius.circular(20),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -571,7 +587,7 @@ Widget _buildSongListItem({
         style: isCupertino ? const TextStyle(color: CupertinoColors.systemGrey, fontSize: 13) : null,
       ),
       trailing: trailing,
-      onPressed: () => PlayerService().playTrack(track),
+      onPressed: () => _playAlbumSong(songs, album, track),
     ),
   );
 }
@@ -604,7 +620,7 @@ Widget _buildSongsGrid({
 
       final trailing = TrackMoreButton(
         track: track,
-        onPlay: () => PlayerService().playTrack(track),
+        onPlay: () => _playAlbumSong(songs, album, track),
         size: 32,
       );
 
@@ -707,7 +723,7 @@ Widget _buildSongsGrid({
               child: cardContent,
             );
 
-      void handleTap() => PlayerService().playTrack(track);
+      void handleTap() => _playAlbumSong(songs, album, track);
 
       return ConstrainedBox(
         constraints: BoxConstraints(

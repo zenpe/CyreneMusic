@@ -1,3 +1,4 @@
+import '../../services/netease_fm_service.dart';
 import '../../utils/app_feedback.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -353,8 +354,8 @@ class MobilePersonalFm extends StatelessWidget {
     } else if (ps.isPaused && (isFmQueue || isFmCurrent)) {
       await ps.resume();
     } else {
-      PlaylistQueueService().setQueue(tracks, 0, QueueSource.playlist);
-      await ps.playTrack(tracks.first);
+
+      await NeteaseFmService().startTracks(tracks, index: 0);
       if (context.mounted) {
          try {
           AppFeedback.of(context).showSnackBar(
@@ -373,8 +374,8 @@ class MobilePersonalFm extends StatelessWidget {
       await PlayerService().playNext();
     } else {
       final startIndex = tracks.length > 1 ? 1 : 0;
-      PlaylistQueueService().setQueue(tracks, startIndex, QueueSource.playlist);
-      await PlayerService().playTrack(tracks[startIndex]);
+
+      await NeteaseFmService().startTracks(tracks, index: startIndex);
     }
   }
 
@@ -383,6 +384,7 @@ class MobilePersonalFm extends StatelessWidget {
   }
 
   bool _isSameQueueAs(List<Track> tracks) {
+    if (PlaylistQueueService().source == QueueSource.neteaseFm && NeteaseFmService().active) return true;
     final q = PlaylistQueueService().queue;
     if (q.length != tracks.length) return false;
     for (var i = 0; i < q.length; i++) {

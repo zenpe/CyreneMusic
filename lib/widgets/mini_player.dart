@@ -1,3 +1,4 @@
+import 'collection_play_controls.dart';
 import '../utils/app_feedback.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -1108,8 +1109,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     ColorScheme colorScheme, {
     bool compact = false,
   }) {
-    return AnimatedBuilder(
-      animation: PlaybackModeService(),
+    return OrdinaryPlaybackModeBuilder(
       builder: (context, _) {
         final modeService = PlaybackModeService();
         final icon = modeService.getModeIcon();
@@ -2480,6 +2480,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                         .getCoverProvider(t);
                                     PlayerService().playTrack(
                                       t,
+                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
                                       coverProvider: coverProvider,
                                     );
                                     Navigator.pop(context);
@@ -2491,6 +2492,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                       .getCoverProvider(t);
                                   PlayerService().playTrack(
                                     t,
+                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
                                     coverProvider: coverProvider,
                                   );
                                   Navigator.pop(context);
@@ -2810,6 +2812,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                         PlayerService()
                                                             .playTrack(
                                                               t,
+                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
                                                               coverProvider:
                                                                   coverProvider,
                                                             );
@@ -2866,6 +2869,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                             );
                                                     PlayerService().playTrack(
                                                       t,
+                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
                                                       coverProvider:
                                                           coverProvider,
                                                     );
@@ -2891,6 +2895,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                           .getCoverProvider(t);
                                                   PlayerService().playTrack(
                                                     t,
+                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
                                                     coverProvider:
                                                         coverProvider,
                                                   );
@@ -3081,6 +3086,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                           PlayerService()
                                                               .playTrack(
                                                                 t,
+                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
                                                                 coverProvider:
                                                                     coverProvider,
                                                               );
@@ -3300,6 +3306,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                             );
                                                     PlayerService().playTrack(
                                                       t,
+                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
                                                       coverProvider:
                                                           coverProvider,
                                                     );
@@ -3341,6 +3348,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                       .getCoverProvider(t);
                                               PlayerService().playTrack(
                                                 t,
+                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
                                                 coverProvider: coverProvider,
                                               );
                                               Navigator.pop(context);
@@ -3495,6 +3503,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                         .getCoverProvider(t);
                                                 PlayerService().playTrack(
                                                   t,
+                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
                                                   coverProvider: coverProvider,
                                                 );
                                                 Navigator.pop(context);
@@ -3507,6 +3516,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                       .getCoverProvider(t);
                                               PlayerService().playTrack(
                                                 t,
+                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
                                                 coverProvider: coverProvider,
                                               );
                                               Navigator.pop(context);

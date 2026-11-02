@@ -412,8 +412,11 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
         )
         .toList();
 
-    PlaylistQueueService().setQueue(tracks, index, QueueSource.search);
-    PlayerService().playTrack(tracks[index]);
+    PlayerService().playCollection(
+      tracks,
+      index: index,
+      source: QueueSource.search,
+    );
   }
 
   Future<void> _playAlbumQuick(NavidromeAlbum album) async {
@@ -437,8 +440,12 @@ class _NavidromeArtistDetailPageState extends State<NavidromeArtistDetailPage> {
           )
           .toList();
 
-      PlaylistQueueService().setQueue(tracks, 0, QueueSource.album);
-      PlayerService().playTrack(tracks[0]);
+      PlayerService().playCollection(
+        tracks,
+        index: 0,
+        source: QueueSource.album,
+        playAll: true,
+      );
     } catch (_) {
       // ignore play errors
     }

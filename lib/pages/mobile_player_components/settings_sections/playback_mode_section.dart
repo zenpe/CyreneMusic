@@ -1,3 +1,4 @@
+import '../../../widgets/collection_play_controls.dart';
 import 'package:flutter/material.dart';
 import '../../../services/playback_mode_service.dart';
 
@@ -11,8 +12,7 @@ class PlaybackModeSection extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return AnimatedBuilder(
-      animation: PlaybackModeService(),
+    return OrdinaryPlaybackModeBuilder(
       builder: (context, _) {
         final modeService = PlaybackModeService();
         final currentMode = modeService.currentMode;

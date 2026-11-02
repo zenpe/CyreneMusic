@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:async';
 import 'dart:io';
 
@@ -224,6 +225,8 @@ class PlaybackService extends ChangeNotifier {
   // ══════════════════════════════════════════════════════
   final QueueController _queueController = QueueController();
   QueueCheckpoint? _queueBeforeReplacement;
+  PlaybackMode? _modeBeforeReplacement;
+  int? _replacementModeRevision;
   int? _replacementRevision;
   QueueCheckpoint? _failedReplacementQueue;
   final _manualPlans =
@@ -662,7 +665,7 @@ class PlaybackService extends ChangeNotifier {
     int? originEntryId,
   }) {
     final origin = originEntryId ?? _manualNavigationOrigin;
-    final mode = PlaybackModeService().currentMode;
+    final mode = effectivePlaybackMode;
     final revision = _queueController.structureRevision;
     final cached = _manualPlans[direction];
     if (cached != null &&
@@ -977,7 +980,11 @@ class PlaybackService extends ChangeNotifier {
           ? presentationPositionNotifier.value
           : Duration.zero,
       state: state,
-      playbackMode: PlaybackModeService().currentMode,
+      playbackMode:
+          previous != null &&
+              _replacementModeRevision == PlaybackModeService().revision
+          ? (_modeBeforeReplacement ?? PlaybackModeService().currentMode)
+          : PlaybackModeService().currentMode,
     );
   }
 
@@ -2171,6 +2178,54 @@ class PlaybackService extends ChangeNotifier {
   // 队列操作（经 CommandQueue 串行）
   // ══════════════════════════════════════════════════════
 
+  ({int request, int control}) get requestIdentity =>
+      (request: _requestRouter.currentEpoch, control: _controlIntent.revision);
+
+  PlaybackMode get effectivePlaybackMode => _source == QueueSource.neteaseFm
+      ? PlaybackMode.sequential
+      : PlaybackModeService().currentMode;
+
+  /// Collection intent is resolved before starting the existing latest-request transaction.
+  Future<void> playCollection(
+    List<Track> tracks, {
+    int index = 0,
+    QueueSource source = QueueSource.playlist,
+    bool playAll = false,
+    bool shuffle = false,
+    Map<String, ImageProvider>? coverProviders,
+  }) {
+    if (!AuthService().isLoggedIn || tracks.isEmpty) return Future.value();
+    if (!playAll && !shuffle && (index < 0 || index >= tracks.length)) {
+      return Future.value();
+    }
+    final mode = shuffle
+        ? PlaybackMode.shuffle
+        : PlaybackModeService().currentMode;
+    if (playAll || shuffle) {
+      index = mode == PlaybackMode.shuffle
+          ? _collectionRandom.nextInt(tracks.length)
+          : 0;
+    }
+    return playNow(
+      List<Track>.of(tracks),
+      index,
+      source,
+      coverProviders: coverProviders,
+      collectionMode: shuffle
+          ? PlaybackMode.shuffle
+          : playAll && mode == PlaybackMode.repeatOne
+          ? PlaybackMode.loopAll
+          : null,
+    );
+  }
+
+  final _collectionRandom = Random();
+
+  Future<void> playQueueEntry(int entryId) {
+    final index = _queueController.indexOfEntryId(entryId);
+    return index < 0 ? Future.value() : jumpTo(index);
+  }
+
   /// 替换队列并播放指定曲目
   Future<void> playNow(
     List<Track> tracks,
@@ -2181,6 +2236,7 @@ class PlaybackService extends ChangeNotifier {
     Duration? initialPosition,
     bool preload = true,
     PlaybackRequestIntent intent = PlaybackRequestIntent.manual,
+    PlaybackMode? collectionMode,
   }) {
     if (!AuthService().isLoggedIn) return Future<void>.value();
     if (tracks.isEmpty) return Future<void>.value();
@@ -2202,6 +2258,11 @@ class PlaybackService extends ChangeNotifier {
               _queueController.indexOfEntryId(_activeQueueEntryId!) >= 0
           ? _queueController.checkpoint()
           : null;
+    }
+    if (collectionMode != null) {
+      _modeBeforeReplacement ??= PlaybackModeService().currentMode;
+      unawaited(PlaybackModeService().setMode(collectionMode));
+      _replacementModeRevision = PlaybackModeService().revision;
     }
     _queueController.replace(
       tracks,
@@ -2226,6 +2287,8 @@ class PlaybackService extends ChangeNotifier {
   void _onQueueEdited() {
     _queueBeforeReplacement = null;
     _replacementRevision = null;
+    _modeBeforeReplacement = null;
+    _replacementModeRevision = null;
     if (_failedReplacementQueue != null) {
       _clearPlaybackProblem();
       _lastFailedTrack = null;
@@ -2261,8 +2324,18 @@ class PlaybackService extends ChangeNotifier {
   }
 
   /// 批量加入队列末尾
-  Future<void> addAllToQueue(List<Track> tracks) {
+  Future<void> addAllToQueue(
+    List<Track> tracks, {
+    QueueSource? expectedSource,
+    int? expectedTail,
+  }) {
     return _commands.enqueue(() async {
+      if (expectedSource != null &&
+          (_source != expectedSource ||
+              _queueController.entryIdAt(_queueController.length - 1) !=
+                  expectedTail)) {
+        return;
+      }
       _resetPreloadState();
       _pendingRestorePosition = null;
       _queueController.appendAll(tracks);
@@ -2301,11 +2374,29 @@ class PlaybackService extends ChangeNotifier {
     final removesActive =
         removedEntryId != null && removedEntryId == _activeQueueEntryId;
     final requestEpoch = removesActive ? _requestRouter.begin() : null;
+    PlaybackCandidatePlan? removalPlan;
+    var removedWasLast = false;
     final removal = await _commands.enqueue(() async {
+      final targetIndex = _queueController.indexOfEntryId(removedEntryId ?? -1);
+      if (targetIndex < 0) return QueueRemovalResult.notRemoved;
+      removedWasLast = targetIndex == _queueController.length - 1;
+      if (removesActive) {
+        final mode = effectivePlaybackMode;
+        removalPlan = _candidatePlanner.plan(
+          queue: _queueController.snapshot(activeEntryId: removedEntryId),
+          mode: mode,
+          intent: PlaybackTransitionIntent.removeCurrent,
+          shuffleEntryOrder: mode == PlaybackMode.shuffle
+              ? _queueController.shuffleTraversalEntryIds(
+                  PlaybackTransitionDirection.forward,
+                )
+              : null,
+        );
+      }
       _resetPreloadState();
       _pendingRestorePosition = null;
-      final entryToRemove = _queueController.entryIdAt(index);
-      final removal = _queueController.removeAt(index);
+      final entryToRemove = removedEntryId;
+      final removal = _queueController.removeAt(targetIndex);
       if (!removal.removed) return removal;
       _onQueueEdited();
       if (entryToRemove != null && _pendingQueueEntryId == entryToRemove) {
@@ -2359,11 +2450,16 @@ class PlaybackService extends ChangeNotifier {
         !removal.becameEmpty &&
         requestEpoch != null &&
         _requestRouter.isCurrent(requestEpoch)) {
+      if (effectivePlaybackMode == PlaybackMode.sequential && removedWasLast) {
+        await _stopAtSequentialQueueEnd(clearCurrent: true);
+        return;
+      }
       await _runNavigationTransition(
         requestEpoch: requestEpoch,
         intent: PlaybackTransitionIntent.removeCurrent,
         direction: PlaybackTransitionDirection.forward,
         reason: 'remove-current',
+        initialPlan: removalPlan,
       );
     }
   }
@@ -2933,10 +3029,19 @@ class PlaybackService extends ChangeNotifier {
 
   void _rollbackQueueReplacement({bool retainForRetry = false}) {
     final previous = _queueBeforeReplacement;
+    final previousMode = _modeBeforeReplacement;
+    final modeRevision = _replacementModeRevision;
     final unchanged =
         _replacementRevision == _queueController.structureRevision;
     _queueBeforeReplacement = null;
     _replacementRevision = null;
+    _modeBeforeReplacement = null;
+    _replacementModeRevision = null;
+    if (unchanged &&
+        previousMode != null &&
+        modeRevision == PlaybackModeService().revision) {
+      unawaited(PlaybackModeService().setMode(previousMode));
+    }
     if (previous == null || !unchanged) return;
     if (retainForRetry) _failedReplacementQueue = _queueController.checkpoint();
     _queueController.restore(previous);
@@ -2963,6 +3068,8 @@ class PlaybackService extends ChangeNotifier {
     _activeTrack = track;
     _queueBeforeReplacement = null;
     _replacementRevision = null;
+    _modeBeforeReplacement = null;
+    _replacementModeRevision = null;
     _failedReplacementQueue = null;
     _activeQueueEntryId = queueEntryId;
     _activeSong = songDetail;
@@ -4994,15 +5101,18 @@ class PlaybackService extends ChangeNotifier {
     required PlaybackTransitionDirection direction,
     required String reason,
     int? originEntryId,
+    PlaybackCandidatePlan? initialPlan,
     ({int entryId, EngineError error, bool retry, bool refreshUrl})?
     initialFailure,
   }) async {
     final requestedOrigin = originEntryId ?? _manualNavigationOrigin;
-    final requestedPlan = intent == PlaybackTransitionIntent.manualAdvance
-        ? _manualNavigationPlan(direction, originEntryId: requestedOrigin)
-        : null;
+    final requestedPlan =
+        initialPlan ??
+        (intent == PlaybackTransitionIntent.manualAdvance
+            ? _manualNavigationPlan(direction, originEntryId: requestedOrigin)
+            : null);
     if (requestedPlan != null && requestedPlan.candidates.isNotEmpty) {
-      final target = requestedPlan.candidates.single;
+      final target = requestedPlan.candidates.first;
       _stagePendingTrack(
         target.track,
         queueEntryId: target.entryId,
@@ -5023,7 +5133,7 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
 
-    final mode = PlaybackModeService().currentMode;
+    final mode = effectivePlaybackMode;
     final activeEntryId =
         requestedOrigin != null &&
             _queueController.indexOfEntryId(requestedOrigin) >= 0
@@ -5086,7 +5196,8 @@ class PlaybackService extends ChangeNotifier {
     }
 
     if (plan.candidates.isEmpty) {
-      if (intent == PlaybackTransitionIntent.automaticAdvance &&
+      if ((intent == PlaybackTransitionIntent.automaticAdvance ||
+              intent == PlaybackTransitionIntent.removeCurrent) &&
           plan.stopsAtQueueEnd) {
         await _stopAtSequentialQueueEnd();
       }
@@ -5299,9 +5410,21 @@ class PlaybackService extends ChangeNotifier {
     );
   }
 
-  Future<void> _stopAtSequentialQueueEnd() async {
+  Future<void> _stopAtSequentialQueueEnd({bool clearCurrent = false}) async {
     _controlIntent.invalidate();
     await _engine.stop();
+    if (clearCurrent) {
+      _activeTrack = null;
+      _activeQueueEntryId = null;
+      _activeSong = null;
+      _duration = _position = _bufferedPosition = Duration.zero;
+      _presentationDuration = _presentationBufferedPosition = Duration.zero;
+      positionNotifier.value = bufferedPositionNotifier.value = Duration.zero;
+      presentationPositionNotifier.value = Duration.zero;
+      coverManager.setCoverImmediate(null, notify: false);
+      coverManager.themeColorNotifier.value = null;
+      _setLyricLoadState(LyricLoadState.idle, notify: false);
+    }
     _desiredPlaying = false;
     _state = PBState.idle;
     _clearPendingTrack();
@@ -5400,7 +5523,7 @@ class PlaybackService extends ChangeNotifier {
   Future<void> _playNextAuto() async {
     if (!AuthService().isLoggedIn) return;
     final requestEpoch = _requestRouter.begin();
-    final mode = PlaybackModeService().currentMode;
+    final mode = effectivePlaybackMode;
     switch (mode) {
       case PlaybackMode.repeatOne:
         if (currentTrack != null) {
@@ -5470,7 +5593,7 @@ class PlaybackService extends ChangeNotifier {
 
   void _precacheNextCover() {
     try {
-      final nextTrack = peekNext(PlaybackModeService().currentMode);
+      final nextTrack = peekNext(effectivePlaybackMode);
       if (nextTrack == null || nextTrack.picUrl.isEmpty) return;
       final url = nextTrack.picUrl;
       if (!url.startsWith('http')) return;
@@ -5863,7 +5986,7 @@ class PlaybackService extends ChangeNotifier {
     final current = currentTrack;
     if (current == null) return;
 
-    final mode = PlaybackModeService().currentMode;
+    final mode = effectivePlaybackMode;
     final currentEntryId = _activeQueueEntryId;
     if (currentEntryId == null) return;
     final currentQueueIndex = _queueController.indexOfEntryId(currentEntryId);

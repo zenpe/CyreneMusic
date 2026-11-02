@@ -1,3 +1,4 @@
+import '../../widgets/collection_play_controls.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -10,7 +11,11 @@ import '../../utils/theme_manager.dart';
 Widget _action(String label, IconData icon, VoidCallback? onPressed) {
   final child = Row(
     mainAxisSize: MainAxisSize.min,
-    children: [Icon(icon, size: 18), const SizedBox(width: 6), Text(label)],
+    children: [
+      if (label == '播放全部') PlayAllIcon(icon, size: 18) else Icon(icon, size: 18),
+      const SizedBox(width: 6),
+      if (label == '播放全部') PlayAllLabel(label) else Text(label),
+    ],
   );
   if (ThemeManager().isFluentFramework) {
     return fluent.Button(onPressed: onPressed, child: child);
@@ -80,10 +85,12 @@ class DailySongsPreview extends StatelessWidget {
     super.key,
     required this.songs,
     required this.onOpenAll,
+    required this.onPlayAll,
     required this.onPlay,
   });
   final List<Map<String, dynamic>> songs;
   final VoidCallback onOpenAll;
+  final VoidCallback onPlayAll;
   final ValueChanged<int> onPlay;
   @override
   Widget build(BuildContext context) {
@@ -105,7 +112,7 @@ class DailySongsPreview extends StatelessWidget {
               _action(
                 '播放全部',
                 Icons.play_arrow_rounded,
-                songs.isEmpty ? null : () => onPlay(0),
+                songs.isEmpty ? null : onPlayAll,
               ),
               _action('查看全部', Icons.arrow_forward_rounded, onOpenAll),
             ],

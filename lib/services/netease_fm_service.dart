@@ -1,3 +1,4 @@
+import '../models/track.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'netease_login_service.dart';
@@ -59,6 +60,69 @@ class NeteaseFmService extends ChangeNotifier {
     await _fetch(true, initialSongs: initialSongs);
   }
 
+  /// Reattach to a restored FM queue without changing its song or ordinary mode.
+  Future<void> resumeRestoredQueue() async {
+    final queue = PlaylistQueueService();
+    if (active ||
+        loading ||
+        queue.source != QueueSource.neteaseFm ||
+        queue.queue.isEmpty) {
+      return;
+    }
+    final tail = queue.entryIdAt(queue.queue.length - 1);
+    final accountScope = NeteaseLoginService().scope;
+    try {
+      final bound = await NeteaseLoginService().isNeteaseBound();
+      if (!bound ||
+          accountScope != NeteaseLoginService().scope ||
+          active ||
+          loading ||
+          queue.source != QueueSource.neteaseFm ||
+          queue.entryIdAt(queue.queue.length - 1) != tail) {
+        return;
+      }
+      generation++;
+      identity = scope;
+      active = true;
+      tailEntry = tail;
+      seen.addAll(queue.queue.map((t) => t.id.toString()));
+      _queueChanged();
+      notifyListeners();
+    } catch (e) {
+      error = e.toString();
+      notifyListeners();
+    }
+  }
+
+  Future<void> startTracks(List<Track> tracks, {int index = 0}) async {
+    if (loading || tracks.isEmpty || index < 0 || index >= tracks.length) {
+      return;
+    }
+    final mine = ++generation;
+    identity = scope;
+    active = true;
+    loading = true;
+    seen
+      ..clear()
+      ..addAll(tracks.map((t) => t.id.toString()));
+    error = null;
+    notifyListeners();
+    try {
+      await PlayerService().playCollection(
+        tracks,
+        index: index,
+        source: QueueSource.neteaseFm,
+      );
+      if (mine != generation || identity != scope) return;
+      final queue = PlaylistQueueService();
+      active = queue.source == QueueSource.neteaseFm;
+      tailEntry = queue.entryIdAt(queue.queue.length - 1);
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> _refreshBinding() async {
     try {
       await NeteaseLoginService().fetchBindings();
@@ -76,6 +140,7 @@ class NeteaseFmService extends ChangeNotifier {
       originalQueue.queue.length - 1,
     );
     final originalIndex = originalQueue.currentIndex;
+    final originalIntent = PlayerService().requestIdentity;
     loading = true;
     lastAttempt = DateTime.now().millisecondsSinceEpoch;
     notifyListeners();
@@ -84,7 +149,8 @@ class NeteaseFmService extends ChangeNotifier {
           initialSongs ?? await NeteaseRecommendService().fetchPersonalFm();
       if (mine != generation || identity != scope || !active) return;
       if (replace &&
-          (originalQueue.source != originalSource ||
+          (PlayerService().requestIdentity != originalIntent ||
+              originalQueue.source != originalSource ||
               originalQueue.entryIdAt(originalQueue.queue.length - 1) !=
                   originalTail ||
               originalQueue.currentIndex != originalIndex)) {
@@ -108,13 +174,35 @@ class NeteaseFmService extends ChangeNotifier {
       }
 
       if (replace) {
-        queue.setQueue(tracks, 0, QueueSource.neteaseFm);
-        await PlayerService().playTrack(tracks.first);
+        await PlayerService().playCollection(
+          tracks,
+          source: QueueSource.neteaseFm,
+        );
       } else {
-        queue.appendToQueue(tracks);
-        while (queue.queue.length > 200 && queue.currentIndex > 50) {
-          queue.removeAt(0);
+        await queue.appendToQueue(
+          tracks,
+          expectedSource: QueueSource.neteaseFm,
+          expectedTail: tailEntry,
+        );
+        if (mine != generation ||
+            identity != scope ||
+            queue.source != QueueSource.neteaseFm) {
+          return;
         }
+        final appendedTail = queue.entryIdAt(queue.queue.length - 1);
+        while (queue.queue.length > 200 &&
+            queue.currentIndex > 50 &&
+            mine == generation &&
+            identity == scope &&
+            queue.source == QueueSource.neteaseFm &&
+            queue.entryIdAt(queue.queue.length - 1) == appendedTail) {
+          await queue.removeAt(0);
+        }
+      }
+      if (mine != generation || identity != scope) return;
+      if (queue.source != QueueSource.neteaseFm || queue.queue.isEmpty) {
+        active = false;
+        return;
       }
       tailEntry = queue.entryIdAt(queue.queue.length - 1);
       // Bound deduplication memory for long-running sessions.

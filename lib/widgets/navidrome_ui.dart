@@ -1,3 +1,4 @@
+import 'collection_play_controls.dart';
 import 'package:flutter/material.dart';
 import '../models/navidrome_models.dart';
 import '../models/track.dart';
@@ -988,7 +989,7 @@ class _NavidromeAlbumSheetState extends State<NavidromeAlbumSheet> {
     }
   }
 
-  void _playSongs(int index) {
+  void _playSongs(int index, {bool playAll = false}) {
     if (_songs.isEmpty) return;
     final api = widget.api;
     if (api == null) return;
@@ -1006,8 +1007,12 @@ class _NavidromeAlbumSheetState extends State<NavidromeAlbumSheet> {
         )
         .toList();
 
-    PlaylistQueueService().setQueue(tracks, index, QueueSource.album);
-    PlayerService().playTrack(tracks[index]);
+    PlayerService().playCollection(
+      tracks,
+      index: index,
+      source: QueueSource.album,
+      playAll: playAll,
+    );
   }
 
   void _playShuffled() {
@@ -1027,9 +1032,11 @@ class _NavidromeAlbumSheetState extends State<NavidromeAlbumSheet> {
           ),
         )
         .toList();
-    tracks.shuffle();
-    PlaylistQueueService().setQueue(tracks, 0, QueueSource.album);
-    PlayerService().playTrack(tracks[0]);
+    PlayerService().playCollection(
+      tracks,
+      source: QueueSource.album,
+      shuffle: true,
+    );
   }
 
   Widget _buildCover(String coverUrl, double size) {
@@ -1139,9 +1146,9 @@ class _NavidromeAlbumSheetState extends State<NavidromeAlbumSheet> {
               children: [
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: _songs.isNotEmpty ? () => _playSongs(0) : null,
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('播放'),
+                    onPressed: _songs.isNotEmpty ? () => _playSongs(0, playAll: true) : null,
+                    icon: const PlayAllIcon(Icons.play_arrow),
+                    label: const PlayAllLabel('播放全部'),
                     style: FilledButton.styleFrom(shape: const StadiumBorder()),
                   ),
                 ),

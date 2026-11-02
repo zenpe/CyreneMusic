@@ -1,3 +1,4 @@
+import '../widgets/collection_play_controls.dart';
 import '../utils/app_feedback.dart';
 import '../widgets/floating_playback_insets.dart';
 import 'package:flutter/material.dart';
@@ -301,16 +302,12 @@ class _DiscoverPlaylistDetailContentState
               onPlay: () async {
                 final ok = await _checkLoginStatus();
                 if (!ok) return;
-                PlaylistQueueService().setQueue(
+
+                await PlayerService().playCollection(
                   allTracks,
-                  index,
-                  QueueSource.playlist,
+                  index: index,
+                  source: QueueSource.playlist,
                   coverProviders: _coverProviderCache,
-                );
-                final coverProvider = _coverProviderCache[_coverKey(track)];
-                await PlayerService().playTrack(
-                  track,
-                  coverProvider: coverProvider,
                 );
               },
               onCoverReady: (provider) {
@@ -321,18 +318,11 @@ class _DiscoverPlaylistDetailContentState
               onTap: () async {
                 final ok = await _checkLoginStatus();
                 if (!ok) return;
-                // 替换播放队列为当前歌单
-                PlaylistQueueService().setQueue(
+                await PlayerService().playCollection(
                   allTracks,
-                  index,
-                  QueueSource.playlist,
+                  index: index,
+                  source: QueueSource.playlist,
                   coverProviders: _coverProviderCache,
-                );
-                // 播放所点歌曲
-                final coverProvider = _coverProviderCache[_coverKey(track)];
-                await PlayerService().playTrack(
-                  track,
-                  coverProvider: coverProvider,
                 );
               },
             );
@@ -756,13 +746,13 @@ class _DiscoverPlaylistDetailContentState
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
+                  PlayAllIcon(
                     CupertinoIcons.play_fill,
                     size: 16,
                     color: CupertinoColors.white,
                   ),
                   SizedBox(width: 6),
-                  Text(
+                  PlayAllLabel(
                     '播放全部',
                     style: TextStyle(
                       fontSize: 14,
@@ -900,59 +890,13 @@ class _DiscoverPlaylistDetailContentState
     final ok = await _checkLoginStatus();
     if (!ok) return;
 
-    PlaylistQueueService().setQueue(
+    await PlayerService().playCollection(
       allTracks,
-      index,
-      QueueSource.playlist,
+      index: index,
+      source: QueueSource.playlist,
       coverProviders: _coverProviderCache,
     );
 
-    final track = allTracks[index];
-    final coverProvider = _coverProviderCache[_coverKey(track)];
-    await PlayerService().playTrack(track, coverProvider: coverProvider);
-
-    if (context.mounted) {
-      // iOS 风格的提示
-      showCupertinoModalPopup(
-        context: context,
-        builder: (context) => Container(
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          decoration: BoxDecoration(
-            color: CupertinoColors.systemGrey6.darkColor,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                CupertinoIcons.music_note,
-                color: CupertinoColors.white,
-                size: 18,
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  '正在加载：${track.name}',
-                  style: const TextStyle(
-                    color: CupertinoColors.white,
-                    fontSize: 14,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-      // 自动关闭提示
-      Future.delayed(const Duration(seconds: 2), () {
-        if (context.mounted && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-      });
-    }
   }
 
   Future<void> _playCupertinoAll(BuildContext context) async {
@@ -974,16 +918,13 @@ class _DiscoverPlaylistDetailContentState
         )
         .toList();
 
-    PlaylistQueueService().setQueue(
+    await PlayerService().playCollection(
       tracks,
-      0,
-      QueueSource.playlist,
+      index: 0,
+      source: QueueSource.playlist,
+      playAll: true,
       coverProviders: _coverProviderCache,
     );
-
-    final track = tracks.first;
-    final coverProvider = _coverProviderCache[_coverKey(track)];
-    await PlayerService().playTrack(track, coverProvider: coverProvider);
   }
 
   Future<void> _syncToLocalCupertino(
@@ -1677,16 +1618,17 @@ class _DiscoverPlaylistDetailContentState
               onPressed: () async {
                 final ok = await _checkLoginStatus();
                 if (!ok) return;
-                PlaylistQueueService().setQueue(
+
+                await PlayerService().playCollection(
                   allTracks,
-                  0,
-                  QueueSource.playlist,
+                  index: 0,
+                  source: QueueSource.playlist,
+                  playAll: true,
                   coverProviders: _coverProviderCache,
                 );
-                await PlayerService().playTrack(allTracks.first);
               },
-              icon: const Icon(Icons.play_arrow_rounded, size: 20),
-              label: const Text('播放全部'),
+              icon: const PlayAllIcon(Icons.play_arrow_rounded, size: 20),
+              label: const PlayAllLabel('播放全部'),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -1837,16 +1779,12 @@ class _DiscoverPlaylistDetailContentState
     final ok = await _checkLoginStatus();
     if (!ok) return;
 
-    final track = allTracks[index];
-    PlaylistQueueService().setQueue(
+    await PlayerService().playCollection(
       allTracks,
-      index,
-      QueueSource.playlist,
+      index: index,
+      source: QueueSource.playlist,
       coverProviders: _coverProviderCache,
     );
-
-    final coverProvider = _coverProviderCache[_coverKey(track)];
-    await PlayerService().playTrack(track, coverProvider: coverProvider);
   }
 
   Widget _buildFluentDetail(BuildContext context) {
@@ -2032,16 +1970,12 @@ class _DiscoverPlaylistDetailContentState
     final ok = await _checkLoginStatus();
     if (!ok) return;
 
-    PlaylistQueueService().setQueue(
+    await PlayerService().playCollection(
       allTracks,
-      index,
-      QueueSource.playlist,
+      index: index,
+      source: QueueSource.playlist,
       coverProviders: _coverProviderCache,
     );
-
-    final track = allTracks[index];
-    final coverProvider = _coverProviderCache[_coverKey(track)];
-    await PlayerService().playTrack(track, coverProvider: coverProvider);
   }
 
   // Fluent UI 单曲列表项

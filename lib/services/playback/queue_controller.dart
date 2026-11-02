@@ -205,14 +205,40 @@ class QueueController {
     resetShuffle();
   }
 
+  List<int> _shuffleEntryOrder() => _shuffledIndices
+      .where((i) => i >= 0 && i < _entryIds.length)
+      .map((i) => _entryIds[i])
+      .toList();
+
+  void _remapShuffle(List<int> before) {
+    if (before.isEmpty) {
+      resetShuffle();
+      return;
+    }
+    final indices = {
+      for (var i = 0; i < _entryIds.length; i++) _entryIds[i]: i,
+    };
+    final surviving = before.where(indices.containsKey).toList();
+    final known = surviving.toSet();
+    final additions = _entryIds.where((id) => !known.contains(id)).toList()
+      ..shuffle(_random);
+    _shuffledIndices = [
+      ...surviving,
+      ...additions,
+    ].map((id) => indices[id]!).toList();
+    _shufflePosition = _shuffledIndices.indexOf(_currentIndex);
+  }
+
   void append(Track track) {
+    final before = _shuffleEntryOrder();
     _tracks.add(track);
     _entryIds.add(_allocateEntryId());
     _structureRevision++;
-    resetShuffle();
+    _remapShuffle(before);
   }
 
   void appendAll(Iterable<Track> tracks) {
+    final before = _shuffleEntryOrder();
     final additions = tracks.toList(growable: false);
     if (additions.isEmpty) return;
     _tracks.addAll(additions);
@@ -220,16 +246,28 @@ class QueueController {
       List<int>.generate(additions.length, (_) => _allocateEntryId()),
     );
     _structureRevision++;
-    resetShuffle();
+    _remapShuffle(before);
   }
 
   void insertNext(Track track) {
+    // Re-inserting the audible entry must not orphan its stable identity.
+    if (indexOf(track) == _currentIndex && _currentIndex >= 0) return;
+    shuffleTraversalEntryIds(PlaybackTransitionDirection.forward);
+    final order = _shuffledIndices.map((i) => _entryIds[i]).toList();
     removeDuplicate(track);
     final insertAt = (_currentIndex + 1).clamp(0, _tracks.length);
     _tracks.insert(insertAt, track);
-    _entryIds.insert(insertAt, _allocateEntryId());
+    final newEntry = _allocateEntryId();
+    _entryIds.insert(insertAt, newEntry);
     _structureRevision++;
-    resetShuffle();
+    final indices = {
+      for (var i = 0; i < _entryIds.length; i++) _entryIds[i]: i,
+    };
+    final surviving = order.where(indices.containsKey).toList();
+    final activePosition = surviving.indexOf(currentEntryId ?? -1);
+    surviving.insert(activePosition + 1, newEntry);
+    _shuffledIndices = surviving.map((id) => indices[id]!).toList();
+    _shufflePosition = _shuffledIndices.indexOf(_currentIndex);
   }
 
   bool jumpTo(int index) {
@@ -262,6 +300,7 @@ class QueueController {
   }
 
   QueueRemovalResult removeAt(int index) {
+    final before = _shuffleEntryOrder();
     if (index < 0 || index >= length) return QueueRemovalResult.notRemoved;
     final removedCurrent = index == _currentIndex;
     _tracks.removeAt(index);
@@ -280,7 +319,7 @@ class QueueController {
     } else if (removedCurrent) {
       _currentIndex = _currentIndex.clamp(0, _tracks.length - 1);
     }
-    resetShuffle();
+    _remapShuffle(before);
     return QueueRemovalResult(
       removed: true,
       becameEmpty: false,
@@ -289,6 +328,7 @@ class QueueController {
   }
 
   bool reorder(int oldIndex, int newIndex) {
+    final before = _shuffleEntryOrder();
     if (oldIndex < 0 || oldIndex >= length) return false;
     if (newIndex < 0 || newIndex > length) return false;
     final track = _tracks.removeAt(oldIndex);
@@ -304,7 +344,7 @@ class QueueController {
     } else if (oldIndex > _currentIndex && targetIndex <= _currentIndex) {
       _currentIndex++;
     }
-    resetShuffle();
+    _remapShuffle(before);
     return true;
   }
 

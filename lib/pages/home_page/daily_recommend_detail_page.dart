@@ -1,3 +1,4 @@
+import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
 import '../../widgets/floating_playback_insets.dart';
 import 'package:flutter/material.dart';
@@ -512,8 +513,8 @@ class DailyRecommendDetailPage extends StatelessWidget {
           const Spacer(),
           FilledButton.icon(
             onPressed: () => _playAll(context),
-            icon: const Icon(Icons.play_arrow_rounded, size: 20),
-            label: const Text('播放全部', style: TextStyle(fontWeight: FontWeight.w700),
+            icon: const PlayAllIcon(Icons.play_arrow_rounded, size: 20),
+            label: const PlayAllLabel('播放全部', style: TextStyle(fontWeight: FontWeight.w700),
             ),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -701,14 +702,13 @@ class DailyRecommendDetailPage extends StatelessWidget {
     int index,
   ) async {
     try {
-      final track = _convertToTrack(song);
       final allTracks = tracks.map((s) => _convertToTrack(s)).toList();
 
-      // 设置播放队列
-      PlaylistQueueService().setQueue(allTracks, index, QueueSource.playlist);
-
-      // 播放歌曲
-      await PlayerService().playTrack(track);
+      await PlayerService().playCollection(
+        allTracks,
+        index: index,
+        source: QueueSource.playlist,
+      );
     } catch (e) {
       if (context.mounted) {
         AppFeedback.of(context).showSnackBar(
@@ -729,11 +729,12 @@ class DailyRecommendDetailPage extends StatelessWidget {
     try {
       final allTracks = tracks.map((s) => _convertToTrack(s)).toList();
 
-      // 设置播放队列
-      PlaylistQueueService().setQueue(allTracks, 0, QueueSource.playlist);
-
-      // 播放第一首
-      await PlayerService().playTrack(allTracks.first);
+      await PlayerService().playCollection(
+        allTracks,
+        index: 0,
+        source: QueueSource.playlist,
+        playAll: true,
+      );
     } catch (e) {
       if (context.mounted) {
         AppFeedback.of(context).showSnackBar(
@@ -762,13 +763,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
                 Navigator.pop(context);
                 try {
                   final track = _convertToTrack(song);
-                  final currentQueue = PlaylistQueueService().queue;
-                  final newQueue = [...currentQueue, track];
-                  PlaylistQueueService().setQueue(
-                    newQueue,
-                    PlaylistQueueService().currentIndex,
-                    QueueSource.playlist,
-                  );
+                  PlaylistQueueService().appendToQueue([track]);
                   AppFeedback.of(
                     context,
                   ).showSnackBar(const SnackBar(content: Text('已添加到播放队列')));
@@ -859,8 +854,8 @@ class _FluentDailyRecommendPage extends StatelessWidget {
                 mainAxisAlignment: fluent.MainAxisAlignment.end,
                 primaryItems: [
                   fluent.CommandBarButton(
-                    icon: const Icon(fluent.FluentIcons.play),
-                    label: const Text('播放全部'),
+                    icon: const PlayAllIcon(fluent.FluentIcons.play),
+                    label: const PlayAllLabel('播放全部'),
                     onPressed: () => _playAll(context),
                   ),
                 ],
@@ -1116,14 +1111,13 @@ class _FluentDailyRecommendPage extends StatelessWidget {
     int index,
   ) async {
     try {
-      final track = _convertToTrack(song);
       final allTracks = tracks.map((s) => _convertToTrack(s)).toList();
 
-      // 设置播放队列
-      PlaylistQueueService().setQueue(allTracks, index, QueueSource.playlist);
-
-      // 播放歌曲
-      await PlayerService().playTrack(track);
+      await PlayerService().playCollection(
+        allTracks,
+        index: index,
+        source: QueueSource.playlist,
+      );
     } catch (e) {
       // Handle error
     }
@@ -1136,11 +1130,12 @@ class _FluentDailyRecommendPage extends StatelessWidget {
     try {
       final allTracks = tracks.map((s) => _convertToTrack(s)).toList();
 
-      // 设置播放队列
-      PlaylistQueueService().setQueue(allTracks, 0, QueueSource.playlist);
-
-      // 播放第一首
-      await PlayerService().playTrack(allTracks.first);
+      await PlayerService().playCollection(
+        allTracks,
+        index: 0,
+        source: QueueSource.playlist,
+        playAll: true,
+      );
     } catch (e) {
       // Handle error
     }
@@ -1162,13 +1157,7 @@ class _FluentDailyRecommendPage extends StatelessWidget {
                   Navigator.of(dialogContext).pop();
                   try {
                     final track = _convertToTrack(song);
-                    final currentQueue = PlaylistQueueService().queue;
-                    final newQueue = [...currentQueue, track];
-                    PlaylistQueueService().setQueue(
-                      newQueue,
-                      PlaylistQueueService().currentIndex,
-                      QueueSource.playlist,
-                    );
+                    PlaylistQueueService().appendToQueue([track]);
                   } catch (e) {
                     // handle error
                   }

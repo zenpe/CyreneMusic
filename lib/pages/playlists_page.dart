@@ -1,3 +1,4 @@
+import '../widgets/collection_play_controls.dart';
 import '../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -1003,8 +1004,8 @@ class _PlaylistsPageState extends State<PlaylistsPage>
             if (count > 0)
               FilledButton.icon(
                 onPressed: _playAll,
-                icon: const Icon(Icons.play_arrow, size: 20),
-                label: const Text('播放全部'),
+                icon: const PlayAllIcon(Icons.play_arrow, size: 20),
+                label: const PlayAllLabel('播放全部'),
               ),
           ],
         ),
@@ -1135,10 +1136,14 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     final trackList = tracks.map((t) => t.toTrack()).toList();
 
     // 设置播放队列
-    PlaylistQueueService().setQueue(trackList, index, QueueSource.playlist);
+
 
     // 播放选中的歌曲（来自歌单，检查换源限制）
-    PlayerService().playTrack(trackList[index], fromPlaylist: true);
+    PlayerService().playCollection(
+      trackList,
+      index: index,
+      source: QueueSource.playlist,
+    );
   }
 
   /// 播放全部歌曲
@@ -1149,10 +1154,12 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     // 将歌单歌曲转换为 Track 列表
     final trackList = tracks.map((t) => t.toTrack()).toList();
 
-    // 设置播放队列并播放第一首
-    PlaylistQueueService().setQueue(trackList, 0, QueueSource.playlist);
-
-    PlayerService().playTrack(trackList[0], fromPlaylist: true);
+    PlayerService().playCollection(
+      trackList,
+      index: 0,
+      source: QueueSource.playlist,
+      playAll: true,
+    );
   }
 
   /// 确认从歌单移除

@@ -1,3 +1,4 @@
+import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -149,8 +150,7 @@ class MobilePlayerControls extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // 播放模式
-                AnimatedBuilder(
-                  animation: PlaybackModeService(),
+                OrdinaryPlaybackModeBuilder(
                   builder: (context, child) {
                     final mode = PlaybackModeService().currentMode;
                     IconData icon;

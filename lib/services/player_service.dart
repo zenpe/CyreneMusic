@@ -15,6 +15,7 @@ import 'playback/playback_problem.dart';
 import 'playback/playback_view_state.dart';
 import 'playback/source_health_tracker.dart';
 import 'playlist_queue_service.dart';
+import 'playback_mode_service.dart';
 
 /// 播放状态枚举
 enum PlayerState {
@@ -208,6 +209,11 @@ class PlayerService extends ChangeNotifier {
   // 播放控制（全部委托）
   // ══════════════════════════════════════════════════════
 
+  ({int request, int control}) get requestIdentity => _pb.requestIdentity;
+
+  PlaybackMode get playbackMode => _pb.effectivePlaybackMode;
+  bool get isPersonalFm => _pb.source == QueueSource.neteaseFm;
+
   Future<void> initialize() => _pb.initialize();
 
   Future<void> playTrack(
@@ -215,7 +221,12 @@ class PlayerService extends ChangeNotifier {
     AudioQuality? quality,
     ImageProvider? coverProvider,
     bool fromPlaylist = false,
+    int? queueEntryId,
   }) async {
+    if (queueEntryId != null) {
+      await _pb.playQueueEntry(queueEntryId);
+      return;
+    }
     // 如果有封面，先设置
     if (coverProvider != null) {
       _pb.coverManager.setCoverImmediate(
@@ -239,6 +250,23 @@ class PlayerService extends ChangeNotifier {
     }
     await _pb.playNow([track], 0, QueueSource.none);
   }
+
+  /// Start a collection as one playback request, preserving entry identity.
+  Future<void> playCollection(
+    List<Track> tracks, {
+    int index = 0,
+    QueueSource source = QueueSource.playlist,
+    bool playAll = false,
+    bool shuffle = false,
+    Map<String, ImageProvider>? coverProviders,
+  }) => _pb.playCollection(
+    tracks,
+    index: index,
+    source: source,
+    playAll: playAll,
+    shuffle: shuffle,
+    coverProviders: coverProviders,
+  );
 
   Future<void> pause() => _pb.pause();
   Future<void> resume() => _pb.resume();

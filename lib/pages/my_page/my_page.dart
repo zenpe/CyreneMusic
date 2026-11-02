@@ -1,3 +1,4 @@
+import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
 import '../../widgets/floating_playback_insets.dart';
 import 'dart:typed_data';
@@ -259,6 +260,24 @@ class _MyPageState extends State<MyPage> {
     _syncGlobalBackHandler();
   }
 
+  int _menuPlayRequest = 0;
+
+  Future<void> _playPlaylistFromMenu(Playlist playlist) async {
+    final request = ++_menuPlayRequest;
+    final identity = _playlistService.contextIdentity;
+    final playback = PlayerService();
+    final playbackIntent = playback.requestIdentity;
+    final loaded = await _playlistService.loadPlaylistTracks(playlist.id);
+    if (!mounted || request != _menuPlayRequest || !loaded ||
+        identity != _playlistService.contextIdentity ||
+        _playlistService.currentPlaylistId != playlist.id ||
+        playback.requestIdentity != playbackIntent) {
+      return;
+    }
+    final tracks = _playlistService.currentTracks.map((t) => t.toTrack()).toList();
+    await playback.playCollection(tracks, playAll: true);
+  }
+
   void _backToList() {
     setState(() {
       _reverseTransition = true;
@@ -408,8 +427,12 @@ class _MyPageState extends State<MyPage> {
     if (tracks.isEmpty) return;
 
     final trackList = tracks.map((t) => t.toTrack()).toList();
-    PlaylistQueueService().setQueue(trackList, index, QueueSource.playlist);
-    PlayerService().playTrack(trackList[index]);
+
+    PlayerService().playCollection(
+      trackList,
+      index: index,
+      source: QueueSource.playlist,
+    );
   }
 
   void _playAll() {
@@ -417,8 +440,13 @@ class _MyPageState extends State<MyPage> {
     if (tracks.isEmpty) return;
 
     final trackList = tracks.map((t) => t.toTrack()).toList();
-    PlaylistQueueService().setQueue(trackList, 0, QueueSource.playlist);
-    PlayerService().playTrack(trackList[0]);
+
+    PlayerService().playCollection(
+      trackList,
+      index: 0,
+      source: QueueSource.playlist,
+      playAll: true,
+    );
   }
 
   Future<void> _syncPlaylistFromList(Playlist playlist) async {

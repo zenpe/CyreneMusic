@@ -61,8 +61,12 @@ class _NewsongCardState extends State<NewsongCard> {
       child: GestureDetector(
         onTap: () async {
           final track = convertToTrack(songData);
-          PlaylistQueueService().setQueue([track], 0, QueueSource.search);
-          await PlayerService().playTrack(track);
+
+          await PlayerService().playCollection(
+            [track],
+            index: 0,
+            source: QueueSource.search,
+          );
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),

@@ -1,3 +1,4 @@
+import 'package:cyrene_music/services/playback_mode_service.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -25,6 +26,44 @@ void main() {
     handler.dispose();
     player.dispose();
   });
+
+  test(
+    'FM notification omits mode controls and rejects mode changes',
+    () async {
+      final modes = PlaybackModeService();
+      final original = modes.currentMode;
+      try {
+        await modes.setMode(PlaybackMode.repeatOne);
+        player.isPersonalFm = true;
+        player.changed();
+        expect(
+          handler.playbackState.value.repeatMode,
+          AudioServiceRepeatMode.none,
+        );
+        expect(
+          handler.playbackState.value.shuffleMode,
+          AudioServiceShuffleMode.none,
+        );
+        expect(
+          handler.playbackState.value.controls.any(
+            (c) => c.customAction?.name == 'cycle_repeat_mode',
+          ),
+          isFalse,
+        );
+        await handler.setRepeatMode(AudioServiceRepeatMode.all);
+        await handler.setShuffleMode(AudioServiceShuffleMode.all);
+        expect(modes.currentMode, PlaybackMode.repeatOne);
+        player.isPersonalFm = false;
+        player.changed();
+        expect(
+          handler.playbackState.value.repeatMode,
+          AudioServiceRepeatMode.one,
+        );
+      } finally {
+        await modes.setMode(original);
+      }
+    },
+  );
 
   test(
     'intent-only pause updates controls before the engine acknowledges',
@@ -219,6 +258,12 @@ void main() {
 }
 
 class TransportPlayer extends ChangeNotifier implements PlayerService {
+  @override
+  bool isPersonalFm = false;
+  @override
+  PlaybackMode get playbackMode => isPersonalFm
+      ? PlaybackMode.sequential
+      : PlaybackModeService().currentMode;
   @override
   bool hasNext = true;
   @override

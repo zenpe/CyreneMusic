@@ -43,6 +43,7 @@ void main() {
                   DailySongsPreview(
                     songs: songs,
                     onOpenAll: () => opened = true,
+                    onPlayAll: () => played = -1,
                     onPlay: (index) => played = index,
                   ),
                   const SizedBox(height: 24),
@@ -84,7 +85,7 @@ void main() {
         await tester.tap(find.text('查看全部'));
         expect(opened, isTrue);
         await tester.tap(find.text('播放全部'));
-        expect(played, 0);
+        expect(played, -1);
         await tester.ensureVisible(find.text('播放'));
         await tester.tap(find.text('播放'));
         await tester.tap(find.text('换一批'));

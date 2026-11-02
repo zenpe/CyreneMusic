@@ -1,3 +1,4 @@
+import '../../widgets/collection_play_controls.dart';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -602,7 +603,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
               _buildSectionTitle('播放'),
 
               // 播放模式
-              _buildMenuItem(
+              OrdinaryPlaybackModeBuilder(builder: (context, _) => _buildMenuItem(
                 icon: _getPlaybackModeIcon(playbackMode.currentMode),
                 label: '播放模式',
                 subtitle: playbackMode.getModeName(),
@@ -612,7 +613,7 @@ class _MoreMenuButtonState extends State<_MoreMenuButton> {
                   playbackMode.toggleMode();
                   _overlayEntry?.markNeedsBuild();
                 },
-              ),
+              )),
 
               // 睡眠定时器
               _buildMenuItem(

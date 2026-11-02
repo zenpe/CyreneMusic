@@ -6,10 +6,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 enum PlaybackMode {
   /// 顺序播放（播完最后一首停止）
   sequential,
+
   /// 列表循环（播完最后一首回到第一首）
   loopAll,
+
   /// 随机播放
   shuffle,
+
   /// 单曲循环
   repeatOne,
 }
@@ -22,17 +25,23 @@ class PlaybackModeService extends ChangeNotifier {
     _loadMode();
   }
 
+  int _modeRevision = 0;
+  int get revision => _modeRevision;
+
   PlaybackMode _currentMode = PlaybackMode.loopAll;
   PlaybackMode get currentMode => _currentMode;
 
   static const String _modeKey = 'playback_mode';
+
   /// 标记是否已完成旧数据迁移
   static const String _migratedKey = 'playback_mode_migrated_v2';
 
   /// 加载播放模式
   Future<void> _loadMode() async {
+    final revision = _modeRevision;
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (revision != _modeRevision) return;
       final migrated = prefs.getBool(_migratedKey) ?? false;
       final modeIndex = prefs.getInt(_modeKey);
 
@@ -55,47 +64,67 @@ class PlaybackModeService extends ChangeNotifier {
         // 保存迁移后的值
         await prefs.setInt(_modeKey, _currentMode.index);
         await prefs.setBool(_migratedKey, true);
-        StructuredLogService.log('[PlaybackModeService] 迁移旧播放模式: index=$modeIndex -> ${_currentMode.name}');
-      } else if (modeIndex != null && modeIndex < PlaybackMode.values.length) {
+        StructuredLogService.log(
+          '[PlaybackModeService] 迁移旧播放模式: index=$modeIndex -> ${_currentMode.name}',
+        );
+      } else if (modeIndex != null &&
+          modeIndex >= 0 &&
+          modeIndex < PlaybackMode.values.length) {
         _currentMode = PlaybackMode.values[modeIndex];
       } else {
         _currentMode = PlaybackMode.loopAll;
       }
-      StructuredLogService.log('[PlaybackModeService] 加载播放模式: ${_currentMode.name}');
+      if (revision == _modeRevision) notifyListeners();
+      StructuredLogService.log(
+        '[PlaybackModeService] 加载播放模式: ${_currentMode.name}',
+      );
     } catch (e) {
       StructuredLogService.log('[PlaybackModeService] 加载播放模式失败: $e');
-      _currentMode = PlaybackMode.loopAll;
+      if (revision == _modeRevision) {
+        _currentMode = PlaybackMode.loopAll;
+        notifyListeners();
+      }
     }
   }
 
   /// 切换到下一个播放模式
   /// 顺序: sequential → loopAll → shuffle → repeatOne → sequential
   Future<void> toggleMode() async {
+    _modeRevision++;
     final currentIndex = _currentMode.index;
     final nextIndex = (currentIndex + 1) % PlaybackMode.values.length;
     _currentMode = PlaybackMode.values[nextIndex];
 
-    await _saveMode();
     notifyListeners();
+    await _saveMode();
 
-    StructuredLogService.log('[PlaybackModeService] 切换播放模式: ${_currentMode.name}');
+    StructuredLogService.log(
+      '[PlaybackModeService] 切换播放模式: ${_currentMode.name}',
+    );
   }
 
   /// 设置播放模式
   Future<void> setMode(PlaybackMode mode) async {
-    if (_currentMode == mode) return;
+    _modeRevision++;
+    if (_currentMode == mode) {
+      await _saveMode();
+      return;
+    }
 
     _currentMode = mode;
-    await _saveMode();
     notifyListeners();
+    await _saveMode();
 
-    StructuredLogService.log('[PlaybackModeService] 设置播放模式: ${_currentMode.name}');
+    StructuredLogService.log(
+      '[PlaybackModeService] 设置播放模式: ${_currentMode.name}',
+    );
   }
 
   /// 保存播放模式
   Future<void> _saveMode() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_migratedKey, true);
       await prefs.setInt(_modeKey, _currentMode.index);
     } catch (e) {
       StructuredLogService.log('[PlaybackModeService] 保存播放模式失败: $e');

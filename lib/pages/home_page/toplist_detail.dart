@@ -1,3 +1,4 @@
+import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
 import '../../widgets/floating_playback_insets.dart';
 import 'dart:io';
@@ -784,22 +785,12 @@ class _ToplistDetailContent extends StatelessWidget {
                                 final ok = await _ensureLogin(context);
                                 if (!ok) return;
 
-                                PlaylistQueueService().setQueue(
+                                await PlayerService().playCollection(
                                   toplist.tracks,
-                                  0,
-                                  QueueSource.playlist,
+                                  index: 0,
+                                  source: QueueSource.playlist,
+                                  playAll: true,
                                 );
-                                await PlayerService().playTrack(
-                                  toplist.tracks.first,
-                                );
-                                if (context.mounted) {
-                                  AppFeedback.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('开始播放：${toplist.name}'),
-                                      duration: const Duration(seconds: 1),
-                                    ),
-                                  );
-                                }
                               },
                               child: Ink(
                                 padding: const EdgeInsets.symmetric(
@@ -827,13 +818,13 @@ class _ToplistDetailContent extends StatelessWidget {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(
+                                    PlayAllIcon(
                                       Icons.play_arrow_rounded,
                                       color: onAccent,
                                       size: 20,
                                     ),
                                     const SizedBox(width: 6),
-                                    Text(
+                                    PlayAllLabel(
                                       '播放全部 (${toplist.tracks.length})',
                                       style: TextStyle(
                                         color: onAccent,
@@ -891,12 +882,11 @@ class _ToplistDetailContent extends StatelessWidget {
                           final ok = await _ensureLogin(context);
                           if (!ok) return;
 
-                          PlaylistQueueService().setQueue(
+                          await PlayerService().playCollection(
                             toplist.tracks,
-                            index,
-                            QueueSource.playlist,
+                            index: index,
+                            source: QueueSource.playlist,
                           );
-                          await PlayerService().playTrack(track);
                         },
                       );
                     },
