@@ -120,9 +120,9 @@ UrlService().douyinUrl        // GET /douyin
 ```
 
 ### Version (版本)
-```dart
-UrlService().versionLatestUrl // GET /version/latest
-```
+
+客户端版本由 VersionService 查询官方 GitHub Releases，不使用自定义音乐后端。
+详见 [客户端更新](../../docs/client-updates.md)。
 
 ## 🌐 HTTP 请求示例
 

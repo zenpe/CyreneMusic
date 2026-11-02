@@ -16,7 +16,6 @@ import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:cyrene_music/services/android_floating_lyric_service.dart';
 import 'package:cyrene_music/services/announcement_service.dart';
-import 'package:cyrene_music/services/auto_update_service.dart';
 import 'package:cyrene_music/services/cache_service.dart';
 import 'package:cyrene_music/services/developer_mode_service.dart';
 import 'package:cyrene_music/services/app_settings_service.dart';
@@ -272,10 +271,6 @@ Future<void> main() async {
           timed('VersionService.initialize', () async {
             await VersionService().initialize();
             log(' 版本服务已初始化');
-          }),
-          timed('AutoUpdateService.initialize', () async {
-            await AutoUpdateService().initialize();
-            log(' 自动更新服务已初始化');
           }),
           timed('ListeningStatsService.initialize', () async {
             ListeningStatsService().initialize();

@@ -666,14 +666,17 @@ class _SettingsPageState extends State<SettingsPage> {
           subtitle: '启动提示、更新提示等选项',
           onTap: () => openSubPage(SettingsSubPage.other),
         ),
-        _buildMaterialSettingsItem(
-          context,
-          icon: Icons.info_outline_rounded,
-          iconColor: const Color(0xFF795548),
-          title: '关于',
-          subtitle: '版本 ${VersionService().currentVersion} • 开源致谢',
-          onTap: () => openSubPage(SettingsSubPage.about),
-        ),
+        AnimatedBuilder(animation: VersionService(), builder: (context, _) =>
+          _buildMaterialSettingsItem(
+            context,
+            icon: Icons.info_outline_rounded,
+            iconColor: const Color(0xFF795548),
+            title: '关于',
+            subtitle: VersionService().hasVisibleUpdate
+              ? '发现新版本 ${VersionService().latestVersion!.version}'
+              : '版本 ${VersionService().currentVersion} • 开源致谢',
+            onTap: () => openSubPage(SettingsSubPage.about),
+          )),
       ],
     );
   }

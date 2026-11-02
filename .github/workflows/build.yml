@@ -67,6 +67,10 @@ jobs:
             fi
           else
             version=$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r')
+            if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\+[1-9][0-9]*$ ]]; then
+              echo "::error::Use a stable X.Y.Z+positive-build version in pubspec.yaml."
+              exit 1
+            fi
             expected="v${version%%+*}"
             if [[ "$GITHUB_REF_NAME" != "$expected" ]]; then
               echo "::error::Tag must match pubspec.yaml: $expected"
@@ -361,6 +365,24 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Refuse replacing an already published stable release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          status=$(curl --silent --show-error --connect-timeout 15 --max-time 60 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            --output release-status.json --write-out '%{http_code}' \
+            "https://api.github.com/repos/$GH_REPO/releases/tags/$GITHUB_REF_NAME")
+          case "$status" in
+            200)
+              python3 -c 'import json; r=json.load(open("release-status.json")); assert r["draft"], "Published releases are immutable; use a new version tag."'
+              ;;
+            404) ;; # A new release; existing drafts may also be retried above.
+            *) echo "::error::Cannot verify existing release (HTTP $status)."; exit 1 ;;
+          esac
       - name: Download Android artifact
         uses: actions/download-artifact@v8
         with:

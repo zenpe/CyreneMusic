@@ -1,278 +1,190 @@
-import 'structured_log_service.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:ffi';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/version_info.dart';
-import 'auto_update_service.dart';
-import 'developer_mode_service.dart';
-import 'api/api_client.dart';
 
-/// 版本检查服务
-///
-/// ⚠️⚠️⚠️ 重要：发布新版本时的更新步骤 ⚠️⚠️⚠️
-/// 1. 更新 lib/services/version_service.dart 中的 kAppVersion 常量
-/// 2. 更新 pubspec.yaml 中的 version 字段
-/// 3. 更新后端 backend/src/index.ts 中的版本信息
-///
-/// 示例：
-///   kAppVersion: '1.0.0' → '1.0.1'
-///   pubspec.yaml: version: 1.0.0+1 → version: 1.0.1+2
-///   backend: version: "1.0.0" → version: "1.0.1"
+/// Checks metadata only. Downloading and installation belong to the browser/user.
 class VersionService extends ChangeNotifier {
-  static final VersionService _instance = VersionService._internal();
+  static final VersionService _instance = VersionService._();
   factory VersionService() => _instance;
-  VersionService._internal();
+  VersionService._()
+    : _client = http.Client(),
+      _now = DateTime.now,
+      _loadVersion = _installedVersion,
+      platformKey = _platformKey();
 
-  /// ⚠️⚠️⚠️ 应用当前版本（硬编码）⚠️⚠️⚠️
-  /// 发布新版本时 **必须** 手动更新此值！
-  static const String kAppVersion = '1.3.9';
-  static const bool kDisableUpdateCheck = true;
+  @visibleForTesting
+  VersionService.forTesting({
+    required http.Client client,
+    required Future<String> Function() loadVersion,
+    DateTime Function()? now,
+    this.platformKey = 'windows-x64',
+  }) : _client = client,
+       _loadVersion = loadVersion,
+       _now = now ?? DateTime.now;
 
-  /// 当前应用版本
-  String _currentVersion = kAppVersion;
-  String get currentVersion => _currentVersion;
-
-  /// 最新版本信息
+  static final endpoint = Uri.parse(
+    'https://api.github.com/repos/zenpe/CyreneMusic/releases/latest',
+  );
+  static const successInterval = Duration(hours: 24);
+  static const failureInterval = Duration(minutes: 15);
+  final http.Client _client;
+  final Future<String> Function() _loadVersion;
+  final DateTime Function() _now;
+  final String platformKey;
+  Future<void>? _initialization;
+  bool _initialized = false;
+  Future<VersionInfo?>? _inFlight;
+  late SharedPreferences _prefs;
+  String _currentVersion = '';
   VersionInfo? _latestVersion;
-  VersionInfo? get latestVersion => _latestVersion;
-
-  /// 是否正在检查更新
-  bool _isChecking = false;
-  bool get isChecking => _isChecking;
-
-  /// 是否有可用更新
-  bool get hasUpdate {
-    if (_latestVersion == null || _currentVersion.isEmpty) {
-      return false;
-    }
-    return _compareVersions(_latestVersion!.version, _currentVersion) > 0;
-  }
-
-  /// 检查是否应该提示更新（考虑用户已忽略的版本）
-  Future<bool> shouldShowUpdateDialog(VersionInfo versionInfo) async {
-    try {
-      // 如果是强制更新，总是提示
-      if (versionInfo.forceUpdate) {
-        return true;
-      }
-
-      // 检查用户是否已忽略此版本
-      final prefs = await SharedPreferences.getInstance();
-      final ignoredVersion = prefs.getString('ignored_update_version') ?? '';
-
-      // 如果用户已忽略某个版本，检查最新版本是否更新
-      if (ignoredVersion.isNotEmpty) {
-        // 只有当最新版本 > 已忽略版本时，才提示
-        final comparison = _compareVersions(
-          versionInfo.version,
-          ignoredVersion,
-        );
-        if (comparison <= 0) {
-          StructuredLogService.log(
-            '🔕 [VersionService] 用户已忽略版本 $ignoredVersion，当前版本 ${versionInfo.version} 不更新',
-          );
-          return false;
-        } else {
-          StructuredLogService.log(
-            '✅ [VersionService] 发现新版本 ${versionInfo.version}，大于已忽略版本 $ignoredVersion',
-          );
-        }
-      }
-
-      return true;
-    } catch (e) {
-      StructuredLogService.log('❌ [VersionService] 检查忽略版本失败: $e');
-      return true; // 出错时默认提示
-    }
-  }
-
-  /// 忽略当前版本的更新（永久忽略）
-  Future<void> ignoreCurrentVersion(String version) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('ignored_update_version', version);
-      StructuredLogService.log('🔕 [VersionService] 已永久忽略版本: $version');
-    } catch (e) {
-      StructuredLogService.log('❌ [VersionService] 保存忽略版本失败: $e');
-    }
-  }
-
-  /// 稍后提醒（仅在本次会话中忽略）
-  /// 记录本次会话中已提醒过的版本，避免重复提示
+  String? _lastError;
+  bool _enabled = true;
   final Set<String> _remindedVersions = {};
 
-  /// 标记某个版本在本次会话中已提醒
-  void markVersionReminded(String version) {
-    _remindedVersions.add(version);
-    StructuredLogService.log('⏰ [VersionService] 已标记版本 $version 为稍后提醒（本次会话）');
+  String get currentVersion => _currentVersion.isEmpty ? '未知' : _currentVersion;
+  VersionInfo? get latestVersion => _latestVersion;
+  String? get lastError => _lastError;
+  bool get isChecking => _inFlight != null;
+  bool get isEnabled => _enabled;
+  bool get hasUpdate =>
+      _latestVersion != null &&
+      _currentVersion.isNotEmpty &&
+      VersionInfo.compare(_latestVersion!.version, _currentVersion) > 0;
+  bool get hasVisibleUpdate =>
+      hasUpdate &&
+      _prefs.getString('ignored_update_version') != _latestVersion!.version;
+
+  static Future<String> _installedVersion() async =>
+      (await PackageInfo.fromPlatform()).version;
+  static String _platformKey() {
+    final abi = Abi.current();
+    if (abi == Abi.windowsX64) return 'windows-x64';
+    if (abi == Abi.androidArm64) return 'android-arm64';
+    return 'unsupported';
   }
 
-  /// 检查某个版本在本次会话中是否已提醒过
-  bool hasRemindedInSession(String version) {
-    return _remindedVersions.contains(version);
-  }
-
-  /// 清除忽略的版本（用于测试或重置）
-  Future<void> clearIgnoredVersion() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('ignored_update_version');
-      StructuredLogService.log('✅ [VersionService] 已清除忽略的版本');
-    } catch (e) {
-      StructuredLogService.log('❌ [VersionService] 清除忽略版本失败: $e');
-    }
-  }
-
-  /// 初始化服务（获取当前版本）
   Future<void> initialize() async {
-    try {
-      // 尝试从 package_info_plus 获取版本（可选）
-      final packageInfo = await PackageInfo.fromPlatform();
-      if (packageInfo.version.isNotEmpty) {
-        _currentVersion = packageInfo.version;
-        StructuredLogService.log(
-          '📱 [VersionService] 从 PackageInfo 获取版本: $_currentVersion',
-        );
-      } else {
-        // 如果获取失败，使用硬编码版本
-        _currentVersion = kAppVersion;
-        StructuredLogService.log(
-          '📱 [VersionService] 使用硬编码版本: $_currentVersion',
-        );
-      }
-      DeveloperModeService().addLog('📱 当前版本: $_currentVersion');
-    } catch (e) {
-      // 获取失败时使用硬编码版本
-      StructuredLogService.log(
-        '⚠️ [VersionService] PackageInfo 获取失败，使用硬编码版本: $kAppVersion',
-      );
-      _currentVersion = kAppVersion;
-      DeveloperModeService().addLog('📱 当前版本: $_currentVersion');
-    }
+    if (_initialized) return;
+    await (_initialization ??= _initialize());
   }
 
-  /// 检查更新
+  Future<void> _initialize() async {
+    _prefs = await SharedPreferences.getInstance();
+    // Preserve the old switch, including an explicitly disabled preference.
+    _enabled = _prefs.getBool('auto_update_enabled') ?? true;
+    try {
+      final version = await _loadVersion();
+      if (VersionInfo.isStableVersion(version.split('+').first)) {
+        _currentVersion = version;
+      }
+    } catch (_) {
+      /* Unknown installed version must not be guessed. */
+    }
+    try {
+      final cached = _prefs.getString('client_release_cache');
+      if (cached != null) {
+        _latestVersion = VersionInfo.fromRelease(
+          jsonDecode(cached) as Map<String, dynamic>,
+        );
+      }
+    } catch (_) {
+      /* Ignore corrupt/stale metadata. */
+    }
+    _initialized = true;
+    notifyListeners();
+  }
+
+  Future<void> setEnabled(bool enabled) async {
+    await initialize();
+    await _prefs.setBool('auto_update_enabled', enabled);
+    _enabled = enabled;
+    notifyListeners();
+  }
+
+  /// Manual requests bypass cooldown/ignore; concurrent callers share one request.
   Future<VersionInfo?> checkForUpdate({bool silent = false}) async {
-    if (kDisableUpdateCheck) {
-      _latestVersion = null;
-      AutoUpdateService().clearPendingVersion();
-      if (!silent) {
-        notifyListeners();
+    await initialize();
+    if (_inFlight != null) return _inFlight;
+    if (silent) {
+      if (!_enabled) return _latestVersion;
+      final now = _now().millisecondsSinceEpoch;
+      final success = _prefs.getInt('client_release_success');
+      final failure = _prefs.getInt('client_release_failure');
+      if ((failure != null && now - failure < failureInterval.inMilliseconds) ||
+          (failure == null &&
+              success != null &&
+              now - success < successInterval.inMilliseconds)) {
+        return _latestVersion;
       }
-      return null;
     }
-    if (_isChecking) {
-      StructuredLogService.log('⚠️ [VersionService] 正在检查更新，跳过重复请求');
-      return null;
-    }
-
-    _isChecking = true;
-    if (!silent) {
+    final operation = _check();
+    _inFlight = operation;
+    notifyListeners();
+    try {
+      return await operation;
+    } finally {
+      _inFlight = null;
       notifyListeners();
     }
+  }
 
+  Future<VersionInfo?> _check() async {
+    _lastError = null;
     try {
-      StructuredLogService.log('🔍 [VersionService] 开始检查更新...');
-      if (!silent) {
-        DeveloperModeService().addLog('🔍 检查更新中...');
+      if (_currentVersion.isEmpty) throw StateError('无法读取当前应用版本');
+      final response = await _client
+          .get(
+            endpoint,
+            headers: {
+              'Accept': 'application/vnd.github+json',
+              'User-Agent': 'CyreneMusic',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) {
+        throw StateError('GitHub HTTP ${response.statusCode}');
       }
-
-      final result = await ApiClient().getJson('/version/latest', auth: false);
-
-      StructuredLogService.log(
-        '🔍 [VersionService] 响应状态码: ${result.statusCode}',
+      final release = VersionInfo.fromRelease(
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>,
       );
-
-      if (result.ok) {
-        final data = result.data as Map<String, dynamic>?;
-
-        if (data != null && data['status'] == 200 && data['data'] != null) {
-          _latestVersion = VersionInfo.fromJson(data['data']);
-
-          StructuredLogService.log(
-            '✅ [VersionService] 最新版本: ${_latestVersion!.version}',
-          );
-          StructuredLogService.log('✅ [VersionService] 当前版本: $_currentVersion');
-
-          if (hasUpdate) {
-            StructuredLogService.log('🆕 [VersionService] 发现新版本！');
-            if (!silent) {
-              DeveloperModeService().addLog(
-                '🆕 发现新版本: ${_latestVersion!.version}',
-              );
-            }
-            AutoUpdateService().onNewVersionDetected(_latestVersion!);
-          } else {
-            StructuredLogService.log('✅ [VersionService] 已是最新版本');
-            if (!silent) {
-              DeveloperModeService().addLog('✅ 已是最新版本');
-            }
-            AutoUpdateService().clearPendingVersion();
-          }
-
-          _isChecking = false;
-          notifyListeners();
-          return _latestVersion;
-        } else {
-          AutoUpdateService().clearPendingVersion();
-          throw Exception('响应数据格式错误');
-        }
-      } else {
-        AutoUpdateService().clearPendingVersion();
-        throw Exception('HTTP ${result.statusCode}');
-      }
-    } catch (e) {
-      StructuredLogService.log('❌ [VersionService] 检查更新失败: $e');
-      if (!silent) {
-        DeveloperModeService().addLog('❌ 检查更新失败: $e');
-      }
-      _isChecking = false;
-      notifyListeners();
-      AutoUpdateService().clearPendingVersion();
+      _latestVersion = release;
+      await _prefs.setString(
+        'client_release_cache',
+        jsonEncode(release.toJson()),
+      );
+      await _prefs.setInt(
+        'client_release_success',
+        _now().millisecondsSinceEpoch,
+      );
+      await _prefs.remove('client_release_failure');
+      return release;
+    } catch (_) {
+      _lastError = '检查失败，请稍后重试，或打开 GitHub 发行页查看。';
+      await _prefs.setInt(
+        'client_release_failure',
+        _now().millisecondsSinceEpoch,
+      );
       return null;
     }
   }
 
-  /// 比较版本号
-  /// 返回值：> 0 表示 v1 > v2，< 0 表示 v1 < v2，= 0 表示相等
-  int _compareVersions(String v1, String v2) {
-    try {
-      // 移除可能的 'v' 前缀
-      v1 = v1.replaceFirst('v', '');
-      v2 = v2.replaceFirst('v', '');
-
-      final parts1 = v1.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-      final parts2 = v2.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-
-      final maxLength = parts1.length > parts2.length
-          ? parts1.length
-          : parts2.length;
-
-      for (int i = 0; i < maxLength; i++) {
-        final part1 = i < parts1.length ? parts1[i] : 0;
-        final part2 = i < parts2.length ? parts2[i] : 0;
-
-        if (part1 > part2) return 1;
-        if (part1 < part2) return -1;
-      }
-
-      return 0;
-    } catch (e) {
-      StructuredLogService.log('❌ [VersionService] 版本比较失败: $e');
-      return 0;
-    }
+  Future<bool> shouldShowUpdateDialog(VersionInfo release) async {
+    await initialize();
+    return _prefs.getString('ignored_update_version') != release.version &&
+        !hasRemindedInSession(release.version);
   }
 
-  /// 获取版本比较结果描述
-  String getVersionCompareText() {
-    if (_latestVersion == null || _currentVersion.isEmpty) {
-      return '未知';
-    }
-
-    if (hasUpdate) {
-      return '$_currentVersion → ${_latestVersion!.version}';
-    } else {
-      return '$_currentVersion (最新)';
-    }
+  void markVersionReminded(String version) => _remindedVersions.add(version);
+  bool hasRemindedInSession(String version) =>
+      _remindedVersions.contains(version);
+  Future<void> ignoreCurrentVersion(String version) async {
+    await initialize();
+    await _prefs.setString('ignored_update_version', version);
+    notifyListeners();
   }
 }

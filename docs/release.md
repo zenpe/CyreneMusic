@@ -29,3 +29,24 @@ On failure, inspect the failed step log and use Re-run failed jobs to preserve
 successful build results and their artifacts. Re-run promptly while artifacts
 remain available (14 days); after expiry, run all jobs again. Fixes require a new
 commit and release tag rather than rerunning unchanged failing code.
+
+## Client update contract
+
+The client checks the fixed official `zenpe/CyreneMusic` GitHub Releases API,
+independently of the selected music API or Go backend version. See
+[Client updates](client-updates.md) for the complete user flow and validation.
+
+Every release must increase `X.Y.Z` and the positive build number in
+`pubspec.yaml`. Use the matching `vX.Y.Z` tag. PackageInfo is the single source
+of the installed client version; do not edit a Dart version constant or backend.
+Build metadata is not a separate update channel. Never replace an already
+published release's required assets or move a published tag. Use a new version
+for fixes. The publication job permits retrying a draft but refuses modifying
+an already published stable release.
+
+Keep the required asset names stable: `cyrene_music-windows-x64.zip` and
+`app-release.apk` (Android arm64). Publish only after both are complete.
+Keep the Android application ID and release signing key unchanged; increase
+versionCode for every release. Keep Windows preferences and user data outside
+the packaged program directory. Optional platforms continue to use the release
+page rather than guessing compatible assets.

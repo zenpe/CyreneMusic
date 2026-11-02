@@ -88,8 +88,8 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
                 ),
                 MD3SwitchTile(
                   leading: const Icon(Icons.system_update_alt_outlined),
-                  title: '启动时弹出更新提示',
-                  subtitle: '关闭后不再弹出更新提示页',
+                  title: '启动时显示更新提示',
+                  subtitle: '关闭后仍可在关于页面查看新版本',
                   value: settings.showUpdatePromptOnStartup,
                   onChanged: (value) {
                     settings.setShowUpdatePromptOnStartup(value);
@@ -163,8 +163,8 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
                 CupertinoSwitchTile(
                   icon: CupertinoIcons.arrow_down_circle,
                   iconColor: CupertinoColors.systemOrange,
-                  title: '启动时弹出更新提示',
-                  subtitle: '关闭后不再弹出更新提示页',
+                  title: '启动时显示更新提示',
+                  subtitle: '关闭后仍可在关于页面查看新版本',
                   value: settings.showUpdatePromptOnStartup,
                   onChanged: (value) {
                     settings.setShowUpdatePromptOnStartup(value);
@@ -250,8 +250,8 @@ class _OtherSettingsContentState extends State<OtherSettingsContent> {
                 ),
                 FluentSwitchTile(
                   icon: fluent_ui.FluentIcons.sync,
-                  title: '启动时弹出更新提示',
-                  subtitle: '关闭后不再弹出更新提示页',
+                  title: '启动时显示更新提示',
+                  subtitle: '关闭后仍可在关于页面查看新版本',
                   value: settings.showUpdatePromptOnStartup,
                   onChanged: (value) {
                     settings.setShowUpdatePromptOnStartup(value);

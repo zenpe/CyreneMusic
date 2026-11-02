@@ -234,9 +234,6 @@ class UrlService extends ChangeNotifier {
   // Douyin API
   String get douyinUrl => '$baseUrl/douyin';
 
-  // Version API
-  String get versionLatestUrl => '$baseUrl/version/latest';
-
   // Weather API
   String get weatherUrl => '$baseUrl/weather';
 

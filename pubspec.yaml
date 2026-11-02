@@ -75,8 +75,6 @@ dependencies:
   # Path utilities for file operations
   path: ^1.9.0
   path_provider: ^2.1.5
-  archive: ^4.0.7
-  open_filex: ^4.4.0
   
   # HTTP server for local proxy
   shelf: ^1.4.0
@@ -171,7 +169,6 @@ flutter:
     - assets/icons/new_ico.png
     - assets/icons/new_ico_white.png
     - assets/ui/
-    - windows/runner/updater.ps1
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
