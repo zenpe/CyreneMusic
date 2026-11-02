@@ -117,6 +117,10 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            android/*.gradle*
+            android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -186,7 +190,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: quality
     timeout-minutes: 45
-    if: ${{ github.event_name == 'push' || inputs.build_linux }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_linux }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -274,7 +278,7 @@ jobs:
     runs-on: macos-latest
     needs: quality
     timeout-minutes: 45
-    if: ${{ github.event_name == 'push' || inputs.build_macos }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_macos }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -315,7 +319,7 @@ jobs:
     runs-on: macos-latest
     needs: quality
     timeout-minutes: 45
-    if: ${{ github.event_name == 'push' || inputs.build_ios }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ios }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -349,52 +353,96 @@ jobs:
           path: cyrene_music-ios-unsigned.ipa
 
   create-release:
-    name: Create Release
-    needs: [preflight, quality, build-android, build-windows, build-linux, build-macos, build-ios]
+    name: Publish Android and Windows release
+    needs: [preflight, quality, build-android, build-windows]
     if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
+      - name: Download Android artifact
         uses: actions/download-artifact@v8
         with:
-          path: artifacts
-
-      - name: Verify release artifacts and record checksums
+          name: android-apk
+          path: artifacts/android-apk
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: windows-x64
+          path: artifacts/windows-x64
+      - name: Verify required packages and record checksums
         shell: bash
         run: |
           set -euo pipefail
-          for file in android-apk/app-release.apk windows-x64/cyrene_music-windows-x64.zip linux-deb/cyrene_music-linux-amd64.deb macos/cyrene_music-macos.dmg ios-unsigned/cyrene_music-ios-unsigned.ipa; do
+          mkdir release
+          for file in android-apk/app-release.apk windows-x64/cyrene_music-windows-x64.zip; do
             test -s "artifacts/$file"
+            cp "artifacts/$file" release/
           done
-          cd artifacts
-          find . -type f -print0 | sort -z | xargs -0 sha256sum > ../SHA256SUMS.txt
-          printf 'commit=%s\ntag=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_REF_NAME" "$GITHUB_RUN_ID" > ../build-info.txt
-
-      - name: Create Release
+          cd release
+          sha256sum app-release.apk cyrene_music-windows-x64.zip > SHA256SUMS.txt
+          printf 'commit=%s\ntag=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_REF_NAME" "$GITHUB_RUN_ID" > build-info.txt
+      - name: Prepare complete release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           target_commitish: ${{ github.sha }}
-          files: |
-            artifacts/android-apk/*.apk
-            artifacts/windows-x64/*.zip
-            artifacts/linux-deb/*.deb
-            artifacts/macos/*.dmg
-            artifacts/ios-unsigned/*.ipa
-            SHA256SUMS.txt
-            build-info.txt
+          files: release/*
           fail_on_unmatched_files: true
           draft: true
           prerelease: false
           generate_release_notes: true
-          body: |
-            iOS IPA is unsigned and requires signing before installation.
       - name: Publish complete release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: gh release edit "$GITHUB_REF_NAME" --draft=false
 
+  attach-optional-packages:
+    name: Attach optional platform packages
+    needs: [quality, build-linux, build-macos, build-ios]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'workflow_dispatch' &&
+          startsWith(github.ref, 'refs/tags/v') && needs.quality.result == 'success' &&
+          (needs.build-linux.result == 'success' || needs.build-macos.result == 'success' ||
+           needs.build-ios.result == 'success') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download optional artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Verify and attach optional packages with separate checksums
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          LINUX_RESULT: ${{ needs.build-linux.result }}
+          MACOS_RESULT: ${{ needs.build-macos.result }}
+          IOS_RESULT: ${{ needs.build-ios.result }}
+        run: |
+          set -euo pipefail
+          draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)
+          [[ "$draft" == false ]] || { echo 'Publish Android/Windows release first.' >&2; exit 1; }
+          mkdir optional-release
+          attach() {
+            local result="$1" artifact="$2" platform="$3"
+            [[ "$result" == success ]] || return 0
+            test -s "artifacts/$artifact"
+            local name
+            name=$(basename "$artifact")
+            cp "artifacts/$artifact" "optional-release/$name"
+            (cd optional-release && sha256sum "$name" > "SHA256SUMS-$platform.txt")
+            gh release upload "$GITHUB_REF_NAME" "optional-release/$name" \
+              "optional-release/SHA256SUMS-$platform.txt" --clobber
+          }
+          attach "$LINUX_RESULT" linux-deb/cyrene_music-linux-amd64.deb linux
+          attach "$MACOS_RESULT" macos/cyrene_music-macos.dmg macos
+          attach "$IOS_RESULT" ios-unsigned/cyrene_music-ios-unsigned.ipa ios
+          if [[ "$IOS_RESULT" == success ]]; then
+            echo 'The iOS IPA is unsigned and requires signing before installation.' >> "$GITHUB_STEP_SUMMARY"
+          fi

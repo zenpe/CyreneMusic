@@ -59,6 +59,8 @@ Puro、Pub、Gradle 和 Android 缓存重定向到项目所在盘的 `DevTools` 
 
 测试产物及 SHA-256 清单写入 `artifacts/test`，该目录不会提交到 Git。
 
+正式发布与可选平台补包流程见 [发行说明](docs/release.md)。默认发行 Android 和 Windows，其他平台按需构建。
+
 ### 手动构建
 
 ```bash

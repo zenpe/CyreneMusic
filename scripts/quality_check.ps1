@@ -23,6 +23,6 @@ Write-Host 'Checking test formatting...'
 Invoke-CyreneDart -Arguments @('format', '--output=none', '--set-exit-if-changed', 'test')
 
 Write-Host 'Running tests...'
-Invoke-CyreneFlutter -Arguments @('test')
+Invoke-CyreneFlutter -Arguments @('test', '--timeout', '60s')
 
 Write-Host 'Quality checks passed.' -ForegroundColor Green

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,8 +12,26 @@ import 'package:cyrene_music/widgets/material/material_settings_widgets.dart';
 import 'package:cyrene_music/widgets/fluent_settings_card.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  final binding = TestWidgetsFlutterBinding.ensureInitialized();
+  if (binding is AutomatedTestWidgetsFlutterBinding) {
+    binding.defaultTestTimeout = const Timeout(Duration(seconds: 60));
+  }
+  const secureStorage = MethodChannel(
+    'plugins.it_nomads.com/flutter_secure_storage',
+  );
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      secureStorage,
+      (_) async => null,
+    );
+  });
+  tearDown(() {
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      secureStorage,
+      null,
+    );
+  });
 
   for (final fluentStyle in [false, true]) {
     testWidgets('recover invalid server before login, fluent=$fluentStyle', (

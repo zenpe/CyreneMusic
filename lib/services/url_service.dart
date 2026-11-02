@@ -38,7 +38,12 @@ class UrlService extends ChangeNotifier {
   }
 
   /// 初始化服务（必须在应用启动时调用）
-  Future<void> initialize() => _initialization ??= _initialize();
+  Future<void> initialize() async {
+    // Return in the caller's async context once initialized. Reusing a settled
+    // Future from another widget-test zone can leave its callbacks unpumped.
+    if (_isInitialized) return;
+    await (_initialization ??= _initialize());
+  }
 
   Future<void> _initialize() async {
     if (_isInitialized) {
