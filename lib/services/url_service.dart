@@ -27,6 +27,7 @@ class UrlService extends ChangeNotifier {
   /// 是否已初始化
   bool _isInitialized = false;
   int _backendRevision = 0;
+  Future<void>? _initialization;
 
   /// Changes only when the effective backend URL changes, including A → B → A.
   int get backendRevision => _backendRevision;
@@ -37,7 +38,9 @@ class UrlService extends ChangeNotifier {
   }
 
   /// 初始化服务（必须在应用启动时调用）
-  Future<void> initialize() async {
+  Future<void> initialize() => _initialization ??= _initialize();
+
+  Future<void> _initialize() async {
     if (_isInitialized) {
       StructuredLogService.log('⚠️ [UrlService] 已经初始化，跳过重复初始化');
       return;
@@ -50,19 +53,18 @@ class UrlService extends ChangeNotifier {
 
   /// 从本地存储加载设置
   Future<void> _loadSettings() async {
-    final previousBaseUrl = baseUrl;
     try {
       final prefs = await SharedPreferences.getInstance();
 
       // 1) 新版：优先读取字符串类型
-      final sourceTypeStr = prefs.getString('backend_source_type');
+      final sourceTypeStr = prefs.get('backend_source_type');
       if (sourceTypeStr == BackendSourceType.custom.name) {
         _sourceType = BackendSourceType.custom;
       } else if (sourceTypeStr == BackendSourceType.official.name) {
         _sourceType = BackendSourceType.official;
       } else {
         // 2) 兼容旧版 int（0=official, 1=custom）
-        final sourceTypeIndex = prefs.getInt('backend_source_type');
+        final sourceTypeIndex = sourceTypeStr is int ? sourceTypeStr : null;
         if (sourceTypeIndex == 1) {
           _sourceType = BackendSourceType.custom;
         } else if (sourceTypeIndex == 0) {
@@ -80,7 +82,8 @@ class UrlService extends ChangeNotifier {
       StructuredLogService.log(
         '🌐 [UrlService] 从本地加载配置: ${_sourceType.name}, 自定义源: $_customBaseUrl',
       );
-      _notifySettingsChanged(previousBaseUrl);
+      // Restore configuration without invalidating the persisted session.
+      notifyListeners();
     } catch (e) {
       StructuredLogService.log('❌ [UrlService] 加载配置失败: $e');
     }

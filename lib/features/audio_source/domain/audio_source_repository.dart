@@ -14,7 +14,7 @@ abstract class AudioSourceRepository {
 
   Future<void> setActiveSource(String id);
 
-  Future<void> useLxSource(String scriptUrl);
+  Future<void> useLxSource(String scriptUrl, {String? catalogPath});
 
   Future<void> clear();
 }

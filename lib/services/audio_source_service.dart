@@ -13,6 +13,8 @@ import 'lx_music_runtime_service.dart';
 import 'lx_runtime_interface.dart';
 import 'lx_music_source_parser.dart';
 import 'navidrome_session_service.dart';
+import 'url_service.dart';
+import '../models/lx_source_candidate.dart';
 
 /// 音源类型枚举
 enum AudioSourceType {
@@ -360,10 +362,26 @@ class AudioSourceService extends ChangeNotifier {
 
   /// Download and activate as one serialized operation. Until initialization
   /// succeeds, neither the saved selection nor the source list is changed.
-  Future<void> useLxSource(String scriptUrl) {
+  Future<void> useLxSource(String scriptUrl, {String? catalogPath}) {
+    final backendRevision = UrlService().backendRevision;
+    void checkBackend() {
+      if (catalogPath != null &&
+          backendRevision != UrlService().backendRevision) {
+        throw Exception('服务器已更换，请在当前服务器重新选择音源');
+      }
+    }
+
     return _enqueueMutation(() async {
-      if (!isValidUrl(scriptUrl)) throw Exception('无效的音源链接');
-      final parsed = await _parser.parseFromUrl(scriptUrl);
+      checkBackend();
+      if (catalogPath != null
+          ? !LxSourceCandidate.isScriptPath(catalogPath)
+          : !isValidUrl(scriptUrl)) {
+        throw Exception('无效的音源路径或链接');
+      }
+      final parsed = catalogPath != null
+          ? await _parser.parseFromCatalogPath(catalogPath)
+          : await _parser.parseFromUrl(scriptUrl);
+      checkBackend();
       if (parsed == null || parsed.scriptContent.isEmpty) {
         throw Exception('无法下载或读取音源脚本，请刷新列表后重试');
       }
@@ -374,7 +392,10 @@ class AudioSourceService extends ChangeNotifier {
       final index = _sources.indexWhere(
         (source) =>
             source.type == AudioSourceType.lxmusic &&
-            source.scriptSource == scriptUrl,
+            (catalogPath != null
+                ? source.catalogPath == catalogPath
+                : source.catalogPath.isEmpty &&
+                      source.scriptSource == scriptUrl),
       );
       final barrier = Completer<void>();
       _candidateActivation = barrier.future;
@@ -385,7 +406,9 @@ class AudioSourceService extends ChangeNotifier {
       var persistenceStarted = false;
       try {
         await _lxRuntimeOperation.catchError((_) {});
+        checkBackend();
         final info = await _runtime.loadScript(parsed.scriptContent);
+        checkBackend();
         if (info == null || !_runtime.isScriptReady) {
           throw Exception('脚本加载失败或初始化超时');
         }
@@ -396,7 +419,8 @@ class AudioSourceService extends ChangeNotifier {
           version: parsed.version,
           url: parsed.apiUrl,
           apiKey: parsed.apiKey,
-          scriptSource: scriptUrl,
+          scriptSource: catalogPath == null ? scriptUrl : '',
+          catalogPath: catalogPath ?? '',
           scriptContent: parsed.scriptContent,
           author: parsed.author,
           description: parsed.description,
@@ -420,6 +444,7 @@ class AudioSourceService extends ChangeNotifier {
             !await prefs.setString(_keyActiveSourceId, config.id)) {
           throw Exception('无法保存音源配置');
         }
+        checkBackend();
         _sources = nextSources;
         _activeSourceId = config.id;
         _lxRuntimeSourceId = config.id;

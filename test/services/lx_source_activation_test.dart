@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cyrene_music/services/audio_source_service.dart';
+import 'package:cyrene_music/models/audio_source_config.dart';
+import 'package:cyrene_music/services/url_service.dart';
 import 'package:cyrene_music/services/lx_music_source_parser.dart';
 import 'package:cyrene_music/services/lx_runtime_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +12,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 class _Parser extends LxMusicSourceParser {
   final scripts = <String, String?>{};
   final downloads = <String>[];
+
+  @override
+  Future<LxMusicSourceConfig?> parseFromCatalogPath(String path) =>
+      parseFromUrl(path);
 
   @override
   Future<LxMusicSourceConfig?> parseFromUrl(String scriptUrl) async {
@@ -107,6 +113,64 @@ void main() {
       parser: parser,
     );
   });
+
+  test(
+    'catalog refresh migrates legacy URL and keeps the stable local ID',
+    () async {
+      const path = '公益/中文 + &?#.js';
+      final legacy = AudioSourceConfig.fromJson({
+        'id': 'legacy',
+        'type': 'lxmusic',
+        'name': 'Source',
+        'url': '',
+        'scriptSource': Uri.https('old.example', '/lx/script', {
+          'path': path,
+        }).toString(),
+        'scriptContent': 'old',
+      });
+      await service.addSource(legacy);
+      parser.scripts[path] = 'new';
+      await service.useLxSource('', catalogPath: path);
+      expect(service.sources, hasLength(1));
+      expect(service.activeSource!.id, 'legacy');
+      expect(service.activeSource!.catalogPath, path);
+      expect(service.activeSource!.scriptSource, isEmpty);
+      expect(service.activeSource!.scriptContent, 'new');
+      final prefs = await SharedPreferences.getInstance();
+      final restored = AudioSourceConfig.fromJson(
+        Map<String, dynamic>.from(
+          jsonDecode(prefs.getString('audio_source_list')!).single,
+        ),
+      );
+      expect(restored.catalogPath, path);
+      expect(restored.id, 'legacy');
+    },
+  );
+
+  test(
+    'server switch during initialization rolls back candidate and runtime',
+    () async {
+      parser.scripts[url] = 'old';
+      await service.useLxSource(url);
+      final previous = service.activeSource;
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString('audio_source_list');
+      parser.scripts['candidate.js'] = 'new';
+      runtime.gate = Completer<void>();
+      runtime.started = Completer<void>();
+      final started = runtime.started!;
+      final gate = runtime.gate!;
+      final pending = service.useLxSource('', catalogPath: 'candidate.js');
+      final assertion = expectLater(pending, throwsException);
+      await started.future;
+      UrlService().useCustomSource('https://changed.example');
+      gate.complete();
+      await assertion;
+      expect(service.activeSource, same(previous));
+      expect(prefs.getString('audio_source_list'), stored);
+      expect(runtime.currentScript!.script, 'old');
+    },
+  );
 
   test(
     'successful import persists selection and initialized capabilities',

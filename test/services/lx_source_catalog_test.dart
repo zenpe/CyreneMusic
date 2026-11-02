@@ -12,8 +12,6 @@ Map<String, String> _source(String id) => {
   'path': '$id.js',
   'name': id.split('/').last,
   'directory': id.contains('/') ? id.substring(0, id.lastIndexOf('/')) : '',
-  'downloadUrl':
-      'https://api.example/lx/script?path=${Uri.encodeComponent('$id.js')}',
 };
 
 void main() {

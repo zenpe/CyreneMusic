@@ -25,7 +25,7 @@ class VersionService extends ChangeNotifier {
 
   /// ⚠️⚠️⚠️ 应用当前版本（硬编码）⚠️⚠️⚠️
   /// 发布新版本时 **必须** 手动更新此值！
-  static const String kAppVersion = '1.3.5';
+  static const String kAppVersion = '1.3.8';
   static const bool kDisableUpdateCheck = true;
 
   /// 当前应用版本

@@ -1,6 +1,7 @@
 import 'utils/app_feedback.dart';
 import 'widgets/feedback_boundary.dart';
 import 'services/structured_log_service.dart';
+import 'services/auth_service.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
@@ -217,6 +218,13 @@ Future<void> main() async {
         });
       }
 
+      // Backend configuration must be restored before authentication/services.
+      await timed('UrlService.initialize', () => UrlService().initialize());
+      await timed(
+        'AuthService.initialize',
+        () => AuthService().ensureInitialized(),
+      );
+
       // ── 第 2 批：无互相依赖的服务（并行） ──
       await timed(
         'Batch 2: parallel services',
@@ -228,10 +236,6 @@ Future<void> main() async {
           timed('AppSettingsService.initialize', () async {
             await AppSettingsService().initialize();
             log(' 应用设置服务已初始化');
-          }),
-          timed('UrlService.initialize', () async {
-            await UrlService().initialize();
-            log('✅ URL 服务已初始化');
           }),
           timed('LocalLibraryService.init', () async {
             await LocalLibraryService().init();

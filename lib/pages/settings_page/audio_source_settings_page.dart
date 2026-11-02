@@ -83,14 +83,14 @@ class _AudioSourceSettingsContentState
   int _catalogRequest = 0;
   String? _candidateError;
   String? _candidateNotice;
-  String? _usingCandidateUrl;
+  String? _usingCandidatePath;
   String _candidateQuery = '';
   String? _candidateDirectory;
 
   List<AudioSourceConfig> get _localSources {
-    final urls = _candidates.map((source) => source.downloadUrl).toSet();
+    final paths = _candidates.map((source) => source.path).toSet();
     return _audioSourceReadController.sources
-        .where((source) => !urls.contains(source.scriptSource))
+        .where((source) => !paths.contains(source.catalogPath))
         .toList();
   }
 
@@ -181,17 +181,17 @@ class _AudioSourceSettingsContentState
   Future<void> _useCandidate(LxSourceCandidate candidate) async {
     if (_isSourceActionBusy) return;
     final reloading =
-        _audioSourceReadController.activeSource?.scriptSource ==
-        candidate.downloadUrl;
+        _audioSourceReadController.activeSource?.catalogPath == candidate.path;
     await _runWithSourceActionLock(
       action: () async {
         setState(() {
-          _usingCandidateUrl = candidate.downloadUrl;
+          _usingCandidatePath = candidate.path;
           _candidateNotice = null;
         });
         try {
           final result = await _audioSourceController.useLxSource(
-            candidate.downloadUrl,
+            '',
+            catalogPath: candidate.path,
           );
           if (!mounted) return;
           if (!result.isSuccess) {
@@ -200,7 +200,7 @@ class _AudioSourceSettingsContentState
             setState(() => _candidateNotice = reloading ? '音源已重新加载' : '已切换音源');
           }
         } finally {
-          if (mounted) setState(() => _usingCandidateUrl = null);
+          if (mounted) setState(() => _usingCandidatePath = null);
         }
       },
     );
@@ -295,9 +295,9 @@ class _AudioSourceSettingsContentState
               ),
             ...visible.map((candidate) {
               final active =
-                  _audioSourceReadController.activeSource?.scriptSource ==
-                  candidate.downloadUrl;
-              final busy = _usingCandidateUrl == candidate.downloadUrl;
+                  _audioSourceReadController.activeSource?.catalogPath ==
+                  candidate.path;
+              final busy = _usingCandidatePath == candidate.path;
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(
@@ -505,8 +505,8 @@ class _AudioSourceSettingsContentState
       onRetry: onRetry == null
           ? null
           : () {
-                    onRetry();
-                  },
+              onRetry();
+            },
     );
   }
 

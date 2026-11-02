@@ -2,21 +2,17 @@ class LxSourceCandidate {
   final String path;
   final String name;
   final String directory;
-  final String downloadUrl;
 
   const LxSourceCandidate({
     required this.path,
     required this.name,
     required this.directory,
-    required this.downloadUrl,
   });
 
   factory LxSourceCandidate.fromJson(Map<String, dynamic> json) {
     final path = json['path'];
     final name = json['name'];
     final directory = json['directory'];
-    final url = json['downloadUrl'];
-    final uri = url is String ? Uri.tryParse(url) : null;
     if (path is! String ||
         !isScriptPath(path) ||
         directory is! String ||
@@ -25,18 +21,10 @@ class LxSourceCandidate {
                 ? path.substring(0, path.lastIndexOf('/'))
                 : '') ||
         name is! String ||
-        name.isEmpty ||
-        uri == null ||
-        !uri.hasAuthority ||
-        (uri.scheme != 'https' && uri.scheme != 'http')) {
+        name.isEmpty) {
       throw const FormatException('音源列表格式无效');
     }
-    return LxSourceCandidate(
-      path: path,
-      name: name,
-      directory: directory,
-      downloadUrl: uri.toString(),
-    );
+    return LxSourceCandidate(path: path, name: name, directory: directory);
   }
 
   static bool isScriptPath(String path) {

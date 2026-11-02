@@ -33,7 +33,8 @@ class AudioSourceRepositoryImpl implements AudioSourceRepository {
   }
 
   @override
-  Future<void> useLxSource(String scriptUrl) => _service.useLxSource(scriptUrl);
+  Future<void> useLxSource(String scriptUrl, {String? catalogPath}) =>
+      _service.useLxSource(scriptUrl, catalogPath: catalogPath);
 
   @override
   Future<void> clear() {

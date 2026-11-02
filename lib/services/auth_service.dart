@@ -125,6 +125,7 @@ class AuthService extends ChangeNotifier {
   Future<void> _loadUserFromStorage() async {
     final revision = _sessionRevision;
     try {
+      await UrlService().initialize();
       final prefs = await SharedPreferences.getInstance();
       if (revision != _sessionRevision) return;
       final userJson = prefs.getString('current_user');

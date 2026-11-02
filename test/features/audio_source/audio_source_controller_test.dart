@@ -46,7 +46,7 @@ class _InMemoryAudioSourceRepository implements AudioSourceRepository {
   }
 
   @override
-  Future<void> useLxSource(String scriptUrl) async {
+  Future<void> useLxSource(String scriptUrl, {String? catalogPath}) async {
     if (throwOnSetActive) throw Exception('load failed');
   }
 

@@ -1,4 +1,5 @@
 import '../services/audio_source_service.dart';
+import 'lx_source_candidate.dart';
 
 /// Audio Source Configuration Model
 class AudioSourceConfig {
@@ -27,6 +28,23 @@ class AudioSourceConfig {
   final String author;
   final String description;
   final String scriptSource;
+  final String catalogPath;
+
+  static String legacyCatalogPath(String source) {
+    final uri = Uri.tryParse(source);
+    if (uri == null ||
+        (uri.scheme != 'http' && uri.scheme != 'https') ||
+        uri.path != '/lx/script') {
+      return '';
+    }
+    final paths = uri.queryParametersAll['path'];
+    return paths != null &&
+            paths.length == 1 &&
+            LxSourceCandidate.isScriptPath(paths.single)
+        ? paths.single
+        : '';
+  }
+
   final String scriptContent;
   final String urlPathTemplate;
 
@@ -41,6 +59,7 @@ class AudioSourceConfig {
     this.author = '',
     this.description = '',
     this.scriptSource = '',
+    this.catalogPath = '',
     this.scriptContent = '',
     this.urlPathTemplate = '',
   });
@@ -56,6 +75,7 @@ class AudioSourceConfig {
     String? author,
     String? description,
     String? scriptSource,
+    String? catalogPath,
     String? scriptContent,
     String? urlPathTemplate,
   }) {
@@ -70,6 +90,7 @@ class AudioSourceConfig {
       author: author ?? this.author,
       description: description ?? this.description,
       scriptSource: scriptSource ?? this.scriptSource,
+      catalogPath: catalogPath ?? this.catalogPath,
       scriptContent: scriptContent ?? this.scriptContent,
       urlPathTemplate: urlPathTemplate ?? this.urlPathTemplate,
     );
@@ -88,6 +109,7 @@ class AudioSourceConfig {
       'author': author,
       'description': description,
       'scriptSource': scriptSource,
+      'catalogPath': catalogPath,
       'scriptContent': scriptContent,
       'urlPathTemplate': urlPathTemplate,
     };
@@ -112,6 +134,9 @@ class AudioSourceConfig {
       author: json['author'] as String? ?? '',
       description: json['description'] as String? ?? '',
       scriptSource: json['scriptSource'] as String? ?? '',
+      catalogPath:
+          json['catalogPath'] as String? ??
+          legacyCatalogPath(json['scriptSource'] as String? ?? ''),
       scriptContent: json['scriptContent'] as String? ?? '',
       urlPathTemplate: json['urlPathTemplate'] as String? ?? '',
     );

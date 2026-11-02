@@ -36,9 +36,12 @@ class AudioSourceController {
     return _run(() => _useCases.setActiveSource(id), fallbackMessage: '切换音源失败');
   }
 
-  Future<AudioSourceActionResult> useLxSource(String scriptUrl) {
+  Future<AudioSourceActionResult> useLxSource(
+    String scriptUrl, {
+    String? catalogPath,
+  }) {
     return _run(
-      () => _useCases.useLxSource(scriptUrl),
+      () => _useCases.useLxSource(scriptUrl, catalogPath: catalogPath),
       fallbackMessage: '加载音源失败',
     );
   }

@@ -1,4 +1,6 @@
 import 'structured_log_service.dart';
+import 'api/api_client.dart';
+import '../models/lx_source_candidate.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -59,6 +61,36 @@ class LxMusicSourceConfig {
 ///
 /// 用于解析洛雪音源 JS 脚本，提取 API 配置信息
 class LxMusicSourceParser {
+  Future<LxMusicSourceConfig?> parseFromCatalogPath(String path) async {
+    if (!LxSourceCandidate.isScriptPath(path)) {
+      throw const FormatException('无效的音源路径');
+    }
+    final result = await ApiClient().requestBytes(
+      '/lx/script',
+      queryParameters: {'path': path},
+      auth: false,
+      timeout: const Duration(seconds: 30),
+      headers: const {'Cache-Control': 'no-cache'},
+    );
+    if (!result.ok) {
+      StructuredLogService.log(
+        '[LxMusicSourceParser] catalog download failed: '
+        'status=${result.statusCode}, network=${result.isNetworkError}, detail=${result.text}',
+      );
+      throw Exception(switch (result.statusCode) {
+        404 => '该音源已移除，请刷新列表',
+        503 => '音源服务暂不可用，请稍后重试',
+        0 => '音源下载连接失败或超时，请检查网络后重试',
+        final code => '音源下载失败（HTTP $code），请重试',
+      });
+    }
+    final script = _decodeScriptBytes(
+      result.data,
+      contentType: result.headers['content-type']?.firstOrNull,
+    );
+    return _parseScriptContent(script, path);
+  }
+
   /// 从 URL 解析洛雪音源脚本
   ///
   /// [scriptUrl] - 脚本的 URL 地址
