@@ -818,9 +818,11 @@ class _MobilePlayerFluidCloudLayoutState
               builder: (context, _) {
                 return IconButton(
                   icon: Icon(
-                    player.isPlaying
-                        ? CupertinoIcons.pause_fill
-                        : CupertinoIcons.play_fill,
+                    player.hasPlaybackFailure
+                        ? CupertinoIcons.arrow_clockwise
+                        : (player.isPlaying
+                              ? CupertinoIcons.pause_fill
+                              : CupertinoIcons.play_fill),
                     color: Colors.white,
                   ),
                   iconSize: 52,
@@ -1124,14 +1126,11 @@ class _MobilePlayerFluidCloudLayoutState
                 ),
               ),
               PlayerErrorBanner(
+                details: player.errorMessage,
                 message: player.isAudioSourceNotConfigured
                     ? null
                     : player.playbackProblemMessage,
-                nonBlocking: player.isPlaying,
                 margin: const EdgeInsets.only(top: 6),
-                onRetry: player.retryCurrentProblemAction,
-                showSkip: player.canSkipCurrentProblem,
-                onSkip: player.skipCurrentProblemAction,
               ),
             ],
           ),
@@ -1161,9 +1160,11 @@ class _MobilePlayerFluidCloudLayoutState
                 builder: (context, _) {
                   return IconButton(
                     icon: Icon(
-                      player.isPlaying
-                          ? CupertinoIcons.pause_fill
-                          : CupertinoIcons.play_fill,
+                      player.hasPlaybackFailure
+                          ? CupertinoIcons.arrow_clockwise
+                          : (player.isPlaying
+                                ? CupertinoIcons.pause_fill
+                                : CupertinoIcons.play_fill),
                       color: Colors.white,
                     ),
                     iconSize: 72,
@@ -1864,7 +1865,8 @@ class _DownloadButtonState extends State<_DownloadButton> {
 
         if (detail == null) {
           if (mounted) {
-            AppFeedback.of(context).showSnackBar(const SnackBar(content: Text('获取歌曲信息失败')),
+            AppFeedback.of(context).showSnackBar(
+              const SnackBar(content: Text('获取歌曲信息失败')),
               kind: FeedbackKind.error,
             );
             setState(() => _isDownloading = false);
@@ -1893,7 +1895,8 @@ class _DownloadButtonState extends State<_DownloadButton> {
             );
           } else {
             setState(() => _isDownloading = false);
-            AppFeedback.of(context).showSnackBar(const SnackBar(content: Text('下载失败')),
+            AppFeedback.of(context).showSnackBar(
+              const SnackBar(content: Text('下载失败')),
               kind: FeedbackKind.error,
             );
           }
@@ -1920,7 +1923,8 @@ class _DownloadButtonState extends State<_DownloadButton> {
             );
           } else {
             setState(() => _isDownloading = false);
-            AppFeedback.of(context).showSnackBar(const SnackBar(content: Text('下载失败或文件已存在')),
+            AppFeedback.of(context).showSnackBar(
+              const SnackBar(content: Text('下载失败或文件已存在')),
               kind: FeedbackKind.error,
             );
           }
@@ -1929,7 +1933,8 @@ class _DownloadButtonState extends State<_DownloadButton> {
     } catch (e) {
       if (mounted) {
         setState(() => _isDownloading = false);
-        AppFeedback.of(context).showSnackBar(SnackBar(content: Text('下载失败: $e')),
+        AppFeedback.of(context).showSnackBar(
+          SnackBar(content: Text('下载失败: $e')),
           kind: FeedbackKind.error,
         );
       }

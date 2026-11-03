@@ -606,7 +606,9 @@ class MusicService extends ChangeNotifier {
       StructuredLogService.log(
         '🌐 [MusicService] 调用洛雪运行时获取 URL: $sourceCode / $lxSongId',
       );
-      DeveloperModeService().addLog('🌐 [Runtime] Get Music URL');
+      DeveloperModeService().addLog(
+        '解析开始 purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId source=${audioSourceService.activeSource?.name}',
+      );
 
       quality = AudioQualityService().effectiveQualityFor(source, quality);
       final lxQuality = AudioQualityService().requestQualityFor(
@@ -631,7 +633,13 @@ class MusicService extends ChangeNotifier {
         throw Exception('洛雪音源已切换，请重试');
       }
 
-      if (audioUrl == null || audioUrl.isEmpty) {
+      final resolvedUri = audioUrl == null
+          ? null
+          : Uri.tryParse(audioUrl.trim());
+      if (audioUrl == null ||
+          resolvedUri == null ||
+          !const {'http', 'https'}.contains(resolvedUri.scheme) ||
+          resolvedUri.host.isEmpty) {
         final request = ResolutionRequest.current;
         _lastLxFailure = request == null
             ? runtime.lastFailure
@@ -641,7 +649,9 @@ class MusicService extends ChangeNotifier {
         // them into the toplist error state, otherwise returning to the home
         // page incorrectly renders the charts section as failed.
         StructuredLogService.log('❌ [MusicService] 洛雪音源返回空 URL');
-        DeveloperModeService().addLog('❌ [MusicService] 返回空 URL');
+        DeveloperModeService().addLog(
+          '解析失败 purpose=${request?.purpose} tx=${request?.transaction} request=${request?.id} track=${source.name}_$songId kind=${_lastLxFailure?.kind.name ?? 'emptyUrl'} reason=${_lastLxFailure?.message ?? '未返回播放地址'}',
+        );
         return null;
       }
 
@@ -651,7 +661,9 @@ class MusicService extends ChangeNotifier {
       StructuredLogService.log(
         '   🔗 URL: ${audioUrl.length > 50 ? "${audioUrl.substring(0, 50)}..." : audioUrl}',
       );
-      DeveloperModeService().addLog('✅ [MusicService] 获取成功');
+      DeveloperModeService().addLog(
+        '解析成功 purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId',
+      );
 
       // 🎵 尝试从后端歌词 API 获取歌词
       String lyric = '';
@@ -702,7 +714,7 @@ class MusicService extends ChangeNotifier {
         alName: '', // 需要从 Track 信息获取
         level: lxQuality,
         size: '0',
-        url: audioUrl,
+        url: audioUrl.trim(),
         lyric: lyric,
         tlyric: tlyric,
         yrc: yrc,

@@ -98,17 +98,11 @@ class PlayerService extends ChangeNotifier {
   Duration get position => viewState.position;
   Duration get bufferedPosition => viewState.bufferedPosition;
   String? get errorMessage => _pb.errorMessage;
-  String? get playbackProblemMessage {
-    final problem = currentProblem;
-    if (problem == null ||
-        !_pb.isCurrentPlaybackProblem(problem) ||
-        isTrackSwitchPending) {
-      return errorMessage;
-    }
-    return isPlaying
-        ? '《${problem.track.name}》播放失败，继续播放《${_pb.displayTitle}》'
-        : '《${problem.track.name}》：${problem.message}';
-  }
+  String? get playbackProblemMessage =>
+      _pb.state == PBState.error ? '暂时无法播放' : null;
+  bool get hasPlaybackFailure => _pb.state == PBState.error;
+  String? get playbackStatusText =>
+      hasPlaybackFailure ? '暂时无法播放' : (isTrackSwitchPending ? '正在加载' : null);
 
   bool get isPlaying => viewState.effectivePlaying;
   bool get isPaused => !viewState.effectivePlaying;
@@ -121,7 +115,17 @@ class PlayerService extends ChangeNotifier {
   bool get hasNext => _pb.hasNext;
   bool get hasPrevious => _pb.hasPrevious;
 
-  ImageProvider? get currentCoverImageProvider => _pb.coverManager.currentCover;
+  ImageProvider? get currentCoverImageProvider {
+    final track = displayTrack;
+    if (track == null) return null;
+    if (isTrackSwitchPending ||
+        hasPlaybackFailure ||
+        !identical(track, _pb.activeTrack)) {
+      return _pb.getCoverProvider(track);
+    }
+    return _pb.coverManager.currentCover;
+  }
+
   String? get currentCoverUrl => _pb.currentCoverUrl;
   String? get displayCoverUrl => _pb.displayCoverUrl;
   String? get pendingCoverUrl => _pb.pendingCoverUrl;

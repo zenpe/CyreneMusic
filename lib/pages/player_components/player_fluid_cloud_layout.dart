@@ -683,21 +683,11 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                                   ],
                                 ),
                                 PlayerErrorBanner(
+                                  details: player.errorMessage,
                                   message: player.isAudioSourceNotConfigured
                                       ? null
                                       : player.playbackProblemMessage,
-                                  nonBlocking: player.isPlaying,
                                   margin: const EdgeInsets.only(top: 8),
-                                  onRetry: player.retryCurrentProblemAction,
-                                  showSkip: player.canSkipCurrentProblem,
-                                  onSkip: player.canSkipCurrentProblem
-                                      ? () {
-                                          player.skipFailedTrack(
-                                            expectedProblem:
-                                                player.currentProblem,
-                                          );
-                                        }
-                                      : null,
                                 ),
                               ],
                             );
@@ -722,9 +712,11 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                               builder: (context, _) {
                                 return IconButton(
                                   icon: Icon(
-                                    player.isPlaying
-                                        ? CupertinoIcons.pause_fill
-                                        : CupertinoIcons.play_fill,
+                                    player.hasPlaybackFailure
+                                        ? CupertinoIcons.arrow_clockwise
+                                        : (player.isPlaying
+                                              ? CupertinoIcons.pause_fill
+                                              : CupertinoIcons.play_fill),
                                     color: Colors.white,
                                   ),
                                   iconSize: 56,
@@ -896,14 +888,11 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                         ),
                       ),
                       PlayerErrorBanner(
+                        details: player.errorMessage,
                         message: player.isAudioSourceNotConfigured
                             ? null
                             : player.playbackProblemMessage,
-                        nonBlocking: player.isPlaying,
                         margin: const EdgeInsets.only(top: 8),
-                        onRetry: player.retryCurrentProblemAction,
-                        showSkip: player.canSkipCurrentProblem,
-                        onSkip: player.skipCurrentProblemAction,
                       ),
                     ],
                   );
@@ -934,9 +923,11 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                       builder: (context, _) {
                         return IconButton(
                           icon: Icon(
-                            player.isPlaying
-                                ? CupertinoIcons.pause_fill
-                                : CupertinoIcons.play_fill,
+                            player.hasPlaybackFailure
+                                ? CupertinoIcons.arrow_clockwise
+                                : (player.isPlaying
+                                      ? CupertinoIcons.pause_fill
+                                      : CupertinoIcons.play_fill),
                             color: Colors.white,
                           ),
                           iconSize: 56,

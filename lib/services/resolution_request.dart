@@ -3,6 +3,21 @@ import 'lx_runtime_interface.dart';
 
 /// Ownership follows Dart asynchronous work without changing source adapters.
 class ResolutionRequest {
+  static int _sequence = 0;
+  final int id = ++_sequence;
+  final String? track;
+  static final Object _contextKey = Object();
+  final String purpose;
+  final int? transaction;
+  ResolutionRequest({this.track})
+    : purpose = (Zone.current[_contextKey] as (String, int?)?)?.$1 ?? 'other',
+      transaction = (Zone.current[_contextKey] as (String, int?)?)?.$2;
+
+  static T inContext<T>({
+    required String purpose,
+    int? transaction,
+    required T Function() action,
+  }) => runZoned(action, zoneValues: {_contextKey: (purpose, transaction)});
   LxRuntimeFailure? failure;
   // Diagnostic facts only; a script can make several HTTP calls, so the last
   // response alone must never decide source health or automatic recovery.

@@ -304,6 +304,12 @@ class TransportPlayer extends ChangeNotifier implements PlayerService {
   @override
   Track? get activeTrack => track;
   @override
+  Track? get displayTrack => track;
+  @override
+  SongDetail? get currentSong => null;
+  @override
+  String? get displayCoverUrl => cover;
+  @override
   String? get currentCoverUrl => cover;
   @override
   SongDetail? get activeSong => null;

@@ -245,9 +245,11 @@ class MobilePlayerControls extends StatelessWidget {
                           )
                         : IconButton(
                             icon: Icon(
-                              player.isPlaying
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
+                              player.hasPlaybackFailure
+                                  ? Icons.refresh_rounded
+                                  : (player.isPlaying
+                                        ? Icons.pause_rounded
+                                        : Icons.play_arrow_rounded),
                               color: Colors.black87,
                             ),
                             iconSize: playIconSize,
@@ -255,7 +257,9 @@ class MobilePlayerControls extends StatelessWidget {
                               HapticFeedback.lightImpact();
                               player.togglePlayPause();
                             },
-                            tooltip: player.isPlaying ? '暂停' : '播放',
+                            tooltip: player.hasPlaybackFailure
+                                ? '重试播放'
+                                : (player.isPlaying ? '暂停' : '播放'),
                           ),
                   ),
                 ),

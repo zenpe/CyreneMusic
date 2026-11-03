@@ -144,9 +144,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     )
                   : Icon(
                       key: ValueKey(player.isPlaying),
-                      player.isPlaying
-                          ? CupertinoIcons.pause_fill
-                          : CupertinoIcons.play_fill,
+                      player.hasPlaybackFailure
+                          ? CupertinoIcons.arrow_clockwise
+                          : (player.isPlaying
+                                ? CupertinoIcons.pause_fill
+                                : CupertinoIcons.play_fill),
                       size: playIconSize,
                       color: DynamicColorUtils.resolveAccent(
                         player.themeColorNotifier.value,
@@ -233,9 +235,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     )
                   : Icon(
                       key: ValueKey(player.isPlaying),
-                      player.isPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
+                      player.hasPlaybackFailure
+                          ? Icons.refresh_rounded
+                          : (player.isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded),
                       size: playIconSize,
                       color: theme.accentColor.defaultBrushFor(
                         theme.brightness,
@@ -461,7 +465,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final name = player.displayTitle;
-    final artist = player.displayArtist;
+    final artist = player.playbackStatusText ?? player.displayArtist;
     return LiquidGlassContainer(
       borderRadius: 18,
       height: MiniPlayer.cupertinoHeight(context),
@@ -1642,9 +1646,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
         ? null
         : MiniPlayer.qualityLabel(player.currentSong?.level);
     final name = player.displayTitle.isNotEmpty ? player.displayTitle : '未知歌曲';
-    final artist = player.displayArtist.isNotEmpty
-        ? player.displayArtist
-        : '未知艺术家';
+    final artist =
+        player.playbackStatusText ??
+        (player.displayArtist.isNotEmpty ? player.displayArtist : '未知艺术家');
     final bool isFluent = ThemeManager().isFluentFramework;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -1968,9 +1972,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
                       )
                     : Icon(
                         key: ValueKey(player.isPlaying),
-                        player.isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
+                        player.hasPlaybackFailure
+                            ? Icons.refresh_rounded
+                            : (player.isPlaying
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded),
                         size: playIconSize,
                       ),
               ),
@@ -1990,7 +1996,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
               HapticFeedback.lightImpact();
               player.togglePlayPause();
             },
-            tooltip: player.isPlaying ? '暂停' : '播放',
+            tooltip: player.hasPlaybackFailure
+                ? '重试播放'
+                : (player.isPlaying ? '暂停' : '播放'),
           ),
         ),
         if (!hideSkip)
@@ -2480,7 +2488,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                         .getCoverProvider(t);
                                     PlayerService().playTrack(
                                       t,
-                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
+                                      queueEntryId: hasQueueNow
+                                          ? queueService.entryIdAt(i)
+                                          : null,
                                       coverProvider: coverProvider,
                                     );
                                     Navigator.pop(context);
@@ -2492,7 +2502,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                       .getCoverProvider(t);
                                   PlayerService().playTrack(
                                     t,
-                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
+                                    queueEntryId: hasQueueNow
+                                        ? queueService.entryIdAt(i)
+                                        : null,
                                     coverProvider: coverProvider,
                                   );
                                   Navigator.pop(context);
@@ -2809,13 +2821,18 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                                 .getCoverProvider(
                                                                   t,
                                                                 );
-                                                        PlayerService()
-                                                            .playTrack(
-                                                              t,
-                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
-                                                              coverProvider:
-                                                                  coverProvider,
-                                                            );
+                                                        PlayerService().playTrack(
+                                                          t,
+                                                          queueEntryId:
+                                                              hasQueueNow
+                                                              ? queueService
+                                                                    .entryIdAt(
+                                                                      i,
+                                                                    )
+                                                              : null,
+                                                          coverProvider:
+                                                              coverProvider,
+                                                        );
                                                         Navigator.pop(context);
                                                       },
                                                       size: 28,
@@ -2869,7 +2886,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                             );
                                                     PlayerService().playTrack(
                                                       t,
-                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
+                                                      queueEntryId: hasQueueNow
+                                                          ? queueService
+                                                                .entryIdAt(i)
+                                                          : null,
                                                       coverProvider:
                                                           coverProvider,
                                                     );
@@ -2895,7 +2915,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                           .getCoverProvider(t);
                                                   PlayerService().playTrack(
                                                     t,
-                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
+                                                    queueEntryId: hasQueueNow
+                                                        ? queueService
+                                                              .entryIdAt(i)
+                                                        : null,
                                                     coverProvider:
                                                         coverProvider,
                                                   );
@@ -3083,13 +3106,18 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                                   .getCoverProvider(
                                                                     t,
                                                                   );
-                                                          PlayerService()
-                                                              .playTrack(
-                                                                t,
-                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
-                                                                coverProvider:
-                                                                    coverProvider,
-                                                              );
+                                                          PlayerService().playTrack(
+                                                            t,
+                                                            queueEntryId:
+                                                                hasQueueNow
+                                                                ? queueService
+                                                                      .entryIdAt(
+                                                                        i,
+                                                                      )
+                                                                : null,
+                                                            coverProvider:
+                                                                coverProvider,
+                                                          );
                                                           Navigator.pop(
                                                             context,
                                                           );
@@ -3306,7 +3334,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                             );
                                                     PlayerService().playTrack(
                                                       t,
-                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
+                                                      queueEntryId: hasQueueNow
+                                                          ? queueService
+                                                                .entryIdAt(i)
+                                                          : null,
                                                       coverProvider:
                                                           coverProvider,
                                                     );
@@ -3348,7 +3379,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                       .getCoverProvider(t);
                                               PlayerService().playTrack(
                                                 t,
-                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
+                                                queueEntryId: hasQueueNow
+                                                    ? queueService.entryIdAt(i)
+                                                    : null,
                                                 coverProvider: coverProvider,
                                               );
                                               Navigator.pop(context);
@@ -3503,7 +3536,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                         .getCoverProvider(t);
                                                 PlayerService().playTrack(
                                                   t,
-                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
+                                                  queueEntryId: hasQueueNow
+                                                      ? queueService.entryIdAt(
+                                                          i,
+                                                        )
+                                                      : null,
                                                   coverProvider: coverProvider,
                                                 );
                                                 Navigator.pop(context);
@@ -3516,7 +3553,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                       .getCoverProvider(t);
                                               PlayerService().playTrack(
                                                 t,
-                                      queueEntryId: hasQueueNow ? queueService.entryIdAt(i) : null,
+                                                queueEntryId: hasQueueNow
+                                                    ? queueService.entryIdAt(i)
+                                                    : null,
                                                 coverProvider: coverProvider,
                                               );
                                               Navigator.pop(context);

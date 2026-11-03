@@ -67,6 +67,7 @@ import 'playback_resolver_registry.dart';
 import 'queue_controller.dart';
 import 'playable_source.dart';
 import 'track_resolver.dart';
+import '../resolution_request.dart';
 import 'startup_network_gate.dart';
 
 /// 播放状态枚举（复用 PlayerService 的定义）
@@ -428,15 +429,21 @@ class PlaybackService extends ChangeNotifier {
       _pendingTrack == null ? null : _pendingSwitchToken;
   String? get pendingReason => _pendingReason;
 
+  Track? _pausedSelection;
+  int? _pausedSelectionEntryId;
+
   Track? get currentTrack => _activeTrack;
   // A failed first selection has no active audio. Keep its metadata available
   // to the player UI so users can retry without pretending a source committed.
   Track? get _failedPresentationTrack =>
-      _state == PBState.error && _activeTrack == null && _pendingTrack == null
+      _state == PBState.error && _pendingTrack == null
       ? _lastFailedTrack
       : null;
   Track? get displayTrack =>
-      _activeTrack ?? _pendingTrack ?? _failedPresentationTrack;
+      _pendingTrack ??
+      _pausedSelection ??
+      _failedPresentationTrack ??
+      _activeTrack;
 
   List<Track> get queue => _queueController.tracks;
   int get currentIndex => _activeQueueEntryId == null
@@ -456,35 +463,20 @@ class PlaybackService extends ChangeNotifier {
   LyricLoadState get lyricLoadState => viewState.lyricState;
   LyricSnapshot? get lyricSnapshot => viewState.lyricSnapshot;
   SongDetail? get currentSong => _activeSong;
-  String get displayTitle {
-    final trackName = _activeTrack?.name;
-    if (trackName != null && trackName.isNotEmpty) return trackName;
-    final songName = _activeSong?.name;
-    if (songName != null && songName.isNotEmpty) return songName;
-    final pendingName = _pendingTrack?.name;
-    if (pendingName != null && pendingName.isNotEmpty) return pendingName;
-    return _failedPresentationTrack?.name ?? '';
-  }
+  bool get _showsActiveTrack =>
+      _pendingTrack == null &&
+      _pausedSelection == null &&
+      _failedPresentationTrack == null;
 
-  String get displayArtist {
-    final trackArtist = _activeTrack?.artists;
-    if (trackArtist != null && trackArtist.isNotEmpty) return trackArtist;
-    final songArtist = _activeSong?.arName;
-    if (songArtist != null && songArtist.isNotEmpty) return songArtist;
-    final pendingArtist = _pendingTrack?.artists;
-    if (pendingArtist != null && pendingArtist.isNotEmpty) return pendingArtist;
-    return _failedPresentationTrack?.artists ?? '';
-  }
-
-  String get displayAlbum {
-    final trackAlbum = _activeTrack?.album;
-    if (trackAlbum != null && trackAlbum.isNotEmpty) return trackAlbum;
-    final songAlbum = _activeSong?.alName;
-    if (songAlbum != null && songAlbum.isNotEmpty) return songAlbum;
-    final pendingAlbum = _pendingTrack?.album;
-    if (pendingAlbum != null && pendingAlbum.isNotEmpty) return pendingAlbum;
-    return _failedPresentationTrack?.album ?? '';
-  }
+  String get displayTitle => displayTrack?.name.isNotEmpty == true
+      ? displayTrack!.name
+      : (_showsActiveTrack ? _activeSong?.name ?? '' : '');
+  String get displayArtist => displayTrack?.artists.isNotEmpty == true
+      ? displayTrack!.artists
+      : (_showsActiveTrack ? _activeSong?.arName ?? '' : '');
+  String get displayAlbum => displayTrack?.album.isNotEmpty == true
+      ? displayTrack!.album
+      : (_showsActiveTrack ? _activeSong?.alName ?? '' : '');
 
   String? get currentCoverUrl {
     final coverUrl = coverManager.currentUrl;
@@ -497,13 +489,9 @@ class PlaybackService extends ChangeNotifier {
   }
 
   String? get displayCoverUrl {
-    if (_failedPresentationTrack case final failedTrack?) {
-      return failedTrack.picUrl.isEmpty ? null : failedTrack.picUrl;
-    }
-    if (_activeTrack == null &&
-        _pendingTrack != null &&
-        _pendingTrack!.picUrl.isNotEmpty) {
-      return _pendingTrack!.picUrl;
+    if (!_showsActiveTrack) {
+      final pic = displayTrack?.picUrl;
+      return pic == null || pic.isEmpty ? null : pic;
     }
     return currentCoverUrl;
   }
@@ -545,10 +533,10 @@ class PlaybackService extends ChangeNotifier {
   PlaybackViewState get viewState {
     final switching = _pendingTrack != null;
     final track = displayTrack;
-    final generation = _activeTrack != null
+    final generation = _showsActiveTrack && _activeTrack != null
         ? _activePlaybackToken
         : _playGeneration;
-    final snapshot = _activeTrack != null
+    final snapshot = _showsActiveTrack && _activeTrack != null
         ? _lyricProjection.activeFor(
             trackKey: _buildTrackIdentity(_activeTrack!),
             generation: _activePlaybackToken,
@@ -562,7 +550,7 @@ class PlaybackService extends ChangeNotifier {
     return PlaybackViewState(
       generation: generation,
       track: track,
-      song: _activeSong ?? (_activeTrack == null ? _pendingSong : null),
+      song: _showsActiveTrack ? _activeSong : _pendingSong,
       switchPhase: _viewSwitchPhase,
       desiredPlaying: _desiredPlaying,
       enginePlaying: _engine.isPlaying,
@@ -577,9 +565,7 @@ class PlaybackService extends ChangeNotifier {
       bufferedPosition: _presentationBufferedPosition,
       lyricState:
           snapshot?.state ??
-          (_activeTrack == null && switching
-              ? LyricLoadState.loading
-              : LyricLoadState.idle),
+          (switching ? LyricLoadState.loading : LyricLoadState.idle),
       lyricSnapshot: snapshot,
     );
   }
@@ -642,7 +628,12 @@ class PlaybackService extends ChangeNotifier {
   }
 
   int? get _manualNavigationOrigin {
-    for (final entry in [_pendingQueueEntryId, _activeQueueEntryId]) {
+    for (final entry in [
+      _pendingQueueEntryId,
+      _pausedSelectionEntryId,
+      if (_state == PBState.error) _lastFailedQueueEntryId,
+      _activeQueueEntryId,
+    ]) {
       if (entry != null && _queueController.indexOfEntryId(entry) >= 0) {
         return entry;
       }
@@ -938,7 +929,10 @@ class PlaybackService extends ChangeNotifier {
   }
 
   PlaybackSessionSnapshot? _buildSessionSnapshot() {
-    final previous = _replacementRevision == _queueController.structureRevision
+    final previous =
+        _pausedSelection == null &&
+            _state != PBState.error &&
+            _replacementRevision == _queueController.structureRevision
         ? _queueBeforeReplacement
         : null;
     final persistedQueue = previous?.tracks ?? _queue;
@@ -947,11 +941,15 @@ class PlaybackService extends ChangeNotifier {
         : (_activeTrack != null ? [_activeTrack!] : const <Track>[]);
     if (sessionQueue.isEmpty) return null;
 
+    final selectedEntry =
+        _pausedSelectionEntryId ??
+        (_state == PBState.error ? _lastFailedQueueEntryId : null) ??
+        _activeQueueEntryId;
     final activeIndex = previous != null
-        ? previous.entryIds.indexOf(_activeQueueEntryId ?? -1)
-        : _activeQueueEntryId == null
+        ? previous.entryIds.indexOf(selectedEntry ?? -1)
+        : selectedEntry == null
         ? -1
-        : _queueController.indexOfEntryId(_activeQueueEntryId!);
+        : _queueController.indexOfEntryId(selectedEntry);
     final currentIndex = _queue.isNotEmpty
         ? (activeIndex >= 0 ? activeIndex : _currentIndex).clamp(
             0,
@@ -1087,6 +1085,13 @@ class PlaybackService extends ChangeNotifier {
     if (_pendingTrack != null && session?.phase == PlaybackPhase.arming) {
       if (_engineStateCommitGate.capture(session!.epoch, s)) return;
     }
+    // Uncommitted selections own presentation; old native events cannot
+    // finish their loading state or clear a terminal error.
+    if (_pendingTrack != null ||
+        _pausedSelection != null ||
+        _state == PBState.error) {
+      return;
+    }
     _applyEngineState(s);
   }
 
@@ -1202,8 +1207,9 @@ class PlaybackService extends ChangeNotifier {
     _position = pos;
     _livenessMonitor.updatePosition(pos);
     positionNotifier.value = pos;
-    if (_pendingTrack == null) {
+    if (_showsActiveTrack && _state != PBState.error) {
       presentationPositionNotifier.value = pos;
+      _schedulePreloadNextTrack();
     }
     _updateFloatingLyric();
     _syncPositionToNative(pos);
@@ -1213,8 +1219,9 @@ class PlaybackService extends ChangeNotifier {
     _duration = dur;
     if (_pendingTrack != null) {
       _pendingTimelineReady = dur > Duration.zero;
-    } else {
+    } else if (_showsActiveTrack && _state != PBState.error) {
       _presentationDuration = dur;
+      _schedulePreloadNextTrack();
     }
     notifyListeners();
   }
@@ -1223,7 +1230,7 @@ class PlaybackService extends ChangeNotifier {
     _bufferedPosition = buffered;
     _livenessMonitor.updateBufferedPosition(buffered);
     bufferedPositionNotifier.value = buffered;
-    if (_pendingTrack == null) {
+    if (_showsActiveTrack && _state != PBState.error) {
       _presentationBufferedPosition = buffered;
     }
   }
@@ -1231,6 +1238,7 @@ class PlaybackService extends ChangeNotifier {
   int? _handledEngineFailureEpoch;
 
   void _onEngineError(EngineError error) {
+    if (_pausedSelection != null) return;
     if (_nativeLoadingGeneration == error.epoch) {
       _nativeLoadingGeneration = null;
     }
@@ -1276,6 +1284,7 @@ class PlaybackService extends ChangeNotifier {
         failedDuringArming &&
         _scanningRequestEpoch == _currentSession?.requestEpoch;
     final canRetry =
+        (_currentSwitchTx?.budget?.recoveryAvailable ?? true) &&
         (!naturalPreparedFailure || _desiredPlaying) &&
         (!navigatingCandidate ||
             _shouldRefreshUrlOnError(error) ||
@@ -1287,6 +1296,7 @@ class PlaybackService extends ChangeNotifier {
             (_canRetryOnError(error) && _retriedTrackKey != trackKey));
 
     if (canRetry) {
+      _currentSwitchTx?.budget?.consumeRecovery();
       _performanceMetrics.recordEngineRetry();
       _retriedTrackKey = trackKey;
       if (_shouldRefreshUrlOnError(error)) {
@@ -1345,9 +1355,7 @@ class PlaybackService extends ChangeNotifier {
           requestEpoch: requestEpoch,
           forceRemoteResolution:
               shouldRetryWithoutCache || _shouldRefreshUrlOnError(error),
-          initialPosition: stall == null
-              ? null
-              : _clampRecoveryPosition(stall.position),
+          initialPosition: _clampRecoveryPosition(stall?.position ?? _position),
           budget: stall != null
               ? PlaybackTransitionBudget(
                   maxDuration: const Duration(seconds: 8),
@@ -1365,6 +1373,11 @@ class PlaybackService extends ChangeNotifier {
     }
     _controlIntent.invalidate();
     _state = PBState.error;
+    _desiredPlaying = false;
+    _pauseListeningTimeTracking();
+    _stopStateSaveTimer();
+    _stabilityTracker.onPlaybackInterrupted();
+    _livenessMonitor.suspend();
     _errorMessage = _buildErrorMessage(error);
     _isAudioSourceNotConfigured = false;
     if (naturalPreparedFailure) _finishPendingFailure();
@@ -1754,7 +1767,7 @@ class PlaybackService extends ChangeNotifier {
       ),
       LxRuntimeFailureKind.requestFailed => const PlaybackFailureEvidence(
         cause: PlaybackFailureCause.requestFailed,
-        scope: PlaybackFailureScope.network,
+        scope: PlaybackFailureScope.track,
       ),
       LxRuntimeFailureKind.invalidTrackIdentifier =>
         const PlaybackFailureEvidence(
@@ -1909,9 +1922,6 @@ class PlaybackService extends ChangeNotifier {
     if (sourceChanged || cancelledStartupWait || cancelledRecovery) {
       _cancelPendingTrackTransition();
       _clearPlaybackProblem();
-      _lastFailedTrack = null;
-      _lastFailedQueueEntryId = null;
-      _failedReplacementQueue = null;
       _resetPreloadState();
       _invalidatePreparedWindow();
       if (cancelledRecovery) {
@@ -1973,7 +1983,13 @@ class PlaybackService extends ChangeNotifier {
     if (!completed) return;
     // 切换窗口内旧纪元的 completed 事件不会到达引擎层闸门；此处再按代次
     // 兜底，防止 stop()/arm() 交错时残留的完成事件触发提前切歌。
-    if (_pendingTrack != null || _autoNextInFlight) return;
+    if (_pendingTrack != null ||
+        _pausedSelection != null ||
+        _state == PBState.error ||
+        !_desiredPlaying ||
+        _autoNextInFlight) {
+      return;
+    }
     final flightId = ++_autoNextFlightId;
     _autoNextInFlight = true;
     final completedTrack = _activeTrack ?? _trackAtQueuePointer();
@@ -1994,6 +2010,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _onNativeSourceCommitted(int generation, String? key) {
+    if (_pausedSelection != null || _state == PBState.error) return;
     final entryId = _queueEntryIdFromNativeKey(key);
     if (entryId == null || entryId == _activeQueueEntryId) return;
     final queueIndex = _queueController.indexOfEntryId(entryId);
@@ -2310,7 +2327,9 @@ class PlaybackService extends ChangeNotifier {
   Future<void> removeAt(int index) async {
     final removedEntryId = _queueController.entryIdAt(index);
     final removesActive =
-        removedEntryId != null && removedEntryId == _activeQueueEntryId;
+        _pausedSelection == null &&
+        removedEntryId != null &&
+        removedEntryId == _activeQueueEntryId;
     final requestEpoch = removesActive ? _requestRouter.begin() : null;
     PlaybackCandidatePlan? removalPlan;
     var removedWasLast = false;
@@ -2337,6 +2356,20 @@ class PlaybackService extends ChangeNotifier {
       final removal = _queueController.removeAt(targetIndex);
       if (!removal.removed) return removal;
       _onQueueEdited();
+      if (entryToRemove != null && _pausedSelectionEntryId == entryToRemove) {
+        final successor = _queue.isEmpty
+            ? null
+            : targetIndex.clamp(0, _queue.length - 1);
+        _pausedSelection = successor == null ? null : _queue[successor];
+        _pausedSelectionEntryId = successor == null
+            ? null
+            : _queueController.entryIdAt(successor);
+        _desiredPlaying = false;
+        _state = successor == null ? PBState.idle : PBState.paused;
+        _presentationDuration = Duration.zero;
+        _presentationBufferedPosition = Duration.zero;
+        presentationPositionNotifier.value = Duration.zero;
+      }
       if (entryToRemove != null && _pendingQueueEntryId == entryToRemove) {
         _cancelPendingTrackTransition();
       }
@@ -2457,6 +2490,7 @@ class PlaybackService extends ChangeNotifier {
       return;
     }
     if (_pendingTrack == null &&
+        _pausedSelection == null &&
         currentTrack == null &&
         _preloadedTrack == null) {
       return;
@@ -2477,6 +2511,18 @@ class PlaybackService extends ChangeNotifier {
 
   Future<void> _resumeWithIntent(int revision) async {
     if (_pendingTrack != null || _manualRetryInFlight) {
+      return;
+    }
+    final selection = _pausedSelection;
+    if (selection != null) {
+      final entryId = _pausedSelectionEntryId;
+      await _attemptTrackSwitch(
+        reason: 'resume-selection',
+        requestEpoch: _requestRouter.begin(),
+        candidateTrack: selection,
+        candidateEntryId: entryId,
+        autoPlay: true,
+      );
       return;
     }
     // A cancelled/failed load can leave old artwork paused with no matching
@@ -2531,10 +2577,13 @@ class PlaybackService extends ChangeNotifier {
     _releaseDeferredCacheProtection();
     if (_pendingTrack != null ||
         _currentSession?.phase == PlaybackPhase.resolving) {
-      _cancelPendingTrackTransition();
+      _cancelPendingTrackTransition(retainSelection: true);
     } else {
       _trackResolver.cancelPending();
     }
+    _cancelScheduledPreload();
+    _preloadOp++;
+    _preloadingNext = false;
     final revision = _controlIntent.begin(false);
     _desiredPlaying = false;
     notifyListeners();
@@ -2601,6 +2650,8 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _pausedSelection = null;
+    _pausedSelectionEntryId = null;
     _desiredPlaying = false;
     _resetPreloadState();
     _invalidateCurrentPlayback();
@@ -2683,6 +2734,10 @@ class PlaybackService extends ChangeNotifier {
         forceRemoteResolution: forceRemoteResolution,
         candidateTrack: retryTrack,
         candidateEntryId: retryEntryId,
+        initialPosition:
+            _matchesTrackIdentity(_activeTrack, _buildTrackIdentity(retryTrack))
+            ? _clampRecoveryPosition(_position)
+            : Duration.zero,
       );
     } finally {
       if (_manualRetryRequestEpoch == requestEpoch) {
@@ -2908,6 +2963,13 @@ class PlaybackService extends ChangeNotifier {
     Duration initialPosition = Duration.zero,
   }) {
     _clearDeferredCache();
+    _pauseListeningTimeTracking();
+    _stopStateSaveTimer();
+    _stabilityTracker.onPlaybackInterrupted();
+    _engineBuffering = false;
+    _clearFloatingLyricsDisplay();
+    _pausedSelection = null;
+    _pausedSelectionEntryId = null;
     _pendingTrack = track;
     _pendingQueueEntryId = queueEntryId;
     _pendingReason = reason;
@@ -2915,6 +2977,13 @@ class PlaybackService extends ChangeNotifier {
     _pendingSong = null;
     _lyricProjection.beginPending();
     _pendingTimelineReady = false;
+    _presentationDuration =
+        initialPosition > Duration.zero &&
+            _matchesTrackIdentity(_activeTrack, _buildTrackIdentity(track))
+        ? _duration
+        : Duration.zero;
+    _presentationBufferedPosition = Duration.zero;
+    presentationPositionNotifier.value = initialPosition;
     if (_activeTrack == null) {
       _position = initialPosition;
       _duration = Duration.zero;
@@ -2948,7 +3017,10 @@ class PlaybackService extends ChangeNotifier {
     _currentSwitchTx = null;
     _deferredEngineRetryGeneration = null;
     _clearPendingTrack();
-    _rollbackQueueReplacement(retainForRetry: true);
+    _queueBeforeReplacement = null;
+    _replacementRevision = null;
+    _modeBeforeReplacement = null;
+    _replacementModeRevision = null;
   }
 
   void _rollbackQueueReplacement({bool retainForRetry = false}) {
@@ -3041,7 +3113,7 @@ class PlaybackService extends ChangeNotifier {
     int? candidateEntryId,
     PlaybackTransitionBudget? budget,
     List<int>? navigationOrder,
-    bool allowActiveFallback = true,
+    bool allowActiveFallback = false,
     int? generation,
     bool preservePreloadState = false,
   }) {
@@ -3240,6 +3312,8 @@ class PlaybackService extends ChangeNotifier {
     _livenessMonitor.suspend();
     _lastFailedTrack = null;
     _lastFailedQueueEntryId = null;
+    _pausedSelection = null;
+    _pausedSelectionEntryId = null;
     _controlIntent.invalidate();
     _requestRouter.begin();
     _transactionGuard.begin();
@@ -3251,11 +3325,13 @@ class PlaybackService extends ChangeNotifier {
     _updateSessionPhase(PlaybackPhase.idle);
   }
 
-  void _cancelPendingTrackTransition() {
+  void _cancelPendingTrackTransition({bool retainSelection = false}) {
     _trackResolver.cancelPending();
     if (_pendingTrack == null && _scanningRequestEpoch == null) return;
+    final selection = retainSelection ? _pendingTrack : null;
+    final selectionEntry = retainSelection ? _pendingQueueEntryId : null;
     _engine.cancelPendingSourceLoad();
-    _rollbackQueueReplacement();
+    if (!retainSelection) _rollbackQueueReplacement();
     _clearPlaybackProblem();
     _requestRouter.begin();
     _transactionGuard.begin();
@@ -3300,6 +3376,12 @@ class PlaybackService extends ChangeNotifier {
     _currentSwitchTx = null;
     _deferredEngineRetryGeneration = null;
     _errorMessage = null;
+    if (selection != null) {
+      _pausedSelection = selection;
+      _pausedSelectionEntryId = selectionEntry;
+      _desiredPlaying = false;
+      _state = PBState.paused;
+    }
   }
 
   void _restartLivenessForActivePlayback() {
@@ -3443,19 +3525,25 @@ class PlaybackService extends ChangeNotifier {
 
       final remoteSw = Stopwatch()..start();
       tx.timing.remoteResolutionAttempts++;
-      resolution = await _trackResolver.resolve(
-        songId: track.id,
-        quality: tx.selectedQuality,
-        source: track.source,
-        sourceIds: track.sourceIds,
-        title: track.name,
-        artist: track.artists,
-        timeout: resolveTimeout,
-        fetchLyrics: false,
-        resolverFingerprint: resolverFingerprint,
-        skipMemoryCache: attempt > 0 || tx.forceRemoteResolution,
-        acceptResult: () => !isStale(),
-      );
+      resolution =
+          await ResolutionRequest.inContext<Future<TrackResolutionResult>>(
+            purpose: 'playback',
+            transaction: tx.token,
+            action: () => _trackResolver.resolve(
+              songId: track.id,
+              quality: tx.selectedQuality,
+              source: track.source,
+              sourceIds: track.sourceIds,
+              title: track.name,
+              artist: track.artists,
+              timeout: resolveTimeout,
+              fetchLyrics: false,
+              resolverFingerprint: resolverFingerprint,
+              skipMemoryCache: attempt > 0 || tx.forceRemoteResolution,
+              retryExpiredSharedRequest: false,
+              acceptResult: () => !isStale(),
+            ),
+          );
       tx.timing.remoteResolveMs += remoteSw.elapsedMilliseconds;
       if (resolution.isL1CacheHit) {
         tx.timing.l1MemoryCached = true;
@@ -3488,7 +3576,8 @@ class PlaybackService extends ChangeNotifier {
               (transitionBudget.canStartRemoteRequest &&
                   transitionBudget.resolutionTimeRemaining -
                           _resolutionRetryDelay >=
-                      PlaybackTransitionBudget.minimumResolutionTime))) {
+                      PlaybackTransitionBudget.minimumResolutionTime)) &&
+          (transitionBudget?.consumeRecovery() ?? true)) {
         _trackResolver.invalidateTrack(
           track,
           quality: tx.selectedQuality,
@@ -3500,7 +3589,7 @@ class PlaybackService extends ChangeNotifier {
           }
         }
         _state = PBState.loading;
-        _errorMessage = startupNetwork != null ? null : '播放地址无效，正在重新获取...';
+        _errorMessage = null;
         _logPlaybackDebug(
           '[PlaybackService] 解析失败，执行一次重试: ${_trackLogKey(track)} '
           'failure=${resolution.lxFailure?.kind.name ?? 'unknown'}',
@@ -4510,7 +4599,7 @@ class PlaybackService extends ChangeNotifier {
     PlaybackTransitionBudget? budget,
     Track? candidateTrack,
     int? candidateEntryId,
-    bool allowActiveFallback = true,
+    bool allowActiveFallback = false,
   }) async {
     await _attemptTrackSwitch(
       reason: reason,
@@ -4542,7 +4631,7 @@ class PlaybackService extends ChangeNotifier {
     PlaybackTransitionBudget? budget,
     List<int>? navigationOrder,
     bool preserveDesiredPlaying = false,
-    bool allowActiveFallback = true,
+    bool allowActiveFallback = false,
   }) async {
     final attemptBudget =
         budget ??
@@ -4550,7 +4639,7 @@ class PlaybackService extends ChangeNotifier {
           maxDuration: intent == PlaybackRequestIntent.automatic
               ? const Duration(seconds: 15)
               : const Duration(seconds: 15),
-          maxRemoteRequests: intent == PlaybackRequestIntent.automatic ? 3 : 2,
+          maxRemoteRequests: 2,
         );
     // 1. prepareTarget
     final tx = _prepareTrackSwitchTransaction(
@@ -4607,6 +4696,9 @@ class PlaybackService extends ChangeNotifier {
     }
 
     try {
+      // Old audio must not remain audible underneath the new selection.
+      if (_engine.isPlaying) await _engine.pause();
+      if (isStale()) return PlaybackCandidateAttemptResult.cancelled;
       if (tx.forceRemoteResolution) {
         // 手动探测必须走远端解析，丢弃同曲目的预取计划，避免后续重试
         // 再次复用旧的缓存/预取结果。
@@ -5056,10 +5148,9 @@ class PlaybackService extends ChangeNotifier {
       maxDuration: intent == PlaybackTransitionIntent.automaticAdvance
           ? const Duration(seconds: 15)
           : const Duration(seconds: 15),
-      maxRemoteRequests: intent == PlaybackTransitionIntent.automaticAdvance
-          ? 3
-          : 2,
-      maxResolutionAttemptsPerTrack: 1,
+      maxRemoteRequests: 2,
+      maxResolutionAttemptsPerTrack: 2,
+      maxCandidateAttempts: 1,
     );
     final playbackIntent = intent == PlaybackTransitionIntent.automaticAdvance
         ? PlaybackRequestIntent.automatic
@@ -5157,8 +5248,7 @@ class PlaybackService extends ChangeNotifier {
             budget: transitionBudget,
             navigationOrder: navigationOrder,
             preserveDesiredPlaying: true,
-            allowActiveFallback:
-                intent == PlaybackTransitionIntent.manualAdvance,
+            allowActiveFallback: false,
           );
           if (isCurrent() && outcome.attempted) {
             lastAttemptedProblem = _problemStore.current;
@@ -5232,7 +5322,7 @@ class PlaybackService extends ChangeNotifier {
       reason: reason,
       consideredCount: budget.visitedEntryIds.length,
       remoteRequests: budget.remoteRequests,
-      allowActiveFallback: intent == PlaybackTransitionIntent.manualAdvance,
+      allowActiveFallback: false,
     );
   }
 
@@ -5664,18 +5754,25 @@ class PlaybackService extends ChangeNotifier {
             _state != PBState.playing)) {
       return null;
     }
-    final result = await _trackResolver.resolve(
-      songId: songId,
-      quality: quality,
-      source: source,
-      sourceIds: sourceIds,
-      title: title,
-      artist: artist,
-      timeout: timeout,
-      fetchLyrics: fetchLyrics,
-      resolverFingerprint: PlaybackResolverRegistry().fingerprintFor(source),
-      retryExpiredSharedRequest: purpose != 'preload',
-    );
+    final result =
+        await ResolutionRequest.inContext<Future<TrackResolutionResult>>(
+          purpose: purpose,
+          transaction: _activePlaybackToken,
+          action: () => _trackResolver.resolve(
+            songId: songId,
+            quality: quality,
+            source: source,
+            sourceIds: sourceIds,
+            title: title,
+            artist: artist,
+            timeout: timeout,
+            fetchLyrics: fetchLyrics,
+            resolverFingerprint: PlaybackResolverRegistry().fingerprintFor(
+              source,
+            ),
+            retryExpiredSharedRequest: false,
+          ),
+        );
     if (result.timedOut) {
       StructuredLogService.log('[PlaybackService] 获取歌曲详情超时($purpose)');
     }
@@ -5777,9 +5874,22 @@ class PlaybackService extends ChangeNotifier {
   void _schedulePreloadNextTrack() {
     if (_nativeLoadingGeneration != null || _pendingTrack != null) return;
     if (_state != PBState.playing) return;
+    if (_duration <= const Duration(seconds: 10) ||
+        _duration - _position > const Duration(seconds: 10) ||
+        _duration <= _position) {
+      return;
+    }
     final current = currentTrack;
     if (current == null) return;
 
+    final nextIndex = _queueController.peekNextIndex(effectivePlaybackMode);
+    if (nextIndex == null || _preloadingNext) return;
+    final nextTrack = _queue[nextIndex];
+    final nextKey = _buildPrefetchCacheKey(
+      nextTrack,
+      AudioQualityService().effectiveQualityFor(nextTrack.source),
+    );
+    if ((_preloadAttempts[nextKey] ?? 0) > 0) return;
     final scheduledEntryId = _activeQueueEntryId;
     if (scheduledEntryId == null) return;
     final scheduledOp = _preloadOp;
@@ -5806,6 +5916,9 @@ class PlaybackService extends ChangeNotifier {
       _scheduledPreloadIdentity = null;
       final playingTrack = currentTrack;
       if (scheduledOp != _preloadOp ||
+          _pendingTrack != null ||
+          _duration - _position > const Duration(seconds: 10) ||
+          _duration <= _position ||
           _state != PBState.playing ||
           playingTrack == null ||
           _activeQueueEntryId != scheduledEntryId) {
@@ -5877,7 +5990,7 @@ class PlaybackService extends ChangeNotifier {
 
         if (nextEntryId != currentEntryId &&
             nextKey != _lastPreloadedTargetKey &&
-            (_preloadAttempts[nextKey] ?? 0) < 2 &&
+            (_preloadAttempts[nextKey] ?? 0) < 1 &&
             (nextTrack.source == MusicSource.local ||
                 AudioSourceService().isConfigured)) {
           _preloadAttempts[nextKey] = (_preloadAttempts[nextKey] ?? 0) + 1;
@@ -5890,7 +6003,7 @@ class PlaybackService extends ChangeNotifier {
             if (prepared != null) {
               _lastPreloadedTargetKey = nextKey;
             } else {
-              _preloadAttempts[nextKey] = 2;
+              _preloadAttempts[nextKey] = 1;
             }
           }
         }

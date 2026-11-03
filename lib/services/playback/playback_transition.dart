@@ -27,6 +27,14 @@ class PlaybackTransitionBudget {
   final Duration Function()? _elapsedOverride;
   final Set<int> _visitedEntryIds = <int>{};
   int _remoteRequests = 0;
+  bool _recoveryConsumed = false;
+  bool get recoveryAvailable => !_recoveryConsumed;
+  bool consumeRecovery() {
+    if (!recoveryAvailable) return false;
+    _recoveryConsumed = true;
+    return true;
+  }
+
   Duration _excludedElapsed = Duration.zero;
 
   PlaybackTransitionBudget({

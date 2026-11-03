@@ -76,7 +76,8 @@ void main() {
         await playback.pause();
         expect(playback.viewState.desiredPlaying, isFalse);
         await recovering;
-        expect(playback.state, PBState.idle);
+        expect(playback.state, PBState.paused);
+        expect(playback.displayTrack, same(failedTrack));
         expect(playback.isTrackSwitchPending, isFalse);
         expect(playback.viewState.isSwitching, isFalse);
         expect(failures, isEmpty);

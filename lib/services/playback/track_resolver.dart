@@ -433,7 +433,7 @@ class TrackResolver {
     final completer = Completer<TrackResolutionResult>();
     late final _RequestEntry entry;
     final requestStartedAt = DateTime.now();
-    final ownership = ResolutionRequest();
+    final ownership = ResolutionRequest(track: '${source.name}_$songId');
     entry = _RequestEntry(
       hardDeadline: requestStartedAt.add(hardTimeout),
       requestDeadline: requestStartedAt.add(effectiveRequestTimeout),

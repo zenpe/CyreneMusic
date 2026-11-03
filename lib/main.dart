@@ -475,20 +475,8 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _setupPlaybackFailureCallback() {
-    // 播放器页面会显示内嵌错误条；列表页、歌单页等没有播放器错误条，
-    // 因此普通最终失败需要通过一次 Toast 反馈给用户。重试过程不会调用
-    // 此回调，只有最终失败才会到这里。
-    PlayerService().onPlaybackFailure = (problem) {
-      if (problem.kind == PlaybackProblemKind.sourceNotConfigured) return;
-      final player = PlayerService();
-      if (player.isPlaying) {
-        ToastUtils.show(
-          '《${problem.track.name}》播放失败，继续播放《${player.displayTitle}》',
-        );
-      } else {
-        ToastUtils.error('${problem.message}\n《${problem.track.name}》');
-      }
-    };
+    // Errors belong to the current player, not global notifications.
+    PlayerService().onPlaybackFailure = null;
     PlayerService().onPlaybackNotice = ToastUtils.show;
     final currentProblem = PlayerService().currentProblem;
     if (_shouldPresentPlaybackDialog(currentProblem)) {

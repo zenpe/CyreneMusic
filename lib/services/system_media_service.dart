@@ -217,8 +217,8 @@ class SystemMediaService {
     }
 
     final player = PlayerService();
-    final song = player.activeSong;
-    final track = player.activeTrack;
+    final song = player.currentSong;
+    final track = player.displayTrack;
 
     // 有可恢复歌曲时，播放态和暂停态都需要先建立 audio_service。
     // 否则应用恢复到暂停状态时，通知栏虽然可能残留旧卡片，但播放/暂停
@@ -351,7 +351,7 @@ class SystemMediaService {
     final title = song?.name ?? track?.name ?? '未知歌曲';
     final artist = song?.arName ?? track?.artists ?? '未知艺术家';
     final album = song?.alName ?? track?.album ?? '未知专辑';
-    var thumbnail = PlayerService().currentCoverUrl ?? '';
+    var thumbnail = PlayerService().displayCoverUrl ?? '';
 
     // 确保使用 HTTPS 协议（SMTC 要求）
     if (thumbnail.startsWith('http://')) {

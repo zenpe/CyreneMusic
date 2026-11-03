@@ -60,14 +60,11 @@ class PlayerControls extends StatelessWidget {
               return Column(
                 children: [
                   PlayerErrorBanner(
+                    details: player.errorMessage,
                     message: player.isAudioSourceNotConfigured
                         ? null
                         : player.playbackProblemMessage,
-                    nonBlocking: player.isPlaying,
                     margin: const EdgeInsets.only(bottom: 10),
-                    onRetry: player.retryCurrentProblemAction,
-                    showSkip: player.canSkipCurrentProblem,
-                    onSkip: player.skipCurrentProblemAction,
                   ),
                   // 进度条
                   SliderTheme(
@@ -327,9 +324,11 @@ class PlayerControls extends StatelessWidget {
                       )
                     : IconButton(
                         icon: Icon(
-                          player.isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
+                          player.hasPlaybackFailure
+                              ? Icons.refresh_rounded
+                              : (player.isPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded),
                           color: Colors.black87,
                         ),
                         iconSize: 40,

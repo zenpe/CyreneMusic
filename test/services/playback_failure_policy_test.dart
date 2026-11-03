@@ -30,7 +30,7 @@ void main() {
       ),
     );
     expect(exhausted.retryResolution, isFalse);
-    expect(exhausted.continueQueue, isTrue);
+    expect(exhausted.continueQueue, isFalse);
   });
 
   test('source failure stops queue scan without retrying', () {
@@ -50,7 +50,7 @@ void main() {
     expect(decision.stopForSource, isTrue);
   });
 
-  test('permanent track failure advances only during navigation', () {
+  test('permanent track failure stays on the selected song', () {
     const failure = PlaybackFailureEvidence(
       cause: PlaybackFailureCause.invalidTrackIdentifier,
       scope: PlaybackFailureScope.track,
@@ -66,7 +66,7 @@ void main() {
             ),
           )
           .continueQueue,
-      isTrue,
+      isFalse,
     );
     expect(
       policy

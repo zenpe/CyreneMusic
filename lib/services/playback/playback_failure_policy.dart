@@ -67,15 +67,13 @@ class PlaybackRecoveryPolicy {
         failure.scope == PlaybackFailureScope.configuration;
     final retryableResolution = switch (failure.cause) {
       PlaybackFailureCause.timeout ||
-      PlaybackFailureCause.requestFailed ||
-      PlaybackFailureCause.emptyUrl ||
-      PlaybackFailureCause.sourceNotReady => true,
+      PlaybackFailureCause.networkUnavailable => true,
       _ => false,
     };
     final retry = context.retryAvailable && retryableResolution;
     return PlaybackRecoveryDecision(
       retryResolution: retry,
-      continueQueue: context.navigatingQueue && !retry && !sourceWide,
+      continueQueue: false,
       stopForSource: !retry && sourceWide,
     );
   }

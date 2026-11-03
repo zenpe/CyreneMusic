@@ -120,8 +120,8 @@ class CyreneAudioHandler extends BaseAudioHandler
       if (player.state == PlayerState.playing ||
           player.state == PlayerState.paused) {
         // 强制重新发送当前状态，保持 iOS 锁屏显示
-        final song = player.activeSong;
-        final track = player.activeTrack;
+        final song = player.currentSong;
+        final track = player.displayTrack;
 
         // 更新 mediaItem（确保封面、歌名等信息不丢失）
         if (song != null || track != null) {
@@ -269,10 +269,8 @@ class CyreneAudioHandler extends BaseAudioHandler
     final stateChanged = currentState != _lastObservedPlayerState;
     if (stateChanged) _lastObservedPlayerState = currentState;
     final now = DateTime.now();
-    final activeTrack = player.activeTrack;
-    final mediaIdentity = player.activeQueueEntryId != null
-        ? 'entry:${player.activeQueueEntryId}'
-        : activeTrack == null
+    final activeTrack = player.displayTrack;
+    final mediaIdentity = activeTrack == null
         ? null
         : '${activeTrack.source.name}:${activeTrack.id}';
     final mediaChanged = mediaIdentity != _lastObservedMediaIdentity;
@@ -381,9 +379,9 @@ class CyreneAudioHandler extends BaseAudioHandler
   Future<void> _performUpdateInternal() async {
     if (_disposed) return;
     final player = _player;
-    // 只发布已经提交给引擎的媒体，避免 pendingTrack 在切歌过程中污染通知。
-    final song = player.activeSong;
-    final track = player.activeTrack;
+    // Publish the same selected media as the in-app player, including loading.
+    final song = player.currentSong;
+    final track = player.displayTrack;
 
     // 更新播放状态
     _updatePlaybackState();
@@ -397,10 +395,10 @@ class CyreneAudioHandler extends BaseAudioHandler
     unawaited(
       _enqueueWidgetUpdate(
         WidgetPlaybackData(
-          song: player.activeSong,
-          track: player.activeTrack,
+          song: player.currentSong,
+          track: player.displayTrack,
           playing: player.viewState.effectivePlaying,
-          coverUrl: player.currentCoverUrl ?? '',
+          coverUrl: player.displayCoverUrl ?? '',
         ),
       ),
     );
@@ -559,7 +557,7 @@ class CyreneAudioHandler extends BaseAudioHandler
     final title = song?.name ?? track?.name ?? '未知歌曲';
     final artist = song?.arName ?? track?.artists ?? '未知歌手';
     final album = song?.alName ?? track?.album ?? '';
-    final artUri = _player.currentCoverUrl ?? '';
+    final artUri = _player.displayCoverUrl ?? '';
     final mediaId = track?.id.toString() ?? '0';
     final duration = _player.duration;
 
@@ -939,12 +937,13 @@ class CyreneAudioHandler extends BaseAudioHandler
     };
 
     final controls = [
-      if (!_player.isPersonalFm) MediaControl(
-        androidIcon: modeIcon,
-        label: modeLabel,
-        action: MediaAction.custom,
-        customAction: const CustomMediaAction(name: 'cycle_repeat_mode'),
-      ),
+      if (!_player.isPersonalFm)
+        MediaControl(
+          androidIcon: modeIcon,
+          label: modeLabel,
+          action: MediaAction.custom,
+          customAction: const CustomMediaAction(name: 'cycle_repeat_mode'),
+        ),
       if (_player.hasPrevious) MediaControl.skipToPrevious,
       MediaControl(
         androidIcon: playing

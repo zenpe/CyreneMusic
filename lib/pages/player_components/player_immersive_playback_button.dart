@@ -22,14 +22,18 @@ class PlayerImmersivePlaybackButton extends StatelessWidget {
             ),
             child: IconButton(
               icon: Icon(
-                player.isPlaying
-                    ? CupertinoIcons.pause_fill
-                    : CupertinoIcons.play_fill,
+                player.hasPlaybackFailure
+                    ? CupertinoIcons.arrow_clockwise
+                    : (player.isPlaying
+                          ? CupertinoIcons.pause_fill
+                          : CupertinoIcons.play_fill),
                 color: Colors.white,
               ),
               iconSize: 48 * uiScale,
               onPressed: player.togglePlayPause,
-              tooltip: player.isPlaying ? '暂停' : '播放',
+              tooltip: player.hasPlaybackFailure
+                  ? '重试播放'
+                  : (player.isPlaying ? '暂停' : '播放'),
             ),
           );
         },

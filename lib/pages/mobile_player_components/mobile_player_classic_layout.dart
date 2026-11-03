@@ -328,14 +328,11 @@ class MobilePlayerClassicLayout extends StatelessWidget {
               ),
             ),
             PlayerErrorBanner(
+              details: player.errorMessage,
               message: player.isAudioSourceNotConfigured
                   ? null
                   : player.playbackProblemMessage,
-              nonBlocking: player.isPlaying,
               margin: const EdgeInsets.only(top: 6),
-              onRetry: player.retryCurrentProblemAction,
-              showSkip: player.canSkipCurrentProblem,
-              onSkip: player.skipCurrentProblemAction,
             ),
           ],
         );
@@ -374,9 +371,11 @@ class MobilePlayerClassicLayout extends StatelessWidget {
           animation: player,
           builder: (context, _) => _buildExpressiveControlButton(
             context: context,
-            icon: player.isPlaying
-                ? Icons.pause_rounded
-                : Icons.play_arrow_rounded,
+            icon: player.hasPlaybackFailure
+                ? Icons.refresh_rounded
+                : (player.isPlaying
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded),
             onTap: () {
               HapticFeedback.lightImpact();
               player.togglePlayPause();
