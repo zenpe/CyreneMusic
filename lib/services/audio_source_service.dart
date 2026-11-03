@@ -22,6 +22,8 @@ enum AudioSourceType {
   navidrome, // Navidrome
 }
 
+enum AudioSourceLoadState { inactive, activating, ready, failed }
+
 /// 音源服务 - 管理音源配置（获取歌曲播放 URL）
 ///
 /// 支持多音源管理，用户可以添加多个音源并选择其中一个作为当前活动音源。
@@ -42,6 +44,17 @@ class AudioSourceService extends ChangeNotifier {
   final LxRuntime _runtime;
   final LxMusicSourceParser _parser;
   Future<void>? _candidateActivation;
+  AudioSourceLoadState get loadState => _candidateActivation != null
+      ? AudioSourceLoadState.activating
+      : activeSource == null
+      ? AudioSourceLoadState.inactive
+      : loadError != null
+      ? AudioSourceLoadState.failed
+      : isNavidromeActive || _runtime.isScriptReady
+      ? AudioSourceLoadState.ready
+      : AudioSourceLoadState.inactive;
+  String? loadError;
+
   int _lxSourceRevision = 0;
   int get lxSourceRevision => _lxSourceRevision;
 
@@ -120,7 +133,11 @@ class AudioSourceService extends ChangeNotifier {
 
     // 如果当前有活动音源且是洛雪音源，初始化运行时
     if (activeSource?.type == AudioSourceType.lxmusic) {
-      await initializeLxRuntime();
+      try {
+        await initializeLxRuntime();
+      } catch (_) {
+        /* Settings remain accessible for repair. */
+      }
     }
 
     _isInitialized = true;
@@ -135,7 +152,7 @@ class AudioSourceService extends ChangeNotifier {
       await activation;
     }
     final source = activeSource;
-    final generation = ++_lxRuntimeGeneration;
+    final generation = _lxRuntimeGeneration;
     if (source == null || source.type != AudioSourceType.lxmusic) {
       _lxRuntimeSourceId = null;
       return;
@@ -164,26 +181,31 @@ class AudioSourceService extends ChangeNotifier {
           StructuredLogService.log(
             '⚠️ [AudioSourceService] 未找到洛雪脚本内容，无法初始化运行时',
           );
-          return;
+          throw StateError('未找到音源脚本，请更新脚本');
         }
 
         final runtime = _runtime;
         final loaded = await runtime.loadScript(scriptContent);
-        if (loaded == null || !runtime.isScriptReady) {
+        if (loaded == null ||
+            !runtime.isScriptReady ||
+            loaded.supportedSources.isEmpty) {
           StructuredLogService.log(
             '⚠️ [AudioSourceService] 洛雪脚本加载失败: $sourceId',
           );
-          return;
+          throw StateError(runtime.lastFailure?.message ?? '脚本初始化失败');
         }
         if (generation == _lxRuntimeGeneration &&
             activeSource?.id == sourceId) {
           _lxRuntimeSourceId = sourceId;
+          loadError = null;
           StructuredLogService.log(
             '✅ [AudioSourceService] 洛雪运行时初始化成功: $sourceId',
           );
         }
       } catch (e) {
+        loadError = e.toString();
         StructuredLogService.log('❌ [AudioSourceService] 初始化洛雪运行时失败: $e');
+        rethrow;
       }
     });
     _lxRuntimeOperation = operation;
@@ -386,9 +408,6 @@ class AudioSourceService extends ChangeNotifier {
         throw Exception('无法下载或读取音源脚本，请刷新列表后重试');
       }
 
-      final previousSources = List<AudioSourceConfig>.from(_sources);
-      final previousId = _activeSourceId;
-      final previous = activeSource;
       final index = _sources.indexWhere(
         (source) =>
             source.type == AudioSourceType.lxmusic &&
@@ -397,194 +416,181 @@ class AudioSourceService extends ChangeNotifier {
                 : source.catalogPath.isEmpty &&
                       source.scriptSource == scriptUrl),
       );
-      final barrier = Completer<void>();
-      _candidateActivation = barrier.future;
-      _invalidateLxRuntime();
-      SharedPreferences? prefs;
-      String? storedSources;
-      String? storedId;
-      var persistenceStarted = false;
-      try {
-        await _lxRuntimeOperation.catchError((_) {});
-        checkBackend();
-        final info = await _runtime.loadScript(parsed.scriptContent);
-        checkBackend();
-        if (info == null || !_runtime.isScriptReady) {
-          throw Exception('脚本加载失败或初始化超时');
-        }
-        final config = AudioSourceConfig(
-          id: index < 0 ? createSourceId() : _sources[index].id,
-          type: AudioSourceType.lxmusic,
-          name: parsed.name,
-          version: parsed.version,
-          url: parsed.apiUrl,
-          apiKey: parsed.apiKey,
-          scriptSource: catalogPath == null ? scriptUrl : '',
-          catalogPath: catalogPath ?? '',
-          scriptContent: parsed.scriptContent,
-          author: parsed.author,
-          description: parsed.description,
-          urlPathTemplate: parsed.urlPathTemplate,
-          supportedPlatforms: info.supportedPlatforms,
-        );
-        final nextSources = List<AudioSourceConfig>.from(_sources);
-        if (index < 0) {
-          nextSources.add(config);
-        } else {
-          nextSources[index] = config;
-        }
-        prefs = await SharedPreferences.getInstance();
-        storedSources = prefs.getString(_keySources);
-        storedId = prefs.getString(_keyActiveSourceId);
-        persistenceStarted = true;
-        if (!await prefs.setString(
-              _keySources,
-              jsonEncode(nextSources.map((source) => source.toJson()).toList()),
-            ) ||
-            !await prefs.setString(_keyActiveSourceId, config.id)) {
-          throw Exception('无法保存音源配置');
-        }
-        checkBackend();
-        _sources = nextSources;
-        _activeSourceId = config.id;
-        _lxRuntimeSourceId = config.id;
-      } catch (error) {
-        _sources = previousSources;
-        _activeSourceId = previousId;
-        _lxRuntimeSourceId = null;
-        var restored = true;
-        if (persistenceStarted && prefs != null) {
-          try {
-            final restoredSources = storedSources == null
-                ? await prefs.remove(_keySources)
-                : await prefs.setString(_keySources, storedSources);
-            final restoredId = storedId == null
-                ? await prefs.remove(_keyActiveSourceId)
-                : await prefs.setString(_keyActiveSourceId, storedId);
-            restored = restoredSources && restoredId;
-          } catch (_) {
-            restored = false;
-          }
-        }
+      final config = AudioSourceConfig(
+        id: index < 0 ? createSourceId() : _sources[index].id,
+        type: AudioSourceType.lxmusic,
+        name: parsed.name,
+        version: parsed.version,
+        url: parsed.apiUrl,
+        apiKey: parsed.apiKey,
+        scriptSource: catalogPath == null ? scriptUrl : '',
+        catalogPath: catalogPath ?? '',
+        scriptContent: parsed.scriptContent,
+        author: parsed.author,
+        description: parsed.description,
+        urlPathTemplate: parsed.urlPathTemplate,
+      );
+      await _activateConfig(config, validate: checkBackend);
+    });
+  }
+
+  Future<void> _activateConfig(
+    AudioSourceConfig config, {
+    void Function()? validate,
+  }) async {
+    void checkBackend() => validate?.call();
+    final previousSources = List<AudioSourceConfig>.from(_sources);
+    final previousId = _activeSourceId;
+    final previous = activeSource;
+    final index = _sources.indexWhere((source) => source.id == config.id);
+    final barrier = Completer<void>();
+    _candidateActivation = barrier.future;
+    _lxRuntimeGeneration++;
+    _lxRuntimeSourceId = null;
+    notifyListeners();
+    SharedPreferences? prefs;
+    String? storedSources;
+    String? storedId;
+    var persistenceStarted = false;
+    try {
+      await _lxRuntimeOperation.catchError((_) {});
+      checkBackend();
+      final info = await _runtime.loadScript(config.scriptContent);
+      checkBackend();
+      if (info == null ||
+          !_runtime.isScriptReady ||
+          info.supportedSources.isEmpty) {
+        throw Exception(_runtime.lastFailure?.message ?? '脚本加载失败或初始化超时');
+      }
+      config = config.copyWith(supportedPlatforms: info.supportedPlatforms);
+      final nextSources = List<AudioSourceConfig>.from(_sources);
+      if (index < 0) {
+        nextSources.add(config);
+      } else {
+        nextSources[index] = config;
+      }
+      prefs = await SharedPreferences.getInstance();
+      storedSources = prefs.getString(_keySources);
+      storedId = prefs.getString(_keyActiveSourceId);
+      persistenceStarted = true;
+      if (!await prefs.setString(
+            _keySources,
+            jsonEncode(nextSources.map((source) => source.toJson()).toList()),
+          ) ||
+          !await prefs.setString(_keyActiveSourceId, config.id)) {
+        throw Exception('无法保存音源配置');
+      }
+      checkBackend();
+      _sources = nextSources;
+      _activeSourceId = config.id;
+      _lxRuntimeSourceId = config.id;
+      _lxSourceRevision++;
+      loadError = null;
+    } catch (error) {
+      _sources = previousSources;
+      _activeSourceId = previousId;
+      _lxRuntimeSourceId = null;
+      var restored = true;
+      if (persistenceStarted && prefs != null) {
         try {
-          if (previous?.type == AudioSourceType.lxmusic) {
-            final content = previous!.scriptContent.isNotEmpty
-                ? previous.scriptContent
-                : await _loadLxScriptContent();
-            final info = content == null || content.isEmpty
-                ? null
-                : await _runtime.loadScript(content);
-            if (info == null || !_runtime.isScriptReady) {
-              restored = false;
-            } else {
-              _lxRuntimeSourceId = previous.id;
-            }
-          } else {
-            await _runtime.dispose();
-          }
+          final restoredSources = storedSources == null
+              ? await prefs.remove(_keySources)
+              : await prefs.setString(_keySources, storedSources);
+          final restoredId = storedId == null
+              ? await prefs.remove(_keyActiveSourceId)
+              : await prefs.setString(_keyActiveSourceId, storedId);
+          restored = restoredSources && restoredId;
         } catch (_) {
           restored = false;
         }
-        if (!restored) {
-          throw Exception('加载音源失败，原配置已保留但恢复未完成，请重新选择音源');
-        }
-        rethrow;
-      } finally {
-        _candidateActivation = null;
-        barrier.complete();
-        notifyListeners();
       }
-    });
-  }
-
-  /// 添加新音源
-  Future<void> addSource(AudioSourceConfig config) {
-    return _enqueueMutation(() async {
-      _sources.add(config);
-      await _saveSources();
-
-      // 如果是第一个音源，自动设为活动
-      if (_sources.length == 1) {
-        await _setActiveSourceInternal(config.id);
-      }
-
-      notifyListeners();
-    });
-  }
-
-  /// 更新音源
-  Future<void> updateSource(AudioSourceConfig config) {
-    return _enqueueMutation(() async {
-      final index = _sources.indexWhere((s) => s.id == config.id);
-      if (index != -1) {
-        _sources[index] = config;
-        await _saveSources();
-
-        // 如果更新的是当前活动音源，可能需要重新初始化运行时
-        if (config.id == _activeSourceId &&
-            config.type == AudioSourceType.lxmusic) {
-          _invalidateLxRuntime();
-          await initializeLxRuntime();
-        } else if (config.id == _activeSourceId) {
-          _invalidateLxRuntime();
-        }
-
-        notifyListeners();
-      }
-    });
-  }
-
-  /// 删除音源
-  Future<void> removeSource(String id) {
-    return _enqueueMutation(() async {
-      if (id == navidromeSourceId) return;
-      _sources.removeWhere((s) => s.id == id);
-      await _saveSources();
-
-      if (_activeSourceId == id) {
-        _activeSourceId = '';
-        if (_sources.isNotEmpty) {
-          _activeSourceId = _sources.first.id;
-          await _saveActiveSourceId();
-
-          // 切换到新音源后初始化运行时（如果是洛雪）
-          if (activeSource?.type == AudioSourceType.lxmusic) {
-            await initializeLxRuntime();
+      try {
+        if (previous?.type == AudioSourceType.lxmusic) {
+          final content = previous!.scriptContent.isNotEmpty
+              ? previous.scriptContent
+              : await _loadLxScriptContent();
+          final info = content == null || content.isEmpty
+              ? null
+              : await _runtime.loadScript(content);
+          if (info == null || !_runtime.isScriptReady) {
+            restored = false;
+          } else {
+            _lxRuntimeSourceId = previous.id;
+            loadError = null;
           }
         } else {
-          _invalidateLxRuntime();
-          await _saveActiveSourceId();
+          await _runtime.dispose();
         }
+      } catch (_) {
+        restored = false;
       }
-
-      notifyListeners();
-    });
-  }
-
-  /// 设置当前活动音源
-  Future<void> setActiveSource(String id) {
-    return _enqueueMutation(() => _setActiveSourceInternal(id));
-  }
-
-  Future<void> _setActiveSourceInternal(String id) async {
-    if (_activeSourceId != id) {
-      _invalidateLxRuntime();
-      _activeSourceId = id;
-      await _saveActiveSourceId();
-
-      // 切换音源后，如果是洛雪，初始化运行时
-      if (activeSource?.type == AudioSourceType.lxmusic) {
-        await initializeLxRuntime();
-      } else {
-        _invalidateLxRuntime();
+      if (!restored) {
+        loadError = '原音源恢复失败，请重新加载';
+        throw Exception('加载音源失败，原配置已保留但恢复未完成，请重新选择音源');
       }
-
+      rethrow;
+    } finally {
+      _candidateActivation = null;
+      barrier.complete();
       notifyListeners();
-      StructuredLogService.log(
-        '🔊 [AudioSourceService] 切换音源至: ${activeSource?.name}',
-      );
     }
   }
+
+  Future<void> addSource(AudioSourceConfig config) =>
+      _enqueueMutation(() async {
+        if (_sources.any((s) => s.id == config.id)) throw StateError('音源已存在');
+        if (_sources.isEmpty && config.type == AudioSourceType.lxmusic) {
+          await _activateConfig(config);
+        } else {
+          _sources = [..._sources, config];
+          await _saveSources();
+          notifyListeners();
+        }
+      });
+
+  Future<void> updateSource(AudioSourceConfig config) =>
+      _enqueueMutation(() async {
+        final index = _sources.indexWhere((s) => s.id == config.id);
+        if (index < 0) throw StateError('音源不存在');
+        if (config.id == _activeSourceId &&
+            config.type == AudioSourceType.lxmusic) {
+          await _activateConfig(config);
+        } else {
+          _sources[index] = config;
+          await _saveSources();
+          notifyListeners();
+        }
+      });
+
+  Future<void> removeSource(String id) => _enqueueMutation(() async {
+    if (id == navidromeSourceId) return;
+    // Deleting the selection does not silently activate another source.
+    if (_activeSourceId == id) {
+      _activeSourceId = '';
+      _invalidateLxRuntime();
+      await _saveActiveSourceId();
+    }
+    _sources.removeWhere((s) => s.id == id);
+    await _saveSources();
+    notifyListeners();
+  });
+
+  Future<void> setActiveSource(String id) => _enqueueMutation(() async {
+    if (id == navidromeSourceId) {
+      _activeSourceId = id;
+      _invalidateLxRuntime();
+      loadError = null;
+      await _saveActiveSourceId();
+      notifyListeners();
+      return;
+    }
+    final config = _sources.where((s) => s.id == id).firstOrNull;
+    if (config == null) throw StateError('音源不存在');
+    await _activateConfig(config);
+  });
+
+  /// Reload the saved script without downloading or restarting playback.
+  Future<void> reloadActiveSource() => setActiveSource(_activeSourceId);
 
   AudioSourceType get sourceType =>
       activeSource?.type ?? AudioSourceType.lxmusic;

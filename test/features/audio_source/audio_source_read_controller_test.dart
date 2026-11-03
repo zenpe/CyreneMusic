@@ -1,3 +1,5 @@
+import '../../support/fake_lx_runtime.dart';
+import 'package:cyrene_music/services/lx_music_runtime_service.dart';
 import 'package:cyrene_music/features/audio_source/audio_source_feature.dart';
 import 'package:cyrene_music/models/audio_source_config.dart';
 import 'package:cyrene_music/services/audio_source_service.dart';
@@ -6,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  LxMusicRuntimeService().useRuntimeForTesting(FakeLxRuntime());
 
   final AudioSourceService service = AudioSourceService();
 
@@ -20,6 +23,7 @@ void main() {
     return AudioSourceConfig(
       id: id,
       type: AudioSourceType.lxmusic,
+      scriptContent: 'test script',
       name: name,
       url: 'https://example.com/$id',
     );

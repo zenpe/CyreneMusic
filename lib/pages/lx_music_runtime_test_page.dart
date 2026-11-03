@@ -2,7 +2,7 @@ import '../services/structured_log_service.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import '../services/lx_music_runtime_service.dart';
+import '../services/lx_quickjs_runtime.dart';
 
 /// 洛雪音源运行时测试页面
 ///
@@ -15,7 +15,7 @@ class LxMusicRuntimeTestPage extends StatefulWidget {
 }
 
 class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
-  final LxMusicRuntimeService _runtime = LxMusicRuntimeService();
+  final LxQuickJsRuntime _runtime = LxQuickJsRuntime();
 
   bool _isInitializing = false;
   bool _isLoading = false;
@@ -130,7 +130,8 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
 
         setState(() {
           _status = '脚本已就绪';
-          _scriptInfo = '''
+          _scriptInfo =
+              '''
 脚本名称: ${scriptInfo.name}
 版本: ${scriptInfo.version}
 作者: ${scriptInfo.author}
@@ -208,9 +209,7 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('洛雪音源运行时测试'),
-      ),
+      appBar: AppBar(title: const Text('洛雪音源运行时测试')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -247,10 +246,7 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
                       const Divider(),
                       Text(
                         _scriptInfo,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                       ),
                     ],
                   ],
@@ -334,7 +330,10 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
                             ),
                             items: const [
                               DropdownMenuItem(value: 'wy', child: Text('网易云')),
-                              DropdownMenuItem(value: 'tx', child: Text('QQ音乐')),
+                              DropdownMenuItem(
+                                value: 'tx',
+                                child: Text('QQ音乐'),
+                              ),
                               DropdownMenuItem(value: 'kg', child: Text('酷狗')),
                               DropdownMenuItem(value: 'kw', child: Text('酷我')),
                               DropdownMenuItem(value: 'mg', child: Text('咪咕')),
@@ -356,10 +355,22 @@ class _LxMusicRuntimeTestPageState extends State<LxMusicRuntimeTestPage> {
                               isDense: true,
                             ),
                             items: const [
-                              DropdownMenuItem(value: '128k', child: Text('128k')),
-                              DropdownMenuItem(value: '320k', child: Text('320k')),
-                              DropdownMenuItem(value: 'flac', child: Text('FLAC')),
-                              DropdownMenuItem(value: 'flac24bit', child: Text('Hi-Res')),
+                              DropdownMenuItem(
+                                value: '128k',
+                                child: Text('128k'),
+                              ),
+                              DropdownMenuItem(
+                                value: '320k',
+                                child: Text('320k'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'flac',
+                                child: Text('FLAC'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'flac24bit',
+                                child: Text('Hi-Res'),
+                              ),
                             ],
                             onChanged: (value) {
                               setState(() {

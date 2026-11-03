@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'lx_quickjs_runtime.dart';
 import 'lx_runtime_interface.dart';
 
@@ -7,7 +8,10 @@ class LxMusicRuntimeService implements LxRuntime {
   factory LxMusicRuntimeService() => _instance;
   LxMusicRuntimeService._internal();
 
-  final LxRuntime _runtime = LxQuickJsRuntime();
+  LxRuntime _runtime = LxQuickJsRuntime();
+
+  @visibleForTesting
+  void useRuntimeForTesting(LxRuntime runtime) => _runtime = runtime;
 
   @override
   bool get isInitialized => _runtime.isInitialized;

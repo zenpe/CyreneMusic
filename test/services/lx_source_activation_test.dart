@@ -309,4 +309,82 @@ void main() {
       expect(prefs.containsKey('audio_source_active_id'), isFalse);
     },
   );
+  test(
+    'saved-source activation failure keeps the original selection and revision',
+    () async {
+      parser.scripts[url] = 'old';
+      await service.useLxSource(url);
+      final old = service.activeSource!;
+      final revision = service.lxSourceRevision;
+      await service.addSource(
+        AudioSourceConfig(
+          id: 'bad',
+          type: AudioSourceType.lxmusic,
+          name: 'Bad',
+          url: '',
+          scriptContent: 'bad',
+        ),
+      );
+      await expectLater(service.setActiveSource('bad'), throwsException);
+      expect(service.activeSource, same(old));
+      expect(service.lxSourceRevision, revision);
+      expect(service.loadState, AudioSourceLoadState.ready);
+      expect(runtime.currentScript!.script, 'old');
+    },
+  );
+
+  test('cold concurrent initialization loads the saved script once', () async {
+    parser.scripts[url] = 'old';
+    await service.useLxSource(url);
+    await runtime.dispose();
+    runtime.loads.clear();
+    runtime.gate = Completer<void>();
+    final gate = runtime.gate!;
+    runtime.started = Completer<void>();
+    final started = runtime.started!;
+    final first = service.initializeLxRuntime();
+    await started.future;
+    final second = service.initializeLxRuntime();
+    gate.complete();
+    await Future.wait([first, second]);
+    expect(runtime.loads, ['old']);
+  });
+
+  test(
+    'local reload never downloads and active edit is transactional',
+    () async {
+      parser.scripts[url] = 'old';
+      await service.useLxSource(url);
+      await service.reloadActiveSource();
+      expect(parser.downloads, [url]);
+      final old = service.activeSource!;
+      await expectLater(
+        service.updateSource(old.copyWith(scriptContent: 'bad')),
+        throwsException,
+      );
+      expect(service.activeSource, same(old));
+      expect(runtime.currentScript!.script, 'old');
+    },
+  );
+
+  test(
+    'inactive edits and refresh do not change active revision or runtime',
+    () async {
+      parser.scripts[url] = 'old';
+      await service.useLxSource(url);
+      final revision = service.lxSourceRevision;
+      final other = AudioSourceConfig(
+        id: 'other',
+        type: AudioSourceType.lxmusic,
+        name: 'Other',
+        url: '',
+        scriptContent: 'new',
+      );
+      await service.addSource(other);
+      await service.updateSource(other.copyWith(name: 'Renamed'));
+      service.refresh();
+      expect(service.lxSourceRevision, revision);
+      expect(runtime.loads, ['old']);
+    },
+  );
 }

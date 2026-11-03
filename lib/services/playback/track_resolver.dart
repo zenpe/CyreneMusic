@@ -75,6 +75,7 @@ class _RequestEntry {
   final DateTime requestDeadline;
   final Future<TrackResolutionResult> future;
   final ResolutionRequest request;
+  int waiters = 0;
   _RequestState state = _RequestState.running;
 
   _RequestEntry({
@@ -263,6 +264,7 @@ class TrackResolver {
     bool fetchLyrics = true,
     String? resolverFingerprint,
     bool skipMemoryCache = false,
+    bool retryExpiredSharedRequest = true,
     bool Function()? acceptResult,
   }) async {
     if (skipMemoryCache) {
@@ -303,6 +305,8 @@ class TrackResolver {
       },
     );
     final cacheEpoch = _cacheEpoch;
+    final clock = Stopwatch()..start();
+    final adopted = _pending[key]?.isReusableFor(timeout) ?? false;
     final request = _acquire(
       key: key,
       songId: songId,
@@ -315,12 +319,16 @@ class TrackResolver {
       forceNew: skipMemoryCache,
       requestTimeout: timeout,
     );
+    final entry = _pending[key];
+    if (entry != null) entry.waiters++;
     try {
-      final result = await request.timeout(
+      var result = await request.timeout(
         timeout,
         onTimeout: () {
           final entry = _pending[key];
-          if (entry != null && identical(entry.future, request)) {
+          if (entry != null &&
+              identical(entry.future, request) &&
+              entry.waiters <= 1) {
             entry.request.failure = const LxRuntimeFailure(
               kind: LxRuntimeFailureKind.timeout,
               message: '获取歌曲详情超时',
@@ -338,6 +346,30 @@ class TrackResolver {
           );
         },
       );
+      // A foreground adopter may outlive the preload's transport deadline.
+      // Retry once using only its remaining original budget.
+      final remaining = timeout - clock.elapsed;
+      if (retryExpiredSharedRequest &&
+          adopted &&
+          (result.timedOut ||
+              result.lxFailure?.kind == LxRuntimeFailureKind.timeout) &&
+          remaining > Duration.zero &&
+          (acceptResult?.call() ?? true) &&
+          cacheEpoch == _cacheEpoch) {
+        result = await resolve(
+          songId: songId,
+          quality: quality,
+          source: source,
+          title: title,
+          artist: artist,
+          sourceIds: sourceIds,
+          timeout: remaining,
+          fetchLyrics: fetchLyrics,
+          resolverFingerprint: resolverFingerprint,
+          acceptResult: acceptResult,
+          retryExpiredSharedRequest: false,
+        );
+      }
       trace.mark(
         result.cancelled
             ? 'cancelled'
@@ -367,6 +399,8 @@ class TrackResolver {
         detail: null,
         lxFailure: classifyLxRuntimeFailure(error),
       );
+    } finally {
+      if (entry != null) entry.waiters--;
     }
   }
 
@@ -431,7 +465,7 @@ class TrackResolver {
               ),
             )
             .timeout(
-              hardTimeout,
+              effectiveRequestTimeout,
               onTimeout: () {
                 hardTimedOut = true;
                 ownership.failure = const LxRuntimeFailure(

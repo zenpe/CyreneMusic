@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 export 'lyric/lyric_snapshot.dart';
 export 'playback/playback_problem.dart';
-export 'playback/source_health_tracker.dart';
 export 'playback/playback_performance_metrics.dart';
 export 'playback/playback_view_state.dart';
 import '../models/song_detail.dart';
@@ -13,7 +12,6 @@ import 'playback/playback_service.dart';
 import 'playback/playback_performance_metrics.dart';
 import 'playback/playback_problem.dart';
 import 'playback/playback_view_state.dart';
-import 'playback/source_health_tracker.dart';
 import 'playlist_queue_service.dart';
 import 'playback_mode_service.dart';
 
@@ -163,9 +161,6 @@ class PlayerService extends ChangeNotifier {
 
   bool isCurrentPlaybackProblem(PlaybackProblem problem) =>
       _pb.isCurrentPlaybackProblem(problem);
-  ValueNotifier<SourceHealthSnapshot?> get sourceHealthNotifier =>
-      _pb.sourceHealthNotifier;
-  SourceHealthSnapshot? get sourceHealth => _pb.sourceHealth;
   PlaybackPerformanceSnapshot get performanceSnapshot =>
       _pb.performanceSnapshot;
   void resetPerformanceMetrics() => _pb.resetPerformanceMetrics();
@@ -282,7 +277,6 @@ class PlayerService extends ChangeNotifier {
   Future<void> refreshCurrentAudio(Track expectedTrack) =>
       _pb.refreshCurrentAudio(expectedTrack);
   bool get canRefreshCurrentAudio => _pb.canRefreshCurrentAudio;
-  Future<bool> revalidateActiveSource() => _pb.revalidateActiveSource();
   Future<void> stop() => _pb.stop();
   Future<void> togglePlayPause() => _pb.togglePlayPause();
   Future<void> setVolume(double volume) => _pb.setVolume(volume);

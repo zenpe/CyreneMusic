@@ -39,6 +39,7 @@ class LxQuickJsRuntime implements LxRuntime {
   int _runtimeGeneration = 0;
   bool _isInitialized = false;
   bool _isScriptReady = false;
+  String? _initializationError;
   bool _isDisabled = false;
   LxScriptInfo? _currentScript;
   LxRuntimeFailure? _lastFailure;
@@ -147,6 +148,8 @@ class LxQuickJsRuntime implements LxRuntime {
       return null;
     }
 
+    _initializationError = null;
+    _lastFailure = null;
     _debug('📜 [LxQuickJsRuntime] 加载脚本...');
     _isScriptReady = false;
     final context = _context;
@@ -191,11 +194,13 @@ class LxQuickJsRuntime implements LxRuntime {
 
       final startTime = DateTime.now();
       while (!_isScriptReady) {
+        if (_initializationError != null) {
+          throw StateError(_initializationError!);
+        }
         if (!identical(context, _context) || context.disposed) return null;
         await Future.delayed(const Duration(milliseconds: 100));
         if (DateTime.now().difference(startTime).inSeconds > 10) {
-          _debug('⚠️ [LxQuickJsRuntime] 脚本初始化超时');
-          return null;
+          throw TimeoutException('音源脚本初始化超时');
         }
       }
 
@@ -217,6 +222,7 @@ class LxQuickJsRuntime implements LxRuntime {
       _debug('   支持的音质: ${updatedScriptInfo.supportedQualities}');
       return updatedScriptInfo;
     } catch (e) {
+      _lastFailure = classifyLxRuntimeFailure(e);
       _error('❌ [LxQuickJsRuntime] 脚本加载失败: $e');
       return null;
     }
@@ -579,6 +585,7 @@ class LxQuickJsRuntime implements LxRuntime {
         _handleResponse(context, data);
         break;
       case 'lxOnError':
+        if (!_isScriptReady) _initializationError = data.toString();
         _error('❌ [LxQuickJsRuntime] 脚本错误: $data');
         break;
       default:

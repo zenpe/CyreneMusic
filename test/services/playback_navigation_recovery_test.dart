@@ -1,3 +1,6 @@
+import '../support/fake_lx_runtime.dart';
+import 'package:cyrene_music/services/lx_music_runtime_service.dart';
+import 'package:cyrene_music/services/playback/audio_transport_failure.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -28,6 +31,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  LxMusicRuntimeService().useRuntimeForTesting(FakeLxRuntime());
   late Directory testDirectory;
   setUpAll(() async {
     testDirectory = await Directory.systemTemp.createTemp('cyrene-navigation-');
@@ -54,6 +58,100 @@ void main() {
     await AuthService().logout();
     await testDirectory.delete(recursive: true);
   });
+
+  test('source list refresh does not cancel a pending song', () async {
+    await configureTestSource();
+    final resolver = _Resolver();
+    final gate = Completer<TrackResolutionResult>();
+    resolver.gates['0'] = gate;
+    final playback = _createPlayback(resolver);
+    try {
+      final pending = playback.playNow(_remoteTracks(1), 0, QueueSource.none);
+      await waitUntil(() => resolver.requests.isNotEmpty);
+      AudioSourceService().refresh();
+      expect(playback.isTrackSwitchPending, isTrue);
+      gate.complete(const TrackResolutionResult(detail: null));
+      await pending;
+      expect(playback.isTrackSwitchPending, isFalse);
+    } finally {
+      playback.dispose();
+      await AudioSourceService().removeSource('playback-test-source');
+    }
+  });
+
+  for (final pauseDuringActivation in [false, true]) {
+    test(
+      'local reload respects latest intent (pause=$pauseDuringActivation)',
+      () async {
+        await configureTestSource();
+        final resolver = _Resolver()..playable.add('0');
+        final gate = Completer<TrackResolutionResult>();
+        resolver.gates['0'] = gate;
+        final playback = _createPlayback(resolver);
+        final runtime = FakeLxRuntime();
+        LxMusicRuntimeService().useRuntimeForTesting(runtime);
+        final loading = Completer<void>();
+        runtime.loadGate = loading;
+        try {
+          final pending = playback.playNow(
+            _remoteTracks(1),
+            0,
+            QueueSource.none,
+          );
+          await waitUntil(() => resolver.requests.isNotEmpty);
+          final reload = AudioSourceService().reloadActiveSource();
+          await waitUntil(
+            () =>
+                AudioSourceService().loadState ==
+                AudioSourceLoadState.activating,
+          );
+          if (pauseDuringActivation) await playback.pause();
+          loading.complete();
+          await reload;
+          gate.complete(const TrackResolutionResult(detail: null));
+          await pending;
+          if (pauseDuringActivation) {
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+            expect(resolver.requests, ['0']);
+            expect(playback.state, isNot(PBState.playing));
+          } else {
+            await waitUntil(() => playback.state == PBState.playing);
+            expect(resolver.requests, ['0', '0']);
+          }
+        } finally {
+          if (!loading.isCompleted) loading.complete();
+          if (!gate.isCompleted) {
+            gate.complete(const TrackResolutionResult(detail: null));
+          }
+          playback.dispose();
+          await AudioSourceService().removeSource('playback-test-source');
+        }
+      },
+    );
+  }
+
+  test(
+    'network timeout ends automatic transition without skipping songs',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()..playable.add('0');
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      try {
+        await playback.playNow(_remoteTracks(3), 0, QueueSource.none);
+        resolver.requests.clear();
+        engine.complete();
+        await waitUntil(
+          () => resolver.requests.isNotEmpty && !playback.isTrackSwitchPending,
+        );
+        expect(resolver.requests, ['1']);
+        expect(playback.currentTrack?.id, isNot('2'));
+      } finally {
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
 
   for (final mode in PlaybackMode.values) {
     test(
@@ -565,7 +663,7 @@ void main() {
   );
 
   test(
-    'temporary prefetch failure retries once while current audio continues',
+    'failed prefetch stops its round while manual next remains available',
     () async {
       await configureTestSource();
       final resolver = _Resolver()..playable.add('0');
@@ -577,9 +675,11 @@ void main() {
         expect(playback.currentTrack?.id, '0');
         expect(playback.state, PBState.playing);
         resolver.playable.add('1');
-        await engine.prepared.future.timeout(const Duration(seconds: 4));
+        await Future<void>.delayed(const Duration(milliseconds: 2200));
+        expect(resolver.requests.where((id) => id == '1').length, 1);
+        await playback.next();
         expect(resolver.requests.where((id) => id == '1').length, 2);
-        expect(playback.currentTrack?.id, '0');
+        expect(playback.currentTrack?.id, '1');
         expect(playback.state, PBState.playing);
       } finally {
         playback.dispose();
@@ -588,7 +688,7 @@ void main() {
     },
   );
 
-  test('pause cancels a scheduled prefetch retry', () async {
+  test('paused playback does not restart failed prefetch', () async {
     await configureTestSource();
     final resolver = _Resolver()..playable.add('0');
     final playback = _createPlayback(resolver);
@@ -745,7 +845,7 @@ void main() {
   );
 
   test(
-    'natural timeout after native teardown still advances the queue',
+    'native audio timeout stops automatic advance without skipping tracks',
     () async {
       await configureTestSource();
       final resolver = _Resolver()..playable.addAll(['0', '1', '2']);
@@ -770,10 +870,12 @@ void main() {
             retriable: false,
           ),
         );
-        await waitUntil(() => playback.currentTrack?.id == '2');
-        expect(playback.state, PBState.playing);
-        expect(playback.isTrackSwitchPending, isFalse);
-        expect(playback.currentProblem, isNull);
+        await waitUntil(
+          () =>
+              playback.currentProblem != null && !playback.isTrackSwitchPending,
+        );
+        expect(playback.currentTrack?.id, isNot('2'));
+        expect(playback.currentProblem?.message, contains('超时'));
       } finally {
         playback.dispose();
         await AudioSourceService().removeSource('playback-test-source');
@@ -852,7 +954,9 @@ void main() {
     'failed native URL refresh continues to the following song once',
     () async {
       await configureTestSource();
-      final resolver = _Resolver()..playable.addAll(['0', '1', '2']);
+      final resolver = _Resolver()
+        ..failureResponse = const TrackResolutionResult(detail: null)
+        ..playable.addAll(['0', '1', '2']);
       final engine = _Engine();
       final playback = _createPlayback(resolver, engine: engine);
       try {
@@ -972,7 +1076,9 @@ void main() {
 
   test('native failure counts toward the three-candidate limit', () async {
     await configureTestSource();
-    final resolver = _Resolver()..playable.addAll(['0', '1', '4']);
+    final resolver = _Resolver()
+      ..failureResponse = const TrackResolutionResult(detail: null)
+      ..playable.addAll(['0', '1', '4']);
     final engine = _Engine();
     final playback = _createPlayback(resolver, engine: engine);
     try {
@@ -1054,7 +1160,7 @@ void main() {
         final resolver = _Resolver()..playable.addAll(['0', '1']);
         final engine = _Engine()
           ..failActivation = true
-          ..activationDelay = const Duration(milliseconds: 10100)
+          ..activationDelay = const Duration(milliseconds: 15100)
           ..activationError = originalError
               ? EngineError(
                   type: EngineErrorType.unsupportedFormat,
@@ -1265,6 +1371,99 @@ void main() {
   }
 
   test(
+    'duplicate native callbacks and thrown load share one recovery',
+    () async {
+      await configureTestSource();
+      final resolver = _Resolver()
+        ..playable.add('0')
+        ..refreshUrl = true;
+      final engine = _Engine()
+        ..nextError = EngineErrorType.sourceLoad
+        ..nextErrorCause = const AudioTransportFailure(
+          AudioTransportStage.upstream,
+          statusCode: 404,
+        )
+        ..duplicateLoadError = true;
+      final playback = _createPlayback(resolver, engine: engine);
+      var notifications = 0;
+      playback.onPlaybackFailure = (_) => notifications++;
+      try {
+        await playback.playNow(_remoteTracks(1), 0, QueueSource.none);
+        expect(resolver.requests, ['0', '0']);
+        expect(engine.loadedUrls, hasLength(2));
+        expect(playback.state, PBState.playing);
+        expect(playback.currentProblem, isNull);
+        expect(notifications, 0);
+      } finally {
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
+
+  for (final status in [404, 410, 429, 503]) {
+    for (final navigation in [false, true]) {
+      test(
+        'transport $status during navigation=$navigation has bounded recovery',
+        () async {
+          await configureTestSource();
+          final resolver = _Resolver()
+            ..playable.addAll(['0', '1'])
+            ..refreshUrl = true;
+          final engine = _Engine();
+          final playback = _createPlayback(resolver, engine: engine);
+          try {
+            final tracks = _remoteTracks(2);
+            if (navigation) {
+              await playback.playNow(tracks, 0, QueueSource.none);
+              resolver.requests.clear();
+              engine.loadedUrls.clear();
+            }
+            engine.nextError = EngineErrorType.sourceLoad;
+            engine.nextErrorCause = AudioTransportFailure(
+              AudioTransportStage.upstream,
+              statusCode: status,
+            );
+            if (navigation) {
+              await playback.next();
+            } else {
+              await playback.playNow(tracks, 0, QueueSource.none);
+            }
+            final refresh = status == 404 || status == 410;
+            expect(
+              resolver.requests.length,
+              refresh || (!navigation && status == 503) ? 2 : 1,
+            );
+            expect(
+              engine.loadedUrls.length,
+              refresh || (!navigation && status == 503) ? 2 : 1,
+            );
+            expect(playback.isTrackSwitchPending, isFalse);
+            expect(playback.pendingPlaybackIntent, isNull);
+            if (refresh) {
+              expect(playback.state, PBState.playing);
+              expect(resolver.memoryBypasses.last, isTrue);
+              expect(engine.loadedUrls.toSet(), hasLength(2));
+            } else if (status == 429) {
+              expect(
+                playback.currentProblem?.message,
+                contains('\u9650\u6d41'),
+              );
+            }
+            // The next user command can always recover after terminal failure.
+            await playback.jumpTo(navigation ? 0 : 1);
+            expect(playback.state, PBState.playing);
+            expect(playback.currentProblem, isNull);
+          } finally {
+            playback.dispose();
+            await AudioSourceService().removeSource('playback-test-source');
+          }
+        },
+      );
+    }
+  }
+
+  test(
     'Android source-read failure refreshes once without claiming HTTP status',
     () async {
       await configureTestSource();
@@ -1353,6 +1552,7 @@ void main() {
     'automatic recovery can use memory URL inside its candidate window',
     () async {
       final resolver = _Resolver()
+        ..failureResponse = const TrackResolutionResult(detail: null)
         ..playable.add('0')
         ..memoryPlayable.add('3');
       final engine = _Engine();
@@ -1375,7 +1575,9 @@ void main() {
   test(
     'automatic completion skips an unavailable song without retrying it',
     () async {
-      final resolver = _Resolver()..playable.addAll(['0', '2']);
+      final resolver = _Resolver()
+        ..failureResponse = const TrackResolutionResult(detail: null)
+        ..playable.addAll(['0', '2']);
       final engine = _Engine();
       final playback = _createPlayback(resolver, engine: engine);
       try {
@@ -1543,7 +1745,7 @@ void main() {
           case 'next':
             await playback.next();
           case 'source':
-            AudioSourceService().refresh();
+            await AudioSourceService().removeSource('playback-test-source');
         }
         await restoring.timeout(const Duration(seconds: 2));
         expect(playback.isTrackSwitchPending, isFalse);
@@ -1592,14 +1794,6 @@ void main() {
         expect(playback.viewState.track?.id, '0');
         expect(playback.displayTitle, 'Track 0');
         expect(playback.viewState.effectivePlaying, isFalse);
-        expect(
-          playback.sourceHealthNotifier.value?.consecutiveTransientFailures,
-          0,
-        );
-        expect(
-          playback.sourceHealthNotifier.value?.consecutiveSystemicFailures,
-          0,
-        );
         events.add(StartupNetworkStatus.available);
         await Future<void>.delayed(const Duration(milliseconds: 20));
         expect(resolver.requests, isEmpty);
@@ -1738,14 +1932,6 @@ void main() {
       expect(resolver.urlRequests, ['0', '0']);
       expectFinished(playback);
       expect(playback.errorMessage, '网络尚未连接，请联网后重试');
-      expect(
-        playback.sourceHealthNotifier.value?.consecutiveTransientFailures,
-        0,
-      );
-      expect(
-        playback.sourceHealthNotifier.value?.consecutiveSystemicFailures,
-        0,
-      );
     } finally {
       playback.dispose();
     }
@@ -2218,15 +2404,24 @@ PlaybackService _createPlayback(
 List<Track> _remoteTracks(int count) =>
     List.generate(count, (i) => track(i, source: MusicSource.netease));
 
-Future<void> configureTestSource() => AudioSourceService().addSource(
-  AudioSourceConfig(
-    id: 'playback-test-source',
-    type: AudioSourceType.lxmusic,
-    name: 'Test resolver',
-    url: '',
-    supportedPlatforms: const ['netease'],
-  ),
-);
+Future<void> configureTestSource() async {
+  if (AudioSourceService().sources.any((s) => s.id == 'playback-test-source')) {
+    if (AudioSourceService().activeSource?.id != 'playback-test-source') {
+      await AudioSourceService().setActiveSource('playback-test-source');
+    }
+    return;
+  }
+  await AudioSourceService().addSource(
+    AudioSourceConfig(
+      id: 'playback-test-source',
+      type: AudioSourceType.lxmusic,
+      scriptContent: 'test script',
+      name: 'Test resolver',
+      url: '',
+      supportedPlatforms: const ['netease'],
+    ),
+  );
+}
 
 Track track(int id, {MusicSource source = MusicSource.local}) => Track(
   id: '$id',
@@ -2342,6 +2537,7 @@ class _Resolver extends TrackResolver {
     bool fetchLyrics = true,
     String? resolverFingerprint,
     bool skipMemoryCache = false,
+    bool retryExpiredSharedRequest = true,
     bool Function()? acceptResult,
   }) async {
     final id = songId.toString();
@@ -2412,6 +2608,7 @@ class _Engine extends Fake implements AudioEngine, EngineBufferingReporter {
   final loadedUrls = <String?>[];
   Completer<void>? loadGate;
   bool failNextLoad = false;
+  bool duplicateLoadError = false;
   int resumeCount = 0;
   int? loadedGeneration;
   @override
@@ -2465,16 +2662,20 @@ class _Engine extends Fake implements AudioEngine, EngineBufferingReporter {
     if (error != null) {
       loadedGeneration = null;
       _playing = false;
-      throw EngineReportedException(
-        EngineError(
-          type: error,
-          message: 'test stream failure',
-          sourceUrl: source.sourceUrl,
-          cause: nextErrorCause,
-          retriable: error != EngineErrorType.accessDenied,
-          epoch: generation,
-        ),
+      final failure = EngineError(
+        type: error,
+        message: 'test stream failure',
+        sourceUrl: source.sourceUrl,
+        cause: nextErrorCause,
+        retriable: error != EngineErrorType.accessDenied,
+        epoch: generation,
       );
+      if (duplicateLoadError) {
+        _errors.add(failure);
+        _errors.add(failure);
+        await Future<void>.delayed(Duration.zero);
+      }
+      throw EngineReportedException(failure);
     }
     if (failNextLoad) {
       failNextLoad = false;

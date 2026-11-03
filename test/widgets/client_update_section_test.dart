@@ -12,6 +12,23 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/version_service_test.dart' show releaseJson;
 
+class _DelayedIgnoreService extends VersionService {
+  final saved = Completer<void>();
+  int writes = 0;
+
+  _DelayedIgnoreService()
+    : super.forTesting(
+        client: MockClient((_) async => http.Response('{}', 500)),
+        loadVersion: () async => '1.3.9',
+      );
+
+  @override
+  Future<void> ignoreCurrentVersion(String version) {
+    writes++;
+    return saved.future;
+  }
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -28,6 +45,7 @@ void main() {
     );
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: const [fluent.FluentLocalizations.delegate],
         builder: (context, child) => fluentTheme
             ? fluent.FluentTheme(data: fluent.FluentThemeData(), child: child!)
             : child!,
@@ -229,5 +247,122 @@ void main() {
     expect(find.text('check'), findsOneWidget);
     expect(find.byType(ClientUpdateDialog), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+  Future<void> openDelayedIgnoreDialog(
+    WidgetTester tester,
+    _DelayedIgnoreService service, {
+    bool fluentTheme = false,
+  }) async {
+    ThemeManager().setThemeFramework(
+      fluentTheme ? ThemeFramework.fluent : ThemeFramework.material,
+    );
+    await service.initialize();
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: const [fluent.FluentLocalizations.delegate],
+        builder: (context, child) => fluentTheme
+            ? fluent.FluentTheme(data: fluent.FluentThemeData(), child: child!)
+            : child!,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              child: const Text('home'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (context) => Scaffold(
+                    body: TextButton(
+                      child: const Text('settings'),
+                      onPressed: () => showClientUpdateDialog(
+                        context,
+                        service: service,
+                        release: VersionInfo(
+                          version: '1.4.0',
+                          changelog: 'notes',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('home'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('settings'));
+    await tester.pumpAndSettle();
+  }
+
+  for (final fluentTheme in [false, true]) {
+    testWidgets(
+      'ignore completion during exit never pops settings ($fluentTheme)',
+      (tester) async {
+        final service = _DelayedIgnoreService();
+        await openDelayedIgnoreDialog(
+          tester,
+          service,
+          fluentTheme: fluentTheme,
+        );
+        await tester.tap(find.text('忽略此版本'));
+        await tester.pump();
+        await tester.tap(find.text('稍后'));
+        await tester.pump(const Duration(milliseconds: 10));
+        service.saved.complete();
+        await tester.pumpAndSettle();
+        expect(find.text('settings'), findsOneWidget);
+        expect(find.byType(ClientUpdateDialog), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'pending ignore rejects duplicate writes and closes only dialog',
+    (tester) async {
+      final service = _DelayedIgnoreService();
+      await openDelayedIgnoreDialog(tester, service);
+      await tester.tap(find.text('忽略此版本'));
+      await tester.tap(find.text('忽略此版本'));
+      expect(service.writes, 1);
+      service.saved.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('settings'), findsOneWidget);
+      expect(find.byType(ClientUpdateDialog), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'ignore completion after dismissal does not update disposed state',
+    (tester) async {
+      final service = _DelayedIgnoreService();
+      await openDelayedIgnoreDialog(tester, service);
+      await tester.tap(find.text('忽略此版本'));
+      await tester.pump();
+      Navigator.of(tester.element(find.byType(ClientUpdateDialog))).pop();
+      await tester.pumpAndSettle();
+      service.saved.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('settings'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('failed ignore stays on dialog and displays recoverable error', (
+    tester,
+  ) async {
+    final service = _DelayedIgnoreService();
+    await openDelayedIgnoreDialog(tester, service);
+    await tester.tap(find.text('忽略此版本'));
+    await tester.pump();
+    service.saved.completeError(StateError('write failed'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ClientUpdateDialog), findsOneWidget);
+    expect(find.text('保存失败，请重试。'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('稍后'));
+    await tester.pumpAndSettle();
+    expect(find.text('settings'), findsOneWidget);
   });
 }

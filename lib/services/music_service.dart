@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'audio_quality_service.dart';
 import 'structured_log_service.dart';
 import 'dart:convert';
 import 'resolution_request.dart';
@@ -576,7 +578,7 @@ class MusicService extends ChangeNotifier {
     // - 酷狗：hash (String)
     // - 酷我：rid/mid (int)
     final sourceCode = audioSourceService.getLxSourceCode(source);
-    final lxQuality = audioSourceService.getLxQuality(quality);
+    final clock = Stopwatch()..start();
     final sourceId = audioSourceService.activeSource?.id;
 
     try {
@@ -602,15 +604,26 @@ class MusicService extends ChangeNotifier {
       }
 
       StructuredLogService.log(
-        '🌐 [MusicService] 调用洛雪运行时获取 URL: $sourceCode / $lxSongId / $lxQuality',
+        '🌐 [MusicService] 调用洛雪运行时获取 URL: $sourceCode / $lxSongId',
       );
       DeveloperModeService().addLog('🌐 [Runtime] Get Music URL');
 
+      quality = AudioQualityService().effectiveQualityFor(source, quality);
+      final lxQuality = AudioQualityService().requestQualityFor(
+        source,
+        quality,
+      );
+      final remaining = requestTimeout == null
+          ? null
+          : requestTimeout - clock.elapsed;
+      if (remaining != null && remaining <= Duration.zero) {
+        throw TimeoutException('音源解析超时');
+      }
       final audioUrl = await runtime.getMusicUrl(
         source: sourceCode!,
         songId: lxSongId,
         quality: lxQuality,
-        timeout: requestTimeout,
+        timeout: remaining,
       );
 
       if (audioSourceService.lxSourceRevision != sourceRevision ||
@@ -699,7 +712,6 @@ class MusicService extends ChangeNotifier {
         source: source,
       );
     } catch (e) {
-      if (e is UnsupportedError) rethrow;
       if (e is ResolutionCancelled) rethrow;
       _lastLxFailure =
           ResolutionRequest.current?.failure ?? classifyLxRuntimeFailure(e);

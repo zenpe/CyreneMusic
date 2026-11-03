@@ -105,10 +105,6 @@ class PlaybackTransitionCoordinator {
 
       consideredCount++;
 
-      budget.prepareCandidate(
-        remainingCandidates: plan.candidates.length - index,
-        failedCandidates: consideredCount - 1,
-      );
       final outcome = await attempt(candidate, budget, isCurrent);
       if (!isCurrent() ||
           outcome.status == PlaybackCandidateAttemptStatus.cancelled) {

@@ -11,6 +11,8 @@ import '../../models/equalizer_state.dart';
 import '../persistent_storage_service.dart';
 import '../structured_log_service.dart';
 import 'playable_source.dart';
+import 'audio_transport_failure.dart';
+import '../proxy_service.dart';
 
 /// 统一播放状态
 enum EngineState { idle, playing, paused }
@@ -83,6 +85,7 @@ enum EngineErrorType {
 class EngineError {
   int? get httpStatus {
     final error = cause;
+    if (error is AudioTransportFailure) return error.statusCode;
     if (error is! ja.PlayerException) return null;
     return error.code >= 400 && error.code <= 599 ? error.code : null;
   }
@@ -2186,15 +2189,43 @@ class JustAudioEngine
 // ─────────────────────────────────────────────────────────
 // MediaKit 实现（Windows / macOS / Linux）
 // ─────────────────────────────────────────────────────────
-class MediaKitEngine implements AudioEngine, EqualizerCapable {
+class MediaKitEngine
+    implements AudioEngine, EqualizerCapable, EngineLoadControl {
   @override
   bool canResumeSource(int generation) =>
       generation == _dispatchEpoch &&
       generation == _epochGate.streamEventEpoch &&
       _hasMedia &&
       _player != null;
-  MediaKitEngine() {
+  MediaKitEngine({
+    mk.Player Function()? playerFactory,
+    this.nativeCleanupTimeout = const Duration(seconds: 2),
+  }) : _playerFactory = playerFactory {
     EqualizerService().setBackend(this);
+  }
+
+  final mk.Player Function()? _playerFactory;
+  final Duration nativeCleanupTimeout;
+  _DesktopLoad? _load;
+  String? _mediaUrl;
+
+  @override
+  void cancelPendingLoad() {
+    _load?.cancel();
+    if (_load != null) ProxyService().release(_mediaUrl);
+  }
+
+  @override
+  Future<void> pausePendingLoad() async {
+    _load?.pause();
+    final player = _player;
+    if (player == null) return;
+    try {
+      await player.pause().timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // A failed pause must not allow a late open/play to resume this load.
+      cancelPendingLoad();
+    }
   }
 
   @override
@@ -2337,66 +2368,41 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   }
 
   EngineError _mapMediaKitError(String message, {String? sourceUrl}) {
-    final lower = message.toLowerCase();
-    if (lower.contains('403') ||
-        lower.contains('401') ||
-        lower.contains('forbidden')) {
-      return EngineError(
-        type: EngineErrorType.accessDenied,
-        message: message,
-        sourceUrl: sourceUrl,
-        retriable: false,
-      );
-    }
-    if (lower.contains('timeout') ||
-        lower.contains('timed out') ||
-        lower.contains('network')) {
-      return EngineError(
-        type: EngineErrorType.networkTimeout,
-        message: message,
-        sourceUrl: sourceUrl,
-        retriable: true,
-      );
-    }
-    if (lower.contains('decoder') ||
-        lower.contains('unsupported') ||
-        lower.contains('format')) {
-      return EngineError(
-        type: EngineErrorType.unsupportedFormat,
-        message: message,
-        sourceUrl: sourceUrl,
-        retriable: false,
-      );
-    }
-    return EngineError(
-      type: EngineErrorType.sourceLoad,
-      message: message,
-      sourceUrl: sourceUrl,
-      retriable: true,
+    final url = sourceUrl ?? _mediaUrl;
+    return mapMediaKitFailure(
+      message,
+      sourceUrl: url,
+      transport: ProxyService().failureFor(url),
     );
   }
 
-  Future<void> _ensurePlayer() async {
+  Future<void> _ensurePlayer(_DesktopLoad load) async {
     if (_player != null) return;
-    await _ensureMediaKitInitialized();
+    if (_playerFactory == null) {
+      await load.wait(_ensureMediaKitInitialized(), 'initialize');
+    }
 
-    _player = mk.Player(
-      configuration: const mk.PlayerConfiguration(
-        title: 'Cyrene Music',
-        ready: null,
-      ),
-    );
+    final player =
+        _playerFactory?.call() ??
+        mk.Player(
+          configuration: const mk.PlayerConfiguration(
+            title: 'Cyrene Music',
+            ready: null,
+          ),
+        );
 
     // 注入桌面端均衡器
+    _player = player;
     EqualizerService().setBackend(this);
     unawaited(EqualizerService().applyEqualizer());
 
     final savedVolume = PersistentStorageService().getDouble('player_volume');
     _currentVolume = (savedVolume ?? 1.0).clamp(0.0, 1.0) * 100;
-    await _player!.setVolume(_currentVolume);
-    await _player!.setRate(_playbackSpeed);
+    await load.wait(player.setVolume(_currentVolume), 'initialize_volume');
+    await load.wait(player.setRate(_playbackSpeed), 'initialize_speed');
 
-    _playingSub = _player!.stream.playing.listen((playing) {
+    _playingSub = player.stream.playing.listen((playing) {
+      if (!identical(_player, player)) return;
       if (playing) {
         _isPlaying = true;
         if (_epochGate.streamEventEpoch == _dispatchEpoch) {
@@ -2410,32 +2416,37 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
       }
     });
 
-    _positionSub = _player!.stream.position.listen((pos) {
+    _positionSub = player.stream.position.listen((pos) {
+      if (!identical(_player, player)) return;
       _position = pos;
       if (_epochGate.streamEventEpoch == _dispatchEpoch) {
         _positionController.add(pos);
       }
     });
 
-    _durationSub = _player!.stream.duration.listen((dur) {
+    _durationSub = player.stream.duration.listen((dur) {
+      if (!identical(_player, player)) return;
       _duration = dur;
       if (_epochGate.streamEventEpoch == _dispatchEpoch) {
         _durationController.add(_duration);
       }
     });
 
-    _bufferSub = _player!.stream.buffer.listen((buffer) {
+    _bufferSub = player.stream.buffer.listen((buffer) {
+      if (!identical(_player, player)) return;
       _bufferedPosition = buffer;
       if (_epochGate.streamEventEpoch == _dispatchEpoch) {
         _bufferedPositionController.add(buffer);
       }
     });
 
-    _rateSub = _player!.stream.rate.listen((rate) {
+    _rateSub = player.stream.rate.listen((rate) {
+      if (!identical(_player, player)) return;
       _playbackSpeed = rate;
     });
 
-    _completedSub = _player!.stream.completed.listen((completed) {
+    _completedSub = player.stream.completed.listen((completed) {
+      if (!identical(_player, player)) return;
       if (completed) {
         _isPlaying = false;
         _position = Duration.zero;
@@ -2446,7 +2457,8 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
       }
     });
 
-    _errorSub = _player!.stream.error.listen((message) {
+    _errorSub = player.stream.error.listen((message) {
+      if (!identical(_player, player)) return;
       final mapped = _mapMediaKitError(message);
       // 纪元闸门：切换窗口内的错误归属旧纪元，直接抑制。
       // media_kit 在 stop/open 切换时可能抛出属于旧媒体的未知错误，
@@ -2487,7 +2499,7 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     _hasMedia = false;
     _isPlaying = false;
     try {
-      await player.dispose();
+      await player.dispose().timeout(nativeCleanupTimeout);
     } catch (_) {}
   }
 
@@ -2502,161 +2514,136 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     bool preload = true,
     Duration? loadTimeout,
   }) async {
+    final load = _DesktopLoad(
+      loadTimeout ?? const Duration(seconds: 15),
+      autoPlay,
+    );
+    _load = load;
     _lastStartupTiming = null;
-    var ensurePlayerMs = 0;
-    var muteMs = 0;
-    var stopMs = 0;
-    var setSourceMs = 0;
-    var playToReadyMs = 0;
-    // 源头捕获必须早于初始化/打开媒体的异步边界。
     _epochGate.beginArm(generation);
     _dispatchEpoch = generation;
-    final ensurePlayerSw = Stopwatch()..start();
-    await _ensurePlayer();
-    ensurePlayerMs = ensurePlayerSw.elapsedMilliseconds;
-    final player = _player!;
-
-    if (_isPlaying || _hasMedia) {
-      _epochGate.beginStop();
-      final muteSw = Stopwatch()..start();
-      await player.setVolume(0);
-      muteMs = muteSw.elapsedMilliseconds;
-      final stopSw = Stopwatch()..start();
-      await player.stop();
-      stopMs = stopSw.elapsedMilliseconds;
-    }
+    if (_mediaUrl != url) ProxyService().release(_mediaUrl);
+    _mediaUrl = url;
+    final timing = Stopwatch()..start();
     try {
-      final setSourceSw = Stopwatch()..start();
-      await player
-          .open(mk.Media(url, httpHeaders: headers), play: false)
-          .timeout(loadTimeout ?? const Duration(seconds: 15));
-      setSourceMs = setSourceSw.elapsedMilliseconds;
+      await _ensurePlayer(load);
+      final player = _player!;
+      final ensureMs = timing.elapsedMilliseconds;
+      var muteMs = 0;
+      var stopMs = 0;
+      if (_isPlaying || _hasMedia) {
+        _epochGate.beginStop();
+        timing.reset();
+        await load.wait(player.setVolume(0), 'mute');
+        muteMs = timing.elapsedMilliseconds;
+        timing.reset();
+        await load.wait(player.stop(), 'stop');
+        stopMs = timing.elapsedMilliseconds;
+      }
+      _hasMedia = false;
+      timing.reset();
+      await load.wait(
+        player.open(mk.Media(url, httpHeaders: headers), play: false),
+        'open',
+      );
+      final openMs = timing.elapsedMilliseconds;
       _hasMedia = true;
-    } catch (e) {
-      final base = _mapMediaKitError(e.toString(), sourceUrl: url);
+      _epochGate.commitArm(generation);
+      _duration = player.state.duration;
+      _bufferedPosition = player.state.buffer;
+      _durationController.add(_duration);
+      _bufferedPositionController.add(_bufferedPosition);
+      _position = initialPosition ?? Duration.zero;
+      if (_position > Duration.zero) {
+        await load.wait(player.seek(_position), 'seek');
+      }
+      _positionController.add(_position);
+      await load.wait(player.setVolume(_currentVolume), 'volume');
+      await load.wait(player.setRate(_playbackSpeed), 'speed');
+      timing.reset();
+      if (load.shouldPlay) {
+        await load.wait(player.play(), 'play');
+        if (load.shouldPlay) await _waitForStartup(player, load);
+      }
+      // Pause can arrive during open, play, or readiness. Always honor it before
+      // returning to EngineHost, including when no further stream event fires.
+      if (!load.shouldPlay) await load.wait(player.pause(), 'load_pause');
+      _lastStartupTiming = EngineStartupTiming(
+        ensurePlayerMs: ensureMs,
+        muteMs: muteMs,
+        stopMs: stopMs,
+        setSourceMs: openMs,
+        playToReadyMs: timing.elapsedMilliseconds,
+      );
+    } on EngineLoadCancelled {
+      _epochGate.abandonArm(generation);
+      final player = _player;
+      if (player != null) await _discardPlayerAfterLoadFailure(player);
+      ProxyService().release(url);
+      rethrow;
+    } catch (error) {
+      final base = error is EngineError
+          ? error
+          : _mapMediaKitError(error.toString(), sourceUrl: url);
       final mapped = EngineError(
         type: base.type,
         message: base.message,
         sourceUrl: base.sourceUrl,
-        cause: e,
+        cause: base.cause ?? error,
         retriable: base.retriable,
         epoch: generation,
       );
       _epochGate.abandonArm(generation);
       _emitError(mapped, epoch: generation);
-      await _discardPlayerAfterLoadFailure(player);
+      final player = _player;
+      if (player != null) await _discardPlayerAfterLoadFailure(player);
+      ProxyService().release(url);
       throw EngineReportedException(mapped);
+    } finally {
+      if (identical(_load, load)) _load = null;
     }
-
-    // 装载成功：纪元翻转，窗口关闭。此后流事件按新纪元分发。
-    _epochGate.commitArm(generation);
-
-    _duration = player.state.duration;
-    if (_duration > Duration.zero) {
-      _durationController.add(_duration);
-    }
-    if (player.state.buffer > Duration.zero) {
-      _bufferedPosition = player.state.buffer;
-      _bufferedPositionController.add(_bufferedPosition);
-    }
-
-    if (initialPosition != null && initialPosition > Duration.zero) {
-      await player.seek(initialPosition);
-      _position = initialPosition;
-    } else {
-      _position = Duration.zero;
-    }
-    _positionController.add(_position);
-    await player.setVolume(_currentVolume);
-    await player.setRate(_playbackSpeed);
-    if (autoPlay) {
-      final playReadySw = Stopwatch()..start();
-      await player.play();
-      await _waitForStartup(player);
-      playToReadyMs = playReadySw.elapsedMilliseconds;
-    }
-    _lastStartupTiming = EngineStartupTiming(
-      ensurePlayerMs: ensurePlayerMs,
-      muteMs: muteMs,
-      stopMs: stopMs,
-      setSourceMs: setSourceMs,
-      playToReadyMs: playToReadyMs,
-    );
   }
 
-  Future<void> _waitForStartup(mk.Player player) async {
-    final completer = Completer<void>();
-    // media_kit also exposes the current state synchronously; use it to
-    // cover the same subscribe-after-play race as just_audio.
+  Future<void> _waitForStartup(mk.Player player, _DesktopLoad load) async {
+    final ready = Completer<void>();
     var playing = player.state.playing;
     var progressed =
         player.state.buffer > Duration.zero ||
         player.state.position > Duration.zero;
-    late final StreamSubscription<bool> playingSub;
-    late final StreamSubscription<Duration> bufferSub;
-    late final StreamSubscription<Duration> positionSub;
-    late final StreamSubscription<EngineError> errorSub;
-    Timer? timeoutTimer;
-
-    void completeIfReady() {
-      if (playing && progressed && !completer.isCompleted) {
-        completer.complete();
-      }
+    void check() {
+      if (playing && progressed && !ready.isCompleted) ready.complete();
     }
 
-    playingSub = player.stream.playing.listen((value) {
-      playing = playing || value;
-      completeIfReady();
-    });
-    bufferSub = player.stream.buffer.listen((value) {
-      progressed = progressed || value > Duration.zero;
-      completeIfReady();
-    });
-    positionSub = player.stream.position.listen((value) {
-      progressed = progressed || value > Duration.zero;
-      completeIfReady();
-    });
-    errorSub = _errorController.stream
-        .where((error) => error.epoch == _dispatchEpoch)
-        .listen((error) {
-          if (!completer.isCompleted) completer.completeError(error);
-        });
-    timeoutTimer = Timer(_engineStartupTimeout, () {
-      if (!completer.isCompleted) {
-        completer.completeError(TimeoutException('音频流启动超时'));
-      }
-    });
-
+    final subscriptions = <StreamSubscription<dynamic>>[
+      player.stream.playing.listen((value) {
+        playing = value;
+        check();
+      }),
+      player.stream.buffer.listen((value) {
+        progressed = progressed || value > Duration.zero;
+        check();
+      }),
+      player.stream.position.listen((value) {
+        progressed = progressed || value > Duration.zero;
+        check();
+      }),
+      _errorController.stream
+          .where((error) => error.epoch == _dispatchEpoch)
+          .listen((error) {
+            if (!ready.isCompleted) ready.completeError(error);
+          }),
+    ];
+    check();
     try {
-      await completer.future;
-    } on EngineError catch (error) {
-      _epochGate.beginStop();
-      try {
-        await player.stop().timeout(const Duration(seconds: 2));
-      } catch (_) {}
-      _hasMedia = false;
-      throw EngineReportedException(error);
-    } on TimeoutException catch (error) {
-      final mapped = EngineError(
-        type: EngineErrorType.networkTimeout,
-        message: '音频流启动超时',
-        cause: error,
-        retriable: true,
-        epoch: _dispatchEpoch,
+      await load.wait(
+        Future.any([ready.future, load.paused.future]),
+        'startup',
+        limit: _engineStartupTimeout,
       );
-      _epochGate.beginStop();
-      try {
-        await player.stop().timeout(const Duration(seconds: 2));
-      } catch (_) {}
-      _hasMedia = false;
-      _emitError(mapped);
-      throw EngineReportedException(mapped);
     } finally {
-      timeoutTimer.cancel();
-      await playingSub.cancel();
-      await bufferSub.cancel();
-      await positionSub.cancel();
-      await errorSub.cancel();
+      for (final subscription in subscriptions) {
+        await subscription.cancel();
+      }
     }
   }
 
@@ -2745,7 +2732,10 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
   Future<void> stop() async {
     // stop 属于源头操作：其后到下一次 arm 前的流事件归属被停止的纪元。
     _epochGate.beginStop();
-    await _player?.stop();
+    cancelPendingLoad();
+    ProxyService().release(_mediaUrl);
+    _mediaUrl = null;
+    await _player?.stop().timeout(const Duration(seconds: 3));
     _hasMedia = false;
   }
 
@@ -2763,6 +2753,9 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
 
   @override
   Future<void> dispose() async {
+    cancelPendingLoad();
+    ProxyService().release(_mediaUrl);
+    _mediaUrl = null;
     await _playingSub?.cancel();
     await _positionSub?.cancel();
     await _durationSub?.cancel();
@@ -2770,8 +2763,11 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
     await _rateSub?.cancel();
     await _completedSub?.cancel();
     await _errorSub?.cancel();
-    _player?.dispose();
+    final player = _player;
     _player = null;
+    try {
+      await player?.dispose().timeout(nativeCleanupTimeout);
+    } catch (_) {}
     EqualizerService().setBackend(null);
     await _positionController.close();
     await _durationController.close();
@@ -2840,4 +2836,92 @@ class MediaKitEngine implements AudioEngine, EqualizerCapable {
       );
     }
   }
+}
+
+class _DesktopLoad {
+  _DesktopLoad(this.budget, this.shouldPlay);
+  final Duration budget;
+  final Stopwatch clock = Stopwatch()..start();
+  final Completer<void> cancelled = Completer<void>();
+  final Completer<void> paused = Completer<void>();
+  bool shouldPlay;
+
+  void cancel() {
+    shouldPlay = false;
+    if (!cancelled.isCompleted) cancelled.complete();
+  }
+
+  void pause() {
+    shouldPlay = false;
+    if (!paused.isCompleted) paused.complete();
+  }
+
+  Future<T> wait<T>(
+    Future<T> operation,
+    String stage, {
+    Duration? limit,
+  }) async {
+    var remaining = budget - clock.elapsed;
+    if (remaining.isNegative) remaining = Duration.zero;
+    if (limit != null && limit < remaining) remaining = limit;
+    try {
+      final result = await Future.any<T>([
+        operation,
+        cancelled.future.then<T>((_) => throw const EngineLoadCancelled()),
+      ]).timeout(remaining);
+      if (cancelled.isCompleted) throw const EngineLoadCancelled();
+      return result;
+    } on TimeoutException catch (error) {
+      throw NativePlaybackTimeout(stage, error);
+    }
+  }
+}
+
+/// Parse only explicit native status fields, never digits inside signed URLs.
+EngineError mapMediaKitFailure(
+  String message, {
+  String? sourceUrl,
+  AudioTransportFailure? transport,
+}) {
+  final text = message
+      .replaceAll(RegExp(r'https?://\S+', caseSensitive: false), '')
+      .toLowerCase();
+  final statusMatch = RegExp(
+    r'(?:http(?:\s+error)?|response\s+code|server\s+returned)\s*:?\s*([45]\d{2})\b',
+  ).firstMatch(text);
+  final status =
+      transport?.statusCode ??
+      (statusMatch == null ? null : int.parse(statusMatch[1]!));
+  final evidence =
+      transport ??
+      (status == null
+          ? null
+          : AudioTransportFailure(
+              AudioTransportStage.upstream,
+              statusCode: status,
+            ));
+  final type = status == 401 || status == 403
+      ? EngineErrorType.accessDenied
+      : evidence?.timedOut == true ||
+            (evidence != null &&
+                status == null &&
+                evidence.stage != AudioTransportStage.local) ||
+            text.contains('timeout') ||
+            text.contains('timed out') ||
+            text.contains('network') ||
+            text.contains('connection refused') ||
+            text.contains('failed to resolve')
+      ? EngineErrorType.networkTimeout
+      : text.contains('decoder') ||
+            text.contains('unsupported') ||
+            text.contains('invalid data')
+      ? EngineErrorType.unsupportedFormat
+      : EngineErrorType.sourceLoad;
+  return EngineError(
+    type: type,
+    message: message,
+    sourceUrl: sourceUrl,
+    cause: evidence,
+    retriable: type != EngineErrorType.unsupportedFormat,
+  );
 }

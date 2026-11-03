@@ -8,13 +8,10 @@ void main() {
   const coordinator = PlaybackTransitionCoordinator();
 
   test(
-    'automatic candidates share resolution time and preserve native reserve',
+    'automatic candidate uses the available window without dividing among songs',
     () async {
       var elapsed = Duration.zero;
-      final budget = PlaybackTransitionBudget(
-        shareResolutionBudget: true,
-        elapsed: () => elapsed,
-      );
+      final budget = PlaybackTransitionBudget(elapsed: () => elapsed);
       final slices = <Duration>[];
       await coordinator.run(
         plan: PlaybackCandidatePlan(
@@ -24,7 +21,13 @@ void main() {
         budget: budget,
         isCurrent: () => true,
         attempt: (_, budget, _) async {
-          expect(budget.consumeRemoteRequest(), isTrue);
+          if (!budget.consumeRemoteRequest()) {
+            return const PlaybackCandidateAttemptResult(
+              PlaybackCandidateAttemptStatus.budgetExhausted,
+              attempted: false,
+            );
+          }
+
           final slice = budget.resolutionTimeout(const Duration(seconds: 6));
           slices.add(slice);
           elapsed += slice;
@@ -33,17 +36,13 @@ void main() {
           );
         },
       );
-      expect(slices, List.filled(3, const Duration(seconds: 3)));
+      expect(slices, [const Duration(seconds: 6), const Duration(seconds: 3)]);
       expect(budget.remaining(), PlaybackTransitionBudget.nativeLoadReserve);
     },
   );
 
   test('single automatic candidate keeps a normal resolution window', () {
-    final budget = PlaybackTransitionBudget(
-      shareResolutionBudget: true,
-      elapsed: () => Duration.zero,
-    );
-    budget.prepareCandidate(remainingCandidates: 1, failedCandidates: 0);
+    final budget = PlaybackTransitionBudget(elapsed: () => Duration.zero);
     expect(budget.consumeRemoteRequest(), isTrue);
     expect(
       budget.resolutionTimeout(const Duration(seconds: 6)),

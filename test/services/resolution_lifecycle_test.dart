@@ -121,7 +121,7 @@ void main() {
   );
 
   test(
-    'caller timeout cancels its request and reports timeout to an adopter',
+    'foreground retries expired preload within its remaining budget',
     () async {
       final owners = <ResolutionRequest>[];
       final resolver = TrackResolver(
@@ -138,7 +138,9 @@ void main() {
               requestTimeout,
             }) {
               owners.add(ResolutionRequest.current!);
-              return Completer<SongDetail?>().future;
+              return owners.length == 1
+                  ? Completer<SongDetail?>().future
+                  : Future.value(detail(songId));
             },
       );
       final pending = resolver.resolve(
@@ -160,9 +162,10 @@ void main() {
       final result = await pending;
       expect(result.timedOut, isTrue);
       final adoptedResult = await adopted;
-      expect(adoptedResult.timedOut, isTrue);
+      expect(adoptedResult.isPlayable, isTrue);
+      expect(owners, hasLength(2));
       expect(adoptedResult.cancelled, isFalse);
-      expect(owners.single.isCancelled, isTrue);
+      expect(owners.first.isCancelled, isTrue);
     },
   );
 }

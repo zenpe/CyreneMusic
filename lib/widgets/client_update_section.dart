@@ -134,6 +134,8 @@ class _ClientUpdateDialogState extends State<ClientUpdateDialog> {
   VersionInfo? _release;
   bool _checking = false;
   bool _opening = false;
+  bool _ignoring = false;
+  String? _actionError;
   String? _error;
   String? _browserError;
 
@@ -156,6 +158,30 @@ class _ClientUpdateDialogState extends State<ClientUpdateDialog> {
       _release = release;
       _error = widget.service.lastError;
     });
+  }
+
+  Future<void> _ignore() async {
+    if (_ignoring) return;
+    final route = ModalRoute.of(context);
+    setState(() {
+      _ignoring = true;
+      _actionError = null;
+    });
+    try {
+      await widget.service.ignoreCurrentVersion(_release!.version);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _ignoring = false;
+        _actionError = '保存失败，请重试。';
+      });
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _ignoring = false);
+    // A closing dialog stays mounted during its exit animation. Only pop
+    // the captured dialog while it is still the current route.
+    if (route?.isCurrent == true) route!.navigator?.pop();
   }
 
   Future<void> _open(String url) async {
@@ -228,6 +254,10 @@ class _ClientUpdateDialogState extends State<ClientUpdateDialog> {
                     : '浏览器下载 APK 后直接覆盖安装，保留应用数据，无需卸载。',
               ),
             ],
+            if (_actionError != null) ...[
+              const SizedBox(height: 12),
+              Text(_actionError!),
+            ],
             if (_browserError != null) ...[
               const SizedBox(height: 12),
               SelectableText(_browserError!),
@@ -261,10 +291,7 @@ class _ClientUpdateDialogState extends State<ClientUpdateDialog> {
     final actions = <Widget>[
       if (!_checking && _error != null) button('重试', _check),
       if (!_checking && update && _error == null)
-        button('忽略此版本', () async {
-          await widget.service.ignoreCurrentVersion(_release!.version);
-          if (context.mounted) Navigator.of(context).pop();
-        }),
+        button('忽略此版本', _ignoring ? null : _ignore),
       button(update ? '稍后' : '关闭', () {
         if (_release != null) {
           widget.service.markVersionReminded(_release!.version);
