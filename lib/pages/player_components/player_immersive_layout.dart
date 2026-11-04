@@ -321,22 +321,7 @@ class PlayerImmersiveLayout extends StatelessWidget {
   Widget _buildPlaybackModeButton() {
     return OrdinaryPlaybackModeBuilder(
       builder: (context, _) {
-        final mode = PlaybackModeService().currentMode;
-        IconData icon;
-        switch (mode) {
-          case PlaybackMode.sequential:
-            icon = Icons.arrow_forward_rounded;
-            break;
-          case PlaybackMode.loopAll:
-            icon = Icons.repeat_rounded;
-            break;
-          case PlaybackMode.repeatOne:
-            icon = Icons.repeat_one_rounded;
-            break;
-          case PlaybackMode.shuffle:
-            icon = Icons.shuffle_rounded;
-            break;
-        }
+        final icon = PlaybackModeService().getModeIcon();
         return IconButton(
           icon: Icon(icon),
           color: Colors.white.withValues(alpha: 0.7),
@@ -494,7 +479,10 @@ class _PlayerImmersiveLyricsPanelState extends State<PlayerImmersiveLyricsPanel>
   @override
   Widget build(BuildContext context) {
     if (widget.lyrics.isEmpty) {
-      return LyricStatusText(state: widget.lyricState, style: TextStyle(color: Colors.white54, fontSize: 24 * widget.uiScale));
+      return LyricStatusText(
+        state: widget.lyricState,
+        style: TextStyle(color: Colors.white54, fontSize: 24 * widget.uiScale),
+      );
     }
 
     // 字体服务

@@ -793,7 +793,7 @@ class _MobilePlayerFluidCloudLayoutState
         // 2. 完整播放控制按键行 (播放模式、上一首、播放/暂停、下一首、收藏、队列)
         Row(
           children: [
-            // 播放模式切换按钮 (单击切换，长按唤出模式面板)
+            // 播放模式切换按钮 (单击循环切换)
             _buildPlaybackModeButton(context),
 
             const Spacer(),
@@ -1223,7 +1223,7 @@ class _MobilePlayerFluidCloudLayoutState
             },
           ),
 
-          // 2. 播放模式切换按钮 (居中：单点切换，长按呼出面板)
+          // 2. 播放模式切换按钮 (居中：单击循环切换)
           _buildPlaybackModeButton(context),
 
           // 3. 音量控制按钮 (双模式始终显示，位置完全固定)
@@ -1274,41 +1274,20 @@ class _MobilePlayerFluidCloudLayoutState
     );
   }
 
-  /// 构建播放模式按钮（1键切换，长按呼出模式面板）
+  /// 构建播放模式按钮（单击循环切换）
   Widget _buildPlaybackModeButton(BuildContext context) {
     return OrdinaryPlaybackModeBuilder(
       builder: (context, _) {
         final modeService = PlaybackModeService();
-        final currentMode = modeService.currentMode;
-        final isLoopAll = currentMode == PlaybackMode.loopAll;
 
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: () {
-              HapticFeedback.lightImpact();
-              modeService.toggleMode();
-              ToastUtils.infoWithIcon(
-                modeService.getModeName(),
-                icon: modeService.getModeIcon(),
-              );
-            },
-            onLongPress: () {
-              HapticFeedback.mediumImpact();
-              MobilePlayerDialogs.showPlaybackModeSelector(context);
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(6),
-              child: Icon(
-                modeService.getModeIcon(),
-                color: isLoopAll
-                    ? Colors.white.withValues(alpha: 0.75)
-                    : Colors.white,
-                size: 24,
-              ),
-            ),
-          ),
+        return IconButton(
+          tooltip: modeService.getModeName(),
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            modeService.toggleMode();
+          },
+          icon: Icon(modeService.getModeIcon(), color: Colors.white, size: 24),
         );
       },
     );

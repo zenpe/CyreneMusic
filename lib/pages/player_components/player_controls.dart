@@ -185,36 +185,13 @@ class PlayerControls extends StatelessWidget {
               // 播放模式切换
               OrdinaryPlaybackModeBuilder(
                 builder: (context, child) {
-                  final mode = PlaybackModeService().currentMode;
-                  IconData icon;
-                  switch (mode) {
-                    case PlaybackMode.sequential:
-                      icon = Icons.arrow_forward_rounded;
-                      break;
-                    case PlaybackMode.loopAll:
-                      icon = Icons.repeat_rounded;
-                      break;
-                    case PlaybackMode.repeatOne:
-                      icon = Icons.repeat_one_rounded;
-                      break;
-                    case PlaybackMode.shuffle:
-                      icon = Icons.shuffle_rounded;
-                      break;
-                  }
+                  final icon = PlaybackModeService().getModeIcon();
 
                   return IconButton(
                     icon: Icon(icon, color: Colors.white),
                     iconSize: 30,
                     onPressed: () {
                       PlaybackModeService().toggleMode();
-                      AppFeedback.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            '播放模式: ${PlaybackModeService().getModeName()}',
-                          ),
-                          duration: const Duration(seconds: 1),
-                        ),
-                      );
                     },
                     tooltip: PlaybackModeService().getModeName(),
                   );

@@ -14,7 +14,6 @@ import '../../services/playback_mode_service.dart';
 import '../../services/player_service.dart';
 import '../../services/system_volume_service.dart';
 import '../../utils/image_utils.dart';
-import '../../utils/toast_utils.dart';
 import '../../models/track.dart';
 import '../../widgets/track_action_menu.dart';
 
@@ -125,305 +124,6 @@ class MobilePlayerDialogs {
     showDialog(
       context: context,
       builder: (context) => const MobileSleepTimerDialog(),
-    );
-  }
-
-  /// 显示播放模式选择弹窗
-  static void showPlaybackModeSelector(BuildContext context) {
-    if (PlaylistQueueService().source == QueueSource.neteaseFm) return;
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final colorScheme = theme.colorScheme;
-    final modeService = PlaybackModeService();
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
-      builder: (context) => ValueListenableBuilder<Color?>(
-        valueListenable: PlayerService().themeColorNotifier,
-        builder: (context, dynamicColor, _) {
-          final accentColor = dynamicColor ?? colorScheme.primary;
-
-          return ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: (isDark ? const Color(0xFF141418) : Colors.white)
-                      .withValues(alpha: 0.92),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(28),
-                  ),
-                  border: Border(
-                    top: BorderSide(
-                      color: Colors.white.withValues(
-                        alpha: isDark ? 0.12 : 0.4,
-                      ),
-                      width: 0.8,
-                    ),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(
-                        alpha: isDark ? 0.45 : 0.12,
-                      ),
-                      blurRadius: 30,
-                      offset: const Offset(0, -10),
-                    ),
-                  ],
-                ),
-                child: SafeArea(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // 顶部指示条
-                      Container(
-                        margin: const EdgeInsets.only(top: 12, bottom: 8),
-                        width: 38,
-                        height: 4.5,
-                        decoration: BoxDecoration(
-                          color: isDark ? Colors.white24 : Colors.black12,
-                          borderRadius: BorderRadius.circular(2.5),
-                        ),
-                      ),
-                      // 标题行
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: accentColor.withValues(
-                                  alpha: isDark ? 0.18 : 0.1,
-                                ),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Icon(
-                                Icons.shuffle_rounded,
-                                color: accentColor,
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              '切换播放模式',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.3,
-                                color: colorScheme.onSurface,
-                              ),
-                            ),
-                            const Spacer(),
-                            IconButton(
-                              icon: const Icon(Icons.close_rounded, size: 20),
-                              onPressed: () => Navigator.pop(context),
-                              style: IconButton.styleFrom(
-                                backgroundColor: isDark
-                                    ? Colors.white10
-                                    : Colors.black.withValues(alpha: 0.05),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // 4 种播放模式
-                      AnimatedBuilder(
-                        animation: modeService,
-                        builder: (context, _) {
-                          final currentMode = modeService.currentMode;
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                            child: Column(
-                              children: [
-                                _buildModeTile(
-                                  context: context,
-                                  title: '列表循环',
-                                  subtitle: '循环播放当前列表所有歌曲',
-                                  icon: Icons.repeat_rounded,
-                                  isSelected:
-                                      currentMode == PlaybackMode.loopAll,
-                                  accentColor: accentColor,
-                                  isDark: isDark,
-                                  onTap: () {
-                                    HapticFeedback.lightImpact();
-                                    modeService.setMode(PlaybackMode.loopAll);
-                                    ToastUtils.infoWithIcon(
-                                      '列表循环',
-                                      icon: Icons.repeat_rounded,
-                                    );
-                                    Navigator.pop(context);
-                                  },
-                                ),
-                                const SizedBox(height: 8),
-                                _buildModeTile(
-                                  context: context,
-                                  title: '随机播放',
-                                  subtitle: '随机打乱播放队列中的歌曲',
-                                  icon: Icons.shuffle_rounded,
-                                  isSelected:
-                                      currentMode == PlaybackMode.shuffle,
-                                  accentColor: accentColor,
-                                  isDark: isDark,
-                                  onTap: () {
-                                    HapticFeedback.lightImpact();
-                                    modeService.setMode(PlaybackMode.shuffle);
-                                    ToastUtils.infoWithIcon(
-                                      '随机播放',
-                                      icon: Icons.shuffle_rounded,
-                                    );
-                                    Navigator.pop(context);
-                                  },
-                                ),
-                                const SizedBox(height: 8),
-                                _buildModeTile(
-                                  context: context,
-                                  title: '单曲循环',
-                                  subtitle: '单曲播放结束后自动重播',
-                                  icon: Icons.repeat_one_rounded,
-                                  isSelected:
-                                      currentMode == PlaybackMode.repeatOne,
-                                  accentColor: accentColor,
-                                  isDark: isDark,
-                                  onTap: () {
-                                    HapticFeedback.lightImpact();
-                                    modeService.setMode(PlaybackMode.repeatOne);
-                                    ToastUtils.infoWithIcon(
-                                      '单曲循环',
-                                      icon: Icons.repeat_one_rounded,
-                                    );
-                                    Navigator.pop(context);
-                                  },
-                                ),
-                                const SizedBox(height: 8),
-                                _buildModeTile(
-                                  context: context,
-                                  title: '顺序播放',
-                                  subtitle: '按顺序播放，播完最后一首后停止',
-                                  icon: Icons.arrow_forward_rounded,
-                                  isSelected:
-                                      currentMode == PlaybackMode.sequential,
-                                  accentColor: accentColor,
-                                  isDark: isDark,
-                                  onTap: () {
-                                    HapticFeedback.lightImpact();
-                                    modeService.setMode(
-                                      PlaybackMode.sequential,
-                                    );
-                                    ToastUtils.infoWithIcon(
-                                      '顺序播放',
-                                      icon: Icons.arrow_forward_rounded,
-                                    );
-                                    Navigator.pop(context);
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  static Widget _buildModeTile({
-    required BuildContext context,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required bool isSelected,
-    required Color accentColor,
-    required bool isDark,
-    required VoidCallback onTap,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? accentColor.withValues(alpha: isDark ? 0.18 : 0.1)
-                : (isDark
-                      ? Colors.white.withValues(alpha: 0.04)
-                      : Colors.black.withValues(alpha: 0.03)),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isSelected
-                  ? accentColor.withValues(alpha: isDark ? 0.35 : 0.25)
-                  : Colors.white.withValues(alpha: isDark ? 0.06 : 0.1),
-              width: isSelected ? 1.2 : 0.8,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? accentColor
-                      : (isDark
-                            ? Colors.white10
-                            : Colors.black.withValues(alpha: 0.06)),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  size: 20,
-                  color: isSelected
-                      ? Colors.white
-                      : colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: isSelected
-                            ? FontWeight.w800
-                            : FontWeight.w600,
-                        color: isSelected ? accentColor : colorScheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.8,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (isSelected)
-                Icon(Icons.check_circle_rounded, color: accentColor, size: 22)
-              else
-                const SizedBox(width: 22),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -602,7 +302,9 @@ class MobilePlayerDialogs {
                                       ),
                                       duration: const Duration(seconds: 1),
                                     ),
-                                    kind: success ? FeedbackKind.info : FeedbackKind.error,
+                                    kind: success
+                                        ? FeedbackKind.info
+                                        : FeedbackKind.error,
                                   );
                                 }
                               },
@@ -740,23 +442,16 @@ class MobilePlayerDialogs {
                                         color: Colors.transparent,
                                         child: InkWell(
                                           onTap: () {
-                                            HapticFeedback.lightImpact();
+                                            HapticFeedback.selectionClick();
                                             modeService.toggleMode();
-                                            ToastUtils.infoWithIcon(
-                                              modeService.getModeName(),
-                                              icon: modeService.getModeIcon(),
-                                            );
-                                          },
-                                          onLongPress: () {
-                                            HapticFeedback.mediumImpact();
-                                            MobilePlayerDialogs.showPlaybackModeSelector(
-                                              context,
-                                            );
                                           },
                                           borderRadius: BorderRadius.circular(
                                             12,
                                           ),
                                           child: Container(
+                                            constraints: const BoxConstraints(
+                                              minHeight: 44,
+                                            ),
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 10,
                                               vertical: 6,
@@ -1024,7 +719,10 @@ class MobilePlayerDialogs {
           : Colors.transparent,
       child: InkWell(
         onTap: () {
-          PlayerService().playTrack(track, queueEntryId: hasQueue ? queueService?.entryIdAt(index) : null);
+          PlayerService().playTrack(
+            track,
+            queueEntryId: hasQueue ? queueService?.entryIdAt(index) : null,
+          );
           Navigator.pop(context);
         },
         child: Container(

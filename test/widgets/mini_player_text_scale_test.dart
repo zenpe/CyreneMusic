@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/services/playback/playback_service.dart';
 import 'package:cyrene_music/services/playback/queue_controller.dart';
+import 'package:cyrene_music/services/playback_mode_service.dart';
 import 'package:cyrene_music/utils/theme_manager.dart';
 import 'package:cyrene_music/widgets/mini_player.dart';
 import 'package:flutter/material.dart';
@@ -97,6 +98,37 @@ void main() {
     expect(heights.first, greaterThanOrEqualTo(66));
     expect(find.text('SQ'), findsNothing);
     expect(heights.last, greaterThan(heights.first));
+
+    // Repeated mode clicks should update the button immediately without a
+    // feedback overlay covering the controls between clicks.
+    await tester.binding.setSurfaceSize(const Size(800, 360));
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SizedBox.expand(),
+          bottomNavigationBar: MiniPlayer(transparent: true),
+        ),
+      ),
+    );
+    final modes = PlaybackModeService();
+    await modes.setMode(PlaybackMode.loopAll);
+    await tester.pump();
+    const cycle = [
+      PlaybackMode.shuffle,
+      PlaybackMode.repeatOne,
+      PlaybackMode.sequential,
+      PlaybackMode.loopAll,
+    ];
+    for (var i = 0; i < 8; i++) {
+      await tester.tap(find.byTooltip(modes.getModeName()));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(modes.currentMode, cycle[i % cycle.length]);
+      expect(find.byTooltip(modes.getModeName()), findsOneWidget);
+      expect(find.byIcon(modes.getModeIcon()), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(find.byKey(const ValueKey('app-feedback-surface')), findsNothing);
+      expect(tester.takeException(), isNull);
+    }
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));
     // Let the session's asynchronous backup write finish before removing its

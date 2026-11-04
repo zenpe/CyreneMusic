@@ -260,7 +260,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                 return;
               }
               Navigator.pop(context);
-              _showCustomUrlDialogFluent(context);
+              _showCustomUrlDialogFluent(this.context);
             },
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -285,6 +285,14 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 8),
+                fluent_ui.HyperlinkButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showCustomUrlDialogFluent(this.context);
+                  },
+                  child: const Text('编辑自定义服务器地址'),
                 ),
               ],
             ),
@@ -330,10 +338,18 @@ class _NetworkSettingsState extends State<NetworkSettings> {
               groupValue: UrlService().sourceType,
               onChanged: (value) {
                 Navigator.pop(context);
-                _showCustomUrlDialog(context);
+                _showCustomUrlDialog(this.context);
               },
               child: RadioListTile<BackendSourceType>(
                 title: const Text('自定义服务器'),
+                secondary: IconButton(
+                  tooltip: '编辑自定义服务器地址',
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showCustomUrlDialog(this.context);
+                  },
+                ),
                 subtitle: Text(
                   UrlService().customBaseUrl.isNotEmpty
                       ? UrlService().customBaseUrl

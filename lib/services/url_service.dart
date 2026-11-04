@@ -15,7 +15,7 @@ class UrlService extends ChangeNotifier {
   UrlService._internal();
 
   /// 官方源地址
-  static const String officialBaseUrl = 'https://cyapi.zenn.cc.cd:8443';
+  static const String officialBaseUrl = 'https://cyapi.919966.xyz';
   static const String defaultCustomBaseUrl = 'https://cyapi4.zenn.cc.cd:59028';
 
   /// 当前源类型

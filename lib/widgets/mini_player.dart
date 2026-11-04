@@ -1,5 +1,4 @@
 import 'collection_play_controls.dart';
-import '../utils/app_feedback.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -1118,44 +1117,41 @@ class _MiniPlayerState extends State<MiniPlayer> {
         final modeService = PlaybackModeService();
         final icon = modeService.getModeIcon();
 
+        void toggleMode() {
+          if (Platform.isAndroid || Platform.isIOS) {
+            HapticFeedback.selectionClick();
+          }
+          modeService.toggleMode();
+        }
+
         if (ThemeManager().isFluentFramework) {
           final theme = fluent.FluentTheme.of(context);
-          return fluent.IconButton(
-            icon: Icon(
-              icon,
-              color: theme.resources.textFillColorPrimary,
-              size: compact ? 18 : 20,
+          return fluent.Tooltip(
+            message: modeService.getModeName(),
+            child: fluent.IconButton(
+              icon: Icon(
+                icon,
+                color: theme.resources.textFillColorPrimary,
+                size: compact ? 18 : 20,
+              ),
+              onPressed: toggleMode,
             ),
-            onPressed: () {
-              modeService.toggleMode();
-              AppFeedback.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('播放模式: ${modeService.getModeName()}'),
-                  duration: const Duration(seconds: 1),
-                ),
-              );
-            },
           );
         }
         if (_isCupertino) {
-          return CupertinoButton(
-            padding: compact
-                ? const EdgeInsets.all(2)
-                : const EdgeInsets.all(6),
-            minimumSize: Size.zero,
-            onPressed: () {
-              modeService.toggleMode();
-              AppFeedback.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('播放模式: ${modeService.getModeName()}'),
-                  duration: const Duration(seconds: 1),
-                ),
-              );
-            },
-            child: Icon(
-              icon,
-              color: CupertinoColors.activeBlue,
-              size: compact ? 18 : 20,
+          return Tooltip(
+            message: modeService.getModeName(),
+            child: CupertinoButton(
+              padding: compact
+                  ? const EdgeInsets.all(2)
+                  : const EdgeInsets.all(6),
+              minimumSize: Size.zero,
+              onPressed: toggleMode,
+              child: Icon(
+                icon,
+                color: CupertinoColors.activeBlue,
+                size: compact ? 18 : 20,
+              ),
             ),
           );
         }
@@ -1170,15 +1166,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
               ? const BoxConstraints.tightFor(width: 32, height: 32)
               : null,
           tooltip: modeService.getModeName(),
-          onPressed: () {
-            modeService.toggleMode();
-            AppFeedback.of(context).showSnackBar(
-              SnackBar(
-                content: Text('播放模式: ${modeService.getModeName()}'),
-                duration: const Duration(seconds: 1),
-              ),
-            );
-          },
+          onPressed: toggleMode,
         );
       },
     );
