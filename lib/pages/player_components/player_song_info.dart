@@ -1,3 +1,4 @@
+import '../../widgets/track_source_cover.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -198,42 +199,71 @@ class PlayerSongInfo extends StatelessWidget {
               enabled: artistsEnabled,
             ),
 
+            if (album.isEmpty && PlayerService().displayTrack != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  PlayerService().displayTrack!.source.platformLabel,
+                  style: TextStyle(
+                    color: subtitleColor.withValues(alpha: 0.6),
+                    fontSize: 11,
+                  ),
+                ),
+              ),
             // 专辑（可点击）
             if (album.isNotEmpty) ...[
               const SizedBox(height: 6),
-              InkWell(
-                onTap: () => _searchInDialog(context, album),
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.album_outlined,
-                        size: 14,
-                        color: subtitleColor.withValues(alpha: 0.6),
-                      ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          album,
-                          style: TextStyle(
-                            color: subtitleColor.withValues(alpha: 0.6),
-                            fontSize: 14,
-                            fontFamily: 'Microsoft YaHei', // 微软雅黑
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: InkWell(
+                      onTap: () => _searchInDialog(context, album),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.album_outlined,
+                              size: 14,
+                              color: subtitleColor.withValues(alpha: 0.6),
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                album,
+                                style: TextStyle(
+                                  color: subtitleColor.withValues(alpha: 0.6),
+                                  fontSize: 14,
+                                  fontFamily: 'Microsoft YaHei', // 微软雅黑
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                  if (PlayerService().displayTrack != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Text(
+                        PlayerService().displayTrack!.source.platformLabel,
+                        style: TextStyle(
+                          color: subtitleColor.withValues(alpha: 0.6),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ],
           ],

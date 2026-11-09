@@ -11,11 +11,6 @@ if (providers.gradleProperty("cyreneBuildTimingFile").isPresent) {
 
 allprojects {
     repositories {
-        // 阿里云镜像（加速国内下载）
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/public") }
-        maven { url = uri("https://maven.aliyun.com/repository/central") }
-        
         google()
         mavenCentral()
     }
@@ -27,10 +22,8 @@ rootProject.layout.buildDirectory.value(newBuildDir)
 subprojects {
     // Apply the same repositories to plugin buildscript dependencies. Hosted
     // plugins may declare their own AGP classpath before project repositories
-    // apply; keep those downloads on the existing mirror-first policy too.
+    // apply; use the same official repositories here.
     buildscript.repositories {
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/public") }
         google()
         mavenCentral()
     }

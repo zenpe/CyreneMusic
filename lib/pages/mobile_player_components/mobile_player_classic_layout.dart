@@ -1,3 +1,4 @@
+import '../../widgets/track_source_cover.dart';
 import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
 import 'package:flutter/material.dart';
@@ -212,14 +213,30 @@ class MobilePlayerClassicLayout extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 4),
-              Text(
-                artist,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.7),
-                  fontWeight: FontWeight.w500,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      artist,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (track != null) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      track.source.platformLabel,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ],
           ),

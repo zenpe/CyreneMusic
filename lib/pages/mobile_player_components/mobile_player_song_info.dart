@@ -1,3 +1,4 @@
+import '../../widgets/track_source_cover.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -15,10 +16,7 @@ import '../artist_detail_page.dart';
 class MobilePlayerSongInfo extends StatelessWidget {
   final bool showCover; // 是否显示封面（渐变模式下可能不显示）
 
-  const MobilePlayerSongInfo({
-    super.key,
-    required this.showCover,
-  });
+  const MobilePlayerSongInfo({super.key, required this.showCover});
 
   @override
   Widget build(BuildContext context) {
@@ -33,8 +31,9 @@ class MobilePlayerSongInfo extends StatelessWidget {
         final displayArtist = player.displayArtist;
         final displayAlbum = player.displayAlbum;
         final backgroundService = PlayerBackgroundService();
-        final isGradientMode = backgroundService.enableGradient &&
-                              backgroundService.backgroundType == PlayerBackgroundType.adaptive;
+        final isGradientMode =
+            backgroundService.enableGradient &&
+            backgroundService.backgroundType == PlayerBackgroundType.adaptive;
 
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -107,12 +106,17 @@ class MobilePlayerSongInfo extends StatelessWidget {
         // 优化封面大小计算：限制为屏幕高度的 28% 或宽度的 65%（取较小值）
         final maxCoverByHeight = screenHeight * 0.28;
         final maxCoverByWidth = screenWidth * 0.65;
-        final maxCoverSize = maxCoverByHeight < maxCoverByWidth ? maxCoverByHeight : maxCoverByWidth;
+        final maxCoverSize = maxCoverByHeight < maxCoverByWidth
+            ? maxCoverByHeight
+            : maxCoverByWidth;
 
         // 计算封面大小，确保 min 不大于 max
         final calculatedSize = screenWidth - horizontalMargin * 2;
         final minCoverSize = 180.0;
-        final baseCoverSize = calculatedSize.clamp(minCoverSize, maxCoverSize > minCoverSize ? maxCoverSize : calculatedSize);
+        final baseCoverSize = calculatedSize.clamp(
+          minCoverSize,
+          maxCoverSize > minCoverSize ? maxCoverSize : calculatedSize,
+        );
 
         // 缩小到原大小的 80%
         final coverSize = baseCoverSize * 0.8;
@@ -137,24 +141,21 @@ class MobilePlayerSongInfo extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: provider != null
-                    ? Image(
-                        image: provider,
-                        fit: BoxFit.cover,
-                      )
+                    ? Image(image: provider, fit: BoxFit.cover)
                     : picUrl.isNotEmpty
-                        ? _buildOptimizedCover(
-                            picUrl,
-                            coverSize,
-                            provider: provider,
-                          )
-                        : Container(
-                            color: Colors.grey[900],
-                            child: Icon(
-                              Icons.music_note,
-                              size: coverSize * 0.3,
-                              color: Colors.white30,
-                            ),
-                          ),
+                    ? _buildOptimizedCover(
+                        picUrl,
+                        coverSize,
+                        provider: provider,
+                      )
+                    : Container(
+                        color: Colors.grey[900],
+                        child: Icon(
+                          Icons.music_note,
+                          size: coverSize * 0.3,
+                          color: Colors.white30,
+                        ),
+                      ),
               ),
             ),
           ),
@@ -190,14 +191,12 @@ class MobilePlayerSongInfo extends StatelessWidget {
     ImageProvider? provider,
   }) {
     if (provider != null) {
-      return Image(
-        image: provider,
-        fit: BoxFit.cover,
-      );
+      return Image(image: provider, fit: BoxFit.cover);
     }
 
     // 检查是否为网络图片
-    final isNetwork = imageUrl.startsWith('http') || imageUrl.startsWith('https');
+    final isNetwork =
+        imageUrl.startsWith('http') || imageUrl.startsWith('https');
 
     if (!isNetwork) {
       // 本地文件
@@ -225,9 +224,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
       placeholder: (context, url) => Container(
         color: Colors.grey[900],
         child: const Center(
-          child: CircularProgressIndicator(
-            color: Colors.white30,
-          ),
+          child: CircularProgressIndicator(color: Colors.white30),
         ),
       ),
       errorWidget: (context, url, error) => Container(
@@ -298,39 +295,79 @@ class MobilePlayerSongInfo extends StatelessWidget {
                     enabled: artistsEnabled,
                   ),
 
+                  if (album.isEmpty && PlayerService().displayTrack != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        PlayerService().displayTrack!.source.platformLabel,
+                        style: TextStyle(
+                          color: subtitleColor.withValues(alpha: 0.6),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
                   // 专辑（可点击）
                   if (album.isNotEmpty) ...[
                     SizedBox(height: screenWidth * 0.015),
-                    InkWell(
-                      onTap: () => _searchInDialog(context, album),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.album_outlined,
-                              size: 12,
-                              color: subtitleColor.withValues(alpha: 0.6),
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                album,
-                                style: TextStyle(
-                                  color: subtitleColor.withValues(alpha: 0.6),
-                                  fontSize: (screenWidth * 0.032).clamp(12.0, 14.0),
-                                  fontFamily: 'Microsoft YaHei', // 微软雅黑
-                                ),
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          child: InkWell(
+                            onTap: () => _searchInDialog(context, album),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.album_outlined,
+                                    size: 12,
+                                    color: subtitleColor.withValues(alpha: 0.6),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      album,
+                                      style: TextStyle(
+                                        color: subtitleColor.withValues(
+                                          alpha: 0.6,
+                                        ),
+                                        fontSize: (screenWidth * 0.032).clamp(
+                                          12.0,
+                                          14.0,
+                                        ),
+                                        fontFamily: 'Microsoft YaHei', // 微软雅黑
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                        if (PlayerService().displayTrack != null)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Text(
+                              PlayerService()
+                                  .displayTrack!
+                                  .source
+                                  .platformLabel,
+                              style: TextStyle(
+                                color: subtitleColor.withValues(alpha: 0.6),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ],
@@ -394,7 +431,11 @@ class MobilePlayerSongInfo extends StatelessWidget {
     );
   }
 
-  Future<void> _onArtistTap(BuildContext context, String artistName, SongDetail? song) async {
+  Future<void> _onArtistTap(
+    BuildContext context,
+    String artistName,
+    SongDetail? song,
+  ) async {
     // 非网易云：仍然按原逻辑打开搜索
     if (song?.source != MusicSource.netease) {
       _searchInDialog(context, artistName);
@@ -402,7 +443,9 @@ class MobilePlayerSongInfo extends StatelessWidget {
     }
 
     // 网易云：尝试解析歌手ID；失败则回退到搜索
-    final id = await NeteaseArtistDetailService().resolveArtistIdByName(artistName);
+    final id = await NeteaseArtistDetailService().resolveArtistIdByName(
+      artistName,
+    );
     if (id == null) {
       if (!context.mounted) return;
       _searchInDialog(context, artistName);
@@ -425,9 +468,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
-            child: ArtistDetailContent(
-              artistId: id,
-            ),
+            child: ArtistDetailContent(artistId: id),
           ),
         ),
       ),
@@ -486,14 +527,10 @@ class MobilePlayerSongInfo extends StatelessWidget {
 
     if (useDarkText) {
       // 亮色背景，使用深色文字
-      return isCurrent
-          ? Colors.black87
-          : Colors.black54;
+      return isCurrent ? Colors.black87 : Colors.black54;
     } else {
       // 暗色背景，使用浅色文字
-      return isCurrent
-          ? Colors.white
-          : Colors.white.withValues(alpha: 0.45);
+      return isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.45);
     }
   }
 }

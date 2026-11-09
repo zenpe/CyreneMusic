@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../utils/image_utils.dart';
 export 'lyric/lyric_snapshot.dart';
 export 'playback/playback_problem.dart';
 export 'playback/playback_performance_metrics.dart';
@@ -14,6 +16,8 @@ import 'playback/playback_problem.dart';
 import 'playback/playback_view_state.dart';
 import 'playlist_queue_service.dart';
 import 'playback_mode_service.dart';
+import 'track_metadata_service.dart';
+import 'url_service.dart';
 
 /// 播放状态枚举
 enum PlayerState {
@@ -32,23 +36,89 @@ class PlayerService extends ChangeNotifier {
   static final PlayerService _instance = PlayerService._internal();
   factory PlayerService() => _instance;
 
-  final _pb = PlaybackService();
+  final PlaybackService _pb;
+  final TrackMetadataService _metadata;
+  bool _disposed = false;
   bool _notifyScheduled = false;
+  String? _metadataTrackKey;
 
-  PlayerService._internal() {
+  PlayerService._internal()
+    : this.forTesting(
+        playback: PlaybackService(),
+        metadata: TrackMetadataService(),
+      );
+
+  @visibleForTesting
+  PlayerService.forTesting({
+    required PlaybackService playback,
+    required TrackMetadataService metadata,
+  }) : _pb = playback,
+       _metadata = metadata {
     // 转发 PlaybackService 的变更通知
-    _pb.addListener(_scheduleNotify);
+    _pb.addListener(_onPlaybackChanged);
     _pb.coverManager.addListener(_scheduleNotify);
     EqualizerService().addListener(_scheduleNotify);
+    _metadata.addListener(_onMetadataChanged);
+  }
+
+  void _onPlaybackChanged() {
+    final track = _pb.viewState.track;
+    final key = track == null
+        ? null
+        : '${UrlService().backendRevision}:${track.source.name}:${track.id}';
+    if (key != _metadataTrackKey) {
+      _metadataTrackKey = key;
+      if (track != null) unawaited(_metadata.complete(track));
+    }
+    _refreshMetadataCover();
+    _scheduleNotify();
+  }
+
+  void _onMetadataChanged() {
+    _refreshMetadataCover();
+    _scheduleNotify();
+  }
+
+  void _refreshMetadataCover() {
+    final original = _pb.viewState.track;
+    if (original == null) return;
+    final track = _metadata.cached(original);
+    // Only replace a cover supplied by metadata, preserving ordinary playback covers.
+    if (track.picUrl == original.picUrl) return;
+    final cachedProvider = _pb.getCoverProvider(track);
+    final provider =
+        cachedProvider is CachedNetworkImageProvider &&
+            cachedProvider.url == track.picUrl
+        ? cachedProvider
+        : CachedNetworkImageProvider(
+            track.picUrl,
+            headers: getImageHeaders(track.picUrl),
+          );
+    _pb.updateCoverProvider(track, provider);
+    if (_pb.coverManager.currentUrl != track.picUrl ||
+        _pb.coverManager.currentCover != provider) {
+      // Synchronously invalidate pending placeholder loads before notifying the UI.
+      _pb.coverManager.setCoverImmediate(provider, url: track.picUrl);
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _pb.removeListener(_onPlaybackChanged);
+    _pb.coverManager.removeListener(_scheduleNotify);
+    EqualizerService().removeListener(_scheduleNotify);
+    _metadata.removeListener(_onMetadataChanged);
+    super.dispose();
   }
 
   /// 将同一微任务内的多次通知合并为一次
   void _scheduleNotify() {
-    if (_notifyScheduled) return;
+    if (_disposed || _notifyScheduled) return;
     _notifyScheduled = true;
     scheduleMicrotask(() {
       _notifyScheduled = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     });
   }
 
@@ -71,27 +141,88 @@ class PlayerService extends ChangeNotifier {
     }
   }
 
-  PlaybackViewState get viewState => _pb.viewState;
+  PlaybackViewState get viewState {
+    final state = _pb.viewState;
+    final original = state.track;
+    if (original == null) return state;
+    final track = _metadata.cached(original);
+    if (identical(track, original)) return state;
+    final song = _songWithMetadata(state.song, track);
+    return PlaybackViewState(
+      generation: state.generation,
+      track: track,
+      song: song,
+      switchPhase: state.switchPhase,
+      desiredPlaying: state.desiredPlaying,
+      enginePlaying: state.enginePlaying,
+      isBuffering: state.isBuffering,
+      isSourceTransitionPending: state.isSourceTransitionPending,
+      pendingPlaying: state.pendingPlaying,
+      position: state.position,
+      duration: state.duration,
+      bufferedPosition: state.bufferedPosition,
+      lyricState: state.lyricState,
+      lyricSnapshot: state.lyricSnapshot,
+    );
+  }
+
+  SongDetail? _songWithMetadata(SongDetail? song, Track track) {
+    if (song == null ||
+        song.id.toString() != track.id.toString() ||
+        song.source != track.source) {
+      return song;
+    }
+    return SongDetail(
+      id: song.id,
+      name: song.name,
+      pic: TrackMetadataService.missingCover(song.pic)
+          ? track.picUrl
+          : song.pic,
+      arName: song.arName,
+      alName: TrackMetadataService.missingText(song.alName)
+          ? track.album
+          : song.alName,
+      level: song.level,
+      size: song.size,
+      url: song.url,
+      lyric: song.lyric,
+      tlyric: song.tlyric,
+      yrc: song.yrc,
+      ytlrc: song.ytlrc,
+      qrc: song.qrc,
+      qrcTrans: song.qrcTrans,
+      source: song.source,
+    );
+  }
+
   PlaybackSwitchPhase get switchPhase => viewState.switchPhase;
   bool get desiredPlaying => viewState.desiredPlaying;
   bool? get pendingPlaybackIntent => _pb.pendingPlaybackIntent;
   SongDetail? get currentSong => viewState.song;
   Track? get currentTrack => viewState.track;
   Track? get displayTrack => viewState.track;
-  SongDetail? get activeSong => _pb.activeSong;
-  Track? get activeTrack => _pb.activeTrack;
+  SongDetail? get activeSong => activeTrack == null
+      ? _pb.activeSong
+      : _songWithMetadata(_pb.activeSong, activeTrack!);
+  Track? get activeTrack =>
+      _pb.activeTrack == null ? null : _metadata.cached(_pb.activeTrack!);
   int? get activeQueueEntryId => _pb.activeQueueEntryId;
   int get activePlaybackToken => _pb.activePlaybackToken;
-  Track? get pendingTrack => _pb.pendingTrack;
+  Track? get pendingTrack =>
+      _pb.pendingTrack == null ? null : _metadata.cached(_pb.pendingTrack!);
   int? get pendingSwitchToken => _pb.pendingSwitchToken;
   String? get pendingReason => _pb.pendingReason;
   String get displayTitle => _pb.displayTitle;
   String get displayArtist => _pb.displayArtist;
-  String get displayAlbum => _pb.displayAlbum;
+  String get displayAlbum => currentTrack?.album.isNotEmpty == true
+      ? currentTrack!.album
+      : _pb.displayAlbum;
   String get pendingDisplayTitle => _pb.pendingDisplayTitle;
   String get pendingDisplayArtist => _pb.pendingDisplayArtist;
-  String get pendingDisplayAlbum => _pb.pendingDisplayAlbum;
-  String? get pendingDisplayCoverUrl => _pb.pendingDisplayCoverUrl;
+  String get pendingDisplayAlbum =>
+      pendingTrack?.album ?? _pb.pendingDisplayAlbum;
+  String? get pendingDisplayCoverUrl =>
+      pendingTrack?.picUrl ?? _pb.pendingDisplayCoverUrl;
   LyricLoadState get lyricState => viewState.lyricState;
   LyricSnapshot? get lyricSnapshot => viewState.lyricSnapshot;
   Duration get duration => viewState.duration ?? Duration.zero;
@@ -127,7 +258,15 @@ class PlayerService extends ChangeNotifier {
   }
 
   String? get currentCoverUrl => _pb.currentCoverUrl;
-  String? get displayCoverUrl => _pb.displayCoverUrl;
+  String? get displayCoverUrl {
+    final original = _pb.viewState.track;
+    if (original != null) {
+      final enriched = _metadata.cached(original);
+      if (enriched.picUrl != original.picUrl) return enriched.picUrl;
+    }
+    return _pb.displayCoverUrl;
+  }
+
   String? get pendingCoverUrl => _pb.pendingCoverUrl;
   ValueNotifier<Color?> get themeColorNotifier =>
       _pb.coverManager.themeColorNotifier;

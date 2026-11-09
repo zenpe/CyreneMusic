@@ -1,3 +1,4 @@
+import '../../widgets/track_source_cover.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -447,28 +448,31 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
               // 封面
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: CachedNetworkImage(
-                  imageUrl: track.picUrl,
-                  httpHeaders: getImageHeaders(track.picUrl),
-                  width: 50,
-                  height: 50,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) =>
-                      Container(width: 50, height: 50, color: Colors.white12),
-                  errorWidget: (context, url, error) => Container(
+                child: TrackSourceCover(
+                  source: track.source,
+                  child: CachedNetworkImage(
+                    imageUrl: track.picUrl,
+                    httpHeaders: getImageHeaders(track.picUrl),
                     width: 50,
                     height: 50,
-                    color: Colors.white12,
-                    child: const Icon(
-                      Icons.music_note,
-                      color: Colors.white38,
-                      size: 24,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) =>
+                        Container(width: 50, height: 50, color: Colors.white12),
+                    errorWidget: (context, url, error) => Container(
+                      width: 50,
+                      height: 50,
+                      color: Colors.white12,
+                      child: const Icon(
+                        Icons.music_note,
+                        color: Colors.white38,
+                        size: 24,
+                      ),
                     ),
+                    memCacheWidth: 100,
+                    memCacheHeight: 100,
+                    fadeInDuration: const Duration(milliseconds: 150),
+                    fadeOutDuration: const Duration(milliseconds: 150),
                   ),
-                  memCacheWidth: 100,
-                  memCacheHeight: 100,
-                  fadeInDuration: const Duration(milliseconds: 150),
-                  fadeOutDuration: const Duration(milliseconds: 150),
                 ),
               ),
 

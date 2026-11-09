@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'structured_log_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
@@ -7,6 +9,7 @@ import '../models/search_page_state.dart';
 import 'api/api_client.dart';
 import 'search_provider_catalog.dart';
 import 'search_request.dart';
+import 'track_metadata_service.dart';
 
 /// 搜索结果模型
 class SearchResult {
@@ -177,10 +180,15 @@ class SearchService extends ChangeNotifier {
   factory SearchService() => _instance;
   SearchService._internal() {
     _loadSearchHistory();
+    TrackMetadataService().addListener(notifyListeners);
   }
 
   SearchResult _searchResult = SearchResult();
-  SearchResult get searchResult => _searchResult;
+  SearchResult get searchResult => _searchResult.copyWith(
+    qqResults: _searchResult.qqResults
+        .map(TrackMetadataService().cached)
+        .toList(),
+  );
 
   String _currentKeyword = '';
   String get currentKeyword => _currentKeyword;
@@ -357,6 +365,11 @@ class SearchService extends ChangeNotifier {
       );
       _updatePlatform(platform, tracks: combined, loading: false, error: null);
       if (platform == MusicSource.qq) {
+        for (final track in combined) {
+          unawaited(TrackMetadataService().complete(track));
+        }
+      }
+      if (platform == MusicSource.qq) {
         _searchResult = _searchResult.copyWith(qqSuggestions: suggestions);
       }
     } catch (error) {
@@ -490,6 +503,7 @@ class SearchService extends ChangeNotifier {
 
   @override
   void dispose() {
+    TrackMetadataService().removeListener(notifyListeners);
     _activeSearchSession++;
     _cancelActiveSearchRequests('SearchService disposed');
     _pages.clear();

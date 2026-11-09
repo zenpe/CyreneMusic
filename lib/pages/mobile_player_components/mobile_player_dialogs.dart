@@ -1,3 +1,4 @@
+import '../../widgets/track_source_cover.dart';
 import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
 import 'dart:async';
@@ -756,7 +757,10 @@ class MobilePlayerDialogs {
               // 封面
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: _buildCoverImage(track.picUrl),
+                child: TrackSourceCover(
+                  source: track.source,
+                  child: _buildCoverImage(track.picUrl),
+                ),
               ),
 
               const SizedBox(width: 12),

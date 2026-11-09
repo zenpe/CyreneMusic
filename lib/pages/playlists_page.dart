@@ -1,5 +1,7 @@
+import '../widgets/track_source_cover.dart';
 import '../widgets/collection_play_controls.dart';
 import '../utils/app_feedback.dart';
+import '../utils/image_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../features/auth/auth_feature.dart';
@@ -410,6 +412,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
         borderRadius: BorderRadius.circular(8),
         child: CachedNetworkImage(
           imageUrl: playlist.coverUrl!,
+          httpHeaders: getImageHeaders(playlist.coverUrl),
           width: 48,
           height: 48,
           fit: BoxFit.cover,
@@ -617,7 +620,8 @@ class _PlaylistsPageState extends State<PlaylistsPage>
             onPressed: () async {
               final name = controller.text.trim();
               if (name.isEmpty) {
-                AppFeedback.of(context).showSnackBar(const SnackBar(content: Text('歌单名称不能为空')),
+                AppFeedback.of(context).showSnackBar(
+                  const SnackBar(content: Text('歌单名称不能为空')),
                   kind: FeedbackKind.error,
                 );
                 return;
@@ -631,7 +635,9 @@ class _PlaylistsPageState extends State<PlaylistsPage>
                   SnackBar(
                     content: Text(newPlaylist != null ? '创建成功' : '创建失败'),
                   ),
-                  kind: newPlaylist != null ? FeedbackKind.info : FeedbackKind.error,
+                  kind: newPlaylist != null
+                      ? FeedbackKind.info
+                      : FeedbackKind.error,
                 );
               }
             },
@@ -665,7 +671,8 @@ class _PlaylistsPageState extends State<PlaylistsPage>
             onPressed: () async {
               final name = controller.text.trim();
               if (name.isEmpty) {
-                AppFeedback.of(context).showSnackBar(const SnackBar(content: Text('歌单名称不能为空')),
+                AppFeedback.of(context).showSnackBar(
+                  const SnackBar(content: Text('歌单名称不能为空')),
                   kind: FeedbackKind.error,
                 );
                 return;
@@ -1033,61 +1040,55 @@ class _PlaylistsPageState extends State<PlaylistsPage>
                 value: isSelected,
                 onChanged: (_) => _toggleTrackSelection(item),
               )
-            : Stack(
+            : Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: CachedNetworkImage(
-                      imageUrl: item.picUrl,
-                      width: 50,
-                      height: 50,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 128,
-                      memCacheHeight: 128,
-                      placeholder: (context, url) => Container(
-                        width: 50,
-                        height: 50,
-                        color: colorScheme.surfaceContainerHighest,
-                        child: const Center(
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      ),
-                      errorWidget: (context, url, error) => Container(
-                        width: 50,
-                        height: 50,
-                        color: colorScheme.surfaceContainerHighest,
-                        child: Icon(
-                          Icons.music_note,
-                          color: colorScheme.onSurfaceVariant,
+                  SizedBox(
+                    width: 24,
+                    child: Text(
+                      '${index + 1}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.65,
                         ),
                       ),
                     ),
                   ),
-                  // 序号标记
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primaryContainer,
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(4),
+                  const SizedBox(width: 8),
+                  TrackSourceCover(
+                    source: item.source,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: CachedNetworkImage(
+                        imageUrl: item.picUrl,
+                        httpHeaders: getImageHeaders(item.picUrl),
+                        width: 50,
+                        height: 50,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 128,
+                        memCacheHeight: 128,
+                        placeholder: (context, url) => Container(
+                          width: 50,
+                          height: 50,
+                          color: colorScheme.surfaceContainerHighest,
+                          child: const Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        '#${index + 1}',
-                        style: TextStyle(
-                          color: colorScheme.onPrimaryContainer,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                        errorWidget: (context, url, error) => Container(
+                          width: 50,
+                          height: 50,
+                          color: colorScheme.surfaceContainerHighest,
+                          child: Icon(
+                            Icons.music_note,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ),
@@ -1118,7 +1119,7 @@ class _PlaylistsPageState extends State<PlaylistsPage>
                 track: item.toTrack(),
                 onPlay: () => _playTrack(index),
                 onDelete: () => _confirmRemoveTrack(item),
-                            deleteLabel: '从歌单移除',
+                deleteLabel: '从歌单移除',
               ),
         onTap: _isEditMode
             ? () => _toggleTrackSelection(item)
@@ -1136,7 +1137,6 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     final trackList = tracks.map((t) => t.toTrack()).toList();
 
     // 设置播放队列
-
 
     // 播放选中的歌曲（来自歌单，检查换源限制）
     PlayerService().playCollection(

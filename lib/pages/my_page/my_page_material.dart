@@ -1875,8 +1875,8 @@ extension _MyPageMaterialUI on _MyPageState {
                       ),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
-                        imageUrl: item.picUrl,
+                      child: TrackSourceCover(source: item.source, child: CachedNetworkImage(
+                        imageUrl: item.picUrl, httpHeaders: getImageHeaders(item.picUrl),
                         width: 44,
                         height: 44,
                         fit: BoxFit.cover,
@@ -1893,7 +1893,7 @@ extension _MyPageMaterialUI on _MyPageState {
                           color: colorScheme.surfaceContainerHighest,
                           child: Icon(Icons.music_note, color: colorScheme.onSurfaceVariant, size: 20),
                         ),
-                      ),
+                      )),
                     ),
                     const SizedBox(width: 12),
                     Expanded(

@@ -1,3 +1,4 @@
+import 'track_source_cover.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../features/auth/auth_feature.dart';
@@ -47,7 +48,8 @@ class _TrackListTileState extends State<TrackListTile> {
   @override
   void didUpdateWidget(covariant TrackListTile oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.track.id != widget.track.id || oldWidget.track.picUrl != widget.track.picUrl) {
+    if (oldWidget.track.id != widget.track.id ||
+        oldWidget.track.picUrl != widget.track.picUrl) {
       _reportedCover = false;
     }
   }
@@ -123,42 +125,45 @@ class _TrackListTileState extends State<TrackListTile> {
           // 封面
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
-            child: CachedNetworkImage(
-              imageUrl: widget.track.picUrl,
-              httpHeaders: getImageHeaders(widget.track.picUrl),
-              memCacheWidth: 128,
-              memCacheHeight: 128,
-              imageBuilder: (context, imageProvider) {
-                if (!_reportedCover) {
-                  widget.onCoverReady?.call(imageProvider);
-                  _reportedCover = true;
-                }
-                return Image(
-                  image: imageProvider,
+            child: TrackSourceCover(
+              source: widget.track.source,
+              child: CachedNetworkImage(
+                imageUrl: widget.track.picUrl,
+                httpHeaders: getImageHeaders(widget.track.picUrl),
+                memCacheWidth: 128,
+                memCacheHeight: 128,
+                imageBuilder: (context, imageProvider) {
+                  if (!_reportedCover) {
+                    widget.onCoverReady?.call(imageProvider);
+                    _reportedCover = true;
+                  }
+                  return Image(
+                    image: imageProvider,
+                    width: widget.coverSize,
+                    height: widget.coverSize,
+                    fit: BoxFit.cover,
+                  );
+                },
+                placeholder: (context, url) => Container(
                   width: widget.coverSize,
                   height: widget.coverSize,
-                  fit: BoxFit.cover,
-                );
-              },
-              placeholder: (context, url) => Container(
-                width: widget.coverSize,
-                height: widget.coverSize,
-                color: colorScheme.surfaceContainerHighest,
-                child: const Center(
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                  color: colorScheme.surfaceContainerHighest,
+                  child: const Center(
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   ),
                 ),
-              ),
-              errorWidget: (context, url, error) => Container(
-                width: widget.coverSize,
-                height: widget.coverSize,
-                color: colorScheme.surfaceContainerHighest,
-                child: Icon(
-                  Icons.music_note,
-                  color: colorScheme.onSurfaceVariant,
+                errorWidget: (context, url, error) => Container(
+                  width: widget.coverSize,
+                  height: widget.coverSize,
+                  color: colorScheme.surfaceContainerHighest,
+                  child: Icon(
+                    Icons.music_note,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
@@ -176,12 +181,6 @@ class _TrackListTileState extends State<TrackListTile> {
       ),
       subtitle: Row(
         children: [
-          // 音乐来源图标
-          Text(
-            widget.track.getSourceIcon(),
-            style: const TextStyle(fontSize: 12),
-          ),
-          const SizedBox(width: 4),
           Expanded(
             child: Text(
               '${widget.track.artists} - ${widget.track.album}',
@@ -194,29 +193,30 @@ class _TrackListTileState extends State<TrackListTile> {
           ),
         ],
       ),
-      trailing: widget.trailing ??
+      trailing:
+          widget.trailing ??
           (widget.showMoreButton
               ? TrackMoreButton(
                   track: widget.track,
                   onPlay: widget.onPlay ?? widget.onTap,
                   onDelete: widget.onDelete,
                 )
-              : Icon(
-                  Icons.play_circle_outline,
-                  color: colorScheme.primary)),
-      onTap: widget.onTap ?? () async {
-        // 检查登录状态
-        final isLoggedIn = await _checkLoginStatus();
-        if (isLoggedIn && context.mounted) {
-          // 预取封面 Provider，供播放器复用，避免再次请求
-          ImageProvider? provider;
-          if (widget.track.picUrl.isNotEmpty) {
-            provider = CachedNetworkImageProvider(
-              widget.track.picUrl,
-              headers: getImageHeaders(widget.track.picUrl),
-            );
-          }
-          PlayerService().playTrack(widget.track, coverProvider: provider);
+              : Icon(Icons.play_circle_outline, color: colorScheme.primary)),
+      onTap:
+          widget.onTap ??
+          () async {
+            // 检查登录状态
+            final isLoggedIn = await _checkLoginStatus();
+            if (isLoggedIn && context.mounted) {
+              // 预取封面 Provider，供播放器复用，避免再次请求
+              ImageProvider? provider;
+              if (widget.track.picUrl.isNotEmpty) {
+                provider = CachedNetworkImageProvider(
+                  widget.track.picUrl,
+                  headers: getImageHeaders(widget.track.picUrl),
+                );
+              }
+              PlayerService().playTrack(widget.track, coverProvider: provider);
             }
           },
     );

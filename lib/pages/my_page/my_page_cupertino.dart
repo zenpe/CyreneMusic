@@ -433,20 +433,20 @@ extension _MyPageCupertinoUI on _MyPageState {
               if (_isEditMode)
                 Padding(padding: const EdgeInsets.only(right: 12), child: Icon(isSelected ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle, color: isSelected ? CupertinoColors.systemBlue : CupertinoColors.systemGrey3, size: 24))
               else
-                Stack(
-                  children: [
-                    ClipRRect(
+                Row(mainAxisSize: MainAxisSize.min, children: [
+ SizedBox(width: 22, child: Text('${index + 1}', textAlign: TextAlign.center,
+ style: const TextStyle(fontSize: 12, color: CupertinoColors.systemGrey))),
+ const SizedBox(width: 6),
+ TrackSourceCover(source: item.source, child: ClipRRect(
                       borderRadius: BorderRadius.circular(6),
                       child: CachedNetworkImage(
-                        imageUrl: item.picUrl, width: 50, height: 50, fit: BoxFit.cover,
+                        imageUrl: item.picUrl, httpHeaders: getImageHeaders(item.picUrl), width: 50, height: 50, fit: BoxFit.cover,
                         memCacheWidth: 128, memCacheHeight: 128,
                         placeholder: (_, _) => Container(width: 50, height: 50, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Center(child: CupertinoActivityIndicator(radius: 10))),
                         errorWidget: (_, _, _) => Container(width: 50, height: 50, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
                       ),
-                    ),
-                    Positioned(bottom: 0, right: 0, child: Container(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2), decoration: BoxDecoration(color: CupertinoColors.systemBlue, borderRadius: const BorderRadius.only(topLeft: Radius.circular(4))), child: Text('#${index + 1}', style: const TextStyle(color: CupertinoColors.white, fontSize: 9, fontWeight: FontWeight.bold)))),
-                  ],
-                ),
+                    )),
+ ]),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

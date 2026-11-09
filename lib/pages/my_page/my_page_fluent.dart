@@ -445,8 +445,8 @@ class _FluentMyTrackTile extends StatelessWidget {
                 ],
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: CachedNetworkImage(
-                    imageUrl: item.picUrl,
+                  child: TrackSourceCover(source: item.source, child: CachedNetworkImage(
+                    imageUrl: item.picUrl, httpHeaders: getImageHeaders(item.picUrl),
                     width: 64,
                     height: 64,
                     memCacheWidth: 128,
@@ -470,7 +470,7 @@ class _FluentMyTrackTile extends StatelessWidget {
                         size: 24,
                       ),
                     ),
-                  ),
+                  )),
                 ),
                 const SizedBox(width: 16),
                 Expanded(

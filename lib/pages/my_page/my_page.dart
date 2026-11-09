@@ -1,3 +1,5 @@
+import '../../widgets/track_source_cover.dart';
+import '../../utils/image_utils.dart';
 import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
 import '../../widgets/floating_playback_insets.dart';

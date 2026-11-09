@@ -390,6 +390,13 @@ class _Fixture {
       await gate?.future;
       if (failRead) request.response.statusCode = 503;
       body['matches'] = snapshot;
+    } else if (path == '/qq/song') {
+      expect(request.uri.queryParameters['metadata_only'], '1');
+      body['song'] = {
+        'mid': request.uri.queryParameters['ids'],
+        'album': 'Album',
+        'pic': 'https://example.com/cover.jpg',
+      };
     } else if (path == '/playlists') {
       body['playlists'] = [_playlist(10, synced: synced), _playlist(20)];
     } else if (request.method == 'GET' && path.endsWith('/tracks')) {

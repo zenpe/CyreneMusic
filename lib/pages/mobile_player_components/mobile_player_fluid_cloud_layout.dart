@@ -1,3 +1,4 @@
+import '../../widgets/track_source_cover.dart';
 import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
 import 'dart:io';
@@ -938,15 +939,31 @@ class _MobilePlayerFluidCloudLayoutState
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  artists,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.white.withValues(alpha: 0.7),
-                    fontFamily: 'Microsoft YaHei',
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        artists,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontFamily: 'Microsoft YaHei',
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (track != null) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        (track.source as MusicSource).platformLabel,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),

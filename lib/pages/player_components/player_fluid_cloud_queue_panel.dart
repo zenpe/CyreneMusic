@@ -1,3 +1,4 @@
+import '../../widgets/track_source_cover.dart';
 import '../../services/structured_log_service.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -333,16 +334,19 @@ class _PlayerFluidCloudQueuePanelState
                   // 封面
                   ClipRRect(
                     borderRadius: BorderRadius.circular(6),
-                    child: CachedNetworkImage(
-                      imageUrl: track.picUrl,
-                      httpHeaders: getImageHeaders(track.picUrl),
-                      width: 44,
-                      height: 44,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 128,
-                      memCacheHeight: 128,
-                      fadeOutDuration: Duration.zero,
-                      fadeInDuration: const Duration(milliseconds: 200),
+                    child: TrackSourceCover(
+                      source: track.source,
+                      child: CachedNetworkImage(
+                        imageUrl: track.picUrl,
+                        httpHeaders: getImageHeaders(track.picUrl),
+                        width: 44,
+                        height: 44,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 128,
+                        memCacheHeight: 128,
+                        fadeOutDuration: Duration.zero,
+                        fadeInDuration: const Duration(milliseconds: 200),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -460,20 +464,23 @@ class _PlayerFluidCloudQueuePanelState
                   // 封面
                   ClipRRect(
                     borderRadius: BorderRadius.circular(5),
-                    child: CachedNetworkImage(
-                      imageUrl: track.picUrl,
-                      httpHeaders: getImageHeaders(track.picUrl),
-                      width: 40,
-                      height: 40,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 128,
-                      memCacheHeight: 128,
-                      fadeOutDuration: Duration.zero,
-                      fadeInDuration: const Duration(milliseconds: 200),
-                      placeholder: (context, url) => Container(
+                    child: TrackSourceCover(
+                      source: track.source,
+                      child: CachedNetworkImage(
+                        imageUrl: track.picUrl,
+                        httpHeaders: getImageHeaders(track.picUrl),
                         width: 40,
                         height: 40,
-                        color: Colors.white.withValues(alpha: 0.1),
+                        fit: BoxFit.cover,
+                        memCacheWidth: 128,
+                        memCacheHeight: 128,
+                        fadeOutDuration: Duration.zero,
+                        fadeInDuration: const Duration(milliseconds: 200),
+                        placeholder: (context, url) => Container(
+                          width: 40,
+                          height: 40,
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
                       ),
                     ),
                   ),

@@ -10,6 +10,7 @@ import 'api/api_client.dart';
 import 'auth_service.dart';
 import 'structured_log_service.dart';
 import 'url_service.dart';
+import 'track_metadata_service.dart';
 
 class PlaylistSyncResult {
   final bool succeeded;
@@ -98,6 +99,7 @@ class PlaylistService extends ChangeNotifier {
     _observedSessionIdentity = _sessionIdentity();
     auth.addListener(_onAuthChanged);
     UrlService().addListener(_onAuthChanged);
+    TrackMetadataService().addListener(notifyListeners);
   }
 
   final Random _secureRandom = Random.secure();
@@ -129,8 +131,27 @@ class PlaylistService extends ChangeNotifier {
   List<PlaylistTrack> get currentTracks => List.unmodifiable(
     _currentPlaylistId == null
         ? const <PlaylistTrack>[]
-        : (_tracksByPlaylist[_currentPlaylistId] ?? const <PlaylistTrack>[]),
+        : (_tracksByPlaylist[_currentPlaylistId] ?? const <PlaylistTrack>[])
+              .map(_withMetadata),
   );
+
+  PlaylistTrack _withMetadata(PlaylistTrack item) {
+    final original = item.toTrack();
+    final track = TrackMetadataService().cached(original);
+    if (identical(track, original)) return item;
+    return PlaylistTrack(
+      itemId: item.itemId,
+      trackId: item.trackId,
+      name: item.name,
+      artists: item.artists,
+      album: track.album,
+      picUrl: track.picUrl,
+      source: item.source,
+      sourceIds: item.sourceIds,
+      addedAt: item.addedAt,
+    );
+  }
+
   bool get isLoading => _isLoading;
   bool get isLoadingTracks => _isLoadingTracks;
 
@@ -649,6 +670,7 @@ class PlaylistService extends ChangeNotifier {
   }
 
   Future<bool> addTrackToPlaylist(int playlistId, Track track) async {
+    track = TrackMetadataService().cached(track);
     final session = _sessionIdentity();
     if (session == null || !_isWritable(playlistId)) return false;
     _invalidateLoadsForMutation(playlistId);
@@ -706,6 +728,7 @@ class PlaylistService extends ChangeNotifier {
         data: {
           'operationId': _operationId(),
           'tracks': tracks
+              .map(TrackMetadataService().cached)
               .map((track) => PlaylistTrack.fromTrack(track).toJson())
               .toList(),
         },
@@ -767,6 +790,9 @@ class PlaylistService extends ChangeNotifier {
           .map((item) => PlaylistTrack.fromJson(item as Map<String, dynamic>))
           .toList();
       _tracksByPlaylist[playlistId] = tracks;
+      for (final track in tracks) {
+        unawaited(TrackMetadataService().complete(track.toTrack()));
+      }
       _tracksLoadedAt[playlistId] = DateTime.now();
       _reconcileMembership(playlistId, tracks);
       final current = _playlist(playlistId);
