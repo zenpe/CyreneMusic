@@ -27,6 +27,15 @@ class LxHttpBridge {
   }) async {
     request ??= ResolutionRequest.current;
     request?.check();
+    // Script timeouts are milliseconds. A script can shorten a request, never
+    // extend the owning resolution's remaining deadline (including timeout=0).
+    final scriptTimeout = options['timeout'];
+    if (scriptTimeout is num && scriptTimeout.isFinite && scriptTimeout > 0) {
+      final milliseconds = scriptTimeout.ceil();
+      if (milliseconds < timeout.inMilliseconds) {
+        timeout = Duration(milliseconds: milliseconds);
+      }
+    }
     final client = _client ??= LxHttpClient();
     final aborted = Completer<void>();
     void abort() {
@@ -124,28 +133,24 @@ class LxHttpBridge {
         final headerMap = options['headers'];
         if (headerMap is Map) {
           headerMap.forEach((key, value) {
-            headers[key.toString()] = value.toString();
+            headers[key.toString().toLowerCase()] = value.toString();
           });
         }
       }
 
-      if (!headers.containsKey('User-Agent')) {
-        headers['User-Agent'] = 'lx-music-request';
+      if (!headers.containsKey('user-agent')) {
+        headers['user-agent'] = 'lx-music-request';
       }
 
-      if (!headers.containsKey('accept') && !headers.containsKey('Accept')) {
+      if (!headers.containsKey('accept')) {
         headers['accept'] = 'application/json';
       }
 
       if (method == 'GET') {
-        headers.remove('Content-Type');
         headers.remove('content-type');
       }
 
-      final normalizedHeaders = <String, String>{};
-      headers.forEach((key, value) {
-        normalizedHeaders[key.toLowerCase()] = value;
-      });
+      final normalizedHeaders = headers;
 
       http.Response response;
 

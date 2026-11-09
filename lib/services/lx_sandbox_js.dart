@@ -46,7 +46,19 @@ const String lxSandboxJs = r'''
   if (typeof _global.TextEncoder === 'undefined') {
     _global.TextEncoder = function() {};
     _global.TextEncoder.prototype.encode = function(str) {
-      var utf8 = unescape(encodeURIComponent(str));
+      str = str === undefined ? '' : String(str);
+      // Encode lone UTF-16 surrogates as U+FFFD, as TextEncoder requires.
+      var normalized = '';
+      for (var n = 0; n < str.length; n++) {
+        var code = str.charCodeAt(n);
+        if (code >= 0xd800 && code <= 0xdbff && n + 1 < str.length &&
+            str.charCodeAt(n + 1) >= 0xdc00 && str.charCodeAt(n + 1) <= 0xdfff) {
+          normalized += str[n] + str[++n];
+        } else {
+          normalized += code >= 0xd800 && code <= 0xdfff ? '\ufffd' : str[n];
+        }
+      }
+      var utf8 = unescape(encodeURIComponent(normalized));
       var result = new Uint8Array(utf8.length);
       for (var i = 0; i < utf8.length; i++) {
         result[i] = utf8.charCodeAt(i);
@@ -56,17 +68,36 @@ const String lxSandboxJs = r'''
   }
 
   if (typeof _global.TextDecoder === 'undefined') {
-    _global.TextDecoder = function() {};
+    _global.TextDecoder = function(label, options) { this.ignoreBOM = !!(options && options.ignoreBOM); };
     _global.TextDecoder.prototype.decode = function(buf) {
       var bytes = buf;
       if (bytes instanceof ArrayBuffer) {
         bytes = new Uint8Array(bytes);
       }
-      var str = '';
-      for (var i = 0; i < bytes.length; i++) {
-        str += String.fromCharCode(bytes[i]);
+      bytes = bytes == null ? new Uint8Array(0) :
+        (ArrayBuffer.isView(bytes) ? new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength) : bytes);
+      var str = '', i = 0;
+      while (i < bytes.length) {
+        var first = bytes[i++], cp = first, count = 0, low = 0x80, high = 0xbf;
+        if (first < 0x80) { str += String.fromCharCode(first); continue; }
+        if (first >= 0xc2 && first <= 0xdf) { count = 1; cp &= 31; }
+        else if (first >= 0xe0 && first <= 0xef) {
+          count = 2; cp &= 15;
+          if (first === 0xe0) low = 0xa0;
+          if (first === 0xed) high = 0x9f;
+        } else if (first >= 0xf0 && first <= 0xf4) {
+          count = 3; cp &= 7;
+          if (first === 0xf0) low = 0x90;
+          if (first === 0xf4) high = 0x8f;
+        } else { str += '\ufffd'; continue; }
+        var valid = true;
+        for (var j = 0; j < count; j++) {
+          if (i >= bytes.length || bytes[i] < low || bytes[i] > high) { valid = false; break; }
+          cp = (cp << 6) | (bytes[i++] & 63); low = 0x80; high = 0xbf;
+        }
+        str += valid ? String.fromCodePoint(cp) : '\ufffd';
       }
-      return decodeURIComponent(escape(str));
+      return !this.ignoreBOM && str.charCodeAt(0) === 0xfeff ? str.slice(1) : str;
     };
   }
 
@@ -127,7 +158,7 @@ const String lxSandboxJs = r'''
   const pendingHttpRequests = new Map();
   let httpRequestCounter = 0;
   let requestOwner = null;
-  const activeOwners = new Set();
+  const activeOwners = new Map();
   const httpOwners = new Map();
   const timerOwners = new Map();
   let timerCounter = 0;
@@ -159,10 +190,11 @@ const String lxSandboxJs = r'''
   const nativeThen = Promise.prototype.then;
   Promise.prototype.then = function(onResolved, onRejected) {
     const owner = requestOwner;
+    const state = activeOwners.get(owner);
     function bind(callback) {
       if (typeof callback !== 'function') return callback;
       return function(value) {
-        requestOwner = owner;
+        requestOwner = state && state.completed ? null : owner;
         return callback(value);
       };
     }
@@ -189,6 +221,21 @@ const String lxSandboxJs = r'''
         }
       }
     });
+  };
+
+  // A successful resolution can install cache-expiry/token-renewal timers.
+  // Promote both JS and native ownership; cancelled resolutions never do so.
+  window.__lx_completeRequest__ = function(owner) {
+    const state = activeOwners.get(owner);
+    if (state) state.completed = true;
+    timerOwners.forEach(function(value, timer) {
+      if (value.owner === owner) {
+        value.owner = null;
+        sendToFlutter('lxPromoteTimer', {timerId: timer});
+      }
+    });
+    window.__lx_cancelRequest__(owner);
+    requestOwner = null;
   };
   
   // ==================== 工具函数 ====================
@@ -435,12 +482,10 @@ const String lxSandboxJs = r'''
   const utils = {
     crypto: {
       aesEncrypt: function(buffer, mode, key, iv) {
-        console.warn('[LxMusic] crypto.aesEncrypt not implemented');
-        return buffer;
+        throw new Error('当前运行时不支持 lx.utils.crypto.aesEncrypt');
       },
       rsaEncrypt: function(buffer, key) {
-        console.warn('[LxMusic] crypto.rsaEncrypt not implemented');
-        return buffer;
+        throw new Error('当前运行时不支持 lx.utils.crypto.rsaEncrypt');
       },
       randomBytes: function(size) {
         const bytes = new Uint8Array(size);
@@ -448,11 +493,11 @@ const String lxSandboxJs = r'''
         return bytes;
       },
       md5: function(str) {
-        // 使用完整的 MD5 实现
-        if (typeof str !== 'string') {
-          str = new TextDecoder().decode(str);
-        }
-        return md5(str);
+        const bytes = typeof str === 'string' ? new TextEncoder().encode(str) :
+          (ArrayBuffer.isView(str) ? new Uint8Array(str.buffer, str.byteOffset, str.byteLength) : new Uint8Array(str));
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        return md5(binary);
       },
     },
     buffer: {
@@ -479,12 +524,10 @@ const String lxSandboxJs = r'''
     },
     zlib: {
       inflate: function(buf) {
-        console.warn('[LxMusic] zlib.inflate not implemented');
-        return Promise.resolve(buf);
+        return Promise.reject(new Error('当前运行时不支持 lx.utils.zlib.inflate'));
       },
       deflate: function(data) {
-        console.warn('[LxMusic] zlib.deflate not implemented');
-        return Promise.resolve(data);
+        return Promise.reject(new Error('当前运行时不支持 lx.utils.zlib.deflate'));
       },
     },
   };
@@ -526,7 +569,7 @@ const String lxSandboxJs = r'''
     let rawScript = '';
     if (info.scriptBase64) {
       try {
-        rawScript = atob(info.scriptBase64);
+        rawScript = new TextDecoder('utf-8', {ignoreBOM: true}).decode(Uint8Array.from(atob(info.scriptBase64), c => c.charCodeAt(0)));
         console.log('[LxMusic] rawScript 已设置，长度: ' + rawScript.length);
       } catch (e) {
         console.warn('[LxMusic] Base64 解码失败: ' + e.message);
@@ -545,7 +588,7 @@ const String lxSandboxJs = r'''
   
   // 发送请求到脚本
   window.__lx_sendRequest__ = function(data) {
-    activeOwners.add(data.requestKey);
+    activeOwners.set(data.requestKey, {completed: false});
     requestOwner = data.requestKey;
     console.log('[LxMusic] __lx_sendRequest__ called, data:', JSON.stringify(data));
     console.log('[LxMusic] requestHandler type:', typeof requestHandler);
@@ -677,52 +720,5 @@ const String lxSandboxJs = r'''
   
   console.log('[LxMusic] Sandbox initialized');
   
-  // ==================== 调试函数 ====================
-  // 检查脚本加载后的关键全局变量
-  window.__lx_debugGlobals__ = function() {
-    console.log('========== [LxMusic Global Variables Debug] ==========');
-    
-    // 检查可能的签名相关变量
-    const varNames = ['API_URL', 'API_KEY', 'SECRET_KEY', 'SCRIPT_MD5', 'version', 
-                      'DEV_ENABLE', 'UPDATE_ENABLE', 'MUSIC_SOURCE'];
-    
-    varNames.forEach(function(name) {
-      if (typeof window[name] !== 'undefined') {
-        const val = window[name];
-        const display = typeof val === 'object' ? JSON.stringify(val) : String(val);
-        console.log('[LxMusic] window.' + name + ' = ' + display.substring(0, 200));
-      }
-    });
-    
-    // 检查 globalThis
-    varNames.forEach(function(name) {
-      if (typeof globalThis !== 'undefined' && typeof globalThis[name] !== 'undefined' && globalThis[name] !== window[name]) {
-        const val = globalThis[name];
-        const display = typeof val === 'object' ? JSON.stringify(val) : String(val);
-        console.log('[LxMusic] globalThis.' + name + ' = ' + display.substring(0, 200));
-      }
-    });
-    
-    // 检查 MUSIC_SOURCE 导出模块
-    if (window.MUSIC_SOURCE) {
-      console.log('[LxMusic] MUSIC_SOURCE module found:');
-      const ms = window.MUSIC_SOURCE;
-      if (ms.API_URL) console.log('[LxMusic]   API_URL = ' + ms.API_URL);
-      if (ms.API_KEY) console.log('[LxMusic]   API_KEY = ' + ms.API_KEY);
-      if (ms.SECRET_KEY) console.log('[LxMusic]   SECRET_KEY = ' + (ms.SECRET_KEY ? ms.SECRET_KEY.substring(0, 10) + '...' : 'undefined'));
-      if (ms.SCRIPT_MD5) console.log('[LxMusic]   SCRIPT_MD5 = ' + ms.SCRIPT_MD5);
-      if (ms.generateSign) console.log('[LxMusic]   generateSign = function');
-      if (ms.sha256) console.log('[LxMusic]   sha256 = function');
-    }
-    
-    console.log('========================================================');
-  };
-  
-  // 在脚本执行 500ms 后自动检查全局变量
-  setTimeout(function() {
-    if (isInited) {
-      window.__lx_debugGlobals__();
-    }
-  }, 500);
 })();
 ''';

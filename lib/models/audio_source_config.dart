@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import '../services/audio_source_service.dart';
 import 'lx_source_candidate.dart';
 
@@ -47,6 +49,26 @@ class AudioSourceConfig {
 
   final String scriptContent;
   final String urlPathTemplate;
+
+  /// Hash the immutable request configuration once. Neither cache keys nor
+  /// diagnostics should carry script text or embedded credentials.
+  late final String resolverContentHash = sha256
+      .convert(
+        utf8.encode(
+          jsonEncode([
+            id,
+            type.name,
+            version,
+            url,
+            apiKey,
+            scriptSource,
+            catalogPath,
+            scriptContent,
+            urlPathTemplate,
+          ]),
+        ),
+      )
+      .toString();
 
   AudioSourceConfig({
     required this.id,

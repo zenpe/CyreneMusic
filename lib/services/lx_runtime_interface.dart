@@ -58,6 +58,18 @@ abstract class LxRuntime {
   Future<void> dispose();
 }
 
+/// A prepared context is private until its owner commits the configuration.
+abstract class LxRuntimeCandidate {
+  LxScriptInfo get script;
+  void commit();
+  Future<void> dispose();
+}
+
+abstract class LxStagedRuntime {
+  bool get supportsStaging;
+  Future<LxRuntimeCandidate> prepareScript(String content);
+}
+
 class LxScriptParser {
   static LxScriptInfo parse(String script) {
     String name = '未知音源';

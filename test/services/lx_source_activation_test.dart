@@ -6,6 +6,7 @@ import 'package:cyrene_music/models/audio_source_config.dart';
 import 'package:cyrene_music/services/url_service.dart';
 import 'package:cyrene_music/services/lx_music_source_parser.dart';
 import 'package:cyrene_music/services/lx_runtime_interface.dart';
+import 'package:cyrene_music/services/lx_music_runtime_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -113,6 +114,143 @@ void main() {
       parser: parser,
     );
   });
+
+  test('isolated candidate failure keeps the exact old context alive', () async {
+    final contexts = <_Runtime>[];
+    final host = LxMusicRuntimeService.withFactory(() {
+      final context = _Runtime();
+      contexts.add(context);
+      return context;
+    });
+    addTearDown(host.dispose);
+    service = AudioSourceService.withDependencies(
+      runtime: host,
+      parser: parser,
+    );
+    parser.scripts[url] = 'old';
+    await service.useLxSource(url);
+    final oldContext = contexts.last;
+    final revision = service.lxSourceRevision;
+    final oldConfig = service.activeSource;
+    // Reinitializing the old script would now fail. Rollback must not need it.
+    oldContext.rejectedScripts.add('old');
+    parser.scripts[url] = 'bad';
+    await expectLater(service.useLxSource(url), throwsStateError);
+    expect(oldContext.loads, ['old']);
+    expect(oldContext.isScriptReady, isTrue);
+    expect(contexts.last.isInitialized, isFalse);
+    expect(host.currentScript, same(oldContext.currentScript));
+    expect(service.activeSource, same(oldConfig));
+    expect(service.lxSourceRevision, revision);
+    expect(service.loadState, AudioSourceLoadState.ready);
+  });
+
+  test('old resolution remains available until candidate commit', () async {
+    final contexts = <_Runtime>[];
+    Completer<void>? gate;
+    Completer<void>? started;
+    final host = LxMusicRuntimeService.withFactory(() {
+      final context = _Runtime()
+        ..gate = gate
+        ..started = started;
+      contexts.add(context);
+      return context;
+    });
+    addTearDown(host.dispose);
+    service = AudioSourceService.withDependencies(
+      runtime: host,
+      parser: parser,
+    );
+    parser.scripts[url] = 'old';
+    await service.useLxSource(url);
+    final oldContext = contexts.last;
+    gate = Completer<void>();
+    started = Completer<void>();
+    parser.scripts[url] = 'new';
+    final replacing = service.useLxSource(url);
+    await started.future;
+    try {
+      await service.initializeLxRuntime().timeout(const Duration(seconds: 1));
+      expect(host.currentScript, same(oldContext.currentScript));
+      expect(
+        await host.getMusicUrl(source: 'wy', songId: '1', quality: '128k'),
+        'https://example.com/audio.mp3',
+      );
+      expect(service.activeSource!.scriptContent, 'old');
+    } finally {
+      gate.complete();
+    }
+    await replacing;
+    expect(oldContext.isInitialized, isFalse);
+    expect(host.currentScript!.script, 'new');
+    expect(service.activeSource!.scriptContent, 'new');
+    await service.clear();
+    expect(host.isScriptReady, isFalse);
+    expect(contexts.every((context) => !context.isInitialized), isTrue);
+  });
+
+  test('disposing host invalidates a candidate that finishes late', () async {
+    final gate = Completer<void>();
+    final started = Completer<void>();
+    final contexts = <_Runtime>[];
+    final host = LxMusicRuntimeService.withFactory(() {
+      final context = _Runtime();
+      if (contexts.isNotEmpty) {
+        context.gate = gate;
+        context.started = started;
+      }
+      contexts.add(context);
+      return context;
+    });
+    final preparing = host.prepareScript('new');
+    final check = expectLater(preparing, throwsStateError);
+    await started.future;
+    await host.dispose();
+    gate.complete();
+    await check;
+    expect(host.isScriptReady, isFalse);
+    expect(contexts.every((context) => !context.isInitialized), isTrue);
+  });
+
+  test(
+    'backend changes discard isolated candidate without replacing old context',
+    () async {
+      final contexts = <_Runtime>[];
+      Completer<void>? gate;
+      Completer<void>? started;
+      final host = LxMusicRuntimeService.withFactory(() {
+        final context = _Runtime()
+          ..gate = gate
+          ..started = started;
+        contexts.add(context);
+        return context;
+      });
+      addTearDown(host.dispose);
+      service = AudioSourceService.withDependencies(
+        runtime: host,
+        parser: parser,
+      );
+      parser.scripts[url] = 'old';
+      await service.useLxSource(url);
+      final old = contexts.last;
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString('audio_source_list');
+      parser.scripts['staged.js'] = 'new';
+      gate = Completer<void>();
+      started = Completer<void>();
+      final updating = service.useLxSource('', catalogPath: 'staged.js');
+      final check = expectLater(updating, throwsException);
+      await started.future;
+      UrlService().useCustomSource('https://staged-change.example');
+      gate.complete();
+      await check;
+      expect(host.currentScript, same(old.currentScript));
+      expect(old.loads, ['old']);
+      expect(contexts.last.isInitialized, isFalse);
+      expect(prefs.getString('audio_source_list'), stored);
+      expect(service.activeSource!.scriptContent, 'old');
+    },
+  );
 
   test(
     'catalog refresh migrates legacy URL and keeps the stable local ID',

@@ -414,6 +414,7 @@ class PlaybackService extends ChangeNotifier {
   void Function(String message)? onPlaybackNotice;
   int? _problemRequestEpoch;
   String? _problemSourceFingerprint;
+  ({String trackKey, String? resolverFingerprint})? _remoteRetryRefresh;
   String? _observedSourceFingerprint;
 
   // ══════════════════════════════════════════════════════
@@ -1295,6 +1296,16 @@ class PlaybackService extends ChangeNotifier {
         (shouldRetryWithoutCache ||
             (_canRetryOnError(error) && _retriedTrackKey != trackKey));
 
+    _logPlaybackDebug(
+      '[PlaybackService] 引擎加载失败 '
+      'tx=${error.epoch} track=$trackKey '
+      'kind=${error.type.name} http=${error.httpStatus} '
+      'retry=$canRetry refreshUrl=${_shouldRefreshUrlOnError(error)} '
+      'remainingMs=${_currentSwitchTx?.budget?.remaining().inMilliseconds} '
+      'detail=${_buildErrorMessage(error)}',
+      toDeveloperPanel: true,
+    );
+
     if (canRetry) {
       _currentSwitchTx?.budget?.consumeRecovery();
       _performanceMetrics.recordEngineRetry();
@@ -1309,7 +1320,11 @@ class PlaybackService extends ChangeNotifier {
       if (cacheQuality != null) {
         StructuredLogService.log('[PlaybackService] 缓存流播放失败，绕过当前缓存后重试: $error');
       } else {
-        StructuredLogService.log('[PlaybackService] 引擎错误，强制重新解析后重试: $error');
+        StructuredLogService.log(
+          _shouldRefreshUrlOnError(error)
+              ? '[PlaybackService] 引擎错误，重新解析后重试: $error'
+              : '[PlaybackService] 引擎错误，复用播放链接重试: $error',
+        );
       }
       final current = _pendingTrack ?? currentTrack;
       if (current == null || _buildTrackIdentity(current) != trackKey) return;
@@ -1386,6 +1401,7 @@ class PlaybackService extends ChangeNotifier {
       track,
       _errorMessage!,
       kind: _problemKindForEngineError(error),
+      engineError: error,
       recoveryActions: error.type == EngineErrorType.unsupportedFormat
           ? const {}
           : const {PlaybackRecoveryAction.retry},
@@ -1466,7 +1482,7 @@ class PlaybackService extends ChangeNotifier {
       _state = PBState.error;
       _errorMessage = '自动切歌恢复失败，请重试';
       _finishPendingFailure();
-      _reportPlaybackFailure(track, _errorMessage!);
+      _reportPlaybackFailure(track, _errorMessage!, engineError: error);
       notifyListeners();
       StructuredLogService.event(
         'playback.native_recovery_exception',
@@ -1547,6 +1563,7 @@ class PlaybackService extends ChangeNotifier {
       PlaybackRecoveryAction.retry,
     },
     bool emitEffect = true,
+    EngineError? engineError,
   }) {
     final problem = _problemStore.report(
       transactionId: _playGeneration,
@@ -1556,6 +1573,24 @@ class PlaybackService extends ChangeNotifier {
       recoveryActions: recoveryActions,
     );
     if (problem == null) return;
+    final status = engineError?.httpStatus;
+    _remoteRetryRefresh =
+        track.source != MusicSource.local &&
+            _source != QueueSource.radio &&
+            status != null &&
+            status >= 500 &&
+            status < 600
+        ? (
+            trackKey: _buildTrackIdentity(track),
+            resolverFingerprint: _resolverFingerprintFor(track),
+          )
+        : null;
+    _logPlaybackDebug(
+      '[PlaybackService] 播放失败 tx=${problem.transactionId} '
+      'track=${_buildTrackIdentity(track)} kind=${kind.name} '
+      'http=${engineError?.httpStatus} reason=$message',
+      toDeveloperPanel: true,
+    );
     _problemRequestEpoch = _requestRouter.currentEpoch;
     _problemSourceFingerprint = _activeSourceConfigFingerprint();
     problemNotifier.value = problem;
@@ -1583,6 +1618,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _clearPlaybackProblem() {
+    _remoteRetryRefresh = null;
     _failedReplacementQueue = null;
     _problemRequestEpoch = null;
     _problemSourceFingerprint = null;
@@ -1839,15 +1875,8 @@ class PlaybackService extends ChangeNotifier {
     if (source == null) return null;
     // Only changes to the active request configuration invalidate playback.
     final requestConfig = <Object?>[
-      source.id,
+      source.resolverContentHash,
       sourceService.lxSourceRevision,
-      source.type.name,
-      source.version,
-      source.url,
-      source.apiKey,
-      source.scriptContent,
-      source.scriptSource,
-      source.urlPathTemplate,
       source.supportedPlatforms.join(','),
     ].join('\u0000');
     return '${source.id}:${requestConfig.hashCode}';
@@ -1885,6 +1914,9 @@ class PlaybackService extends ChangeNotifier {
   void _onAudioSourceConfigChanged() {
     final activating =
         AudioSourceService().loadState == AudioSourceLoadState.activating;
+    if (activating && AudioSourceService().preservesRuntimeDuringActivation) {
+      return;
+    }
     final removedDuringRecovery =
         AudioSourceService().activeSource == null && _naturalRecovery != null;
     // A newer selection made while initialization was pending wins too.
@@ -2701,6 +2733,14 @@ class PlaybackService extends ChangeNotifier {
     final retryTrack =
         _pendingTrack ?? _lastFailedTrack ?? problemTrack ?? _activeTrack;
     if (retryTrack == null) return;
+    // Automatic recovery may replay a URL once after a transient 5xx. A new
+    // explicit retry must not remain pinned to that URL's five-minute cache.
+    final refresh = _remoteRetryRefresh;
+    forceRemoteResolution =
+        forceRemoteResolution ||
+        (refresh != null &&
+            refresh.trackKey == _buildTrackIdentity(retryTrack) &&
+            refresh.resolverFingerprint == _resolverFingerprintFor(retryTrack));
     final failedQueue = _failedReplacementQueue;
     if (failedQueue != null &&
         currentProblem != null &&
@@ -3536,6 +3576,7 @@ class PlaybackService extends ChangeNotifier {
               sourceIds: track.sourceIds,
               title: track.name,
               artist: track.artists,
+              album: track.album,
               timeout: resolveTimeout,
               fetchLyrics: false,
               resolverFingerprint: resolverFingerprint,
@@ -4167,6 +4208,7 @@ class PlaybackService extends ChangeNotifier {
           quality: quality,
           title: track.name,
           artist: track.artists,
+          album: track.album,
           timeout: _lyricSongDetailTimeout,
           purpose: 'lyric-service',
           fetchLyrics: true,
@@ -4885,6 +4927,7 @@ class PlaybackService extends ChangeNotifier {
           tx.track,
           _errorMessage!,
           kind: _problemKindForEngineError(exception.error),
+          engineError: exception.error,
           recoveryActions:
               exception.error.type == EngineErrorType.unsupportedFormat
               ? const {}
@@ -5195,6 +5238,7 @@ class PlaybackService extends ChangeNotifier {
               candidate.track,
               _errorMessage!,
               kind: _problemKindForEngineError(nativeFailure.error),
+              engineError: nativeFailure.error,
               recoveryActions:
                   nativeFailure.error.type == EngineErrorType.unsupportedFormat
                   ? const {}
@@ -5743,6 +5787,7 @@ class PlaybackService extends ChangeNotifier {
     TrackSourceIds sourceIds = const TrackSourceIds(),
     required String title,
     required String artist,
+    String album = '',
     required Duration timeout,
     required String purpose,
     bool fetchLyrics = true,
@@ -5765,6 +5810,7 @@ class PlaybackService extends ChangeNotifier {
             sourceIds: sourceIds,
             title: title,
             artist: artist,
+            album: album,
             timeout: timeout,
             fetchLyrics: fetchLyrics,
             resolverFingerprint: PlaybackResolverRegistry().fingerprintFor(
@@ -6265,6 +6311,7 @@ class PlaybackService extends ChangeNotifier {
       sourceIds: track.sourceIds,
       title: track.name,
       artist: track.artists,
+      album: track.album,
       timeout: _preloadSongDetailTimeout,
       purpose: 'preload',
       fetchLyrics: false,

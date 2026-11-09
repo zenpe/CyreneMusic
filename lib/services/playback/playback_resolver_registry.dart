@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import '../../models/track.dart';
 import '../../models/audio_source_config.dart';
 import '../audio_source_service.dart';
@@ -75,15 +77,16 @@ class PlaybackResolverRegistry {
             isActive: service.activeSource?.id == config.id,
             service: service,
           );
-    final fingerprint = [
-      config.id,
-      config.type.name,
-      config.version,
-      config.url,
-      config.scriptSource,
-      config.scriptContent,
-      platforms.join(','),
-    ].join('\u0000');
+    final fingerprint = sha256
+        .convert(
+          utf8.encode(
+            jsonEncode([
+              config.resolverContentHash,
+              platforms.toSet().toList()..sort(),
+            ]),
+          ),
+        )
+        .toString();
     return PlaybackResolverDescriptor(
       id: config.id,
       name: config.name,

@@ -60,6 +60,108 @@ void main() {
   });
 
   test(
+    '520 automatic retry reuses cache but explicit retry obtains a fresh URL',
+    () async {
+      await configureTestSource();
+      var fetches = 0;
+      final resolver = TrackResolver(
+        fetcher:
+            ({
+              required songId,
+              required quality,
+              required source,
+              required title,
+              required artist,
+              String album = '',
+              required sourceIds,
+              required fetchLyrics,
+              onLxFailure,
+              requestTimeout,
+            }) async {
+              fetches++;
+              return SongDetail(
+                id: songId,
+                name: title,
+                pic: '',
+                arName: artist,
+                alName: album,
+                level: 'standard',
+                size: '',
+                url: 'https://example.test/audio-$fetches.mp3',
+                lyric: '',
+                tlyric: '',
+                source: source,
+              );
+            },
+      );
+      final engine = _Engine();
+      final playback = _createPlayback(resolver, engine: engine);
+      try {
+        await playback.playNow(_remoteTracks(1), 0, QueueSource.none);
+        expect(fetches, 1);
+        final cause = ja.PlayerException(520, 'upstream unavailable', null);
+        engine.nextError = EngineErrorType.sourceLoad;
+        engine.nextErrorCause = cause;
+        engine._errors.add(
+          EngineError(
+            type: EngineErrorType.sourceLoad,
+            message: 'upstream unavailable',
+            cause: cause,
+            epoch: engine.loadedGeneration!,
+            sourceUrl: engine.loadedUrls.last,
+          ),
+        );
+        await waitUntil(() => playback.currentProblem != null);
+        expectFinished(playback);
+        expect(fetches, 1, reason: 'automatic recovery can reuse the URL once');
+        expect(engine.loadedUrls, hasLength(2));
+        expect(engine.loadedUrls[0], engine.loadedUrls[1]);
+        await playback.retryCurrentTrack();
+        expect(playback.state, PBState.playing);
+        expect(fetches, 2);
+        expect(engine.loadedUrls.last, 'https://example.test/audio-2.mp3');
+      } finally {
+        playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
+
+  for (final status in [520, 503, 429]) {
+    test(
+      'terminal HTTP $status only refreshes 5xx on explicit retry',
+      () async {
+        await configureTestSource();
+        final resolver = _Resolver()..playable.add('0');
+        final engine = _Engine()
+          ..nextError = EngineErrorType.sourceLoad
+          ..errorLoadCount = status >= 500 ? 2 : 1
+          ..nextErrorCause = ja.PlayerException(
+            status,
+            'upstream unavailable',
+            null,
+          );
+        final playback = _createPlayback(resolver, engine: engine);
+        try {
+          await playback.playNow(_remoteTracks(1), 0, QueueSource.none);
+          expectFinished(playback);
+          expect(resolver.memoryBypasses.last, isFalse);
+          await playback.retryCurrentTrack();
+          expect(playback.state, PBState.playing);
+          expect(resolver.memoryBypasses.last, status >= 500);
+          expect(resolver.cacheBypasses.last, status >= 500);
+          await playback.pause();
+          await playback.resume();
+          expect(playback.state, PBState.playing);
+        } finally {
+          playback.dispose();
+          await AudioSourceService().removeSource('playback-test-source');
+        }
+      },
+    );
+  }
+
+  test(
     'selection presentation, pause and late events belong to selected song',
     () async {
       await configureTestSource();
@@ -2567,7 +2669,7 @@ void _nearEnd(_Engine engine) {
 }
 
 PlaybackService _createPlayback(
-  _Resolver resolver, {
+  TrackResolver resolver, {
   _Engine? engine,
   StartupNetworkGate Function()? startupNetworkGateFactory,
 }) => PlaybackService.forTesting(
@@ -2707,6 +2809,7 @@ class _Resolver extends TrackResolver {
     required MusicSource source,
     required String title,
     required String artist,
+    String album = '',
     TrackSourceIds sourceIds = const TrackSourceIds(),
     required Duration timeout,
     bool fetchLyrics = true,
@@ -2778,6 +2881,7 @@ class _Engine extends Fake implements AudioEngine, EngineBufferingReporter {
     );
   }
 
+  int errorLoadCount = 1;
   EngineErrorType? nextError;
   Object? nextErrorCause;
   final loadedUrls = <String?>[];
@@ -2833,8 +2937,8 @@ class _Engine extends Fake implements AudioEngine, EngineBufferingReporter {
     loadedUrls.add(source.sourceUrl);
     await loadGate?.future;
     final error = nextError;
-    nextError = null;
     if (error != null) {
+      if (--errorLoadCount <= 0) nextError = null;
       loadedGeneration = null;
       _playing = false;
       final failure = EngineError(

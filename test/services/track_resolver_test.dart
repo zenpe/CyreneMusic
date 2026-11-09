@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('forwards the caller deadline to the underlying resolver', () async {
     Duration? observedTimeout;
+    String? observedAlbum;
     final resolver = TrackResolver(
       fetcher:
           ({
@@ -17,12 +18,14 @@ void main() {
             required source,
             required title,
             required artist,
+            String album = '',
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
             requestTimeout,
           }) async {
             observedTimeout = requestTimeout;
+            observedAlbum = album;
             return _detail(songId as int);
           },
     );
@@ -33,10 +36,12 @@ void main() {
       source: MusicSource.netease,
       title: 'title',
       artist: 'artist',
+      album: 'Album title',
       timeout: const Duration(seconds: 4),
     );
 
     expect(observedTimeout, const Duration(seconds: 4));
+    expect(observedAlbum, 'Album title');
   });
 
   test(
@@ -51,6 +56,7 @@ void main() {
               required source,
               required title,
               required artist,
+              String album = '',
               required sourceIds,
               required fetchLyrics,
               onLxFailure,
@@ -91,6 +97,7 @@ void main() {
             required source,
             required title,
             required artist,
+            String album = '',
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
@@ -137,6 +144,7 @@ void main() {
               required source,
               required title,
               required artist,
+              String album = '',
               required sourceIds,
               required fetchLyrics,
               onLxFailure,
@@ -185,6 +193,7 @@ void main() {
             required source,
             required title,
             required artist,
+            String album = '',
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
@@ -229,6 +238,7 @@ void main() {
             required source,
             required title,
             required artist,
+            String album = '',
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
@@ -288,6 +298,7 @@ void main() {
               required source,
               required title,
               required artist,
+              String album = '',
               required sourceIds,
               required fetchLyrics,
               onLxFailure,
@@ -369,6 +380,7 @@ void main() {
             required source,
             required title,
             required artist,
+            String album = '',
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
@@ -414,6 +426,7 @@ void main() {
             required source,
             required title,
             required artist,
+            String album = '',
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
@@ -459,6 +472,7 @@ void main() {
             required source,
             required title,
             required artist,
+            String album = '',
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
@@ -538,6 +552,7 @@ void main() {
             required source,
             required title,
             required artist,
+            String album = '',
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
@@ -582,6 +597,7 @@ void main() {
             required source,
             required title,
             required artist,
+            String album = '',
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
@@ -615,6 +631,7 @@ void main() {
               required source,
               required title,
               required artist,
+              String album = '',
               required sourceIds,
               required fetchLyrics,
               onLxFailure,
@@ -651,6 +668,7 @@ void main() {
             required source,
             required title,
             required artist,
+            String album = '',
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
@@ -686,6 +704,7 @@ void main() {
             required source,
             required title,
             required artist,
+            String album = '',
             required sourceIds,
             required fetchLyrics,
             onLxFailure,
@@ -733,6 +752,7 @@ void main() {
             required source,
             required title,
             required artist,
+            String album = '',
             required sourceIds,
             required fetchLyrics,
             onLxFailure,

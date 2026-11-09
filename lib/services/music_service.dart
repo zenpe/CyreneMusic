@@ -1,3 +1,4 @@
+import 'lx_music_info.dart';
 import 'dart:async';
 import 'audio_quality_service.dart';
 import 'structured_log_service.dart';
@@ -344,6 +345,7 @@ class MusicService extends ChangeNotifier {
     MusicSource source = MusicSource.netease,
     String? title,
     String? artist,
+    String? album,
     TrackSourceIds sourceIds = const TrackSourceIds(),
     bool fetchLyrics = true,
     void Function(LxRuntimeFailure? failure)? onLxFailure,
@@ -435,6 +437,9 @@ class MusicService extends ChangeNotifier {
         source: source,
         sourceIds: sourceIds,
         audioSourceService: audioSourceService,
+        title: title,
+        artist: artist,
+        album: album,
         fetchLyrics: fetchLyrics,
         onFailure: onLxFailure,
         requestTimeout: requestTimeout,
@@ -562,6 +567,9 @@ class MusicService extends ChangeNotifier {
     required MusicSource source,
     required TrackSourceIds sourceIds,
     required AudioSourceService audioSourceService,
+    String? title,
+    String? artist,
+    String? album,
     required bool fetchLyrics,
     void Function(LxRuntimeFailure? failure)? onFailure,
     Duration? requestTimeout,
@@ -624,6 +632,14 @@ class MusicService extends ChangeNotifier {
       final audioUrl = await runtime.getMusicUrl(
         source: sourceCode!,
         songId: lxSongId,
+        musicInfo: buildLxMusicInfo(
+          source: sourceCode,
+          songId: lxSongId,
+          title: title,
+          artist: artist,
+          album: album,
+          sourceIds: sourceIds,
+        ),
         quality: lxQuality,
         timeout: remaining,
       );

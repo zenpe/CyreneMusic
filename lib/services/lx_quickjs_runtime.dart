@@ -1,3 +1,4 @@
+import 'lx_music_info.dart';
 import 'structured_log_service.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -14,6 +15,7 @@ class _LxRuntimeContext {
   final int generation;
   final JavascriptRuntime runtime;
   final Map<int, Timer> timers = {};
+  final Map<int, String?> timerOwners = {};
   bool disposed = false;
 
   void cancelTimers() {
@@ -21,6 +23,7 @@ class _LxRuntimeContext {
       timer.cancel();
     }
     timers.clear();
+    timerOwners.clear();
   }
 }
 
@@ -37,6 +40,7 @@ class LxQuickJsRuntime implements LxRuntime {
   JavascriptRuntime? _runtime;
   _LxRuntimeContext? _context;
   int _runtimeGeneration = 0;
+  int _disposalRevision = 0;
   bool _isInitialized = false;
   bool _isScriptReady = false;
   String? _initializationError;
@@ -127,19 +131,27 @@ class LxQuickJsRuntime implements LxRuntime {
 
   @override
   Future<LxScriptInfo?> loadScript(String scriptContent) {
+    final revision = _disposalRevision;
     for (final owner in _owners.values.toList()) {
       owner.cancel();
     }
-    return _enqueueOperation(() => _loadScriptInternal(scriptContent));
+    return _enqueueOperation(
+      () => _loadScriptInternal(scriptContent, revision),
+    );
   }
 
-  Future<LxScriptInfo?> _loadScriptInternal(String scriptContent) async {
+  Future<LxScriptInfo?> _loadScriptInternal(
+    String scriptContent,
+    int revision,
+  ) async {
+    if (revision != _disposalRevision) return null;
     // A script may leave unresolved promises, timers, or HTTP callbacks in
     // the JS global scope. __lx_reset__ cannot cancel those tasks, so a source
     // switch must get a fresh JS context instead of reusing the old one.
     if (_isInitialized) {
       await _resetRuntimeContext();
     }
+    if (revision != _disposalRevision) return null;
     if (!_isInitialized) {
       await initialize();
     }
@@ -152,6 +164,9 @@ class LxQuickJsRuntime implements LxRuntime {
     _lastFailure = null;
     _debug('📜 [LxQuickJsRuntime] 加载脚本...');
     _isScriptReady = false;
+    _pendingSupportedSources = [];
+    _pendingSupportedQualities = [];
+    _pendingPlatformQualities = {};
     final context = _context;
     if (context == null || context.disposed) return null;
 
@@ -343,14 +358,10 @@ class LxQuickJsRuntime implements LxRuntime {
       },
     );
 
+    var completedSuccessfully = false;
     try {
       final info =
-          musicInfo ??
-          {
-            'songmid': songId.toString(),
-            'copyrightId': songId.toString(),
-            'hash': songId.toString(),
-          };
+          musicInfo ?? buildLxMusicInfo(source: source, songId: songId);
 
       final requestData = jsonEncode({
         'requestKey': requestKey,
@@ -388,6 +399,7 @@ class LxQuickJsRuntime implements LxRuntime {
           'elapsed_ms': requestClock.elapsedMilliseconds,
         },
       );
+      completedSuccessfully = true;
       return result;
     } catch (e) {
       if (e is ResolutionCancelled || owner.isCancelled) {
@@ -415,13 +427,13 @@ class LxQuickJsRuntime implements LxRuntime {
       _error('❌ [LxQuickJsRuntime] 获取 URL 失败: $e');
       return null;
     } finally {
-      owner.cancel();
-      _owners.remove(requestKey);
-      _deadlines.remove(requestKey);
       if (!context.disposed && identical(context, _context)) {
         try {
+          final cleanup = completedSuccessfully && !owner.isCancelled
+              ? '__lx_completeRequest__'
+              : '__lx_cancelRequest__';
           await _evaluate(
-            'globalThis.__lx_cancelRequest__(${jsonEncode(requestKey)});',
+            'globalThis.$cleanup(${jsonEncode(requestKey)});',
             context: context,
           );
         } catch (error) {
@@ -434,6 +446,9 @@ class LxQuickJsRuntime implements LxRuntime {
         // Abandoned promises lose their request-scoped HTTP/timer callbacks.
         // Do not reset the shared context underneath another live resolution.
       }
+      owner.cancel();
+      _owners.remove(requestKey);
+      _deadlines.remove(requestKey);
       _pendingRequests.remove(requestKey);
     }
   }
@@ -475,6 +490,7 @@ class LxQuickJsRuntime implements LxRuntime {
 
   @override
   Future<void> dispose() async {
+    _disposalRevision++;
     for (final request in _httpRequests.values.toList()) {
       request.cancel();
     }
@@ -579,7 +595,15 @@ class LxQuickJsRuntime implements LxRuntime {
         _handleTimer(context, data);
         break;
       case 'lxClearTimeout':
-        if (data is Map) context.timers.remove(data['timerId'])?.cancel();
+        if (data is Map) {
+          context.timers.remove(data['timerId'])?.cancel();
+          context.timerOwners.remove(data['timerId']);
+        }
+        break;
+      case 'lxPromoteTimer':
+        if (data is Map && context.timers.containsKey(data['timerId'])) {
+          context.timerOwners[data['timerId'] as int] = null;
+        }
         break;
       case 'lxOnResponse':
         _handleResponse(context, data);
@@ -601,13 +625,17 @@ class LxQuickJsRuntime implements LxRuntime {
     if (ownerKey != null && (owner == null || owner.isCancelled)) return;
     final delay = data['delay'];
     final milliseconds = delay is num ? delay.toInt().clamp(0, 2147483647) : 0;
+    context.timerOwners[timerId] = ownerKey;
     context.timers[timerId] = Timer(
       Duration(milliseconds: milliseconds),
       () async {
         context.timers.remove(timerId);
+        final currentOwnerKey = context.timerOwners.remove(timerId);
+        final currentOwner = _owners[currentOwnerKey];
         if (context.disposed ||
             !identical(context, _context) ||
-            owner?.isCancelled == true) {
+            (currentOwnerKey != null &&
+                (currentOwner == null || currentOwner.isCancelled))) {
           return;
         }
         try {
@@ -616,7 +644,7 @@ class LxQuickJsRuntime implements LxRuntime {
             context: context,
           );
         } catch (error) {
-          if (!context.disposed && owner?.isCancelled != true) {
+          if (!context.disposed && currentOwner?.isCancelled != true) {
             _error('❌ [LxQuickJsRuntime] 脚本定时器失败: $error');
           }
         }

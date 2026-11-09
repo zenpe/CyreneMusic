@@ -13,6 +13,47 @@ void main() {
   setUp(LxHttpBridge.close);
   tearDown(LxHttpBridge.close);
 
+  test('preserves case-insensitive UA and bounds script timeouts', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final subscription = server.listen((request) async {
+      if (request.uri.path == '/slow') return;
+      request.response.write(request.headers.value('user-agent'));
+      await request.response.close();
+    });
+    addTearDown(() async {
+      await subscription.cancel();
+      await server.close(force: true);
+    });
+    final url = 'http://127.0.0.1:${server.port}';
+    final owner = ResolutionRequest();
+    for (final key in ['user-agent', 'User-Agent', 'USER-AGENT']) {
+      final result = await LxHttpBridge.performHttpRequest(url, {
+        'headers': {key: 'custom-agent'},
+      });
+      expect(result['body'], 'custom-agent');
+    }
+    for (final scriptTimeout in [80, 5000, 0, -1]) {
+      final watch = Stopwatch()..start();
+      await expectLater(
+        LxHttpBridge.performHttpRequest(
+          '$url/slow',
+          {'timeout': scriptTimeout},
+          timeout: Duration(milliseconds: scriptTimeout == 80 ? 2000 : 250),
+          request: owner,
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(watch.elapsedMilliseconds, lessThan(1500));
+      expect(owner.isCancelled, isFalse);
+      final fallback = await LxHttpBridge.performHttpRequest(
+        url,
+        {},
+        request: owner,
+      );
+      expect(fallback['body'], 'lx-music-request');
+    }
+  });
+
   test('GET and POST retain headers, JSON, form and byte bodies', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final received = <Map<String, Object?>>[];

@@ -55,6 +55,10 @@ class AudioSourceService extends ChangeNotifier {
       : AudioSourceLoadState.inactive;
   String? loadError;
 
+  bool get preservesRuntimeDuringActivation =>
+      _runtime is LxStagedRuntime &&
+      (_runtime as LxStagedRuntime).supportsStaging;
+
   int _lxSourceRevision = 0;
   int get lxSourceRevision => _lxSourceRevision;
 
@@ -146,6 +150,13 @@ class AudioSourceService extends ChangeNotifier {
 
   /// 初始化洛雪运行时环境
   Future<void> initializeLxRuntime() async {
+    // A candidate has its own context; existing playback can keep resolving.
+    if (_runtime is LxStagedRuntime &&
+        (_runtime as LxStagedRuntime).supportsStaging &&
+        _lxRuntimeSourceId == activeSource?.id &&
+        _runtime.isScriptReady) {
+      return;
+    }
     while (true) {
       final activation = _candidateActivation;
       if (activation == null) break;
@@ -203,9 +214,17 @@ class AudioSourceService extends ChangeNotifier {
           );
         }
       } catch (e) {
-        loadError = e.toString();
+        if (generation == _lxRuntimeGeneration &&
+            activeSource?.id == sourceId) {
+          loadError = e.toString();
+        }
         StructuredLogService.log('❌ [AudioSourceService] 初始化洛雪运行时失败: $e');
         rethrow;
+      } finally {
+        if (generation == _lxRuntimeGeneration &&
+            activeSource?.id == sourceId) {
+          notifyListeners();
+        }
       }
     });
     _lxRuntimeOperation = operation;
@@ -442,11 +461,16 @@ class AudioSourceService extends ChangeNotifier {
     final previousSources = List<AudioSourceConfig>.from(_sources);
     final previousId = _activeSourceId;
     final previous = activeSource;
+    final previousRuntimeId = _lxRuntimeSourceId;
+    final staged =
+        _runtime is LxStagedRuntime &&
+        (_runtime as LxStagedRuntime).supportsStaging;
+    LxRuntimeCandidate? candidate;
     final index = _sources.indexWhere((source) => source.id == config.id);
     final barrier = Completer<void>();
     _candidateActivation = barrier.future;
     _lxRuntimeGeneration++;
-    _lxRuntimeSourceId = null;
+    if (!staged) _lxRuntimeSourceId = null;
     notifyListeners();
     SharedPreferences? prefs;
     String? storedSources;
@@ -455,10 +479,18 @@ class AudioSourceService extends ChangeNotifier {
     try {
       await _lxRuntimeOperation.catchError((_) {});
       checkBackend();
-      final info = await _runtime.loadScript(config.scriptContent);
+      final LxScriptInfo? info;
+      if (staged) {
+        candidate = await (_runtime as LxStagedRuntime).prepareScript(
+          config.scriptContent,
+        );
+        info = candidate.script;
+      } else {
+        info = await _runtime.loadScript(config.scriptContent);
+      }
       checkBackend();
       if (info == null ||
-          !_runtime.isScriptReady ||
+          (!staged && !_runtime.isScriptReady) ||
           info.supportedSources.isEmpty) {
         throw Exception(_runtime.lastFailure?.message ?? '脚本加载失败或初始化超时');
       }
@@ -481,6 +513,7 @@ class AudioSourceService extends ChangeNotifier {
         throw Exception('无法保存音源配置');
       }
       checkBackend();
+      candidate?.commit();
       _sources = nextSources;
       _activeSourceId = config.id;
       _lxRuntimeSourceId = config.id;
@@ -489,7 +522,7 @@ class AudioSourceService extends ChangeNotifier {
     } catch (error) {
       _sources = previousSources;
       _activeSourceId = previousId;
-      _lxRuntimeSourceId = null;
+      _lxRuntimeSourceId = staged ? previousRuntimeId : null;
       var restored = true;
       if (persistenceStarted && prefs != null) {
         try {
@@ -505,7 +538,9 @@ class AudioSourceService extends ChangeNotifier {
         }
       }
       try {
-        if (previous?.type == AudioSourceType.lxmusic) {
+        if (staged) {
+          await candidate?.dispose();
+        } else if (previous?.type == AudioSourceType.lxmusic) {
           final content = previous!.scriptContent.isNotEmpty
               ? previous.scriptContent
               : await _loadLxScriptContent();
@@ -530,9 +565,13 @@ class AudioSourceService extends ChangeNotifier {
       }
       rethrow;
     } finally {
-      _candidateActivation = null;
-      barrier.complete();
-      notifyListeners();
+      try {
+        await candidate?.dispose();
+      } finally {
+        _candidateActivation = null;
+        barrier.complete();
+        notifyListeners();
+      }
     }
   }
 
@@ -568,6 +607,7 @@ class AudioSourceService extends ChangeNotifier {
     if (_activeSourceId == id) {
       _activeSourceId = '';
       _invalidateLxRuntime();
+      await _runtime.dispose();
       await _saveActiveSourceId();
     }
     _sources.removeWhere((s) => s.id == id);
@@ -579,6 +619,7 @@ class AudioSourceService extends ChangeNotifier {
     if (id == navidromeSourceId) {
       _activeSourceId = id;
       _invalidateLxRuntime();
+      await _runtime.dispose();
       loadError = null;
       await _saveActiveSourceId();
       notifyListeners();
@@ -727,6 +768,7 @@ class AudioSourceService extends ChangeNotifier {
     return _enqueueMutation(() async {
       _activeSourceId = '';
       _invalidateLxRuntime();
+      await _runtime.dispose();
       await _saveActiveSourceId();
       notifyListeners();
     });

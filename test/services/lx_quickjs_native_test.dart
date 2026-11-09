@@ -1,3 +1,6 @@
+import 'package:crypto/crypto.dart';
+import 'package:cyrene_music/services/lx_music_info.dart';
+import 'package:cyrene_music/services/lx_music_runtime_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -11,6 +14,198 @@ import 'package:flutter_test/flutter_test.dart';
 // Requires the flutter_js native library on PATH; opted into by native CI.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test(
+    'disposing a queued load cannot resurrect its native context',
+    () async {
+      final runtime = LxQuickJsRuntime();
+      addTearDown(runtime.dispose);
+      final loading = runtime.loadScript(
+        "lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});",
+      );
+      await runtime.dispose();
+      expect(await loading, isNull);
+      expect(runtime.isInitialized, isFalse);
+      expect(runtime.isScriptReady, isFalse);
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
+  test(
+    'replacement cannot inherit previous platform capabilities',
+    () async {
+      final runtime = LxQuickJsRuntime();
+      addTearDown(runtime.dispose);
+      await runtime.loadScript(
+        "lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['flac']}}});",
+      );
+      expect(runtime.currentScript!.supportedSources, ['tx']);
+      await runtime.loadScript('lx.send(lx.EVENT_NAMES.inited);');
+      expect(runtime.currentScript!.supportedSources, isEmpty);
+      expect(runtime.currentScript!.platformQualities, isEmpty);
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
+  test(
+    'native staged activation preserves old context until commit',
+    () async {
+      final host = LxMusicRuntimeService.withFactory(LxQuickJsRuntime.new);
+      addTearDown(host.dispose);
+      await host.loadScript('''
+      lx.on(lx.EVENT_NAMES.request, () => new Promise(resolve =>
+        setTimeout(() => resolve('https://example.com/old.mp3'), 300)));
+      lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
+    ''');
+      final oldScript = host.currentScript;
+      final oldRequest = host.getMusicUrl(
+        source: 'tx',
+        songId: '1',
+        quality: '128k',
+      );
+      await expectLater(
+        host.prepareScript("throw new Error('broken candidate')"),
+        throwsStateError,
+      );
+      expect(host.currentScript, same(oldScript));
+      expect(await oldRequest, 'https://example.com/old.mp3');
+      final candidate = await host.prepareScript('''
+      lx.on(lx.EVENT_NAMES.request, () => 'https://example.com/new.mp3');
+      lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
+    ''');
+      expect(host.currentScript, same(oldScript));
+      candidate.commit();
+      await candidate.dispose();
+      expect(
+        await host.getMusicUrl(source: 'tx', songId: '2', quality: '128k'),
+        'https://example.com/new.mp3',
+      );
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
+
+  test(
+    'completed resolutions retain expiry and renewal timers until source disposal',
+    () async {
+      final overrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = overrides);
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      var renewals = 0;
+      final renewed = Completer<void>();
+      final subscription = server.listen((request) async {
+        renewals++;
+        request.response.write('{}');
+        await request.response.close();
+        if (!renewed.isCompleted) renewed.complete();
+      });
+      final runtime = LxQuickJsRuntime();
+      addTearDown(() async {
+        await runtime.dispose();
+        await subscription.cancel();
+        await server.close(force: true);
+      });
+      await runtime.loadScript('''
+      let cached = false;
+      lx.on(lx.EVENT_NAMES.request, ({info}) => {
+        if (info.musicInfo.songmid === 'start') {
+          cached = true;
+          setTimeout(() => {
+            cached = false;
+            lx.request('http://127.0.0.1:${server.port}/renew', {}, () => {});
+          }, 200);
+        }
+        return 'https://example.com/' + cached + '.mp3';
+      });
+      lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
+    ''');
+      expect(
+        await runtime.getMusicUrl(
+          source: 'tx',
+          songId: 'start',
+          quality: '128k',
+        ),
+        'https://example.com/true.mp3',
+      );
+      await renewed.future.timeout(const Duration(seconds: 3));
+      expect(
+        await runtime.getMusicUrl(
+          source: 'tx',
+          songId: 'check',
+          quality: '128k',
+        ),
+        'https://example.com/false.mp3',
+      );
+      await runtime.getMusicUrl(source: 'tx', songId: 'start', quality: '128k');
+      await runtime.dispose();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(renewals, 1);
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
+
+  test(
+    'script-global shared token survives cancellation of one waiter',
+    () async {
+      final runtime = LxQuickJsRuntime();
+      addTearDown(runtime.dispose);
+      await runtime.loadScript('''
+      const token = new Promise(resolve => setTimeout(() => resolve('token'), 400));
+      lx.on(lx.EVENT_NAMES.request, ({info}) => token.then(value =>
+        'https://example.com/' + value + '-' + info.musicInfo.songmid + '.mp3'));
+      lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
+    ''');
+      final owner = ResolutionRequest();
+      final old = owner.run(
+        () => runtime.getMusicUrl(source: 'tx', songId: 'old', quality: '128k'),
+      );
+      final check = expectLater(old, throwsA(isA<ResolutionCancelled>()));
+      final next = runtime.getMusicUrl(
+        source: 'tx',
+        songId: 'next',
+        quality: '128k',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      owner.cancel();
+      expect(await next, 'https://example.com/token-next.mp3');
+      await check;
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
+
+  test(
+    'native sandbox preserves Unicode script and music metadata',
+    () async {
+      final runtime = LxQuickJsRuntime();
+      addTearDown(runtime.dispose);
+      final digest = md5.convert(utf8.encode('中文音乐🎵')).toString();
+      await runtime.loadScript('''
+      // 中文音乐🎵
+      lx.on(lx.EVENT_NAMES.request, ({info}) => {
+        if (!lx.currentScriptInfo.rawScript.includes('// 中文音乐🎵')) throw Error('rawScript');
+        if (lx.utils.crypto.md5('中文音乐🎵') !== '$digest') throw Error('md5');
+        if (new TextDecoder().decode(new Uint8Array([255])) !== '�') throw Error('decoder');
+        if (info.musicInfo.name !== '歌曲' || info.musicInfo.albumName !== '专辑') throw Error('metadata');
+        if ('strMediaMid' in info.musicInfo || 'hash' in info.musicInfo) throw Error('fabricated identifier');
+        return 'https://example.invalid/music.mp3';
+      });
+      lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});
+    ''');
+      expect(
+        await runtime.getMusicUrl(
+          source: 'tx',
+          songId: 'real-songmid',
+          quality: '128k',
+          musicInfo: buildLxMusicInfo(
+            source: 'tx',
+            songId: 'real-songmid',
+            title: '歌曲',
+            album: '专辑',
+          ),
+        ),
+        'https://example.invalid/music.mp3',
+      );
+    },
+    skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
+  );
+
   test(
     'native callback preserves JSON and failures retain safe HTTP facts',
     () async {
