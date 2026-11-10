@@ -162,8 +162,11 @@ jobs:
           done
 
   android-debug:
-    needs: [analyze-and-test, native-runtime, android-native]
-    if: ${{ github.event_name == 'pull_request' }}
+    name: Android debug build and Gradle cache
+    needs: select-checks
+    # Main writes the shared cache even when a release tag owns the other checks.
+    # Tag caches are isolated from later tags, so releases read the main cache.
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -180,6 +183,8 @@ jobs:
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -192,9 +197,16 @@ jobs:
         run: flutter pub get --enforce-lockfile
 
       - name: Build Android Debug APK
+        if: ${{ github.event_name == 'pull_request' }}
         run: flutter build apk --debug
 
+      - name: Build Android Debug APK for shared cache
+        if: ${{ github.event_name == 'push' }}
+        # Match the release ABI for useful native/dependency cache reuse.
+        run: flutter build apk --debug --target-platform android-arm64
+
       - name: Upload Android Debug APK
+        if: ${{ github.event_name == 'pull_request' }}
         uses: actions/upload-artifact@v7
         with:
           name: cyrene-music-pr-${{ github.event.pull_request.number }}-android-debug
