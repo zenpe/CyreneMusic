@@ -104,14 +104,34 @@ const String lxSandboxJs = r'''
   if (typeof _global.crypto === 'undefined') {
     _global.crypto = {};
   }
-  if (typeof _global.crypto.getRandomValues !== 'function') {
-    _global.crypto.getRandomValues = function(arr) {
-      for (var i = 0; i < arr.length; i++) {
-        arr[i] = Math.floor(Math.random() * 256);
-      }
-      return arr;
-    };
+  function byteView(value) {
+    if (typeof value === 'string') return new TextEncoder().encode(value);
+    if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    return new Uint8Array(value);
   }
+  function toBase64(value) {
+    const bytes = byteView(value);
+    if (bytes.length > 8 * 1024 * 1024) throw new Error('Utility input too large');
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 8192) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+    }
+    return btoa(binary);
+  }
+  function nativeUtility(args) {
+    let result = _global.__lx_utils__(args);
+    if (typeof result === 'string') result = JSON.parse(result);
+    if (!result || result.error) throw new Error(result && result.error || 'Utility bridge unavailable');
+    return Uint8Array.from(atob(result.value), c => c.charCodeAt(0));
+  }
+  _global.crypto.getRandomValues = function(arr) {
+    if (!ArrayBuffer.isView(arr) || arr instanceof DataView ||
+        arr instanceof Float32Array || arr instanceof Float64Array || arr.byteLength > 65536) {
+      throw new TypeError('Expected an integer typed array of at most 65536 bytes');
+    }
+    new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength).set(nativeUtility({operation: 'random', size: arr.byteLength}));
+    return arr;
+  };
 
   if (typeof console !== 'undefined') {
     if (typeof console.group !== 'function') {
@@ -157,89 +177,40 @@ const String lxSandboxJs = r'''
   let currentScriptInfo = null;
   const pendingHttpRequests = new Map();
   let httpRequestCounter = 0;
-  let requestOwner = null;
-  const activeOwners = new Map();
-  const httpOwners = new Map();
-  const timerOwners = new Map();
+  // All asynchronous work belongs to this context. The host serializes
+  // resolutions and discards the context on cancellation or timeout.
+  const timers = new Map();
   let timerCounter = 0;
   _global.setTimeout = function(callback, delay) {
-    const owner = requestOwner;
-    if (owner !== null && !activeOwners.has(owner)) throw new Error('Resolution cancelled');
     if (typeof callback !== 'function') throw new TypeError('Timer callback must be a function');
     const args = Array.prototype.slice.call(arguments, 2);
     const timer = ++timerCounter;
-    timerOwners.set(timer, {owner: owner, callback: callback, args: args});
-    sendToFlutter('lxSetTimeout', {timerId: timer, ownerKey: owner, delay: Math.max(0, Number(delay) || 0)});
+    timers.set(timer, {callback: callback, args: args, repeat: false, delay: delay});
+    sendToFlutter('lxSetTimeout', {timerId: timer, delay: Math.max(0, Number(delay) || 0)});
     return timer;
   };
   _global.clearTimeout = function(timer) {
-    timerOwners.delete(timer);
+    timers.delete(timer);
     sendToFlutter('lxClearTimeout', {timerId: timer});
   };
+  _global.setInterval = function(callback, delay) {
+    const timer = _global.setTimeout.apply(null, arguments);
+    timers.get(timer).repeat = true;
+    return timer;
+  };
+  _global.clearInterval = _global.clearTimeout;
   window.__lx_fireTimer__ = function(timer) {
-    const entry = timerOwners.get(timer);
+    const entry = timers.get(timer);
     if (!entry) return;
-    timerOwners.delete(timer);
-    if (entry.owner !== null && !activeOwners.has(entry.owner)) return;
-    requestOwner = entry.owner;
-    entry.callback.apply(null, entry.args);
-  };
-
-  // Preserve ownership through explicit Promise chains as well as HTTP and
-  // timer callbacks. Async/await continuations run during their JS event turn.
-  const nativeThen = Promise.prototype.then;
-  Promise.prototype.then = function(onResolved, onRejected) {
-    const owner = requestOwner;
-    const state = activeOwners.get(owner);
-    function bind(callback) {
-      if (typeof callback !== 'function') return callback;
-      return function(value) {
-        requestOwner = state && state.completed ? null : owner;
-        return callback(value);
-      };
+    if (!entry.repeat) timers.delete(timer);
+    try { entry.callback.apply(null, entry.args); }
+    finally {
+      if (entry.repeat && timers.has(timer)) {
+        sendToFlutter('lxSetTimeout', {timerId: timer, delay: Math.max(1, Number(entry.delay) || 0)});
+      }
     }
-    return nativeThen.call(this, bind(onResolved), bind(onRejected));
   };
 
-  window.__lx_cancelRequest__ = function(owner) {
-    activeOwners.delete(owner);
-    requestOwner = owner;
-    timerOwners.forEach(function(value, timer) {
-      if (value.owner === owner) {
-        sendToFlutter('lxClearTimeout', {timerId: timer});
-        timerOwners.delete(timer);
-      }
-    });
-    httpOwners.forEach(function(value, id) {
-      if (value === owner) {
-        const callback = pendingHttpRequests.get(id);
-        pendingHttpRequests.delete(id);
-        httpOwners.delete(id);
-        if (callback) {
-          try { callback(new Error('Resolution cancelled'), null, null); }
-          catch (_) { /* one callback must not prevent remaining cleanup */ }
-        }
-      }
-    });
-  };
-
-  // A successful resolution can install cache-expiry/token-renewal timers.
-  // Promote both JS and native ownership; cancelled resolutions never do so.
-  window.__lx_completeRequest__ = function(owner) {
-    const state = activeOwners.get(owner);
-    if (state) state.completed = true;
-    timerOwners.forEach(function(value, timer) {
-      if (value.owner === owner) {
-        value.owner = null;
-        sendToFlutter('lxPromoteTimer', {timerId: timer});
-      }
-    });
-    window.__lx_cancelRequest__(owner);
-    requestOwner = null;
-  };
-  
-  // ==================== 工具函数 ====================
-  
   // 发送消息到 Flutter
   function sendToFlutter(handlerName, data) {
     if (typeof _global.__lx_native_send__ === 'function') {
@@ -257,11 +228,7 @@ const String lxSandboxJs = r'''
   
   // HTTP 请求实现 - 支持回调和 Promise 两种形式
   function request(url, options, callback) {
-    if (requestOwner !== null && !activeOwners.has(requestOwner)) {
-      throw new Error('Resolution cancelled');
-    }
     const requestId = 'http_' + (++httpRequestCounter) + '_' + Date.now();
-    httpOwners.set(requestId, requestOwner);
 
     console.log('[LxMusic] request called, url: ' + url);
     console.log('[LxMusic] request options type: ' + typeof options + ', callback type: ' + typeof callback);
@@ -285,7 +252,6 @@ const String lxSandboxJs = r'''
 
         sendToFlutter('lxRequest', {
           requestId: requestId,
-          ownerKey: requestOwner,
           url: url,
           options: options || {},
         });
@@ -296,7 +262,6 @@ const String lxSandboxJs = r'''
 
     sendToFlutter('lxRequest', {
       requestId: requestId,
-      ownerKey: requestOwner,
       url: url,
       options: options || {},
     });
@@ -304,7 +269,6 @@ const String lxSandboxJs = r'''
     // 返回取消函数
     return function() {
       pendingHttpRequests.delete(requestId);
-      httpOwners.delete(requestId);
       sendToFlutter('lxCancelHttp', { requestId: requestId });
     };
   }
@@ -482,10 +446,10 @@ const String lxSandboxJs = r'''
   const utils = {
     crypto: {
       aesEncrypt: function(buffer, mode, key, iv) {
-        throw new Error('当前运行时不支持 lx.utils.crypto.aesEncrypt');
+        return nativeUtility({operation: 'aes', data: toBase64(buffer), mode: mode, key: toBase64(key), iv: toBase64(iv == null ? [] : iv)});
       },
       rsaEncrypt: function(buffer, key) {
-        throw new Error('当前运行时不支持 lx.utils.crypto.rsaEncrypt');
+        return nativeUtility({operation: 'rsa', data: toBase64(buffer), key: key});
       },
       randomBytes: function(size) {
         const bytes = new Uint8Array(size);
@@ -501,33 +465,38 @@ const String lxSandboxJs = r'''
       },
     },
     buffer: {
-      from: function(data, encoding) {
+      from: function(data, encoding, length) {
         if (typeof data === 'string') {
+          if (encoding === 'hex') {
+            const hex = data.match(/^[0-9a-f]*/i)[0];
+            return Uint8Array.from((hex.match(/../g) || []), b => parseInt(b, 16));
+          }
           if (encoding === 'base64') {
             return Uint8Array.from(atob(data), c => c.charCodeAt(0));
           }
           return new TextEncoder().encode(data);
         }
+        if (data instanceof ArrayBuffer) return new Uint8Array(data, encoding || 0, length);
         return new Uint8Array(data);
       },
       bufToString: function(buf, format) {
         if (format === 'hex') {
-          return Array.from(new Uint8Array(buf))
+          return Array.from(byteView(buf))
             .map(b => b.toString(16).padStart(2, '0'))
             .join('');
         }
         if (format === 'base64') {
-          return btoa(String.fromCharCode(...new Uint8Array(buf)));
+          return toBase64(buf);
         }
         return new TextDecoder().decode(buf);
       },
     },
     zlib: {
       inflate: function(buf) {
-        return Promise.reject(new Error('当前运行时不支持 lx.utils.zlib.inflate'));
+        return Promise.resolve().then(() => nativeUtility({operation: 'inflate', data: toBase64(buf)}));
       },
       deflate: function(data) {
-        return Promise.reject(new Error('当前运行时不支持 lx.utils.zlib.deflate'));
+        return Promise.resolve().then(() => nativeUtility({operation: 'deflate', data: toBase64(data)}));
       },
     },
   };
@@ -588,8 +557,6 @@ const String lxSandboxJs = r'''
   
   // 发送请求到脚本
   window.__lx_sendRequest__ = function(data) {
-    activeOwners.set(data.requestKey, {completed: false});
-    requestOwner = data.requestKey;
     console.log('[LxMusic] __lx_sendRequest__ called, data:', JSON.stringify(data));
     console.log('[LxMusic] requestHandler type:', typeof requestHandler);
 
@@ -650,6 +617,7 @@ const String lxSandboxJs = r'''
             requestKey: data.requestKey,
             success: false,
             error: errMsg,
+            failureKind: err && err.__lxFailureKind,
           });
         });
       } else {
@@ -665,6 +633,7 @@ const String lxSandboxJs = r'''
         requestKey: data.requestKey,
         success: false,
         error: errMsg,
+        failureKind: err && err.__lxFailureKind,
       });
     }
   };
@@ -672,10 +641,6 @@ const String lxSandboxJs = r'''
   // 处理 HTTP 响应
   window.__lx_handleHttpResponse__ = function(data) {
     if (!pendingHttpRequests.has(data.requestId)) return;
-    const owner = httpOwners.get(data.requestId);
-    if (owner !== undefined && owner !== null && !activeOwners.has(owner)) return;
-    requestOwner = owner === undefined ? null : owner;
-    httpOwners.delete(data.requestId);
     console.log('[LxMusic] __lx_handleHttpResponse__ called, requestId: ' + data.requestId);
 
     const callback = pendingHttpRequests.get(data.requestId);
@@ -693,7 +658,9 @@ const String lxSandboxJs = r'''
         callback(null, data.response, body);
       } else {
         console.log('[LxMusic] Calling callback with error: ' + data.error);
-        callback(new Error(data.error), null, null);
+        const failure = new Error(data.error);
+        failure.__lxFailureKind = data.failureKind;
+        callback(failure, null, null);
       }
     } else {
       console.log('[LxMusic] No callback found for requestId: ' + data.requestId);

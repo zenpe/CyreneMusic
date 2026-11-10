@@ -1,4 +1,5 @@
 import '../../utils/app_feedback.dart';
+import '../../services/audio_source_error_message.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -159,10 +160,7 @@ class _AudioSourceSettingsContentState
       });
     } catch (error) {
       if (!mounted || request != _catalogRequest) return;
-      setState(
-        () =>
-            _candidateError = error.toString().replaceFirst('Exception: ', ''),
-      );
+      setState(() => _candidateError = audioSourceErrorMessage(error));
     } finally {
       if (mounted && request == _catalogRequest) {
         setState(() => _isLoadingCandidates = false);
@@ -367,7 +365,7 @@ class _AudioSourceSettingsContentState
     try {
       await action();
     } catch (error) {
-      final detail = error.toString().replaceFirst(RegExp(r'^Exception: '), '');
+      final detail = audioSourceErrorMessage(error);
       _showActionError(
         detail.isEmpty ? errorMessage : detail,
         onRetry: onRetry,

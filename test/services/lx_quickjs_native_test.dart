@@ -405,7 +405,7 @@ void main() {
   );
 
   test(
-    'real QuickJS slow HTTP does not block another resolution',
+    'real QuickJS serializes resolutions across await and HTTP callbacks',
     () async {
       final overrides = HttpOverrides.current;
       HttpOverrides.global = null;
@@ -448,12 +448,16 @@ void main() {
         quality: '128k',
       );
       await slowSeen.future.timeout(const Duration(seconds: 2));
-      final fast = await runtime
-          .getMusicUrl(source: 'tx', songId: 'fast', quality: '128k')
-          .timeout(const Duration(seconds: 2));
-      expect(fast, 'https://example.com/fast-final.mp3');
-      expect(paths, ['/slow', '/fast', '/fast-final']);
+      final fast = runtime.getMusicUrl(
+        source: 'tx',
+        songId: 'fast',
+        quality: '128k',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(paths, ['/slow']);
       releaseSlow.complete();
+      expect(await fast, 'https://example.com/fast-final.mp3');
+      expect(paths, ['/slow', '/slow-final', '/fast', '/fast-final']);
       expect(await slow, 'https://example.com/slow-final.mp3');
     },
     skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',
@@ -564,7 +568,7 @@ void main() {
   );
 
   test(
-    'real QuickJS admission is bounded and capacity returns after completion',
+    'real QuickJS queues excess work instead of failing a healthy source',
     () async {
       final runtime = LxQuickJsRuntime();
       addTearDown(runtime.dispose);
@@ -589,9 +593,9 @@ void main() {
             quality: '128k',
           ),
         ),
-        isNull,
+        'https://example.com/5.mp3',
       );
-      expect(excessOwner.failure?.message, contains('通道繁忙'));
+      expect(excessOwner.failure, isNull);
       expect(
         await Future.wait(active),
         List.generate(4, (i) => 'https://example.com/${i + 1}.mp3'),
@@ -602,7 +606,7 @@ void main() {
           songId: 'retry',
           quality: '128k',
         ),
-        'https://example.com/5.mp3',
+        'https://example.com/6.mp3',
       );
     },
     skip: Platform.environment['CYRENE_LX_NATIVE_TEST'] != '1',

@@ -826,7 +826,12 @@ class MusicService extends ChangeNotifier {
     TrackSourceIds sourceIds,
   ) {
     if (source != MusicSource.kugou) return songId.toString();
-    final fileHash = sourceIds.fileHash;
+    final legacyId = songId.toString().trim();
+    final fileHash = sourceIds.fileHash?.isNotEmpty == true
+        ? sourceIds.fileHash
+        : RegExp(r'^[0-9a-fA-F]{32}$').hasMatch(legacyId)
+        ? legacyId
+        : null;
     if (fileHash == null || fileHash.isEmpty) {
       throw const MissingTrackSourceIdentifierException('歌曲标识不完整，请重新搜索或同步');
     }

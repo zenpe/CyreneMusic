@@ -1,4 +1,5 @@
 import '../../../models/audio_source_config.dart';
+import '../../../services/audio_source_error_message.dart';
 import '../data/audio_source_repository_impl.dart';
 import 'audio_source_action_result.dart';
 import 'audio_source_use_cases.dart';
@@ -71,7 +72,7 @@ class AudioSourceController {
   }
 
   String? _normalizeError(Object error) {
-    final raw = error.toString().trim();
+    final raw = audioSourceErrorMessage(error);
     if (raw.isEmpty) return null;
     if (raw.startsWith('Exception:')) {
       final cleaned = raw.substring('Exception:'.length).trim();

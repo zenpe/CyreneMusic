@@ -12,6 +12,36 @@ import 'package:cyrene_music/services/structured_log_service.dart';
 void main() {
   setUp(LxHttpBridge.close);
   tearDown(LxHttpBridge.close);
+  test('bounds response size and rejects unsupported compression', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final subscription = server.listen((request) async {
+      expect(request.headers.value('accept-encoding'), 'gzip');
+      if (request.uri.path == '/large') {
+        request.response.add(
+          List.filled(LxHttpBridge.maxResponseBytes + 1, 65),
+        );
+      } else {
+        request.response.headers.set('content-encoding', 'br');
+        request.response.add([0x80, 0xff, 0x90]);
+      }
+      await request.response.close();
+    });
+    addTearDown(() async {
+      await subscription.cancel();
+      await server.close(force: true);
+    });
+    for (final path in ['large', 'compressed']) {
+      await expectLater(
+        LxHttpBridge.performHttpRequest(
+          'http://127.0.0.1:${server.port}/$path',
+          {
+            'headers': {'Accept-Encoding': 'br, gzip'},
+          },
+        ),
+        throwsA(isA<FormatException>()),
+      );
+    }
+  });
 
   test('preserves case-insensitive UA and bounds script timeouts', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

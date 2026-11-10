@@ -153,8 +153,10 @@ class ProxyService {
   void _recordFailure(
     _AudioRoute route,
     AudioTransportFailure failure,
-    Stopwatch clock,
-  ) {
+    Stopwatch clock, {
+    int receivedBytes = 0,
+    int? headersMs,
+  }) {
     final root = _routes[route.group];
     if (root == null) return;
     root.failure = failure;
@@ -169,6 +171,11 @@ class ProxyService {
         'status': failure.statusCode,
         'timed_out': failure.timedOut,
         'elapsed_ms': clock.elapsedMilliseconds,
+        'headers_ms': headersMs,
+        'received_bytes': receivedBytes,
+        'timeout_ms': failure.stage == AudioTransportStage.read
+            ? idleTimeout.inMilliseconds
+            : headerTimeout.inMilliseconds,
       },
     );
   }
@@ -180,6 +187,8 @@ class ProxyService {
     final clock = Stopwatch()..start();
     var stage = AudioTransportStage.connect;
     var headersSent = false;
+    var receivedBytes = 0;
+    int? headersMs;
     try {
       if (request.method != 'GET' && request.method != 'HEAD') {
         response.statusCode = HttpStatus.methodNotAllowed;
@@ -221,6 +230,7 @@ class ProxyService {
         return await outgoing.close();
       })().timeout(headerTimeout);
       if (current.cancelled) return;
+      headersMs = clock.elapsedMilliseconds;
       final status = upstream.statusCode;
       if (status != 200 && status != 206) {
         _recordFailure(
@@ -236,6 +246,10 @@ class ProxyService {
         return;
       }
       stage = AudioTransportStage.read;
+      final body = upstream.timeout(idleTimeout).map((chunk) {
+        receivedBytes += chunk.length;
+        return chunk;
+      });
       final effectiveUri = upstream.redirects.fold<Uri>(
         route.target,
         (uri, redirect) => uri.resolveUri(redirect.location),
@@ -249,7 +263,7 @@ class ProxyService {
       response.headers.set(HttpHeaders.cacheControlHeader, 'no-store');
       if (hls && request.method != 'HEAD') {
         final bytes = <int>[];
-        await for (final chunk in upstream.timeout(idleTimeout)) {
+        await for (final chunk in body) {
           bytes.addAll(chunk);
           if (bytes.length > 2 * 1024 * 1024) {
             throw const FormatException('Audio manifest too large');
@@ -289,7 +303,7 @@ class ProxyService {
         }
         if (request.method != 'HEAD') {
           headersSent = true;
-          await response.addStream(upstream.timeout(idleTimeout));
+          await response.addStream(body);
         }
       }
     } catch (error) {
@@ -298,6 +312,8 @@ class ProxyService {
           route,
           AudioTransportFailure(stage, timedOut: error is TimeoutException),
           clock,
+          receivedBytes: receivedBytes,
+          headersMs: headersMs,
         );
         if (!headersSent) {
           response.statusCode = error is TimeoutException ? 504 : 502;

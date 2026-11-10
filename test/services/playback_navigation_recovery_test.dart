@@ -1748,7 +1748,7 @@ void main() {
   }
 
   test(
-    'Android source-read failure refreshes once without claiming HTTP status',
+    'unclassified source-read failure retries without blacklisting the same URL',
     () async {
       await configureTestSource();
       final resolver = _Resolver()..playable.add('0');
@@ -1763,8 +1763,10 @@ void main() {
           QueueSource.none,
         );
         expect(resolver.requests, ['0', '0']);
-        expect(engine.loadedUrls, hasLength(1));
-        expectFinished(playback);
+        expect(engine.loadedUrls, hasLength(2));
+        expect(engine.loadedUrls.toSet(), hasLength(1));
+        expect(playback.state, PBState.playing);
+        expect(playback.isTrackSwitchPending, isFalse);
       } finally {
         playback.dispose();
         await AudioSourceService().removeSource('playback-test-source');

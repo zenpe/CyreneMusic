@@ -1,12 +1,14 @@
 import 'structured_log_service.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'package:charset/charset.dart';
 import 'lx_http_client.dart';
 import 'lx_runtime_interface.dart';
 import 'resolution_request.dart';
 import 'package:http/http.dart' as http;
 
 class LxHttpBridge {
+  static const maxResponseBytes = 8 * 1024 * 1024;
   // Reuse idle connections; cancellation belongs to each HTTP request rather
   // than the client, which can also be serving another resolution.
   static http.Client? _client;
@@ -122,7 +124,23 @@ class LxHttpBridge {
         },
       );
       stage = 'body';
-      return http.Response.fromStream(streamed).timeout(remaining());
+      var byteCount = 0;
+      final bytes = await http.ByteStream(
+        streamed.stream.map((chunk) {
+          byteCount += chunk.length;
+          if (byteCount > maxResponseBytes) {
+            abort();
+            throw const FormatException('音源接口返回内容过大');
+          }
+          return chunk;
+        }),
+      ).toBytes().timeout(remaining());
+      return http.Response.bytes(
+        bytes,
+        streamed.statusCode,
+        headers: streamed.headers,
+        reasonPhrase: streamed.reasonPhrase,
+      );
     }
 
     try {
@@ -146,6 +164,10 @@ class LxHttpBridge {
         headers['accept'] = 'application/json';
       }
 
+      // IOClient transparently decodes gzip, but not Brotli. Advertising br
+      // can otherwise turn compressed bytes into apparent garbage text.
+      headers['accept-encoding'] = 'gzip';
+
       if (method == 'GET') {
         headers.remove('content-type');
       }
@@ -154,15 +176,21 @@ class LxHttpBridge {
 
       http.Response response;
 
-      if (method == 'GET') {
+      if (method == 'GET' || method == 'HEAD') {
         response = await sendAndRead(
           http.AbortableRequest(
-            'GET',
+            method,
             Uri.parse(url),
             abortTrigger: aborted.future,
           )..headers.addAll(normalizedHeaders),
         );
-      } else if (method == 'POST') {
+      } else if (const [
+        'POST',
+        'PUT',
+        'PATCH',
+        'DELETE',
+        'OPTIONS',
+      ].contains(method)) {
         dynamic body;
         String? contentType;
 
@@ -191,7 +219,7 @@ class LxHttpBridge {
         }
 
         final message = http.AbortableRequest(
-          'POST',
+          method,
           Uri.parse(url),
           abortTrigger: aborted.future,
         )..headers.addAll(normalizedHeaders);
@@ -210,11 +238,29 @@ class LxHttpBridge {
       }
 
       request?.check();
-      dynamic responseBody = response.body;
-      try {
-        responseBody = jsonDecode(response.body);
-      } catch (_) {
-        // Not JSON
+      final contentEncoding = response.headers['content-encoding']
+          ?.toLowerCase();
+      if (contentEncoding != null &&
+          contentEncoding != 'identity' &&
+          contentEncoding != 'gzip') {
+        throw const FormatException('音源接口返回了不支持的压缩格式');
+      }
+      final charset = RegExp(
+        r'charset\s*=\s*["\x27]?([^;"\x27\s]+)',
+        caseSensitive: false,
+      ).firstMatch(response.headers['content-type'] ?? '')?.group(1);
+      final encoding = charset == null ? utf8 : Charset.getByName(charset);
+      if (encoding == null) {
+        throw const FormatException('音源接口返回了不支持的字符编码');
+      }
+      final text = encoding.decode(response.bodyBytes);
+      dynamic responseBody = text;
+      if (options['json'] != false) {
+        try {
+          responseBody = jsonDecode(text);
+        } catch (_) {
+          // LX callbacks also accept plain text; browser APIs need it intact.
+        }
       }
 
       return {

@@ -10,6 +10,45 @@ class RealHttpOverrides extends HttpOverrides {}
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test(
+    'rejects error documents and binary downloads before script activation',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      await UrlService().initialize();
+      final real = RealHttpOverrides();
+      await HttpOverrides.runZoned(() async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final subscription = server.listen((request) async {
+          final path = request.uri.queryParameters['path'];
+          if (path == 'binary.js') {
+            request.response.add([0x1f, 0x8b, 0x08, 0x00]);
+          } else if (path == 'json.js') {
+            request.response.headers.contentType = ContentType.json;
+            request.response.write('{"error":"proxy unavailable"}');
+          } else {
+            request.response.headers.set(
+              'content-type',
+              'application/javascript',
+            );
+            request.response.write('<!DOCTYPE html><html>proxy error</html>');
+          }
+          await request.response.close();
+        });
+        try {
+          UrlService().useCustomSource('http://127.0.0.1:${server.port}');
+          for (final path in ['binary.js', 'json.js', 'html.js']) {
+            await expectLater(
+              LxMusicSourceParser().parseFromCatalogPath(path),
+              throwsA(isA<FormatException>()),
+            );
+          }
+        } finally {
+          await subscription.cancel();
+          await server.close(force: true);
+        }
+      }, createHttpClient: real.createHttpClient);
+    },
+  );
+  test(
     'catalog download uses current host and port, encodes paths and sends no token',
     () async {
       SharedPreferences.setMockInitialValues({});

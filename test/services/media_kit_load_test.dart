@@ -11,6 +11,20 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const policy = EngineFailurePolicy();
 
+  test('temporary stream interruption does not blacklist a playback URL', () {
+    for (final stage in [
+      AudioTransportStage.connect,
+      AudioTransportStage.read,
+    ]) {
+      final error = mapMediaKitFailure(
+        'Failed to open local audio',
+        transport: AudioTransportFailure(stage, timedOut: true),
+      );
+      expect(policy.canRetry(error, isLocal: false), isTrue);
+      expect(policy.shouldRefreshUrl(error), isFalse);
+    }
+  });
+
   test(
     'signed URL digits cannot turn an unknown load error into access denied',
     () {

@@ -1,0 +1,146 @@
+{
+  "aes": [
+    {
+      "mode": "aes-128-ecb",
+      "key": "AAECAwQFBgcICQoLDA0ODw==",
+      "iv": "",
+      "data": "",
+      "value": "lU9k8uTobp7ugtICFmhImQ=="
+    },
+    {
+      "mode": "aes-128-ecb",
+      "key": "AAECAwQFBgcICQoLDA0ODw==",
+      "iv": "",
+      "data": "TFggVW5pY29kZSDkuK3mlofwn461",
+      "value": "E96vY+vZdosnjaWRhV4sssmaGdGiVgw5xExjTieOZlo="
+    },
+    {
+      "mode": "aes-128-ecb",
+      "key": "AAECAwQFBgcICQoLDA0ODw==",
+      "iv": "",
+      "data": "AP+AAQIDBAUGBwgJCgsMDQ==",
+      "value": "7bB6LThNhI9beWnloj+MQJVPZPLk6G6e7oLSAhZoSJk="
+    },
+    {
+      "mode": "aes-128-cbc",
+      "key": "AAECAwQFBgcICQoLDA0ODw==",
+      "iv": "//79/Pv6+fj39vX08/Lx8A==",
+      "data": "",
+      "value": "O5MR0Bv4gcxrfPBfmCnTvg=="
+    },
+    {
+      "mode": "aes-128-cbc",
+      "key": "AAECAwQFBgcICQoLDA0ODw==",
+      "iv": "//79/Pv6+fj39vX08/Lx8A==",
+      "data": "TFggVW5pY29kZSDkuK3mlofwn461",
+      "value": "wXY+xycitRlm8cBR+udA06HsUDK313KROe+4g13oHcI="
+    },
+    {
+      "mode": "aes-128-cbc",
+      "key": "AAECAwQFBgcICQoLDA0ODw==",
+      "iv": "//79/Pv6+fj39vX08/Lx8A==",
+      "data": "AP+AAQIDBAUGBwgJCgsMDQ==",
+      "value": "jUxqP0fFDS97izZeeXJkvLctW9XsoeTa59vEvie9vVs="
+    },
+    {
+      "mode": "aes-192-ecb",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+      "iv": "",
+      "data": "",
+      "value": "P+coar3l8DlD1XdwICWWJg=="
+    },
+    {
+      "mode": "aes-192-ecb",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+      "iv": "",
+      "data": "TFggVW5pY29kZSDkuK3mlofwn461",
+      "value": "VNLNS083cza9sq3MX7LQ0rrLiIQUQvWtAh+46rr48LM="
+    },
+    {
+      "mode": "aes-192-ecb",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+      "iv": "",
+      "data": "AP+AAQIDBAUGBwgJCgsMDQ==",
+      "value": "iD415vNEy1eH/5qG/obTej/nKGq95fA5Q9V3cCAlliY="
+    },
+    {
+      "mode": "aes-192-cbc",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+      "iv": "//79/Pv6+fj39vX08/Lx8A==",
+      "data": "",
+      "value": "NacrJUt7yqpfBw7ZkUTE1A=="
+    },
+    {
+      "mode": "aes-192-cbc",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+      "iv": "//79/Pv6+fj39vX08/Lx8A==",
+      "data": "TFggVW5pY29kZSDkuK3mlofwn461",
+      "value": "dnpcXOjBpB233y0RjHZb2BJTggNTqwVpSW5ASFvhibU="
+    },
+    {
+      "mode": "aes-192-cbc",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+      "iv": "//79/Pv6+fj39vX08/Lx8A==",
+      "data": "AP+AAQIDBAUGBwgJCgsMDQ==",
+      "value": "EyNwL8MuCWTEzdkfKaXKs6NraCJz6VIHYXHvoEfYIaE="
+    },
+    {
+      "mode": "aes-256-ecb",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+      "iv": "",
+      "data": "",
+      "value": "nzt1BJJvi9NuMRjpA6TNSg=="
+    },
+    {
+      "mode": "aes-256-ecb",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+      "iv": "",
+      "data": "TFggVW5pY29kZSDkuK3mlofwn461",
+      "value": "SHMg6j5gmlJcTXxHiMac2anCyOmFe17NcpzP7tfTo6I="
+    },
+    {
+      "mode": "aes-256-ecb",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+      "iv": "",
+      "data": "AP+AAQIDBAUGBwgJCgsMDQ==",
+      "value": "TrVtSZa0tSk10Dmqy46nJp87dQSSb4vTbjEY6QOkzUo="
+    },
+    {
+      "mode": "aes-256-cbc",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+      "iv": "//79/Pv6+fj39vX08/Lx8A==",
+      "data": "",
+      "value": "ftRa43iNR6OmB4Z8Qq6KQw=="
+    },
+    {
+      "mode": "aes-256-cbc",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+      "iv": "//79/Pv6+fj39vX08/Lx8A==",
+      "data": "TFggVW5pY29kZSDkuK3mlofwn461",
+      "value": "K1MJd0bDdOuls+pj7D6nzFYCiQcXfMQpzhQLJw8Fkt0="
+    },
+    {
+      "mode": "aes-256-cbc",
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+      "iv": "//79/Pv6+fj39vX08/Lx8A==",
+      "data": "AP+AAQIDBAUGBwgJCgsMDQ==",
+      "value": "BuSlYPyiBIgSaygpzwDuYXHjmAqffKv11FTo3uoCShM="
+    }
+  ],
+  "rsa": [
+    {
+      "key": "-----BEGIN RSA PUBLIC KEY-----\nMIGJAoGBAM6pt8AAN0Rmkl6XHVSz8YBor2nadB9SyoWu5EX88wYsuAhngt+AW+3l\njtS83dE+5Mis1edKWkOXB6uAbD/Kx4h/BkSLNWBUazY2zeqZQICjzFOCjhIkpvTp\nfZga3B+IYELzUrgVsbhZH14eokpusKVzmLEQN4dEdlfKgSUh4GUxAgMBAAE=\n-----END RSA PUBLIC KEY-----\n",
+      "data": "TFggcmF3IFJTQQ==",
+      "value": "T+BbnMzN+w0vzw7MhbnAuwOTOmnOVzJZNdED3GfCfNQUPTFbltJn1c4QAbTt5lk7KJtKiFUXHdUk0BlREmGQ7pjujc3GoiaxU+n8rcu+I05Y5tdkiR4p2YE8zZ1EHdKH8gnR17fpfFvUTdil2Wi8MBhee8KXPL/qLaHi5P8OO30="
+    },
+    {
+      "key": "-----BEGIN PUBLIC KEY-----\nMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDOqbfAADdEZpJelx1Us/GAaK9p\n2nQfUsqFruRF/PMGLLgIZ4LfgFvt5Y7UvN3RPuTIrNXnSlpDlwergGw/yseIfwZE\nizVgVGs2Ns3qmUCAo8xTgo4SJKb06X2YGtwfiGBC81K4FbG4WR9eHqJKbrClc5ix\nEDeHRHZXyoElIeBlMQIDAQAB\n-----END PUBLIC KEY-----\n",
+      "data": "TFggcmF3IFJTQQ==",
+      "value": "T+BbnMzN+w0vzw7MhbnAuwOTOmnOVzJZNdED3GfCfNQUPTFbltJn1c4QAbTt5lk7KJtKiFUXHdUk0BlREmGQ7pjujc3GoiaxU+n8rcu+I05Y5tdkiR4p2YE8zZ1EHdKH8gnR17fpfFvUTdil2Wi8MBhee8KXPL/qLaHi5P8OO30="
+    }
+  ],
+  "zlib": {
+    "data": "TFggY29tcHJlc3NlZCDkuK3mlofwn461TFggY29tcHJlc3NlZCDkuK3mlofwn461TFggY29tcHJlc3NlZCDkuK3mlofwn461TFggY29tcHJlc3NlZCDkuK3mlofwn461TFggY29tcHJlc3NlZCDkuK3mlofwn461TFggY29tcHJlc3NlZCDkuK3mlofwn461TFggY29tcHJlc3NlZCDkuK3mlofwn461TFggY29tcHJlc3NlZCDkuK3mlofwn461TFggY29tcHJlc3NlZCDkuK3mlofwn461TFggY29tcHJlc3NlZCDkuK3mlofwn461",
+    "compressed": "eJzziVBIzs8tKEotLk5NUXiyY+2zae0f5vdt9Rmm4gCZLnon"
+  }
+}

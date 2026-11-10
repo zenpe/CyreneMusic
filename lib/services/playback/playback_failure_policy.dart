@@ -13,6 +13,7 @@ enum PlaybackFailureCause {
   sourceNotReady,
   timeout,
   networkUnavailable,
+  transientNetwork,
   requestFailed,
   emptyUrl,
   invalidTrackIdentifier,
@@ -67,6 +68,7 @@ class PlaybackRecoveryPolicy {
         failure.scope == PlaybackFailureScope.configuration;
     final retryableResolution = switch (failure.cause) {
       PlaybackFailureCause.timeout ||
+      PlaybackFailureCause.transientNetwork ||
       PlaybackFailureCause.networkUnavailable => true,
       _ => false,
     };

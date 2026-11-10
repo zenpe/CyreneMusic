@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -8,6 +9,7 @@ enum LxRuntimeFailureKind {
   notReady,
   timeout,
   networkUnavailable,
+  transientNetwork,
   scriptRejected,
   invalidTrackIdentifier,
   requestFailed,
@@ -20,7 +22,16 @@ class LxRuntimeFailure {
   const LxRuntimeFailure({required this.kind, required this.message});
 }
 
+/// Carries transport evidence without depending on a script's error wording.
+class LxRuntimeException implements Exception {
+  const LxRuntimeException(this.failure);
+  final LxRuntimeFailure failure;
+  @override
+  String toString() => failure.message;
+}
+
 LxRuntimeFailure classifyLxRuntimeFailure(Object error) {
+  if (error is LxRuntimeException) return error.failure;
   final message = error.toString();
   final kind = error is TimeoutException
       ? LxRuntimeFailureKind.timeout
@@ -31,6 +42,8 @@ LxRuntimeFailure classifyLxRuntimeFailure(Object error) {
           caseSensitive: false,
         ).hasMatch(message)
       ? LxRuntimeFailureKind.networkUnavailable
+      : error is SocketException
+      ? LxRuntimeFailureKind.transientNetwork
       : message.contains('完整性验证失败')
       ? LxRuntimeFailureKind.scriptRejected
       : message.contains('未就绪') || message.contains('无法初始化')

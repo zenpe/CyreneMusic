@@ -1776,6 +1776,7 @@ class PlaybackService extends ChangeNotifier {
       case LxRuntimeFailureKind.networkUnavailable:
         return PlaybackProblemKind.networkUnavailable;
       case LxRuntimeFailureKind.requestFailed:
+      case LxRuntimeFailureKind.transientNetwork:
       case null:
         return PlaybackProblemKind.resourceUnavailable;
     }
@@ -1799,6 +1800,10 @@ class PlaybackService extends ChangeNotifier {
       ),
       LxRuntimeFailureKind.networkUnavailable => const PlaybackFailureEvidence(
         cause: PlaybackFailureCause.networkUnavailable,
+        scope: PlaybackFailureScope.network,
+      ),
+      LxRuntimeFailureKind.transientNetwork => const PlaybackFailureEvidence(
+        cause: PlaybackFailureCause.transientNetwork,
         scope: PlaybackFailureScope.network,
       ),
       LxRuntimeFailureKind.requestFailed => const PlaybackFailureEvidence(
@@ -1833,6 +1838,7 @@ class PlaybackService extends ChangeNotifier {
         return const {PlaybackRecoveryAction.retry};
       case LxRuntimeFailureKind.timeout:
       case LxRuntimeFailureKind.requestFailed:
+      case LxRuntimeFailureKind.transientNetwork:
       case null:
         return const {
           PlaybackRecoveryAction.retry,
@@ -1851,6 +1857,8 @@ class PlaybackService extends ChangeNotifier {
         return '获取播放链接超时，请检查网络后重试';
       case LxRuntimeFailureKind.networkUnavailable:
         return '网络尚未连接，请联网后重试';
+      case LxRuntimeFailureKind.transientNetwork:
+        return '音源连接暂时中断，请重试';
       case LxRuntimeFailureKind.invalidTrackIdentifier:
         return failure?.message ?? '歌曲标识不完整，请重新搜索或同步';
       case LxRuntimeFailureKind.requestFailed:

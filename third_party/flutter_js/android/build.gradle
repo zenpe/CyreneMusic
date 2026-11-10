@@ -1,0 +1,67 @@
+group 'io.abner.flutter_js'
+version '1.0-SNAPSHOT'
+
+buildscript {
+    ext.kotlin_version = '1.7.20'
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:7.3.1'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    compileSdkVersion 34
+
+    namespace "io.abner.flutter_js"
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_1_8.toString()
+    }
+
+    externalNativeBuild {
+        cmake { path "../native/CMakeLists.txt" }
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+
+    }
+    defaultConfig {
+        minSdkVersion 21
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+    lintOptions {
+        disable 'InvalidPackage'
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    
+    // implementation using platform-channel with oasis jsbridge
+    // implementation 'com.github.p7s1digital.oasis-jsbridge-android:oasis-jsbridge-quickjs:0.12.0'
+    // compile group: 'org.nanohttpd', name: 'nanohttpd', version: '2.3.0'
+
+    // for serve library from jitpack repository
+
+    // implementation "com.github.fast-development.android-js-runtimes:fastdev-jsruntimes-jsc:0.1.3"
+}

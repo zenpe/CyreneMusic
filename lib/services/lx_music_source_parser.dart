@@ -485,7 +485,18 @@ class LxMusicSourceParser {
 
   /// 按字节解码脚本内容，优先 UTF-8，兼容 GBK/GB18030。
   String _decodeScriptBytes(List<int>? bytes, {String? contentType}) {
-    if (bytes == null || bytes.isEmpty) return '';
+    if (bytes == null || bytes.isEmpty) {
+      throw const FormatException('下载到的音源脚本为空，请重试');
+    }
+    // Reject obvious error documents before JavaScript evaluation. Do not
+    // require LX metadata: valid scripts may be minified or obfuscated.
+    final mime = contentType?.split(';').first.trim().toLowerCase();
+    if (mime == 'text/html' || mime == 'application/json') {
+      throw const FormatException('下载结果是错误页面或接口数据，并非音源脚本');
+    }
+    if (bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) {
+      throw const FormatException('音源脚本包含未解码的压缩数据或二进制内容');
+    }
 
     // 服务端显式声明 charset 时优先遵循。
     final declaredCharset = _extractCharsetFromContentType(contentType);
@@ -508,8 +519,7 @@ class LxMusicSourceParser {
       return _normalizeScriptText(gbk.decode(bytes));
     } catch (_) {}
 
-    // 最后兜底，避免完全无法导入。
-    return _normalizeScriptText(utf8.decode(bytes, allowMalformed: true));
+    throw const FormatException('音源脚本字符编码无效，请重新下载');
   }
 
   String? _extractCharsetFromContentType(String? contentType) {
@@ -535,7 +545,17 @@ class LxMusicSourceParser {
 
   String _normalizeScriptText(String text) {
     if (text.isEmpty) return text;
-    return text.replaceFirst('\uFEFF', '');
+    final normalized = text.replaceFirst('\uFEFF', '');
+    if (normalized.contains('\u0000') || normalized.contains('\uFFFD')) {
+      throw const FormatException('音源脚本字符编码无效，请重新下载');
+    }
+    if (RegExp(
+      r'^\s*<(?:!doctype|html|head|body)\b',
+      caseSensitive: false,
+    ).hasMatch(normalized)) {
+      throw const FormatException('下载结果是错误页面，并非音源脚本');
+    }
+    return normalized;
   }
 
   String _normalizeMetadataText(String value, {String fallback = ''}) {

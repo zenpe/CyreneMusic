@@ -75,6 +75,23 @@ jobs:
         timeout-minutes: 5
         run: flutter test --timeout 60s --reporter expanded
 
+      - name: Build QuickJS from source
+        run: |
+          cmake -S third_party/flutter_js/native -B build/quickjs -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/quickjs --parallel 2
+
+      - name: Test native script execution limits
+        timeout-minutes: 3
+        env:
+          CYRENE_LX_NATIVE_TEST: '1'
+          LIBQUICKJSC_TEST_PATH: ${{ github.workspace }}/build/quickjs/libquickjs_c_bridge_plugin.so
+        run: >-
+          flutter test --timeout 30s --reporter expanded
+          test/services/lx_execution_limits_native_test.dart
+          test/services/lx_quickjs_native_test.dart
+          test/services/lx_browser_transport_native_test.dart
+          test/services/lx_runtime_worker_test.dart
+
   android-debug:
     needs: analyze-and-test
     if: ${{ github.event_name == 'pull_request' }}

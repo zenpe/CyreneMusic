@@ -4,6 +4,34 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const policy = PlaybackRecoveryPolicy();
 
+  test(
+    'typed connection failure retries once; script and empty results do not',
+    () {
+      for (final cause in [
+        PlaybackFailureCause.transientNetwork,
+        PlaybackFailureCause.requestFailed,
+        PlaybackFailureCause.emptyUrl,
+      ]) {
+        for (final available in [false, true]) {
+          final decision = policy.decide(
+            PlaybackFailureEvidence(
+              cause: cause,
+              scope: PlaybackFailureScope.network,
+            ),
+            PlaybackRecoveryContext(
+              retryAvailable: available,
+              navigatingQueue: false,
+            ),
+          );
+          expect(
+            decision.retryResolution,
+            available && cause == PlaybackFailureCause.transientNetwork,
+          );
+        }
+      }
+    },
+  );
+
   test('transient resolution failure retries only when budget allows', () {
     const failure = PlaybackFailureEvidence(
       cause: PlaybackFailureCause.timeout,

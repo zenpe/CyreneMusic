@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'audio_engine.dart';
 import 'audio_transport_failure.dart';
 
@@ -32,8 +30,7 @@ class EngineFailurePolicy {
       error.cause is! NativePlaybackTimeout &&
       (error.type == EngineErrorType.accessDenied ||
           error.httpStatus == 404 ||
-          error.httpStatus == 410 ||
-          (!Platform.isAndroid && error.isSourceReadFailure));
+          error.httpStatus == 410);
 
   String message(EngineError error) {
     final status = error.httpStatus;
