@@ -50,7 +50,17 @@ git push origin v1.3.4
 
 ## 环境与并发
 
-本地与 CI 使用 Flutter 3.41.3、Java 17（Android）和已提交的依赖锁文件，依赖解析使用 `--enforce-lockfile`。Linux runner 固定为 Ubuntu 24.04。
+本地与 CI 使用 Flutter 3.47.9 / Dart 3.13.7、Java 17（Android）和已提交的依赖锁文件，依赖解析使用 `--enforce-lockfile`。Linux runner 固定为 Ubuntu 24.04。
+
+Android 使用 Gradle 8.14.4、AGP 8.13.2、Kotlin 2.2.21，满足新版 Flutter 的最低要求；Gradle Wrapper 同时锁定官方分发包的 SHA-256。当前保留 AGP 8 的插件接口，避免将 SDK 升级与 AGP 9 的 DSL 迁移混在一起。
+
+本地使用 Puro 时，执行以下命令安装并切换到同一版本（Dart 随 Flutter 安装）：
+
+```powershell
+puro create cyrene_3479 3.47.9
+puro use cyrene_3479
+puro flutter pub get --enforce-lockfile
+```
 
 同一 PR 或 main 的旧质量检查会被新提交取消。不同调用工作流的质量检查互相隔离，版本标签发布不自动取消。同一引用的正式构建排队执行。
 

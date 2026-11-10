@@ -5,9 +5,9 @@ import 'package:cyrene_music/services/lx_script_utils.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  final vectors =
-      jsonDecode(File('test/support/lx_utils_vectors.json').readAsStringSync())
-          as Map;
+  final vectors = jsonDecode(
+    File('test/support/lx_utils_vectors.json').readAsStringSync(),
+  ) as Map;
   test('AES matches Node createCipheriv including PKCS7 and empty input', () {
     final host = LxScriptUtils();
     for (final vector in vectors['aes'] as List) {

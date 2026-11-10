@@ -1,11 +1,14 @@
 import 'structured_log_service.dart';
+
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
+
 import '../models/track.dart';
 import '../models/song_detail.dart';
 import '../models/audio_source_config.dart';
@@ -36,10 +39,9 @@ class AudioSourceService extends ChangeNotifier {
 
   @visibleForTesting
   AudioSourceService.withDependencies({
-    required LxRuntime runtime,
-    required LxMusicSourceParser parser,
-  }) : _runtime = runtime,
-       _parser = parser;
+    required this._runtime,
+    required this._parser,
+  });
 
   final LxRuntime _runtime;
   final LxMusicSourceParser _parser;

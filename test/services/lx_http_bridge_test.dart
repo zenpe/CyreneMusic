@@ -197,10 +197,8 @@ void main() {
           {},
           requestId: 'peer',
         );
-        await Future.wait([
-          slowStarted.future,
-          peerStarted.future,
-        ]).timeout(const Duration(seconds: 3));
+        await Future.wait([slowStarted.future, peerStarted.future])
+            .timeout(const Duration(seconds: 3));
         if (!deadline) owner.cancel();
         await cancelled.timeout(const Duration(seconds: 3));
         releasePeer.complete();

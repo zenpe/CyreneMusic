@@ -20,7 +20,7 @@ static ExecutionBudget *executionBudget(JSRuntime *rt) {
     std::lock_guard<std::mutex> lock(budgetsMutex);
     return budgets.at(rt);
 }
-static int executionInterrupted(JSRuntime *, void *opaque) {
+static int executionInterrupted(JSContext *, void *opaque) {
     auto *budget = static_cast<ExecutionBudget *>(opaque);
     return budget->depth > 0 && budget->milliseconds > 0 &&
            std::chrono::steady_clock::now() >= budget->deadline;
@@ -28,6 +28,7 @@ static int executionInterrupted(JSRuntime *, void *opaque) {
 static void beginExecution(JSRuntime *rt) {
     auto *budget = executionBudget(rt);
     if (budget->depth++ == 0) {
+        JS_UpdateStackTop(rt);
         budget->deadline = std::chrono::steady_clock::now() +
                            std::chrono::milliseconds(budget->milliseconds);
     }
@@ -298,7 +299,7 @@ extern "C"
 
     DLLEXPORT int JS_IsArrayDartWrapper(JSContext *ctx, JSValueConst *val)
     {
-        return JS_IsArray(ctx, *val);
+        return JS_IsArray(*val);
     }
 
     DLLEXPORT int JS_JSONStringifyDartWrapper(
@@ -405,12 +406,16 @@ extern "C"
         data[1] = &argc;
         data[2] = argv;
         data[3] = func_data;
-        return *(JSValue *)channel(ctx, JSChannelType_METHON, data);
+        auto *result = static_cast<JSValue *>(channel(ctx, JSChannelType_METHON, data));
+        if (!result) return JS_ThrowInternalError(ctx, "Dart callback returned no value");
+        const JSValue value = *result;
+        delete result; // The callback transfers the value, not its heap wrapper.
+        return value;
     }
 
     void js_promise_rejection_tracker(JSContext *ctx, JSValueConst promise,
                                       JSValueConst reason,
-                                      JS_BOOL is_handled, void *opaque)
+                                      bool is_handled, void *opaque)
     {
         if (is_handled)
             return;
@@ -437,7 +442,7 @@ extern "C"
     DLLEXPORT void jsBeginExecution(JSRuntime *rt) { beginExecution(rt); }
     DLLEXPORT void jsEndExecution(JSRuntime *rt) { endExecution(rt); }
     DLLEXPORT int32_t jsExecutionInterrupted(JSRuntime *rt) {
-        return executionInterrupted(rt, executionBudget(rt));
+        return executionInterrupted(nullptr, executionBudget(rt));
     }
     DLLEXPORT void jsSetExecutionTimeout(JSRuntime *rt, int64_t timeout) {
         executionBudget(rt)->milliseconds = timeout;
@@ -449,11 +454,8 @@ extern "C"
     DLLEXPORT uint32_t jsNewClass(JSContext *ctx, const char *name)
     {
         JSClassID QJSClassId = 0;
-        {
-            std::lock_guard<std::mutex> lock(budgetsMutex);
-            JS_NewClassID(&QJSClassId);
-        }
         JSRuntime *rt = JS_GetRuntime(ctx);
+        JS_NewClassID(rt, &QJSClassId);
         if (!JS_IsRegisteredClass(rt, QJSClassId))
         {
             JSClassDef def{
@@ -532,24 +534,26 @@ extern "C"
     {
         JSRuntime *rt = JS_GetRuntime(ctx);
         ExecutionScope execution(rt);
-        JS_UpdateStackTop(rt);
         JSValue *ret = new JSValue(JS_Eval(ctx, input, input_len, filename, eval_flags));
         return ret;
     }
 
-    DLLEXPORT int32_t jsValueGetTag(JSValue *val)
+    // Stable bridge ABI: never expose QuickJS's internal type tags to Dart.
+    DLLEXPORT int32_t jsValueKind(JSValue *val)
     {
-        return JS_VALUE_GET_TAG(*val);
+        if (JS_IsBool(*val)) return 1;
+        if (JS_IsNumber(*val)) return JS_VALUE_GET_TAG(*val) == JS_TAG_INT ? 2 : 6;
+        if (JS_IsString(*val)) return 3; // Includes quickjs-ng rope strings.
+        if (JS_IsObject(*val)) return 4;
+        if (JS_IsBigInt(*val)) return 5;
+        return 0;
     }
+
+    DLLEXPORT const char *jsEngineVersion() { return JS_GetVersion(); }
 
     DLLEXPORT void *jsValueGetPtr(JSValue *val)
     {
         return JS_VALUE_GET_PTR(*val);
-    }
-
-    DLLEXPORT int32_t jsTagIsFloat64(int32_t tag)
-    {
-        return JS_TAG_IS_FLOAT64(tag);
     }
 
     DLLEXPORT JSValue *jsNewBool(JSContext *ctx, int32_t val)
@@ -567,9 +571,9 @@ extern "C"
         return new JSValue(JS_NewFloat64(ctx, val));
     }
 
-    DLLEXPORT JSValue *jsNewString(JSContext *ctx, const char *str)
+    DLLEXPORT JSValue *jsNewStringLen(JSContext *ctx, const char *str, size_t length)
     {
-        return new JSValue(JS_NewString(ctx, str));
+        return new JSValue(JS_NewStringLen(ctx, str, length));
     }
 
     DLLEXPORT JSValue *jsNewArrayBufferCopy(JSContext *ctx, const uint8_t *buf, size_t len)
@@ -630,12 +634,10 @@ extern "C"
         return p;
     }
 
-    DLLEXPORT const char *jsToCString(JSContext *ctx, JSValueConst *val)
+    DLLEXPORT const char *jsToCStringLen(JSContext *ctx, size_t *length, JSValueConst *val)
     {
-        JSRuntime *rt = JS_GetRuntime(ctx);
-        JS_UpdateStackTop(rt);
-        const char *ret = JS_ToCString(ctx, *val);
-        return ret;
+        ExecutionScope execution(JS_GetRuntime(ctx));
+        return JS_ToCStringLen(ctx, length, *val);
     }
 
     DLLEXPORT void jsFreeCString(JSContext *ctx, const char *ptr)
@@ -645,22 +647,45 @@ extern "C"
 
     DLLEXPORT uint8_t *jsGetArrayBuffer(JSContext *ctx, size_t *psize, JSValueConst *obj)
     {
+        if (!JS_IsArrayBuffer(*obj)) {
+            *psize = 0;
+            return nullptr;
+        }
         return JS_GetArrayBuffer(ctx, psize, *obj);
     }
 
     DLLEXPORT int32_t jsIsPromise(JSContext *ctx, JSValueConst *val)
     {
-        return JS_IsPromise(ctx, *val);
+        return JS_IsPromise(*val);
     }
 
     DLLEXPORT int32_t jsIsArray(JSContext *ctx, JSValueConst *val)
     {
-        return JS_IsArray(ctx, *val);
+        // quickjs-ng no longer unwraps proxies in JS_IsArray. Preserve the
+        // previous bridge contract without invoking script-mutable JS hooks.
+        JSRuntime *rt = JS_GetRuntime(ctx);
+        ExecutionScope execution(rt);
+        auto *budget = executionBudget(rt);
+        JSValue target = JS_DupValue(ctx, *val);
+        while (JS_IsProxy(target)) {
+            if (executionInterrupted(ctx, budget)) {
+                JS_FreeValue(ctx, target);
+                JS_ThrowInternalError(ctx, "interrupted");
+                return -1;
+            }
+            JSValue next = JS_GetProxyTarget(ctx, target);
+            JS_FreeValue(ctx, target);
+            if (JS_IsException(next)) return -1;
+            target = next;
+        }
+        const bool result = JS_IsArray(target);
+        JS_FreeValue(ctx, target);
+        return result;
     }
 
     DLLEXPORT int32_t jsIsError(JSContext *ctx, JSValueConst *val)
     {
-        return JS_IsError(ctx, *val);
+        return JS_IsError(*val);
     }
 
     DLLEXPORT JSValue *jsNewError(JSContext *ctx)
@@ -721,7 +746,6 @@ extern "C"
     {
         JSRuntime *rt = JS_GetRuntime(ctx);
         ExecutionScope execution(rt);
-        JS_UpdateStackTop(rt);
         JSValue *ret = new JSValue(JS_Call(ctx, *func_obj, *this_obj, argc, argv));
         return ret;
     }
@@ -738,7 +762,7 @@ extern "C"
 
     DLLEXPORT int32_t jsExecutePendingJob(JSRuntime *rt)
     {
-        JS_UpdateStackTop(rt);
+        ExecutionScope execution(rt);
         JSContext *ctx;
         int ret = JS_ExecutePendingJob(rt, &ctx);
         return ret;

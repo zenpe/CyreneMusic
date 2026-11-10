@@ -1,11 +1,14 @@
 import 'collection_play_controls.dart';
+
 import 'dart:io';
 import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:cached_network_image/cached_network_image.dart';
+
 import '../services/player_service.dart';
 import '../pages/player_page.dart';
 import '../services/playlist_queue_service.dart';
@@ -1783,10 +1786,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
       children: [
         Text(
           name,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-          ),
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(fontWeight: FontWeight.w600, fontSize: 14),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -1802,14 +1803,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 ),
                 margin: const EdgeInsets.only(right: 5),
                 decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.12),
+                  color: Theme.of(context).colorScheme.primary
+                      .withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(3),
                   border: Border.all(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: 0.28),
+                    color: Theme.of(context).colorScheme.primary
+                        .withValues(alpha: 0.28),
                     width: 0.6,
                   ),
                 ),
@@ -2464,9 +2463,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                 ),
                                 tileColor: isCurrent
                                     ? WidgetStateColor.resolveWith(
-                                        (_) => fluent.FluentTheme.of(
-                                          context,
-                                        ).resources.controlFillColorSecondary,
+                                        (_) =>
+                                            fluent.FluentTheme.of(context)
+                                                .resources
+                                                .controlFillColorSecondary,
                                       )
                                     : null,
                                 trailing: TrackMoreButton(
@@ -2611,15 +2611,13 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                   : (hasQueueNow
                                         ? ReorderableListView.builder(
                                             buildDefaultDragHandles: false,
-                                            onReorder: (oldIndex, newIndex) {
-                                              if (newIndex > oldIndex) {
-                                                newIndex -= 1;
-                                              }
-                                              queueService.move(
-                                                oldIndex,
-                                                newIndex,
-                                              );
-                                            },
+                                            onReorderItem:
+                                                (oldIndex, newIndex) {
+                                                  queueService.move(
+                                                    oldIndex,
+                                                    newIndex,
+                                                  );
+                                                },
                                             itemCount: list.length,
                                             itemBuilder: (context, i) {
                                               final Track t = list[i];
@@ -2666,26 +2664,21 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                                   128,
                                                               memCacheHeight:
                                                                   128,
-                                                              imageBuilder:
-                                                                  (
-                                                                    context,
-                                                                    imageProvider,
-                                                                  ) {
-                                                                    PlaylistQueueService()
-                                                                        .updateCoverProvider(
-                                                                          t,
-                                                                          imageProvider,
-                                                                        );
-                                                                    return Image(
-                                                                      image:
-                                                                          imageProvider,
-                                                                      width: 44,
-                                                                      height:
-                                                                          44,
-                                                                      fit: BoxFit
-                                                                          .cover,
+                                                              imageBuilder: (context, imageProvider) {
+                                                                PlaylistQueueService()
+                                                                    .updateCoverProvider(
+                                                                      t,
+                                                                      imageProvider,
                                                                     );
-                                                                  },
+                                                                return Image(
+                                                                  image:
+                                                                      imageProvider,
+                                                                  width: 44,
+                                                                  height: 44,
+                                                                  fit: BoxFit
+                                                                      .cover,
+                                                                );
+                                                              },
                                                               placeholder: (context, url) => Container(
                                                                 width: 44,
                                                                 height: 44,
@@ -2954,27 +2947,21 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                                     128,
                                                                 memCacheHeight:
                                                                     128,
-                                                                imageBuilder:
-                                                                    (
-                                                                      context,
-                                                                      imageProvider,
-                                                                    ) {
-                                                                      PlaylistQueueService()
-                                                                          .updateCoverProvider(
-                                                                            t,
-                                                                            imageProvider,
-                                                                          );
-                                                                      return Image(
-                                                                        image:
-                                                                            imageProvider,
-                                                                        width:
-                                                                            44,
-                                                                        height:
-                                                                            44,
-                                                                        fit: BoxFit
-                                                                            .cover,
+                                                                imageBuilder: (context, imageProvider) {
+                                                                  PlaylistQueueService()
+                                                                      .updateCoverProvider(
+                                                                        t,
+                                                                        imageProvider,
                                                                       );
-                                                                    },
+                                                                  return Image(
+                                                                    image:
+                                                                        imageProvider,
+                                                                    width: 44,
+                                                                    height: 44,
+                                                                    fit: BoxFit
+                                                                        .cover,
+                                                                  );
+                                                                },
                                                                 placeholder: (context, url) => Container(
                                                                   width: 44,
                                                                   height: 44,
@@ -2990,28 +2977,22 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                                                             10,
                                                                       ),
                                                                 ),
-                                                                errorWidget:
-                                                                    (
-                                                                      context,
-                                                                      url,
-                                                                      error,
-                                                                    ) => Container(
-                                                                      width: 44,
-                                                                      height:
-                                                                          44,
-                                                                      color:
-                                                                          isDark
-                                                                          ? const Color(
-                                                                              0xFF2C2C2E,
-                                                                            )
-                                                                          : CupertinoColors.systemGrey5,
-                                                                      child: Icon(
-                                                                        CupertinoIcons
-                                                                            .music_note,
-                                                                        color: CupertinoColors
-                                                                            .systemGrey,
-                                                                      ),
-                                                                    ),
+                                                                errorWidget: (context, url, error) => Container(
+                                                                  width: 44,
+                                                                  height: 44,
+                                                                  color: isDark
+                                                                      ? const Color(
+                                                                          0xFF2C2C2E,
+                                                                        )
+                                                                      : CupertinoColors
+                                                                            .systemGrey5,
+                                                                  child: Icon(
+                                                                    CupertinoIcons
+                                                                        .music_note,
+                                                                    color: CupertinoColors
+                                                                        .systemGrey,
+                                                                  ),
+                                                                ),
                                                               )
                                                             : Image.file(
                                                                 File(t.picUrl),
@@ -3182,19 +3163,16 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                     padding: const EdgeInsets.all(24.0),
                                     child: Text(
                                       '播放列表为空',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodyMedium,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium,
                                     ),
                                   ),
                                 )
                               : (hasQueueNow
                                     ? ReorderableListView.builder(
                                         buildDefaultDragHandles: false,
-                                        onReorder: (oldIndex, newIndex) {
-                                          if (newIndex > oldIndex) {
-                                            newIndex -= 1;
-                                          }
+                                        onReorderItem: (oldIndex, newIndex) {
                                           queueService.move(oldIndex, newIndex);
                                         },
                                         itemCount: list.length,

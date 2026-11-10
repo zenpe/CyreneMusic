@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cyrene_music/models/track.dart';
@@ -251,51 +252,47 @@ void main() {
     expect(current!.url, 'https://audio.test/song');
   });
 
-  test(
-    'expired cached lyrics display while refreshing and retain expiry on failure',
-    () async {
-      await request((t, d, b) async => ready);
-      final entry = await LyricCacheService().readEntry('netease_a');
-      final expired = LyricCacheEntry.fromJson({
-        ...entry!.toJson(),
-        'expiresAt': DateTime.utc(2020).toIso8601String(),
-      });
-      await LyricCacheService().writeEntry('netease_a', expired);
-      LyricRepository().clearMemory();
-      service.clearCurrent();
-      current = song(selected);
-      service.bindCurrentTrack(
-        track: selected,
-        playbackToken: 1,
-        song: current,
-        state: LyricLoadState.loading,
-      );
-      var calls = 0;
-      await request((t, d, b) async {
-        calls++;
-        expect(service.currentState, LyricLoadState.ready);
-        expect(current!.lyric, contains('Recovered'));
-        return temporary;
-      });
-      expect(calls, 2);
+  test('expired cached lyrics display while refreshing and retain expiry on failure', () async {
+    await request((t, d, b) async => ready);
+    final entry = await LyricCacheService().readEntry('netease_a');
+    final expired = LyricCacheEntry.fromJson({
+      ...entry!.toJson(),
+      'expiresAt': DateTime.utc(2020).toIso8601String(),
+    });
+    await LyricCacheService().writeEntry('netease_a', expired);
+    LyricRepository().clearMemory();
+    service.clearCurrent();
+    current = song(selected);
+    service.bindCurrentTrack(
+      track: selected,
+      playbackToken: 1,
+      song: current,
+      state: LyricLoadState.loading,
+    );
+    var calls = 0;
+    await request((t, d, b) async {
+      calls++;
       expect(service.currentState, LyricLoadState.ready);
-      expect(
-        (await LyricCacheService().readEntry('netease_a'))!.isExpired,
-        isTrue,
-      );
-    },
-  );
+      expect(current!.lyric, contains('Recovered'));
+      return temporary;
+    });
+    expect(calls, 2);
+    expect(service.currentState, LyricLoadState.ready);
+    expect(
+      (await LyricCacheService().readEntry('netease_a'))!.isExpired,
+      isTrue,
+    );
+  });
 
   test('obsolete prefetch cannot start after delayed cache lookup', () async {
     final lookup = Completer<LyricLookupResult?>();
     final isolated = LyricService.forTesting(
-      lookup:
-          ({
-            required track,
-            required quality,
-            required currentSong,
-            required log,
-          }) => lookup.future,
+      lookup: ({
+        required track,
+        required quality,
+        required currentSong,
+        required log,
+      }) => lookup.future,
     );
     isolated.bindCurrentTrack(
       track: selected,

@@ -181,9 +181,8 @@ void main() {
         await gate.future;
       };
       final old = route();
-      final pending = get(
-        old,
-      ).then<void>((r) => r.drain<void>(), onError: (Object _) {});
+      final pending = get(old)
+          .then<void>((r) => r.drain<void>(), onError: (Object _) {});
       await started.future;
       proxy.release(old);
       await pending.timeout(const Duration(seconds: 1));
@@ -192,6 +191,40 @@ void main() {
       respond = (r) async {
         r.response.write('next');
         await r.response.close();
+      };
+      expect(await utf8.decodeStream(await get(route())), 'next');
+    },
+  );
+
+  test(
+    'release during an active body stream cannot throw synchronously',
+    () async {
+      final gate = Completer<void>();
+      respond = (request) async {
+        request.response.bufferOutput = false;
+        request.response.add(List<int>.filled(64 * 1024, 1));
+        await request.response.flush();
+        await gate.future;
+      };
+      final old = route();
+      final response = await get(old);
+      final received = Completer<void>();
+      final done = Completer<void>();
+      response.listen(
+        (_) {
+          if (!received.isCompleted) received.complete();
+        },
+        onError: (Object _) {},
+        onDone: done.complete,
+      );
+      await received.future.timeout(const Duration(seconds: 2));
+      expect(() => proxy.release(old), returnsNormally);
+      await done.future.timeout(const Duration(seconds: 2));
+      expect(proxy.failureFor(old), isNull);
+      gate.complete();
+      respond = (request) async {
+        request.response.write('next');
+        await request.response.close();
       };
       expect(await utf8.decodeStream(await get(route())), 'next');
     },

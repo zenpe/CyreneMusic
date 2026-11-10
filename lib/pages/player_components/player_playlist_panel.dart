@@ -1,7 +1,11 @@
 import '../../widgets/track_source_cover.dart';
+
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:cached_network_image/cached_network_image.dart';
+
 import '../../services/player_service.dart';
 import '../../services/playlist_queue_service.dart';
 import '../../services/play_history_service.dart';
@@ -206,8 +210,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                     ? ReorderableListView.builder(
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         buildDefaultDragHandles: false,
-                        onReorder: (oldIndex, newIndex) {
-                          if (newIndex > oldIndex) newIndex--;
+                        onReorderItem: (oldIndex, newIndex) {
                           PlaybackService().reorder(oldIndex, newIndex);
                         },
                         itemCount: displayList.length,
@@ -236,7 +239,7 @@ class _PlayerPlaylistPanelState extends State<PlayerPlaylistPanel> {
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         itemCount: displayList.length,
                         itemExtent: 74,
-                        cacheExtent: 500,
+                        scrollCacheExtent: const ScrollCacheExtent.pixels(500),
                         addAutomaticKeepAlives: true,
                         addRepaintBoundaries: true,
                         itemBuilder: (context, index) {

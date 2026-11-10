@@ -324,30 +324,26 @@ void main() {
         service.activeSource!.id,
       );
       expect(
-        jsonDecode(
-          prefs.getString('audio_source_list')!,
-        ).single['scriptContent'],
+        jsonDecode(prefs.getString('audio_source_list')!)
+            .single['scriptContent'],
         'old',
       );
     },
   );
 
-  test(
-    'same-name replacement keeps ID and updates script capabilities without duplicates',
-    () async {
-      parser.scripts[url] = 'old';
-      await service.useLxSource(url);
-      final id = service.activeSource!.id;
-      final revision = service.lxSourceRevision;
-      parser.scripts[url] = 'new';
-      await service.useLxSource(url);
-      expect(service.sources.length, 1);
-      expect(service.activeSource!.id, id);
-      expect(service.activeSource!.scriptContent, 'new');
-      expect(service.activeSource!.supportedPlatforms, ['qq']);
-      expect(service.lxSourceRevision, greaterThan(revision));
-    },
-  );
+  test('same-name replacement keeps ID and updates script capabilities without duplicates', () async {
+    parser.scripts[url] = 'old';
+    await service.useLxSource(url);
+    final id = service.activeSource!.id;
+    final revision = service.lxSourceRevision;
+    parser.scripts[url] = 'new';
+    await service.useLxSource(url);
+    expect(service.sources.length, 1);
+    expect(service.activeSource!.id, id);
+    expect(service.activeSource!.scriptContent, 'new');
+    expect(service.activeSource!.supportedPlatforms, ['qq']);
+    expect(service.lxSourceRevision, greaterThan(revision));
+  });
 
   test(
     'failed download leaves saved configuration and runtime untouched',
@@ -398,42 +394,36 @@ void main() {
     },
   );
 
-  test(
-    'playback initialization waits for replacement instead of loading old content',
-    () async {
-      parser.scripts[url] = 'old';
-      await service.useLxSource(url);
-      parser.scripts[url] = 'new';
-      final gate = Completer<void>();
-      final started = Completer<void>();
-      runtime.gate = gate;
-      runtime.started = started;
-      final update = service.useLxSource(url);
-      await started.future;
-      var finished = false;
-      final initialization = service.initializeLxRuntime().then(
-        (_) => finished = true,
-      );
-      await Future<void>.delayed(Duration.zero);
-      expect(finished, isFalse);
-      expect(service.activeSource!.scriptContent, 'old');
-      gate.complete();
-      await update;
-      await initialization;
-      expect(runtime.loads, ['old', 'new']);
-      expect(service.activeSource!.scriptContent, 'new');
-    },
-  );
+  test('playback initialization waits for replacement instead of loading old content', () async {
+    parser.scripts[url] = 'old';
+    await service.useLxSource(url);
+    parser.scripts[url] = 'new';
+    final gate = Completer<void>();
+    final started = Completer<void>();
+    runtime.gate = gate;
+    runtime.started = started;
+    final update = service.useLxSource(url);
+    await started.future;
+    var finished = false;
+    final initialization = service.initializeLxRuntime().then(
+      (_) => finished = true,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(finished, isFalse);
+    expect(service.activeSource!.scriptContent, 'old');
+    gate.complete();
+    await update;
+    await initialization;
+    expect(runtime.loads, ['old', 'new']);
+    expect(service.activeSource!.scriptContent, 'new');
+  });
 
-  test(
-    'concurrent candidate operations are serialized and do not duplicate records',
-    () async {
-      parser.scripts[url] = 'old';
-      await Future.wait([service.useLxSource(url), service.useLxSource(url)]);
-      expect(service.sources.length, 1);
-      expect(runtime.loads, ['old', 'old']);
-    },
-  );
+  test('concurrent candidate operations are serialized and do not duplicate records', () async {
+    parser.scripts[url] = 'old';
+    await Future.wait([service.useLxSource(url), service.useLxSource(url)]);
+    expect(service.sources.length, 1);
+    expect(runtime.loads, ['old', 'old']);
+  });
 
   test(
     'first invalid import does not create a saved source or selection',

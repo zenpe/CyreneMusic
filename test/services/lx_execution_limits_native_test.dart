@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:cyrene_music/services/lx_music_runtime_service.dart';
 import 'package:cyrene_music/services/lx_quickjs_runtime.dart';
 import 'package:flutter_js/flutter_js.dart';
@@ -35,20 +36,13 @@ void main() {
     expect(runtime.executePendingJob, throwsA(isA<JSError>()));
     expect(watch.elapsedMilliseconds, lessThan(2000));
   }, skip: !native);
-  test(
-    'memory exhaustion returns an error instead of crashing the host',
-    () {
-      final runtime = QuickJsRuntime2(
-        timeout: 200,
-        memoryLimit: 8 * 1024 * 1024,
-      );
-      addTearDown(runtime.dispose);
-      final result = runtime.evaluate('new ArrayBuffer(32 * 1024 * 1024)');
-      expect(result.isError, isTrue);
-      expect(runtime.evaluate('1 + 1').stringResult, '2');
-    },
-    skip: !native,
-  );
+  test('memory exhaustion returns an error instead of crashing the host', () {
+    final runtime = QuickJsRuntime2(timeout: 200, memoryLimit: 8 * 1024 * 1024);
+    addTearDown(runtime.dispose);
+    final result = runtime.evaluate('new ArrayBuffer(32 * 1024 * 1024)');
+    expect(result.isError, isTrue);
+    expect(runtime.evaluate('1 + 1').stringResult, '2');
+  }, skip: !native);
   test('an interrupted candidate preserves the active source', () async {
     final host = LxMusicRuntimeService.withFactory(LxQuickJsRuntime.new);
     addTearDown(host.dispose);

@@ -363,9 +363,9 @@ void main() {
     final sent = <int>[];
     await withServer(
       (request) async {
-        final data =
-            jsonDecode(await utf8.decoder.bind(request).join())
-                as Map<String, dynamic>;
+        final data = jsonDecode(
+          await utf8.decoder.bind(request).join(),
+        ) as Map<String, dynamic>;
         sent.add(data['seconds'] as int);
         await reply(request, {
           'status': sent.length == 1 ? 503 : 200,
@@ -391,9 +391,9 @@ void main() {
       await withServer(
         (request) async {
           headers.add(request.headers.value('Authorization'));
-          final data =
-              jsonDecode(await utf8.decoder.bind(request).join())
-                  as Map<String, dynamic>;
+          final data = jsonDecode(
+            await utf8.decoder.bind(request).join(),
+          ) as Map<String, dynamic>;
           sentSeconds.add(data['seconds'] as int);
           if (sentSeconds.length == 1) {
             received.complete();
@@ -427,9 +427,9 @@ void main() {
     final sentSeconds = <int>[];
     await withServer(
       (request) async {
-        final data =
-            jsonDecode(await utf8.decoder.bind(request).join())
-                as Map<String, dynamic>;
+        final data = jsonDecode(
+          await utf8.decoder.bind(request).join(),
+        ) as Map<String, dynamic>;
         sentSeconds.add(data['seconds'] as int);
         await reply(request, {
           'status': 200,

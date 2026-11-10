@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'dart:async';
 
 import '../../models/lyric_line.dart';
@@ -16,13 +17,12 @@ import '../navidrome_session_service.dart';
 
 typedef LyricLogFn = void Function(String message, {bool toDeveloperPanel});
 
-typedef LyricLookupFn =
-    Future<LyricLookupResult?> Function({
-      required Track track,
-      required String quality,
-      required SongDetail? currentSong,
-      required LyricRepositoryLogFn log,
-    });
+typedef LyricLookupFn = Future<LyricLookupResult?> Function({
+  required Track track,
+  required String quality,
+  required SongDetail? currentSong,
+  required LyricRepositoryLogFn log,
+});
 
 class LyricRequestFetchAdapter {
   final LyricFetch? fetchResult;
@@ -124,10 +124,9 @@ class LyricService extends ChangeNotifier {
 
   @visibleForTesting
   LyricService.forTesting({
-    required LyricLookupFn lookup,
+    required this._lookup,
     LyricRequestCoordinator? requests,
-  }) : _lookup = lookup,
-       _requests = requests ?? LyricRequestCoordinator();
+  }) : _requests = requests ?? LyricRequestCoordinator();
 
   final LyricLookupFn _lookup;
 

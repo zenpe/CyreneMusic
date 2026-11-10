@@ -65,91 +65,88 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test(
-    'profile data survives credential renewal and failed refresh; same-account login isolates it',
-    () async {
-      var fail = false;
-      var playlistCalls = 0;
-      await withServer(
-        (request) async {
-          if (request.uri.path == '/auth/validate-token') {
-            await reply(request, {
-              'code': 200,
-              'data': {...user(1), 'token': 'renewed-token'},
-            });
-          } else if (request.uri.path == '/playlists') {
-            playlistCalls++;
-            await reply(
-              request,
-              fail
-                  ? {'status': 503}
-                  : {
-                      'status': 200,
-                      'playlists': [
-                        {
-                          'id': 10,
-                          'name': 'Saved playlist',
-                          'type': 'local',
-                          'isDefault': false,
-                          'trackCount': 0,
-                          'createdAt': '2026-10-19 00:00:00',
-                          'updatedAt': '2026-10-19 00:00:00',
-                        },
-                      ],
-                    },
-              status: fail ? 503 : 200,
-            );
-          } else {
-            await reply(
-              request,
-              fail ? {'status': 503} : summary(7),
-              status: fail ? 503 : 200,
-            );
-          }
-        },
-        (auth, stats) async {
-          final playlists = PlaylistService();
-          await Future.wait([
-            playlists.loadPlaylists(),
-            playlists.loadPlaylists(),
-            stats.fetchStats(),
-          ]);
-          expect(playlistCalls, 1);
-          final context = playlists.contextIdentity;
-          await auth.validateToken();
-          expect(auth.token, 'renewed-token');
-          expect(playlists.contextIdentity, context);
-          expect(playlists.playlists.single.name, 'Saved playlist');
-          expect(stats.statsData?.totalPlayCount, 7);
-          await playlists.loadPlaylists(forceRefresh: false);
-          expect(playlistCalls, 1);
-          fail = true;
-          await Future.wait([
-            playlists.loadPlaylists(),
-            stats.fetchStats(forceRefresh: true),
-          ]);
-          expect(playlists.playlists, hasLength(1));
-          expect(playlists.loadError, isNotNull);
-          expect(playlists.isLoading, false);
-          expect(stats.statsData?.totalPlayCount, 7);
-          expect(stats.lastError, isNotNull);
-          expect(stats.isLoading, false);
-          fail = false;
-          await Future.wait([
-            playlists.loadPlaylists(forceRefresh: false),
-            stats.fetchStats(),
-          ]);
-          expect(playlists.loadError, isNull);
-          expect(stats.lastError, isNull);
-          await auth.loginWithToken(token: 'another-login', userJson: user(1));
-          expect(playlists.contextIdentity, isNot(context));
-          expect(playlists.playlists, isEmpty);
-          expect(playlists.hasLoadedPlaylists, false);
-          expect(stats.statsData, isNull);
-        },
-      );
-    },
-  );
+  test('profile data survives credential renewal and failed refresh; same-account login isolates it', () async {
+    var fail = false;
+    var playlistCalls = 0;
+    await withServer(
+      (request) async {
+        if (request.uri.path == '/auth/validate-token') {
+          await reply(request, {
+            'code': 200,
+            'data': {...user(1), 'token': 'renewed-token'},
+          });
+        } else if (request.uri.path == '/playlists') {
+          playlistCalls++;
+          await reply(
+            request,
+            fail
+                ? {'status': 503}
+                : {
+                    'status': 200,
+                    'playlists': [
+                      {
+                        'id': 10,
+                        'name': 'Saved playlist',
+                        'type': 'local',
+                        'isDefault': false,
+                        'trackCount': 0,
+                        'createdAt': '2026-10-19 00:00:00',
+                        'updatedAt': '2026-10-19 00:00:00',
+                      },
+                    ],
+                  },
+            status: fail ? 503 : 200,
+          );
+        } else {
+          await reply(
+            request,
+            fail ? {'status': 503} : summary(7),
+            status: fail ? 503 : 200,
+          );
+        }
+      },
+      (auth, stats) async {
+        final playlists = PlaylistService();
+        await Future.wait([
+          playlists.loadPlaylists(),
+          playlists.loadPlaylists(),
+          stats.fetchStats(),
+        ]);
+        expect(playlistCalls, 1);
+        final context = playlists.contextIdentity;
+        await auth.validateToken();
+        expect(auth.token, 'renewed-token');
+        expect(playlists.contextIdentity, context);
+        expect(playlists.playlists.single.name, 'Saved playlist');
+        expect(stats.statsData?.totalPlayCount, 7);
+        await playlists.loadPlaylists(forceRefresh: false);
+        expect(playlistCalls, 1);
+        fail = true;
+        await Future.wait([
+          playlists.loadPlaylists(),
+          stats.fetchStats(forceRefresh: true),
+        ]);
+        expect(playlists.playlists, hasLength(1));
+        expect(playlists.loadError, isNotNull);
+        expect(playlists.isLoading, false);
+        expect(stats.statsData?.totalPlayCount, 7);
+        expect(stats.lastError, isNotNull);
+        expect(stats.isLoading, false);
+        fail = false;
+        await Future.wait([
+          playlists.loadPlaylists(forceRefresh: false),
+          stats.fetchStats(),
+        ]);
+        expect(playlists.loadError, isNull);
+        expect(stats.lastError, isNull);
+        await auth.loginWithToken(token: 'another-login', userJson: user(1));
+        expect(playlists.contextIdentity, isNot(context));
+        expect(playlists.playlists, isEmpty);
+        expect(playlists.hasLoadedPlaylists, false);
+        expect(stats.statsData, isNull);
+      },
+    );
+  });
 
   test(
     'initial playlist failure is distinct from an empty successful response',
@@ -178,34 +175,31 @@ void main() {
     },
   );
 
-  test(
-    'concurrent reads merge; repeated entry uses cache; explicit refresh reads again',
-    () async {
-      var calls = 0;
-      await withServer(
-        (request) async {
-          expect(request.method, 'GET');
-          expect(request.uri.path, '/stats');
-          await reply(request, summary(++calls));
-        },
-        (auth, service) async {
-          service.accumulateListeningTime(25);
-          final results = await Future.wait(
-            List.generate(10, (_) => service.fetchStats()),
-          );
-          expect(calls, 1);
-          expect(results.every((r) => r?.totalPlayCount == 1), true);
-          expect((await service.fetchStats())?.totalPlayCount, 1);
-          expect(calls, 1);
-          expect(
-            (await service.fetchStats(forceRefresh: true))?.totalPlayCount,
-            2,
-          );
-          expect(calls, 2);
-        },
-      );
-    },
-  );
+  test('concurrent reads merge; repeated entry uses cache; explicit refresh reads again', () async {
+    var calls = 0;
+    await withServer(
+      (request) async {
+        expect(request.method, 'GET');
+        expect(request.uri.path, '/stats');
+        await reply(request, summary(++calls));
+      },
+      (auth, service) async {
+        service.accumulateListeningTime(25);
+        final results = await Future.wait(
+          List.generate(10, (_) => service.fetchStats()),
+        );
+        expect(calls, 1);
+        expect(results.every((r) => r?.totalPlayCount == 1), true);
+        expect((await service.fetchStats())?.totalPlayCount, 1);
+        expect(calls, 1);
+        expect(
+          (await service.fetchStats(forceRefresh: true))?.totalPlayCount,
+          2,
+        );
+        expect(calls, 2);
+      },
+    );
+  });
 
   test('forced refresh also joins an existing request', () async {
     final started = Completer<void>(), release = Completer<void>();
@@ -277,37 +271,34 @@ void main() {
     },
   );
 
-  test(
-    'session changes discard cached data and old requests cannot overwrite the new account',
-    () async {
-      final started = Completer<void>(), release = Completer<void>();
-      var calls = 0;
-      await withServer(
-        (request) async {
-          final first = ++calls == 1;
-          if (first) {
-            started.complete();
-            await release.future;
-          }
-          await reply(request, summary(first ? 99 : 2));
-        },
-        (auth, service) async {
-          final old = service.fetchStats();
-          await started.future;
-          await auth.loginWithToken(token: 'token-b', userJson: user(2));
-          expect(service.statsData, isNull);
-          expect((await service.fetchStats())?.totalPlayCount, 2);
-          release.complete();
-          expect(await old, isNull);
-          expect(service.statsData?.totalPlayCount, 2);
-          await auth.logout();
-          expect(service.statsData, isNull);
-          expect(await service.fetchStats(), isNull);
-          expect(calls, 2);
-        },
-      );
-    },
-  );
+  test('session changes discard cached data and old requests cannot overwrite the new account', () async {
+    final started = Completer<void>(), release = Completer<void>();
+    var calls = 0;
+    await withServer(
+      (request) async {
+        final first = ++calls == 1;
+        if (first) {
+          started.complete();
+          await release.future;
+        }
+        await reply(request, summary(first ? 99 : 2));
+      },
+      (auth, service) async {
+        final old = service.fetchStats();
+        await started.future;
+        await auth.loginWithToken(token: 'token-b', userJson: user(2));
+        expect(service.statsData, isNull);
+        expect((await service.fetchStats())?.totalPlayCount, 2);
+        release.complete();
+        expect(await old, isNull);
+        expect(service.statsData?.totalPlayCount, 2);
+        await auth.logout();
+        expect(service.statsData, isNull);
+        expect(await service.fetchStats(), isNull);
+        expect(calls, 2);
+      },
+    );
+  });
 
   test(
     'upload acknowledgements do not trigger another statistics read',
@@ -337,31 +328,28 @@ void main() {
     },
   );
 
-  test(
-    'full records use their own page endpoint and retain identical IDs from different platforms',
-    () async {
-      await withServer(
-        (request) async {
-          expect(request.uri.path, '/stats/records');
-          expect(request.uri.queryParameters, {'page': '2', 'limit': '20'});
-          await reply(request, {
-            'status': 200,
-            'data': {
-              'page': 2,
-              'hasMore': false,
-              'records': [record('1', 'qq'), record('1', 'netease')],
-            },
-          });
-        },
-        (auth, service) async {
-          final page = await service.fetchRecords(page: 2);
-          expect(page.records.length, 2);
-          expect(page.hasMore, false);
-          expect(service.statsData, isNull);
-        },
-      );
-    },
-  );
+  test('full records use their own page endpoint and retain identical IDs from different platforms', () async {
+    await withServer(
+      (request) async {
+        expect(request.uri.path, '/stats/records');
+        expect(request.uri.queryParameters, {'page': '2', 'limit': '20'});
+        await reply(request, {
+          'status': 200,
+          'data': {
+            'page': 2,
+            'hasMore': false,
+            'records': [record('1', 'qq'), record('1', 'netease')],
+          },
+        });
+      },
+      (auth, service) async {
+        final page = await service.fetchRecords(page: 2);
+        expect(page.records.length, 2);
+        expect(page.hasMore, false);
+        expect(service.statsData, isNull);
+      },
+    );
+  });
 
   test(
     'records errors are explicit and the same page can be retried',

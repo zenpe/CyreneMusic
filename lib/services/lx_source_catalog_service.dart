@@ -12,10 +12,9 @@ class LxSourceCatalogService {
       _baseUrl = _currentBaseUrl;
 
   LxSourceCatalogService.withDependencies({
-    required Future<ApiResult<dynamic>> Function(String) fetch,
-    required String Function() baseUrl,
-  }) : _fetch = fetch,
-       _baseUrl = baseUrl;
+    required this._fetch,
+    required this._baseUrl,
+  });
 
   final Future<ApiResult<dynamic>> Function(String) _fetch;
   final String Function() _baseUrl;

@@ -152,16 +152,21 @@ class _JSFunction extends _JSObject implements JSInvokable, _IsolateEncodable {
 
   @override
   invoke(List<dynamic> arguments, [dynamic thisVal]) {
-    final jsRet = _invoke(arguments, thisVal);
-    final ctx = _ctx!;
-    bool isException = jsIsException(jsRet) != 0;
-    if (isException) {
-      jsFreeValue(ctx, jsRet);
-      throw _parseJSException(ctx);
+    final ctx = _ctx;
+    if (ctx == null) throw JSError("InternalError: JSValue released");
+    final rt = jsGetRuntime(ctx);
+    jsBeginExecution(rt);
+    try {
+      final jsRet = _invoke(arguments, thisVal);
+      try {
+        if (jsIsException(jsRet) != 0) throw _parseJSException(ctx);
+        return _jsToDart(ctx, jsRet);
+      } finally {
+        jsFreeValue(ctx, jsRet);
+      }
+    } finally {
+      jsEndExecution(rt);
     }
-    final ret = _jsToDart(ctx, jsRet);
-    jsFreeValue(ctx, jsRet);
-    return ret;
   }
 
   Pointer<JSValue> _invoke(List<dynamic> arguments, [dynamic thisVal]) {

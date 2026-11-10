@@ -92,10 +92,8 @@ void main() {
           // Even if the native initialization operation settles quickly, its
           // cancelled Dart continuation never finished attaching subscriptions.
           release.complete();
-          await Future.wait([
-            initial,
-            latest,
-          ]).timeout(const Duration(seconds: 2));
+          await Future.wait([initial, latest])
+              .timeout(const Duration(seconds: 2));
           expect(partial.disposed, isTrue);
           expect(creations, 2);
           expect(initializingHost.isPlaying, isTrue);
@@ -319,54 +317,51 @@ void main() {
   );
 
   for (final interrupt in ['selection', 'stop', 'none']) {
-    test(
-      'natural timeout cleanup with hung stop preserves $interrupt intent',
-      () async {
-        await host.resume();
-        final current = _currentPreparedSlot();
-        await host.bindCurrentPreparedSlot(current);
-        await host.preparePlaybackWindow(
-          PreparedPlaybackWindow(current: current, next: _nextPreparedSlot()),
-        );
-        final old = player;
-        final stopped = Completer<void>();
-        final release = Completer<void>();
-        old.stopStarted = stopped;
-        old.nextPauseGate = release;
-        final errors = <EngineError>[];
-        final sub = host.errorStream.listen(errors.add);
-        try {
-          old.processingState = ja.ProcessingState.buffering;
-          old.currentIndexValue = 1;
-          old.indices.add(1);
-          await stopped.future.timeout(const Duration(seconds: 1));
-          if (interrupt == 'selection') {
-            // Cleanup has detached the old player, but its native stop is stuck.
-            // Do not let the test factory return that detached old instance.
-            player = ControlledAudioPlayer();
-            players.add(player);
-            await host.play(
-              'https://example.test/new-selection.mp3',
-              generation: 3,
-            );
-          } else if (interrupt == 'stop') {
-            await host.stop();
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 80));
-          expect(old.disposed, isTrue);
-          expect(old.playing, isFalse);
-          expect(errors, interrupt == 'none' ? hasLength(1) : isEmpty);
-          release.complete();
-          old.states.add(ja.PlayerState(true, ja.ProcessingState.ready));
-          await Future<void>.delayed(Duration.zero);
-          expect(host.isPlaying, interrupt == 'selection');
-          if (interrupt == 'selection') expect(player.disposed, isFalse);
-        } finally {
-          if (!release.isCompleted) release.complete();
-          await sub.cancel();
+    test('natural timeout cleanup with hung stop preserves $interrupt intent', () async {
+      await host.resume();
+      final current = _currentPreparedSlot();
+      await host.bindCurrentPreparedSlot(current);
+      await host.preparePlaybackWindow(
+        PreparedPlaybackWindow(current: current, next: _nextPreparedSlot()),
+      );
+      final old = player;
+      final stopped = Completer<void>();
+      final release = Completer<void>();
+      old.stopStarted = stopped;
+      old.nextPauseGate = release;
+      final errors = <EngineError>[];
+      final sub = host.errorStream.listen(errors.add);
+      try {
+        old.processingState = ja.ProcessingState.buffering;
+        old.currentIndexValue = 1;
+        old.indices.add(1);
+        await stopped.future.timeout(const Duration(seconds: 1));
+        if (interrupt == 'selection') {
+          // Cleanup has detached the old player, but its native stop is stuck.
+          // Do not let the test factory return that detached old instance.
+          player = ControlledAudioPlayer();
+          players.add(player);
+          await host.play(
+            'https://example.test/new-selection.mp3',
+            generation: 3,
+          );
+        } else if (interrupt == 'stop') {
+          await host.stop();
         }
-      },
-    );
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        expect(old.disposed, isTrue);
+        expect(old.playing, isFalse);
+        expect(errors, interrupt == 'none' ? hasLength(1) : isEmpty);
+        release.complete();
+        old.states.add(ja.PlayerState(true, ja.ProcessingState.ready));
+        await Future<void>.delayed(Duration.zero);
+        expect(host.isPlaying, interrupt == 'selection');
+        if (interrupt == 'selection') expect(player.disposed, isFalse);
+      } finally {
+        if (!release.isCompleted) release.complete();
+        await sub.cancel();
+      }
+    });
   }
 
   test('pausing natural loading cancels its deadline', () async {
@@ -604,11 +599,8 @@ void main() {
       );
       final next = host.play('https://example.test/next.mp3', generation: 3);
       final pause = host.pause();
-      await Future.wait([
-        failed,
-        next,
-        pause,
-      ]).timeout(const Duration(seconds: 1));
+      await Future.wait([failed, next, pause])
+          .timeout(const Duration(seconds: 1));
       expect(player.playCalls, 0);
       expect(host.isPlaying, isFalse);
     },

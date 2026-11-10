@@ -36,7 +36,7 @@ function Initialize-CyreneToolchain {
 
     $script:CyreneUsePuro = $null -ne (Get-Command puro -ErrorAction SilentlyContinue)
     if (-not $script:CyreneUsePuro -and -not (Get-Command flutter -ErrorAction SilentlyContinue)) {
-        throw 'Flutter was not found. Install Puro or Flutter 3.41.3 before continuing.'
+        throw 'Flutter was not found. Install Puro or Flutter 3.47.9 before continuing.'
     }
 }
 

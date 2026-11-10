@@ -16,8 +16,7 @@ void main() {
         'transaction_id': 7,
         'url': 'https://example.test/audio?token=abc',
         'resolver_fp': 'source script and credential',
-        'message':
-            'failed at https://example.test/audio token=abc key=credential card_key=credential',
+        'message': 'failed at https://example.test/audio token=abc key=credential card_key=credential',
       },
     );
 

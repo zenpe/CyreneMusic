@@ -20,16 +20,12 @@ class AudioSourceFacade {
   factory AudioSourceFacade() => _instance;
 
   AudioSourceFacade.withDependencies({
-    required AudioSourceReadController readController,
-    required AudioSourceController writeController,
-    required PersistentStorageService storageService,
-    required AuthService authService,
-    required NavidromeSessionService navidromeSessionService,
-  }) : _readController = readController,
-       _writeController = writeController,
-       _storageService = storageService,
-       _authService = authService,
-       _navidromeSessionService = navidromeSessionService;
+    required this._readController,
+    required this._writeController,
+    required this._storageService,
+    required this._authService,
+    required this._navidromeSessionService,
+  });
 
   AudioSourceFacade._internal({
     AudioSourceReadController? readController,

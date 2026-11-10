@@ -90,6 +90,7 @@ void runLxRuntimeWorker((SendPort, String, Duration, Duration) bootstrap) {
                 : engine.currentScript,
             owner.failure ?? engine.lastFailure,
             owner.lastHttpResponse,
+            hasConfiguredScript: engine.hasConfiguredScript,
           ),
         );
       }
@@ -143,11 +144,13 @@ class LxWorkerResult {
     this.initialized,
     this.script,
     this.failure,
-    this.httpResponse,
-  );
+    this.httpResponse, {
+    required this.hasConfiguredScript,
+  });
   final int id;
   final Object? value, error;
   final bool cancelled, initialized;
+  final bool hasConfiguredScript;
   final LxScriptInfo? script;
   final LxRuntimeFailure? failure;
   final ({int status, String bodyType, int? businessCode})? httpResponse;

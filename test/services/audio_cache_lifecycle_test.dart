@@ -193,8 +193,7 @@ void main() {
           expect(
             cache.audioRefreshFor(other, 'standard'),
             isNull,
-            reason:
-                'a competing download must not leave the skipped refresh protected',
+            reason: 'a competing download must not leave the skipped refresh protected',
           );
           await cache.clearAllCache().timeout(const Duration(seconds: 3));
           final requestsAfterClear = requests;

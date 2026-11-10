@@ -7,39 +7,36 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const coordinator = PlaybackTransitionCoordinator();
 
-  test(
-    'automatic candidate uses the available window without dividing among songs',
-    () async {
-      var elapsed = Duration.zero;
-      final budget = PlaybackTransitionBudget(elapsed: () => elapsed);
-      final slices = <Duration>[];
-      await coordinator.run(
-        plan: PlaybackCandidatePlan(
-          candidates: [entry(1), entry(2), entry(3)],
-          stopsAtQueueEnd: false,
-        ),
-        budget: budget,
-        isCurrent: () => true,
-        attempt: (_, budget, _) async {
-          if (!budget.consumeRemoteRequest()) {
-            return const PlaybackCandidateAttemptResult(
-              PlaybackCandidateAttemptStatus.budgetExhausted,
-              attempted: false,
-            );
-          }
-
-          final slice = budget.resolutionTimeout(const Duration(seconds: 6));
-          slices.add(slice);
-          elapsed += slice;
+  test('automatic candidate uses the available window without dividing among songs', () async {
+    var elapsed = Duration.zero;
+    final budget = PlaybackTransitionBudget(elapsed: () => elapsed);
+    final slices = <Duration>[];
+    await coordinator.run(
+      plan: PlaybackCandidatePlan(
+        candidates: [entry(1), entry(2), entry(3)],
+        stopsAtQueueEnd: false,
+      ),
+      budget: budget,
+      isCurrent: () => true,
+      attempt: (_, budget, _) async {
+        if (!budget.consumeRemoteRequest()) {
           return const PlaybackCandidateAttemptResult(
-            PlaybackCandidateAttemptStatus.trackFailure,
+            PlaybackCandidateAttemptStatus.budgetExhausted,
+            attempted: false,
           );
-        },
-      );
-      expect(slices, [const Duration(seconds: 6), const Duration(seconds: 3)]);
-      expect(budget.remaining(), PlaybackTransitionBudget.nativeLoadReserve);
-    },
-  );
+        }
+
+        final slice = budget.resolutionTimeout(const Duration(seconds: 6));
+        slices.add(slice);
+        elapsed += slice;
+        return const PlaybackCandidateAttemptResult(
+          PlaybackCandidateAttemptStatus.trackFailure,
+        );
+      },
+    );
+    expect(slices, [const Duration(seconds: 6), const Duration(seconds: 3)]);
+    expect(budget.remaining(), PlaybackTransitionBudget.nativeLoadReserve);
+  });
 
   test('single automatic candidate keeps a normal resolution window', () {
     final budget = PlaybackTransitionBudget(elapsed: () => Duration.zero);
@@ -75,26 +72,23 @@ void main() {
     stopsAtQueueEnd: false,
   );
 
-  test(
-    'resolution retries leave a native load window instead of spending the deadline',
-    () {
-      var elapsed = Duration.zero;
-      final budget = PlaybackTransitionBudget(
-        maxDuration: const Duration(seconds: 10),
-        elapsed: () => elapsed,
-      );
-      expect(
-        budget.resolutionTimeout(const Duration(seconds: 6)),
-        const Duration(seconds: 6),
-      );
-      expect(budget.consumeRemoteRequest(), isTrue);
-      elapsed = const Duration(seconds: 6);
-      expect(budget.resolutionTimeRemaining, const Duration(seconds: 1));
-      expect(budget.consumeRemoteRequest(), isFalse);
-      expect(budget.remoteRequests, 1);
-      expect(budget.remaining(), const Duration(seconds: 4));
-    },
-  );
+  test('resolution retries leave a native load window instead of spending the deadline', () {
+    var elapsed = Duration.zero;
+    final budget = PlaybackTransitionBudget(
+      maxDuration: const Duration(seconds: 10),
+      elapsed: () => elapsed,
+    );
+    expect(
+      budget.resolutionTimeout(const Duration(seconds: 6)),
+      const Duration(seconds: 6),
+    );
+    expect(budget.consumeRemoteRequest(), isTrue);
+    elapsed = const Duration(seconds: 6);
+    expect(budget.resolutionTimeRemaining, const Duration(seconds: 1));
+    expect(budget.consumeRemoteRequest(), isFalse);
+    expect(budget.remoteRequests, 1);
+    expect(budget.remaining(), const Duration(seconds: 4));
+  });
 
   test('local failures also obey the candidate limit', () async {
     final attempted = <int>[];

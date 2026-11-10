@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+
 import '../../models/track.dart';
 import '../../services/player_service.dart';
 import 'settings_sections/settings_sections.dart';
@@ -132,7 +134,7 @@ class _MobilePlayerSettingsSheetState extends State<MobilePlayerSettingsSheet>
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   physics: const BouncingScrollPhysics(),
                   // 性能优化：缓存更多的内容避免频繁重建
-                  cacheExtent: 500,
+                  scrollCacheExtent: const ScrollCacheExtent.pixels(500),
                   // 子组件使用 RepaintBoundary 隔离重绘
                   children: [
                     if (PlayerService().canRefreshCurrentAudio &&

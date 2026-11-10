@@ -29,19 +29,16 @@ void main() {
       expect(stats.containsKey('filePath'), isFalse);
     },
   );
-  test(
-    'complete lookup passes identity and only accepts a committed native record',
-    () async {
-      expect(
-        await AndroidStreamCache.lookup({'source': 'qq', 'songId': 'one'}),
-        isNull,
-      );
-      expect(calls.single.method, 'streamCache.lookup');
-      expect(calls.single.arguments, {
-        'identity': {'source': 'qq', 'songId': 'one'},
-      });
-    },
-  );
+  test('complete lookup passes identity and only accepts a committed native record', () async {
+    expect(
+      await AndroidStreamCache.lookup({'source': 'qq', 'songId': 'one'}),
+      isNull,
+    );
+    expect(calls.single.method, 'streamCache.lookup');
+    expect(calls.single.arguments, {
+      'identity': {'source': 'qq', 'songId': 'one'},
+    });
+  });
   test(
     'per-track deletion passes optional quality without broadening scope',
     () async {

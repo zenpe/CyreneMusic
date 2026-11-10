@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:cyrene_music/services/netease_login_service.dart';
 import 'package:cyrene_music/services/netease_recommend_service.dart';
 import 'package:cyrene_music/services/url_service.dart';
@@ -159,30 +160,27 @@ void main() {
       );
     },
   );
-  test(
-    'platform expiry preserves the business error and does not become Cyapi unauthorized',
-    () async {
-      await withServer(
-        (r) => reply(r, {
-          'code': 409,
-          'error': 'NETEASE_LOGIN_EXPIRED',
-          'message': '重新绑定',
-        }, status: 409),
-        (s) async {
-          await expectLater(
-            NeteaseRecommendService().fetchDailySongs(),
-            throwsA(
-              isA<NeteaseAccountException>().having(
-                (e) => e.code,
-                'code',
-                'NETEASE_LOGIN_EXPIRED',
-              ),
+  test('platform expiry preserves the business error and does not become Cyapi unauthorized', () async {
+    await withServer(
+      (r) => reply(r, {
+        'code': 409,
+        'error': 'NETEASE_LOGIN_EXPIRED',
+        'message': '重新绑定',
+      }, status: 409),
+      (s) async {
+        await expectLater(
+          NeteaseRecommendService().fetchDailySongs(),
+          throwsA(
+            isA<NeteaseAccountException>().having(
+              (e) => e.code,
+              'code',
+              'NETEASE_LOGIN_EXPIRED',
             ),
-          );
-        },
-      );
-    },
-  );
+          ),
+        );
+      },
+    );
+  });
   test(
     'multi playlist import uses atomic endpoint and stable operation identity',
     () async {

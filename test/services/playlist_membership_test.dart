@@ -74,44 +74,41 @@ void main() {
     },
   );
 
-  test(
-    'remove retains heart for another playlist and late read cannot resurrect it',
-    () async {
-      await _withServer((f) async {
-        f.matches = [_match(10), _match(20)];
-        final initial = await f.service.isTrackInAnyPlaylist(_track);
-        expect(
-          await f.service.removeTrackMatch(initial.matches.first, _track),
-          isTrue,
-        );
-        expect(f.service.cachedTrackMembership(_track).playlistIds, [20]);
-        expect(f.reads, 1);
-        expect(
-          await f.service.removeTrackMatch(initial.matches.last, _track),
-          isTrue,
-        );
-        expect(f.service.cachedTrackMembership(_track).known, isTrue);
-        expect(f.service.cachedTrackMembership(_track).inPlaylist, isFalse);
+  test('remove retains heart for another playlist and late read cannot resurrect it', () async {
+    await _withServer((f) async {
+      f.matches = [_match(10), _match(20)];
+      final initial = await f.service.isTrackInAnyPlaylist(_track);
+      expect(
+        await f.service.removeTrackMatch(initial.matches.first, _track),
+        isTrue,
+      );
+      expect(f.service.cachedTrackMembership(_track).playlistIds, [20]);
+      expect(f.reads, 1);
+      expect(
+        await f.service.removeTrackMatch(initial.matches.last, _track),
+        isTrue,
+      );
+      expect(f.service.cachedTrackMembership(_track).known, isTrue);
+      expect(f.service.cachedTrackMembership(_track).inPlaylist, isFalse);
 
-        f.service.clear();
-        await f.service.loadPlaylists();
-        f.matches = [_match(10)];
-        f.gate = Completer<void>();
-        f.arrived = Completer<void>();
-        final read = f.service.isTrackInAnyPlaylist(_track);
-        await f.arrived.future;
-        expect(
-          await f.service.removeTrackMatch(
-            PlaylistTrackMatch.fromJson(_match(10)),
-            _track,
-          ),
-          isTrue,
-        );
-        f.gate!.complete();
-        expect((await read).inPlaylist, isFalse);
-      });
-    },
-  );
+      f.service.clear();
+      await f.service.loadPlaylists();
+      f.matches = [_match(10)];
+      f.gate = Completer<void>();
+      f.arrived = Completer<void>();
+      final read = f.service.isTrackInAnyPlaylist(_track);
+      await f.arrived.future;
+      expect(
+        await f.service.removeTrackMatch(
+          PlaylistTrackMatch.fromJson(_match(10)),
+          _track,
+        ),
+        isTrue,
+      );
+      f.gate!.complete();
+      expect((await read).inPlaylist, isFalse);
+    });
+  });
 
   test(
     'failed mutations preserve cached status and failed reads remain unknown',

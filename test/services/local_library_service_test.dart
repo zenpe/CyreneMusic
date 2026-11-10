@@ -25,12 +25,10 @@ void main() {
         copyPickedFiles: copy,
       );
   Future<File> picked(String folder) async {
-    final dir = await Directory(
-      p.join(cache.path, 'file_picker', folder),
-    ).create(recursive: true);
-    return File(
-      p.join(dir.path, 'Artist - Song.wav'),
-    ).writeAsBytes([82, 73, 70, 70, 1, 2, 3]);
+    final dir = await Directory(p.join(cache.path, 'file_picker', folder))
+        .create(recursive: true);
+    return File(p.join(dir.path, 'Artist - Song.wav'))
+        .writeAsBytes([82, 73, 70, 70, 1, 2, 3]);
   }
 
   test(

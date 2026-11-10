@@ -2,11 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cyrene_music/models/audio_source_config.dart';
+import 'package:cyrene_music/services/audio_source_service.dart';
+import 'package:cyrene_music/services/lx_music_source_parser.dart';
 import 'package:cyrene_music/services/lx_quickjs_runtime.dart';
 import 'package:cyrene_music/services/lx_runtime_interface.dart';
 import 'package:cyrene_music/services/resolution_request.dart';
 import 'package:cyrene_music/services/structured_log_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const _init =
     "lx.send(lx.EVENT_NAMES.inited, {sources: {tx: {qualitys: ['128k']}}});";
@@ -149,24 +153,202 @@ void main() {
     skip: !native,
   );
 
-  test('running cancellation discards context before the next request', () async {
+  test(
+    'running cancellation discards context before the next request',
+    () async {
+      final host = LxQuickJsRuntime();
+      addTearDown(host.dispose);
+      await host.loadScript(_counterScript);
+      final owner = ResolutionRequest();
+      late Future<void> cancelled;
+      await startSlow(
+        host,
+        () => owner.run(() => resolve(host, 'slow')),
+        (future) => cancelled = expectLater(
+          future,
+          throwsA(isA<ResolutionCancelled>()),
+        ),
+      );
+      owner.cancel();
+      expect(await resolve(host, 'next'), 'https://example.com/1.mp3');
+      await cancelled;
+      // The old timer would have resolved by now, but cannot mutate the new cache.
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      expect(await resolve(host, 'again'), 'https://example.com/2.mp3');
+    },
+    skip: !native,
+  );
+
+  test('native interruption retains source readiness and queued preloads', () async {
+    SharedPreferences.setMockInitialValues({});
+    final host = LxQuickJsRuntime(
+      executionTurn: const Duration(milliseconds: 80),
+    );
+    addTearDown(host.dispose);
+    final service = AudioSourceService.withDependencies(
+      runtime: host,
+      parser: LxMusicSourceParser(),
+    );
+    await service.addSource(
+      AudioSourceConfig(
+        id: 'recoverable',
+        type: AudioSourceType.lxmusic,
+        name: 'Recovery',
+        url: '',
+        scriptContent:
+            '''
+        let calls = 0;
+        lx.on(lx.EVENT_NAMES.request, ({info}) => {
+          if (info.musicInfo.songmid === 'spin') { while (true) {} }
+          return 'https://example.com/' + (++calls) + '.mp3';
+        }); $_init
+      ''',
+      ),
+    );
+    final script = host.currentScript;
+    final failed = resolve(host, 'spin');
+    final preload = ResolutionRequest.inContext(
+      purpose: 'preload',
+      action: () => ResolutionRequest().run(() => resolve(host, 'preload')),
+    );
+    expect(await failed, isNull);
+    expect(host.isInitialized, isTrue);
+    expect(host.isScriptReady, isTrue);
+    expect(host.currentScript, same(script));
+    expect(service.loadState, AudioSourceLoadState.ready);
+    // The normal playback entry must not reload the source and cancel preload.
+    await service.initializeLxRuntime();
+    expect(await preload, 'https://example.com/1.mp3');
+    await host.initialize();
+    expect(host.currentScript?.supportedSources, script?.supportedSources);
+    expect(host.currentScript?.supportedQualities, script?.supportedQualities);
+    expect(await resolve(host, 'next'), 'https://example.com/2.mp3');
+    expect(host.isScriptReady, isTrue);
+  }, skip: !native);
+
+  test(
+    'background execution interruption is discarded before the next song',
+    () async {
+      final host = LxQuickJsRuntime(
+        executionTurn: const Duration(milliseconds: 80),
+      );
+      addTearDown(host.dispose);
+      final interrupted = Completer<void>();
+      StructuredLogService.sink = (line) {
+        if (line.contains('脚本定时器失败') && !interrupted.isCompleted) {
+          interrupted.complete();
+        }
+      };
+      await host.loadScript('''
+      let calls = 0;
+      lx.on(lx.EVENT_NAMES.request, ({info}) => {
+        if (info.musicInfo.songmid === 'start') {
+          setTimeout(() => { while (true) {} }, 10);
+        }
+        return 'https://example.com/' + (++calls) + '.mp3';
+      }); $_init
+    ''');
+      expect(await resolve(host, 'start'), 'https://example.com/1.mp3');
+      await interrupted.future.timeout(const Duration(seconds: 3));
+      expect(host.isScriptReady, isTrue);
+      expect(await resolve(host, 'next'), 'https://example.com/1.mp3');
+      expect(await resolve(host, 'again'), 'https://example.com/2.mp3');
+    },
+    skip: !native,
+  );
+
+  test(
+    'failed explicit replacement clears previously validated capabilities',
+    () async {
+      final host = LxQuickJsRuntime();
+      addTearDown(host.dispose);
+      await host.loadScript(_counterScript);
+      expect(host.isScriptReady, isTrue);
+      expect(
+        await host.loadScript("throw new Error('broken replacement')"),
+        isNull,
+      );
+      expect(host.isInitialized, isFalse);
+      expect(host.isScriptReady, isFalse);
+      expect(host.currentScript, isNull);
+      expect(await resolve(host, 'next'), isNull);
+      expect(host.lastFailure?.kind, LxRuntimeFailureKind.notReady);
+    },
+    skip: !native,
+  );
+
+  test(
+    'settled HTTP timeout preserves script cache and renewal timers',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final subscription = server.listen((_) {});
+      final host = LxQuickJsRuntime();
+      addTearDown(() async {
+        await host.dispose();
+        await subscription.cancel();
+        await server.close(force: true);
+      });
+      await host.loadScript('''
+      let calls = 0, renewed = false;
+      lx.on(lx.EVENT_NAMES.request, async ({info}) => {
+        ++calls;
+        if (info.musicInfo.songmid === 'timeout') {
+          setTimeout(() => renewed = true, 150);
+          await lx.request('http://127.0.0.1:${server.port}/slow', {timeout: 30});
+        }
+        return 'https://example.com/' + calls + '-' + renewed + '.mp3';
+      }); $_init
+    ''');
+      final script = host.currentScript;
+      expect(await resolve(host, 'timeout'), isNull);
+      expect(host.lastFailure?.kind, LxRuntimeFailureKind.timeout);
+      expect(host.currentScript, same(script));
+      expect(host.isInitialized, isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      expect(await resolve(host, 'next'), 'https://example.com/2-true.mp3');
+    },
+    skip: !native,
+  );
+
+  test(
+    'unanswered deadline retains configuration but discards old continuations',
+    () async {
+      final host = LxQuickJsRuntime();
+      addTearDown(host.dispose);
+      await host.loadScript(_counterScript);
+      final script = host.currentScript;
+      expect(
+        await resolve(host, 'slow', timeout: const Duration(milliseconds: 40)),
+        isNull,
+      );
+      expect(host.lastFailure?.kind, LxRuntimeFailureKind.timeout);
+      expect(await resolve(host, 'next'), 'https://example.com/1.mp3');
+      expect(host.currentScript, same(script));
+      expect(host.isScriptReady, isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      expect(await resolve(host, 'again'), 'https://example.com/2.mp3');
+    },
+    skip: !native,
+  );
+
+  test('new resolutions during disposal are explicitly cancelled', () async {
     final host = LxQuickJsRuntime();
     addTearDown(host.dispose);
     await host.loadScript(_counterScript);
-    final owner = ResolutionRequest();
     late Future<void> cancelled;
-    await startSlow(
-      host,
-      () => owner.run(() => resolve(host, 'slow')),
-      (future) =>
-          cancelled = expectLater(future, throwsA(isA<ResolutionCancelled>())),
+    await startSlow(host, () => resolve(host, 'slow'), (future) {
+      cancelled = expectLater(future, throwsA(isA<ResolutionCancelled>()));
+    });
+    final disposing = host.dispose();
+    await expectLater(
+      resolve(host, 'late'),
+      throwsA(isA<ResolutionCancelled>()),
     );
-    owner.cancel();
-    expect(await resolve(host, 'next'), 'https://example.com/1.mp3');
     await cancelled;
-    // The old timer would have resolved by now, but cannot mutate the new cache.
-    await Future<void>.delayed(const Duration(milliseconds: 220));
-    expect(await resolve(host, 'again'), 'https://example.com/2.mp3');
+    await disposing;
+    expect(host.isInitialized, isFalse);
+    expect(host.isScriptReady, isFalse);
+    expect(host.currentScript, isNull);
   }, skip: !native);
 
   test(
@@ -174,11 +356,9 @@ void main() {
     () async {
       final host = LxQuickJsRuntime();
       addTearDown(host.dispose);
-      final vectors =
-          jsonDecode(
-                File('test/support/lx_utils_vectors.json').readAsStringSync(),
-              )
-              as Map;
+      final vectors = jsonDecode(
+        File('test/support/lx_utils_vectors.json').readAsStringSync(),
+      ) as Map;
       await host.loadScript('''
       lx.on(lx.EVENT_NAMES.request, async () => {
         const vectors = ${jsonEncode(vectors)};
@@ -292,18 +472,16 @@ void main() {
     skip: !native,
   );
 
-  test(
-    'successful resolution retains settlement of background HTTP after its deadline',
-    () async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      final subscription = server.listen((_) {});
-      final host = LxQuickJsRuntime();
-      addTearDown(() async {
-        await host.dispose();
-        await subscription.cancel();
-        await server.close(force: true);
-      });
-      await host.loadScript('''
+  test('successful resolution retains settlement of background HTTP after its deadline', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final subscription = server.listen((_) {});
+    final host = LxQuickJsRuntime();
+    addTearDown(() async {
+      await host.dispose();
+      await subscription.cancel();
+      await server.close(force: true);
+    });
+    await host.loadScript('''
       let settled = false;
       lx.on(lx.EVENT_NAMES.request, ({info}) => {
         if (info.musicInfo.songmid === 'start') {
@@ -313,17 +491,11 @@ void main() {
         return 'https://example.com/' + (settled ? 'settled' : 'pending') + '.mp3';
       }); $_init
     ''');
-      expect(
-        await resolve(
-          host,
-          'start',
-          timeout: const Duration(milliseconds: 150),
-        ),
-        'https://example.com/start.mp3',
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      expect(await resolve(host, 'check'), 'https://example.com/settled.mp3');
-    },
-    skip: !native,
-  );
+    expect(
+      await resolve(host, 'start', timeout: const Duration(milliseconds: 150)),
+      'https://example.com/start.mp3',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(await resolve(host, 'check'), 'https://example.com/settled.mp3');
+  }, skip: !native);
 }

@@ -1,4 +1,5 @@
 import 'dart:ui';
+
 import 'package:cyrene_music/utils/app_feedback.dart';
 import 'package:cyrene_music/widgets/feedback_boundary.dart';
 import 'package:flutter/material.dart';
@@ -182,9 +183,8 @@ void main() {
         ),
       );
       await tester.pump();
-      AppFeedback.of(
-        page,
-      ).error('This is a longer recoverable message that must wrap safely.');
+      AppFeedback.of(page)
+          .error('This is a longer recoverable message that must wrap safely.');
       await tester.pump();
       final surface = find.byKey(const ValueKey('app-feedback-surface'));
       expect(

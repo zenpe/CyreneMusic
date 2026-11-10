@@ -30,12 +30,14 @@ class LxQuickJsRuntime implements LxRuntime {
 
   @override
   bool get isAvailable => !kIsWeb;
+  // A live worker with a validated script can restore its native context lazily.
   @override
-  bool get isInitialized => _initialized;
+  bool get isInitialized =>
+      _connection?.closed == false && (_initialized || _script != null);
   @override
-  bool get isScriptReady => _script != null;
+  bool get isScriptReady => _connection?.closed == false && _script != null;
   @override
-  LxScriptInfo? get currentScript => _script;
+  LxScriptInfo? get currentScript => isScriptReady ? _script : null;
   @override
   LxRuntimeFailure? get lastFailure => _failure;
 
@@ -49,13 +51,12 @@ class LxQuickJsRuntime implements LxRuntime {
     _cancelJobs();
     _script = null;
     return await _enqueue(
-          LxWorkerCommand(
-            ++_sequence,
-            LxWorkerOperation.load,
-            script: scriptContent,
-          ),
-        )
-        as LxScriptInfo?;
+      LxWorkerCommand(
+        ++_sequence,
+        LxWorkerOperation.load,
+        script: scriptContent,
+      ),
+    ) as LxScriptInfo?;
   }
 
   @override
@@ -69,19 +70,18 @@ class LxQuickJsRuntime implements LxRuntime {
     final parent = ResolutionRequest.current;
     parent?.check();
     return await _enqueue(
-          LxWorkerCommand(
-            ++_sequence,
-            LxWorkerOperation.resolve,
-            source: source,
-            songId: songId,
-            quality: quality,
-            musicInfo: musicInfo,
-            deadline: DateTime.now().add(timeout ?? const Duration(seconds: 6)),
-          ),
-          owner: parent,
-          preload: parent?.purpose == 'preload',
-        )
-        as String?;
+      LxWorkerCommand(
+        ++_sequence,
+        LxWorkerOperation.resolve,
+        source: source,
+        songId: songId,
+        quality: quality,
+        musicInfo: musicInfo,
+        deadline: DateTime.now().add(timeout ?? const Duration(seconds: 6)),
+      ),
+      owner: parent,
+      preload: parent?.purpose == 'preload',
+    ) as String?;
   }
 
   Future<Object?> _enqueue(
@@ -89,7 +89,11 @@ class LxQuickJsRuntime implements LxRuntime {
     ResolutionRequest? owner,
     bool preload = false,
   }) {
-    if (_disposing != null) return Future.value();
+    if (_disposing != null) {
+      return command.operation == LxWorkerOperation.resolve
+          ? Future.error(const ResolutionCancelled())
+          : Future.value();
+    }
     final job = _RuntimeJob(command, owner, preload, _revision);
     _queue.add(job);
     job.unlink = owner?.onCancel(() => _cancel(job));
@@ -147,9 +151,11 @@ class LxQuickJsRuntime implements LxRuntime {
           final response = await connection.request(job.command);
           if (job.cancelled || job.revision != _revision) continue;
           _initialized = response.initialized;
-          if (!_initialized) {
+          // Script configuration survives a discarded native context. The
+          // worker restores it lazily within the next request's deadline.
+          if (!response.hasConfiguredScript) {
             _script = null;
-          } else if (job.command.operation != LxWorkerOperation.resolve) {
+          } else if (response.script != null) {
             _script = response.script;
           }
           _failure = response.failure;
@@ -194,6 +200,8 @@ class LxQuickJsRuntime implements LxRuntime {
 
   Future<_WorkerConnection> _startWorker() async {
     final revision = _revision;
+    _initialized = false;
+    _script = null;
     final fetch = await rootBundle.loadString(
       'packages/flutter_js/assets/js/fetch.js',
     );

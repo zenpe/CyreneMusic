@@ -31,7 +31,7 @@ JavascriptRuntime getJavascriptRuntime({
 }) {
   JavascriptRuntime runtime;
   if ((Platform.isAndroid && !forceJavascriptCoreOnAndroid)) {
-    int stackSize = extraArgs?['stackSize'] ?? 1024 * 1024;
+    int stackSize = extraArgs?['stackSize'] ?? 256 * 1024;
     runtime = QuickJsRuntime2(stackSize: stackSize);
     // FlutterJs engine = FlutterJs();
     // runtime = QuickJsService(engine);

@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:crypto/crypto.dart';
+
 import 'dart:convert';
+
 import '../models/track.dart';
 import '../utils/metadata_reader.dart';
 import 'download_file_writer.dart';
@@ -22,10 +25,9 @@ class LocalLibraryService extends ChangeNotifier {
   LocalLibraryService.forTesting({
     required Directory directory,
     Directory? temporaryDirectory,
-    bool copyPickedFiles = true,
+    this._copyPickedFiles = true,
   }) : _directoryOverride = directory,
-       _temporaryDirectoryOverride = temporaryDirectory,
-       _copyPickedFiles = copyPickedFiles;
+       _temporaryDirectoryOverride = temporaryDirectory;
 
   Directory? _directoryOverride;
   Directory? _temporaryDirectoryOverride;

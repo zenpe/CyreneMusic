@@ -58,11 +58,9 @@ void main() {
       await Future.wait(work);
       await cache.flushIndex();
       expect((await cache.readEntry(key))!.lyric, 'version-24');
-      final index =
-          jsonDecode(
-                await File('${directory.path}/lyric_index.json').readAsString(),
-              )
-              as Map;
+      final index = jsonDecode(
+        await File('${directory.path}/lyric_index.json').readAsString(),
+      ) as Map;
       expect(index.length, 26);
       for (final key in index.keys) {
         expect(await cache.readEntry(key as String), isNotNull);

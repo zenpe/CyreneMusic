@@ -117,39 +117,36 @@ void main() {
     },
   );
 
-  test(
-    'GET cache and deduplication are isolated across backend switches, including A-B-A',
-    () async {
-      final calls = {'a': 0, 'b': 0};
-      await withBackends(
-        (backend, request) async {
-          calls[backend] = calls[backend]! + 1;
-          await reply(request, {'backend': backend});
-        },
-        (a, b, auth) async {
-          final api = ApiClient();
-          Future<String> read() async =>
-              (await api.getJson(
-                    '/probe',
-                    cacheTtl: const Duration(minutes: 1),
-                  )).data['backend']
-                  as String;
-          expect(await read(), 'a');
-          expect(await read(), 'a');
-          final revision = UrlService().backendRevision;
-          UrlService().useCustomSource(a); // No effective URL change.
-          expect(UrlService().backendRevision, revision);
-          expect(await read(), 'a');
-          UrlService().useCustomSource(b);
-          expect(await read(), 'b');
-          expect(await read(), 'b');
-          UrlService().useCustomSource(a);
-          expect(await read(), 'a');
-          expect(calls, {'a': 2, 'b': 1});
-        },
-      );
-    },
-  );
+  test('GET cache and deduplication are isolated across backend switches, including A-B-A', () async {
+    final calls = {'a': 0, 'b': 0};
+    await withBackends(
+      (backend, request) async {
+        calls[backend] = calls[backend]! + 1;
+        await reply(request, {'backend': backend});
+      },
+      (a, b, auth) async {
+        final api = ApiClient();
+        Future<String> read() async =>
+            (await api.getJson(
+                  '/probe',
+                  cacheTtl: const Duration(minutes: 1),
+                )).data['backend']
+                as String;
+        expect(await read(), 'a');
+        expect(await read(), 'a');
+        final revision = UrlService().backendRevision;
+        UrlService().useCustomSource(a); // No effective URL change.
+        expect(UrlService().backendRevision, revision);
+        expect(await read(), 'a');
+        UrlService().useCustomSource(b);
+        expect(await read(), 'b');
+        expect(await read(), 'b');
+        UrlService().useCustomSource(a);
+        expect(await read(), 'a');
+        expect(calls, {'a': 2, 'b': 1});
+      },
+    );
+  });
 
   test(
     'new backend does not join a pending old request or cache its late result',
@@ -196,55 +193,52 @@ void main() {
     },
   );
 
-  test(
-    'old 401 after A-B-A cannot invalidate login or disturb the new in-flight request',
-    () async {
-      final oldStarted = Completer<void>(), newStarted = Completer<void>();
-      final releaseOld = Completer<void>(), releaseNew = Completer<void>();
-      var calls = 0;
-      await withBackends(
-        (backend, request) async {
-          expect(backend, 'a');
-          if (++calls == 1) {
-            oldStarted.complete();
-            await releaseOld.future;
-            await reply(request, {}, status: 401);
-          } else {
-            newStarted.complete();
-            await releaseNew.future;
-            await reply(request, {'fresh': true});
-          }
-        },
-        (a, b, auth) async {
-          final original = AuthTokenStore.onUnauthorized;
-          var unauthorized = 0;
-          AuthTokenStore.onUnauthorized = () => unauthorized++;
-          try {
-            final api = ApiClient();
-            final old = api.getJson('/probe');
-            await oldStarted.future;
-            UrlService().useCustomSource(b);
-            UrlService().useCustomSource(a);
-            expect(auth.isLoggedIn, false);
-            await loginToCurrentBackend(auth);
-            final fresh = api.getJson('/probe');
-            await newStarted.future;
-            releaseOld.complete();
-            expect((await old).ok, false);
-            final joined = api.getJson('/probe');
-            releaseNew.complete();
-            expect((await fresh).data['fresh'], true);
-            expect((await joined).data['fresh'], true);
-            expect(calls, 2);
-            expect(unauthorized, 0);
-            expect(auth.isLoggedIn, true);
-          } finally {
-            AuthTokenStore.onUnauthorized = original;
-          }
-        },
-      );
-    },
-  );
+  test('old 401 after A-B-A cannot invalidate login or disturb the new in-flight request', () async {
+    final oldStarted = Completer<void>(), newStarted = Completer<void>();
+    final releaseOld = Completer<void>(), releaseNew = Completer<void>();
+    var calls = 0;
+    await withBackends(
+      (backend, request) async {
+        expect(backend, 'a');
+        if (++calls == 1) {
+          oldStarted.complete();
+          await releaseOld.future;
+          await reply(request, {}, status: 401);
+        } else {
+          newStarted.complete();
+          await releaseNew.future;
+          await reply(request, {'fresh': true});
+        }
+      },
+      (a, b, auth) async {
+        final original = AuthTokenStore.onUnauthorized;
+        var unauthorized = 0;
+        AuthTokenStore.onUnauthorized = () => unauthorized++;
+        try {
+          final api = ApiClient();
+          final old = api.getJson('/probe');
+          await oldStarted.future;
+          UrlService().useCustomSource(b);
+          UrlService().useCustomSource(a);
+          expect(auth.isLoggedIn, false);
+          await loginToCurrentBackend(auth);
+          final fresh = api.getJson('/probe');
+          await newStarted.future;
+          releaseOld.complete();
+          expect((await old).ok, false);
+          final joined = api.getJson('/probe');
+          releaseNew.complete();
+          expect((await fresh).data['fresh'], true);
+          expect((await joined).data['fresh'], true);
+          expect(calls, 2);
+          expect(unauthorized, 0);
+          expect(auth.isLoggedIn, true);
+        } finally {
+          AuthTokenStore.onUnauthorized = original;
+        }
+      },
+    );
+  });
 
   test(
     'a queued relative request never silently moves to the new backend',
@@ -265,27 +259,24 @@ void main() {
     },
   );
 
-  test(
-    'explicit unrelated absolute URL requests survive configured-backend changes',
-    () async {
-      final started = Completer<void>(), release = Completer<void>();
-      await withBackends(
-        (backend, request) async {
-          expect(backend, 'b');
-          started.complete();
-          await release.future;
-          await reply(request, {'external': true});
-        },
-        (a, b, auth) async {
-          final request = ApiClient().getJson('$b/external', auth: false);
-          await started.future;
-          UrlService().useCustomSource('$a/other-base');
-          release.complete();
-          expect((await request).data['external'], true);
-        },
-      );
-    },
-  );
+  test('explicit unrelated absolute URL requests survive configured-backend changes', () async {
+    final started = Completer<void>(), release = Completer<void>();
+    await withBackends(
+      (backend, request) async {
+        expect(backend, 'b');
+        started.complete();
+        await release.future;
+        await reply(request, {'external': true});
+      },
+      (a, b, auth) async {
+        final request = ApiClient().getJson('$b/external', auth: false);
+        await started.future;
+        UrlService().useCustomSource('$a/other-base');
+        release.complete();
+        expect((await request).data['external'], true);
+      },
+    );
+  });
 
   test('byte and stream requests reject stale responses too', () async {
     final started = Completer<void>(), release = Completer<void>();

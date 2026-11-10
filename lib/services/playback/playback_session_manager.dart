@@ -6,12 +6,11 @@ import 'playback_session_persistence.dart';
 
 class PlaybackSessionManager {
   PlaybackSessionManager({
-    required PlaybackSessionSnapshot? Function() snapshotBuilder,
+    required this._snapshotBuilder,
     PlaybackSessionPersistence? persistence,
     this.debounce = const Duration(milliseconds: 600),
     this.periodicSaveInterval = const Duration(seconds: 10),
-  }) : _snapshotBuilder = snapshotBuilder,
-       _persistence = persistence ?? PlaybackSessionStore();
+  }) : _persistence = persistence ?? PlaybackSessionStore();
 
   final PlaybackSessionSnapshot? Function() _snapshotBuilder;
   final PlaybackSessionPersistence _persistence;

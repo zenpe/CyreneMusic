@@ -118,49 +118,46 @@ void main() {
     }, createHttpClient: _RealHttpOverrides().createHttpClient);
   });
 
-  test(
-    'downloading FLAC does not hide an existing MP3 of the same track',
-    () async {
-      await HttpOverrides.runZoned(() async {
-        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-        final started = Completer<void>();
-        final release = Completer<void>();
-        server.listen((request) async {
-          started.complete();
-          await release.future;
-          request.response.statusCode = 403;
-          await request.response.close();
-        });
-        try {
-          final track = _track('qualities', 'MultipleQualities');
-          final mp3 = File(
-            '${directory.path}${Platform.pathSeparator}MultipleQualities - Artist.mp3',
-          );
-          await mp3.writeAsBytes([7, 8, 9]);
-          final pending = service.downloadSong(
-            track,
-            _detail(track, server, level: 'flac'),
-          );
-          await started.future;
-          expect(service.isDownloading(track), isTrue);
-          expect(await service.isDownloaded(track, 'standard'), isTrue);
-          expect(
-            await service.getDownloadedFilePath(track, 'standard'),
-            mp3.path,
-          );
-          expect(await service.isDownloaded(track, 'flac'), isFalse);
-          expect(await service.getDownloadedFilePath(track, 'flac'), isNull);
-          expect(await mp3.readAsBytes(), [7, 8, 9]);
-          release.complete();
-          expect(await pending, isFalse);
-          expect(await service.isDownloaded(track, 'standard'), isTrue);
-        } finally {
-          if (!release.isCompleted) release.complete();
-          await server.close(force: true);
-        }
-      }, createHttpClient: _RealHttpOverrides().createHttpClient);
-    },
-  );
+  test('downloading FLAC does not hide an existing MP3 of the same track', () async {
+    await HttpOverrides.runZoned(() async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final started = Completer<void>();
+      final release = Completer<void>();
+      server.listen((request) async {
+        started.complete();
+        await release.future;
+        request.response.statusCode = 403;
+        await request.response.close();
+      });
+      try {
+        final track = _track('qualities', 'MultipleQualities');
+        final mp3 = File(
+          '${directory.path}${Platform.pathSeparator}MultipleQualities - Artist.mp3',
+        );
+        await mp3.writeAsBytes([7, 8, 9]);
+        final pending = service.downloadSong(
+          track,
+          _detail(track, server, level: 'flac'),
+        );
+        await started.future;
+        expect(service.isDownloading(track), isTrue);
+        expect(await service.isDownloaded(track, 'standard'), isTrue);
+        expect(
+          await service.getDownloadedFilePath(track, 'standard'),
+          mp3.path,
+        );
+        expect(await service.isDownloaded(track, 'flac'), isFalse);
+        expect(await service.getDownloadedFilePath(track, 'flac'), isNull);
+        expect(await mp3.readAsBytes(), [7, 8, 9]);
+        release.complete();
+        expect(await pending, isFalse);
+        expect(await service.isDownloaded(track, 'standard'), isTrue);
+      } finally {
+        if (!release.isCompleted) release.complete();
+        await server.close(force: true);
+      }
+    }, createHttpClient: _RealHttpOverrides().createHttpClient);
+  });
 
   test(
     'cover timeout closes its connection and preserves downloaded audio',

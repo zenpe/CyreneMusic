@@ -1,12 +1,15 @@
 import '../../widgets/track_source_cover.dart';
 import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
+
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
+
 import '../../services/sleep_timer_service.dart';
 import '../../services/playlist_service.dart';
 import '../../services/playlist_queue_service.dart';
@@ -623,15 +626,13 @@ class MobilePlayerDialogs {
                                               vertical: 4,
                                             ),
                                             itemCount: displayList.length,
-                                            onReorder: (oldIndex, newIndex) {
-                                              if (newIndex > oldIndex) {
-                                                newIndex -= 1;
-                                              }
-                                              queueService.move(
-                                                oldIndex,
-                                                newIndex,
-                                              );
-                                            },
+                                            onReorderItem:
+                                                (oldIndex, newIndex) {
+                                                  queueService.move(
+                                                    oldIndex,
+                                                    newIndex,
+                                                  );
+                                                },
                                             itemBuilder: (context, index) {
                                               final track = displayList[index];
                                               final isCurrentTrack =
@@ -944,9 +945,8 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
               onPressed: () {
                 timer.cancel();
                 Navigator.pop(context);
-                AppFeedback.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('定时器已取消')));
+                AppFeedback.of(context)
+                    .showSnackBar(const SnackBar(content: Text('定时器已取消')));
               },
               icon: const Icon(Icons.cancel),
               label: const Text('取消定时'),
@@ -1118,9 +1118,8 @@ class _MobileSleepTimerDialogState extends State<MobileSleepTimerDialog> {
                 initialTime: TimeOfDay.now(),
                 builder: (context, child) {
                   return MediaQuery(
-                    data: MediaQuery.of(
-                      context,
-                    ).copyWith(alwaysUse24HourFormat: true),
+                    data: MediaQuery.of(context)
+                        .copyWith(alwaysUse24HourFormat: true),
                     child: child!,
                   );
                 },

@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
+
 import 'dart:async';
+
 import 'lx_quickjs_runtime.dart';
 import 'lx_runtime_interface.dart';
 
@@ -20,9 +22,12 @@ class LxMusicRuntimeService implements LxRuntime, LxStagedRuntime {
   int _generation = 0;
 
   @visibleForTesting
-  void useRuntimeForTesting(LxRuntime runtime) {
+  void useRuntimeForTesting(
+    LxRuntime runtime, {
+    LxRuntime Function()? factory,
+  }) {
     _runtime = runtime;
-    _factory = null;
+    _factory = factory;
     _generation++;
   }
 

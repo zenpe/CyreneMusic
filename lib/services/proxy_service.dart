@@ -202,10 +202,11 @@ class ProxyService {
         response.statusCode = HttpStatus.gone;
         return;
       }
+      final activeRoute = route;
       final client = HttpClient()
         ..autoUncompress = false
         ..connectionTimeout = headerTimeout;
-      transfer = _AudioTransfer(route.group, client, response);
+      transfer = _AudioTransfer(activeRoute.group, client, response);
       _transfers.add(transfer);
       final current = transfer;
       unawaited(
@@ -215,10 +216,13 @@ class ProxyService {
         ),
       );
       final upstream = await (() async {
-        final outgoing = await client.openUrl(request.method, route!.target);
-        final source = route.platform == 'qq'
+        final outgoing = await client.openUrl(
+          request.method,
+          activeRoute.target,
+        );
+        final source = activeRoute.platform == 'qq'
             ? MusicSource.qq
-            : route.platform == 'kugou'
+            : activeRoute.platform == 'kugou'
             ? MusicSource.kugou
             : MusicSource.netease;
         buildAudioRequestHeaders(source).forEach(outgoing.headers.set);
@@ -352,6 +356,15 @@ class _AudioTransfer {
     if (cancelled) return;
     cancelled = true;
     client.close(force: true);
-    unawaited(response.close().then<void>((_) {}, onError: (Object _) {}));
+    unawaited(_closeResponse());
+  }
+
+  Future<void> _closeResponse() async {
+    try {
+      await response.close();
+    } catch (_) {
+      // addStream may still own the sink. Closing the upstream client unwinds
+      // that transfer; _handleRequest closes the response in its finally block.
+    }
   }
 }

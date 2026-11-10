@@ -35,9 +35,8 @@ void main() {
   );
   tearDown(() async => directory.delete(recursive: true));
   Future<String?> lyrics(String extension, List<int> bytes) async {
-    final file = await File(
-      '${directory.path}/song.$extension',
-    ).writeAsBytes(bytes);
+    final file = await File('${directory.path}/song.$extension')
+        .writeAsBytes(bytes);
     final result = await MetadataReader.extractLyrics(file.path);
     // Also verifies that all random-access handles are closed on Windows.
     await file.delete();

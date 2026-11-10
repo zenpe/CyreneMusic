@@ -590,19 +590,18 @@ void main() {
 
   test('clear() empties resolved cache pool', () async {
     final resolver = TrackResolver(
-      fetcher:
-          ({
-            required songId,
-            required quality,
-            required source,
-            required title,
-            required artist,
-            String album = '',
-            required sourceIds,
-            required fetchLyrics,
-            onLxFailure,
-            requestTimeout,
-          }) async => _detail(songId as int),
+      fetcher: ({
+        required songId,
+        required quality,
+        required source,
+        required title,
+        required artist,
+        String album = '',
+        required sourceIds,
+        required fetchLyrics,
+        onLxFailure,
+        requestTimeout,
+      }) async => _detail(songId as int),
     );
 
     await resolver.resolve(
@@ -624,19 +623,18 @@ void main() {
     () async {
       final completer = Completer<SongDetail?>();
       final resolver = TrackResolver(
-        fetcher:
-            ({
-              required songId,
-              required quality,
-              required source,
-              required title,
-              required artist,
-              String album = '',
-              required sourceIds,
-              required fetchLyrics,
-              onLxFailure,
-              requestTimeout,
-            }) => completer.future,
+        fetcher: ({
+          required songId,
+          required quality,
+          required source,
+          required title,
+          required artist,
+          String album = '',
+          required sourceIds,
+          required fetchLyrics,
+          onLxFailure,
+          requestTimeout,
+        }) => completer.future,
       );
 
       final request = resolver.resolve(
@@ -661,19 +659,18 @@ void main() {
     final completer = Completer<SongDetail?>();
     var acceptResult = true;
     final resolver = TrackResolver(
-      fetcher:
-          ({
-            required songId,
-            required quality,
-            required source,
-            required title,
-            required artist,
-            String album = '',
-            required sourceIds,
-            required fetchLyrics,
-            onLxFailure,
-            requestTimeout,
-          }) => completer.future,
+      fetcher: ({
+        required songId,
+        required quality,
+        required source,
+        required title,
+        required artist,
+        String album = '',
+        required sourceIds,
+        required fetchLyrics,
+        onLxFailure,
+        requestTimeout,
+      }) => completer.future,
     );
 
     final request = resolver.resolve(
@@ -745,19 +742,18 @@ void main() {
   test('zero cache capacity disables L1 storage without throwing', () async {
     final resolver = TrackResolver(
       maxResolvedCacheEntries: 0,
-      fetcher:
-          ({
-            required songId,
-            required quality,
-            required source,
-            required title,
-            required artist,
-            String album = '',
-            required sourceIds,
-            required fetchLyrics,
-            onLxFailure,
-            requestTimeout,
-          }) async => _detail(songId as int),
+      fetcher: ({
+        required songId,
+        required quality,
+        required source,
+        required title,
+        required artist,
+        String album = '',
+        required sourceIds,
+        required fetchLyrics,
+        onLxFailure,
+        requestTimeout,
+      }) async => _detail(songId as int),
     );
 
     await resolver.resolve(

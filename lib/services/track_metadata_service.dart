@@ -29,13 +29,11 @@ class TrackMetadataService extends ChangeNotifier {
 
   @visibleForTesting
   TrackMetadataService.forTesting({
-    required String Function() origin,
-    required MetadataFetcher fetch,
+    required this._origin,
+    required this._fetch,
     String? Function()? session,
     DateTime Function()? now,
-  }) : _origin = origin,
-       _fetch = fetch,
-       _session = session ?? (() => ''),
+  }) : _session = session ?? (() => ''),
        _now = now ?? DateTime.now;
 
   static const _storageKey = 'track_metadata_v1';

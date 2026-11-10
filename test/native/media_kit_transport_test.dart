@@ -34,9 +34,8 @@ void main() {
           if (status != null) {
             request.response.statusCode = status;
           } else {
-            final match = RegExp(
-              r'bytes=(\d+)-',
-            ).firstMatch(request.headers.value('range') ?? '');
+            final match = RegExp(r'bytes=(\d+)-')
+                .firstMatch(request.headers.value('range') ?? '');
             final start = match == null ? 0 : int.parse(match[1]!);
             request.response.headers.set('content-type', 'audio/wav');
             request.response.headers.set('accept-ranges', 'bytes');
@@ -96,10 +95,8 @@ void main() {
         }
         final superseded = play('hang');
         await hungStarted.future.timeout(const Duration(seconds: 2));
-        await Future.wait([
-          superseded,
-          play('audio.wav'),
-        ]).timeout(const Duration(seconds: 4));
+        await Future.wait([superseded, play('audio.wav')])
+            .timeout(const Duration(seconds: 4));
         expect(host.isPlaying, isTrue);
         releaseHung.complete();
         await host.pause();

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:cyrene_music/models/version_info.dart';
 import 'package:cyrene_music/services/version_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -60,47 +61,44 @@ void main() {
     }
   });
 
-  test(
-    'matches exact assets and canonical official URLs; unsupported has no package',
-    () {
-      final release = VersionInfo.fromRelease(releaseJson());
+  test('matches exact assets and canonical official URLs; unsupported has no package', () {
+    final release = VersionInfo.fromRelease(releaseJson());
+    expect(
+      release.platformDownloadUrl('windows-x64'),
+      endsWith('/cyrene_music-windows-x64.zip'),
+    );
+    expect(
+      release.platformDownloadUrl('android-arm64'),
+      endsWith('/app-release.apk'),
+    );
+    expect(release.platformDownloadUrl('android-x64'), isNull);
+    expect(release.platformDownloadUrl('unsupported'), isNull);
+    expect(
+      release.releasePage,
+      '${VersionInfo.repository}/releases/tag/v1.4.0',
+    );
+    expect(
+      VersionInfo.fromRelease(release.toJson()).platformDownloads,
+      release.platformDownloads,
+    );
+    for (final change in [
+      {'name': 'other.apk'},
+      {'size': 0},
+      {'state': 'new'},
+      {'browser_download_url': 'https://untrusted.example/app-release.apk'},
+      {'browser_download_url': '/download/app-release.apk'},
+    ]) {
+      final data = releaseJson();
+      final assets = data['assets'] as List;
+      (assets[1] as Map).addAll(change);
       expect(
-        release.platformDownloadUrl('windows-x64'),
-        endsWith('/cyrene_music-windows-x64.zip'),
+        VersionInfo.fromRelease(data).platformDownloadUrl('android-arm64'),
+        isNull,
       );
-      expect(
-        release.platformDownloadUrl('android-arm64'),
-        endsWith('/app-release.apk'),
-      );
-      expect(release.platformDownloadUrl('android-x64'), isNull);
-      expect(release.platformDownloadUrl('unsupported'), isNull);
-      expect(
-        release.releasePage,
-        '${VersionInfo.repository}/releases/tag/v1.4.0',
-      );
-      expect(
-        VersionInfo.fromRelease(release.toJson()).platformDownloads,
-        release.platformDownloads,
-      );
-      for (final change in [
-        {'name': 'other.apk'},
-        {'size': 0},
-        {'state': 'new'},
-        {'browser_download_url': 'https://untrusted.example/app-release.apk'},
-        {'browser_download_url': '/download/app-release.apk'},
-      ]) {
-        final data = releaseJson();
-        final assets = data['assets'] as List;
-        (assets[1] as Map).addAll(change);
-        expect(
-          VersionInfo.fromRelease(data).platformDownloadUrl('android-arm64'),
-          isNull,
-        );
-      }
-      final noAssets = releaseJson()..['assets'] = [];
-      expect(VersionInfo.fromRelease(noAssets).platformDownloads, isEmpty);
-    },
-  );
+    }
+    final noAssets = releaseJson()..['assets'] = [];
+    expect(VersionInfo.fromRelease(noAssets).platformDownloads, isEmpty);
+  });
 
   test(
     'fixed GitHub request has no music backend or login credentials',
@@ -150,39 +148,36 @@ void main() {
     },
   );
 
-  test(
-    'one successful daily check; manual bypasses; cache persists across restart',
-    () async {
-      var now = DateTime.utc(2026, 11, 2), requests = 0;
-      final client = MockClient((_) async {
-        requests++;
-        return http.Response(
-          jsonEncode(releaseJson()),
-          200,
-          headers: {'content-type': 'application/json; charset=utf-8'},
-        );
-      });
-      VersionService makeService() => VersionService.forTesting(
-        loadVersion: () async => '1.3.9',
-        client: client,
-        now: () => now,
+  test('one successful daily check; manual bypasses; cache persists across restart', () async {
+    var now = DateTime.utc(2026, 11, 2), requests = 0;
+    final client = MockClient((_) async {
+      requests++;
+      return http.Response(
+        jsonEncode(releaseJson()),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       );
-      final service = makeService();
-      await service.checkForUpdate(silent: true);
-      await service.checkForUpdate(silent: true);
-      expect(requests, 1);
-      final restarted = makeService();
-      await restarted.initialize();
-      expect(restarted.hasVisibleUpdate, isTrue);
-      await restarted.checkForUpdate(silent: true);
-      expect(requests, 1);
-      await restarted.checkForUpdate();
-      expect(requests, 2);
-      now = now.add(const Duration(hours: 24));
-      await restarted.checkForUpdate(silent: true);
-      expect(requests, 3);
-    },
-  );
+    });
+    VersionService makeService() => VersionService.forTesting(
+      loadVersion: () async => '1.3.9',
+      client: client,
+      now: () => now,
+    );
+    final service = makeService();
+    await service.checkForUpdate(silent: true);
+    await service.checkForUpdate(silent: true);
+    expect(requests, 1);
+    final restarted = makeService();
+    await restarted.initialize();
+    expect(restarted.hasVisibleUpdate, isTrue);
+    await restarted.checkForUpdate(silent: true);
+    expect(requests, 1);
+    await restarted.checkForUpdate();
+    expect(requests, 2);
+    now = now.add(const Duration(hours: 24));
+    await restarted.checkForUpdate(silent: true);
+    expect(requests, 3);
+  });
 
   test(
     'concurrent manual and automatic callers share request and result',
@@ -214,74 +209,68 @@ void main() {
     },
   );
 
-  test(
-    'failures have short backoff, preserve cache and never become latest success',
-    () async {
-      var now = DateTime.utc(2026, 11, 2), requests = 0, fail = false;
-      final service = VersionService.forTesting(
-        loadVersion: () async => '1.3.9',
-        now: () => now,
-        client: MockClient((_) async {
-          requests++;
-          return fail
-              ? http.Response('limited', 429)
-              : http.Response(
-                  jsonEncode(releaseJson()),
-                  200,
-                  headers: {'content-type': 'application/json; charset=utf-8'},
-                );
-        }),
-      );
-      await service.checkForUpdate();
-      fail = true;
-      expect(await service.checkForUpdate(), isNull);
-      expect(service.lastError, contains('检查失败'));
-      expect(service.hasUpdate, isTrue);
-      expect(requests, 2);
-      await service.checkForUpdate(silent: true);
-      expect(requests, 2);
-      now = now.add(const Duration(minutes: 15));
-      await service.checkForUpdate(silent: true);
-      expect(requests, 3);
-      await service.checkForUpdate();
-      expect(requests, 4);
-    },
-  );
+  test('failures have short backoff, preserve cache and never become latest success', () async {
+    var now = DateTime.utc(2026, 11, 2), requests = 0, fail = false;
+    final service = VersionService.forTesting(
+      loadVersion: () async => '1.3.9',
+      now: () => now,
+      client: MockClient((_) async {
+        requests++;
+        return fail
+            ? http.Response('limited', 429)
+            : http.Response(
+                jsonEncode(releaseJson()),
+                200,
+                headers: {'content-type': 'application/json; charset=utf-8'},
+              );
+      }),
+    );
+    await service.checkForUpdate();
+    fail = true;
+    expect(await service.checkForUpdate(), isNull);
+    expect(service.lastError, contains('检查失败'));
+    expect(service.hasUpdate, isTrue);
+    expect(requests, 2);
+    await service.checkForUpdate(silent: true);
+    expect(requests, 2);
+    now = now.add(const Duration(minutes: 15));
+    await service.checkForUpdate(silent: true);
+    expect(requests, 3);
+    await service.checkForUpdate();
+    expect(requests, 4);
+  });
 
-  test(
-    'manual check ignores suppression; ignore affects automatic notices and badge',
-    () async {
-      final service = VersionService.forTesting(
-        loadVersion: () async => '1.3.9',
-        client: MockClient(
-          (_) async => http.Response(
-            jsonEncode(releaseJson()),
-            200,
-            headers: {'content-type': 'application/json; charset=utf-8'},
-          ),
+  test('manual check ignores suppression; ignore affects automatic notices and badge', () async {
+    final service = VersionService.forTesting(
+      loadVersion: () async => '1.3.9',
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode(releaseJson()),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
         ),
-      );
-      final release = (await service.checkForUpdate())!;
-      await service.ignoreCurrentVersion(release.version);
-      expect(await service.shouldShowUpdateDialog(release), isFalse);
-      expect(service.hasVisibleUpdate, isFalse);
-      expect(await service.checkForUpdate(), isNotNull);
-      expect(service.hasUpdate, isTrue);
-      service.markVersionReminded('1.5.0');
-      expect(
-        await service.shouldShowUpdateDialog(
-          VersionInfo(version: '1.5.0', changelog: ''),
-        ),
-        isFalse,
-      );
-      expect(
-        await service.shouldShowUpdateDialog(
-          VersionInfo(version: '1.6.0', changelog: ''),
-        ),
-        isTrue,
-      );
-    },
-  );
+      ),
+    );
+    final release = (await service.checkForUpdate())!;
+    await service.ignoreCurrentVersion(release.version);
+    expect(await service.shouldShowUpdateDialog(release), isFalse);
+    expect(service.hasVisibleUpdate, isFalse);
+    expect(await service.checkForUpdate(), isNotNull);
+    expect(service.hasUpdate, isTrue);
+    service.markVersionReminded('1.5.0');
+    expect(
+      await service.shouldShowUpdateDialog(
+        VersionInfo(version: '1.5.0', changelog: ''),
+      ),
+      isFalse,
+    );
+    expect(
+      await service.shouldShowUpdateDialog(
+        VersionInfo(version: '1.6.0', changelog: ''),
+      ),
+      isTrue,
+    );
+  });
 
   for (final status in [403, 404, 429, 500]) {
     test('HTTP $status is a failure, not up to date', () async {

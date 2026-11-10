@@ -11,15 +11,14 @@ class PlaybackHistoryRecorder {
     void Function(Track track)? recordPlayCount,
     void Function(int seconds)? accumulateListeningTime,
     DateTime Function()? now,
-    Duration listeningTick = const Duration(seconds: 5),
+    this._listeningTick = const Duration(seconds: 5),
   }) : _addToHistory = addToHistory ?? PlayHistoryService().addToHistory,
        _recordPlayCount =
            recordPlayCount ?? ListeningStatsService().recordPlayCount,
        _accumulateListeningTime =
            accumulateListeningTime ??
            ListeningStatsService().accumulateListeningTime,
-       _now = now ?? DateTime.now,
-       _listeningTick = listeningTick;
+       _now = now ?? DateTime.now;
 
   final void Function(Track track) _addToHistory;
   final void Function(Track track) _recordPlayCount;

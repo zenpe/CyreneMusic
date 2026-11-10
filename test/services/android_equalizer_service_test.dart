@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:cyrene_music/models/equalizer_state.dart';
 import 'package:cyrene_music/services/android_equalizer_service.dart';
 import 'package:flutter/services.dart';

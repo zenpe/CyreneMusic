@@ -1,6 +1,8 @@
 import '../support/fake_lx_runtime.dart';
+
 import 'package:cyrene_music/services/lx_music_runtime_service.dart';
 import 'package:cyrene_music/services/playback/audio_transport_failure.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -12,6 +14,7 @@ import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/services/auth_service.dart';
 import 'package:cyrene_music/services/cache_service.dart';
 import 'package:cyrene_music/services/lx_runtime_interface.dart';
+import 'package:cyrene_music/services/resolution_request.dart';
 import 'package:cyrene_music/services/lyric/lyric_cache_service.dart';
 import 'package:cyrene_music/services/lyric/lyric_snapshot.dart';
 import 'package:cyrene_music/services/playback/audio_engine.dart';
@@ -401,6 +404,101 @@ void main() {
     );
   }
 
+  for (final pauseBeforeCommit in [false, true]) {
+    test(
+      'staged source commit resumes latest pending intent (pause=$pauseBeforeCommit)',
+      () async {
+        final old = _SourceSwitchRuntime(holdResolution: true);
+        final candidate = _SourceSwitchRuntime();
+        final loading = Completer<void>();
+        candidate.loadGate = loading;
+        LxMusicRuntimeService().useRuntimeForTesting(old);
+        await configureTestSource();
+        LxMusicRuntimeService().useRuntimeForTesting(
+          old,
+          factory: () => candidate,
+        );
+        var requests = 0;
+        final resolver = TrackResolver(
+          fetcher:
+              ({
+                required songId,
+                required quality,
+                required source,
+                required title,
+                required artist,
+                String album = '',
+                required sourceIds,
+                required fetchLyrics,
+                onLxFailure,
+                requestTimeout,
+              }) async {
+                requests++;
+                final url = await LxMusicRuntimeService().getMusicUrl(
+                  source: 'wy',
+                  songId: songId,
+                  quality: '128k',
+                  timeout: requestTimeout,
+                );
+                if (url == null) return null;
+                return SongDetail(
+                  id: songId,
+                  name: title,
+                  pic: '',
+                  arName: artist,
+                  alName: album,
+                  level: 'standard',
+                  size: '',
+                  url: url,
+                  lyric: '',
+                  tlyric: '',
+                  source: source,
+                );
+              },
+        );
+        final engine = _Engine();
+        final playback = _createPlayback(resolver, engine: engine);
+        try {
+          final pending = playback.playNow(
+            _remoteTracks(1),
+            0,
+            QueueSource.none,
+          );
+          await old.started.future;
+          final reload = AudioSourceService().reloadActiveSource();
+          await waitUntil(
+            () =>
+                AudioSourceService().loadState ==
+                AudioSourceLoadState.activating,
+          );
+          expect(old.disposed.isCompleted, isFalse);
+          expect(playback.isTrackSwitchPending, isTrue);
+          if (pauseBeforeCommit) await playback.pause();
+          loading.complete();
+          await reload;
+          await pending;
+          await old.disposed.future;
+          if (pauseBeforeCommit) {
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+            expect(requests, 1);
+            expect(playback.state, isNot(PBState.playing));
+            expect(engine.loadedUrls, isEmpty);
+          } else {
+            await waitUntil(() => playback.state == PBState.playing);
+            expect(requests, 2);
+            expect(engine.loadedUrls, ['https://example.test/new.mp3']);
+            expect(playback.currentTrack?.id, '0');
+          }
+        } finally {
+          if (!loading.isCompleted) loading.complete();
+          playback.dispose();
+          await AudioSourceService().removeSource('playback-test-source');
+          LxMusicRuntimeService().useRuntimeForTesting(FakeLxRuntime());
+        }
+      },
+    );
+  }
+
   test(
     'network timeout ends automatic transition without skipping songs',
     () async {
@@ -505,54 +603,48 @@ void main() {
     });
   }
 
-  test(
-    'queue entry selection distinguishes duplicate songs and ignores removed entries',
-    () async {
-      final resolver = _Resolver()..playable.addAll(['0', '1']);
-      final playback = _createPlayback(resolver);
-      try {
-        await playback.playCollection([track(0), track(1), track(0)]);
-        final duplicate = playback.queueEntryIdAt(2)!;
-        await playback.playQueueEntry(duplicate);
-        expect(playback.currentIndex, 2);
-        expect(playback.activeQueueEntryId, duplicate);
-        await playback.removeAt(2);
-        final active = playback.activeQueueEntryId;
-        await playback.playQueueEntry(duplicate);
-        expect(playback.activeQueueEntryId, active);
-      } finally {
-        playback.dispose();
-      }
-    },
-  );
+  test('queue entry selection distinguishes duplicate songs and ignores removed entries', () async {
+    final resolver = _Resolver()..playable.addAll(['0', '1']);
+    final playback = _createPlayback(resolver);
+    try {
+      await playback.playCollection([track(0), track(1), track(0)]);
+      final duplicate = playback.queueEntryIdAt(2)!;
+      await playback.playQueueEntry(duplicate);
+      expect(playback.currentIndex, 2);
+      expect(playback.activeQueueEntryId, duplicate);
+      await playback.removeAt(2);
+      final active = playback.activeQueueEntryId;
+      await playback.playQueueEntry(duplicate);
+      expect(playback.activeQueueEntryId, active);
+    } finally {
+      playback.dispose();
+    }
+  });
 
-  test(
-    'failed collection cannot overwrite a newer explicit choice of the same mode',
-    () async {
-      final modes = PlaybackModeService();
-      final original = modes.currentMode;
-      final resolver = _Resolver()..playable.add('0');
-      final gate = Completer<TrackResolutionResult>();
-      final playback = _createPlayback(resolver);
-      try {
-        await modes.setMode(PlaybackMode.repeatOne);
-        await playback.playCollection([track(0)]);
-        resolver.gates['1'] = gate;
-        final request = playback.playCollection([track(1)], playAll: true);
-        await waitUntil(() => resolver.requests.contains('1'));
-        expect(modes.currentMode, PlaybackMode.loopAll);
-        await modes.setMode(PlaybackMode.loopAll);
-        gate.complete(_Resolver.failure);
-        await request;
-        expect(modes.currentMode, PlaybackMode.loopAll);
-        expect(playback.currentTrack?.id, '0');
-      } finally {
-        if (!gate.isCompleted) gate.complete(_Resolver.failure);
-        playback.dispose();
-        await modes.setMode(original);
-      }
-    },
-  );
+  test('failed collection cannot overwrite a newer explicit choice of the same mode', () async {
+    final modes = PlaybackModeService();
+    final original = modes.currentMode;
+    final resolver = _Resolver()..playable.add('0');
+    final gate = Completer<TrackResolutionResult>();
+    final playback = _createPlayback(resolver);
+    try {
+      await modes.setMode(PlaybackMode.repeatOne);
+      await playback.playCollection([track(0)]);
+      resolver.gates['1'] = gate;
+      final request = playback.playCollection([track(1)], playAll: true);
+      await waitUntil(() => resolver.requests.contains('1'));
+      expect(modes.currentMode, PlaybackMode.loopAll);
+      await modes.setMode(PlaybackMode.loopAll);
+      gate.complete(_Resolver.failure);
+      await request;
+      expect(modes.currentMode, PlaybackMode.loopAll);
+      expect(playback.currentTrack?.id, '0');
+    } finally {
+      if (!gate.isCompleted) gate.complete(_Resolver.failure);
+      playback.dispose();
+      await modes.setMode(original);
+    }
+  });
 
   test('failed play-all keeps the selected queue and play-all mode', () async {
     final modes = PlaybackModeService();
@@ -640,55 +732,52 @@ void main() {
     },
   );
 
-  test(
-    'explicit audio refresh bypasses both caches and cannot replace a newer selection',
-    () async {
-      await configureTestSource();
-      final resolver = _Resolver()..playable.addAll(['0', '1']);
-      final engine = _Engine();
-      final playback = _createPlayback(resolver, engine: engine);
-      final tracks = _remoteTracks(2);
-      final late = Completer<TrackResolutionResult>();
-      try {
-        await playback.playNow(tracks, 0, QueueSource.none);
-        resolver.memoryPlayable.add('0');
-        resolver.requests.clear();
-        await playback.refreshCurrentAudio(tracks[0]);
-        expect(resolver.requests, contains('0'));
-        expect(resolver.cacheBypasses.last, isTrue);
-        expect(resolver.memoryBypasses.last, isTrue);
-        expect(playback.activeTrack?.id, '0');
+  test('explicit audio refresh bypasses both caches and cannot replace a newer selection', () async {
+    await configureTestSource();
+    final resolver = _Resolver()..playable.addAll(['0', '1']);
+    final engine = _Engine();
+    final playback = _createPlayback(resolver, engine: engine);
+    final tracks = _remoteTracks(2);
+    final late = Completer<TrackResolutionResult>();
+    try {
+      await playback.playNow(tracks, 0, QueueSource.none);
+      resolver.memoryPlayable.add('0');
+      resolver.requests.clear();
+      await playback.refreshCurrentAudio(tracks[0]);
+      expect(resolver.requests, contains('0'));
+      expect(resolver.cacheBypasses.last, isTrue);
+      expect(resolver.memoryBypasses.last, isTrue);
+      expect(playback.activeTrack?.id, '0');
 
-        resolver.requests.clear();
-        resolver.gates['0'] = late;
-        final refreshing = playback.refreshCurrentAudio(tracks[0]);
-        await waitUntil(() => resolver.requests.contains('0'));
-        await playback.jumpTo(1);
-        final loaded = engine.loadedUrls.length;
-        late.complete(
-          resolver.peekResolved(
-            songId: '0',
-            quality: AudioQuality.standard,
-            source: MusicSource.netease,
-          )!,
-        );
-        await refreshing;
-        expect(playback.activeTrack?.id, '1');
-        expect(engine.loadedUrls.length, loaded);
-        expect(playback.isTrackSwitchPending, isFalse);
-        resolver.requests.clear();
-        await playback.refreshCurrentAudio(tracks[0]);
-        expect(
-          resolver.requests,
-          isEmpty,
-          reason: 'an old settings sheet must not refresh a different song',
-        );
-      } finally {
-        if (!late.isCompleted) late.complete(_Resolver.failure);
-        playback.dispose();
-      }
-    },
-  );
+      resolver.requests.clear();
+      resolver.gates['0'] = late;
+      final refreshing = playback.refreshCurrentAudio(tracks[0]);
+      await waitUntil(() => resolver.requests.contains('0'));
+      await playback.jumpTo(1);
+      final loaded = engine.loadedUrls.length;
+      late.complete(
+        resolver.peekResolved(
+          songId: '0',
+          quality: AudioQuality.standard,
+          source: MusicSource.netease,
+        )!,
+      );
+      await refreshing;
+      expect(playback.activeTrack?.id, '1');
+      expect(engine.loadedUrls.length, loaded);
+      expect(playback.isTrackSwitchPending, isFalse);
+      resolver.requests.clear();
+      await playback.refreshCurrentAudio(tracks[0]);
+      expect(
+        resolver.requests,
+        isEmpty,
+        reason: 'an old settings sheet must not refresh a different song',
+      );
+    } finally {
+      if (!late.isCompleted) late.complete(_Resolver.failure);
+      playback.dispose();
+    }
+  });
 
   for (final action in [
     'pause',
@@ -1747,32 +1836,29 @@ void main() {
     }
   }
 
-  test(
-    'unclassified source-read failure retries without blacklisting the same URL',
-    () async {
-      await configureTestSource();
-      final resolver = _Resolver()..playable.add('0');
-      final engine = _Engine()
-        ..nextError = EngineErrorType.sourceLoad
-        ..nextErrorCause = ja.PlayerException(0, 'Source error', 0);
-      final playback = _createPlayback(resolver, engine: engine);
-      try {
-        await playback.playNow(
-          [track(0, source: MusicSource.netease)],
-          0,
-          QueueSource.none,
-        );
-        expect(resolver.requests, ['0', '0']);
-        expect(engine.loadedUrls, hasLength(2));
-        expect(engine.loadedUrls.toSet(), hasLength(1));
-        expect(playback.state, PBState.playing);
-        expect(playback.isTrackSwitchPending, isFalse);
-      } finally {
-        playback.dispose();
-        await AudioSourceService().removeSource('playback-test-source');
-      }
-    },
-  );
+  test('unclassified source-read failure retries without blacklisting the same URL', () async {
+    await configureTestSource();
+    final resolver = _Resolver()..playable.add('0');
+    final engine = _Engine()
+      ..nextError = EngineErrorType.sourceLoad
+      ..nextErrorCause = ja.PlayerException(0, 'Source error', 0);
+    final playback = _createPlayback(resolver, engine: engine);
+    try {
+      await playback.playNow(
+        [track(0, source: MusicSource.netease)],
+        0,
+        QueueSource.none,
+      );
+      expect(resolver.requests, ['0', '0']);
+      expect(engine.loadedUrls, hasLength(2));
+      expect(engine.loadedUrls.toSet(), hasLength(1));
+      expect(playback.state, PBState.playing);
+      expect(playback.isTrackSwitchPending, isFalse);
+    } finally {
+      playback.dispose();
+      await AudioSourceService().removeSource('playback-test-source');
+    }
+  });
 
   test(
     'manual navigation attempts one target and retry stays on that failure',
@@ -1810,29 +1896,24 @@ void main() {
     },
   );
 
-  test(
-    'manual failure requires explicit skip before trying a later playable track',
-    () async {
-      final resolver = _Resolver()..playable.add('2');
-      final playback = _createPlayback(resolver);
-      try {
-        await playback.playNow(List.generate(3, track), 0, QueueSource.none);
-        resolver.requests.clear();
-        await playback.next();
-        expect(resolver.requests, ['1', '1']);
-        expect(playback.currentTrack, isNull);
-        await playback.skipFailedTrack(
-          expectedProblem: playback.currentProblem,
-        );
-        expect(resolver.requests, ['1', '1', '2']);
-        expect(playback.currentTrack?.id, '2');
-        expect(playback.isTrackSwitchPending, isFalse);
-        expect(playback.errorMessage, isNull);
-      } finally {
-        playback.dispose();
-      }
-    },
-  );
+  test('manual failure requires explicit skip before trying a later playable track', () async {
+    final resolver = _Resolver()..playable.add('2');
+    final playback = _createPlayback(resolver);
+    try {
+      await playback.playNow(List.generate(3, track), 0, QueueSource.none);
+      resolver.requests.clear();
+      await playback.next();
+      expect(resolver.requests, ['1', '1']);
+      expect(playback.currentTrack, isNull);
+      await playback.skipFailedTrack(expectedProblem: playback.currentProblem);
+      expect(resolver.requests, ['1', '1', '2']);
+      expect(playback.currentTrack?.id, '2');
+      expect(playback.isTrackSwitchPending, isFalse);
+      expect(playback.errorMessage, isNull);
+    } finally {
+      playback.dispose();
+    }
+  });
 
   test(
     'failed automatic advance can be followed by explicit cached selection',
@@ -1921,70 +2002,64 @@ void main() {
     }
   });
 
-  test(
-    'next during a slow request starts after pending target; late failure cannot overwrite it',
-    () async {
-      final resolver = _Resolver()..playable.add('2');
-      final gate = Completer<TrackResolutionResult>();
-      resolver.gates['1'] = gate;
-      final playback = _createPlayback(resolver);
-      try {
-        final tracks = List.generate(3, track);
-        await playback.playNow(tracks, 0, QueueSource.none);
-        resolver.requests.clear();
-        final old = playback.jumpTo(1);
-        await waitUntil(() => resolver.requests.contains('1'));
-        await playback.next();
-        expect(resolver.requests, ['1', '2']);
-        expect(playback.currentTrack?.id, '2');
-        gate.complete(_Resolver.failure);
-        await old;
-        expect(resolver.requests, ['1', '2']);
-        expect(playback.currentTrack?.id, '2');
-        expect(playback.errorMessage, isNull);
-        expect(playback.isTrackSwitchPending, isFalse);
-      } finally {
-        if (!gate.isCompleted) gate.complete(_Resolver.failure);
-        playback.dispose();
-      }
-    },
-  );
+  test('next during a slow request starts after pending target; late failure cannot overwrite it', () async {
+    final resolver = _Resolver()..playable.add('2');
+    final gate = Completer<TrackResolutionResult>();
+    resolver.gates['1'] = gate;
+    final playback = _createPlayback(resolver);
+    try {
+      final tracks = List.generate(3, track);
+      await playback.playNow(tracks, 0, QueueSource.none);
+      resolver.requests.clear();
+      final old = playback.jumpTo(1);
+      await waitUntil(() => resolver.requests.contains('1'));
+      await playback.next();
+      expect(resolver.requests, ['1', '2']);
+      expect(playback.currentTrack?.id, '2');
+      gate.complete(_Resolver.failure);
+      await old;
+      expect(resolver.requests, ['1', '2']);
+      expect(playback.currentTrack?.id, '2');
+      expect(playback.errorMessage, isNull);
+      expect(playback.isTrackSwitchPending, isFalse);
+    } finally {
+      if (!gate.isCompleted) gate.complete(_Resolver.failure);
+      playback.dispose();
+    }
+  });
 
-  test(
-    'resume after a failed load and cancelled navigation reloads displayed track',
-    () async {
-      final resolver = _Resolver()..playable.addAll(['0', '1']);
-      final engine = _Engine();
-      final playback = _createPlayback(resolver, engine: engine);
-      final gate = Completer<TrackResolutionResult>();
-      try {
-        await playback.playNow(List.generate(3, track), 0, QueueSource.none);
-        engine.failNextLoad = true;
-        await playback.next();
-        expectFinished(playback);
-        expect(playback.currentTrack?.id, '0');
-        resolver.gates['1'] = gate;
-        resolver.requests.clear();
-        final switching = playback.jumpTo(1);
-        await waitUntil(() => resolver.requests.contains('1'));
-        await playback.pause();
-        gate.complete(_Resolver.failure);
-        await switching;
-        expect(playback.state, PBState.paused);
-        expect(playback.isTrackSwitchPending, isFalse);
-        resolver.requests.clear();
-        await playback.resume();
-        expect(resolver.requests, ['1']);
-        expect(engine.resumeCount, 0);
-        expect(playback.currentTrack?.id, '1');
-        expect(playback.state, PBState.playing);
-        expect(playback.isTrackSwitchPending, isFalse);
-      } finally {
-        if (!gate.isCompleted) gate.complete(_Resolver.failure);
-        playback.dispose();
-      }
-    },
-  );
+  test('resume after a failed load and cancelled navigation reloads displayed track', () async {
+    final resolver = _Resolver()..playable.addAll(['0', '1']);
+    final engine = _Engine();
+    final playback = _createPlayback(resolver, engine: engine);
+    final gate = Completer<TrackResolutionResult>();
+    try {
+      await playback.playNow(List.generate(3, track), 0, QueueSource.none);
+      engine.failNextLoad = true;
+      await playback.next();
+      expectFinished(playback);
+      expect(playback.currentTrack?.id, '0');
+      resolver.gates['1'] = gate;
+      resolver.requests.clear();
+      final switching = playback.jumpTo(1);
+      await waitUntil(() => resolver.requests.contains('1'));
+      await playback.pause();
+      gate.complete(_Resolver.failure);
+      await switching;
+      expect(playback.state, PBState.paused);
+      expect(playback.isTrackSwitchPending, isFalse);
+      resolver.requests.clear();
+      await playback.resume();
+      expect(resolver.requests, ['1']);
+      expect(engine.resumeCount, 0);
+      expect(playback.currentTrack?.id, '1');
+      expect(playback.state, PBState.playing);
+      expect(playback.isTrackSwitchPending, isFalse);
+    } finally {
+      if (!gate.isCompleted) gate.complete(_Resolver.failure);
+      playback.dispose();
+    }
+  });
 
   for (final cancelAction in ['pause', 'next', 'source']) {
     test('startup offline wait yields to $cancelAction', () async {
@@ -2342,28 +2417,25 @@ void main() {
     },
   );
 
-  test(
-    'removing a failed entry falls back to the current queue and replacement clears failure target',
-    () async {
-      final resolver = _Resolver();
-      final playback = _createPlayback(resolver);
-      try {
-        await playback.playNow(List.generate(4, track), 0, QueueSource.none);
-        await playback.jumpTo(1);
-        await playback.removeAt(1);
-        resolver.requests.clear();
-        await playback.next();
-        expect(resolver.requests, ['0', '0']);
-        await playback.playNow([track(10), track(11)], 0, QueueSource.none);
-        resolver.requests.clear();
-        await playback.next();
-        expect(resolver.requests.first, '11');
-        expectFinished(playback);
-      } finally {
-        playback.dispose();
-      }
-    },
-  );
+  test('removing a failed entry falls back to the current queue and replacement clears failure target', () async {
+    final resolver = _Resolver();
+    final playback = _createPlayback(resolver);
+    try {
+      await playback.playNow(List.generate(4, track), 0, QueueSource.none);
+      await playback.jumpTo(1);
+      await playback.removeAt(1);
+      resolver.requests.clear();
+      await playback.next();
+      expect(resolver.requests, ['0', '0']);
+      await playback.playNow([track(10), track(11)], 0, QueueSource.none);
+      resolver.requests.clear();
+      await playback.next();
+      expect(resolver.requests.first, '11');
+      expectFinished(playback);
+    } finally {
+      playback.dispose();
+    }
+  });
 
   test(
     'late retry cannot restore a deleted failed entry over the next track',
@@ -2724,6 +2796,35 @@ Future<void> waitUntil(bool Function() ready) async {
     await Future<void>.delayed(const Duration(milliseconds: 5));
   }
   expect(ready(), isTrue);
+}
+
+class _SourceSwitchRuntime extends FakeLxRuntime {
+  _SourceSwitchRuntime({this.holdResolution = false});
+  final bool holdResolution;
+  final started = Completer<void>();
+  final disposed = Completer<void>();
+
+  @override
+  Future<String?> getMusicUrl({
+    required String source,
+    required dynamic songId,
+    required String quality,
+    Map<String, dynamic>? musicInfo,
+    Duration? timeout,
+  }) async {
+    if (!started.isCompleted) started.complete();
+    if (holdResolution) {
+      await disposed.future;
+      throw const ResolutionCancelled();
+    }
+    return 'https://example.test/new.mp3';
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (!disposed.isCompleted) disposed.complete();
+    await super.dispose();
+  }
 }
 
 class _RealHttpOverrides extends HttpOverrides {

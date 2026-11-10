@@ -109,33 +109,30 @@ void main() {
     },
   );
 
-  test(
-    'selecting a track with cached metadata replaces a newly primed placeholder',
-    () async {
-      final metadata = TrackMetadataService.forTesting(
-        origin: () => 'test',
-        fetch: (id) async => details(id),
-      );
-      final original = song('cached');
-      await metadata.complete(original);
-      final playback = _Playback();
-      final player = PlayerService.forTesting(
-        playback: playback,
-        metadata: metadata,
-      );
-      addTearDown(() {
-        player.dispose();
-        playback.dispose();
-        metadata.dispose();
-      });
-      playback.select(original);
-      expect(
-        (player.currentCoverImageProvider as CachedNetworkImageProvider).url,
-        details('cached')['pic'],
-      );
-      expect(playback.coverManager.currentUrl, details('cached')['pic']);
-    },
-  );
+  test('selecting a track with cached metadata replaces a newly primed placeholder', () async {
+    final metadata = TrackMetadataService.forTesting(
+      origin: () => 'test',
+      fetch: (id) async => details(id),
+    );
+    final original = song('cached');
+    await metadata.complete(original);
+    final playback = _Playback();
+    final player = PlayerService.forTesting(
+      playback: playback,
+      metadata: metadata,
+    );
+    addTearDown(() {
+      player.dispose();
+      playback.dispose();
+      metadata.dispose();
+    });
+    playback.select(original);
+    expect(
+      (player.currentCoverImageProvider as CachedNetworkImageProvider).url,
+      details('cached')['pic'],
+    );
+    expect(playback.coverManager.currentUrl, details('cached')['pic']);
+  });
 
   test(
     'late metadata cannot replace the cover of a different selected song',

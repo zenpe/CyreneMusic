@@ -5,6 +5,7 @@
  * @LastEditors: ekibun
  * @LastEditTime: 2020-12-02 11:14:35
  */
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
@@ -84,25 +85,15 @@ class JSProp {
   static const C_W_E = (CONFIGURABLE | WRITABLE | ENUMERABLE);
 }
 
-class JSTag {
-  static const FIRST = -11; /* first negative tag */
-  static const BIG_DECIMAL = -11;
-  static const BIG_INT = -10;
-  static const BIG_FLOAT = -9;
-  static const SYMBOL = -8;
-  static const STRING = -7;
-  static const MODULE = -3; /* used internally */
-  static const FUNCTION_BYTECODE = -2; /* used internally */
-  static const OBJECT = -1;
-
-  static const INT = 0;
-  static const BOOL = 1;
-  static const NULL = 2;
-  static const UNDEFINED = 3;
-  static const UNINITIALIZED = 4;
-  static const CATCH_OFFSET = 5;
-  static const EXCEPTION = 6;
-  static const FLOAT64 = 7;
+/// Stable C bridge kinds; these are not QuickJS internal tags.
+abstract final class JSValueKind {
+  static const other = 0;
+  static const boolean = 1;
+  static const integer = 2;
+  static const string = 3;
+  static const object = 4;
+  static const bigInt = 5;
+  static const float64 = 6;
 }
 
 abstract base class JSValue extends Opaque {}
@@ -115,7 +106,8 @@ abstract base class JSPropertyEnum extends Opaque {}
 
 final DynamicLibrary _qjsLib = Platform.environment['FLUTTER_TEST'] == 'true'
     ? (Platform.isWindows
-        ? DynamicLibrary.open('quickjs_c_bridge.dll')
+        ? DynamicLibrary.open(Platform.environment['LIBQUICKJSC_TEST_PATH'] ??
+            'quickjs_c_bridge.dll')
         : Platform.isMacOS
             ? DynamicLibrary.process()
             : DynamicLibrary.open(
@@ -381,16 +373,13 @@ Pointer<JSValue> jsEval(
   return val;
 }
 
-/// DLLEXPORT int32_t jsValueGetTag(JSValue *val)
-final int Function(
-  Pointer<JSValue> val,
-) jsValueGetTag = _qjsLib
-    .lookup<
-        NativeFunction<
-            Int32 Function(
-              Pointer<JSValue>,
-            )>>('jsValueGetTag')
-    .asFunction();
+final jsValueKind = _qjsLib.lookupFunction<Int32 Function(Pointer<JSValue>),
+    int Function(Pointer<JSValue>)>('jsValueKind');
+
+final _jsEngineVersion =
+    _qjsLib.lookupFunction<Pointer<Utf8> Function(), Pointer<Utf8> Function()>(
+        'jsEngineVersion');
+String get quickJsEngineVersion => _jsEngineVersion().toDartString();
 
 /// void *jsValueGetPtr(JSValue *val)
 final int Function(
@@ -401,17 +390,6 @@ final int Function(
             IntPtr Function(
               Pointer<JSValue>,
             )>>('jsValueGetPtr')
-    .asFunction();
-
-/// DLLEXPORT bool jsTagIsFloat64(int32_t tag)
-final int Function(
-  int val,
-) jsTagIsFloat64 = _qjsLib
-    .lookup<
-        NativeFunction<
-            Int32 Function(
-              Int32,
-            )>>('jsTagIsFloat64')
     .asFunction();
 
 /// JSValue *jsNewBool(JSContext *ctx, int val)
@@ -453,27 +431,18 @@ final Pointer<JSValue> Function(
             )>>('jsNewFloat64')
     .asFunction();
 
-/// JSValue *jsNewString(JSContext *ctx, const char *str)
-final Pointer<JSValue> Function(
-  Pointer<JSContext> ctx,
-  Pointer<Utf8> str,
-) _jsNewString = _qjsLib
-    .lookup<
-        NativeFunction<
-            Pointer<JSValue> Function(
-              Pointer<JSContext>,
-              Pointer<Utf8>,
-            )>>('jsNewString')
-    .asFunction();
+final _jsNewStringLen = _qjsLib.lookupFunction<
+    Pointer<JSValue> Function(Pointer<JSContext>, Pointer<Utf8>, UintPtr),
+    Pointer<JSValue> Function(
+        Pointer<JSContext>, Pointer<Utf8>, int)>('jsNewStringLen');
 
-Pointer<JSValue> jsNewString(
-  Pointer<JSContext> ctx,
-  String str,
-) {
+Pointer<JSValue> jsNewString(Pointer<JSContext> ctx, String str) {
   final utf8str = str.toNativeUtf8();
-  final jsStr = _jsNewString(ctx, utf8str);
-  malloc.free(utf8str);
-  return jsStr;
+  try {
+    return _jsNewStringLen(ctx, utf8str, utf8.encode(str).length);
+  } finally {
+    malloc.free(utf8str);
+  }
 }
 
 /// JSValue *jsNewArrayBufferCopy(JSContext *ctx, const uint8_t *buf, size_t len)
@@ -624,18 +593,11 @@ final double Function(
             )>>('jsToFloat64')
     .asFunction();
 
-/// const char *jsToCString(JSContext *ctx, JSValue *val)
-final Pointer<Utf8> Function(
-  Pointer<JSContext> ctx,
-  Pointer<JSValue> val,
-) _jsToCString = _qjsLib
-    .lookup<
-        NativeFunction<
-            Pointer<Utf8> Function(
-              Pointer<JSContext>,
-              Pointer<JSValue>,
-            )>>('jsToCString')
-    .asFunction();
+final _jsToCStringLen = _qjsLib.lookupFunction<
+    Pointer<Utf8> Function(
+        Pointer<JSContext>, Pointer<UintPtr>, Pointer<JSValue>),
+    Pointer<Utf8> Function(Pointer<JSContext>, Pointer<UintPtr>,
+        Pointer<JSValue>)>('jsToCStringLen');
 
 /// void jsFreeCString(JSContext *ctx, const char *ptr)
 final void Function(
@@ -654,11 +616,15 @@ String jsToCString(
   Pointer<JSContext> ctx,
   Pointer<JSValue> val,
 ) {
-  final ptr = _jsToCString(ctx, val);
-  if (ptr.address == 0) throw Exception('JSValue cannot convert to string');
-  final str = ptr.toDartString();
-  jsFreeCString(ctx, ptr);
-  return str;
+  final length = malloc<UintPtr>();
+  final ptr = _jsToCStringLen(ctx, length, val);
+  try {
+    if (ptr.address == 0) throw Exception('JSValue cannot convert to string');
+    return ptr.toDartString(length: length.value);
+  } finally {
+    if (ptr.address != 0) jsFreeCString(ctx, ptr);
+    malloc.free(length);
+  }
 }
 
 /// DLLEXPORT uint32_t jsNewClass(JSContext *ctx, const char *name)

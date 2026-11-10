@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/version_info.dart';
 
 /// Checks metadata only. Downloading and installation belong to the browser/user.
@@ -19,13 +21,11 @@ class VersionService extends ChangeNotifier {
 
   @visibleForTesting
   VersionService.forTesting({
-    required http.Client client,
-    required Future<String> Function() loadVersion,
+    required this._client,
+    required this._loadVersion,
     DateTime Function()? now,
     this.platformKey = 'windows-x64',
-  }) : _client = client,
-       _loadVersion = loadVersion,
-       _now = now ?? DateTime.now;
+  }) : _now = now ?? DateTime.now;
 
   static final endpoint = Uri.parse(
     'https://api.github.com/repos/zenpe/CyreneMusic/releases/latest',

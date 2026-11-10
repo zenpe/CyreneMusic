@@ -58,7 +58,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.41.3'
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
 
@@ -75,25 +75,81 @@ jobs:
         timeout-minutes: 5
         run: flutter test --timeout 60s --reporter expanded
 
-      - name: Build QuickJS from source
+  native-runtime:
+    name: Native runtime (${{ matrix.os }})
+    needs: select-checks
+    if: ${{ needs.select-checks.outputs.run == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            library: build/quickjs/libquickjs_c_bridge_plugin.so
+          - os: windows-2022
+            library: build/quickjs/Release/quickjs_c_bridge.dll
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Build quickjs-ng from pinned source
         run: |
           cmake -S third_party/flutter_js/native -B build/quickjs -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/quickjs --parallel 2
+          cmake --build build/quickjs --config Release --parallel 2
 
       - name: Test native script execution limits
         timeout-minutes: 3
         env:
           CYRENE_LX_NATIVE_TEST: '1'
-          LIBQUICKJSC_TEST_PATH: ${{ github.workspace }}/build/quickjs/libquickjs_c_bridge_plugin.so
+          LIBQUICKJSC_TEST_PATH: ${{ github.workspace }}/${{ matrix.library }}
         run: >-
           flutter test --timeout 30s --reporter expanded
           test/services/lx_execution_limits_native_test.dart
           test/services/lx_quickjs_native_test.dart
           test/services/lx_browser_transport_native_test.dart
           test/services/lx_runtime_worker_test.dart
+          test/services/quickjs_ng_bridge_native_test.dart
+
+  android-native:
+    name: Android native ABIs
+    needs: select-checks
+    if: ${{ needs.select-checks.outputs.run == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      NDK_VERSION: '28.2.13676358'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Ensure Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]]; then
+            sdkmanager "ndk;$NDK_VERSION"
+          fi
+      - name: Compile all declared Android ABIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+            cmake -S third_party/flutter_js/native -B "build/quickjs-$abi" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/$NDK_VERSION/build/cmake/android.toolchain.cmake" \
+              -DANDROID_ABI="$abi" -DANDROID_PLATFORM=android-21
+            cmake --build "build/quickjs-$abi" --parallel 2
+          done
 
   android-debug:
-    needs: analyze-and-test
+    needs: [analyze-and-test, native-runtime, android-native]
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -112,7 +168,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.41.3'
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
 
@@ -131,7 +187,7 @@ jobs:
           if-no-files-found: error
 
   windows-release:
-    needs: analyze-and-test
+    needs: [analyze-and-test, native-runtime, android-native]
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: windows-2022
     timeout-minutes: 40
@@ -141,11 +197,17 @@ jobs:
           persist-credentials: false
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.41.3'
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: flutter build windows --release
+      - name: Verify packaged native engine
+        timeout-minutes: 3
+        env:
+          CYRENE_LX_NATIVE_TEST: '1'
+          LIBQUICKJSC_TEST_PATH: ${{ github.workspace }}/build/windows/x64/runner/Release/quickjs_c_bridge.dll
+        run: flutter test --timeout 30s --reporter expanded test/services/quickjs_ng_bridge_native_test.dart
       - name: Package Windows build
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath cyrene-music-pr-windows-x64.zip

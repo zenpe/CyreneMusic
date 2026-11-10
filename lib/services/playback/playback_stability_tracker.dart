@@ -34,10 +34,9 @@ class PlaybackStabilityTracker {
     this.stabilityThreshold = const Duration(seconds: 3),
     this.progressProbeDelay = const Duration(seconds: 2),
     this.minimumProgress = const Duration(milliseconds: 250),
-    required bool Function() isPlaying,
-    required Duration Function() position,
-  }) : _isPlaying = isPlaying,
-       _position = position;
+    required this._isPlaying,
+    required this._position,
+  });
 
   /// 当前代次是否已判定为稳定。
   bool get isStable => _stable;

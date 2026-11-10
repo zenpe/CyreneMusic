@@ -92,6 +92,11 @@ Pointer<JSValue> _dartToJs(Pointer<JSContext> ctx, dynamic val,
   }
   if (cache == null) cache = Map();
   if (val is bool) return jsNewBool(ctx, val ? 1 : 0);
+  // Decimal BigInt literals preserve arbitrary precision without depending on
+  // a script-mutable global BigInt constructor. BigInt.toString is digits only.
+  if (val is BigInt) {
+    return jsEval(ctx, '${val}n', '<bigint>', JSEvalFlag.GLOBAL);
+  }
   if (val is int) return jsNewInt64(ctx, val);
   if (val is double) return jsNewFloat64(ctx, val);
   if (val is String) return jsNewString(ctx, val);
@@ -140,21 +145,28 @@ Pointer<JSValue> _dartToJs(Pointer<JSContext> ctx, dynamic val,
   return dartObject;
 }
 
+bool _isArray(Pointer<JSContext> ctx, Pointer<JSValue> val) {
+  final result = jsIsArray(ctx, val);
+  if (result < 0) throw _parseJSException(ctx);
+  return result != 0;
+}
+
 dynamic _jsToDart(Pointer<JSContext> ctx, Pointer<JSValue> val,
     {Map<int, dynamic>? cache}) {
+  if (jsIsException(val) != 0) throw _parseJSException(ctx);
   if (cache == null) cache = Map();
-  final tag = jsValueGetTag(val);
-  if (jsTagIsFloat64(tag) != 0) {
-    return jsToFloat64(ctx, val);
-  }
-  switch (tag) {
-    case JSTag.BOOL:
+  switch (jsValueKind(val)) {
+    case JSValueKind.float64:
+      return jsToFloat64(ctx, val);
+    case JSValueKind.bigInt:
+      return BigInt.parse(jsToCString(ctx, val));
+    case JSValueKind.boolean:
       return jsToBool(ctx, val) != 0;
-    case JSTag.INT:
+    case JSValueKind.integer:
       return jsToInt64(ctx, val);
-    case JSTag.STRING:
+    case JSValueKind.string:
       return jsToCString(ctx, val);
-    case JSTag.OBJECT:
+    case JSValueKind.object:
       final rt = jsGetRuntime(ctx);
       final dartObjectClassId = runtimeOpaques[rt]?.dartObjectClassId;
       if (dartObjectClassId != null) {
@@ -206,15 +218,24 @@ dynamic _jsToDart(Pointer<JSContext> ctx, Pointer<JSValue> val,
         jsFreeValue(ctx, jsRet);
         if (isException) throw _parseJSException(ctx);
         return completer.future;
-      } else if (jsIsArray(ctx, val) != 0) {
+      } else if (_isArray(ctx, val)) {
         final jslength = _jsGetPropertyValue(ctx, val, 'length');
-        final length = jsToInt64(ctx, jslength);
+        late int length;
+        try {
+          if (jsIsException(jslength) != 0) throw _parseJSException(ctx);
+          length = jsToInt64(ctx, jslength);
+        } finally {
+          jsFreeValue(ctx, jslength);
+        }
         final ret = [];
         cache[valptr] = ret;
         for (var i = 0; i < length; ++i) {
           final jsProp = _jsGetPropertyValue(ctx, val, i);
-          ret.add(_jsToDart(ctx, jsProp, cache: cache));
-          jsFreeValue(ctx, jsProp);
+          try {
+            ret.add(_jsToDart(ctx, jsProp, cache: cache));
+          } finally {
+            jsFreeValue(ctx, jsProp);
+          }
         }
         return ret;
       } else {
@@ -223,24 +244,32 @@ dynamic _jsToDart(Pointer<JSContext> ctx, Pointer<JSValue> val,
         if (jsGetOwnPropertyNames(ctx, ptab, plen, val, -1) != 0) {
           malloc.free(plen);
           malloc.free(ptab);
-          return null;
+          throw _parseJSException(ctx);
         }
         final len = plen.value;
         malloc.free(plen);
         final ret = Map();
         cache[valptr] = ret;
-        for (var i = 0; i < len; ++i) {
-          final jsAtom = jsPropertyEnumGetAtom(ptab.value, i);
-          final jsAtomValue = jsAtomToValue(ctx, jsAtom);
-          final jsProp = jsGetProperty(ctx, val, jsAtom);
-          ret[_jsToDart(ctx, jsAtomValue, cache: cache)] =
-              _jsToDart(ctx, jsProp, cache: cache);
-          jsFreeValue(ctx, jsAtomValue);
-          jsFreeValue(ctx, jsProp);
-          jsFreeAtom(ctx, jsAtom);
+        try {
+          for (var i = 0; i < len; ++i) {
+            final jsAtom = jsPropertyEnumGetAtom(ptab.value, i);
+            final jsAtomValue = jsAtomToValue(ctx, jsAtom);
+            final jsProp = jsGetProperty(ctx, val, jsAtom);
+            try {
+              ret[_jsToDart(ctx, jsAtomValue, cache: cache)] =
+                  _jsToDart(ctx, jsProp, cache: cache);
+            } finally {
+              jsFreeValue(ctx, jsAtomValue);
+              jsFreeValue(ctx, jsProp);
+            }
+          }
+        } finally {
+          for (var i = 0; i < len; ++i) {
+            jsFreeAtom(ctx, jsPropertyEnumGetAtom(ptab.value, i));
+          }
+          jsFree(ctx, ptab.value);
+          malloc.free(ptab);
         }
-        jsFree(ctx, ptab.value);
-        malloc.free(ptab);
         return ret;
       }
     default:

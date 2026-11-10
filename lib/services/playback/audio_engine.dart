@@ -415,19 +415,17 @@ class JustAudioEngine
       );
 
   JustAudioEngine({
-    ja.AudioPlayer Function()? playerFactory,
+    this._playerFactory,
     bool? allowPlaylistPreload,
     Duration bufferingStallThreshold = const Duration(seconds: 10),
     Duration nativeOperationTimeout = const Duration(seconds: 3),
     Duration nativeCleanupTimeout = const Duration(seconds: 2),
-    Duration naturalTransitionTimeout = _engineStartupTimeout,
-  }) : _playerFactory = playerFactory,
-       _allowPlaylistPreload =
+    this._naturalTransitionTimeout = _engineStartupTimeout,
+  }) : _allowPlaylistPreload =
            allowPlaylistPreload ??
            (!Platform.isAndroid || androidPlaylistPreloadEnabled),
        _nativeOperationTimeout = nativeOperationTimeout,
        _nativeCleanupTimeout = nativeCleanupTimeout,
-       _naturalTransitionTimeout = naturalTransitionTimeout,
        _bufferingStallThreshold = bufferingStallThreshold,
        assert(nativeOperationTimeout > Duration.zero),
        assert(nativeCleanupTimeout > Duration.zero),
@@ -1317,9 +1315,8 @@ class JustAudioEngine
     );
     try {
       if (_loadCancellation != null) _pendingNativeLoad = operation;
-      final result = await _withLoadCancellation(
-        operation,
-      ).timeout(effectiveTimeout);
+      final result = await _withLoadCancellation(operation)
+          .timeout(effectiveTimeout);
       StructuredLogService.event(
         'audio_engine.native_operation_completed',
         fields: {
@@ -2198,9 +2195,9 @@ class MediaKitEngine
       _hasMedia &&
       _player != null;
   MediaKitEngine({
-    mk.Player Function()? playerFactory,
+    this._playerFactory,
     this.nativeCleanupTimeout = const Duration(seconds: 2),
-  }) : _playerFactory = playerFactory {
+  }) {
     EqualizerService().setBackend(this);
   }
 

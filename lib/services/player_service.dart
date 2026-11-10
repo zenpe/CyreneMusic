@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+
 import '../utils/image_utils.dart';
 export 'lyric/lyric_snapshot.dart';
 export 'playback/playback_problem.dart';
@@ -51,9 +53,8 @@ class PlayerService extends ChangeNotifier {
   @visibleForTesting
   PlayerService.forTesting({
     required PlaybackService playback,
-    required TrackMetadataService metadata,
-  }) : _pb = playback,
-       _metadata = metadata {
+    required this._metadata,
+  }) : _pb = playback {
     // 转发 PlaybackService 的变更通知
     _pb.addListener(_onPlaybackChanged);
     _pb.coverManager.addListener(_scheduleNotify);

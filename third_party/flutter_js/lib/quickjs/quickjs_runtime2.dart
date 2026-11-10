@@ -25,6 +25,9 @@ typedef _JsHostPromiseRejectionHandler = void Function(dynamic reason);
 
 /// Quickjs engine for flutter.
 class QuickJsRuntime2 extends JavascriptRuntime {
+  /// Version reported by the native library actually loaded into this process.
+  static String get engineVersion => quickJsEngineVersion;
+
   Pointer<JSRuntime>? _rt;
   Pointer<JSContext>? _ctx;
 
@@ -48,7 +51,8 @@ class QuickJsRuntime2 extends JavascriptRuntime {
 
   QuickJsRuntime2({
     this.moduleHandler,
-    this.stackSize = 1024 * 1024,
+    // Leave room for Dart/FFI frames on worker threads with a 1 MiB OS stack.
+    this.stackSize = 256 * 1024,
     this.timeout,
     this.memoryLimit,
     this.hostPromiseRejectionHandler,
@@ -214,9 +218,12 @@ class QuickJsRuntime2 extends JavascriptRuntime {
         JSError exception = _parseJSException(ctx);
         return JsEvalResult(exception.toString(), exception, isError: true);
       }
-      final result = _jsToDart(ctx, jsval);
-      jsFreeValue(ctx, jsval);
-      return JsEvalResult(result?.toString() ?? "null", result);
+      try {
+        final result = _jsToDart(ctx, jsval);
+        return JsEvalResult(result?.toString() ?? "null", result);
+      } finally {
+        jsFreeValue(ctx, jsval);
+      }
     } finally {
       jsEndExecution(rt);
     }
@@ -237,7 +244,8 @@ class QuickJsRuntime2 extends JavascriptRuntime {
     try {
       port.close(); // stop dispatch loop
       close(); // close engine
-      JavascriptRuntime.channelFunctionsRegistered.remove(getEngineInstanceId());
+      JavascriptRuntime.channelFunctionsRegistered
+          .remove(getEngineInstanceId());
     } on JSError catch (e) {
       print(e); // catch reference leak exception
     }

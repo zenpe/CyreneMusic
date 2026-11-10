@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:cyrene_music/models/version_info.dart';
 import 'package:cyrene_music/services/version_service.dart';
 import 'package:cyrene_music/utils/theme_manager.dart';
@@ -10,6 +11,7 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../services/version_service_test.dart' show releaseJson;
 
 class _DelayedIgnoreService extends VersionService {

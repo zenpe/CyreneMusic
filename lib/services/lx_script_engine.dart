@@ -1,11 +1,14 @@
 import 'lx_music_info.dart';
 import 'structured_log_service.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_js/flutter_js.dart';
 import 'package:flutter_js/extensions/xhr.dart' show xhrJsCode;
+
 import 'lx_browser_transport_js.dart';
 import 'lx_http_bridge.dart';
 import 'lx_runtime_interface.dart';
@@ -20,6 +23,9 @@ class _LxRuntimeContext {
   final JavascriptRuntime runtime;
   final Map<int, Timer> timers = {};
   bool disposed = false;
+  // A host execution failure may occur in an HTTP/timer callback, outside the
+  // initial request turn. Its context must not be reused for another song.
+  bool executionFailed = false;
 
   void cancelTimers() {
     for (final timer in timers.values) {
@@ -97,6 +103,10 @@ class LxScriptEngine implements LxRuntime {
   @override
   LxRuntimeFailure? get lastFailure => _lastFailure;
 
+  /// A validated script can be reconstructed after its native context is lost.
+  /// This is independent of the current context's initialization state.
+  bool get hasConfiguredScript => _loadedContent != null;
+
   @override
   Future<void> initialize() async {
     if (_isInitialized) {
@@ -119,6 +129,16 @@ class LxScriptEngine implements LxRuntime {
       final context = _LxRuntimeContext(++_runtimeGeneration, runtime);
       _runtime = runtime;
       _context = context;
+      StructuredLogService.event(
+        'lx.engine_initialized',
+        fields: {
+          'engine': runtime is QuickJsRuntime2
+              ? 'quickjs-ng'
+              : 'javascriptcore',
+          if (runtime is QuickJsRuntime2)
+            'engine_version': QuickJsRuntime2.engineVersion,
+        },
+      );
       runtime.onMessage('lx_utils', _utils.handle);
       runtime.onMessage('lx_bridge', (args) {
         _handleBridgeMessage(context, args);
@@ -298,6 +318,9 @@ class LxScriptEngine implements LxRuntime {
     final queueClock = Stopwatch()..start();
     return _enqueueOperation(() async {
       owner.check();
+      if (_context?.executionFailed == true) {
+        await _resetRuntimeContext();
+      }
       if (!_isScriptReady && _loadedContent != null) {
         final loaded = await _loadScriptInternal(
           _loadedContent!,
@@ -382,6 +405,7 @@ class LxScriptEngine implements LxRuntime {
     _owners[requestKey] = owner;
     _deadlines[requestKey] = deadline;
     final requestClock = Stopwatch()..start();
+    var responseExpired = false;
     StructuredLogService.event(
       'lx.music_url_started',
       fields: {
@@ -414,6 +438,7 @@ class LxScriptEngine implements LxRuntime {
 
       final responseTimeout = deadline.difference(DateTime.now());
       if (responseTimeout <= Duration.zero) {
+        responseExpired = true;
         throw TimeoutException('请求超时');
       }
       final result = await owner
@@ -421,6 +446,7 @@ class LxScriptEngine implements LxRuntime {
           .timeout(
             responseTimeout,
             onTimeout: () {
+              responseExpired = true;
               throw TimeoutException('请求超时');
             },
           );
@@ -459,10 +485,10 @@ class LxScriptEngine implements LxRuntime {
       _error('❌ [LxQuickJsRuntime] 获取 URL 失败: $e');
       return null;
     } finally {
-      // Cancellation and timeout leave arbitrary script continuations behind.
-      // Only whole-context disposal safely prevents them touching a later song.
-      if (owner.isCancelled ||
-          owner.failure?.kind == LxRuntimeFailureKind.timeout) {
+      // Abandoned work and failed host turns can leave continuations behind.
+      // A normal script rejection (including a transport timeout) is a settled
+      // request, so preserve its globals, token cache and renewal timers.
+      if (owner.isCancelled || responseExpired || context.executionFailed) {
         for (final request in _httpRequests.values) {
           request.failure ??= owner.failure;
         }
@@ -591,6 +617,7 @@ class LxScriptEngine implements LxRuntime {
             runtime.executePendingJob();
             completer.complete();
           } catch (e, st) {
+            context.executionFailed = true;
             if (!completer.isCompleted) {
               final message = e.toString();
               completer.completeError(

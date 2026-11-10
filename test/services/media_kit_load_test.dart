@@ -105,10 +105,8 @@ void main() {
               ? old.openStarted.future
               : old.volumeStarted.future);
           final second = host.play('https://audio.test/new', generation: 2);
-          await Future.wait([
-            first,
-            second,
-          ]).timeout(const Duration(seconds: 1));
+          await Future.wait([first, second])
+              .timeout(const Duration(seconds: 1));
           gate.complete();
           await Future<void>.delayed(const Duration(milliseconds: 10));
           expect(old.disposed, isTrue);

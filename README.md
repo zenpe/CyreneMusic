@@ -39,7 +39,7 @@ flutter run -d macos
 flutter run -d android
 ```
 
-项目固定使用 Flutter 3.41.3。Windows 开发环境推荐使用 Puro；项目脚本会将仍位于系统盘的
+项目固定使用 Flutter 3.47.9 / Dart 3.13.7。Windows 开发环境推荐使用 Puro；项目脚本会将仍位于系统盘的
 Puro、Pub、Gradle 和 Android 缓存重定向到项目所在盘的 `DevTools` 目录。也可通过
 `CYRENE_DEV_ROOT` 指定其他非系统盘目录。
 

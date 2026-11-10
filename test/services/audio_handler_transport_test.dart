@@ -1,4 +1,5 @@
 import 'package:cyrene_music/services/playback_mode_service.dart';
+
 import 'dart:async';
 import 'dart:io';
 
@@ -113,27 +114,24 @@ void main() {
     },
   );
 
-  test(
-    'loading toggle pauses; paused toggle resumes; explicit actions stay explicit',
-    () async {
-      player.phase = PlaybackSwitchPhase.loadingSource;
-      player.changed();
-      expect(handler.playbackState.value.playing, isTrue);
-      expect(
-        handler.playbackState.value.processingState,
-        AudioProcessingState.loading,
-      );
-      await handler.click();
-      expect(player.pauseCalls, 1);
-      expect(handler.playbackState.value.controls[2].label, '播放');
-      await handler.click();
-      expect(player.resumeCalls, 1);
-      await handler.play();
-      expect(player.resumeCalls, 2);
-      await handler.pause();
-      expect(player.pauseCalls, 2);
-    },
-  );
+  test('loading toggle pauses; paused toggle resumes; explicit actions stay explicit', () async {
+    player.phase = PlaybackSwitchPhase.loadingSource;
+    player.changed();
+    expect(handler.playbackState.value.playing, isTrue);
+    expect(
+      handler.playbackState.value.processingState,
+      AudioProcessingState.loading,
+    );
+    await handler.click();
+    expect(player.pauseCalls, 1);
+    expect(handler.playbackState.value.controls[2].label, '播放');
+    await handler.click();
+    expect(player.resumeCalls, 1);
+    await handler.play();
+    expect(player.resumeCalls, 2);
+    await handler.pause();
+    expect(player.pauseCalls, 2);
+  });
 
   test('system pause remains visible despite retained play intent', () async {
     player.phase = PlaybackSwitchPhase.paused;

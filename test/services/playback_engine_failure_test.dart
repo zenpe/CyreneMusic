@@ -20,74 +20,67 @@ void main() {
   });
 
   for (final retriable in [false, true]) {
-    test(
-      'load failure finishes without an error stream (retry=$retriable)',
-      () async {
-        SharedPreferences.setMockInitialValues({
-          'auth_token': 'local-test-token',
-          'current_user': jsonEncode({
-            'id': 1,
-            'username': 'test',
-            'email': 'test@example.invalid',
-          }),
-        });
-        final auth = AuthService();
-        await auth.ensureInitialized();
-        final engine = _FailingEngine(retriable);
-        final playback = PlaybackService.forTesting(
-          engine: EngineHost(engineFactory: () => engine),
-        );
-        // Existing local content takes resolution/network variability out of the
-        // test; the production switch chain still reaches the native load stage.
-        final track = Track(
-          id: File('pubspec.yaml').absolute.path,
-          name: 'load failure',
-          artists: '',
-          album: '',
-          picUrl: '',
-          source: MusicSource.local,
-        );
-        try {
-          await playback
-              .playNow([track], 0, QueueSource.none)
-              .timeout(const Duration(seconds: 2));
-          expect(
-            engine.loads,
-            retriable ? 2 : 1,
-            reason: playback.errorMessage,
+    test('load failure finishes without an error stream (retry=$retriable)', () async {
+      SharedPreferences.setMockInitialValues({
+        'auth_token': 'local-test-token',
+        'current_user': jsonEncode({
+          'id': 1,
+          'username': 'test',
+          'email': 'test@example.invalid',
+        }),
+      });
+      final auth = AuthService();
+      await auth.ensureInitialized();
+      final engine = _FailingEngine(retriable);
+      final playback = PlaybackService.forTesting(
+        engine: EngineHost(engineFactory: () => engine),
+      );
+      // Existing local content takes resolution/network variability out of the
+      // test; the production switch chain still reaches the native load stage.
+      final track = Track(
+        id: File('pubspec.yaml').absolute.path,
+        name: 'load failure',
+        artists: '',
+        album: '',
+        picUrl: '',
+        source: MusicSource.local,
+      );
+      try {
+        await playback
+            .playNow([track], 0, QueueSource.none)
+            .timeout(const Duration(seconds: 2));
+        expect(engine.loads, retriable ? 2 : 1, reason: playback.errorMessage);
+        expect(playback.state, PBState.error);
+        expect(playback.isTrackSwitchPending, isFalse);
+        if (retriable) {
+          final second = Track(
+            id: File('android/app/build.gradle.kts').absolute.path,
+            name: 'second load failure',
+            artists: '',
+            album: '',
+            picUrl: '',
+            source: MusicSource.local,
           );
+          await playback.playNow([track, second], 0, QueueSource.none);
+          engine.loads = 0;
+          await playback.next().timeout(const Duration(seconds: 2));
+          // Manual navigation selects one target and never scans backwards
+          // to the original entry after a native failure.
+          expect(engine.loads, 1);
           expect(playback.state, PBState.error);
           expect(playback.isTrackSwitchPending, isFalse);
-          if (retriable) {
-            final second = Track(
-              id: File('android/app/build.gradle.kts').absolute.path,
-              name: 'second load failure',
-              artists: '',
-              album: '',
-              picUrl: '',
-              source: MusicSource.local,
-            );
-            await playback.playNow([track, second], 0, QueueSource.none);
-            engine.loads = 0;
-            await playback.next().timeout(const Duration(seconds: 2));
-            // Manual navigation selects one target and never scans backwards
-            // to the original entry after a native failure.
-            expect(engine.loads, 1);
-            expect(playback.state, PBState.error);
-            expect(playback.isTrackSwitchPending, isFalse);
-            expect(playback.pendingPlaybackIntent, isNull);
-          }
           expect(playback.pendingPlaybackIntent, isNull);
-          expect(playback.errorMessage, contains('播放失败'));
-          await playback.resume().timeout(const Duration(seconds: 2));
-          expect(engine.loads, greaterThan(retriable ? 2 : 1));
-          expect(playback.state, PBState.error);
-          expect(playback.isTrackSwitchPending, isFalse);
-        } finally {
-          playback.dispose();
         }
-      },
-    );
+        expect(playback.pendingPlaybackIntent, isNull);
+        expect(playback.errorMessage, contains('播放失败'));
+        await playback.resume().timeout(const Duration(seconds: 2));
+        expect(engine.loads, greaterThan(retriable ? 2 : 1));
+        expect(playback.state, PBState.error);
+        expect(playback.isTrackSwitchPending, isFalse);
+      } finally {
+        playback.dispose();
+      }
+    });
   }
 }
 
