@@ -142,8 +142,8 @@ class PlaylistService extends ChangeNotifier {
     return PlaylistTrack(
       itemId: item.itemId,
       trackId: item.trackId,
-      name: item.name,
-      artists: item.artists,
+      name: track.name,
+      artists: track.artists,
       album: track.album,
       picUrl: track.picUrl,
       source: item.source,

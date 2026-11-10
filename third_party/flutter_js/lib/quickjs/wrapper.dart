@@ -13,7 +13,15 @@ dynamic _parseJSException(Pointer<JSContext> ctx, [Pointer<JSValue>? perr]) {
   try {
     err = _jsToDart(ctx, e);
   } catch (exception) {
-    err = exception;
+    if (jsExecutionInterrupted(jsGetRuntime(ctx)) != 0) {
+      // String conversion can itself execute a hostile message/toString getter.
+      // Preserve the host interruption rather than a generic conversion error.
+      final pending = jsGetException(ctx);
+      jsFreeValue(ctx, pending);
+      err = JSError('Script execution timed out');
+    } else {
+      err = exception;
+    }
   }
   if (perr == null) jsFreeValue(ctx, e);
   return err;
@@ -190,10 +198,14 @@ dynamic _jsToDart(Pointer<JSContext> ctx, Pointer<JSValue> val,
       } else if (jsIsError(ctx, val) != 0) {
         final err = jsToCString(ctx, val);
         final pstack = _jsGetPropertyValue(ctx, val, 'stack');
-        final stack =
-            jsToBool(ctx, pstack) != 0 ? jsToCString(ctx, pstack) : null;
-        jsFreeValue(ctx, pstack);
-        return JSError(err, stack);
+        try {
+          if (jsIsException(pstack) != 0) throw _parseJSException(ctx);
+          final stack =
+              jsToBool(ctx, pstack) != 0 ? jsToCString(ctx, pstack) : null;
+          return JSError(err, stack);
+        } finally {
+          jsFreeValue(ctx, pstack);
+        }
       } else if (jsIsPromise(ctx, val) != 0) {
         final jsPromiseThen = _jsGetPropertyValue(ctx, val, 'then');
         final _JSFunction promiseThen =
@@ -209,7 +221,12 @@ dynamic _jsToDart(Pointer<JSContext> ctx, Pointer<JSValue> val,
           },
           (e) {
             JSRef.dupRecursive(e);
-            if (!completer.isCompleted) completer.completeError(e);
+            // JS allows null/undefined rejection reasons; Dart errors must be
+            // non-null, otherwise this callback throws and never settles it.
+            if (!completer.isCompleted) {
+              completer.completeError(
+                  e ?? JSError('Promise rejected with null or undefined'));
+            }
           },
         ], jsPromise);
         jsPromise.free();

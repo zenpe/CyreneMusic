@@ -1,11 +1,15 @@
 import 'structured_log_service.dart';
+
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
+
 import '../models/track.dart';
 import 'auth_service.dart';
 import 'api/api_client.dart';
 import 'url_service.dart';
+import 'track_metadata_service.dart';
 
 /// 听歌统计数据模型
 class ListeningStatsData {
@@ -81,6 +85,22 @@ class PlayCountItem {
     );
   }
 
+  PlayCountItem withMetadata(TrackMetadataService metadata) {
+    final original = toTrack();
+    final track = metadata.cached(original);
+    if (identical(track, original)) return this;
+    return PlayCountItem(
+      trackId: trackId,
+      trackName: track.name,
+      artists: track.artists,
+      album: track.album,
+      picUrl: track.picUrl,
+      source: source,
+      playCount: playCount,
+      lastPlayedAt: lastPlayedAt,
+    );
+  }
+
   /// 解析音乐来源
   MusicSource _parseSource(String source) {
     switch (source.toLowerCase()) {
@@ -126,6 +146,28 @@ class ListeningStatsService extends ChangeNotifier {
     _observedBackendRevision = UrlService().backendRevision;
     AuthService().addListener(_onAuthChanged);
     UrlService().addListener(_onAuthChanged);
+    TrackMetadataService().addListener(_onMetadataChanged);
+  }
+
+  void _onMetadataChanged() {
+    if (contextIdentity != null) notifyListeners();
+  }
+
+  PlayCountItem withMetadata(PlayCountItem item) =>
+      item.withMetadata(TrackMetadataService());
+
+  ListeningStatsData? _withMetadata(ListeningStatsData? data) => data == null
+      ? null
+      : ListeningStatsData(
+          totalListeningTime: data.totalListeningTime,
+          totalPlayCount: data.totalPlayCount,
+          playCounts: data.playCounts.map(withMetadata).toList(),
+        );
+
+  void _completeMetadata(Iterable<PlayCountItem> records) {
+    for (final item in records) {
+      unawaited(TrackMetadataService().complete(item.toTrack()));
+    }
   }
 
   String? _observedSession;
@@ -174,7 +216,7 @@ class ListeningStatsService extends ChangeNotifier {
   ListeningStatsData? get statsData =>
       _observedSession == AuthService().dataSessionIdentity &&
           _observedBackendRevision == UrlService().backendRevision
-      ? _statsData
+      ? _withMetadata(_statsData)
       : null;
   String? get lastError => _lastError;
 
@@ -260,6 +302,7 @@ class ListeningStatsService extends ChangeNotifier {
   /// 记录播放次数
   Future<void> recordPlayCount(Track track) async {
     if (!AuthService().isLoggedIn) return;
+    track = TrackMetadataService().cached(track);
 
     try {
       final result = await _api.postJson(
@@ -305,7 +348,7 @@ class ListeningStatsService extends ChangeNotifier {
         _statsData != null &&
         fetchedAt != null &&
         DateTime.now().difference(fetchedAt) < const Duration(seconds: 60)) {
-      return _statsData;
+      return statsData;
     }
     final request = _fetchStats(session);
     _statsInFlight = request;
@@ -357,9 +400,10 @@ class ListeningStatsService extends ChangeNotifier {
           result.bodyData as Map<String, dynamic>,
         );
         _statsFetchedAt = DateTime.now();
+        _completeMetadata(_statsData!.playCounts);
         notifyListeners();
         StructuredLogService.log('✅ [ListeningStatsService] 统计数据已获取');
-        return _statsData;
+        return statsData;
       } else {
         _lastError = '统计更新失败，请重试';
         StructuredLogService.event(
@@ -416,10 +460,12 @@ class ListeningStatsService extends ChangeNotifier {
         data['hasMore'] is! bool) {
       throw StateError('播放记录加载失败，请重试');
     }
+    final records = (data['records'] as List)
+        .map((item) => PlayCountItem.fromJson(item as Map<String, dynamic>))
+        .toList();
+    _completeMetadata(records);
     return PlayCountPage(
-      records: (data['records'] as List)
-          .map((item) => PlayCountItem.fromJson(item as Map<String, dynamic>))
-          .toList(),
+      records: records.map(withMetadata).toList(),
       page: page,
       hasMore: data['hasMore'] as bool,
     );
@@ -453,6 +499,7 @@ class ListeningStatsService extends ChangeNotifier {
   void dispose() {
     AuthService().removeListener(_onAuthChanged);
     UrlService().removeListener(_onAuthChanged);
+    TrackMetadataService().removeListener(_onMetadataChanged);
     _statsRequest?.cancel('统计服务已释放');
     _syncTimer?.cancel();
     StructuredLogService.log('🗑️ [ListeningStatsService] 服务已释放');

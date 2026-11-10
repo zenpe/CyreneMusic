@@ -7,6 +7,7 @@ import 'package:cyrene_music/services/auth_service.dart';
 import 'package:cyrene_music/services/listening_stats_service.dart';
 import 'package:cyrene_music/services/playlist_service.dart';
 import 'package:cyrene_music/services/url_service.dart';
+import 'package:cyrene_music/services/track_metadata_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -26,6 +27,9 @@ Map<String, dynamic> record(String id, String source) => {
   'track_id': id,
   'source': source,
   'track_name': 'Song',
+  'artists': 'Artist',
+  'album': 'Album',
+  'pic_url': 'https://example.invalid/cover.jpg',
   'play_count': 2,
   'last_played_at': '2026-10-16 01:00:00',
 };
@@ -64,6 +68,110 @@ Future<void> withServer(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('ranking metadata refreshes asynchronously and records retain counts and order', () async {
+    final release = Completer<void>();
+    final paths = <String>[];
+    await withServer(
+      (request) async {
+        paths.add(request.uri.path);
+        if (request.uri.path == '/stats') {
+          await reply(request, {
+            'status': 200,
+            'data': {
+              'totalListeningTime': 30,
+              'totalPlayCount': 4,
+              'playCounts': [
+                for (final source in ['qq', 'netease'])
+                  {...record('123', source), 'artists': '', 'pic_url': ''},
+              ],
+            },
+          });
+        } else if (request.uri.path == '/stats/records') {
+          await reply(request, {
+            'status': 200,
+            'data': {
+              'page': 1,
+              'hasMore': false,
+              'records': [
+                {...record('123', 'qq'), 'artists': '', 'pic_url': ''},
+              ],
+            },
+          });
+        } else if (request.uri.path == '/qq/song') {
+          expect(request.uri.queryParameters, {
+            'ids': '123',
+            'metadata_only': '1',
+          });
+          await release.future;
+          await reply(request, {
+            'status': 200,
+            'song': {
+              'mid': '123',
+              'artist': 'QQ artist',
+              'pic': 'https://example.invalid/qq.jpg',
+            },
+          });
+        } else if (request.uri.path == '/song') {
+          final body = jsonDecode(await utf8.decoder.bind(request).join());
+          expect(body, {'ids': '123', 'metadata_only': '1'});
+          await release.future;
+          await reply(request, {
+            'status': 200,
+            'data': {
+              'id': 123,
+              'artists': 'Netease artist',
+              'picUrl': 'https://example.invalid/ne.jpg',
+            },
+          });
+        } else {
+          fail('Unexpected audio/statistics request: ${request.uri}');
+        }
+      },
+      (auth, service) async {
+        final initial = await service.fetchStats();
+        expect(initial!.playCounts.first.artists, isEmpty);
+        final records = await service.fetchRecords();
+        final notified = Completer<void>();
+        void listener() {
+          if (!notified.isCompleted &&
+              service.statsData?.playCounts.first.artists == 'QQ artist') {
+            notified.complete();
+          }
+        }
+
+        service.addListener(listener);
+        try {
+          release.complete();
+          await Future.wait(
+            initial.playCounts.map(
+              (r) => TrackMetadataService().complete(r.toTrack()),
+            ),
+          );
+          await notified.future.timeout(const Duration(seconds: 5));
+          final updated = service.statsData!;
+          expect(updated.totalPlayCount, 4);
+          expect(updated.totalListeningTime, 30);
+          expect(updated.playCounts.map((r) => r.source), ['qq', 'netease']);
+          expect(updated.playCounts.map((r) => r.artists), [
+            'QQ artist',
+            'Netease artist',
+          ]);
+          expect(updated.playCounts.map((r) => r.playCount), [2, 2]);
+          expect(
+            service.withMetadata(records.records.single).picUrl,
+            'https://example.invalid/qq.jpg',
+          );
+          expect(updated.playCounts.first.toTrack().artists, 'QQ artist');
+          expect(paths.where((p) => p == '/qq/song').length, 1);
+          expect(paths.where((p) => p == '/song').length, 1);
+        } finally {
+          service.removeListener(listener);
+          if (!release.isCompleted) release.complete();
+        }
+      },
+    );
+  });
 
   test('profile data survives credential renewal and failed refresh; same-account login isolates it', () async {
     var fail = false;

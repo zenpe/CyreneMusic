@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cyrene_music/models/track.dart';
+import 'package:cyrene_music/models/song_detail.dart';
 import 'package:cyrene_music/services/player_service.dart';
 import 'package:cyrene_music/services/track_metadata_service.dart';
 import 'package:cyrene_music/services/playback/cover_manager.dart';
@@ -28,6 +29,10 @@ Map<String, dynamic> details(String id) => {
 
 class _Playback extends ChangeNotifier implements PlaybackService {
   Track? selected;
+  SongDetail? resolved;
+  String? resolvedArtist;
+  @override
+  String get displayArtist => resolvedArtist ?? selected?.artists ?? '';
   final covers = QueueController();
   @override
   final coverManager = CoverManager();
@@ -41,7 +46,7 @@ class _Playback extends ChangeNotifier implements PlaybackService {
   PlaybackViewState get viewState => PlaybackViewState(
     generation: 1,
     track: selected,
-    song: null,
+    song: resolved,
     switchPhase: PlaybackSwitchPhase.paused,
     desiredPlaying: false,
     enginePlaying: false,
@@ -79,12 +84,86 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test('already enriched queue tracks also fill missing resolved song presentation', () {
+    final metadata = TrackMetadataService.forTesting(
+      origin: () => 'test',
+      fetch: (_) async => null,
+    );
+    final playback = _Playback();
+    final player = PlayerService.forTesting(
+      playback: playback,
+      metadata: metadata,
+    );
+    addTearDown(() {
+      player.dispose();
+      playback.dispose();
+      metadata.dispose();
+    });
+    playback.selected = Track(
+      id: 'complete',
+      name: 'Title',
+      artists: 'Artist',
+      album: 'Album',
+      picUrl: 'https://valid/cover.jpg',
+      source: MusicSource.qq,
+    );
+    playback.resolved = SongDetail.fromJson({
+      'id': 'complete',
+      'url': 'https://valid/audio.mp3',
+      'lyric': 'lyrics',
+    }, source: MusicSource.qq);
+    expect(player.currentSong!.arName, 'Artist');
+    expect(player.currentSong!.pic, 'https://valid/cover.jpg');
+    expect(player.currentSong!.url, playback.resolved!.url);
+    expect(player.currentSong!.lyric, 'lyrics');
+    playback.selected = song('different');
+    expect(player.currentSong, same(playback.resolved));
+  });
+
+  test('mini player receives a recovered artist while preserving resolved metadata', () async {
+    final metadata = TrackMetadataService.forTesting(
+      origin: () => 'test',
+      fetch: (track) async => {
+        ...details(track.id.toString()),
+        'artists': 'Real artist',
+      },
+    );
+    final playback = _Playback();
+    final player = PlayerService.forTesting(
+      playback: playback,
+      metadata: metadata,
+    );
+    addTearDown(() {
+      player.dispose();
+      playback.dispose();
+      metadata.dispose();
+    });
+    final original = Track(
+      id: 'missing',
+      name: 'Song',
+      artists: '未知艺术家',
+      album: '',
+      picUrl: '',
+      source: MusicSource.qq,
+    );
+    playback.select(original);
+    await metadata.complete(original);
+    expect(player.currentTrack!.artists, 'Real artist');
+    expect(player.displayArtist, 'Real artist');
+    expect(
+      (player.currentCoverImageProvider as CachedNetworkImageProvider).url,
+      'https://y.qq.com/missing.jpg',
+    );
+    playback.resolvedArtist = 'Resolved artist';
+    expect(player.displayArtist, 'Resolved artist');
+  });
+
   test(
     'metadata replaces both the displayed provider and queue placeholder',
     () async {
       final metadata = TrackMetadataService.forTesting(
         origin: () => 'test',
-        fetch: (id) async => details(id),
+        fetch: (id) async => details(id.id.toString()),
       );
       final playback = _Playback();
       final player = PlayerService.forTesting(
@@ -112,7 +191,7 @@ void main() {
   test('selecting a track with cached metadata replaces a newly primed placeholder', () async {
     final metadata = TrackMetadataService.forTesting(
       origin: () => 'test',
-      fetch: (id) async => details(id),
+      fetch: (id) async => details(id.id.toString()),
     );
     final original = song('cached');
     await metadata.complete(original);

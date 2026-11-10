@@ -21,6 +21,7 @@ Map<String, dynamic> info(String id) => {
   'album': 'Real album',
   'pic': 'https://y.qq.com/real-$id.jpg',
   'name': 'Do not rename',
+  'artists': 'Real artist',
 };
 
 void main() {
@@ -28,11 +29,74 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   test(
+    'fills missing title and artist on both platforms without mixing IDs',
+    () async {
+      final service = TrackMetadataService.forTesting(
+        origin: () => 'a',
+        fetch: (track) async => {
+          ...info(track.id.toString()),
+          'artists': '${track.source.name} artist',
+        },
+      );
+      for (final platform in [MusicSource.qq, MusicSource.netease]) {
+        final original = Track(
+          id: '123',
+          name: 'Unknown',
+          artists: '未知艺术家',
+          album: '',
+          picUrl: '',
+          source: platform,
+        );
+        final result = await service.complete(original);
+        expect(result.name, 'Do not rename');
+        expect(result.artists, '${platform.name} artist');
+        expect(result.picUrl, 'https://y.qq.com/real-123.jpg');
+        expect(result.id, original.id);
+        expect(result.source, platform);
+      }
+    },
+  );
+
+  test(
+    'a partial refresh preserves an earlier cover and fills the missing artist',
+    () async {
+      var now = DateTime(2026), calls = 0;
+      final service = TrackMetadataService.forTesting(
+        origin: () => 'a',
+        now: () => now,
+        fetch: (track) async => ++calls == 1
+            ? {'mid': track.id, 'pic': 'https://valid/cover.jpg'}
+            : {
+                'mid': track.id,
+                'artists': 'Recovered artist',
+                'pic': defaultCover,
+              },
+      );
+      final original = Track(
+        id: 'partial',
+        name: 'Song',
+        artists: '',
+        album: 'Album',
+        picUrl: '',
+        source: MusicSource.qq,
+      );
+      expect(
+        (await service.complete(original)).picUrl,
+        'https://valid/cover.jpg',
+      );
+      now = now.add(const Duration(minutes: 16));
+      final repaired = await service.complete(original);
+      expect(repaired.artists, 'Recovered artist');
+      expect(repaired.picUrl, 'https://valid/cover.jpg');
+    },
+  );
+
+  test(
     'fills only missing fields and preserves identity and valid metadata',
     () async {
       final service = TrackMetadataService.forTesting(
         origin: () => 'server-a',
-        fetch: (id) async => info(id),
+        fetch: (id) async => info(id.id.toString()),
       );
       final original = track('one', album: 'Keep album');
       final result = await service.complete(original);
@@ -59,7 +123,7 @@ void main() {
         origin: () => 'a',
         fetch: (id) async {
           calls++;
-          return info(id);
+          return info(id.id.toString());
         },
       );
       final complete = track(
@@ -68,14 +132,15 @@ void main() {
         pic: 'https://valid/403.jpg',
       );
       expect(await service.complete(complete), same(complete));
-      final netease = Track(
+      final unsupported = Track(
+        source: MusicSource.local,
         id: 12,
         name: 'song',
         artists: 'artist',
         album: '',
         picUrl: '',
       );
-      expect(await service.complete(netease), same(netease));
+      expect(await service.complete(unsupported), same(unsupported));
       expect(calls, 0);
     },
   );
@@ -93,7 +158,7 @@ void main() {
         if (calls == 2) twoStarted.complete();
         await release.future;
         active--;
-        return info(id);
+        return info(id.id.toString());
       },
     );
     final requests = [
@@ -113,9 +178,9 @@ void main() {
     'persists successful metadata and isolates different backends',
     () async {
       var origin = 'a', calls = 0;
-      Future<Map<String, dynamic>?> fetch(String id) async {
+      Future<Map<String, dynamic>?> fetch(Track id) async {
         calls++;
-        return info(id);
+        return info(id.id.toString());
       }
 
       final first = TrackMetadataService.forTesting(
@@ -149,7 +214,7 @@ void main() {
           calls++;
           if (calls == 2) started.complete();
           await release.future;
-          return info(id);
+          return info(id.id.toString());
         },
       );
       final requests = [
@@ -180,7 +245,7 @@ void main() {
           calls++;
           if (calls == 1) return info('wrong-song');
           if (calls == 2) throw StateError('offline');
-          return info(id);
+          return info(id.id.toString());
         },
       );
       final original = track('one');

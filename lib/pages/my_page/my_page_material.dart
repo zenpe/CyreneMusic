@@ -1183,6 +1183,7 @@ extension _MyPageMaterialUI on _MyPageState {
                           borderRadius: BorderRadius.circular(8),
                           child: CachedNetworkImage(
                             imageUrl: item.picUrl,
+                            httpHeaders: getImageHeaders(item.picUrl),
                             width: 44,
                             height: 44,
                             fit: BoxFit.cover,

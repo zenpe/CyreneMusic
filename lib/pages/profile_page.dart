@@ -5,6 +5,7 @@ import '../features/auth/auth_feature.dart';
 import '../services/listening_stats_service.dart';
 import '../services/player_service.dart';
 import '../widgets/track_action_menu.dart';
+import '../utils/image_utils.dart';
 
 /// 个人中心页面
 class ProfilePage extends StatefulWidget {
@@ -43,7 +44,11 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _onAuthChanged() {
-    if (!mounted || _session == ListeningStatsService().contextIdentity) return;
+    if (!mounted) return;
+    if (_session == ListeningStatsService().contextIdentity) {
+      setState(() { _statsData = ListeningStatsService().statsData; });
+      return;
+    }
     _session = ListeningStatsService().contextIdentity;
     _generation++;
     _statsData = null;
@@ -145,7 +150,7 @@ class _ProfilePageState extends State<ProfilePage> {
   /// 播放歌曲
   Future<void> _playTrack(PlayCountItem item) async {
     try {
-      final track = item.toTrack();
+      final track = ListeningStatsService().withMetadata(item).toTrack();
       await PlayerService().playTrack(track);
     } catch (e) {
       if (mounted) {
@@ -423,6 +428,7 @@ class _ProfilePageState extends State<ProfilePage> {
     int rank,
     ColorScheme colorScheme,
   ) {
+    item = ListeningStatsService().withMetadata(item);
     // 前三名使用特殊颜色
     Color? rankColor;
     if (rank == 1) {
@@ -441,6 +447,7 @@ class _ProfilePageState extends State<ProfilePage> {
             borderRadius: BorderRadius.circular(4),
             child: CachedNetworkImage(
               imageUrl: item.picUrl,
+              httpHeaders: getImageHeaders(item.picUrl),
               width: 48,
               height: 48,
               fit: BoxFit.cover,

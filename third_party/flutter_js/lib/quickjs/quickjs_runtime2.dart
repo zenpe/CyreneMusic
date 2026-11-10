@@ -215,8 +215,17 @@ class QuickJsRuntime2 extends JavascriptRuntime {
 
       if (jsIsException(jsval) != 0) {
         jsFreeValue(ctx, jsval);
-        JSError exception = _parseJSException(ctx);
-        return JsEvalResult(exception.toString(), exception, isError: true);
+        // JavaScript may throw any value, not just an Error. Normalize at the
+        // evaluation boundary without changing raw host rejection callbacks.
+        final reason = _parseJSException(ctx);
+        try {
+          final exception = JSError(reason);
+          return JsEvalResult(exception.toString(), exception, isError: true);
+        } finally {
+          // The result now owns only strings, including for thrown functions
+          // or objects containing native references.
+          JSRef.freeRecursive(reason);
+        }
       }
       try {
         final result = _jsToDart(ctx, jsval);

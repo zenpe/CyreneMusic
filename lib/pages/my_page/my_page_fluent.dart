@@ -794,6 +794,7 @@ extension _MyPageFluentUITopPlays on _MyPageState {
                       borderRadius: BorderRadius.circular(8),
                       child: CachedNetworkImage(
                         imageUrl: item.picUrl,
+                        httpHeaders: getImageHeaders(item.picUrl),
                         width: 56,
                         height: 56,
                         memCacheWidth: 128,

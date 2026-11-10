@@ -147,8 +147,8 @@ class PlayerService extends ChangeNotifier {
     final original = state.track;
     if (original == null) return state;
     final track = _metadata.cached(original);
-    if (identical(track, original)) return state;
     final song = _songWithMetadata(state.song, track);
+    if (identical(track, original) && identical(song, state.song)) return state;
     return PlaybackViewState(
       generation: state.generation,
       track: track,
@@ -173,16 +173,30 @@ class PlayerService extends ChangeNotifier {
         song.source != track.source) {
       return song;
     }
+    final name = TrackMetadataService.missingText(song.name)
+        ? track.name
+        : song.name;
+    final pic = TrackMetadataService.missingCover(song.pic)
+        ? track.picUrl
+        : song.pic;
+    final artist = TrackMetadataService.missingText(song.arName)
+        ? track.artists
+        : song.arName;
+    final album = TrackMetadataService.missingText(song.alName)
+        ? track.album
+        : song.alName;
+    if (name == song.name &&
+        pic == song.pic &&
+        artist == song.arName &&
+        album == song.alName) {
+      return song;
+    }
     return SongDetail(
       id: song.id,
-      name: song.name,
-      pic: TrackMetadataService.missingCover(song.pic)
-          ? track.picUrl
-          : song.pic,
-      arName: song.arName,
-      alName: TrackMetadataService.missingText(song.alName)
-          ? track.album
-          : song.alName,
+      name: name,
+      pic: pic,
+      arName: artist,
+      alName: album,
       level: song.level,
       size: song.size,
       url: song.url,
@@ -213,13 +227,21 @@ class PlayerService extends ChangeNotifier {
       _pb.pendingTrack == null ? null : _metadata.cached(_pb.pendingTrack!);
   int? get pendingSwitchToken => _pb.pendingSwitchToken;
   String? get pendingReason => _pb.pendingReason;
-  String get displayTitle => _pb.displayTitle;
-  String get displayArtist => _pb.displayArtist;
+  String get displayTitle => TrackMetadataService.missingText(_pb.displayTitle)
+      ? currentTrack?.name ?? _pb.displayTitle
+      : _pb.displayTitle;
+  String get displayArtist =>
+      TrackMetadataService.missingText(_pb.displayArtist)
+      ? currentTrack?.artists ?? _pb.displayArtist
+      : _pb.displayArtist;
   String get displayAlbum => currentTrack?.album.isNotEmpty == true
       ? currentTrack!.album
       : _pb.displayAlbum;
   String get pendingDisplayTitle => _pb.pendingDisplayTitle;
-  String get pendingDisplayArtist => _pb.pendingDisplayArtist;
+  String get pendingDisplayArtist =>
+      TrackMetadataService.missingText(_pb.pendingDisplayArtist)
+      ? pendingTrack?.artists ?? _pb.pendingDisplayArtist
+      : _pb.pendingDisplayArtist;
   String get pendingDisplayAlbum =>
       pendingTrack?.album ?? _pb.pendingDisplayAlbum;
   String? get pendingDisplayCoverUrl =>

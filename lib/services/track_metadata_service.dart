@@ -11,7 +11,7 @@ import 'api/api_client.dart';
 import 'api/auth_token_store.dart';
 import 'url_service.dart';
 
-typedef MetadataFetcher = Future<Map<String, dynamic>?> Function(String id);
+typedef MetadataFetcher = Future<Map<String, dynamic>?> Function(Track track);
 
 /// Optional presentation data. Never resolves audio or changes track identity.
 class TrackMetadataService extends ChangeNotifier {
@@ -24,7 +24,7 @@ class TrackMetadataService extends ChangeNotifier {
         session: () => AuthTokenStore.token == null
             ? null
             : '${UrlService().backendRevision}:${AuthTokenStore.token}',
-        fetch: _fetchQQ,
+        fetch: _fetchMetadata,
       );
 
   @visibleForTesting
@@ -52,8 +52,17 @@ class TrackMetadataService extends ChangeNotifier {
   Future<void>? _loaded;
   Future<void> _writes = Future.value();
 
-  static bool missingText(String value) =>
-      value.trim().isEmpty || value.trim().toLowerCase() == 'unknown';
+  static bool missingText(String value) => const {
+    '',
+    'unknown',
+    'unknown artist',
+    'unknown album',
+    'unknown title',
+    '未知艺术家',
+    '未知歌手',
+    '未知专辑',
+    '未知歌曲',
+  }.contains(value.trim().toLowerCase());
 
   static bool missingCover(String value) {
     if (value.trim().isEmpty) return true;
@@ -62,9 +71,20 @@ class TrackMetadataService extends ChangeNotifier {
         uri?.path == '/mediastyle/global/img/album_300.png';
   }
 
+  static bool _validCover(String value) {
+    final uri = Uri.tryParse(value);
+    return uri != null &&
+        const ['http', 'https'].contains(uri.scheme) &&
+        uri.host.isNotEmpty &&
+        !missingCover(value);
+  }
+
   static bool needsMetadata(Track track) =>
-      track.source == MusicSource.qq &&
-      (missingText(track.album) || missingCover(track.picUrl));
+      const [MusicSource.qq, MusicSource.netease].contains(track.source) &&
+      (missingText(track.name) ||
+          missingText(track.artists) ||
+          missingText(track.album) ||
+          missingCover(track.picUrl));
 
   String _key(Track track, String origin) => sha256
       .convert(utf8.encode('$origin\n${track.source.name}\n${track.id}'))
@@ -88,22 +108,23 @@ class TrackMetadataService extends ChangeNotifier {
           : current;
     }
 
+    final name = fill(track.name, 'name', missingText(track.name));
+    final artists = fill(track.artists, 'artists', missingText(track.artists));
     final album = fill(track.album, 'album', missingText(track.album));
     final pic = info['pic'] is String ? info['pic'] as String : '';
-    final uri = Uri.tryParse(pic);
-    final cover =
-        missingCover(track.picUrl) &&
-            uri != null &&
-            const ['http', 'https'].contains(uri.scheme) &&
-            uri.host.isNotEmpty &&
-            !missingCover(pic)
+    final cover = missingCover(track.picUrl) && _validCover(pic)
         ? pic
         : track.picUrl;
-    if (album == track.album && cover == track.picUrl) return track;
+    if (name == track.name &&
+        artists == track.artists &&
+        album == track.album &&
+        cover == track.picUrl) {
+      return track;
+    }
     return Track(
       id: track.id,
-      name: track.name,
-      artists: track.artists,
+      name: name,
+      artists: artists,
       album: album,
       picUrl: cover,
       source: track.source,
@@ -156,16 +177,20 @@ class TrackMetadataService extends ChangeNotifier {
       while (_retryAfter.length > _maxEntries) {
         _retryAfter.remove(_retryAfter.keys.first);
       }
-      final info = await _fetch(track.id.toString());
+      final info = await _fetch(track);
       if (info == null || origin != _origin() || session != _session()) return;
-      // QQ may accept a numeric ID, but must return the same requested song.
+      // A platform may accept multiple ID formats; never merge a different song.
       if (info['mid']?.toString() != track.id.toString() &&
           info['id']?.toString() != track.id.toString()) {
         return;
       }
       final entry = <String, dynamic>{
-        'album': info['album'] is String ? info['album'] : '',
-        'pic': info['pic'] is String ? info['pic'] : '',
+        ...?_cache[key],
+        for (final field in ['name', 'artists', 'album'])
+          if (info[field] is String && !missingText(info[field] as String))
+            field: info[field],
+        if (info['pic'] is String && _validCover(info['pic'] as String))
+          'pic': info['pic'],
         'savedAt': _now().millisecondsSinceEpoch,
       };
       if (identical(_merge(track, entry), track)) return;
@@ -210,15 +235,28 @@ class TrackMetadataService extends ChangeNotifier {
     await prefs.setString(_storageKey, jsonEncode(_cache));
   }
 
-  static Future<Map<String, dynamic>?> _fetchQQ(String id) async {
-    final result = await ApiClient().getJson(
-      '/qq/song',
-      queryParameters: {'ids': id, 'metadata_only': '1'},
-      timeout: const Duration(seconds: 6),
-    );
+  static Future<Map<String, dynamic>?> _fetchMetadata(Track track) async {
+    final id = track.id.toString();
+    final result = track.source == MusicSource.qq
+        ? await ApiClient().getJson(
+            '/qq/song',
+            queryParameters: {'ids': id, 'metadata_only': '1'},
+            timeout: const Duration(seconds: 6),
+          )
+        : await ApiClient().postJson(
+            '/song',
+            data: {'ids': id, 'metadata_only': '1'},
+            timeout: const Duration(seconds: 6),
+          );
     final data = result.data;
     if (!result.ok || data is! Map || data['status'] != 200) return null;
-    final song = data['song'];
-    return song is Map ? Map<String, dynamic>.from(song) : null;
+    final song = track.source == MusicSource.qq ? data['song'] : data['data'];
+    if (song is! Map) return null;
+    return {
+      ...Map<String, dynamic>.from(song),
+      'artists': song['artists'] ?? song['artist'] ?? song['ar_name'] ?? '',
+      'album': song['album'] ?? song['al_name'] ?? '',
+      'pic': song['pic'] ?? song['picUrl'] ?? '',
+    };
   }
 }

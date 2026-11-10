@@ -105,6 +105,109 @@ void main() {
       expect(evaluate('2 + 2'), 4);
     });
 
+    test('preserves arbitrary thrown values without Dart type errors', () {
+      for (final entry in {
+        '"原始错误"': '原始错误',
+        '({code: 520, message: "upstream failed"})':
+            '{code: 520, message: upstream failed}',
+        'null': 'null',
+        'undefined': 'null',
+        '42': '42',
+        'false': 'false',
+      }.entries) {
+        final result = runtime.evaluate('throw ${entry.key}');
+        expect(result.isError, isTrue);
+        expect(result.rawResult, isA<JSError>());
+        expect((result.rawResult as JSError).message, entry.value);
+        expect(result.stringResult, isNot(contains('TypeError')));
+        expect(evaluate('1 + 1'), 2);
+      }
+
+      final result = runtime.evaluate(
+        'function fail() { throw new Error("original"); } fail();',
+      );
+      expect(result.isError, isTrue);
+      final error = result.rawResult as JSError;
+      expect(error.message, contains('original'));
+      expect(error.stack, contains('fail'));
+    });
+
+    test('bounds getters while describing thrown exceptions', () {
+      for (final script in [
+        'throw {get value() { while (true) {} }}',
+        '''
+          const error = new Error('hostile stack');
+          Object.defineProperty(error, 'stack', {
+            get() { while (true) {} }
+          });
+          throw error;
+        ''',
+        '''
+          (() => {
+            const error = new Error();
+            Object.defineProperty(error, 'message', {
+              get() { while (true) {} }
+            });
+            throw error;
+          })();
+        ''',
+      ]) {
+        final elapsed = Stopwatch()..start();
+        final result = runtime.evaluate(script);
+        expect(result.isError, isTrue);
+        expect(result.rawResult, isA<JSError>());
+        expect(
+          result.stringResult.toLowerCase(),
+          anyOf(contains('interrupt'), contains('timed out')),
+        );
+        expect(elapsed.elapsed, lessThan(const Duration(seconds: 3)));
+        expect(evaluate('1 + 1'), 2);
+      }
+    });
+
+    test('preserves ordinary Promise rejection reasons', () async {
+      for (final entry in <String, Matcher>{
+        '"original rejection"': equals('original rejection'),
+        '({code: 520})': equals({'code': 520}),
+        '42': equals(42),
+        'false': equals(false),
+        for (final reason in ['null', 'undefined'])
+          reason: isA<JSError>().having(
+            (error) => error.message,
+            'message',
+            'Promise rejected with null or undefined',
+          ),
+      }.entries) {
+        final rejected = evaluate('Promise.reject(${entry.key})');
+        final observed = expectLater(rejected, throwsA(entry.value));
+        runtime.executePendingJob();
+        await observed;
+        expect(evaluate('1 + 1'), 2);
+      }
+    });
+
+    test('bounds getters while reporting unhandled Promise rejection', () {
+      runtime.dispose();
+      final reasons = <dynamic>[];
+      runtime = QuickJsRuntime2(
+        timeout: 250,
+        memoryLimit: 64 << 20,
+        hostPromiseRejectionHandler: reasons.add,
+      );
+      evaluate('''
+        void Promise.resolve().then(() => {
+          throw {get value() { while (true) {} }};
+        });
+      ''');
+      final elapsed = Stopwatch()..start();
+      expect(() => runtime.executePendingJob(), throwsA(isA<JSError>()));
+      expect(elapsed.elapsed, lessThan(const Duration(seconds: 3)));
+      expect(reasons, hasLength(1));
+      expect(reasons.single, isA<JSError>());
+      expect((reasons.single as JSError).message, 'Script execution timed out');
+      expect(evaluate('1 + 1'), 2);
+    });
+
     test('bounds recursive stack use without terminating the process', () {
       final result = runtime.evaluate('function f() { return 1 + f(); } f();');
       expect(result.isError, isTrue);

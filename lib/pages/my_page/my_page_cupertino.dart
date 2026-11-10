@@ -288,7 +288,7 @@ extension _MyPageCupertinoUI on _MyPageState {
                           ClipRRect(
                             borderRadius: BorderRadius.circular(6),
                             child: CachedNetworkImage(
-                              imageUrl: item.picUrl, width: 48, height: 48, fit: BoxFit.cover,
+                              imageUrl: item.picUrl, httpHeaders: getImageHeaders(item.picUrl), width: 48, height: 48, fit: BoxFit.cover,
                               memCacheWidth: 128, memCacheHeight: 128,
                               placeholder: (_, _) => Container(width: 48, height: 48, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),
                               errorWidget: (_, _, _) => Container(width: 48, height: 48, color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5, child: const Icon(CupertinoIcons.music_note, size: 20)),

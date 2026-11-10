@@ -31,6 +31,10 @@ Apple platforms retain the upstream JavaScriptCore implementation.
   revoked-proxy/getter failures instead of silently returning null.
 - Release callback heap wrappers after taking ownership of their JS values;
   release conversion values and property-name arrays even when getters throw.
+- Normalize arbitrary thrown values into evaluation errors without losing their
+  original reason. Preserve interruption diagnostics while describing hostile
+  error getters; release stack values even when description fails. Map null or
+  undefined Promise rejection reasons to a non-null Dart error so they settle.
 - Honor the execution timeout using a monotonic clock. Nested calls and result
   conversion share the outer deadline. A complete Promise job drain shares one
   deadline, rather than resetting it for each microtask.
