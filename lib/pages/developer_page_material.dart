@@ -4,7 +4,7 @@ extension _DeveloperPageMaterial on _DeveloperPageState {
   /// 构建日志标签页
   Widget _buildLogTab() {
     return AnimatedBuilder(
-      animation: DeveloperModeService(),
+      animation: DeveloperModeService().logChanges,
       builder: (context, child) {
         final logs = DeveloperModeService().logs;
 

@@ -614,8 +614,8 @@ class MusicService extends ChangeNotifier {
       StructuredLogService.log(
         '🌐 [MusicService] 调用洛雪运行时获取 URL: $sourceCode / $lxSongId',
       );
-      DeveloperModeService().addLog(
-        '解析开始 purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId source=${audioSourceService.activeSource?.name}',
+      DeveloperModeService().addLogLazy(
+        () => '解析开始 purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId source=${audioSourceService.activeSource?.name}',
       );
 
       quality = AudioQualityService().effectiveQualityFor(source, quality);
@@ -677,8 +677,8 @@ class MusicService extends ChangeNotifier {
       StructuredLogService.log(
         '   🔗 URL: ${audioUrl.length > 50 ? "${audioUrl.substring(0, 50)}..." : audioUrl}',
       );
-      DeveloperModeService().addLog(
-        '解析成功 purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId',
+      DeveloperModeService().addLogLazy(
+        () => '解析成功 purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId',
       );
 
       // 🎵 尝试从后端歌词 API 获取歌词

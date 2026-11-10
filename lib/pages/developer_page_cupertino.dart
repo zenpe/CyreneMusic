@@ -114,7 +114,7 @@ extension _DeveloperPageCupertino on _DeveloperPageState {
   /// 构建 Cupertino 日志标签页
   Widget _buildCupertinoLogTab(bool isDark) {
     return AnimatedBuilder(
-      animation: DeveloperModeService(),
+      animation: DeveloperModeService().logChanges,
       builder: (context, child) {
         final logs = DeveloperModeService().logs;
 

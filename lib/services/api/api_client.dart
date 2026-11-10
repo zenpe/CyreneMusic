@@ -588,6 +588,10 @@ class _LogInterceptor extends Interceptor {
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
+    if (!DeveloperModeService().isDeveloperMode) {
+      handler.next(response);
+      return;
+    }
     final ts = response.requestOptions.extra['ts'] as int?;
     final duration = ts == null
         ? 0
@@ -607,10 +611,10 @@ class _LogInterceptor extends Interceptor {
         ? 0
         : DateTime.now().millisecondsSinceEpoch - ts;
     final method = err.requestOptions.method;
-    final uri = err.requestOptions.uri.toString();
     final status = err.response?.statusCode ?? 0;
-    final line = '$method $uri $status ${duration}ms error=${err.type}';
-    DeveloperModeService().addLog('[Network] $line');
+    DeveloperModeService().addLogLazy(
+      () => '[Network] $method ${err.requestOptions.uri} $status ${duration}ms error=${err.type}',
+    );
     if (err.type != DioExceptionType.cancel) {
       StructuredLogService.event(
         'api.transport_failed',

@@ -85,6 +85,8 @@ jobs:
   quality:
     needs: preflight
     uses: ./.github/workflows/quality.yml
+    with:
+      windows-native-in-build: ${{ github.event_name == 'push' || inputs.build_windows }}
   # Android 构建
   build-android:
     name: Build Android APK
@@ -121,10 +123,9 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
-          cache: gradle
-          cache-dependency-path: |
-            android/*.gradle*
-            android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -180,7 +181,13 @@ jobs:
         env:
           CYRENE_LX_NATIVE_TEST: '1'
           LIBQUICKJSC_TEST_PATH: ${{ github.workspace }}/build/windows/x64/runner/Release/quickjs_c_bridge.dll
-        run: flutter test --timeout 30s --reporter expanded test/services/quickjs_ng_bridge_native_test.dart
+        run: >-
+          flutter test --timeout 30s --reporter expanded
+          test/services/lx_execution_limits_native_test.dart
+          test/services/lx_quickjs_native_test.dart
+          test/services/lx_browser_transport_native_test.dart
+          test/services/lx_runtime_worker_test.dart
+          test/services/quickjs_ng_bridge_native_test.dart
 
       - name: Create Windows archive
         run: |

@@ -66,7 +66,7 @@ extension _DeveloperPageFluent on _DeveloperPageState {
 
   Widget _buildFluentLogTab() {
     return AnimatedBuilder(
-      animation: DeveloperModeService(),
+      animation: DeveloperModeService().logChanges,
       builder: (context, child) {
         final logs = DeveloperModeService().logs;
 

@@ -1,7 +1,12 @@
+import 'dart:async';
+import 'dart:collection';
+
 import 'structured_log_service.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../utils/toast_utils.dart';
 
 /// 开发者模式服务
@@ -11,6 +16,11 @@ class DeveloperModeService extends ChangeNotifier {
   factory DeveloperModeService() => _instance;
 
   DeveloperModeService._internal();
+
+  @visibleForTesting
+  DeveloperModeService.forTesting();
+
+  bool _disposed = false;
 
   bool _isDeveloperMode = false;
   bool get isDeveloperMode => _isDeveloperMode;
@@ -35,11 +45,29 @@ class DeveloperModeService extends ChangeNotifier {
   /// 等待初始化完成（如果尚未初始化则先初始化）
   Future<void> ensureInitialized() => initialize();
 
-  /// 记录日志
-  final List<String> _logs = [];
+  /// This service notifies settings listeners only. Log views subscribe here.
+  final ChangeNotifier _logChanges = ChangeNotifier();
+  Listenable get logChanges => _logChanges;
+  final ListQueue<String> _logs = ListQueue<String>();
+  Timer? _logNotifyTimer;
   List<String> get logs => List.unmodifiable(_logs);
 
+  void _scheduleLogNotification() {
+    if (_disposed || !_logChanges.hasListeners || _logNotifyTimer != null) {
+      return;
+    }
+    // Timer callbacks run outside the synchronous build phase. Batch bursts
+    // without scheduling work when no log view is listening.
+    _logNotifyTimer = Timer(const Duration(milliseconds: 100), () {
+      _logNotifyTimer = null;
+      if (!_disposed && _logChanges.hasListeners) {
+        _logChanges.notifyListeners();
+      }
+    });
+  }
+
   void _notifyListenersSafely() {
+    if (_disposed) return;
     SchedulerPhase phase;
     try {
       phase = SchedulerBinding.instance.schedulerPhase;
@@ -50,7 +78,7 @@ class DeveloperModeService extends ChangeNotifier {
     }
     if (phase != SchedulerPhase.idle) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (hasListeners) {
+        if (!_disposed && hasListeners) {
           notifyListeners();
         }
       });
@@ -118,8 +146,11 @@ class DeveloperModeService extends ChangeNotifier {
   /// 禁用开发者模式
   Future<void> disableDeveloperMode() async {
     _isDeveloperMode = false;
+    _logs.clear();
+    _logNotifyTimer?.cancel();
+    _logNotifyTimer = null;
+    _scheduleLogNotification();
     await _saveDeveloperMode();
-    addLog('🔒 开发者模式已禁用');
     _notifyListenersSafely();
     StructuredLogService.log('🔒 [DeveloperMode] 开发者模式已禁用');
   }
@@ -134,23 +165,30 @@ class DeveloperModeService extends ChangeNotifier {
 
   /// 添加日志
   void addLog(String message) {
+    if (_disposed || !_isDeveloperMode) return;
     final timestamp = DateTime.now().toString().substring(11, 19);
     final logEntry = '[$timestamp] $message';
-    _logs.add(logEntry);
+    _logs.addLast(logEntry);
 
     // 限制日志数量，最多保留1000条
     if (_logs.length > 1000) {
-      _logs.removeAt(0);
+      _logs.removeFirst();
     }
 
-    _notifyListenersSafely();
+    _scheduleLogNotification();
+  }
+
+  /// Avoid preparing detailed diagnostics when collection is disabled.
+  void addLogLazy(String Function() message) {
+    if (_disposed || !_isDeveloperMode) return;
+    addLog(message());
   }
 
   /// 清除所有日志
   void clearLogs() {
     _logs.clear();
     addLog('🗑️ 日志已清除');
-    _notifyListenersSafely();
+    _scheduleLogNotification();
   }
 
   /// 加载开发者模式状态
@@ -185,5 +223,14 @@ class DeveloperModeService extends ChangeNotifier {
     } catch (e) {
       StructuredLogService.log('❌ [DeveloperMode] 保存失败: $e');
     }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _logNotifyTimer?.cancel();
+    _logChanges.dispose();
+    _logs.clear();
+    super.dispose();
   }
 }

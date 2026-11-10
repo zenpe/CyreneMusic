@@ -316,7 +316,7 @@ class CacheService extends ChangeNotifier {
   CacheService._internal();
 
   static const int _manifestSchemaVersion = 4;
-  static const int _defaultMaxCacheSizeBytes = 512 * 1024 * 1024;
+  static const int _defaultMaxCacheSizeBytes = 1024 * 1024 * 1024;
   static const Duration _maintenanceDebounce = Duration(seconds: 2);
   static const Duration _cacheDownloadTimeout = Duration(seconds: 30);
   static const Duration _backgroundChecksumDelay = Duration(seconds: 10);

@@ -31,6 +31,7 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
   final AuthFacade _authFacade = AuthFacade();
   late TabController _tabController;
   final ScrollController _logScrollController = ScrollController();
+  bool _logScrollScheduled = false;
   int _fluentTabIndex = 0;
   int _fluentAdminTabIndex = 0;
   int _cupertinoTabIndex = 0; // iOS 标签页索引
@@ -46,29 +47,29 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
     _tabController = TabController(length: 3, vsync: this);
 
     // 监听日志更新，自动滚动到底部
-    DeveloperModeService().addListener(_scrollToBottom);
+    DeveloperModeService().logChanges.addListener(_scrollToBottom);
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _logScrollController.dispose();
-    DeveloperModeService().removeListener(_scrollToBottom);
+    DeveloperModeService().logChanges.removeListener(_scrollToBottom);
     super.dispose();
   }
 
   void _scrollToBottom() {
-    if (_logScrollController.hasClients) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (_logScrollController.hasClients) {
-          _logScrollController.animateTo(
-            _logScrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-    }
+    if (!mounted || !_logScrollController.hasClients || _logScrollScheduled) return;
+    _logScrollScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _logScrollScheduled = false;
+      if (!mounted || !_logScrollController.hasClients) return;
+      _logScrollController.animateTo(
+        _logScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   @override

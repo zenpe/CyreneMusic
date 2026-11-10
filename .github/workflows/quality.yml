@@ -2,6 +2,11 @@ name: Quality Gate
 
 on:
   workflow_call:
+    inputs:
+      windows-native-in-build:
+        description: Run the complete Windows native suite against the packaged DLL in the caller.
+        type: boolean
+        default: false
   pull_request:
     branches: [main]
   push:
@@ -82,11 +87,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-24.04
-            library: build/quickjs/libquickjs_c_bridge_plugin.so
-          - os: windows-2022
-            library: build/quickjs/Release/quickjs_c_bridge.dll
+        os: ${{ fromJSON(inputs.windows-native-in-build && '["ubuntu-24.04"]' || '["ubuntu-24.04", "windows-2022"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -108,7 +109,7 @@ jobs:
         timeout-minutes: 3
         env:
           CYRENE_LX_NATIVE_TEST: '1'
-          LIBQUICKJSC_TEST_PATH: ${{ github.workspace }}/${{ matrix.library }}
+          LIBQUICKJSC_TEST_PATH: ${{ github.workspace }}/${{ matrix.os == 'windows-2022' && 'build/quickjs/Release/quickjs_c_bridge.dll' || 'build/quickjs/libquickjs_c_bridge_plugin.so' }}
         run: >-
           flutter test --timeout 30s --reporter expanded
           test/services/lx_execution_limits_native_test.dart
@@ -129,21 +130,31 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Ensure Android NDK
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '17'
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@v3
+      - name: Ensure pinned Android NDK
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]]; then
+          if [[ ! -f "$ANDROID_HOME/ndk/$NDK_VERSION/build/cmake/android.toolchain.cmake" ]]; then
             sdkmanager "ndk;$NDK_VERSION"
           fi
       - name: Compile all declared Android ABIs
         shell: bash
         run: |
           set -euo pipefail
+          NDK_PATH="$ANDROID_HOME/ndk/$NDK_VERSION"
+          test -f "$NDK_PATH/build/cmake/android.toolchain.cmake"
+          echo "Using Android NDK at: $NDK_PATH"
           for abi in arm64-v8a armeabi-v7a x86_64 x86; do
             cmake -S third_party/flutter_js/native -B "build/quickjs-$abi" \
               -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/$NDK_VERSION/build/cmake/android.toolchain.cmake" \
+              -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake" \
               -DANDROID_ABI="$abi" -DANDROID_PLATFORM=android-21
             cmake --build "build/quickjs-$abi" --parallel 2
           done
@@ -164,6 +175,9 @@ jobs:
         with:
           distribution: zulu
           java-version: '17'
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
