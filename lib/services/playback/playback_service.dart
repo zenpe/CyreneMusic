@@ -37,6 +37,7 @@ import '../lyric/lyric_remote_source.dart';
 import '../lyric/lyric_snapshot.dart';
 import '../lx_runtime_interface.dart';
 import '../structured_log_service.dart';
+import '../audio_diagnostics.dart';
 
 import 'command_queue.dart';
 import 'audio_engine.dart';
@@ -612,18 +613,18 @@ class PlaybackService extends ChangeNotifier {
 
   bool get hasNext {
     if (_queueController.isNotEmpty) {
-      return _manualNavigationPlan(
-        PlaybackTransitionDirection.forward,
-      ).candidates.isNotEmpty;
+      return _manualNavigationPlan(PlaybackTransitionDirection.forward)
+          .candidates
+          .isNotEmpty;
     }
     return PlayHistoryService().history.length >= 2;
   }
 
   bool get hasPrevious {
     if (_queueController.isNotEmpty) {
-      return _manualNavigationPlan(
-        PlaybackTransitionDirection.backward,
-      ).candidates.isNotEmpty;
+      return _manualNavigationPlan(PlaybackTransitionDirection.backward)
+          .candidates
+          .isNotEmpty;
     }
     return PlayHistoryService().history.length >= 3;
   }
@@ -1162,6 +1163,12 @@ class PlaybackService extends ChangeNotifier {
   /// 播放已稳定（持续 ≥3s 且进度前进）：此时才承认播放成功，
   /// 执行成功副作用并重置失败追踪状态。
   void _onStablePlayback() {
+    DeveloperModeService().addLogLazy(
+      () =>
+          '[播放确认] 已稳定播放且进度前进 tx=$_activePlaybackToken '
+          'track=${_activeTrack == null ? '未知' : _buildTrackIdentity(_activeTrack!)} '
+          'position=${_position.inMilliseconds}ms',
+    );
     _startListeningTimeTracking();
     _recordPlaybackStarted();
     final track = _stableCacheTrack;
@@ -1302,7 +1309,9 @@ class PlaybackService extends ChangeNotifier {
       'kind=${error.type.name} http=${error.httpStatus} '
       'retry=$canRetry refreshUrl=${_shouldRefreshUrlOnError(error)} '
       'remainingMs=${_currentSwitchTx?.budget?.remaining().inMilliseconds} '
-      'detail=${_buildErrorMessage(error)}',
+      'detail=${_buildErrorMessage(error)} '
+      '原始错误=${AudioDiagnostics.compact(error.message)} '
+      '底层原因=${AudioDiagnostics.compact(error.cause)}',
       toDeveloperPanel: true,
     );
 
@@ -3834,6 +3843,7 @@ class PlaybackService extends ChangeNotifier {
       track,
       songDetail.url,
       tx.qualityStr,
+      diagnosticTransaction: tx.token,
     );
     if (isStale()) return null;
 
@@ -6398,8 +6408,9 @@ class PlaybackService extends ChangeNotifier {
   Future<PlayableSource> _buildNetworkPlayableSource(
     Track track,
     String url,
-    String quality,
-  ) async {
+    String quality, {
+    int? diagnosticTransaction,
+  }) async {
     final needsHeaders =
         track.source == MusicSource.qq || track.source == MusicSource.kugou;
     if (!needsHeaders || Platform.isAndroid || Platform.isIOS) {
@@ -6422,7 +6433,15 @@ class PlaybackService extends ChangeNotifier {
       throw const AudioTransportFailure(AudioTransportStage.local);
     }
     return ProxyHttpPlayableSource(
-      ProxyService().getProxyUrl(url, platform),
+      ProxyService().getProxyUrl(
+        url,
+        platform,
+        diagnosticContext: {
+          'playback_tx': ?diagnosticTransaction,
+          'playback_track': _buildTrackIdentity(track),
+          'purpose': diagnosticTransaction == null ? 'preload' : 'playback',
+        },
+      ),
       originalUrl: url,
     );
   }

@@ -45,4 +45,49 @@ void main() {
     expect(payload['stage_ms'], isA<int>());
     expect(payload['total_ms'], isA<int>());
   });
+
+  test(
+    'observers receive redacted asynchronous context without owning sink',
+    () async {
+      final seen = <Map<String, Object?>>[];
+      final lines = <String>[];
+      final stop = StructuredLogService.listen(seen.add);
+      addTearDown(stop);
+      StructuredLogService.sink = lines.add;
+      await StructuredLogService.inContext(
+        fields: {'playback_tx': 42},
+        detailed: true,
+        action: () async {
+          await Future<void>.delayed(Duration.zero);
+          StructuredLogService.event(
+            'lx.http_response',
+            fields: {'message': 'token="private"'},
+          );
+        },
+      );
+      expect(seen.single['playback_tx'], 42);
+      expect(lines.single, isNot(contains('private')));
+      stop();
+      StructuredLogService.event('outside');
+      expect(seen, hasLength(1));
+      expect(jsonDecode(lines.last)['playback_tx'], isNull);
+    },
+  );
+
+  test('worker relay tolerates malformed input and throwing observers', () {
+    final seen = <Map<String, Object?>>[];
+    final first = StructuredLogService.listen((_) => throw StateError('view'));
+    final second = StructuredLogService.listen(seen.add);
+    addTearDown(first);
+    addTearDown(second);
+    StructuredLogService.relay('invalid');
+    StructuredLogService.relay(
+      jsonEncode({
+        'event': 'lx.http_response',
+        'business_message': 'authorization: Bearer private',
+      }),
+    );
+    expect(seen, hasLength(1));
+    expect(seen.single['business_message'], isNot(contains('private')));
+  });
 }

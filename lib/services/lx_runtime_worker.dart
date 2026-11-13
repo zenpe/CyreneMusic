@@ -48,53 +48,61 @@ void runLxRuntimeWorker((SendPort, String, Duration, Duration) bootstrap) {
     // Cancellation bypasses this queue so HTTP waits remain interruptible.
     final owner = ResolutionRequest();
     owners[command.id] = owner;
-    pending = pending.then((_) async {
-      Object? value;
-      Object? error;
-      var cancelled = false;
-      try {
-        owner.check();
-        switch (command.operation) {
-          case LxWorkerOperation.initialize:
-            await engine.initialize();
-          case LxWorkerOperation.load:
-            value = await owner.run(() => engine.loadScript(command.script!));
-          case LxWorkerOperation.resolve:
-            value = await owner.run(
-              () => engine.getMusicUrl(
-                source: command.source!,
-                songId: command.songId,
-                quality: command.quality!,
-                musicInfo: command.musicInfo,
-                timeout: command.deadline!.difference(DateTime.now()),
+    pending = pending.then(
+      (_) => StructuredLogService.inContext(
+        fields: command.diagnosticContext,
+        detailed: command.collectDiagnostics,
+        action: () async {
+          Object? value;
+          Object? error;
+          var cancelled = false;
+          try {
+            owner.check();
+            switch (command.operation) {
+              case LxWorkerOperation.initialize:
+                await engine.initialize();
+              case LxWorkerOperation.load:
+                value = await owner.run(
+                  () => engine.loadScript(command.script!),
+                );
+              case LxWorkerOperation.resolve:
+                value = await owner.run(
+                  () => engine.getMusicUrl(
+                    source: command.source!,
+                    songId: command.songId,
+                    quality: command.quality!,
+                    musicInfo: command.musicInfo,
+                    timeout: command.deadline!.difference(DateTime.now()),
+                  ),
+                );
+            }
+          } on ResolutionCancelled {
+            cancelled = true;
+          } catch (caught) {
+            error = caught.toString();
+          } finally {
+            owners.remove(command.id);
+            // An interrupted context is reconstructed before the next resolution;
+            // the configured source remains selected and validated.
+            output.send(
+              LxWorkerResult(
+                command.id,
+                value,
+                error,
+                cancelled,
+                engine.isInitialized,
+                command.operation == LxWorkerOperation.resolve
+                    ? null
+                    : engine.currentScript,
+                owner.failure ?? engine.lastFailure,
+                owner.lastHttpResponse,
+                hasConfiguredScript: engine.hasConfiguredScript,
               ),
             );
-        }
-      } on ResolutionCancelled {
-        cancelled = true;
-      } catch (caught) {
-        error = caught.toString();
-      } finally {
-        owners.remove(command.id);
-        // An interrupted context is reconstructed before the next resolution;
-        // the configured source remains selected and validated.
-        output.send(
-          LxWorkerResult(
-            command.id,
-            value,
-            error,
-            cancelled,
-            engine.isInitialized,
-            command.operation == LxWorkerOperation.resolve
-                ? null
-                : engine.currentScript,
-            owner.failure ?? engine.lastFailure,
-            owner.lastHttpResponse,
-            hasConfiguredScript: engine.hasConfiguredScript,
-          ),
-        );
-      }
-    });
+          }
+        },
+      ),
+    );
   });
   output.send(input.sendPort);
 }
@@ -111,6 +119,8 @@ class LxWorkerCommand {
     this.quality,
     this.musicInfo,
     this.deadline,
+    this.collectDiagnostics = false,
+    this.diagnosticContext = const {},
   });
   final int id;
   final LxWorkerOperation operation;
@@ -118,6 +128,8 @@ class LxWorkerCommand {
   final Object? songId;
   final Map<String, dynamic>? musicInfo;
   final DateTime? deadline;
+  final bool collectDiagnostics;
+  final Map<String, Object?> diagnosticContext;
 }
 
 class LxWorkerCancel {

@@ -1,5 +1,6 @@
 import 'lx_music_info.dart';
 import 'structured_log_service.dart';
+import 'audio_diagnostics.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -924,7 +925,10 @@ class LxScriptEngine implements LxRuntime {
           'host': endpoint?.host,
           'status': result['statusCode'],
           'body_type': bodyType,
-          'business_code': responseBody is Map ? responseBody['code'] : null,
+          'business_code': AudioDiagnostics.businessCode(responseBody),
+          'business_message': AudioDiagnostics.businessMessage(responseBody),
+          'content_type': (result['headers'] as Map?)?['content-type'],
+          'bytes': result['bytes'],
           'elapsed_ms': httpClock.elapsedMilliseconds,
         },
       );

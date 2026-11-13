@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:cyrene_music/models/track.dart';
 import 'package:cyrene_music/services/auth_service.dart';
+import 'package:cyrene_music/services/developer_mode_service.dart';
 import 'package:cyrene_music/services/playback/audio_engine.dart';
 import 'package:cyrene_music/services/playback/engine_host.dart';
 import 'package:cyrene_music/services/playback/playable_source.dart';
@@ -22,6 +23,7 @@ void main() {
   for (final retriable in [false, true]) {
     test('load failure finishes without an error stream (retry=$retriable)', () async {
       SharedPreferences.setMockInitialValues({
+        'developer_mode': true,
         'auth_token': 'local-test-token',
         'current_user': jsonEncode({
           'id': 1,
@@ -31,6 +33,9 @@ void main() {
       });
       final auth = AuthService();
       await auth.ensureInitialized();
+      final developer = DeveloperModeService();
+      await developer.initialize();
+      developer.clearLogs();
       final engine = _FailingEngine(retriable);
       final playback = PlaybackService.forTesting(
         engine: EngineHost(engineFactory: () => engine),
@@ -52,6 +57,7 @@ void main() {
         expect(engine.loads, retriable ? 2 : 1, reason: playback.errorMessage);
         expect(playback.state, PBState.error);
         expect(playback.isTrackSwitchPending, isFalse);
+        expect(developer.logs.join('\n'), contains('原始错误=audio load failed'));
         if (retriable) {
           final second = Track(
             id: File('android/app/build.gradle.kts').absolute.path,

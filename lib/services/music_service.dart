@@ -1,12 +1,19 @@
 import 'lx_music_info.dart';
+import 'audio_diagnostics.dart';
+
 import 'dart:async';
+
 import 'audio_quality_service.dart';
 import 'structured_log_service.dart';
+
 import 'dart:convert';
+
 import 'resolution_request.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/toplist.dart';
 import '../models/track.dart';
 import '../models/song_detail.dart';
@@ -615,7 +622,8 @@ class MusicService extends ChangeNotifier {
         '🌐 [MusicService] 调用洛雪运行时获取 URL: $sourceCode / $lxSongId',
       );
       DeveloperModeService().addLogLazy(
-        () => '解析开始 purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId source=${audioSourceService.activeSource?.name}',
+        () =>
+            '解析开始 purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId source=${audioSourceService.activeSource?.name}',
       );
 
       quality = AudioQualityService().effectiveQualityFor(source, quality);
@@ -666,7 +674,7 @@ class MusicService extends ChangeNotifier {
         // page incorrectly renders the charts section as failed.
         StructuredLogService.log('❌ [MusicService] 洛雪音源返回空 URL');
         DeveloperModeService().addLog(
-          '解析失败 purpose=${request?.purpose} tx=${request?.transaction} request=${request?.id} track=${source.name}_$songId kind=${_lastLxFailure?.kind.name ?? 'emptyUrl'} reason=${_lastLxFailure?.message ?? '未返回播放地址'}',
+          '解析失败 purpose=${request?.purpose} tx=${request?.transaction} request=${request?.id} track=${source.name}_$songId source=${audioSourceService.activeSource?.name} quality=$lxQuality kind=${_lastLxFailure?.kind.name ?? 'emptyUrl'} reason=${AudioDiagnostics.compact(_lastLxFailure?.message ?? '未返回播放地址', limit: 600)}',
         );
         return null;
       }
@@ -678,7 +686,8 @@ class MusicService extends ChangeNotifier {
         '   🔗 URL: ${audioUrl.length > 50 ? "${audioUrl.substring(0, 50)}..." : audioUrl}',
       );
       DeveloperModeService().addLogLazy(
-        () => '解析成功 purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId',
+        () =>
+            '已获得播放地址（尚未验证音频） purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId source=${audioSourceService.activeSource?.name} quality=$lxQuality host=${resolvedUri.host} elapsed=${clock.elapsedMilliseconds}ms',
       );
 
       // 🎵 尝试从后端歌词 API 获取歌词

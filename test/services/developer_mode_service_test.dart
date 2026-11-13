@@ -1,4 +1,5 @@
 import 'package:cyrene_music/services/developer_mode_service.dart';
+import 'package:cyrene_music/services/structured_log_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,6 +12,24 @@ void main() {
     addTearDown(service.dispose);
     return service;
   }
+
+  testWidgets('audio diagnostics reach panel only while enabled', (
+    tester,
+  ) async {
+    final service = await create();
+    StructuredLogService.relay(
+      '{"event":"lx.http_response",'
+      '"playback_tx":42,"status":200,"business_code":2,'
+      '"business_message":"Object trans failure: 140017."}',
+    );
+    expect(service.logs.last, contains('HTTP=200 业务码=2'));
+    expect(service.logs.last, contains('140017'));
+    service.addLog('signed https://audio.example/file?vkey=private');
+    expect(service.logs.last, isNot(contains('private')));
+    await service.disableDeveloperMode();
+    StructuredLogService.relay('{"event":"lx.http_response","status":403}');
+    expect(service.logs, isEmpty);
+  });
 
   testWidgets('ordinary mode neither collects nor prepares detailed logs', (
     tester,

@@ -87,10 +87,22 @@ class ProxyService {
 
   Future<void> dispose() => stop();
 
-  String getProxyUrl(String originalUrl, String platform) =>
-      _register(Uri.parse(originalUrl), platform);
+  String getProxyUrl(
+    String originalUrl,
+    String platform, {
+    Map<String, Object?> diagnosticContext = const {},
+  }) => _register(
+    Uri.parse(originalUrl),
+    platform,
+    diagnosticContext: diagnosticContext,
+  );
 
-  String _register(Uri target, String platform, {String? group}) {
+  String _register(
+    Uri target,
+    String platform, {
+    String? group,
+    Map<String, Object?> diagnosticContext = const {},
+  }) {
     if (!isRunning) throw StateError('Audio proxy is not running');
     if ((target.scheme != 'http' && target.scheme != 'https') ||
         target.host.isEmpty) {
@@ -117,7 +129,12 @@ class ProxyService {
       }
     }
     final id = (++_sequence).toString();
-    _routes[id] = _AudioRoute(target, platform, group ?? id);
+    _routes[id] = _AudioRoute(
+      target,
+      platform,
+      group ?? id,
+      Map.unmodifiable(_routes[group]?.diagnosticContext ?? diagnosticContext),
+    );
     return 'http://127.0.0.1:$port/proxy/$id';
   }
 
@@ -164,6 +181,7 @@ class ProxyService {
       'audio_proxy.failed',
       level: LogLevel.warning,
       fields: {
+        ...route.diagnosticContext,
         'request_id': route.group,
         'host': route.target.host,
         'platform': route.platform,
@@ -236,6 +254,21 @@ class ProxyService {
       if (current.cancelled) return;
       headersMs = clock.elapsedMilliseconds;
       final status = upstream.statusCode;
+      StructuredLogService.event(
+        'audio_proxy.response',
+        fields: {
+          ...activeRoute.diagnosticContext,
+          'request_id': activeRoute.group,
+          'host': activeRoute.target.host,
+          'platform': activeRoute.platform,
+          'status': status,
+          'content_type': upstream.headers[HttpHeaders.contentTypeHeader]?.join(
+            ', ',
+          ),
+          'content_length': upstream.contentLength,
+          'elapsed_ms': headersMs,
+        },
+      );
       if (status != 200 && status != 206) {
         _recordFailure(
           route,
@@ -341,8 +374,9 @@ class _AudioRoute {
   final Uri target;
   final String platform;
   final String group;
+  final Map<String, Object?> diagnosticContext;
   AudioTransportFailure? failure;
-  _AudioRoute(this.target, this.platform, this.group);
+  _AudioRoute(this.target, this.platform, this.group, this.diagnosticContext);
 }
 
 class _AudioTransfer {

@@ -8,6 +8,7 @@ import 'lx_runtime_interface.dart';
 import 'lx_runtime_worker.dart';
 import 'resolution_request.dart';
 import 'structured_log_service.dart';
+import 'developer_mode_service.dart';
 
 /// UI-side scheduler. Native contexts, HTTP and timers live in the worker.
 /// Each source candidate gets an independent worker for staged activation.
@@ -43,7 +44,13 @@ class LxQuickJsRuntime implements LxRuntime {
 
   @override
   Future<void> initialize() async {
-    await _enqueue(LxWorkerCommand(++_sequence, LxWorkerOperation.initialize));
+    await _enqueue(
+      LxWorkerCommand(
+        ++_sequence,
+        LxWorkerOperation.initialize,
+        collectDiagnostics: DeveloperModeService().isDeveloperMode,
+      ),
+    );
   }
 
   @override
@@ -55,6 +62,8 @@ class LxQuickJsRuntime implements LxRuntime {
         ++_sequence,
         LxWorkerOperation.load,
         script: scriptContent,
+        collectDiagnostics: DeveloperModeService().isDeveloperMode,
+        diagnosticContext: const {'purpose': 'sourceActivation'},
       ),
     ) as LxScriptInfo?;
   }
@@ -78,6 +87,16 @@ class LxQuickJsRuntime implements LxRuntime {
         quality: quality,
         musicInfo: musicInfo,
         deadline: DateTime.now().add(timeout ?? const Duration(seconds: 6)),
+        collectDiagnostics: DeveloperModeService().isDeveloperMode,
+        diagnosticContext: {
+          'source': source,
+          'quality': quality,
+          'purpose': parent?.purpose ?? 'other',
+          if (parent?.transaction != null) 'playback_tx': parent!.transaction,
+          if (parent != null) 'playback_request': parent.id,
+          'playback_track': parent?.track ?? '${source}_$songId',
+          if (_script != null) 'source_name': _script!.name,
+        },
       ),
       owner: parent,
       preload: parent?.purpose == 'preload',
@@ -315,6 +334,7 @@ class _WorkerConnection {
       _pending.remove(message.id)?.complete(message);
     }
     if (message is LxWorkerLog) {
+      StructuredLogService.relay(message.line);
       final sink = StructuredLogService.sink;
       if (sink != null) {
         sink(message.line);

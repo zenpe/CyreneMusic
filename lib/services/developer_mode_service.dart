@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'structured_log_service.dart';
+import 'audio_diagnostics.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -21,6 +22,17 @@ class DeveloperModeService extends ChangeNotifier {
   DeveloperModeService.forTesting();
 
   bool _disposed = false;
+  void Function()? _unsubscribeDiagnostics;
+
+  void _subscribeDiagnostics() {
+    _unsubscribeDiagnostics?.call();
+    _unsubscribeDiagnostics = null;
+    if (_disposed || !_isDeveloperMode) return;
+    _unsubscribeDiagnostics = StructuredLogService.listen((event) {
+      final message = AudioDiagnostics.format(event);
+      if (message != null) addLog(message);
+    });
+  }
 
   bool _isDeveloperMode = false;
   bool get isDeveloperMode => _isDeveloperMode;
@@ -136,6 +148,7 @@ class DeveloperModeService extends ChangeNotifier {
   /// 启用开发者模式
   Future<void> _enableDeveloperMode() async {
     _isDeveloperMode = true;
+    _subscribeDiagnostics();
     await _saveDeveloperMode();
     addLog('🚀 开发者模式已启用');
     ToastUtils.success('开发者模式已启用');
@@ -146,6 +159,7 @@ class DeveloperModeService extends ChangeNotifier {
   /// 禁用开发者模式
   Future<void> disableDeveloperMode() async {
     _isDeveloperMode = false;
+    _subscribeDiagnostics();
     _logs.clear();
     _logNotifyTimer?.cancel();
     _logNotifyTimer = null;
@@ -167,7 +181,8 @@ class DeveloperModeService extends ChangeNotifier {
   void addLog(String message) {
     if (_disposed || !_isDeveloperMode) return;
     final timestamp = DateTime.now().toString().substring(11, 19);
-    final logEntry = '[$timestamp] $message';
+    final logEntry =
+        '[$timestamp] ${StructuredLogService.sanitizeText(message)}';
     _logs.addLast(logEntry);
 
     // 限制日志数量，最多保留1000条
@@ -196,6 +211,7 @@ class DeveloperModeService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       _isDeveloperMode = prefs.getBool('developer_mode') ?? false;
+      _subscribeDiagnostics();
       _showPerformanceOverlay =
           prefs.getBool('show_performance_overlay') ?? false;
       _isInitialized = true;
@@ -228,6 +244,7 @@ class DeveloperModeService extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _unsubscribeDiagnostics?.call();
     _logNotifyTimer?.cancel();
     _logChanges.dispose();
     _logs.clear();

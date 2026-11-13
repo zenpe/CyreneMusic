@@ -12,6 +12,48 @@ class StructuredLogService {
   StructuredLogService._();
 
   static StructuredLogSink? sink;
+  static final _listeners = <void Function(Map<String, Object?>)>{};
+  static final _contextKey = Object();
+  static final _detailedKey = Object();
+
+  /// Observers receive the same redacted payload as the console/sink.
+  static void Function() listen(void Function(Map<String, Object?>) listener) {
+    _listeners.add(listener);
+    return () => _listeners.remove(listener);
+  }
+
+  /// Context follows asynchronous callbacks, including late worker HTTP events.
+  static T inContext<T>({
+    required Map<String, Object?> fields,
+    required bool detailed,
+    required T Function() action,
+  }) => runZoned(
+    action,
+    zoneValues: {_contextKey: fields, _detailedKey: detailed},
+  );
+
+  static void _notify(Map<String, Object?> payload) {
+    for (final listener in _listeners.toList()) {
+      try {
+        listener(Map.unmodifiable(payload));
+      } catch (_) {
+        // Diagnostics must never change the operation being observed.
+      }
+    }
+  }
+
+  /// A worker already serialized/redacted this event. Do not emit it twice.
+  static void relay(String line) {
+    if (_listeners.isEmpty) return;
+    try {
+      final payload = jsonDecode(line);
+      if (payload is Map<String, dynamic>) _notify(_redactMap(payload));
+    } catch (_) {
+      // Ignore malformed diagnostics without interrupting worker delivery.
+    }
+  }
+
+  static String sanitizeText(String value) => _sanitizeText(value);
 
   /// Records a free-form diagnostic message without writing directly to stdout.
   static void log(Object? message, {LogLevel level = LogLevel.debug}) {
@@ -28,10 +70,16 @@ class StructuredLogService {
     Map<String, Object?> fields = const {},
     Object? error,
   }) {
-    if (kReleaseMode && level.index < LogLevel.warning.index) {
+    if (kReleaseMode &&
+        level.index < LogLevel.warning.index &&
+        _listeners.isEmpty &&
+        Zone.current[_detailedKey] != true) {
       return;
     }
     final payload = <String, Object?>{
+      ..._redactMap(
+        Zone.current[_contextKey] as Map<String, Object?>? ?? const {},
+      ),
       'ts': DateTime.now().toUtc().toIso8601String(),
       'level': level.name,
       'event': event,
@@ -39,6 +87,7 @@ class StructuredLogService {
       if (error != null) 'error': _sanitizeText(error.toString()),
     };
     final line = jsonEncode(payload);
+    _notify(payload);
     final output = sink;
     if (output != null) {
       output(line);
@@ -79,12 +128,16 @@ class StructuredLogService {
       RegExp(r'https?://[^\s]+', caseSensitive: false),
       '<url>',
     );
+    result = result.replaceAll(
+      RegExp(r'\bBearer\s+[^\s,;]+', caseSensitive: false),
+      'Bearer <redacted>',
+    );
     result = result.replaceAllMapped(
       RegExp(
-        r'(card_key|card-key|key|token|cookie|authorization|password|secret)=([^&\s,]+)',
+        r'''((?:api[_-]?key|card[_-]?key|access[_-]?token|token|cookie|authorization|password|secret|signature|sign|key)["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^&\s,;}]+)''',
         caseSensitive: false,
       ),
-      (match) => '${match.group(1)}=<redacted>',
+      (match) => '${match.group(1)}<redacted>',
     );
     return result;
   }

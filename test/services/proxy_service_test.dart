@@ -46,6 +46,31 @@ void main() {
       (await client.getUrl(Uri.parse(url))).close();
 
   test(
+    'audio response diagnostics retain route context without signed URL',
+    () async {
+      respond = (request) async {
+        request.response.headers.contentType = ContentType('audio', 'mpeg');
+        request.response.write('audio');
+        await request.response.close();
+      };
+      final local = proxy.getProxyUrl(
+        'http://127.0.0.1:${origin.port}/audio?vkey=private-test',
+        'qq',
+        diagnosticContext: {'playback_tx': 42, 'playback_track': 'qq_track'},
+      );
+      expect(await utf8.decodeStream(await get(local)), 'audio');
+      final event = logs
+          .map((line) => jsonDecode(line) as Map)
+          .singleWhere((e) => e['event'] == 'audio_proxy.response');
+      expect(event['playback_tx'], 42);
+      expect(event['playback_track'], 'qq_track');
+      expect(event['status'], 200);
+      expect(event['content_type'], 'audio/mpeg');
+      expect(logs.join(), isNot(contains('private-test')));
+    },
+  );
+
+  test(
     'stop wins over an in-flight start and no listener is resurrected',
     () async {
       await proxy.stop();
