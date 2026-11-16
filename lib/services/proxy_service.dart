@@ -245,7 +245,7 @@ class ProxyService {
         source,
         headers: {
           for (final name in ['range', 'if-range', 'accept'])
-            if (request.headers.value(name) case final value?) name: value,
+            name: ?request.headers.value(name),
         },
       ).timeout(headerTimeout);
       final upstream = result.response;

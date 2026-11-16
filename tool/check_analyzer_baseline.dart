@@ -6,7 +6,7 @@ const _baselinePath = 'tool/analyzer_baseline.json';
 Future<void> main(List<String> arguments) async {
   final analyzer = await _runAnalyzer();
   final diagnostics = analyzer.lines;
-  final current = _countDiagnostics(diagnostics);
+  final current = countAnalyzerDiagnostics(diagnostics);
 
   if (analyzer.exitCode != 0 && current.isEmpty) {
     stderr.writeln('Analyzer failed without producing diagnostics.');
@@ -92,9 +92,10 @@ Future<({List<String> lines, int exitCode})> _runAnalyzer() async {
   );
 }
 
-Map<String, int> _countDiagnostics(List<String> lines) {
+Map<String, int> countAnalyzerDiagnostics(List<String> lines) {
   final counts = <String, int>{};
-  for (final line in lines) {
+  for (final rawLine in lines) {
+    final line = rawLine.replaceAll(RegExp(r'\x1B\[[0-?]*[ -/]*[@-~]'), '');
     final fields = line.split('|');
     String? severity;
     String? code;
@@ -106,7 +107,7 @@ Map<String, int> _countDiagnostics(List<String> lines) {
       code = fields[2].trim();
     } else {
       final humanMatch = RegExp(
-        r'^\s*(error|warning|info) - .* - ([a-z0-9_]+)$',
+        r'^\s*(error|warning|info)\s+[-•]\s+.*\s+[-•]\s+([a-z0-9_]+)$',
       ).firstMatch(line);
       if (humanMatch != null) {
         severity = humanMatch.group(1)!.toUpperCase();
