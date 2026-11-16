@@ -1,13 +1,17 @@
+import 'lx_music_metadata.dart';
+export 'lx_music_metadata.dart';
+import '../utils/audio_duration_evidence.dart';
+
 /// 音乐平台枚举
 enum MusicSource {
-  netease,  // 网易云音乐
-  qq,       // QQ音乐
-  kugou,    // 酷狗音乐
-  kuwo,     // 酷我音乐
-  apple,    // Apple Music
+  netease, // 网易云音乐
+  qq, // QQ音乐
+  kugou, // 酷狗音乐
+  kuwo, // 酷我音乐
+  apple, // Apple Music
   navidrome, // Navidrome
-  spotify,  // Spotify
-  local,    // 本地文件
+  spotify, // Spotify
+  local, // 本地文件
 }
 
 /// 平台原始标识。不同下游只能读取自己协议明确要求的字段。
@@ -54,13 +58,17 @@ class MissingTrackSourceIdentifierException implements Exception {
 
 /// 歌曲模型
 class Track {
-  final dynamic id;  // 支持 int 和 String 类型（网易云用int，QQ和酷狗用String）
+  final dynamic id; // 支持 int 和 String 类型（网易云用int，QQ和酷狗用String）
   final String name;
   final String artists;
   final String album;
   final String picUrl;
   final MusicSource source;
   final TrackSourceIds sourceIds;
+  final LxMusicMetadata lxMetadata;
+
+  /// Expected song duration from platform metadata, never from a playback URL.
+  final int? durationMs;
 
   Track({
     required this.id,
@@ -70,18 +78,22 @@ class Track {
     required this.picUrl,
     this.source = MusicSource.netease, // 默认网易云音乐
     this.sourceIds = const TrackSourceIds(),
+    this.lxMetadata = const LxMusicMetadata(),
+    this.durationMs,
   });
 
   /// 从 JSON 创建 Track 对象
   factory Track.fromJson(Map<String, dynamic> json, {MusicSource? source}) {
     return Track(
-      id: json['id'],  // 可以是 int 或 String
+      id: json['id'], // 可以是 int 或 String
       name: json['name'] as String,
       artists: json['artists'] as String,
       album: json['album'] as String,
       picUrl: json['picUrl'] as String,
       source: source ?? _parseSource(json['source']),
       sourceIds: TrackSourceIds.fromJson(json['sourceIds']),
+      lxMetadata: LxMusicMetadata.fromJson(json['lxMetadata']),
+      durationMs: validDurationMs(json['durationMs']),
     );
   }
 
@@ -95,6 +107,8 @@ class Track {
       'picUrl': picUrl,
       'source': source.name,
       if (!sourceIds.isEmpty) 'sourceIds': sourceIds.toJson(),
+      if (!lxMetadata.isEmpty) 'lxMetadata': lxMetadata.toJson(),
+      if (validDurationMs(durationMs) != null) 'durationMs': durationMs,
     };
   }
 

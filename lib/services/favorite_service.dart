@@ -1,6 +1,10 @@
+import '../utils/audio_duration_evidence.dart';
+
 import 'structured_log_service.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
+
 import '../models/track.dart';
 import 'auth_service.dart';
 import 'api/api_client.dart';
@@ -15,6 +19,10 @@ class FavoriteTrack {
   final String picUrl;
   final MusicSource source;
   final TrackSourceIds sourceIds;
+  final LxMusicMetadata lxMetadata;
+
+  /// Expected song duration from platform metadata, never from a playback URL.
+  final int? durationMs;
   final DateTime addedAt;
 
   FavoriteTrack({
@@ -25,6 +33,8 @@ class FavoriteTrack {
     required this.picUrl,
     required this.source,
     this.sourceIds = const TrackSourceIds(),
+    this.lxMetadata = const LxMusicMetadata(),
+    this.durationMs,
     required this.addedAt,
   });
 
@@ -38,6 +48,8 @@ class FavoriteTrack {
       picUrl: track.picUrl,
       source: track.source,
       sourceIds: track.sourceIds,
+      lxMetadata: track.lxMetadata,
+      durationMs: track.durationMs,
       addedAt: DateTime.now(),
     );
   }
@@ -55,6 +67,8 @@ class FavoriteTrack {
         orElse: () => MusicSource.netease,
       ),
       sourceIds: TrackSourceIds.fromJson(json['sourceIds']),
+      lxMetadata: LxMusicMetadata.fromJson(json['lxMetadata']),
+      durationMs: validDurationMs(json['durationMs']),
       addedAt: DateTime.parse(json['addedAt'] as String),
     );
   }
@@ -69,6 +83,8 @@ class FavoriteTrack {
       picUrl: picUrl,
       source: source,
       sourceIds: sourceIds,
+      lxMetadata: lxMetadata,
+      durationMs: durationMs,
     );
   }
 
@@ -82,6 +98,8 @@ class FavoriteTrack {
       'picUrl': picUrl,
       'source': source.toString().split('.').last,
       if (!sourceIds.isEmpty) 'sourceIds': sourceIds.toJson(),
+      if (!lxMetadata.isEmpty) 'lxMetadata': lxMetadata.toJson(),
+      if (validDurationMs(durationMs) != null) 'durationMs': durationMs,
     };
   }
 }

@@ -1,3 +1,5 @@
+import '../utils/audio_duration_evidence.dart';
+
 import 'track.dart';
 
 enum PlaylistType { local, synced }
@@ -117,6 +119,10 @@ class PlaylistTrack {
   final String picUrl;
   final MusicSource source;
   final TrackSourceIds sourceIds;
+  final LxMusicMetadata lxMetadata;
+
+  /// Expected song duration from platform metadata, never from a playback URL.
+  final int? durationMs;
   final DateTime addedAt;
 
   PlaylistTrack({
@@ -128,6 +134,8 @@ class PlaylistTrack {
     required this.picUrl,
     required this.source,
     this.sourceIds = const TrackSourceIds(),
+    this.lxMetadata = const LxMusicMetadata(),
+    this.durationMs,
     required this.addedAt,
   });
 
@@ -141,6 +149,8 @@ class PlaylistTrack {
       picUrl: json['picUrl'] as String,
       source: _parseSource(json['source'] as String),
       sourceIds: TrackSourceIds.fromJson(json['sourceIds']),
+      lxMetadata: LxMusicMetadata.fromJson(json['lxMetadata']),
+      durationMs: validDurationMs(json['durationMs']),
       addedAt: DateTime.parse(json['addedAt'] as String),
     );
   }
@@ -155,6 +165,8 @@ class PlaylistTrack {
       'picUrl': picUrl,
       'source': source.toString().split('.').last,
       if (!sourceIds.isEmpty) 'sourceIds': sourceIds.toJson(),
+      if (!lxMetadata.isEmpty) 'lxMetadata': lxMetadata.toJson(),
+      if (validDurationMs(durationMs) != null) 'durationMs': durationMs,
       'addedAt': addedAt.toIso8601String(),
     };
   }
@@ -169,6 +181,8 @@ class PlaylistTrack {
       picUrl: track.picUrl,
       source: track.source,
       sourceIds: track.sourceIds,
+      lxMetadata: track.lxMetadata,
+      durationMs: track.durationMs,
       addedAt: DateTime.now(),
     );
   }
@@ -186,6 +200,8 @@ class PlaylistTrack {
       picUrl: picUrl,
       source: source,
       sourceIds: sourceIds,
+      lxMetadata: lxMetadata,
+      durationMs: durationMs,
     );
   }
 

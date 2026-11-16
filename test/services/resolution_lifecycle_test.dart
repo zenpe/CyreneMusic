@@ -37,6 +37,8 @@ void main() {
               required fetchLyrics,
               onLxFailure,
               requestTimeout,
+              int? durationMs,
+              LxMusicMetadata lxMetadata = const LxMusicMetadata(),
             }) async {
               calls++;
               await LxHttpBridge.performHttpRequest(
@@ -100,6 +102,8 @@ void main() {
               required fetchLyrics,
               onLxFailure,
               requestTimeout,
+              int? durationMs,
+              LxMusicMetadata lxMetadata = const LxMusicMetadata(),
             }) {
               owner = ResolutionRequest.current;
               return response.future;
@@ -139,6 +143,8 @@ void main() {
               required fetchLyrics,
               onLxFailure,
               requestTimeout,
+              int? durationMs,
+              LxMusicMetadata lxMetadata = const LxMusicMetadata(),
             }) {
               owners.add(ResolutionRequest.current!);
               return owners.length == 1

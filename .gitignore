@@ -59,3 +59,8 @@ test.html
 /backend/
 .ace-tool/
 /Best-Flutter-UI-Templates-master/
+
+# Local diagnostics and generated release/native build files
+/.tmp/
+/dist/
+**/.cxx/

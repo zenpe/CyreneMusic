@@ -148,6 +148,8 @@ class PlaylistService extends ChangeNotifier {
       picUrl: track.picUrl,
       source: item.source,
       sourceIds: item.sourceIds,
+      lxMetadata: track.lxMetadata,
+      durationMs: track.durationMs,
       addedAt: item.addedAt,
     );
   }
@@ -864,6 +866,8 @@ class PlaylistService extends ChangeNotifier {
         picUrl: value.picUrl,
         source: value.source,
         sourceIds: value.sourceIds,
+        lxMetadata: value.lxMetadata,
+        durationMs: value.durationMs,
         addedAt: value.addedAt,
       ),
     );
@@ -1129,6 +1133,8 @@ class PlaylistService extends ChangeNotifier {
         picUrl: current.picUrl,
         source: current.source,
         sourceIds: current.sourceIds,
+        lxMetadata: current.lxMetadata,
+        durationMs: current.durationMs,
         addedAt: current.addedAt,
       ),
     );

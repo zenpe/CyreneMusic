@@ -206,6 +206,8 @@ class _DiscoverPlaylistDetailContentState
             artists: t.artists,
             album: t.album,
             picUrl: t.picUrl,
+            durationMs: t.durationMs,
+            sourceIds: t.sourceIds,
             source: MusicSource.netease,
           ),
         )
@@ -379,7 +381,9 @@ class _DiscoverPlaylistDetailContentState
               artists: track.artists,
               album: track.album,
               picUrl: track.picUrl,
-              source: MusicSource.netease,
+              durationMs: track.durationMs,
+            sourceIds: track.sourceIds,
+            source: MusicSource.netease,
             ),
           )
           .toList();
@@ -481,6 +485,8 @@ class _DiscoverPlaylistDetailContentState
             artists: t.artists,
             album: t.album,
             picUrl: t.picUrl,
+            durationMs: t.durationMs,
+            sourceIds: t.sourceIds,
             source: MusicSource.netease,
           ),
         )
@@ -913,6 +919,8 @@ class _DiscoverPlaylistDetailContentState
             artists: t.artists,
             album: t.album,
             picUrl: t.picUrl,
+            durationMs: t.durationMs,
+            sourceIds: t.sourceIds,
             source: MusicSource.netease,
           ),
         )
@@ -1095,7 +1103,9 @@ class _DiscoverPlaylistDetailContentState
               artists: track.artists,
               album: track.album,
               picUrl: track.picUrl,
-              source: MusicSource.netease,
+              durationMs: track.durationMs,
+            sourceIds: track.sourceIds,
+            source: MusicSource.netease,
             ),
           )
           .toList();
@@ -1193,6 +1203,8 @@ class _DiscoverPlaylistDetailContentState
             artists: t.artists,
             album: t.album,
             picUrl: t.picUrl,
+            durationMs: t.durationMs,
+            sourceIds: t.sourceIds,
             source: MusicSource.netease,
           ),
         )
@@ -1810,6 +1822,8 @@ class _DiscoverPlaylistDetailContentState
             artists: t.artists,
             album: t.album,
             picUrl: t.picUrl,
+            durationMs: t.durationMs,
+            sourceIds: t.sourceIds,
             source: MusicSource.netease,
           ),
         )

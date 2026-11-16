@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'structured_log_service.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/track.dart';
+import '../utils/audio_duration_evidence.dart';
 import '../models/search_page_state.dart';
 import 'api/api_client.dart';
 import 'search_provider_catalog.dart';
@@ -406,6 +409,8 @@ class SearchService extends ChangeNotifier {
         album: item['album']?.toString() ?? '',
         picUrl: item['pic']?.toString() ?? '',
         source: platform,
+        durationMs: validDurationMs(item['durationMs']),
+        lxMetadata: LxMusicMetadata.fromPlatformJson(item, source: platform.name),
         sourceIds: TrackSourceIds(
           fileHash: hash,
           emixSongId: emix,
@@ -428,6 +433,8 @@ class SearchService extends ChangeNotifier {
               ?.toString() ??
           '',
       source: platform,
+      durationMs: validDurationMs(item['durationMs']),
+      lxMetadata: LxMusicMetadata.fromPlatformJson(item, source: platform.name),
     );
   }
 

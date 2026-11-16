@@ -80,6 +80,8 @@ void main() {
               required fetchLyrics,
               onLxFailure,
               requestTimeout,
+              int? durationMs,
+              LxMusicMetadata lxMetadata = const LxMusicMetadata(),
             }) async {
               fetches++;
               return SongDetail(
@@ -125,6 +127,45 @@ void main() {
         expect(engine.loadedUrls.last, 'https://example.test/audio-2.mp3');
       } finally {
         playback.dispose();
+        await AudioSourceService().removeSource('playback-test-source');
+      }
+    },
+  );
+
+  test(
+    'same-URL refresh preserves HTTP 403 and clears evidence for next track',
+    () async {
+      await configureTestSource();
+      final logs = <String>[];
+      StructuredLogService.sink = logs.add;
+      final resolver = _Resolver()..playable.addAll(['0', '1']);
+      final engine = _Engine()
+        ..nextError = EngineErrorType.accessDenied
+        ..nextErrorCause = const AudioTransportFailure(
+          AudioTransportStage.upstream,
+          statusCode: 403,
+        );
+      final playback = _createPlayback(resolver, engine: engine);
+      try {
+        await playback.playNow(_remoteTracks(1), 0, QueueSource.none);
+        expectFinished(playback);
+        expect(
+          engine.loadedUrls,
+          hasLength(1),
+          reason: 'rejected URL must not load again',
+        );
+        expect(logs.join('\n'), contains('http=403'));
+        expect(playback.state, PBState.error);
+        await playback.playNow([_remoteTracks(2)[1]], 0, QueueSource.none);
+        expect(playback.state, PBState.playing);
+        expect(playback.currentTrack?.id.toString(), '1');
+        // A new selection, even of the previously rejected track, has fresh evidence.
+        await playback.playNow(_remoteTracks(1), 0, QueueSource.none);
+        expect(playback.state, PBState.playing);
+        expect(engine.loadedUrls, hasLength(3));
+      } finally {
+        playback.dispose();
+        StructuredLogService.sink = null;
         await AudioSourceService().removeSource('playback-test-source');
       }
     },
@@ -432,6 +473,8 @@ void main() {
                 required fetchLyrics,
                 onLxFailure,
                 requestTimeout,
+                int? durationMs,
+                LxMusicMetadata lxMetadata = const LxMusicMetadata(),
               }) async {
                 requests++;
                 final url = await LxMusicRuntimeService().getMusicUrl(
@@ -945,6 +988,72 @@ void main() {
             await cache.clearAllCache();
             await cache.setCacheEnabled(false);
             await server.close(force: true);
+          }
+        }, createHttpClient: _RealHttpOverrides().createHttpClient);
+      },
+    );
+  }
+
+  for (final switchBeforeStable in [false, true]) {
+    test(
+      'duration evidence stays with its resource (switch=$switchBeforeStable)',
+      () async {
+        await configureTestSource();
+        final cache = CacheService();
+        await cache.initialize();
+        await cache.setCacheEnabled(true);
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        var downloads = 0;
+        server.listen((request) async {
+          downloads++;
+          request.response.headers.contentType = ContentType('audio', 'mpeg');
+          request.response.add([0x49, 0x44, 0x33, 0, 0, 0, 0, 0]);
+          await request.response.close();
+        });
+        final resolver = _Resolver()
+          ..playable.addAll(['0', '1'])
+          ..urlOverride = 'http://127.0.0.1:${server.port}/song.mp3';
+        final targets = List.generate(
+          2,
+          (i) => Track(
+            id: '$i',
+            name: 'Duration $i',
+            artists: 'Artist',
+            album: 'Album',
+            picUrl: '',
+            source: MusicSource.netease,
+            durationMs: 212000,
+          ),
+        );
+        final engine = _Engine();
+        final playback = _createPlayback(resolver, engine: engine);
+        await HttpOverrides.runZoned(() async {
+          try {
+            await playback.playNow(targets, 0, QueueSource.none);
+            engine._durations.add(const Duration(milliseconds: 7128));
+            engine.positionValue = const Duration(seconds: 1);
+            engine._positions.add(engine.positionValue);
+            if (switchBeforeStable) {
+              await playback.jumpTo(1);
+              engine._durations.add(const Duration(seconds: 212));
+              engine.positionValue = const Duration(seconds: 1);
+              engine._positions.add(engine.positionValue);
+              await waitUntil(
+                () => cache.isCached(targets[1]),
+                timeout: const Duration(seconds: 6),
+              );
+            } else {
+              await Future<void>.delayed(const Duration(milliseconds: 3500));
+            }
+            expect(cache.isCached(targets[0]), isFalse);
+            expect(downloads, switchBeforeStable ? 1 : 0);
+            expect(playback.state, PBState.playing);
+            expect(targets[0].durationMs, 212000);
+          } finally {
+            playback.dispose();
+            await server.close(force: true);
+            await cache.clearAllCache();
+            await cache.setCacheEnabled(false);
           }
         }, createHttpClient: _RealHttpOverrides().createHttpClient);
       },
@@ -2790,9 +2899,12 @@ void expectFinished(PlaybackService playback) {
   expect(playback.pendingPlaybackIntent, isNull);
 }
 
-Future<void> waitUntil(bool Function() ready) async {
+Future<void> waitUntil(
+  bool Function() ready, {
+  Duration timeout = const Duration(seconds: 2),
+}) async {
   final clock = Stopwatch()..start();
-  while (!ready() && clock.elapsed < const Duration(seconds: 2)) {
+  while (!ready() && clock.elapsed < timeout) {
     await Future<void>.delayed(const Duration(milliseconds: 5));
   }
   expect(ready(), isTrue);
@@ -2852,6 +2964,8 @@ class _Resolver extends TrackResolver {
 
   @override
   TrackResolutionResult? peekResolved({
+    int? durationMs,
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
     required dynamic songId,
     required AudioQuality quality,
     required MusicSource source,
@@ -2913,6 +3027,8 @@ class _Resolver extends TrackResolver {
     required String title,
     required String artist,
     String album = '',
+    int? durationMs,
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
     TrackSourceIds sourceIds = const TrackSourceIds(),
     required Duration timeout,
     bool fetchLyrics = true,

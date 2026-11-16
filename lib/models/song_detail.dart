@@ -1,3 +1,4 @@
+import '../utils/audio_duration_evidence.dart';
 import 'track.dart';
 
 /// 歌曲详情模型
@@ -17,6 +18,9 @@ class SongDetail {
   final String qrc; // QQ音乐逐字歌词（QRC格式）
   final String qrcTrans; // QRC对应的翻译歌词
   final MusicSource source;
+  final int? durationMs;
+  final TrackSourceIds sourceIds;
+  final LxMusicMetadata lxMetadata;
 
   SongDetail({
     required this.id,
@@ -34,10 +38,16 @@ class SongDetail {
     this.qrc = '',
     this.qrcTrans = '',
     this.source = MusicSource.netease,
+    this.durationMs,
+    this.sourceIds = const TrackSourceIds(),
+    this.lxMetadata = const LxMusicMetadata(),
   });
 
   /// 从 JSON 创建 SongDetail 对象
-  factory SongDetail.fromJson(Map<String, dynamic> json, {MusicSource? source}) {
+  factory SongDetail.fromJson(
+    Map<String, dynamic> json, {
+    MusicSource? source,
+  }) {
     // 🔧 安全获取歌词字段（兼容网易云和QQ音乐格式）
     String lyricText = '';
     String tlyricText = '';
@@ -63,7 +73,9 @@ class SongDetail {
       tlyricText = tlyricValue;
     } else if (tlyricValue is Map) {
       // QQ音乐格式
-      tlyricText = (tlyricValue['tylyric'] is String) ? tlyricValue['tylyric'] : '';
+      tlyricText = (tlyricValue['tylyric'] is String)
+          ? tlyricValue['tylyric']
+          : '';
     }
 
     if (yrcValue is String) {
@@ -103,6 +115,9 @@ class SongDetail {
       ytlrc: ytlrcText,
       qrc: qrcText,
       qrcTrans: qrcTransText,
+      durationMs: validDurationMs(json['durationMs']),
+      sourceIds: TrackSourceIds.fromJson(json['sourceIds']),
+      lxMetadata: LxMusicMetadata.fromJson(json['lxMetadata']),
       source: source ?? MusicSource.netease,
     );
   }
@@ -121,6 +136,9 @@ class SongDetail {
       'lyric': lyric,
       'tlyric': tlyric,
       'source': source.name,
+      if (validDurationMs(durationMs) != null) 'durationMs': durationMs,
+      if (!sourceIds.isEmpty) 'sourceIds': sourceIds.toJson(),
+      if (!lxMetadata.isEmpty) 'lxMetadata': lxMetadata.toJson(),
     };
   }
 
@@ -133,19 +151,22 @@ class SongDetail {
       album: alName,
       picUrl: pic,
       source: source,
+      durationMs: durationMs,
+      sourceIds: sourceIds,
+      lxMetadata: lxMetadata,
     );
   }
 }
 
 /// 音质等级枚举
 enum AudioQuality {
-  standard,  // 标准
-  exhigh,    // 极高
-  lossless,  // 无损
-  hires,     // Hi-Res
-  jyeffect,  // 高清环绕声
-  sky,       // 沉浸环绕声
-  jymaster,  // 超清母带
+  standard, // 标准
+  exhigh, // 极高
+  lossless, // 无损
+  hires, // Hi-Res
+  jyeffect, // 高清环绕声
+  sky, // 沉浸环绕声
+  jymaster, // 超清母带
 }
 
 extension AudioQualityExtension on AudioQuality {
@@ -199,4 +220,3 @@ extension AudioQualityExtension on AudioQuality {
     }
   }
 }
-

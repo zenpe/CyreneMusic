@@ -1,11 +1,23 @@
+import 'package:http_parser/http_parser.dart';
+
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'structured_log_service.dart';
+
 import 'dart:convert';
 import 'dart:async';
+
 import 'package:charset/charset.dart';
+
 import 'lx_http_client.dart';
 import 'lx_runtime_interface.dart';
 import 'resolution_request.dart';
+
 import 'package:http/http.dart' as http;
+
+import '../models/track.dart';
+import '../utils/audio_http_request.dart';
 
 class LxHttpBridge {
   static const maxResponseBytes = 8 * 1024 * 1024;
@@ -38,7 +50,14 @@ class LxHttpBridge {
         timeout = Duration(milliseconds: milliseconds);
       }
     }
-    final client = _client ??= LxHttpClient();
+    final client = _client ??= LxHttpClient(autoUncompress: false);
+    // Optional smaller cap for bounded media checks. Scripts cannot increase
+    // the bridge's global response budget.
+    final requestedLimit = options['maxResponseBytes'];
+    final responseLimit =
+        requestedLimit is num && requestedLimit.isFinite && requestedLimit > 0
+        ? requestedLimit.ceil().clamp(1, maxResponseBytes)
+        : maxResponseBytes;
     final aborted = Completer<void>();
     void abort() {
       if (!aborted.isCompleted) aborted.complete();
@@ -77,6 +96,7 @@ class LxHttpBridge {
       };
     }
 
+    List<int> rawResponseBytes = const [];
     Future<http.Response> sendAndRead(http.Request message) async {
       Duration remaining() {
         final value = timeout - clock.elapsed;
@@ -98,7 +118,9 @@ class LxHttpBridge {
         },
       );
       final streamed = await LxHttpClient.observeConnection(
-        () => client.send(message),
+        () => options['audioResource'] == true
+            ? AudioHttpClient(client, MusicSource.netease).send(message)
+            : client.send(message),
         () {
           // A timed-out openUrl may finish later. It must not modify the
           // already-recorded terminal result or emit a late ready event.
@@ -125,16 +147,37 @@ class LxHttpBridge {
       );
       stage = 'body';
       var byteCount = 0;
+      final compressed =
+          streamed.headers['content-encoding'] == 'gzip' &&
+          message.method != 'HEAD' &&
+          streamed.statusCode != 204 &&
+          streamed.statusCode != 304;
+      final raw = compressed ? BytesBuilder(copy: false) : null;
+      final wireStream = streamed.stream.map((chunk) {
+        byteCount += chunk.length;
+        if (byteCount > responseLimit) {
+          abort();
+          throw const FormatException('音源接口返回内容过大');
+        }
+        raw?.add(chunk);
+        return chunk;
+      });
+      final bodyStream = compressed
+          ? gzip.decoder.bind(wireStream)
+          : wireStream;
+      var decodedCount = 0;
       final bytes = await http.ByteStream(
-        streamed.stream.map((chunk) {
-          byteCount += chunk.length;
-          if (byteCount > maxResponseBytes) {
+        bodyStream.map((chunk) {
+          decodedCount += chunk.length;
+          if (decodedCount > responseLimit) {
             abort();
             throw const FormatException('音源接口返回内容过大');
           }
           return chunk;
         }),
       ).toBytes().timeout(remaining());
+      // LX's pinned Needle counts and retains bytes before decompression.
+      rawResponseBytes = raw?.takeBytes() ?? bytes;
       return http.Response.bytes(
         bytes,
         streamed.statusCode,
@@ -164,7 +207,7 @@ class LxHttpBridge {
         headers['accept'] = 'application/json';
       }
 
-      // IOClient transparently decodes gzip, but not Brotli. Advertising br
+      // The bridge decodes gzip explicitly, but not Brotli. Advertising br
       // can otherwise turn compressed bytes into apparent garbage text.
       headers['accept-encoding'] = 'gzip';
 
@@ -218,6 +261,79 @@ class LxHttpBridge {
           normalizedHeaders['content-type'] = contentType;
         }
 
+        if (body == null && options['formData'] != null) {
+          final fields = options['formData'];
+          if (fields is! Map) throw const FormatException('Invalid formData');
+          final multipart = http.MultipartRequest(method, Uri.parse(url));
+          var inputBytes = 0;
+          for (final entry in fields.entries) {
+            final name = entry.key.toString();
+            final value = entry.value;
+            inputBytes += utf8.encode(name).length + 512;
+            if (value is Map && value['buffer'] is List) {
+              final bytes = (value['buffer'] as List).cast<int>();
+              inputBytes += bytes.length;
+              if (inputBytes > maxResponseBytes) {
+                throw const FormatException(
+                  'HTTP request body exceeds size limit',
+                );
+              }
+              final filename = value['filename']?.toString() ?? 'blob';
+              if (utf8.encode(filename).length > 1024) {
+                throw const FormatException('Multipart filename too long');
+              }
+              final partHeaders = value['content_type']?.toString();
+              multipart.files.add(
+                http.MultipartFile.fromBytes(
+                  name,
+                  bytes,
+                  filename: filename,
+                  contentType: partHeaders == null
+                      ? null
+                      : MediaType.parse(partHeaders),
+                ),
+              );
+            } else if (value is List) {
+              inputBytes += value.length;
+              if (inputBytes > maxResponseBytes) {
+                throw const FormatException(
+                  'HTTP request body exceeds size limit',
+                );
+              }
+              multipart.files.add(
+                http.MultipartFile.fromBytes(
+                  name,
+                  value.cast<int>(),
+                  filename: 'blob',
+                ),
+              );
+            } else if (value == null ||
+                value is String ||
+                value is num ||
+                value is bool) {
+              final text = value?.toString() ?? '';
+              inputBytes += utf8.encode(text).length;
+              if (inputBytes > maxResponseBytes) {
+                throw const FormatException(
+                  'HTTP request body exceeds size limit',
+                );
+              }
+              multipart.fields[name] = text;
+            } else {
+              throw const FormatException('Unsupported formData field');
+            }
+          }
+          body = await multipart.finalize().toBytes();
+          if ((body as List<int>).length > maxResponseBytes) {
+            throw const FormatException('HTTP request body exceeds size limit');
+          }
+          normalizedHeaders['content-type'] =
+              multipart.headers['content-type']!;
+        }
+        if (body is String && utf8.encode(body).length > maxResponseBytes ||
+            body is List && body.length > maxResponseBytes) {
+          throw const FormatException('HTTP request body exceeds size limit');
+        }
         final message = http.AbortableRequest(
           method,
           Uri.parse(url),
@@ -245,19 +361,26 @@ class LxHttpBridge {
           contentEncoding != 'gzip') {
         throw const FormatException('音源接口返回了不支持的压缩格式');
       }
+      final binary =
+          options.containsKey('encoding') && options['encoding'] == null;
       final charset = RegExp(
         r'charset\s*=\s*["\x27]?([^;"\x27\s]+)',
         caseSensitive: false,
       ).firstMatch(response.headers['content-type'] ?? '')?.group(1);
-      final encoding = charset == null ? utf8 : Charset.getByName(charset);
+      final encoding = binary || charset == null
+          ? utf8
+          : Charset.getByName(charset);
       if (encoding == null) {
         throw const FormatException('音源接口返回了不支持的字符编码');
       }
-      final text = encoding.decode(response.bodyBytes);
-      dynamic responseBody = text;
-      if (options['json'] != false) {
+      dynamic responseBody = binary
+          ? response.bodyBytes.toList()
+          : encoding == utf8
+          ? utf8.decode(response.bodyBytes, allowMalformed: true)
+          : encoding.decode(response.bodyBytes);
+      if (!binary && options['json'] != false) {
         try {
-          responseBody = jsonDecode(text);
+          responseBody = jsonDecode(responseBody as String);
         } catch (_) {
           // LX callbacks also accept plain text; browser APIs need it intact.
         }
@@ -268,8 +391,8 @@ class LxHttpBridge {
         'statusMessage': response.reasonPhrase ?? '',
         'headers': response.headers,
         'body': responseBody,
-        'raw': response.bodyBytes,
-        'bytes': response.bodyBytes.length,
+        'raw': rawResponseBytes,
+        'bytes': rawResponseBytes.length,
       };
     } catch (e) {
       failureType = e.runtimeType.toString();

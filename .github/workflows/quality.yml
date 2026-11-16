@@ -115,6 +115,7 @@ jobs:
           test/services/lx_execution_limits_native_test.dart
           test/services/lx_quickjs_native_test.dart
           test/services/lx_browser_transport_native_test.dart
+          test/services/lx_http_contract_native_test.dart
           test/services/lx_runtime_worker_test.dart
           test/services/quickjs_ng_bridge_native_test.dart
 

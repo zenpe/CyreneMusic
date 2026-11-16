@@ -1,6 +1,9 @@
+import '../utils/audio_duration_evidence.dart';
 import 'structured_log_service.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
+
 import '../models/track.dart';
 import '../models/playlist.dart';
 import 'api/api_client.dart';
@@ -264,6 +267,11 @@ class TrackSourceSwitchService extends ChangeNotifier {
                 album: item['album'] as String,
                 picUrl: item['picUrl'] as String,
                 source: MusicSource.netease,
+                durationMs: validDurationMs(item['durationMs']),
+                lxMetadata: LxMusicMetadata.fromPlatformJson(
+                  item,
+                  source: 'netease',
+                ),
               ),
             )
             .toList();
@@ -293,6 +301,11 @@ class TrackSourceSwitchService extends ChangeNotifier {
                 album: item['album'] as String,
                 picUrl: item['pic'] as String,
                 source: MusicSource.qq,
+                durationMs: validDurationMs(item['durationMs']),
+                lxMetadata: LxMusicMetadata.fromPlatformJson(
+                  item,
+                  source: 'qq',
+                ),
               ),
             )
             .toList();
@@ -328,6 +341,11 @@ class TrackSourceSwitchService extends ChangeNotifier {
                 album: item['album']?.toString() ?? '',
                 picUrl: item['pic']?.toString() ?? '',
                 source: MusicSource.kugou,
+                durationMs: validDurationMs(item['durationMs']),
+                lxMetadata: LxMusicMetadata.fromPlatformJson(
+                  item,
+                  source: 'kugou',
+                ),
                 sourceIds: TrackSourceIds(
                   fileHash: fileHash,
                   emixSongId: emixSongId,

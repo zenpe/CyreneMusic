@@ -7,9 +7,53 @@ import 'package:cyrene_music/services/playback/track_resolver.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('forwards the caller deadline to the underlying resolver', () async {
-    Duration? observedTimeout;
-    String? observedAlbum;
+  test(
+    'completed metadata supersedes a URL resolved without expected duration',
+    () async {
+      var calls = 0;
+      final resolver = TrackResolver(
+        fetcher:
+            ({
+              required songId,
+              required quality,
+              required source,
+              required title,
+              required artist,
+              String album = '',
+              required sourceIds,
+              required fetchLyrics,
+              onLxFailure,
+              requestTimeout,
+              int? durationMs,
+              LxMusicMetadata lxMetadata = const LxMusicMetadata(),
+            }) async {
+              calls++;
+              return _detail(songId as int);
+            },
+      );
+      Future<TrackResolutionResult> resolve(int? durationMs) =>
+          resolver.resolve(
+            songId: 1,
+            quality: AudioQuality.standard,
+            source: MusicSource.qq,
+            title: 'Song',
+            artist: 'Artist',
+            timeout: const Duration(seconds: 2),
+            durationMs: durationMs,
+          );
+      await resolve(null);
+      expect(calls, 1);
+      expect((await resolve(212000)).isL1CacheHit, isFalse);
+      expect(calls, 2, reason: 'new metadata must reach the script');
+      expect((await resolve(212000)).isL1CacheHit, isTrue);
+      expect(calls, 2);
+    },
+  );
+
+  test('known metadata does not adopt an older in-flight resolution', () async {
+    final started = Completer<void>();
+    final release = Completer<void>();
+    var calls = 0;
     final resolver = TrackResolver(
       fetcher:
           ({
@@ -23,9 +67,58 @@ void main() {
             required fetchLyrics,
             onLxFailure,
             requestTimeout,
+            int? durationMs,
+            LxMusicMetadata lxMetadata = const LxMusicMetadata(),
+          }) async {
+            calls++;
+            if (durationMs == null) {
+              started.complete();
+              await release.future;
+            }
+            return _detail(songId as int);
+          },
+    );
+    Future<TrackResolutionResult> resolve(int? durationMs) => resolver.resolve(
+      songId: 1,
+      quality: AudioQuality.standard,
+      source: MusicSource.qq,
+      title: 'Song',
+      artist: 'Artist',
+      timeout: const Duration(seconds: 2),
+      durationMs: durationMs,
+    );
+    final older = resolve(null);
+    await started.future;
+    expect((await resolve(212000)).isPlayable, isTrue);
+    release.complete();
+    expect((await older).cancelled, isTrue);
+    expect((await resolve(212000)).isL1CacheHit, isTrue);
+    expect(calls, 2);
+  });
+
+  test('forwards the caller deadline to the underlying resolver', () async {
+    Duration? observedTimeout;
+    String? observedAlbum;
+    int? observedDuration;
+    final resolver = TrackResolver(
+      fetcher:
+          ({
+            required songId,
+            required quality,
+            required source,
+            required title,
+            required artist,
+            String album = '',
+            required sourceIds,
+            required fetchLyrics,
+            onLxFailure,
+            requestTimeout,
+            int? durationMs,
+            LxMusicMetadata lxMetadata = const LxMusicMetadata(),
           }) async {
             observedTimeout = requestTimeout;
             observedAlbum = album;
+            observedDuration = durationMs;
             return _detail(songId as int);
           },
     );
@@ -37,11 +130,13 @@ void main() {
       title: 'title',
       artist: 'artist',
       album: 'Album title',
+      durationMs: 212000,
       timeout: const Duration(seconds: 4),
     );
 
     expect(observedTimeout, const Duration(seconds: 4));
     expect(observedAlbum, 'Album title');
+    expect(observedDuration, 212000);
   });
 
   test(
@@ -61,6 +156,8 @@ void main() {
               required fetchLyrics,
               onLxFailure,
               requestTimeout,
+              int? durationMs,
+              LxMusicMetadata lxMetadata = const LxMusicMetadata(),
             }) async {
               calls++;
               return null;
@@ -102,6 +199,8 @@ void main() {
             required fetchLyrics,
             onLxFailure,
             requestTimeout,
+            int? durationMs,
+            LxMusicMetadata lxMetadata = const LxMusicMetadata(),
           }) {
             calls++;
             return completer.future;
@@ -149,6 +248,8 @@ void main() {
               required fetchLyrics,
               onLxFailure,
               requestTimeout,
+              int? durationMs,
+              LxMusicMetadata lxMetadata = const LxMusicMetadata(),
             }) {
               observedTimeouts.add(requestTimeout);
               final completer = Completer<SongDetail?>();
@@ -198,6 +299,8 @@ void main() {
             required fetchLyrics,
             onLxFailure,
             requestTimeout,
+            int? durationMs,
+            LxMusicMetadata lxMetadata = const LxMusicMetadata(),
           }) {
             calls++;
             return completer.future;
@@ -243,6 +346,8 @@ void main() {
             required fetchLyrics,
             onLxFailure,
             requestTimeout,
+            int? durationMs,
+            LxMusicMetadata lxMetadata = const LxMusicMetadata(),
           }) {
             final id = songId as int;
             failureCallbacks[id] = onLxFailure!;
@@ -303,6 +408,8 @@ void main() {
               required fetchLyrics,
               onLxFailure,
               requestTimeout,
+              int? durationMs,
+              LxMusicMetadata lxMetadata = const LxMusicMetadata(),
             }) async {
               calls++;
               return _detail(songId as int);
@@ -385,6 +492,8 @@ void main() {
             required fetchLyrics,
             onLxFailure,
             requestTimeout,
+            int? durationMs,
+            LxMusicMetadata lxMetadata = const LxMusicMetadata(),
           }) async {
             calls++;
             return _detail(songId as int);
@@ -431,6 +540,8 @@ void main() {
             required fetchLyrics,
             onLxFailure,
             requestTimeout,
+            int? durationMs,
+            LxMusicMetadata lxMetadata = const LxMusicMetadata(),
           }) async {
             calls++;
             return _detail(songId as int);
@@ -477,6 +588,8 @@ void main() {
             required fetchLyrics,
             onLxFailure,
             requestTimeout,
+            int? durationMs,
+            LxMusicMetadata lxMetadata = const LxMusicMetadata(),
           }) async {
             calls++;
             return _detail(songId as int);
@@ -557,6 +670,8 @@ void main() {
             required fetchLyrics,
             onLxFailure,
             requestTimeout,
+            int? durationMs,
+            LxMusicMetadata lxMetadata = const LxMusicMetadata(),
           }) async {
             calls++;
             return _detail(songId as int);
@@ -601,6 +716,8 @@ void main() {
         required fetchLyrics,
         onLxFailure,
         requestTimeout,
+        int? durationMs,
+        LxMusicMetadata lxMetadata = const LxMusicMetadata(),
       }) async => _detail(songId as int),
     );
 
@@ -634,6 +751,8 @@ void main() {
           required fetchLyrics,
           onLxFailure,
           requestTimeout,
+          int? durationMs,
+          LxMusicMetadata lxMetadata = const LxMusicMetadata(),
         }) => completer.future,
       );
 
@@ -670,6 +789,8 @@ void main() {
         required fetchLyrics,
         onLxFailure,
         requestTimeout,
+        int? durationMs,
+        LxMusicMetadata lxMetadata = const LxMusicMetadata(),
       }) => completer.future,
     );
 
@@ -706,6 +827,8 @@ void main() {
             required fetchLyrics,
             onLxFailure,
             requestTimeout,
+            int? durationMs,
+            LxMusicMetadata lxMetadata = const LxMusicMetadata(),
           }) {
             calls++;
             return calls == 1 ? oldRequest.future : Future.value(_detail(808));
@@ -753,6 +876,8 @@ void main() {
         required fetchLyrics,
         onLxFailure,
         requestTimeout,
+        int? durationMs,
+        LxMusicMetadata lxMetadata = const LxMusicMetadata(),
       }) async => _detail(songId as int),
     );
 

@@ -61,6 +61,19 @@ Playback recovery retains its existing single-retry/total-budget limits.
 Unclassified stream interruptions can replay the same URL; explicit access
 denial, 404 and 410 remain grounds for refreshing and rejecting a repeated bad URL.
 
+Script input includes optional original platform metadata through `LxMusicMetadata`:
+QQ numeric song ID, media MID, album MID, album ID, image and observed quality sizes.
+Unknown fields stay absent. URL cache and pending resolutions compare this input
+snapshot without changing song identity or audio file cache keys.
+
+HTTP callbacks expose `raw` and `bytes` from the wire response before gzip or
+charset decoding, matching LX's pinned Needle version. `body` retains the parsed
+JSON/text behavior. Raw bytes are restored lazily into a Uint8Array-based Buffer
+subset; common encodings, slices and integer reads are supported, rather than the
+entire Node Buffer API. Multipart supports scalar fields and in-memory file bytes,
+with bounded request size and no local path access. Both wire and decoded
+responses remain bounded. The Goja detector shares the sandbox contract.
+
 Windows, Android and Linux use the checked-in quickjs-ng bridge. Its upstream
 commit, license and per-file hashes live in `third_party/flutter_js/native/quickjs/UPSTREAM.json`;
 the engine sources are unmodified. Initialization diagnostics report the loaded
@@ -87,6 +100,10 @@ not a separate process and does not contain arbitrary native memory corruption.
   and test data only.
 - Playback and proxy tests cover link refresh/retry decisions and transport
   timeout diagnostics. Node fixtures verify sandbox encoding and API contracts.
+- `lx_metadata_contract_test.dart`: official LX metadata fixtures, persistence,
+  optional enrichment and cache/pending-request invalidation when input changes.
+- `lx_http_contract_native_test.dart`: real QuickJS and production HTTP callbacks,
+  binary Buffer data, gzip wire bytes and multipart fields/files.
 
 Set `CYRENE_LX_NATIVE_TEST=1` with the built library available to the loader.
 The quality workflow builds the native bridge on Windows and Linux and runs

@@ -1,3 +1,4 @@
+import '../../utils/audio_duration_evidence.dart';
 import '../../widgets/collection_play_controls.dart';
 import '../../utils/app_feedback.dart';
 import '../../widgets/floating_playback_insets.dart';
@@ -805,6 +806,7 @@ class DailyRecommendDetailPage extends StatelessWidget {
       album: album['name']?.toString() ?? '',
       picUrl: album['picUrl']?.toString() ?? '',
       source: MusicSource.netease,
+      durationMs: validDurationMs(song['dt']),
     );
   }
 }
@@ -1206,6 +1208,7 @@ class _FluentDailyRecommendPage extends StatelessWidget {
       album: album['name']?.toString() ?? '',
       picUrl: album['picUrl']?.toString() ?? '',
       source: MusicSource.netease,
+      durationMs: validDurationMs(song['dt']),
     );
   }
 }

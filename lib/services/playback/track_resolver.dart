@@ -46,8 +46,15 @@ class TrackResolutionResult {
 class _ResolvedCacheEntry {
   final TrackResolutionResult result;
   final DateTime expiresAt;
+  final int? durationMs;
+  final LxMusicMetadata lxMetadata;
 
-  _ResolvedCacheEntry({required this.result, required this.expiresAt});
+  _ResolvedCacheEntry({
+    required this.result,
+    required this.expiresAt,
+    this.durationMs,
+    this.lxMetadata = const LxMusicMetadata(),
+  });
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
 }
@@ -75,6 +82,8 @@ class _RequestEntry {
   final DateTime requestDeadline;
   final Future<TrackResolutionResult> future;
   final ResolutionRequest request;
+  final int? durationMs;
+  final LxMusicMetadata lxMetadata;
   int waiters = 0;
   _RequestState state = _RequestState.running;
 
@@ -83,30 +92,40 @@ class _RequestEntry {
     required this.requestDeadline,
     required this.future,
     required this.request,
+    this.durationMs,
+    this.lxMetadata = const LxMusicMetadata(),
   });
 
-  bool isReusableFor(Duration callerTimeout) {
+  bool isReusableFor(
+    Duration callerTimeout, {
+    int? durationMs,
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
+  }) {
     final now = DateTime.now();
-    return state == _RequestState.running &&
+    return (durationMs == null || this.durationMs == durationMs) &&
+        (lxMetadata.isEmpty ||
+            this.lxMetadata.fingerprint == lxMetadata.fingerprint) &&
+        state == _RequestState.running &&
         now.isBefore(hardDeadline) &&
         now.isBefore(requestDeadline) &&
         !request.isCancelled;
   }
 }
 
-typedef SongDetailFetcher =
-    Future<SongDetail?> Function({
-      required dynamic songId,
-      required AudioQuality quality,
-      required MusicSource source,
-      required String title,
-      required String artist,
-      String album,
-      required TrackSourceIds sourceIds,
-      required bool fetchLyrics,
-      void Function(LxRuntimeFailure? failure)? onLxFailure,
-      Duration? requestTimeout,
-    });
+typedef SongDetailFetcher = Future<SongDetail?> Function({
+  required dynamic songId,
+  required AudioQuality quality,
+  required MusicSource source,
+  required String title,
+  required String artist,
+  String album,
+  int? durationMs,
+  LxMusicMetadata lxMetadata,
+  required TrackSourceIds sourceIds,
+  required bool fetchLyrics,
+  void Function(LxRuntimeFailure? failure)? onLxFailure,
+  Duration? requestTimeout,
+});
 
 class TrackResolver {
   TrackResolver({
@@ -130,15 +149,29 @@ class TrackResolver {
 
   int get resolvedCacheSize => _resolvedCache.length;
 
-  TrackResolutionResult? _getResolvedCache(String key) {
+  TrackResolutionResult? _getResolvedCache(
+    String key, {
+    int? durationMs,
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
+  }) {
     final entry = _resolvedCache.remove(key);
     if (entry == null) return null;
-    if (entry.isExpired) return null;
+    if (entry.isExpired ||
+        (durationMs != null && entry.durationMs != durationMs) ||
+        (!lxMetadata.isEmpty &&
+            entry.lxMetadata.fingerprint != lxMetadata.fingerprint)) {
+      return null;
+    }
     _resolvedCache[key] = entry;
     return entry.result.copyWith(isL1CacheHit: true);
   }
 
-  void _putResolvedCache(String key, TrackResolutionResult result) {
+  void _putResolvedCache(
+    String key,
+    TrackResolutionResult result, {
+    int? durationMs,
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
+  }) {
     if (!result.isPlayable) return;
     if (maxResolvedCacheEntries <= 0) return;
     _resolvedCache.remove(key);
@@ -147,6 +180,8 @@ class TrackResolver {
     }
     _resolvedCache[key] = _ResolvedCacheEntry(
       result: result.copyWith(isL1CacheHit: false),
+      durationMs: durationMs,
+      lxMetadata: lxMetadata,
       expiresAt: DateTime.now().add(resolvedCacheTtl),
     );
   }
@@ -231,6 +266,8 @@ class TrackResolver {
     required AudioQuality quality,
     required MusicSource source,
     bool fetchLyrics = false,
+    int? durationMs,
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
     String? resolverFingerprint,
   }) {
     final cached = _getResolvedCache(
@@ -241,6 +278,8 @@ class TrackResolver {
         fetchLyrics,
         resolverFingerprint: resolverFingerprint,
       ),
+      durationMs: durationMs,
+      lxMetadata: lxMetadata,
     );
     if (cached != null || fetchLyrics) return cached;
     return _getResolvedCache(
@@ -251,6 +290,8 @@ class TrackResolver {
         true,
         resolverFingerprint: resolverFingerprint,
       ),
+      durationMs: durationMs,
+      lxMetadata: lxMetadata,
     );
   }
 
@@ -261,6 +302,8 @@ class TrackResolver {
     required String title,
     required String artist,
     String album = '',
+    int? durationMs,
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
     TrackSourceIds sourceIds = const TrackSourceIds(),
     required Duration timeout,
     bool fetchLyrics = true,
@@ -289,6 +332,8 @@ class TrackResolver {
         quality: quality,
         source: source,
         fetchLyrics: fetchLyrics,
+        durationMs: durationMs,
+        lxMetadata: lxMetadata,
         resolverFingerprint: resolverFingerprint,
       );
       if (cached != null) {
@@ -308,7 +353,13 @@ class TrackResolver {
     );
     final cacheEpoch = _cacheEpoch;
     final clock = Stopwatch()..start();
-    final adopted = _pending[key]?.isReusableFor(timeout) ?? false;
+    final adopted =
+        _pending[key]?.isReusableFor(
+          timeout,
+          durationMs: durationMs,
+          lxMetadata: lxMetadata,
+        ) ??
+        false;
     final request = _acquire(
       key: key,
       songId: songId,
@@ -317,6 +368,8 @@ class TrackResolver {
       title: title,
       artist: artist,
       album: album,
+      durationMs: durationMs,
+      lxMetadata: lxMetadata,
       sourceIds: sourceIds,
       fetchLyrics: fetchLyrics,
       forceNew: skipMemoryCache,
@@ -366,6 +419,8 @@ class TrackResolver {
           title: title,
           artist: artist,
           album: album,
+          durationMs: durationMs,
+          lxMetadata: lxMetadata,
           sourceIds: sourceIds,
           timeout: remaining,
           fetchLyrics: fetchLyrics,
@@ -389,8 +444,13 @@ class TrackResolver {
         },
       );
       if (result.isPlayable && (acceptResult?.call() ?? true)) {
-        if (cacheEpoch == _cacheEpoch) {
-          _putResolvedCache(key, result);
+        if (cacheEpoch == _cacheEpoch && entry?.request.isCancelled != true) {
+          _putResolvedCache(
+            key,
+            result,
+            durationMs: durationMs,
+            lxMetadata: lxMetadata,
+          );
         }
       }
       return result;
@@ -416,6 +476,8 @@ class TrackResolver {
     required String title,
     required String artist,
     String album = '',
+    int? durationMs,
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
     required TrackSourceIds sourceIds,
     required bool fetchLyrics,
     bool forceNew = false,
@@ -426,7 +488,12 @@ class TrackResolver {
         : hardTimeout;
     final existing = _pending[key];
     if (!forceNew &&
-        (existing?.isReusableFor(effectiveRequestTimeout) ?? false)) {
+        (existing?.isReusableFor(
+              effectiveRequestTimeout,
+              durationMs: durationMs,
+              lxMetadata: lxMetadata,
+            ) ??
+            false)) {
       return existing!.future;
     }
     if (existing != null) {
@@ -444,6 +511,8 @@ class TrackResolver {
       requestDeadline: requestStartedAt.add(effectiveRequestTimeout),
       future: completer.future,
       request: ownership,
+      durationMs: durationMs,
+      lxMetadata: lxMetadata,
     );
     _pending[key] = entry;
 
@@ -462,6 +531,8 @@ class TrackResolver {
                     title: title,
                     artist: artist,
                     album: album,
+                    durationMs: durationMs,
+                    lxMetadata: lxMetadata,
                     sourceIds: sourceIds,
                     fetchLyrics: fetchLyrics,
                     onLxFailure: (failure) => requestFailure = failure,
@@ -644,6 +715,9 @@ SongDetail buildCachedSongDetail(
   lyric: '',
   tlyric: '',
   source: track.source,
+  durationMs: track.durationMs,
+  sourceIds: track.sourceIds,
+  lxMetadata: track.lxMetadata,
 );
 
 bool needsCachedMetadataRefresh(CacheMetadata metadata) =>

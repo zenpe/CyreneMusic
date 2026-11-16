@@ -1,19 +1,28 @@
+import '../utils/audio_duration_evidence.dart';
+
 import 'structured_log_service.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'dart:convert';
+
 import '../models/track.dart';
 
 /// 播放历史记录模型
 class PlayHistoryItem {
-  final String id;           // 歌曲唯一ID
-  final String name;         // 歌曲名称
-  final String artists;      // 艺术家
-  final String album;        // 专辑
-  final String picUrl;       // 封面图片URL
-  final MusicSource source;  // 音乐平台
+  final String id; // 歌曲唯一ID
+  final String name; // 歌曲名称
+  final String artists; // 艺术家
+  final String album; // 专辑
+  final String picUrl; // 封面图片URL
+  final MusicSource source; // 音乐平台
   final TrackSourceIds sourceIds;
-  final DateTime playedAt;   // 播放时间
+  final LxMusicMetadata lxMetadata;
+
+  /// Expected song duration from platform metadata, never from a playback URL.
+  final int? durationMs;
+  final DateTime playedAt; // 播放时间
 
   PlayHistoryItem({
     required this.id,
@@ -23,6 +32,8 @@ class PlayHistoryItem {
     required this.picUrl,
     required this.source,
     this.sourceIds = const TrackSourceIds(),
+    this.lxMetadata = const LxMusicMetadata(),
+    this.durationMs,
     required this.playedAt,
   });
 
@@ -36,6 +47,8 @@ class PlayHistoryItem {
       picUrl: track.picUrl,
       source: track.source,
       sourceIds: track.sourceIds,
+      lxMetadata: track.lxMetadata,
+      durationMs: track.durationMs,
       playedAt: DateTime.now(),
     );
   }
@@ -50,6 +63,8 @@ class PlayHistoryItem {
       picUrl: picUrl,
       source: source,
       sourceIds: sourceIds,
+      lxMetadata: lxMetadata,
+      durationMs: durationMs,
     );
   }
 
@@ -63,6 +78,8 @@ class PlayHistoryItem {
       'picUrl': picUrl,
       'source': source.toString().split('.').last,
       if (!sourceIds.isEmpty) 'sourceIds': sourceIds.toJson(),
+      if (!lxMetadata.isEmpty) 'lxMetadata': lxMetadata.toJson(),
+      if (validDurationMs(durationMs) != null) 'durationMs': durationMs,
       'playedAt': playedAt.toIso8601String(),
     };
   }
@@ -80,6 +97,8 @@ class PlayHistoryItem {
         orElse: () => MusicSource.netease,
       ),
       sourceIds: TrackSourceIds.fromJson(json['sourceIds']),
+      lxMetadata: LxMusicMetadata.fromJson(json['lxMetadata']),
+      durationMs: validDurationMs(json['durationMs']),
       playedAt: DateTime.parse(json['playedAt'] as String),
     );
   }
@@ -108,10 +127,14 @@ class PlayHistoryService extends ChangeNotifier {
       if (historyJson != null) {
         final List<dynamic> decoded = json.decode(historyJson);
         _history = decoded
-            .map((item) => PlayHistoryItem.fromJson(item as Map<String, dynamic>))
+            .map(
+              (item) => PlayHistoryItem.fromJson(item as Map<String, dynamic>),
+            )
             .toList();
 
-        StructuredLogService.log('📚 [PlayHistoryService] 加载播放历史: ${_history.length} 条');
+        StructuredLogService.log(
+          '📚 [PlayHistoryService] 加载播放历史: ${_history.length} 条',
+        );
       }
     } catch (e) {
       StructuredLogService.log('❌ [PlayHistoryService] 加载播放历史失败: $e');
@@ -125,8 +148,9 @@ class PlayHistoryService extends ChangeNotifier {
       final historyItem = PlayHistoryItem.fromTrack(track);
 
       // 检查是否已存在相同的歌曲（同一平台、同一ID）
-      _history.removeWhere((item) =>
-        item.id == historyItem.id && item.source == historyItem.source
+      _history.removeWhere(
+        (item) =>
+            item.id == historyItem.id && item.source == historyItem.source,
       );
 
       // 添加到列表开头
@@ -204,8 +228,8 @@ class PlayHistoryService extends ChangeNotifier {
     final today = DateTime.now();
     return _history.where((item) {
       return item.playedAt.year == today.year &&
-             item.playedAt.month == today.month &&
-             item.playedAt.day == today.day;
+          item.playedAt.month == today.month &&
+          item.playedAt.day == today.day;
     }).length;
   }
 
@@ -231,4 +255,3 @@ class PlayHistoryService extends ChangeNotifier {
     return sorted.take(limit).toList();
   }
 }
-

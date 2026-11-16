@@ -1,3 +1,4 @@
+import '../utils/audio_duration_evidence.dart';
 import 'track.dart';
 
 /// 网易云歌单概要（发现页）
@@ -67,6 +68,8 @@ class NeteasePlaylistDetail {
         album: (m['album'] ?? '') as String,
         picUrl: (m['picUrl'] ?? '') as String,
         source: MusicSource.netease,
+        durationMs: validDurationMs(m['durationMs']),
+        lxMetadata: LxMusicMetadata.fromPlatformJson(m, source: 'netease'),
       );
     }).toList();
 
@@ -77,7 +80,9 @@ class NeteasePlaylistDetail {
       creator: (playlist['creator'] ?? '') as String,
       trackCount: (playlist['trackCount'] ?? tracks.length) as int,
       description: (playlist['description'] ?? '') as String,
-      tags: (playlist['tags'] as List<dynamic>? ?? []).map((e) => e.toString()).toList(),
+      tags: (playlist['tags'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList(),
       playCount: (playlist['playCount'] ?? 0) as int,
       tracks: tracks,
     );
@@ -110,5 +115,3 @@ class NeteaseTag {
     );
   }
 }
-
-

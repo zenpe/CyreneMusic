@@ -1,11 +1,14 @@
 import 'structured_log_service.dart';
+
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+
 import '../models/track.dart';
 import '../models/song_detail.dart';
 import 'cache_service.dart';
@@ -262,7 +265,11 @@ class DownloadService extends ChangeNotifier {
           await _fileWriter.download(
             Uri.parse(songDetail.url),
             stagedFile,
-            headers: buildAudioRequestHeaders(track.source),
+            headers: buildAudioRequestHeaders(
+              track.source,
+              uri: Uri.parse(songDetail.url),
+            ),
+            audioSource: track.source,
             onProgress: (progress) {
               currentTask.progress = progress;
               notifyListeners();

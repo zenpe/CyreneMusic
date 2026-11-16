@@ -32,18 +32,19 @@ void main() {
       Uri.parse('http://${server.address.address}:${server.port}/audio'),
       file,
       headers: buildAudioRequestHeaders(MusicSource.qq),
+      audioSource: MusicSource.qq,
       onProgress: onProgress,
     ),
   );
 
   test(
-    'publishes complete audio with platform headers and removes staging',
+    'publishes complete audio with CDN headers and removes staging',
     () async {
       final payload = List<int>.generate(1024, (i) => i % 256);
       final headersChecked = Completer<void>();
       server.listen((request) async {
-        expect(request.headers.value('referer'), 'https://y.qq.com/');
-        expect(request.headers.value('origin'), 'https://y.qq.com');
+        expect(request.headers.value('referer'), isNull);
+        expect(request.headers.value('origin'), isNull);
         expect(request.headers.value('user-agent'), contains('Mozilla'));
         expect(request.headers.value('accept-encoding'), 'identity');
         headersChecked.complete();

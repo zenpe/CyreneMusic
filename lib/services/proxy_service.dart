@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/track.dart';
-import '../utils/audio_request_headers.dart';
+import '../utils/audio_http_request.dart';
 import 'playback/audio_transport_failure.dart';
 import 'structured_log_service.dart';
 
@@ -233,24 +233,22 @@ class ProxyService {
           onError: (Object error, StackTrace stack) => current.cancel(),
         ),
       );
-      final upstream = await (() async {
-        final outgoing = await client.openUrl(
-          request.method,
-          activeRoute.target,
-        );
-        final source = activeRoute.platform == 'qq'
-            ? MusicSource.qq
-            : activeRoute.platform == 'kugou'
-            ? MusicSource.kugou
-            : MusicSource.netease;
-        buildAudioRequestHeaders(source).forEach(outgoing.headers.set);
-        outgoing.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
-        for (final name in ['range', 'if-range', 'accept']) {
-          final value = request.headers.value(name);
-          if (value != null) outgoing.headers.set(name, value);
-        }
-        return await outgoing.close();
-      })().timeout(headerTimeout);
+      final source = activeRoute.platform == 'qq'
+          ? MusicSource.qq
+          : activeRoute.platform == 'kugou'
+          ? MusicSource.kugou
+          : MusicSource.netease;
+      final result = await openAudioRequest(
+        client,
+        request.method,
+        activeRoute.target,
+        source,
+        headers: {
+          for (final name in ['range', 'if-range', 'accept'])
+            if (request.headers.value(name) case final value?) name: value,
+        },
+      ).timeout(headerTimeout);
+      final upstream = result.response;
       if (current.cancelled) return;
       headersMs = clock.elapsedMilliseconds;
       final status = upstream.statusCode;
@@ -260,6 +258,7 @@ class ProxyService {
           ...activeRoute.diagnosticContext,
           'request_id': activeRoute.group,
           'host': activeRoute.target.host,
+          'final_host': result.uri.host,
           'platform': activeRoute.platform,
           'status': status,
           'content_type': upstream.headers[HttpHeaders.contentTypeHeader]?.join(
@@ -287,10 +286,7 @@ class ProxyService {
         receivedBytes += chunk.length;
         return chunk;
       });
-      final effectiveUri = upstream.redirects.fold<Uri>(
-        route.target,
-        (uri, redirect) => uri.resolveUri(redirect.location),
-      );
+      final effectiveUri = result.uri;
       final type = upstream.headers.contentType?.toString() ?? 'audio/mpeg';
       final hls =
           route.target.path.toLowerCase().endsWith('.m3u8') ||

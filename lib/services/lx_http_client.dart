@@ -5,10 +5,12 @@ import 'package:http/io_client.dart';
 
 /// Keeps the official IOClient transport, including its per-request aborts.
 class LxHttpClient extends IOClient {
-  LxHttpClient()
+  LxHttpClient({bool autoUncompress = true})
     : super(
         _ConnectionTimingHttpClient(
-          HttpClient()..idleTimeout = const Duration(seconds: 45),
+          HttpClient()
+            ..autoUncompress = autoUncompress
+            ..idleTimeout = const Duration(seconds: 45),
         ),
       );
 

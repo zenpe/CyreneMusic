@@ -2,16 +2,23 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:isolate';
+
 import 'package:flutter/foundation.dart';
+
 import '../utils/format_utils.dart';
+
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/track.dart';
+import '../utils/audio_duration_evidence.dart';
 import '../models/song_detail.dart';
-import '../utils/audio_request_headers.dart';
+import '../utils/audio_http_request.dart';
+
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
+
 import 'audio_quality_service.dart';
 import 'developer_mode_service.dart';
 import 'structured_log_service.dart';
@@ -379,9 +386,8 @@ class CacheService extends ChangeNotifier {
     if (Platform.isAndroid && _isInitialized) {
       await AndroidStreamCache.refresh(identity);
     }
-    await Future.wait(
-      _pendingCacheWrites.values.toList(),
-    ).timeout(const Duration(milliseconds: 300), onTimeout: () => <bool>[]);
+    await Future.wait(_pendingCacheWrites.values.toList())
+        .timeout(const Duration(milliseconds: 300), onTimeout: () => <bool>[]);
     return epoch;
   }
 
@@ -563,12 +569,10 @@ class CacheService extends ChangeNotifier {
         return;
       }
 
-      await Directory(
-        path.join(_cacheDir!.path, 'audio'),
-      ).create(recursive: true);
-      await Directory(
-        path.join(_cacheDir!.path, 'staging'),
-      ).create(recursive: true);
+      await Directory(path.join(_cacheDir!.path, 'audio'))
+          .create(recursive: true);
+      await Directory(path.join(_cacheDir!.path, 'staging'))
+          .create(recursive: true);
 
       // 验证目录是否可写
       try {
@@ -900,7 +904,7 @@ class CacheService extends ChangeNotifier {
     String quality,
     int epoch,
   ) async {
-    final client = http.Client();
+    final client = AudioHttpClient(http.Client(), track.source);
     _writeClient = client;
     final stagingName = sha256.convert(utf8.encode(cacheKey)).toString();
     final payloadTempFile = File(
@@ -920,8 +924,7 @@ class CacheService extends ChangeNotifier {
     }
 
     try {
-      final request = http.Request('GET', Uri.parse(songDetail.url))
-        ..headers.addAll(buildAudioRequestHeaders(track.source));
+      final request = http.Request('GET', Uri.parse(songDetail.url));
       final response = await client
           .send(request)
           .timeout(_cacheDownloadTimeout);
@@ -1485,9 +1488,23 @@ class CacheService extends ChangeNotifier {
     SongDetail songDetail,
     String quality, {
     ({String key, int epoch})? refreshRequest,
+    int? observedDurationMs,
   }) async {
     final refresh = refreshRequest ?? audioRefreshFor(track, quality);
     try {
+      if (assessAudioDuration(
+            expectedMs: track.durationMs ?? songDetail.durationMs,
+            observedMs: observedDurationMs,
+          ) ==
+          AudioDurationAssessment.suspectedShort) {
+        _logCacheDebug(
+          '⚠️ [CacheService] 跳过疑似短音频缓存: ${track.name} '
+          'expectedMs=${track.durationMs ?? songDetail.durationMs} '
+          'observedMs=$observedDurationMs',
+          toDeveloperPanel: true,
+        );
+        return false;
+      }
       if (refreshRequest != null) {
         // A paused request retains intent, not an indefinite eviction pin.
         // Re-arm only the same operation and account when writing actually starts.

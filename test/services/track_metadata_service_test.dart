@@ -29,6 +29,71 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   test(
+    'duration-only completion is optional, deduplicated and persisted',
+    () async {
+      var calls = 0;
+      final service = TrackMetadataService.forTesting(
+        origin: () => 'a',
+        fetch: (track) async {
+          calls++;
+          return {...info(track.id.toString()), 'durationMs': 212000};
+        },
+      );
+      final original = track(
+        'duration',
+        album: 'Album',
+        pic: 'https://valid/cover.jpg',
+      );
+      expect(await service.complete(original), same(original));
+      expect(calls, 0, reason: 'listing does not start duration-only requests');
+      final results = await Future.wait([
+        service.complete(original, includeDuration: true),
+        service.complete(original, includeDuration: true),
+      ]);
+      expect(calls, 1);
+      expect(results.map((t) => t.durationMs), everyElement(212000));
+      expect(original.durationMs, isNull);
+      final restored = TrackMetadataService.forTesting(
+        origin: () => 'a',
+        fetch: (_) async => throw StateError('must use saved metadata'),
+      );
+      expect(
+        (await restored.complete(original, includeDuration: true)).durationMs,
+        212000,
+      );
+    },
+  );
+
+  test(
+    'duration never merges from another identity or overwrites known metadata',
+    () async {
+      final service = TrackMetadataService.forTesting(
+        origin: () => 'a',
+        fetch: (_) async => {...info('other'), 'durationMs': 7128},
+      );
+      final original = track('target');
+      expect(
+        (await service.complete(original, includeDuration: true)).durationMs,
+        isNull,
+      );
+      final known = Track(
+        id: 'known',
+        name: 'Song',
+        artists: 'Artist',
+        album: '',
+        picUrl: '',
+        source: MusicSource.qq,
+        durationMs: 212000,
+      );
+      final correct = TrackMetadataService.forTesting(
+        origin: () => 'a',
+        fetch: (_) async => {...info('known'), 'durationMs': 7128},
+      );
+      expect((await correct.complete(known)).durationMs, 212000);
+    },
+  );
+
+  test(
     'fills missing title and artist on both platforms without mixing IDs',
     () async {
       final service = TrackMetadataService.forTesting(

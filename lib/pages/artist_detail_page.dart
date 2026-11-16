@@ -1,3 +1,4 @@
+import '../utils/audio_duration_evidence.dart';
 import '../widgets/floating_playback_insets.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
@@ -414,6 +415,8 @@ class _SongsListView extends StatelessWidget {
           album: m['album']?.toString() ?? '',
           picUrl: m['picUrl']?.toString() ?? '',
           source: MusicSource.netease,
+        durationMs: validDurationMs(m['durationMs']),
+        lxMetadata: LxMusicMetadata.fromPlatformJson(m, source: 'netease'),
         );
         final trailing = TrackMoreButton(
           track: track,
@@ -553,6 +556,8 @@ class _SongsListView extends StatelessWidget {
       album: m['album']?.toString() ?? '',
       picUrl: m['picUrl']?.toString() ?? '',
       source: MusicSource.netease,
+        durationMs: validDurationMs(m['durationMs']),
+        lxMetadata: LxMusicMetadata.fromPlatformJson(m, source: 'netease'),
     );
 
     return CupertinoButton(
@@ -850,7 +855,7 @@ class _SongsThumbView extends StatelessWidget {
           final artists = m['artists']?.toString() ?? '';
           final album = m['album']?.toString() ?? '';
           final pic = m['picUrl']?.toString() ?? '';
-          final track = Track(id: m['id'], name: name, artists: artists, album: album, picUrl: pic, source: MusicSource.netease);
+          final track = Track(id: m['id'], name: name, artists: artists, album: album, picUrl: pic, source: MusicSource.netease, durationMs: validDurationMs(m['durationMs']));
 
           final trailing = TrackMoreButton(
             track: track,
@@ -1302,6 +1307,8 @@ class _ArtistDetailContentState extends State<ArtistDetailContent> {
                           album: m['album']?.toString() ?? '',
                           picUrl: m['picUrl']?.toString() ?? '',
                           source: MusicSource.netease,
+        durationMs: validDurationMs(m['durationMs']),
+        lxMetadata: LxMusicMetadata.fromPlatformJson(m, source: 'netease'),
                         );
                         return _buildExpressiveSongTile(context, track, cs);
                       },

@@ -942,6 +942,8 @@ class LxScriptEngine implements LxRuntime {
         'response': {
           'statusCode': result['statusCode'],
           'statusMessage': result['statusMessage'],
+          'rawBase64': base64Encode(result['raw'] as List<int>),
+          'bytes': result['bytes'],
           'headers': result['headers'],
           'body': result['body'],
         },

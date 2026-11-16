@@ -7,13 +7,14 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/track.dart';
+import '../utils/audio_duration_evidence.dart';
 import 'api/api_client.dart';
 import 'api/auth_token_store.dart';
 import 'url_service.dart';
 
 typedef MetadataFetcher = Future<Map<String, dynamic>?> Function(Track track);
 
-/// Optional presentation data. Never resolves audio or changes track identity.
+/// Optional platform song metadata. Never resolves audio or changes track identity.
 class TrackMetadataService extends ChangeNotifier {
   static final _instance = TrackMetadataService._();
   factory TrackMetadataService() => _instance;
@@ -79,9 +80,14 @@ class TrackMetadataService extends ChangeNotifier {
         !missingCover(value);
   }
 
-  static bool needsMetadata(Track track) =>
+  static bool needsMetadata(Track track, {bool includeDuration = false}) =>
       const [MusicSource.qq, MusicSource.netease].contains(track.source) &&
-      (missingText(track.name) ||
+      ((includeDuration &&
+              (validDurationMs(track.durationMs) == null ||
+                  (track.source == MusicSource.qq &&
+                      (track.lxMetadata.songId == null ||
+                          track.lxMetadata.strMediaMid == null)))) ||
+          missingText(track.name) ||
           missingText(track.artists) ||
           missingText(track.album) ||
           missingCover(track.picUrl));
@@ -115,7 +121,15 @@ class TrackMetadataService extends ChangeNotifier {
     final cover = missingCover(track.picUrl) && _validCover(pic)
         ? pic
         : track.picUrl;
-    if (name == track.name &&
+    final durationMs =
+        validDurationMs(track.durationMs) ??
+        validDurationMs(info['durationMs']);
+    final lxMetadata = track.lxMetadata.fillMissing(
+      LxMusicMetadata.fromPlatformJson(info, source: track.source.name),
+    );
+    if (lxMetadata.fingerprint == track.lxMetadata.fingerprint &&
+        durationMs == track.durationMs &&
+        name == track.name &&
         artists == track.artists &&
         album == track.album &&
         cover == track.picUrl) {
@@ -129,18 +143,22 @@ class TrackMetadataService extends ChangeNotifier {
       picUrl: cover,
       source: track.source,
       sourceIds: track.sourceIds,
+      lxMetadata: lxMetadata,
+      durationMs: durationMs,
     );
   }
 
-  Future<Track> complete(Track track) async {
-    if (!needsMetadata(track)) return track;
+  Future<Track> complete(Track track, {bool includeDuration = false}) async {
+    if (!needsMetadata(track, includeDuration: includeDuration)) return track;
     final origin = _origin();
     final session = _session();
     await (_loaded ??= _load());
     if (origin != _origin() || session != _session()) return track;
     final key = _key(track, origin);
     final existing = cached(track);
-    if (!needsMetadata(existing)) return existing;
+    if (!needsMetadata(existing, includeDuration: includeDuration)) {
+      return existing;
+    }
     if (session == null) return existing;
     if (!_pending.containsKey(key) &&
         _retryAfter[key]?.isAfter(_now()) == true) {
@@ -191,6 +209,10 @@ class TrackMetadataService extends ChangeNotifier {
             field: info[field],
         if (info['pic'] is String && _validCover(info['pic'] as String))
           'pic': info['pic'],
+        'durationMs': ?validDurationMs(info['durationMs']),
+        'lxMetadata': LxMusicMetadata.fromJson(_cache[key]?['lxMetadata'])
+            .fillMissing(LxMusicMetadata.fromPlatformJson(info, source: track.source.name))
+            .toJson(),
         'savedAt': _now().millisecondsSinceEpoch,
       };
       if (identical(_merge(track, entry), track)) return;

@@ -15,6 +15,7 @@ import '../../utils/toast_utils.dart';
 import '../../utils/image_utils.dart';
 import '../../utils/audio_request_headers.dart';
 import '../music_service.dart';
+import '../track_metadata_service.dart';
 import '../auth_service.dart';
 import '../audio_source_service.dart';
 import '../cache_service.dart';
@@ -341,6 +342,7 @@ class PlaybackService extends ChangeNotifier {
   String? _retriedTrackKey;
   String? _rejectedPlaybackUrl;
   PlaybackFailureCause? _rejectedPlaybackCause;
+  EngineError? _rejectedPlaybackError;
   PlaybackFailureEvidence? _lastFailureEvidence;
   String? _lastPreloadedTargetKey;
   bool _preloadingNext = false;
@@ -1320,6 +1322,7 @@ class PlaybackService extends ChangeNotifier {
       _performanceMetrics.recordEngineRetry();
       _retriedTrackKey = trackKey;
       if (_shouldRefreshUrlOnError(error)) {
+        _rejectedPlaybackError = error;
         _rejectedPlaybackUrl =
             (_pendingSong ?? _activeSong)?.url ?? error.sourceUrl;
         _rejectedPlaybackCause = error.isSourceReadFailure
@@ -3180,6 +3183,7 @@ class PlaybackService extends ChangeNotifier {
       _retriedTrackKey = null;
       _rejectedPlaybackUrl = null;
       _rejectedPlaybackCause = null;
+      _rejectedPlaybackError = null;
     }
     final track = candidateTrack ?? _trackAtQueuePointer() ?? _activeTrack;
     if (track == null) return null;
@@ -3461,7 +3465,8 @@ class PlaybackService extends ChangeNotifier {
     TrackSwitchTransaction tx,
     bool Function() isStale,
   ) async {
-    final track = tx.track;
+    final track = TrackMetadataService().cached(tx.track);
+    unawaited(TrackMetadataService().complete(track, includeDuration: true));
     _setCurrentCachedFileInfo(null);
     final cachePlaybackKey = _cachePlaybackKey(track, tx.qualityStr);
     final lookupSw = Stopwatch()..start();
@@ -3518,6 +3523,8 @@ class PlaybackService extends ChangeNotifier {
     final memoryHit = tx.forceRemoteResolution
         ? null
         : _trackResolver.peekResolved(
+            durationMs: track.durationMs,
+            lxMetadata: track.lxMetadata.withImage(track.picUrl),
             songId: track.id,
             quality: tx.selectedQuality,
             source: track.source,
@@ -3591,9 +3598,11 @@ class PlaybackService extends ChangeNotifier {
               quality: tx.selectedQuality,
               source: track.source,
               sourceIds: track.sourceIds,
+              lxMetadata: track.lxMetadata.withImage(track.picUrl),
               title: track.name,
               artist: track.artists,
               album: track.album,
+              durationMs: track.durationMs,
               timeout: resolveTimeout,
               fetchLyrics: false,
               resolverFingerprint: resolverFingerprint,
@@ -3693,6 +3702,7 @@ class PlaybackService extends ChangeNotifier {
         _errorMessage!,
         kind: PlaybackProblemKind.resourceUnavailable,
         recoveryActions: const {PlaybackRecoveryAction.retry},
+        engineError: _rejectedPlaybackError,
       );
       notifyListeners();
       return null;
@@ -4121,6 +4131,9 @@ class PlaybackService extends ChangeNotifier {
           ? supplemental.qrcTrans
           : current.qrcTrans,
       source: current.source,
+      durationMs: current.durationMs ?? supplemental.durationMs,
+      sourceIds: current.sourceIds,
+      lxMetadata: current.lxMetadata,
     );
   }
 
@@ -4158,6 +4171,9 @@ class PlaybackService extends ChangeNotifier {
           ? normalizedDetail.qrcTrans
           : current.qrcTrans,
       source: current.source,
+      durationMs: current.durationMs ?? normalizedDetail.durationMs,
+      sourceIds: current.sourceIds,
+      lxMetadata: current.lxMetadata,
     );
   }
 
@@ -4203,6 +4219,7 @@ class PlaybackService extends ChangeNotifier {
                 songId: track.id,
                 source: track.source,
                 sourceIds: track.sourceIds,
+                lxMetadata: track.lxMetadata.withImage(track.picUrl),
                 title: track.name,
                 artist: track.artists,
               )
@@ -4223,10 +4240,12 @@ class PlaybackService extends ChangeNotifier {
           songId: track.id,
           source: track.source,
           sourceIds: track.sourceIds,
+          lxMetadata: track.lxMetadata.withImage(track.picUrl),
           quality: quality,
           title: track.name,
           artist: track.artists,
           album: track.album,
+          durationMs: track.durationMs,
           timeout: _lyricSongDetailTimeout,
           purpose: 'lyric-service',
           fetchLyrics: true,
@@ -4293,6 +4312,7 @@ class PlaybackService extends ChangeNotifier {
               songId: track.id,
               source: track.source,
               sourceIds: track.sourceIds,
+              lxMetadata: track.lxMetadata.withImage(track.picUrl),
               title: track.name,
               artist: track.artists,
             )
@@ -5769,6 +5789,9 @@ class PlaybackService extends ChangeNotifier {
         qrc: normalized.qrc,
         qrcTrans: normalized.qrcTrans,
         source: normalized.source,
+        durationMs: normalized.durationMs ?? track.durationMs,
+        sourceIds: normalized.sourceIds,
+        lxMetadata: normalized.lxMetadata,
       );
     }
 
@@ -5792,6 +5815,9 @@ class PlaybackService extends ChangeNotifier {
         qrc: normalized.qrc,
         qrcTrans: normalized.qrcTrans,
         source: normalized.source,
+        durationMs: normalized.durationMs,
+        sourceIds: normalized.sourceIds,
+        lxMetadata: normalized.lxMetadata,
       );
     }
 
@@ -5803,9 +5829,11 @@ class PlaybackService extends ChangeNotifier {
     required AudioQuality quality,
     required MusicSource source,
     TrackSourceIds sourceIds = const TrackSourceIds(),
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
     required String title,
     required String artist,
     String album = '',
+    int? durationMs,
     required Duration timeout,
     required String purpose,
     bool fetchLyrics = true,
@@ -5826,9 +5854,11 @@ class PlaybackService extends ChangeNotifier {
             quality: quality,
             source: source,
             sourceIds: sourceIds,
+            lxMetadata: lxMetadata,
             title: title,
             artist: artist,
             album: album,
+            durationMs: durationMs,
             timeout: timeout,
             fetchLyrics: fetchLyrics,
             resolverFingerprint: PlaybackResolverRegistry().fingerprintFor(
@@ -6203,7 +6233,7 @@ class PlaybackService extends ChangeNotifier {
     if (!isLocal &&
         (Platform.isAndroid || Platform.isIOS) &&
         (track.source == MusicSource.qq || track.source == MusicSource.kugou)) {
-      headers = _buildPlaybackHeaders(track.source);
+      headers = _buildPlaybackHeaders(track.source, url);
     }
 
     try {
@@ -6327,9 +6357,11 @@ class PlaybackService extends ChangeNotifier {
       quality: selectedQuality,
       source: track.source,
       sourceIds: track.sourceIds,
+      lxMetadata: track.lxMetadata.withImage(track.picUrl),
       title: track.name,
       artist: track.artists,
       album: track.album,
+      durationMs: track.durationMs,
       timeout: _preloadSongDetailTimeout,
       purpose: 'preload',
       fetchLyrics: false,
@@ -6399,8 +6431,8 @@ class PlaybackService extends ChangeNotifier {
     return plan;
   }
 
-  Map<String, String> _buildPlaybackHeaders(MusicSource source) {
-    return buildAudioRequestHeaders(source);
+  Map<String, String> _buildPlaybackHeaders(MusicSource source, String url) {
+    return buildAudioRequestHeaders(source, uri: Uri.tryParse(url));
   }
 
   /// Foreground loading and next-item preparation use exactly the same source
@@ -6424,7 +6456,7 @@ class PlaybackService extends ChangeNotifier {
               )
             : null,
         requestHeaders: needsHeaders
-            ? _buildPlaybackHeaders(track.source)
+            ? _buildPlaybackHeaders(track.source, url)
             : null,
       );
     }
@@ -6500,10 +6532,22 @@ class PlaybackService extends ChangeNotifier {
         toDeveloperPanel: true,
       );
       final cached = await CacheService().cacheSong(
-        track,
+        TrackMetadataService().cached(track),
         detail,
         quality,
         refreshRequest: refreshRequest,
+        observedDurationMs:
+            _stabilityTracker.isStable &&
+                _pendingTrack == null &&
+                _matchesTrackIdentity(
+                  _activeTrack,
+                  _buildTrackIdentity(track),
+                ) &&
+                _activeSong?.url == detail.url &&
+                _position > Duration.zero &&
+                _duration >= _position
+            ? _duration.inMilliseconds
+            : null,
       );
       if (!cached) {
         _logPlaybackDebug(

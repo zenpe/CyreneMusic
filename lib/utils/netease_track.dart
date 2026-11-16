@@ -1,3 +1,4 @@
+import 'audio_duration_evidence.dart';
 import '../models/track.dart';
 
 Track neteaseSongToTrack(Map<String, dynamic> song) {
@@ -15,5 +16,7 @@ Track neteaseSongToTrack(Map<String, dynamic> song) {
     album: album['name']?.toString() ?? '',
     picUrl: album['picUrl']?.toString() ?? '',
     source: MusicSource.netease,
+    durationMs: validDurationMs(song['dt']),
+    lxMetadata: LxMusicMetadata.fromPlatformJson(song, source: 'netease'),
   );
 }

@@ -1,9 +1,10 @@
+import '../utils/audio_duration_evidence.dart';
 import 'music_platform.dart';
 import 'track.dart';
 
 /// 通用歌单数据模型（支持网易云和QQ音乐）
 class UniversalPlaylist {
-  final dynamic id;  // 网易云用int，QQ用String
+  final dynamic id; // 网易云用int，QQ用String
   final String name;
   final String coverImgUrl;
   final String creator;
@@ -33,10 +34,10 @@ class UniversalPlaylist {
     final MusicSource source = platform == MusicPlatform.netease
         ? MusicSource.netease
         : platform == MusicPlatform.qq
-            ? MusicSource.qq
-            : platform == MusicPlatform.kuwo
-                ? MusicSource.kuwo
-                : MusicSource.kugou;
+        ? MusicSource.qq
+        : platform == MusicPlatform.kuwo
+        ? MusicSource.kuwo
+        : MusicSource.kugou;
 
     final tracks = tracksJson.map((trackJson) {
       return Track(
@@ -44,13 +45,15 @@ class UniversalPlaylist {
         id: platform == MusicPlatform.qq
             ? (trackJson['songmid'] ?? trackJson['id'] ?? '')
             : platform == MusicPlatform.kugou
-                ? (trackJson['album_audio_id'] ?? trackJson['hash'] ?? '')
-                : (trackJson['id'] ?? 0),
+            ? (trackJson['album_audio_id'] ?? trackJson['hash'] ?? '')
+            : (trackJson['id'] ?? 0),
         name: (trackJson['name'] ?? '未知歌曲') as String,
         artists: (trackJson['artists'] ?? '未知艺术家') as String,
         album: (trackJson['album'] ?? '未知专辑') as String,
         picUrl: (trackJson['picUrl'] ?? '') as String,
-        source: source,  // 🔥 关键：确保标记正确的来源
+        durationMs: validDurationMs(trackJson['durationMs']),
+        lxMetadata: LxMusicMetadata.fromPlatformJson(trackJson, source: source.name),
+        source: source, // 🔥 关键：确保标记正确的来源
         sourceIds: platform == MusicPlatform.kugou
             ? TrackSourceIds(
                 fileHash: trackJson['hash']?.toString(),
@@ -135,7 +138,7 @@ class UniversalPlaylist {
         artists: (item['artists'] ?? '未知艺术家') as String,
         album: (item['album'] ?? '未知专辑') as String,
         picUrl: (item['picUrl'] ?? '') as String,
-        source: MusicSource.apple,  // 标记为 Apple Music 来源
+        source: MusicSource.apple, // 标记为 Apple Music 来源
       );
     }).toList();
 

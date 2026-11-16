@@ -353,7 +353,9 @@ class MusicService extends ChangeNotifier {
     String? title,
     String? artist,
     String? album,
+    int? durationMs,
     TrackSourceIds sourceIds = const TrackSourceIds(),
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
     bool fetchLyrics = true,
     void Function(LxRuntimeFailure? failure)? onLxFailure,
     Duration? requestTimeout,
@@ -443,10 +445,12 @@ class MusicService extends ChangeNotifier {
         quality: quality,
         source: source,
         sourceIds: sourceIds,
+        lxMetadata: lxMetadata,
         audioSourceService: audioSourceService,
         title: title,
         artist: artist,
         album: album,
+        durationMs: durationMs,
         fetchLyrics: fetchLyrics,
         onFailure: onLxFailure,
         requestTimeout: requestTimeout,
@@ -466,6 +470,7 @@ class MusicService extends ChangeNotifier {
     required dynamic songId,
     required MusicSource source,
     TrackSourceIds sourceIds = const TrackSourceIds(),
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
     String? title,
     String? artist,
   }) async {
@@ -528,6 +533,7 @@ class MusicService extends ChangeNotifier {
         source,
         songId,
         sourceIds: sourceIds,
+        lxMetadata: lxMetadata,
       );
       if (lyricData == null) {
         DeveloperModeService().addLog(
@@ -573,10 +579,12 @@ class MusicService extends ChangeNotifier {
     required AudioQuality quality,
     required MusicSource source,
     required TrackSourceIds sourceIds,
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
     required AudioSourceService audioSourceService,
     String? title,
     String? artist,
     String? album,
+    int? durationMs,
     required bool fetchLyrics,
     void Function(LxRuntimeFailure? failure)? onFailure,
     Duration? requestTimeout,
@@ -623,7 +631,7 @@ class MusicService extends ChangeNotifier {
       );
       DeveloperModeService().addLogLazy(
         () =>
-            '解析开始 purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId source=${audioSourceService.activeSource?.name}',
+            '解析开始 purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId source=${audioSourceService.activeSource?.name} durationMs=${durationMs ?? 'unknown'} numericId=${lxMetadata.songId != null} mediaMid=${lxMetadata.strMediaMid != null} albumId=${lxMetadata.albumId != null} qualities=${lxMetadata.qualities.keys.join(',')}',
       );
 
       quality = AudioQualityService().effectiveQualityFor(source, quality);
@@ -646,7 +654,9 @@ class MusicService extends ChangeNotifier {
           title: title,
           artist: artist,
           album: album,
+          durationMs: durationMs,
           sourceIds: sourceIds,
+          lxMetadata: lxMetadata,
         ),
         quality: lxQuality,
         timeout: remaining,
@@ -703,6 +713,7 @@ class MusicService extends ChangeNotifier {
             source,
             songId,
             sourceIds: sourceIds,
+            lxMetadata: lxMetadata,
           );
           if (lyricData != null) {
             lyric = lyricData['lyric'] ?? '';
@@ -747,6 +758,9 @@ class MusicService extends ChangeNotifier {
         qrc: qrc,
         qrcTrans: qrcTrans,
         source: source,
+        durationMs: durationMs,
+        sourceIds: sourceIds,
+        lxMetadata: lxMetadata,
       );
     } catch (e) {
       if (e is ResolutionCancelled) rethrow;
@@ -764,6 +778,7 @@ class MusicService extends ChangeNotifier {
     MusicSource source,
     dynamic songId, {
     TrackSourceIds sourceIds = const TrackSourceIds(),
+    LxMusicMetadata lxMetadata = const LxMusicMetadata(),
   }) async {
     String path;
     Map<String, dynamic> queryParameters;

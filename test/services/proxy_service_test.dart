@@ -125,7 +125,8 @@ void main() {
       expect(response.headers.value('content-range'), 'bytes 1-3/5');
       expect(await response.expand((bytes) => bytes).toList(), [1, 2, 3]);
       expect(requests.single.headers.value('range'), 'bytes=1-3');
-      expect(requests.single.headers.value('referer'), 'https://y.qq.com/');
+      expect(requests.single.headers.value('referer'), isNull);
+      expect(requests.single.headers.value('origin'), isNull);
       expect(requests.single.headers.value('authorization'), isNull);
       final head = await (await client.headUrl(Uri.parse(url))).close();
       expect(head.statusCode, 206);
@@ -133,6 +134,65 @@ void main() {
       expect(await head.expand((b) => b).toList(), isEmpty);
     },
   );
+
+  test(
+    'third-party GET remains readable when QQ Referer is forbidden',
+    () async {
+      respond = (request) async {
+        request.response.statusCode = request.headers.value('referer') == null
+            ? 200
+            : 403;
+        request.response.write('audio');
+        await request.response.close();
+      };
+      expect(await utf8.decodeStream(await get(route())), 'audio');
+      expect(proxy.failureFor(route()), isNull);
+    },
+  );
+
+  test(
+    'redirects preserve Range and resolve HLS paths from final URI',
+    () async {
+      respond = (request) async {
+        if (request.uri.path == '/start') {
+          request.response.statusCode = 302;
+          request.response.headers.set('location', '/final/list.m3u8');
+        } else {
+          expect(request.headers.value('referer'), isNull);
+          expect(request.headers.value('range'), 'bytes=0-');
+          request.response.headers.set(
+            'content-type',
+            'application/vnd.apple.mpegurl',
+          );
+          request.response.write('#EXTM3U\nsegment.ts');
+        }
+        await request.response.close();
+      };
+      final outgoing = await client.getUrl(Uri.parse(route('/start')));
+      outgoing.headers.set('range', 'bytes=0-');
+      final manifest = await utf8.decodeStream(await outgoing.close());
+      final segment = manifest.split('\n').last;
+      respond = (request) async {
+        expect(request.uri.path, '/final/segment.ts');
+        request.response.write('segment');
+        await request.response.close();
+      };
+      expect(await utf8.decodeStream(await get(segment)), 'segment');
+    },
+  );
+
+  test('redirect loops terminate without retaining credentials', () async {
+    respond = (request) async {
+      expect(request.headers.value('authorization'), isNull);
+      request.response.statusCode = 302;
+      request.response.headers.set('location', '/loop');
+      await request.response.close();
+    };
+    final response = await get(route('/loop'));
+    expect(response.statusCode, 502);
+    await response.drain<void>();
+    expect(requests.length, 6);
+  });
 
   for (final status in [401, 403, 404, 410, 429, 503]) {
     test('HTTP $status remains attributable to only its source', () async {

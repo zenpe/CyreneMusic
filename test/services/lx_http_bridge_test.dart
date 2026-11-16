@@ -43,6 +43,80 @@ void main() {
     }
   });
 
+  test(
+    'binary media checks preserve bytes and can only reduce read budget',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final bytes = [255, 251, 144, 0, 128];
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType('audio', 'mpeg');
+        request.response.add(bytes);
+        await request.response.close();
+      });
+      addTearDown(() => server.close(force: true));
+      final url = 'http://127.0.0.1:${server.port}/audio';
+      final result = await LxHttpBridge.performHttpRequest(url, {
+        'encoding': null,
+        'maxResponseBytes': 5,
+      });
+      expect(result['body'], bytes);
+      await expectLater(
+        LxHttpBridge.performHttpRequest(url, {
+          'encoding': null,
+          'maxResponseBytes': 4,
+        }),
+        throwsA(isA<FormatException>()),
+      );
+      final fallback = await LxHttpBridge.performHttpRequest(url, {
+        'encoding': null,
+      });
+      expect(fallback['body'], bytes);
+    },
+  );
+
+  test('opt-in audio GET follows redirects with host headers and per-request abort', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final started = Completer<void>();
+    server.listen((request) async {
+      expect(request.headers.value('referer'), isNull);
+      expect(request.headers.value('origin'), isNull);
+      if (request.uri.path == '/slow') {
+        if (!started.isCompleted) started.complete();
+        return;
+      }
+      if (request.uri.path == '/redirect') {
+        request.response.statusCode = 302;
+        request.response.headers.set('location', '/audio');
+      } else {
+        expect(request.headers.value('range'), 'bytes=0-4095');
+        request.response.add([255, 251, 144, 0]);
+      }
+      await request.response.close();
+    });
+    addTearDown(() => server.close(force: true));
+    final url = 'http://127.0.0.1:${server.port}';
+    final options = <String, dynamic>{
+      'encoding': null,
+      'audioResource': true,
+      'headers': {'Referer': 'https://y.qq.com/', 'Range': 'bytes=0-4095'},
+    };
+    final owner = ResolutionRequest();
+    final pending = LxHttpBridge.performHttpRequest(
+      '$url/slow',
+      options,
+      request: owner,
+    );
+    final cancelled = expectLater(pending, throwsA(isA<ResolutionCancelled>()));
+    await started.future;
+    owner.cancel();
+    await cancelled;
+    final peer = await LxHttpBridge.performHttpRequest(
+      '$url/redirect',
+      options,
+    );
+    expect(peer['body'], [255, 251, 144, 0]);
+  });
+
   test('preserves case-insensitive UA and bounds script timeouts', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final subscription = server.listen((request) async {

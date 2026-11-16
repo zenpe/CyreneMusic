@@ -1,3 +1,4 @@
+import '../utils/audio_duration_evidence.dart';
 import '../models/track.dart';
 
 /// Metadata already known by the app, expressed in the LX script contract.
@@ -9,11 +10,45 @@ Map<String, dynamic> buildLxMusicInfo({
   String? title,
   String? artist,
   String? album,
+  int? durationMs,
   TrackSourceIds sourceIds = const TrackSourceIds(),
+  LxMusicMetadata lxMetadata = const LxMusicMetadata(),
 }) {
   final info = <String, dynamic>{
     'source': source,
-    'songmid': songId.toString(),
+    'interval': ?lxInterval(durationMs),
+    'songmid': source == 'wy' || source == 'kw'
+        ? int.tryParse(songId.toString()) ?? songId
+        : songId.toString(),
+    'img': lxMetadata.img,
+    'typeUrl': <String, dynamic>{},
+    'types': [
+      for (final type in LxMusicMetadata.qualityOrder)
+        if (lxMetadata.qualities.containsKey(type))
+          {
+            'type': type,
+            if (lxMetadata.qualities[type]!['size'] != null)
+              'size': lxMetadata.qualities[type]!['size'],
+          },
+    ],
+    '_types': {
+      for (final type in LxMusicMetadata.qualityOrder)
+        if (lxMetadata.qualities.containsKey(type))
+          type: {
+            if (lxMetadata.qualities[type]!['size'] != null)
+              'size': lxMetadata.qualities[type]!['size'],
+          },
+    },
+    if (lxMetadata.albumId != null)
+      'albumId': source == 'wy'
+          ? int.tryParse(lxMetadata.albumId!) ?? lxMetadata.albumId
+          : lxMetadata.albumId,
+    if (source == 'tx' && lxMetadata.songId != null)
+      'songId': int.tryParse(lxMetadata.songId!) ?? lxMetadata.songId,
+    if (source == 'tx' && lxMetadata.strMediaMid != null)
+      'strMediaMid': lxMetadata.strMediaMid,
+    if (source == 'tx' && lxMetadata.albumMid != null)
+      'albumMid': lxMetadata.albumMid,
     if (source == 'wy' || source == 'kw') 'id': songId,
     if (source == 'kw') 'rid': songId,
     if (source == 'kg') 'hash': songId.toString(),

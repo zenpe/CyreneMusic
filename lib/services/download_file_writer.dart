@@ -4,6 +4,9 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../models/track.dart';
+import '../utils/audio_http_request.dart';
+
 /// Owns a download's staging files and publishes only complete files.
 class DownloadFileWriter {
   DownloadFileWriter({
@@ -72,12 +75,21 @@ class DownloadFileWriter {
     Uri url,
     File stagedFile, {
     required Map<String, String> headers,
+    MusicSource? audioSource,
     void Function(double progress)? onProgress,
   }) async {
     final client = HttpClient()..connectionTimeout = connectionTimeout;
     RandomAccessFile? output;
     try {
       final response = await (() async {
+        if (audioSource != null) {
+          return (await openAudioRequest(
+            client,
+            'GET',
+            url,
+            audioSource,
+          )).response;
+        }
         final request = await client.getUrl(url);
         headers.forEach(request.headers.set);
         // Compare the received byte count with the wire Content-Length.

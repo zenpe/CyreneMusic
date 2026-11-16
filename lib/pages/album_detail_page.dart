@@ -1,3 +1,4 @@
+import '../utils/audio_duration_evidence.dart';
 import '../widgets/floating_playback_insets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
@@ -431,6 +432,8 @@ Future<void> _playAlbumSong(List<Map<String, dynamic>> songs,
     album: song['album']?.toString() ?? album['name']?.toString() ?? '',
     picUrl: song['picUrl']?.toString() ?? album['coverImgUrl']?.toString() ?? '',
     source: MusicSource.netease,
+        durationMs: validDurationMs(song['durationMs']),
+        lxMetadata: LxMusicMetadata.fromPlatformJson(song, source: 'netease'),
   )).toList();
   final index = tracks.indexWhere((t) => t.id.toString() == selected.id.toString());
   return PlayerService().playCollection(tracks, index: index, source: QueueSource.album);
@@ -456,6 +459,8 @@ Widget _buildSongListItem({
     album: song['album']?.toString() ?? (album['name']?.toString() ?? ''),
     picUrl: song['picUrl']?.toString() ?? (album['coverImgUrl']?.toString() ?? ''),
     source: MusicSource.netease,
+        durationMs: validDurationMs(song['durationMs']),
+        lxMetadata: LxMusicMetadata.fromPlatformJson(song, source: 'netease'),
   );
 
   final leading = Hero(
@@ -616,6 +621,8 @@ Widget _buildSongsGrid({
         album: song['album']?.toString() ?? (album['name']?.toString() ?? ''),
         picUrl: song['picUrl']?.toString() ?? (album['coverImgUrl']?.toString() ?? ''),
         source: MusicSource.netease,
+        durationMs: validDurationMs(song['durationMs']),
+        lxMetadata: LxMusicMetadata.fromPlatformJson(song, source: 'netease'),
       );
 
       final trailing = TrackMoreButton(
