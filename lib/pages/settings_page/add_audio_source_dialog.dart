@@ -120,7 +120,7 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
     String apiKey,
   ) async {
     final config = _isEditing
-        ? widget.existingConfig!.copyWith(
+        ? widget.existingConfig!.asImportedSource().copyWith(
             type: AudioSourceType.lxmusic,
             name: parsed.name,
             version: parsed.version,
@@ -293,9 +293,9 @@ class _AddAudioSourceDialogState extends State<AddAudioSourceDialog> {
                     Expanded(
                       child: Text(
                         _isEditing ? '替换洛雪音源' : '导入洛雪音源',
-                        style: CupertinoTheme.of(
-                          context,
-                        ).textTheme.navTitleTextStyle,
+                        style: CupertinoTheme.of(context)
+                            .textTheme
+                            .navTitleTextStyle,
                       ),
                     ),
                     CupertinoButton(

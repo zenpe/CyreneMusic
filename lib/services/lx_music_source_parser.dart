@@ -1,8 +1,10 @@
 import 'structured_log_service.dart';
 import 'api/api_client.dart';
 import '../models/lx_source_candidate.dart';
+
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'package:charset/charset.dart';
@@ -108,8 +110,7 @@ class LxMusicSourceParser {
             Uri.parse(scriptUrl),
             headers: {
               'Cache-Control': 'no-cache',
-              'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             },
           )
           .timeout(const Duration(seconds: 30));
@@ -484,6 +485,9 @@ class LxMusicSourceParser {
   }
 
   /// 按字节解码脚本内容，优先 UTF-8，兼容 GBK/GB18030。
+  String decodeVerifiedScriptBytes(List<int> bytes) =>
+      _decodeScriptBytes(bytes);
+
   String _decodeScriptBytes(List<int>? bytes, {String? contentType}) {
     if (bytes == null || bytes.isEmpty) {
       throw const FormatException('下载到的音源脚本为空，请重试');

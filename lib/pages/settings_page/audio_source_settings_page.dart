@@ -1,13 +1,17 @@
 import '../../utils/app_feedback.dart';
 import '../../services/audio_source_error_message.dart';
+
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
+
 import '../../features/audio_source/audio_source_feature.dart';
 import '../../widgets/material/material_settings_widgets.dart';
 import '../../services/audio_source_service.dart';
 import '../../services/lx_source_catalog_service.dart';
+import '../../services/source_recommendation_service.dart';
 import '../../services/url_service.dart';
 import '../../models/lx_source_candidate.dart';
 import '../../widgets/lx_source_filters.dart';
@@ -77,6 +81,10 @@ class _AudioSourceSettingsContentState
   final AudioSourceController _audioSourceController = AudioSourceController();
   bool _showNavidromeConfig = false;
   bool _isSourceActionBusy = false;
+  final SourceRecommendationService _recommendations =
+      SourceRecommendationService();
+  SourceRecommendation? _recommendation;
+  String? _recommendationError;
   final LxSourceCatalogService _catalog = LxSourceCatalogService();
   List<LxSourceCandidate> _candidates = const [];
   bool _isLoadingCandidates = false;
@@ -88,9 +96,13 @@ class _AudioSourceSettingsContentState
   String? _candidateDirectory;
 
   List<AudioSourceConfig> get _localSources {
-    final paths = _candidates.map((source) => source.path).toSet();
     return _audioSourceReadController.sources
-        .where((source) => !paths.contains(source.catalogPath))
+        .where(
+          (source) => !source.matchesCatalog(
+            _candidates,
+            backendOrigin: SourceRecommendationService.currentOrigin,
+          ),
+        )
         .toList();
   }
 
@@ -134,6 +146,8 @@ class _AudioSourceSettingsContentState
     setState(() {
       _candidates = _catalog.candidates;
       _candidateNotice = null;
+      _recommendation = null;
+      _recommendationError = null;
       _candidateDirectory = null;
     });
     _loadCandidates();
@@ -141,6 +155,25 @@ class _AudioSourceSettingsContentState
 
   Future<void> _loadCandidates() async {
     final request = ++_catalogRequest;
+    final origin = SourceRecommendationService.currentOrigin;
+    () async {
+      try {
+        final description = await _recommendations.describe(origin);
+        if (mounted && request == _catalogRequest) {
+          setState(() {
+            _recommendation = description;
+            _recommendationError = null;
+          });
+        }
+        if (description != null) {
+          await AudioSourceService().cacheRecommendedUpdate();
+        }
+      } catch (e) {
+        if (mounted && request == _catalogRequest) {
+          setState(() => _recommendationError = audioSourceErrorMessage(e));
+        }
+      }
+    }();
     setState(() {
       _isLoadingCandidates = true;
       _candidateError = null;
@@ -152,9 +185,8 @@ class _AudioSourceSettingsContentState
         _candidates = sources;
         if (_candidateDirectory != null &&
             _candidateDirectory!.isNotEmpty &&
-            !LxSourceCandidate.directories(
-              sources,
-            ).contains(_candidateDirectory)) {
+            !LxSourceCandidate.directories(sources)
+                .contains(_candidateDirectory)) {
           _candidateDirectory = null;
         }
       });
@@ -215,10 +247,13 @@ class _AudioSourceSettingsContentState
   Widget _buildCandidateSection(BuildContext context) {
     final visible = _candidates
         .where(
-          (candidate) => candidate.matches(
-            query: _candidateQuery,
-            selectedDirectory: _candidateDirectory,
-          ),
+          (candidate) =>
+              !candidate.isRecommendation &&
+              candidate.path != SourceRecommendation.catalogPath &&
+              candidate.matches(
+                query: _candidateQuery,
+                selectedDirectory: _candidateDirectory,
+              ),
         )
         .toList();
     final manager = ThemeManager();
@@ -242,6 +277,8 @@ class _AudioSourceSettingsContentState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _buildRecommendationCard(),
+            const SizedBox(height: 12),
             Row(
               children: [
                 const Expanded(
@@ -334,6 +371,78 @@ class _AudioSourceSettingsContentState
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildRecommendationCard() {
+    final source = _audioSourceReadController.activeSource;
+    final selected = source?.isRecommendation == true;
+    final sameBackend =
+        selected &&
+        source!.backendOrigin == SourceRecommendationService.currentOrigin;
+    final service = AudioSourceService();
+    final candidate = LxSourceCandidate(
+      path: SourceRecommendation.catalogPath,
+      name: '推荐音源',
+      directory: '推荐',
+      kind: 'recommendation',
+    );
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0x55708080)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '推荐音源',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          if (selected)
+            Text(
+              '本机版本：${source!.resolvedName} · ${source.scriptSha256.substring(0, source.scriptSha256.length.clamp(0, 12))}',
+            ),
+          if (selected && !sameBackend) const Text('该推荐来自原服务器，请选择当前服务器的推荐音源'),
+          if (_recommendation != null)
+            Text('最新推荐：${_recommendation!.resolvedName}')
+          else
+            Text(
+              _recommendationError ??
+                  (_isLoadingCandidates ? '正在查询推荐…' : '暂未配置推荐音源'),
+            ),
+          if (_recommendation != null)
+            Text(
+              _recommendation!.healthLabel,
+              style: const TextStyle(fontSize: 12),
+            ),
+          const SizedBox(height: 6),
+          const Text(
+            '启动时检查推荐更新。检测结果基于服务器网络环境。',
+            style: TextStyle(fontSize: 12),
+          ),
+          if (service.recommendationPendingName != null && sameBackend)
+            Text('新版本已缓存：${service.recommendationPendingName}，下次启动应用'),
+          if (service.recommendationUpdateError != null && selected)
+            Text(
+              '更新失败，仍使用 ${source!.resolvedName}：${audioSourceErrorMessage(service.recommendationUpdateError!)}',
+            ),
+          _candidateButton(
+            _usingCandidatePath == SourceRecommendation.catalogPath
+                ? '正在加载…'
+                : sameBackend
+                ? '检查并应用更新'
+                : selected
+                ? '使用当前服务器推荐'
+                : '使用推荐音源',
+            _isSourceActionBusy || _recommendation == null
+                ? null
+                : () => _useCandidate(candidate),
+          ),
+        ],
       ),
     );
   }
@@ -827,7 +936,17 @@ class _AudioSourceSettingsContentState
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text('类型: 洛雪音乐', style: theme.typography.caption),
+                fluent.Tooltip(
+                  message: config.isRecommendation ? config.backendOrigin : '',
+                  child: Text(
+                    config.isRecommendation
+                        ? '服务器: ${config.backendOrigin}'
+                        : '类型: 洛雪音乐',
+                    style: theme.typography.caption,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
                 if (config.version.isNotEmpty || config.author.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
@@ -1461,6 +1580,20 @@ class _AudioSourceSettingsContentState
                               ],
                             ),
 
+                            if (config.isRecommendation) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                '服务器: ${config.backendOrigin}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: secondaryLabelColor,
+                                  decoration: TextDecoration.none,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+
                             // 描述
                             if (config.description.isNotEmpty) ...[
                               const SizedBox(height: 4),
@@ -2000,7 +2133,7 @@ class _AudioSourceSettingsContentState
       ),
       title: config.name,
       subtitle:
-          '${_getSourceTypeName(config.type)}${config.author.isNotEmpty ? " • ${config.author}" : ""}${config.version.isNotEmpty ? " • v${config.version}" : ""} • ${isActive ? _activeSourceStatus : "未开启"}',
+          '${_getSourceTypeName(config.type)}${config.author.isNotEmpty ? " • ${config.author}" : ""}${config.version.isNotEmpty ? " • v${config.version}" : ""} • ${isActive ? _activeSourceStatus : "未开启"}${config.isRecommendation ? " • 服务器: ${config.backendOrigin}" : ""}',
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

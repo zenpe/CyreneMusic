@@ -2,11 +2,16 @@ class LxSourceCandidate {
   final String path;
   final String name;
   final String directory;
+  final String kind;
+  final String resolvedName;
+  bool get isRecommendation => kind == 'recommendation';
 
   const LxSourceCandidate({
     required this.path,
     required this.name,
     required this.directory,
+    this.kind = '',
+    this.resolvedName = '',
   });
 
   factory LxSourceCandidate.fromJson(Map<String, dynamic> json) {
@@ -24,7 +29,15 @@ class LxSourceCandidate {
         name.isEmpty) {
       throw const FormatException('音源列表格式无效');
     }
-    return LxSourceCandidate(path: path, name: name, directory: directory);
+    return LxSourceCandidate(
+      path: path,
+      name: name,
+      directory: directory,
+      kind: json['kind'] is String ? json['kind'] as String : '',
+      resolvedName: json['resolvedName'] is String
+          ? json['resolvedName'] as String
+          : '',
+    );
   }
 
   static bool isScriptPath(String path) {

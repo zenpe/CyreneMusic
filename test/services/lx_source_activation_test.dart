@@ -1,14 +1,62 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
+import 'package:cyrene_music/services/source_recommendation_service.dart';
+import 'package:cyrene_music/services/api/api_result.dart';
+
 import 'package:cyrene_music/services/audio_source_service.dart';
 import 'package:cyrene_music/models/audio_source_config.dart';
+import 'package:cyrene_music/models/lx_source_candidate.dart';
 import 'package:cyrene_music/services/url_service.dart';
 import 'package:cyrene_music/services/lx_music_source_parser.dart';
 import 'package:cyrene_music/services/lx_runtime_interface.dart';
 import 'package:cyrene_music/services/lx_music_runtime_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
+
+class _FailingPreferences extends InMemorySharedPreferencesStore {
+  _FailingPreferences(super.data, this.target) : super.withData();
+  final String target;
+  bool fail = true;
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    if (fail && key == 'flutter.$target') {
+      fail = false;
+      return false;
+    }
+    return super.setValue(valueType, key, value);
+  }
+}
+
+class _JournalCleanupPreferences extends InMemorySharedPreferencesStore {
+  _JournalCleanupPreferences(super.data, {this.throwOnRemove = false})
+    : super.withData();
+  final bool throwOnRemove;
+  int failures = 1;
+  int removeAttempts = 0;
+  int writes = 0;
+
+  @override
+  Future<bool> remove(String key) async {
+    if (key == 'flutter.audio_source_recommendation_rollback_v1') {
+      removeAttempts++;
+      if (failures > 0) {
+        failures--;
+        if (throwOnRemove) throw StateError('storage unavailable');
+        return false;
+      }
+    }
+    return super.remove(key);
+  }
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    writes++;
+    return super.setValue(valueType, key, value);
+  }
+}
 
 class _Parser extends LxMusicSourceParser {
   final scripts = <String, String?>{};
@@ -515,4 +563,562 @@ void main() {
       expect(runtime.loads, ['old']);
     },
   );
+  group('recommended source lifecycle', () {
+    late String currentScript;
+    late String release;
+    late SourceRecommendationService recommendations;
+    late List<String> downloadedHashes;
+    Completer<List<int>>? downloadGate;
+    bool offline = false;
+    Map<String, dynamic> descriptor() => {
+      'releaseId': release,
+      'scriptSha256': sha256.convert(utf8.encode(currentScript)).toString(),
+      'resolvedName': 'Source $currentScript',
+      'health': <String, dynamic>{},
+    };
+    setUp(() {
+      currentScript = 'old';
+      release = 'r-${'1' * 32}';
+      downloadedHashes = [];
+      downloadGate = null;
+      offline = false;
+      recommendations = SourceRecommendationService.withDependencies(
+        json: (_) async => offline
+            ? ApiResult(statusCode: 503)
+            : ApiResult(
+                statusCode: 200,
+                data: {'recommendation': descriptor()},
+              ),
+        bytes: (_, query) async {
+          downloadedHashes.add(query['sha256'] as String);
+          final bytes = downloadGate == null
+              ? utf8.encode(currentScript)
+              : await downloadGate!.future;
+          return ApiResult(statusCode: 200, data: bytes);
+        },
+      );
+      service = AudioSourceService.withDependencies(
+        runtime: runtime,
+        parser: parser,
+        recommendations: recommendations,
+        recommendationStartupBudget: const Duration(milliseconds: 20),
+      );
+    });
+    for (final field in ['audio_source_list', 'audio_source_active_id']) {
+      test(
+        'failed $field save preserves active script and persistent selection',
+        () async {
+          await service.useRecommendedSource();
+          final before = service.activeSource!;
+          final prefs = await SharedPreferences.getInstance();
+          final values = {
+            for (final key in prefs.getKeys()) 'flutter.$key': prefs.get(key)!,
+          };
+          final previousStore = SharedPreferencesStorePlatform.instance;
+          final store = _FailingPreferences(values, field);
+          SharedPreferencesStorePlatform.instance = store;
+          addTearDown(
+            () => SharedPreferencesStorePlatform.instance = previousStore,
+          );
+          currentScript = 'new';
+          release = 'r-${'2' * 32}';
+          await expectLater(service.useRecommendedSource(), throwsException);
+          expect(service.activeSource!.scriptSha256, before.scriptSha256);
+          expect(runtime.currentScript!.script, 'old');
+          expect(
+            (jsonDecode(
+              prefs.getString('audio_source_list')!,
+            ) as List).single['scriptSha256'],
+            before.scriptSha256,
+          );
+          expect(
+            prefs.containsKey('audio_source_recommendation_rollback_v1'),
+            isFalse,
+          );
+        },
+      );
+    }
+    Future<void> seed() async {
+      await service.useRecommendedSource();
+      await runtime.dispose();
+    }
+
+    AudioSourceService cold(_Runtime r) => AudioSourceService.withDependencies(
+      runtime: r,
+      parser: parser,
+      recommendations: recommendations,
+      recommendationStartupBudget: const Duration(milliseconds: 20),
+    );
+
+    Future<_JournalCleanupPreferences> failJournalCleanup({
+      bool throwOnRemove = false,
+    }) async {
+      final prefs = await SharedPreferences.getInstance();
+      final store = _JournalCleanupPreferences({
+        for (final key in prefs.getKeys()) 'flutter.$key': prefs.get(key)!,
+      }, throwOnRemove: throwOnRemove);
+      final previousStore = SharedPreferencesStorePlatform.instance;
+      SharedPreferencesStorePlatform.instance = store;
+      addTearDown(
+        () => SharedPreferencesStorePlatform.instance = previousStore,
+      );
+      return store;
+    }
+
+    for (final throwsOnRemove in [false, true]) {
+      test(
+        'cold recovery cleanup failure loads old settings and preserves later import (throws=$throwsOnRemove)',
+        () async {
+          await seed();
+          final prefs = await SharedPreferences.getInstance();
+          final oldList = prefs.getString('audio_source_list')!;
+          final oldId = prefs.getString('audio_source_active_id')!;
+          await prefs.setString(
+            'audio_source_recommendation_rollback_v1',
+            jsonEncode({'sources': oldList, 'activeId': oldId}),
+          );
+          await prefs.setString('audio_source_list', '[]');
+          await prefs.setString('audio_source_active_id', 'unfinished');
+          final store = await failJournalCleanup(throwOnRemove: throwsOnRemove);
+          offline = true;
+          final r = _Runtime();
+          final app = cold(r);
+          await app.initialize();
+          expect(app.activeSource!.id, oldId);
+          expect(r.currentScript!.script, 'old');
+          expect(store.removeAttempts, 1);
+          expect(
+            (await store.getAll()).containsKey(
+              'flutter.audio_source_recommendation_rollback_v1',
+            ),
+            isTrue,
+          );
+          store.failures = 1;
+          final before = await store.getAll();
+          await expectLater(app.clear(), throwsStateError);
+          expect(app.activeSource!.id, oldId);
+          expect(await store.getAll(), before);
+          parser.scripts[url] = 'imported';
+          await app.useLxSource(url);
+          final importedId = app.activeSource!.id;
+          expect(app.sources.length, 2);
+          await prefs.reload();
+          final restart = cold(_Runtime());
+          await restart.initialize();
+          expect(restart.activeSource!.id, importedId);
+          expect(restart.activeSource!.scriptContent, 'imported');
+          expect(restart.sources.map((s) => s.id), contains(oldId));
+        },
+      );
+    }
+
+    for (final field in ['audio_source_list', 'audio_source_active_id']) {
+      test(
+        'partial cold recovery blocks further writes until restart ($field)',
+        () async {
+          await seed();
+          final prefs = await SharedPreferences.getInstance();
+          final oldId = prefs.getString('audio_source_active_id')!;
+          await prefs.setString(
+            'audio_source_recommendation_rollback_v1',
+            jsonEncode({
+              'sources': prefs.getString('audio_source_list'),
+              'activeId': oldId,
+            }),
+          );
+          await prefs.setString('audio_source_list', '[]');
+          await prefs.setString('audio_source_active_id', 'unfinished');
+          final previous = SharedPreferencesStorePlatform.instance;
+          final store = _FailingPreferences({
+            for (final key in prefs.getKeys()) 'flutter.$key': prefs.get(key)!,
+          }, field);
+          SharedPreferencesStorePlatform.instance = store;
+          addTearDown(() => SharedPreferencesStorePlatform.instance = previous);
+          offline = true;
+          final app = cold(_Runtime());
+          await app.initialize();
+          expect(app.loadError, contains('恢复失败'));
+          final before = await store.getAll();
+          await expectLater(app.clear(), throwsStateError);
+          await expectLater(app.useLxSource(url), throwsStateError);
+          expect(await store.getAll(), before);
+          await prefs.reload();
+          final restart = cold(_Runtime());
+          await restart.initialize();
+          expect(restart.activeSource!.id, oldId);
+          expect(restart.activeSource!.scriptContent, 'old');
+        },
+      );
+    }
+
+    for (final inactive in [false, true]) {
+      test(
+        'manual import detaches recommendation metadata and stays local after restart (inactive=$inactive)',
+        () async {
+          await service.useRecommendedSource();
+          final original = service.activeSource!;
+          if (inactive) {
+            parser.scripts[url] = 'ordinary';
+            await service.useLxSource(url);
+          }
+          final selectedId = service.activeSource!.id;
+          final edited = original.asImportedSource().copyWith(
+            scriptContent: 'imported',
+            scriptSource: 'https://example.test/imported.js',
+          );
+          await service.updateSource(edited);
+          final saved = service.sources.firstWhere((s) => s.id == original.id);
+          expect(saved.isRecommendation, isFalse);
+          expect([
+            saved.catalogPath,
+            saved.catalogKind,
+            saved.backendOrigin,
+            saved.releaseId,
+            saved.scriptSha256,
+            saved.scriptContentHash,
+            saved.resolvedName,
+          ], everyElement(isEmpty));
+          expect(saved.scriptSource, 'https://example.test/imported.js');
+          if (inactive) {
+            expect(service.activeSource!.id, selectedId);
+            await service.setActiveSource(saved.id);
+          }
+          expect(runtime.currentScript!.script, 'imported');
+          currentScript = 'bad';
+          release = 'r-${'2' * 32}';
+          final requests = downloadedHashes.length;
+          await (await SharedPreferences.getInstance()).reload();
+          final restart = cold(_Runtime());
+          await restart.initialize();
+          expect(restart.activeSource!.id, original.id);
+          expect(restart.activeSource!.scriptContent, 'imported');
+          expect(downloadedHashes.length, requests);
+        },
+      );
+    }
+
+    for (final action in ['switch', 'delete', 'import']) {
+      test('journal cleanup failure does not undo later $action on restart', () async {
+        await service.useRecommendedSource();
+        final recommendationId = service.activeSource!.id;
+        final ordinary = AudioSourceConfig(
+          id: 'ordinary',
+          type: AudioSourceType.lxmusic,
+          name: 'Ordinary',
+          url: '',
+          scriptContent: 'ordinary',
+        );
+        await service.addSource(ordinary);
+        final store = await failJournalCleanup();
+        currentScript = 'new';
+        release = 'r-${'2' * 32}';
+        parser.scripts[url] = 'imported';
+
+        // Queue the user action before the update completes. Its cleanup check
+        // must run after the earlier transaction, not when it is enqueued.
+        final update = service.useRecommendedSource();
+        final later = switch (action) {
+          'switch' => service.setActiveSource(ordinary.id),
+          'delete' => service.removeSource(recommendationId),
+          _ => service.useLxSource(url),
+        };
+        await Future.wait([update, later]);
+        expect(store.removeAttempts, 2);
+        expect(
+          (await store.getAll()).containsKey(
+            'flutter.audio_source_recommendation_rollback_v1',
+          ),
+          isFalse,
+        );
+        if (action == 'switch') {
+          expect(service.activeSource!.id, ordinary.id);
+        } else if (action == 'delete') {
+          expect(service.activeSource, isNull);
+          expect(service.sources.map((s) => s.id), [ordinary.id]);
+        } else {
+          expect(service.activeSource!.scriptContent, 'imported');
+        }
+
+        final selectedId = service.activeSource?.id;
+        final ids = service.sources.map((s) => s.id).toList();
+        // Reload from the platform store to simulate losing SharedPreferences'
+        // optimistic cache on a real process restart.
+        await (await SharedPreferences.getInstance()).reload();
+        offline = true;
+        final restart = cold(_Runtime());
+        await restart.initialize();
+        expect(restart.activeSource?.id, selectedId);
+        expect(restart.sources.map((s) => s.id), ids);
+      });
+    }
+
+    for (final throwsOnRemove in [false, true]) {
+      test(
+        'unresolved cleanup blocks writes until storage recovers (throws=$throwsOnRemove)',
+        () async {
+          await service.useRecommendedSource();
+          final store = await failJournalCleanup(throwOnRemove: throwsOnRemove);
+          store.failures = 10;
+          currentScript = 'new';
+          release = 'r-${'2' * 32}';
+          await service.useRecommendedSource();
+          final selected = service.activeSource!;
+          final before = await store.getAll();
+          final writes = store.writes;
+          final loads = runtime.loads.toList();
+          expect(
+            before.containsKey(
+              'flutter.audio_source_recommendation_rollback_v1',
+            ),
+            isTrue,
+          );
+          await expectLater(
+            service.removeSource(selected.id),
+            throwsA(
+              isA<StateError>().having(
+                (e) => e.message,
+                'message',
+                contains('本次操作未保存'),
+              ),
+            ),
+          );
+          expect(service.activeSource, same(selected));
+          expect(service.sources.single, same(selected));
+          expect(runtime.loads, loads);
+          expect(store.writes, writes);
+          expect(await store.getAll(), before);
+
+          store.failures = 0;
+          await service.removeSource(selected.id);
+          await (await SharedPreferences.getInstance()).reload();
+          offline = true;
+          final restart = cold(_Runtime());
+          await restart.initialize();
+          expect(restart.activeSource, isNull);
+          expect(restart.sources, isEmpty);
+        },
+      );
+    }
+
+    test('saved recommendations from other servers remain selectable and removable offline', () async {
+      final original = UrlService().baseUrl;
+      addTearDown(() => UrlService().useCustomSource(original));
+      UrlService().useCustomSource('https://server-a.example');
+      await service.useRecommendedSource();
+      final a = service.activeSource!;
+      UrlService().useCustomSource('https://server-b.example');
+      currentScript = 'new';
+      release = 'r-${'2' * 32}';
+      await service.useRecommendedSource();
+      final b = service.activeSource!;
+      expect(b.id, isNot(a.id));
+      const candidates = [
+        LxSourceCandidate(
+          path: SourceRecommendation.catalogPath,
+          name: '推荐音源',
+          directory: '推荐',
+          kind: 'recommendation',
+        ),
+      ];
+      List<AudioSourceConfig> visible() => service.sources
+          .where(
+            (s) => !s.matchesCatalog(
+              candidates,
+              backendOrigin: SourceRecommendationService.currentOrigin,
+            ),
+          )
+          .toList();
+      expect(visible().map((s) => s.id), [a.id]);
+
+      offline = true;
+      final requests = downloadedHashes.length;
+      await service.setActiveSource(a.id);
+      expect(service.activeSource!.id, a.id);
+      expect(runtime.currentScript!.script, 'old');
+      expect(downloadedHashes.length, requests);
+      await service.setActiveSource(b.id);
+      await service.removeSource(a.id);
+      expect(service.sources.map((s) => s.id), [b.id]);
+      await (await SharedPreferences.getInstance()).reload();
+      final restart = cold(_Runtime());
+      await restart.initialize();
+      expect(restart.activeSource!.id, b.id);
+      expect(restart.sources.single.id, b.id);
+    });
+    test(
+      'same bytes with a new opaque release update metadata without reloading',
+      () async {
+        await service.useRecommendedSource();
+        final initial = runtime.loads.length;
+        release = 'r-${'2' * 32}';
+        await service.useRecommendedSource();
+        expect(runtime.loads.length, initial);
+        expect(service.activeSource!.releaseId, release);
+        expect(downloadedHashes.length, 1);
+      },
+    );
+    test(
+      'late startup bytes are cached and never committed to a running session',
+      () async {
+        await seed();
+        currentScript = 'new';
+        release = 'r-${'2' * 32}';
+        downloadGate = Completer<List<int>>();
+        final r = _Runtime();
+        final app = cold(r);
+        await app.initialize();
+        expect(app.activeSource!.scriptContent, 'old');
+        expect(r.loads, ['old']);
+        downloadGate!.complete(utf8.encode('new'));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(r.loads, ['old']);
+        expect(app.activeSource!.scriptContent, 'old');
+        expect(app.recommendationPendingName, 'Source new');
+        downloadGate = null;
+        final restart = cold(_Runtime());
+        await restart.initialize();
+        expect(restart.activeSource!.scriptContent, 'new');
+        expect(restart.activeSource!.releaseId, release);
+      },
+    );
+    test(
+      'cached new bytes are not auto-applied while backend is unreachable',
+      () async {
+        await seed();
+        currentScript = 'new';
+        release = 'r-${'2' * 32}';
+        await recommendations.download(
+          SourceRecommendationService.currentOrigin,
+        );
+        offline = true;
+        final app = cold(_Runtime());
+        await app.initialize();
+        expect(app.activeSource!.scriptContent, 'old');
+        expect(app.recommendationUpdateError, isNotNull);
+      },
+    );
+    test(
+      'startup preparation is awaited past the network selection budget',
+      () async {
+        await seed();
+        currentScript = 'new';
+        release = 'r-${'2' * 32}';
+        final r = _Runtime()
+          ..gate = Completer<void>()
+          ..started = Completer<void>();
+        final gate = r.gate!, started = r.started!;
+        final app = cold(r);
+        var ready = false;
+        final boot = app.initialize().then((_) => ready = true);
+        await started.future;
+        await Future<void>.delayed(const Duration(milliseconds: 35));
+        expect(ready, isFalse);
+        var playbackReady = false;
+        final playback = app.initializeLxRuntime().then(
+          (_) => playbackReady = true,
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(playbackReady, isFalse);
+        gate.complete();
+        await boot;
+        await playback;
+        expect(r.loads, ['new']);
+        expect(app.activeSource!.scriptContent, 'new');
+      },
+    );
+    test(
+      'invalid new script restores local source before startup completes',
+      () async {
+        await seed();
+        currentScript = 'bad';
+        release = 'r-${'2' * 32}';
+        final r = _Runtime();
+        final app = cold(r);
+        await app.initialize();
+        expect(app.activeSource!.scriptContent, 'old');
+        expect(r.currentScript!.script, 'old');
+        expect(app.recommendationUpdateError, isNotNull);
+        final prefs = await SharedPreferences.getInstance();
+        expect(
+          prefs.containsKey('audio_source_recommendation_rollback_v1'),
+          isFalse,
+        );
+      },
+    );
+    test('explicit playback closes a pending startup network window', () async {
+      await seed();
+      currentScript = 'new';
+      release = 'r-${'2' * 32}';
+      downloadGate = Completer<List<int>>();
+      final r = _Runtime();
+      final app = cold(r);
+      final boot = app.initialize();
+      while (downloadedHashes.length < 2) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      await app.initializeLxRuntime();
+      await boot;
+      expect(app.activeSource!.scriptContent, 'old');
+      downloadGate!.complete(utf8.encode('new'));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(r.loads, ['old']);
+    });
+    test(
+      'interrupted multi-key save restores previous selection on cold start',
+      () async {
+        await seed();
+        final prefs = await SharedPreferences.getInstance();
+        final old = prefs.getString('audio_source_list');
+        final id = prefs.getString('audio_source_active_id');
+        await prefs.setString(
+          'audio_source_recommendation_rollback_v1',
+          jsonEncode({'sources': old, 'activeId': id}),
+        );
+        await prefs.setString('audio_source_list', '[]');
+        await prefs.setString('audio_source_active_id', 'unfinished');
+        offline = true;
+        final app = cold(_Runtime());
+        await app.initialize();
+        expect(app.activeSource!.id, id);
+        expect(app.activeSource!.scriptContent, 'old');
+        expect(
+          prefs.containsKey('audio_source_recommendation_rollback_v1'),
+          isFalse,
+        );
+      },
+    );
+    test(
+      'ordinary manual selection does not follow later recommendation',
+      () async {
+        await service.useRecommendedSource();
+        parser.scripts[url] = 'new';
+        await service.useLxSource(url);
+        currentScript = 'bad';
+        release = 'r-${'2' * 32}';
+        final requests = downloadedHashes.length;
+        final app = cold(_Runtime());
+        await app.initialize();
+        expect(app.activeSource!.isRecommendation, isFalse);
+        expect(app.activeSource!.scriptContent, 'new');
+        expect(downloadedHashes.length, requests);
+      },
+    );
+    test('changing backend invalidates a candidate before commit', () async {
+      await service.useRecommendedSource();
+      currentScript = 'new';
+      release = 'r-${'2' * 32}';
+      runtime.gate = Completer<void>();
+      runtime.started = Completer<void>();
+      final gate = runtime.gate!, started = runtime.started!;
+      final original = UrlService().baseUrl;
+      final update = service.useRecommendedSource();
+      final assertion = expectLater(update, throwsStateError);
+      await started.future;
+      UrlService().useCustomSource('https://changed.example/prefix');
+      gate.complete();
+      await assertion;
+      expect(service.activeSource!.scriptContent, 'old');
+      UrlService().useCustomSource(original);
+    });
+  });
 }

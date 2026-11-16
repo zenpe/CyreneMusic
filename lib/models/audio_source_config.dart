@@ -1,5 +1,7 @@
 import 'dart:convert';
+
 import 'package:crypto/crypto.dart';
+
 import '../services/audio_source_service.dart';
 import 'lx_source_candidate.dart';
 
@@ -31,6 +33,26 @@ class AudioSourceConfig {
   final String description;
   final String scriptSource;
   final String catalogPath;
+  final String catalogKind;
+  final String backendOrigin;
+  final String releaseId;
+  final String scriptSha256;
+  final String scriptContentHash;
+  final String resolvedName;
+  bool get isRecommendation => catalogKind == 'recommendation';
+
+  /// Whether this saved source is represented by the current server's catalog.
+  bool matchesCatalog(
+    Iterable<LxSourceCandidate> candidates, {
+    required String backendOrigin,
+  }) {
+    if (isRecommendation && this.backendOrigin != backendOrigin) return false;
+    return candidates.any(
+      (candidate) =>
+          candidate.path == catalogPath &&
+          candidate.isRecommendation == isRecommendation,
+    );
+  }
 
   static String legacyCatalogPath(String source) {
     final uri = Uri.tryParse(source);
@@ -63,6 +85,8 @@ class AudioSourceConfig {
             apiKey,
             scriptSource,
             catalogPath,
+            backendOrigin,
+            scriptSha256,
             scriptContent,
             urlPathTemplate,
           ]),
@@ -82,6 +106,12 @@ class AudioSourceConfig {
     this.description = '',
     this.scriptSource = '',
     this.catalogPath = '',
+    this.catalogKind = '',
+    this.backendOrigin = '',
+    this.releaseId = '',
+    this.scriptSha256 = '',
+    this.scriptContentHash = '',
+    this.resolvedName = '',
     this.scriptContent = '',
     this.urlPathTemplate = '',
   });
@@ -98,6 +128,12 @@ class AudioSourceConfig {
     String? description,
     String? scriptSource,
     String? catalogPath,
+    String? catalogKind,
+    String? backendOrigin,
+    String? releaseId,
+    String? scriptSha256,
+    String? scriptContentHash,
+    String? resolvedName,
     String? scriptContent,
     String? urlPathTemplate,
   }) {
@@ -113,10 +149,27 @@ class AudioSourceConfig {
       description: description ?? this.description,
       scriptSource: scriptSource ?? this.scriptSource,
       catalogPath: catalogPath ?? this.catalogPath,
+      catalogKind: catalogKind ?? this.catalogKind,
+      backendOrigin: backendOrigin ?? this.backendOrigin,
+      releaseId: releaseId ?? this.releaseId,
+      scriptSha256: scriptSha256 ?? this.scriptSha256,
+      scriptContentHash: scriptContentHash ?? this.scriptContentHash,
+      resolvedName: resolvedName ?? this.resolvedName,
       scriptContent: scriptContent ?? this.scriptContent,
       urlPathTemplate: urlPathTemplate ?? this.urlPathTemplate,
     );
   }
+
+  /// A manually imported script keeps its local ID and no longer follows a catalog.
+  AudioSourceConfig asImportedSource() => copyWith(
+    catalogPath: '',
+    catalogKind: '',
+    backendOrigin: '',
+    releaseId: '',
+    scriptSha256: '',
+    scriptContentHash: '',
+    resolvedName: '',
+  );
 
   /// Convert to JSON
   Map<String, dynamic> toJson() {
@@ -132,6 +185,12 @@ class AudioSourceConfig {
       'description': description,
       'scriptSource': scriptSource,
       'catalogPath': catalogPath,
+      'catalogKind': catalogKind,
+      'backendOrigin': backendOrigin,
+      'releaseId': releaseId,
+      'scriptSha256': scriptSha256,
+      'scriptContentHash': scriptContentHash,
+      'resolvedName': resolvedName,
       'scriptContent': scriptContent,
       'urlPathTemplate': urlPathTemplate,
     };
@@ -159,6 +218,12 @@ class AudioSourceConfig {
       catalogPath:
           json['catalogPath'] as String? ??
           legacyCatalogPath(json['scriptSource'] as String? ?? ''),
+      catalogKind: json['catalogKind'] as String? ?? '',
+      backendOrigin: json['backendOrigin'] as String? ?? '',
+      releaseId: json['releaseId'] as String? ?? '',
+      scriptSha256: json['scriptSha256'] as String? ?? '',
+      scriptContentHash: json['scriptContentHash'] as String? ?? '',
+      resolvedName: json['resolvedName'] as String? ?? '',
       scriptContent: json['scriptContent'] as String? ?? '',
       urlPathTemplate: json['urlPathTemplate'] as String? ?? '',
     );

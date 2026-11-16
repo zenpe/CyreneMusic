@@ -1,4 +1,7 @@
 import 'structured_log_service.dart';
+import 'source_recommendation_service.dart';
+
+import 'package:crypto/crypto.dart';
 
 import 'dart:io';
 import 'dart:async';
@@ -35,14 +38,30 @@ class AudioSourceService extends ChangeNotifier {
   factory AudioSourceService() => _instance;
   AudioSourceService._internal()
     : _runtime = LxMusicRuntimeService(),
-      _parser = LxMusicSourceParser();
+      _parser = LxMusicSourceParser(),
+      _recommendations = SourceRecommendationService(),
+      recommendationStartupBudget = const Duration(seconds: 3);
 
   @visibleForTesting
   AudioSourceService.withDependencies({
     required this._runtime,
     required this._parser,
-  });
+    SourceRecommendationService? recommendations,
+    this.recommendationStartupBudget = const Duration(seconds: 3),
+  }) : _recommendations = recommendations ?? SourceRecommendationService();
 
+  final SourceRecommendationService _recommendations;
+  final Duration recommendationStartupBudget;
+  Future<void>? _initialization;
+  Completer<void>? _startupNetworkInterrupt;
+  int _selectionEpoch = 0;
+  bool _startupPlaybackRequested = false;
+  bool _recommendationJournalCleanupPending = false;
+  bool _recommendationRecoveryBlocked = false;
+  String? recommendationUpdateError;
+  String? recommendationPendingName;
+  static const _recommendationJournal =
+      'audio_source_recommendation_rollback_v1';
   final LxRuntime _runtime;
   final LxMusicSourceParser _parser;
   Future<void>? _candidateActivation;
@@ -113,10 +132,42 @@ class AudioSourceService extends ChangeNotifier {
     'flac24bit',
   ];
 
-  Future<void> _enqueueMutation(Future<void> Function() mutation) {
-    final task = _mutationQueue.catchError((_) {}).then((_) => mutation());
+  Future<void> _enqueueMutation(
+    Future<void> Function() mutation, {
+    bool automatic = false,
+  }) {
+    if (!automatic) {
+      _selectionEpoch++;
+      final interrupt = _startupNetworkInterrupt;
+      if (interrupt != null && !interrupt.isCompleted) interrupt.complete();
+    }
+    final task = _mutationQueue.catchError((_) {}).then((_) async {
+      if (_recommendationRecoveryBlocked) {
+        throw StateError('上次音源更新尚未恢复，本次操作未保存，请重启后重试');
+      }
+      // Check after prior operations finish: they may have committed a new
+      // recommendation but failed to remove its rollback snapshot.
+      await _finishRecommendationJournalCleanup();
+      await mutation();
+    });
     _mutationQueue = task.catchError((_) {});
     return task;
+  }
+
+  Future<void> _finishRecommendationJournalCleanup() async {
+    if (!_recommendationJournalCleanupPending) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // remove() can evict the cached key even when the storage write fails.
+      // Retry unconditionally until the underlying store confirms success.
+      if (!await prefs.remove(_recommendationJournal)) {
+        throw StateError('回退记录清理失败');
+      }
+      _recommendationJournalCleanupPending = false;
+    } catch (e) {
+      StructuredLogService.log('[AudioSourceService] 推荐回退记录仍待清理: $e');
+      throw StateError('上次音源更新的回退记录尚未清理，本次操作未保存，请重试');
+    }
   }
 
   void _invalidateLxRuntime() {
@@ -132,26 +183,231 @@ class AudioSourceService extends ChangeNotifier {
   };
 
   /// 初始化服务
-  Future<void> initialize() async {
+  Future<void> initialize() => _initialization ??= _initializeOnce();
+
+  Future<void> _initializeOnce() async {
     if (_isInitialized) return;
-
     await _loadSettings();
+    final source = activeSource;
+    if (source?.isRecommendation == true &&
+        source!.backendOrigin == SourceRecommendationService.currentOrigin &&
+        !_startupPlaybackRequested) {
+      final epoch = _selectionEpoch, backend = UrlService().backendRevision;
+      final interrupt = Completer<void>();
+      _startupNetworkInterrupt = interrupt;
+      final clock = Stopwatch()..start();
+      DownloadedRecommendation? selected;
+      final fetch = _recommendations
+          .download(
+            source.backendOrigin,
+            existingHash:
+                source.scriptContentHash ==
+                    sha256.convert(utf8.encode(source.scriptContent)).toString()
+                ? source.scriptSha256
+                : null,
+            existingScript: source.scriptContent,
+          )
+          .then<DownloadedRecommendation?>((download) {
+            if (epoch == _selectionEpoch &&
+                backend == UrlService().backendRevision &&
+                activeSource?.id == source.id &&
+                download.descriptor.scriptSha256 != source.scriptSha256) {
+              recommendationPendingName = download.descriptor.resolvedName;
+              notifyListeners();
+            }
+            return download;
+          })
+          .catchError((Object e) {
+            if (epoch == _selectionEpoch &&
+                backend == UrlService().backendRevision) {
+              recommendationUpdateError = e.toString();
+            }
+            return null;
+          });
+      try {
+        selected = await Future.any<DownloadedRecommendation?>([
+          fetch,
+          Future<DownloadedRecommendation?>.delayed(
+            recommendationStartupBudget,
+            () => null,
+          ),
+          interrupt.future.then((_) => null),
+        ]);
+      } finally {
+        _startupNetworkInterrupt = null;
+      }
+      if (selected != null &&
+          epoch == _selectionEpoch &&
+          backend == UrlService().backendRevision &&
+          activeSource?.id == source.id) {
+        try {
+          await _enqueueMutation(() async {
+            void validate() {
+              if (epoch != _selectionEpoch ||
+                  backend != UrlService().backendRevision ||
+                  activeSource?.id != source.id) {
+                throw StateError('推荐更新已失效');
+              }
+            }
 
-    // 如果当前有活动音源且是洛雪音源，初始化运行时
+            validate();
+            await _applyRecommendation(selected!, validate: validate);
+          }, automatic: true);
+        } catch (e) {
+          recommendationUpdateError = e.toString();
+          StructuredLogService.log('[AudioSourceService] 推荐启动更新失败，使用本地版本: $e');
+        }
+      }
+      StructuredLogService.log(
+        '[AudioSourceService] 推荐启动选择及准备 elapsedMs=${clock.elapsedMilliseconds} release=${activeSource?.releaseId} sha256=${activeSource?.scriptSha256}',
+      );
+    }
     if (activeSource?.type == AudioSourceType.lxmusic) {
       try {
-        await initializeLxRuntime();
+        await _initializeLxRuntime();
       } catch (_) {
         /* Settings remain accessible for repair. */
       }
     }
-
     _isInitialized = true;
     StructuredLogService.log('✅ [AudioSourceService] 初始化完成');
   }
 
+  Future<void> useRecommendedSource() {
+    final origin = SourceRecommendationService.currentOrigin,
+        revision = UrlService().backendRevision;
+    return _enqueueMutation(() async {
+      final old = _sources
+          .where((s) => s.isRecommendation && s.backendOrigin == origin)
+          .firstOrNull;
+      void validate() {
+        if (revision != UrlService().backendRevision) {
+          throw StateError('服务器已更换，请重新选择推荐音源');
+        }
+      }
+
+      try {
+        final downloaded = await _recommendations.download(
+          origin,
+          existingHash:
+              old?.scriptContentHash ==
+                  sha256
+                      .convert(utf8.encode(old?.scriptContent ?? ''))
+                      .toString()
+              ? old?.scriptSha256
+              : null,
+          existingScript: old?.scriptContent,
+        );
+        validate();
+        await _applyRecommendation(downloaded, validate: validate);
+      } catch (e) {
+        recommendationUpdateError = e.toString();
+        notifyListeners();
+        rethrow;
+      }
+    });
+  }
+
+  Future<void> cacheRecommendedUpdate() async {
+    final source = activeSource,
+        epoch = _selectionEpoch,
+        backend = UrlService().backendRevision;
+    if (source?.isRecommendation != true ||
+        source!.backendOrigin != SourceRecommendationService.currentOrigin) {
+      return;
+    }
+    try {
+      final pending = await _recommendations.download(
+        source.backendOrigin,
+        existingHash: source.scriptSha256,
+        existingScript: source.scriptContent,
+      );
+      if (epoch != _selectionEpoch ||
+          backend != UrlService().backendRevision ||
+          activeSource?.id != source.id) {
+        return;
+      }
+      recommendationPendingName =
+          pending.descriptor.scriptSha256 == source.scriptSha256
+          ? null
+          : pending.descriptor.resolvedName;
+      recommendationUpdateError = null;
+    } catch (e) {
+      if (epoch == _selectionEpoch && backend == UrlService().backendRevision) {
+        recommendationUpdateError = e.toString();
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<void> _applyRecommendation(
+    DownloadedRecommendation downloaded, {
+    required void Function() validate,
+  }) async {
+    final old = _sources
+        .where(
+          (s) => s.isRecommendation && s.backendOrigin == downloaded.origin,
+        )
+        .firstOrNull;
+    final next = downloaded.config(old?.id ?? createSourceId());
+    // A release/note-only change does not restart an already active identical runtime.
+    if (old != null &&
+        activeSource?.id == old.id &&
+        old.scriptSha256 == next.scriptSha256 &&
+        old.scriptContentHash == next.scriptContentHash &&
+        _runtime.isScriptReady) {
+      validate();
+      final prefs = await SharedPreferences.getInstance();
+      final updated = _sources
+          .map(
+            (s) => s.id == old.id
+                ? next.copyWith(supportedPlatforms: s.supportedPlatforms)
+                : s,
+          )
+          .toList();
+      final before = prefs.getString(_keySources);
+      try {
+        if (!await prefs.setString(
+          _keySources,
+          jsonEncode(updated.map((s) => s.toJson()).toList()),
+        )) {
+          throw StateError('无法保存推荐版本');
+        }
+        validate();
+      } catch (_) {
+        final restored = before == null
+            ? await prefs.remove(_keySources)
+            : await prefs.setString(_keySources, before);
+        if (!restored) throw StateError('推荐信息保存及恢复失败，请重新加载音源');
+        rethrow;
+      }
+      _sources = updated;
+      notifyListeners();
+    } else {
+      await _activateConfig(next, validate: validate);
+    }
+    recommendationUpdateError = null;
+    recommendationPendingName = null;
+    notifyListeners();
+    StructuredLogService.log(
+      '[AudioSourceService] 推荐已应用 backend=${downloaded.origin} release=${next.releaseId} sha256=${next.scriptSha256}',
+    );
+  }
+
   /// 初始化洛雪运行时环境
   Future<void> initializeLxRuntime() async {
+    // A playback request closes only the startup network window. Preparation and
+    // persistence rollback must finish before a resolver can observe the choice.
+    if (!_isInitialized) _startupPlaybackRequested = true;
+    if (!_isInitialized && _initialization != null) {
+      final interrupt = _startupNetworkInterrupt;
+      if (interrupt != null && !interrupt.isCompleted) interrupt.complete();
+      await _initialization;
+    }
+    await _initializeLxRuntime();
+  }
+
+  Future<void> _initializeLxRuntime() async {
     // A candidate has its own context; existing playback can keep resolving.
     if (_runtime is LxStagedRuntime &&
         (_runtime as LxStagedRuntime).supportsStaging &&
@@ -186,6 +442,14 @@ class AudioSourceService extends ChangeNotifier {
         StructuredLogService.log(
           '🚀 [AudioSourceService] 正在初始化洛雪运行时: $sourceId',
         );
+        if (source.isRecommendation &&
+            (source.scriptContentHash.isEmpty ||
+                source.scriptContentHash !=
+                    sha256
+                        .convert(utf8.encode(source.scriptContent))
+                        .toString())) {
+          throw StateError('本地推荐脚本完整性验证失败，请检查更新');
+        }
         String? scriptContent = source.scriptContent;
         if (scriptContent.isEmpty) {
           scriptContent = await _loadLxScriptContent();
@@ -246,6 +510,31 @@ class AudioSourceService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
 
+      final journal = prefs.getString(_recommendationJournal);
+      if (journal != null) {
+        _recommendationRecoveryBlocked = true;
+        final backup = jsonDecode(journal) as Map<String, dynamic>;
+        final list = backup['sources'] as String?,
+            id = backup['activeId'] as String?;
+        if (!(list == null
+                ? await prefs.remove(_keySources)
+                : await prefs.setString(_keySources, list)) ||
+            !(id == null
+                ? await prefs.remove(_keyActiveSourceId)
+                : await prefs.setString(_keyActiveSourceId, id))) {
+          throw StateError('无法恢复上次中断的推荐更新');
+        }
+        _recommendationRecoveryBlocked = false;
+        _recommendationJournalCleanupPending = true;
+        try {
+          await _finishRecommendationJournalCleanup();
+        } catch (_) {
+          // The old configuration has been restored. Load it even if cleanup
+          // must be retried before a later mutation can persist.
+          StructuredLogService.log('[AudioSourceService] 配置已恢复，回退记录待清理');
+        }
+        StructuredLogService.log('[AudioSourceService] 已恢复中断前的音源配置');
+      }
       // 1. 加载音源列表
       final sourcesJson = prefs.getString(_keySources);
       if (sourcesJson != null) {
@@ -296,6 +585,9 @@ class AudioSourceService extends ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
+      if (_recommendationRecoveryBlocked) {
+        loadError = '上次音源更新恢复失败，请重启后重试';
+      }
       StructuredLogService.log('❌ [AudioSourceService] 加载配置失败: $e');
     }
   }
@@ -406,6 +698,9 @@ class AudioSourceService extends ChangeNotifier {
   /// Download and activate as one serialized operation. Until initialization
   /// succeeds, neither the saved selection nor the source list is changed.
   Future<void> useLxSource(String scriptUrl, {String? catalogPath}) {
+    if (catalogPath == SourceRecommendation.catalogPath) {
+      return useRecommendedSource();
+    }
     final backendRevision = UrlService().backendRevision;
     void checkBackend() {
       if (catalogPath != null &&
@@ -460,6 +755,12 @@ class AudioSourceService extends ChangeNotifier {
     void Function()? validate,
   }) async {
     void checkBackend() => validate?.call();
+    if (config.isRecommendation &&
+        (config.scriptContentHash.isEmpty ||
+            config.scriptContentHash !=
+                sha256.convert(utf8.encode(config.scriptContent)).toString())) {
+      throw StateError('推荐脚本已改变，请通过检查更新重新下载');
+    }
     final previousSources = List<AudioSourceConfig>.from(_sources);
     final previousId = _activeSourceId;
     final previous = activeSource;
@@ -478,6 +779,7 @@ class AudioSourceService extends ChangeNotifier {
     String? storedSources;
     String? storedId;
     var persistenceStarted = false;
+    var journalStarted = false;
     try {
       await _lxRuntimeOperation.catchError((_) {});
       checkBackend();
@@ -506,6 +808,16 @@ class AudioSourceService extends ChangeNotifier {
       prefs = await SharedPreferences.getInstance();
       storedSources = prefs.getString(_keySources);
       storedId = prefs.getString(_keyActiveSourceId);
+      if (config.isRecommendation) {
+        journalStarted = true;
+        _recommendationRecoveryBlocked = true;
+        if (!await prefs.setString(
+          _recommendationJournal,
+          jsonEncode({'sources': storedSources, 'activeId': storedId}),
+        )) {
+          throw StateError('无法保存推荐回退记录');
+        }
+      }
       persistenceStarted = true;
       if (!await prefs.setString(
             _keySources,
@@ -521,20 +833,38 @@ class AudioSourceService extends ChangeNotifier {
       _lxRuntimeSourceId = config.id;
       _lxSourceRevision++;
       loadError = null;
+      if (config.isRecommendation) {
+        _recommendationRecoveryBlocked = false;
+        _recommendationJournalCleanupPending = true;
+        try {
+          await _finishRecommendationJournalCleanup();
+        } catch (_) {
+          StructuredLogService.log(
+            '[AudioSourceService] 推荐已应用，回退记录待清理；后续保存前将重试',
+          );
+        }
+      }
     } catch (error) {
       _sources = previousSources;
       _activeSourceId = previousId;
       _lxRuntimeSourceId = staged ? previousRuntimeId : null;
       var restored = true;
-      if (persistenceStarted && prefs != null) {
+      if ((persistenceStarted || journalStarted) && prefs != null) {
         try {
-          final restoredSources = storedSources == null
-              ? await prefs.remove(_keySources)
-              : await prefs.setString(_keySources, storedSources);
-          final restoredId = storedId == null
-              ? await prefs.remove(_keyActiveSourceId)
-              : await prefs.setString(_keyActiveSourceId, storedId);
-          restored = restoredSources && restoredId;
+          if (persistenceStarted) {
+            final restoredSources = storedSources == null
+                ? await prefs.remove(_keySources)
+                : await prefs.setString(_keySources, storedSources);
+            final restoredId = storedId == null
+                ? await prefs.remove(_keyActiveSourceId)
+                : await prefs.setString(_keyActiveSourceId, storedId);
+            restored = restoredSources && restoredId;
+          }
+          if (restored && journalStarted) {
+            _recommendationRecoveryBlocked = false;
+            _recommendationJournalCleanupPending = true;
+            await _finishRecommendationJournalCleanup();
+          }
         } catch (_) {
           restored = false;
         }
