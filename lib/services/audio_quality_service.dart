@@ -1,7 +1,9 @@
 import '../models/track.dart';
 import 'structured_log_service.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/song_detail.dart';
 import 'audio_source_service.dart';
 import 'lx_music_runtime_service.dart';
@@ -75,6 +77,10 @@ class AudioQualityService extends ChangeNotifier {
 
   /// 根据音源类型获取支持的音质列表
   List<AudioQuality> getSupportedQualities(AudioSourceType sourceType) {
+    if (sourceType == AudioSourceType.lxmusic &&
+        AudioSourceService().isAutomaticActive) {
+      return const [AudioQuality.standard];
+    }
     switch (sourceType) {
       case AudioSourceType.lxmusic:
         // 从洛雪运行时动态获取音质列表
@@ -104,6 +110,15 @@ class AudioQualityService extends ChangeNotifier {
   /// 获取指定平台支持的音质列表（洛雪音源专用）
   /// [lxPlatform] - 洛雪格式的平台代码 (wy, tx, kg, kw)
   List<AudioQuality> getQualitiesForPlatform(String lxPlatform) {
+    if (AudioSourceService().isAutomaticActive) {
+      final platform = lxPlatform == 'tx'
+          ? MusicSource.qq
+          : MusicSource.netease;
+      return const ['tx', 'wy'].contains(lxPlatform) &&
+              AudioSourceService().automaticRouteFor(platform) != null
+          ? const [AudioQuality.standard]
+          : const [];
+    }
     final runtime = LxMusicRuntimeService();
     if (runtime.isScriptReady && runtime.currentScript != null) {
       final qualityStrings = runtime.currentScript!.getQualitiesForPlatform(
@@ -124,6 +139,7 @@ class AudioQualityService extends ChangeNotifier {
     MusicSource source, [
     AudioQuality? preferred,
   ]) {
+    if (AudioSourceService().isAutomaticActive) return AudioQuality.standard;
     final selected = preferred ?? currentQuality;
     final platform = AudioSourceService().getLxSourceCode(source);
     if (platform == null) return selected;
@@ -133,6 +149,12 @@ class AudioQualityService extends ChangeNotifier {
   }
 
   String requestQualityFor(MusicSource source, AudioQuality quality) {
+    if (AudioSourceService().isAutomaticActive) {
+      if (AudioSourceService().automaticRouteFor(source) == null) {
+        throw UnsupportedError('自动推荐暂未提供该平台');
+      }
+      return '128k';
+    }
     final platform = AudioSourceService().getLxSourceCode(source);
     final runtime = LxMusicRuntimeService();
     if (platform == null ||

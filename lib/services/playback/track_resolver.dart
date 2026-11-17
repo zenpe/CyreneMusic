@@ -11,6 +11,8 @@ import '../lx_runtime_interface.dart';
 import '../music_service.dart';
 import '../resolution_request.dart';
 import '../structured_log_service.dart';
+import '../audio_source_service.dart';
+import '../automatic_recommendation_router.dart';
 
 class TrackResolutionResult {
   final SongDetail? detail;
@@ -130,15 +132,19 @@ typedef SongDetailFetcher = Future<SongDetail?> Function({
 class TrackResolver {
   TrackResolver({
     SongDetailFetcher? fetcher,
+    AutomaticRoute? Function(MusicSource)? automaticRouteFor,
     this.hardTimeout = const Duration(seconds: 18),
     this.maxResolvedCacheEntries = defaultMaxResolvedCacheEntries,
     this.resolvedCacheTtl = defaultResolvedCacheTtl,
-  }) : _fetcher = fetcher ?? MusicService().fetchSongDetail;
+  }) : _fetcher = fetcher ?? MusicService().fetchSongDetail,
+       _automaticRouteFor =
+           automaticRouteFor ?? AudioSourceService().automaticRouteFor;
 
   static const int defaultMaxResolvedCacheEntries = 30;
   static const Duration defaultResolvedCacheTtl = Duration(minutes: 5);
 
   final SongDetailFetcher _fetcher;
+  final AutomaticRoute? Function(MusicSource) _automaticRouteFor;
   final Duration hardTimeout;
   final int maxResolvedCacheEntries;
   final Duration resolvedCacheTtl;
@@ -312,6 +318,11 @@ class TrackResolver {
     bool retryExpiredSharedRequest = true,
     bool Function()? acceptResult,
   }) async {
+    final automaticRoute = _automaticRouteFor(source);
+    if (automaticRoute != null) {
+      resolverFingerprint = automaticRoute.fingerprint;
+      quality = AudioQuality.standard;
+    }
     if (skipMemoryCache) {
       // A forced refresh must supersede any older in-flight request for the
       // same key, otherwise that request can repopulate the cache later.
@@ -374,6 +385,7 @@ class TrackResolver {
       fetchLyrics: fetchLyrics,
       forceNew: skipMemoryCache,
       requestTimeout: timeout,
+      automaticRoute: automaticRoute,
     );
     final entry = _pending[key];
     if (entry != null) entry.waiters++;
@@ -469,6 +481,7 @@ class TrackResolver {
   }
 
   Future<TrackResolutionResult> _acquire({
+    AutomaticRoute? automaticRoute,
     required String key,
     required dynamic songId,
     required AudioQuality quality,
@@ -506,6 +519,7 @@ class TrackResolver {
     late final _RequestEntry entry;
     final requestStartedAt = DateTime.now();
     final ownership = ResolutionRequest(track: '${source.name}_$songId');
+    final automaticLease = automaticRoute?.acquire();
     entry = _RequestEntry(
       hardDeadline: requestStartedAt.add(hardTimeout),
       requestDeadline: requestStartedAt.add(effectiveRequestTimeout),
@@ -523,8 +537,8 @@ class TrackResolver {
         final detail = await ownership
             .bind(
               Future<SongDetail?>.value(
-                ownership.run(
-                  () => _fetcher(
+                ownership.run(() {
+                  Future<SongDetail?> fetch() => _fetcher(
                     songId: songId,
                     quality: quality,
                     source: source,
@@ -537,8 +551,16 @@ class TrackResolver {
                     fetchLyrics: fetchLyrics,
                     onLxFailure: (failure) => requestFailure = failure,
                     requestTimeout: effectiveRequestTimeout,
-                  ),
-                ),
+                  );
+                  final work = Future<SongDetail?>.sync(
+                    () => automaticLease == null
+                        ? fetch()
+                        : automaticLease.run(fetch),
+                  );
+                  // The transport may finish after its waiter times out. Keep
+                  // the context until the actual resolver work has settled.
+                  return work.whenComplete(() => automaticLease?.release());
+                }),
               ),
             )
             .timeout(

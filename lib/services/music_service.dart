@@ -22,6 +22,7 @@ import 'audio_source_service.dart';
 import 'developer_mode_service.dart';
 import 'auth_service.dart';
 import 'lx_music_runtime_service.dart';
+import 'automatic_recommendation_router.dart';
 import 'lx_runtime_interface.dart';
 import 'navidrome_session_service.dart';
 
@@ -603,14 +604,24 @@ class MusicService extends ChangeNotifier {
     final sourceCode = audioSourceService.getLxSourceCode(source);
     final clock = Stopwatch()..start();
     final sourceId = audioSourceService.activeSource?.id;
+    AutomaticLease? ownedLease;
 
     try {
       final String lxSongId = lxPlaybackId(songId, source, sourceIds);
-      final runtime = LxMusicRuntimeService();
 
       // Runtime is a singleton, so readiness must be tied to the active
       // source rather than only to the runtime's initialized flag.
       await audioSourceService.initializeLxRuntime();
+      final automatic = audioSourceService.isAutomaticActive;
+      final pinned = AutomaticLease.current;
+      if (automatic && pinned == null) {
+        ownedLease = audioSourceService.automaticRouteFor(source)?.acquire();
+      }
+      final lease = pinned ?? ownedLease;
+      if (automatic && (lease == null || lease.route.platform != source.name)) {
+        throw UnsupportedError('自动推荐暂未提供 ${source.name} 平台');
+      }
+      final runtime = automatic ? lease!.runtime : LxMusicRuntimeService();
       final sourceRevision = audioSourceService.lxSourceRevision;
       if (audioSourceService.activeSource?.id != sourceId ||
           !runtime.isInitialized ||
@@ -618,7 +629,7 @@ class MusicService extends ChangeNotifier {
         throw Exception('洛雪音源已切换或脚本尚未就绪，请重试');
       }
 
-      if (!audioSourceService.isLxSourceSupported(source)) {
+      if (!automatic && !audioSourceService.isLxSourceSupported(source)) {
         StructuredLogService.log('⚠️ [MusicService] 当前洛雪脚本不支持 ${source.name}');
         DeveloperModeService().addLog(
           '⚠️ [MusicService] 当前洛雪脚本不支持 ${source.name}',
@@ -634,11 +645,12 @@ class MusicService extends ChangeNotifier {
             '解析开始 purpose=${ResolutionRequest.current?.purpose} tx=${ResolutionRequest.current?.transaction} request=${ResolutionRequest.current?.id} track=${source.name}_$songId source=${audioSourceService.activeSource?.name} durationMs=${durationMs ?? 'unknown'} numericId=${lxMetadata.songId != null} mediaMid=${lxMetadata.strMediaMid != null} albumId=${lxMetadata.albumId != null} qualities=${lxMetadata.qualities.keys.join(',')}',
       );
 
-      quality = AudioQualityService().effectiveQualityFor(source, quality);
-      final lxQuality = AudioQualityService().requestQualityFor(
-        source,
-        quality,
-      );
+      quality = automatic
+          ? AudioQuality.standard
+          : AudioQualityService().effectiveQualityFor(source, quality);
+      final lxQuality = automatic
+          ? '128k'
+          : AudioQualityService().requestQualityFor(source, quality);
       final remaining = requestTimeout == null
           ? null
           : requestTimeout - clock.elapsed;
@@ -770,6 +782,8 @@ class MusicService extends ChangeNotifier {
       StructuredLogService.log('❌ [MusicService] 洛雪音源异常: $e');
       DeveloperModeService().addLog('❌ [MusicService] 异常: $e');
       return null;
+    } finally {
+      ownedLease?.release();
     }
   }
 

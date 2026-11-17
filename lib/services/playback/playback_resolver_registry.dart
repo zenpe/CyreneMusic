@@ -1,5 +1,7 @@
 import 'dart:convert';
+
 import 'package:crypto/crypto.dart';
+
 import '../../models/track.dart';
 import '../../models/audio_source_config.dart';
 import '../audio_source_service.dart';
@@ -59,6 +61,11 @@ class PlaybackResolverRegistry {
   }
 
   String? fingerprintFor(MusicSource platform) {
+    final service = AudioSourceService();
+    if (service.isAutomaticActive) {
+      return service.automaticRouteFor(platform)?.fingerprint ??
+          'automatic-unavailable:${service.activeSource?.backendOrigin}:${platform.name}';
+    }
     final active = activeResolver;
     // Fingerprint the active resolver even when it does not support the
     // platform. A null fingerprint would make CacheService fall back to

@@ -98,11 +98,16 @@ class DownloadedRecommendation {
 
 // This service only fetches and caches verified bytes. It never commits a runtime.
 class SourceRecommendationService {
-  SourceRecommendationService() : json = _fetchJson, bytes = _fetchBytes;
+  SourceRecommendationService()
+    : json = _fetchJson,
+      bytes = _fetchBytes,
+      checkRequest = null;
   SourceRecommendationService.withDependencies({
     required this.json,
     required this.bytes,
+    this.checkRequest,
   });
+  final Future<ApiResult<dynamic>> Function()? checkRequest;
   final Future<ApiResult<dynamic>> Function(String) json;
   final Future<ApiResult<List<int>>> Function(String, Map<String, dynamic>)
   bytes;
@@ -110,6 +115,44 @@ class SourceRecommendationService {
   static String normalizeOrigin(String value) =>
       value.replaceFirst(RegExp(r'/+$'), '');
   static String get currentOrigin => normalizeOrigin(UrlService().baseUrl);
+
+  Future<String>? _checkInFlight;
+
+  /// Requests maintenance only; never selects a source or touches playback.
+  Future<String> requestAutomaticCheck() =>
+      _checkInFlight ??= _requestAutomaticCheck().whenComplete(() {
+        _checkInFlight = null;
+      });
+
+  Future<String> _requestAutomaticCheck() async {
+    final response =
+        await (checkRequest?.call() ??
+            ApiClient().requestJson(
+              '/lx/recommendation-check',
+              method: 'POST',
+              timeout: const Duration(seconds: 8),
+            ));
+    if (response.statusCode == 401) return '请先登录当前后端，再请求巡检';
+    if (response.statusCode == 404 || response.statusCode == 405) {
+      return '当前后端暂不支持请求巡检';
+    }
+    if (response.statusCode == 429) {
+      final seconds = response.retryAfterSeconds;
+      return seconds == null ? '请求过于频繁，请稍后重试' : '请求过于频繁，请在 $seconds 秒后重试';
+    }
+    final body = response.data;
+    final code = body is Map ? body['code'] : null;
+    return switch ((response.statusCode, code)) {
+      (202, 'accepted') => '已请求后台巡检，检测完成且满足推荐条件后将自动更新',
+      (200, 'already_running') => '后台正在检测，无需重复请求',
+      (200, 'already_requested') => '后台已安排巡检，无需重复请求',
+      (409, 'disabled') => '当前后端未启用自动推荐巡检',
+      (409, 'paused') => '后台自动推荐已暂停，请联系管理员',
+      (409, 'busy') => '后台正在执行手动检测，请稍后重试',
+      _ => '巡检请求未确认，请检查网络或稍后重试',
+    };
+  }
+
   static Future<ApiResult<dynamic>> _fetchJson(String origin) =>
       ApiClient().getJson(
         '$origin/lx/recommendation',

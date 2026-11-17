@@ -40,12 +40,15 @@ class AudioSourceConfig {
   final String scriptContentHash;
   final String resolvedName;
   bool get isRecommendation => catalogKind == 'recommendation';
+  bool get isAutomaticRecommendation =>
+      catalogKind == 'automatic_recommendation';
 
   /// Whether this saved source is represented by the current server's catalog.
   bool matchesCatalog(
     Iterable<LxSourceCandidate> candidates, {
     required String backendOrigin,
   }) {
+    if (isAutomaticRecommendation) return false;
     if (isRecommendation && this.backendOrigin != backendOrigin) return false;
     return candidates.any(
       (candidate) =>

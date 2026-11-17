@@ -1,5 +1,6 @@
 import 'structured_log_service.dart';
 import 'source_recommendation_service.dart';
+import 'automatic_recommendation_router.dart';
 
 import 'package:crypto/crypto.dart';
 
@@ -30,6 +31,12 @@ enum AudioSourceType {
 
 enum AudioSourceLoadState { inactive, activating, ready, failed }
 
+typedef AutomaticRouterFactory = AutomaticRecommendationRouter Function({
+  required bool Function() isCurrent,
+  required int Function() selectionEpoch,
+  required Future<void> Function(Future<void> Function()) commit,
+});
+
 /// 音源服务 - 管理音源配置（获取歌曲播放 URL）
 ///
 /// 支持多音源管理，用户可以添加多个音源并选择其中一个作为当前活动音源。
@@ -39,6 +46,7 @@ class AudioSourceService extends ChangeNotifier {
   AudioSourceService._internal()
     : _runtime = LxMusicRuntimeService(),
       _parser = LxMusicSourceParser(),
+      _automaticFactory = AutomaticRecommendationRouter.new,
       _recommendations = SourceRecommendationService(),
       recommendationStartupBudget = const Duration(seconds: 3);
 
@@ -47,9 +55,13 @@ class AudioSourceService extends ChangeNotifier {
     required this._runtime,
     required this._parser,
     SourceRecommendationService? recommendations,
+    AutomaticRouterFactory? automaticFactory,
     this.recommendationStartupBudget = const Duration(seconds: 3),
-  }) : _recommendations = recommendations ?? SourceRecommendationService();
+  }) : _recommendations = recommendations ?? SourceRecommendationService(),
+       _automaticFactory =
+           automaticFactory ?? AutomaticRecommendationRouter.new;
 
+  final AutomaticRouterFactory _automaticFactory;
   final SourceRecommendationService _recommendations;
   final Duration recommendationStartupBudget;
   Future<void>? _initialization;
@@ -71,7 +83,10 @@ class AudioSourceService extends ChangeNotifier {
       ? AudioSourceLoadState.inactive
       : loadError != null
       ? AudioSourceLoadState.failed
-      : isNavidromeActive || _runtime.isScriptReady
+      : isNavidromeActive ||
+            (isAutomaticActive
+                ? _automatic?.isReady == true
+                : _runtime.isScriptReady)
       ? AudioSourceLoadState.ready
       : AudioSourceLoadState.inactive;
   String? loadError;
@@ -82,6 +97,11 @@ class AudioSourceService extends ChangeNotifier {
 
   int _lxSourceRevision = 0;
   int get lxSourceRevision => _lxSourceRevision;
+  AutomaticRecommendationRouter? _automatic;
+  AutomaticRecommendationRouter? get automaticRouter => _automatic;
+  bool get isAutomaticActive => activeSource?.isAutomaticRecommendation == true;
+  AutomaticRoute? automaticRouteFor(MusicSource platform) =>
+      isAutomaticActive ? _automatic?.routeFor(platform.name) : null;
 
   /// 外部触发状态刷新（代替直接调用 notifyListeners）
   void refresh() => notifyListeners();
@@ -171,6 +191,7 @@ class AudioSourceService extends ChangeNotifier {
   }
 
   void _invalidateLxRuntime() {
+    _stopAutomatic();
     _lxSourceRevision++;
     _lxRuntimeGeneration++;
     _lxRuntimeSourceId = null;
@@ -271,6 +292,169 @@ class AudioSourceService extends ChangeNotifier {
     }
     _isInitialized = true;
     StructuredLogService.log('✅ [AudioSourceService] 初始化完成');
+  }
+
+  bool _automaticBackendListening = false;
+  AutomaticRecommendationRouter _newAutomaticRouter({
+    required bool Function() isCurrent,
+    required Future<void> Function(Future<void> Function()) commit,
+  }) {
+    if (!_automaticBackendListening) {
+      UrlService().addListener(_onAutomaticBackendChanged);
+      _automaticBackendListening = true;
+    }
+    return _automaticFactory(
+      isCurrent: isCurrent,
+      selectionEpoch: () => _selectionEpoch,
+      commit: commit,
+    );
+  }
+
+  void _onAutomaticBackendChanged() {
+    if (_automatic != null &&
+        _automatic!.origin != SourceRecommendationService.currentOrigin) {
+      _automatic!.stop();
+      notifyListeners();
+    }
+  }
+
+  void _stopAutomatic() {
+    final router = _automatic;
+    _automatic = null;
+    router?.removeListener(notifyListeners);
+    router?.dispose();
+  }
+
+  /// Preparation runs outside the source mutation queue; only publication is serialized.
+  Future<void> useAutomaticSource() async {
+    final origin = SourceRecommendationService.currentOrigin;
+    if (isAutomaticActive &&
+        _automatic?.origin == origin &&
+        _automatic!.isReady) {
+      await _automatic!.check(force: true);
+      return;
+    }
+    final epoch = ++_selectionEpoch, backend = UrlService().backendRevision;
+    var adopted = false;
+    late final AutomaticRecommendationRouter router;
+    router = _newAutomaticRouter(
+      isCurrent: () =>
+          backend == UrlService().backendRevision &&
+          (adopted
+              ? identical(_automatic, router) && isAutomaticActive
+              : epoch == _selectionEpoch),
+      commit: (work) =>
+          adopted ? _enqueueMutation(work, automatic: true) : work(),
+    );
+    try {
+      await router.start(origin);
+      if (!router.isReady) {
+        throw StateError(router.updateError ?? '当前服务器尚无可用的自动推荐目标');
+      }
+      await _enqueueMutation(() async {
+        if (epoch != _selectionEpoch ||
+            backend != UrlService().backendRevision) {
+          throw StateError('音源选择已改变，本次自动推荐未启用');
+        }
+        final existing = _sources
+            .where(
+              (s) => s.isAutomaticRecommendation && s.backendOrigin == origin,
+            )
+            .firstOrNull;
+        final config = AudioSourceConfig(
+          id:
+              existing?.id ??
+              'automatic_${sha256.convert(utf8.encode(origin)).toString().substring(0, 24)}',
+          type: AudioSourceType.lxmusic,
+          name: '自动推荐（标准音质）',
+          url: '',
+          catalogKind: 'automatic_recommendation',
+          backendOrigin: origin,
+          supportedPlatforms: const ['qq', 'netease'],
+        );
+        final next = [..._sources.where((s) => s.id != config.id), config];
+        final prefs = await SharedPreferences.getInstance();
+        final oldList = prefs.getString(_keySources),
+            oldId = prefs.getString(_keyActiveSourceId);
+        if (!await prefs.setString(
+          _recommendationJournal,
+          jsonEncode({'sources': oldList, 'activeId': oldId}),
+        )) {
+          throw StateError('无法保存选源回退记录');
+        }
+        try {
+          if (!await prefs.setString(
+                _keySources,
+                jsonEncode(next.map((s) => s.toJson()).toList()),
+              ) ||
+              !await prefs.setString(_keyActiveSourceId, config.id)) {
+            throw StateError('无法保存自动推荐选择');
+          }
+          if (epoch != _selectionEpoch ||
+              backend != UrlService().backendRevision) {
+            throw StateError('音源选择已改变');
+          }
+        } catch (_) {
+          final listOk = oldList == null
+              ? await prefs.remove(_keySources)
+              : await prefs.setString(_keySources, oldList);
+          final idOk = oldId == null
+              ? await prefs.remove(_keyActiveSourceId)
+              : await prefs.setString(_keyActiveSourceId, oldId);
+          _recommendationRecoveryBlocked = !listOk || !idOk;
+          if (!_recommendationRecoveryBlocked) {
+            _recommendationJournalCleanupPending = true;
+            await _finishRecommendationJournalCleanup();
+          }
+          rethrow;
+        }
+        _stopAutomatic();
+        _automatic = router;
+        adopted = true;
+        _sources = next;
+        _activeSourceId = config.id;
+        _lxSourceRevision++;
+        _lxRuntimeGeneration++;
+        _lxRuntimeSourceId = null;
+        loadError = null;
+        router.addListener(notifyListeners);
+        router.follow();
+        await _lxRuntimeOperation.catchError((Object _) {});
+        await _runtime.dispose().catchError((Object _) {});
+        _recommendationJournalCleanupPending = true;
+        try {
+          await _finishRecommendationJournalCleanup();
+        } catch (_) {
+          /* Retry before next mutation. */
+        }
+        notifyListeners();
+      }, automatic: true);
+    } finally {
+      if (!adopted) router.dispose();
+    }
+  }
+
+  Future<void> _restoreAutomatic(AudioSourceConfig config) async {
+    if (_automatic != null) {
+      await _automatic!.ready();
+      return;
+    }
+    if (config.backendOrigin != SourceRecommendationService.currentOrigin) {
+      throw StateError('自动推荐来自原服务器，请选择当前服务器的自动推荐');
+    }
+    late final AutomaticRecommendationRouter router;
+    router = _newAutomaticRouter(
+      isCurrent: () =>
+          identical(_automatic, router) &&
+          isAutomaticActive &&
+          config.backendOrigin == SourceRecommendationService.currentOrigin,
+      commit: (work) => _enqueueMutation(work, automatic: true),
+    );
+    _automatic = router;
+    router.addListener(notifyListeners);
+    await router.start(config.backendOrigin, remote: false);
+    router.follow();
+    unawaited(router.check(force: true));
   }
 
   Future<void> useRecommendedSource() {
@@ -408,6 +592,11 @@ class AudioSourceService extends ChangeNotifier {
   }
 
   Future<void> _initializeLxRuntime() async {
+    final automaticConfig = activeSource;
+    if (automaticConfig?.isAutomaticRecommendation == true) {
+      await _restoreAutomatic(automaticConfig!);
+      return;
+    }
     // A candidate has its own context; existing playback can keep resolving.
     if (_runtime is LxStagedRuntime &&
         (_runtime as LxStagedRuntime).supportsStaging &&
@@ -828,6 +1017,7 @@ class AudioSourceService extends ChangeNotifier {
       }
       checkBackend();
       candidate?.commit();
+      _stopAutomatic();
       _sources = nextSources;
       _activeSourceId = config.id;
       _lxRuntimeSourceId = config.id;
@@ -872,6 +1062,9 @@ class AudioSourceService extends ChangeNotifier {
       try {
         if (staged) {
           await candidate?.dispose();
+        } else if (previous?.isAutomaticRecommendation == true) {
+          // The independent automatic contexts were never replaced.
+          await _runtime.dispose();
         } else if (previous?.type == AudioSourceType.lxmusic) {
           final content = previous!.scriptContent.isNotEmpty
               ? previous.scriptContent
@@ -909,6 +1102,9 @@ class AudioSourceService extends ChangeNotifier {
 
   Future<void> addSource(AudioSourceConfig config) =>
       _enqueueMutation(() async {
+        if (config.isAutomaticRecommendation) {
+          throw StateError('请通过自动推荐入口启用此配置');
+        }
         if (_sources.any((s) => s.id == config.id)) throw StateError('音源已存在');
         if (_sources.isEmpty && config.type == AudioSourceType.lxmusic) {
           await _activateConfig(config);
@@ -923,6 +1119,10 @@ class AudioSourceService extends ChangeNotifier {
       _enqueueMutation(() async {
         final index = _sources.indexWhere((s) => s.id == config.id);
         if (index < 0) throw StateError('音源不存在');
+        if (config.isAutomaticRecommendation ||
+            _sources[index].isAutomaticRecommendation) {
+          throw StateError('自动推荐由服务器维护，请使用检查更新');
+        }
         if (config.id == _activeSourceId &&
             config.type == AudioSourceType.lxmusic) {
           await _activateConfig(config);
@@ -947,20 +1147,32 @@ class AudioSourceService extends ChangeNotifier {
     notifyListeners();
   });
 
-  Future<void> setActiveSource(String id) => _enqueueMutation(() async {
-    if (id == navidromeSourceId) {
-      _activeSourceId = id;
-      _invalidateLxRuntime();
-      await _runtime.dispose();
-      loadError = null;
-      await _saveActiveSourceId();
-      notifyListeners();
-      return;
+  Future<void> setActiveSource(String id) {
+    final automatic = _sources
+        .where((s) => s.id == id && s.isAutomaticRecommendation)
+        .firstOrNull;
+    if (automatic != null) {
+      if (automatic.backendOrigin !=
+          SourceRecommendationService.currentOrigin) {
+        return Future.error(StateError('该自动推荐来自原服务器，请选择当前服务器的自动推荐'));
+      }
+      return useAutomaticSource();
     }
-    final config = _sources.where((s) => s.id == id).firstOrNull;
-    if (config == null) throw StateError('音源不存在');
-    await _activateConfig(config);
-  });
+    return _enqueueMutation(() async {
+      if (id == navidromeSourceId) {
+        _activeSourceId = id;
+        _invalidateLxRuntime();
+        await _runtime.dispose();
+        loadError = null;
+        await _saveActiveSourceId();
+        notifyListeners();
+        return;
+      }
+      final config = _sources.where((s) => s.id == id).firstOrNull;
+      if (config == null) throw StateError('音源不存在');
+      await _activateConfig(config);
+    });
+  }
 
   /// Reload the saved script without downloading or restarting playback.
   Future<void> reloadActiveSource() => setActiveSource(_activeSourceId);
@@ -980,6 +1192,7 @@ class AudioSourceService extends ChangeNotifier {
   /// This is deliberately not used by SearchService. Search capabilities are
   /// owned by SearchProviderCatalog.
   List<String> get currentSupportedPlaybackPlatforms {
+    if (isAutomaticActive) return _automatic?.platforms ?? const [];
     if (isNavidromeActive) {
       return const [];
     }
@@ -1109,6 +1322,7 @@ class AudioSourceService extends ChangeNotifier {
   // ==================== Source Logic (Proxies to Active Source) ====================
 
   bool isLxSourceSupported(MusicSource source) {
+    if (isAutomaticActive) return automaticRouteFor(source) != null;
     if (sourceType != AudioSourceType.lxmusic) return false;
     final sourceCode = _lxSourceCodeMap[source];
     if (sourceCode == null) return false;
@@ -1137,5 +1351,16 @@ class AudioSourceService extends ChangeNotifier {
       default:
         return '320k';
     }
+  }
+
+  @override
+  void dispose() {
+    _selectionEpoch++;
+    _stopAutomatic();
+    if (_automaticBackendListening) {
+      UrlService().removeListener(_onAutomaticBackendChanged);
+      _automaticBackendListening = false;
+    }
+    super.dispose();
   }
 }

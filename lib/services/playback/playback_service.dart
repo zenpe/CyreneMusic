@@ -179,6 +179,8 @@ class _ResolvedTrackSwitchSong {
 }
 
 class _TrackSwitchPlaybackPlan {
+  // Captured before asynchronous prefetch work, never at cache insertion time.
+  final String? resolverFingerprint;
   final _ResolvedTrackSwitchSong resolvedSong;
   final bool usesCachedFile;
   final PlayableSource source;
@@ -190,6 +192,7 @@ class _TrackSwitchPlaybackPlan {
   final String? cacheMetadataRefreshReason;
 
   const _TrackSwitchPlaybackPlan({
+    this.resolverFingerprint,
     required this.resolvedSong,
     required this.usesCachedFile,
     required this.source,
@@ -217,10 +220,12 @@ class PlaybackService extends ChangeNotifier {
   PlaybackService.forTesting({
     required EngineHost engine,
     TrackResolver? resolver,
+    String? Function(MusicSource)? resolverFingerprintFor,
     StartupNetworkGate Function()? startupNetworkGateFactory,
   }) : this._internal(
          engine: engine,
          resolver: resolver,
+         resolverFingerprintFor: resolverFingerprintFor,
          startupNetworkGateFactory: startupNetworkGateFactory,
        );
 
@@ -382,6 +387,41 @@ class PlaybackService extends ChangeNotifier {
       _invalidatePreparedWindow(reschedule: true);
       return true;
     }());
+  }
+
+  @visibleForTesting
+  Future<bool> prefetchForTesting(Track track, AudioQuality quality) async {
+    _state = PBState.playing;
+    _desiredPlaying = true;
+    return await _preloadTrackSource(track, quality, _preloadOp) != null;
+  }
+
+  @visibleForTesting
+  PlayableSource? prefetchedSourceForTesting(
+    Track track,
+    AudioQuality quality, {
+    bool consume = false,
+  }) =>
+      (consume
+              ? _takePrefetchedPlayablePlan(track, quality)
+              : _peekPrefetchedPlayablePlan(track, quality))
+          ?.source;
+
+  @visibleForTesting
+  Future<void> prepareWindowForTesting(
+    Track current,
+    Track next,
+    AudioQuality quality,
+  ) async {
+    _activeTrack = current;
+    _activePlayableSource = const LocalFilePlayableSource('current-test-file');
+    await _prepareNativePlaybackWindow(
+      next: next,
+      currentEntryId: 1,
+      nextEntryId: 2,
+      quality: quality,
+      queueRevision: _queueController.structureRevision,
+    );
   }
 
   static const Duration _prefetchedSongDetailTtl = Duration(minutes: 5);
@@ -737,12 +777,16 @@ class PlaybackService extends ChangeNotifier {
   // 初始化
   // ══════════════════════════════════════════════════════
   final StartupNetworkGate Function() _startupNetworkGateFactory;
+  final String? Function(MusicSource) _fingerprintForPlatform;
 
   PlaybackService._internal({
     EngineHost? engine,
     TrackResolver? resolver,
+    String? Function(MusicSource)? resolverFingerprintFor,
     StartupNetworkGate Function()? startupNetworkGateFactory,
   }) : _trackResolver = resolver ?? TrackResolver(),
+       _fingerprintForPlatform =
+           resolverFingerprintFor ?? PlaybackResolverRegistry().fingerprintFor,
        _startupNetworkGateFactory =
            startupNetworkGateFactory ?? StartupNetworkGate.system {
     _sessionManager = PlaybackSessionManager(
@@ -1955,7 +1999,10 @@ class PlaybackService extends ChangeNotifier {
     final fingerprint = _activeSourceConfigFingerprint();
     final sourceChanged = fingerprint != _observedSourceFingerprint;
     _observedSourceFingerprint = fingerprint;
-    if (!sourceChanged) return;
+    if (!sourceChanged) {
+      _invalidateStalePreparedPlans();
+      return;
+    }
     if (removedDuringRecovery) {
       _desiredPlaying = false;
       _state = PBState.paused;
@@ -2101,7 +2148,8 @@ class PlaybackService extends ChangeNotifier {
     }
     final slot = prepared.slot;
     final track = _queue[queueIndex];
-    if (slot.generation != generation ||
+    if (!_isPreparedPlanCurrent(prepared.plan) ||
+        slot.generation != generation ||
         slot.queueEntryId != entryId ||
         slot.queueRevision != _queueController.structureRevision ||
         slot.trackKey != _buildTrackIdentity(track) ||
@@ -4380,7 +4428,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   String? _resolverFingerprintFor(Track track) {
-    return PlaybackResolverRegistry().fingerprintFor(track.source);
+    return _fingerprintForPlatform(track.source);
   }
 
   String _lyricRefreshKey(Track track) {
@@ -4752,9 +4800,7 @@ class PlaybackService extends ChangeNotifier {
       songId: tx.track.id,
       source: tx.track.source,
       quality: tx.selectedQuality,
-      resolverFingerprint: PlaybackResolverRegistry().fingerprintFor(
-        tx.track.source,
-      ),
+      resolverFingerprint: _fingerprintForPlatform(tx.track.source),
     );
     notifyListeners();
     tx.timing.settleMs = settleMs;
@@ -5057,7 +5103,8 @@ class PlaybackService extends ChangeNotifier {
     final prepared = _nativePreparedPlans[nativeKey];
     if (prepared == null) return false;
     final slot = prepared.slot;
-    if (slot.queueRevision != _queueController.structureRevision ||
+    if (!_isPreparedPlanCurrent(prepared.plan) ||
+        slot.queueRevision != _queueController.structureRevision ||
         slot.queueEntryId != entryId ||
         slot.trackKey != _buildTrackIdentity(track) ||
         slot.preparedFromGeneration != _activePlaybackToken) {
@@ -5719,8 +5766,30 @@ class PlaybackService extends ChangeNotifier {
   }
 
   void _pruneExpiredPrefetchedPlayablePlans() {
-    _prefetchedPlayablePlans.removeWhere((_, entry) => entry.isExpired);
+    _prefetchedPlayablePlans.removeWhere(
+      (_, entry) => entry.isExpired || !_isPreparedPlanCurrent(entry.plan),
+    );
   }
+
+  bool _isPreparedPlanCurrent(_TrackSwitchPlaybackPlan plan) =>
+      plan.usesCachedFile ||
+      plan.resolverFingerprint ==
+          _fingerprintForPlatform(plan.resolvedSong.songDetail.source);
+
+  void _invalidateStalePreparedPlans() {
+    _pruneExpiredPrefetchedPlayablePlans();
+    if (_nativePreparedPlans.values.any(
+      (e) => !_isPreparedPlanCurrent(e.plan),
+    )) {
+      // The native window contains current + next. Invalidation removes only
+      // prepared slots, preserving the current engine source and its position.
+      _invalidatePreparedWindow();
+    }
+    _schedulePreloadNextTrack();
+  }
+
+  String _buildPreloadAttemptKey(Track track, AudioQuality quality) =>
+      '${_buildPrefetchCacheKey(track, quality)}:${_resolverFingerprintFor(track)}';
 
   _TrackSwitchPlaybackPlan? _takePrefetchedPlayablePlan(
     Track track,
@@ -5729,7 +5798,9 @@ class PlaybackService extends ChangeNotifier {
     _pruneExpiredPrefetchedPlayablePlans();
     final key = _buildPrefetchCacheKey(track, quality);
     final entry = _prefetchedPlayablePlans.remove(key);
-    if (entry == null || entry.isExpired) {
+    if (entry == null ||
+        entry.isExpired ||
+        !_isPreparedPlanCurrent(entry.plan)) {
       return null;
     }
     return entry.plan;
@@ -5753,6 +5824,7 @@ class PlaybackService extends ChangeNotifier {
     AudioQuality quality,
     _TrackSwitchPlaybackPlan plan,
   ) {
+    if (!_isPreparedPlanCurrent(plan)) return;
     _pruneExpiredPrefetchedPlayablePlans();
     final key = _buildPrefetchCacheKey(track, quality);
     _prefetchedPlayablePlans[key] = _PrefetchedPlayablePlanEntry(
@@ -5861,9 +5933,7 @@ class PlaybackService extends ChangeNotifier {
             durationMs: durationMs,
             timeout: timeout,
             fetchLyrics: fetchLyrics,
-            resolverFingerprint: PlaybackResolverRegistry().fingerprintFor(
-              source,
-            ),
+            resolverFingerprint: _fingerprintForPlatform(source),
             retryExpiredSharedRequest: false,
           ),
         );
@@ -5979,7 +6049,7 @@ class PlaybackService extends ChangeNotifier {
     final nextIndex = _queueController.peekNextIndex(effectivePlaybackMode);
     if (nextIndex == null || _preloadingNext) return;
     final nextTrack = _queue[nextIndex];
-    final nextKey = _buildPrefetchCacheKey(
+    final nextKey = _buildPreloadAttemptKey(
       nextTrack,
       AudioQualityService().effectiveQualityFor(nextTrack.source),
     );
@@ -6067,7 +6137,7 @@ class PlaybackService extends ChangeNotifier {
     try {
       // 1. 优先预加载下一首 (Next)
       if (nextTrack != null) {
-        final nextKey = _buildPrefetchCacheKey(nextTrack, selectedQuality);
+        final nextKey = _buildPreloadAttemptKey(nextTrack, selectedQuality);
         if (nextTrack.source != MusicSource.local) {
           unawaited(
             LyricService().prefetchLyrics(
@@ -6147,7 +6217,10 @@ class PlaybackService extends ChangeNotifier {
     } catch (e) {
       StructuredLogService.log('[PlaybackService] 预加载邻近曲目失败: $e');
     } finally {
-      if (op == _preloadOp) _preloadingNext = false;
+      if (op == _preloadOp) {
+        _preloadingNext = false;
+        _schedulePreloadNextTrack();
+      }
     }
   }
 
@@ -6208,9 +6281,16 @@ class PlaybackService extends ChangeNotifier {
     }
 
     await _engine.bindCurrentPreparedSlot(currentSlot);
+    if (nextPlan != null && !_isPreparedPlanCurrent(nextPlan)) {
+      _invalidateStalePreparedPlans();
+      return;
+    }
     await _engine.preparePlaybackWindow(
       PreparedPlaybackWindow(current: currentSlot, next: nextSlot),
     );
+    if (nextPlan != null && !_isPreparedPlanCurrent(nextPlan)) {
+      _invalidatePreparedWindow(reschedule: true);
+    }
   }
 
   Future<bool> _replayCurrentSourceForRepeatOne() async {
@@ -6306,6 +6386,7 @@ class PlaybackService extends ChangeNotifier {
     AudioQuality selectedQuality, {
     void Function(LxRuntimeFailure? failure)? onFailure,
   }) async {
+    final resolverFingerprint = _resolverFingerprintFor(track);
     final qualityStr = selectedQuality.value;
     final cacheInfo =
         _cacheBypassKeys.contains(_cachePlaybackKey(track, qualityStr))
@@ -6381,6 +6462,7 @@ class PlaybackService extends ChangeNotifier {
 
     if (track.source == MusicSource.apple) {
       return _TrackSwitchPlaybackPlan(
+        resolverFingerprint: resolverFingerprint,
         resolvedSong: resolvedSong,
         usesCachedFile: false,
         source: DirectHttpPlayableSource(detail.url),
@@ -6401,6 +6483,7 @@ class PlaybackService extends ChangeNotifier {
     return _TrackSwitchPlaybackPlan(
       resolvedSong: resolvedSong,
       usesCachedFile: false,
+      resolverFingerprint: resolverFingerprint,
       source: await _buildNetworkPlayableSource(track, detail.url, qualityStr),
       retainedTempFilePath: null,
       coverRefreshUrl: detail.pic,
@@ -6426,7 +6509,9 @@ class PlaybackService extends ChangeNotifier {
       selectedQuality,
       onFailure: onFailure,
     );
-    if (op != _preloadOp || plan == null) return null;
+    if (op != _preloadOp || plan == null || !_isPreparedPlanCurrent(plan)) {
+      return null;
+    }
     _savePrefetchedPlayablePlan(track, selectedQuality, plan);
     return plan;
   }

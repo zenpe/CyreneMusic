@@ -81,6 +81,8 @@ class _AudioSourceSettingsContentState
   final AudioSourceController _audioSourceController = AudioSourceController();
   bool _showNavidromeConfig = false;
   bool _isSourceActionBusy = false;
+  bool _isRequestingAutomaticCheck = false;
+  String? _automaticCheckNotice;
   final SourceRecommendationService _recommendations =
       SourceRecommendationService();
   SourceRecommendation? _recommendation;
@@ -146,6 +148,7 @@ class _AudioSourceSettingsContentState
     setState(() {
       _candidates = _catalog.candidates;
       _candidateNotice = null;
+      _automaticCheckNotice = null;
       _recommendation = null;
       _recommendationError = null;
       _candidateDirectory = null;
@@ -277,6 +280,8 @@ class _AudioSourceSettingsContentState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _buildAutomaticRecommendationCard(),
+            const SizedBox(height: 12),
             _buildRecommendationCard(),
             const SizedBox(height: 12),
             Row(
@@ -445,6 +450,141 @@ class _AudioSourceSettingsContentState
         ],
       ),
     );
+  }
+
+  Widget _buildAutomaticRecommendationCard() {
+    final service = AudioSourceService();
+    final selected = service.isAutomaticActive;
+    final router = service.automaticRouter;
+    final sameBackend =
+        selected &&
+        service.activeSource?.backendOrigin ==
+            SourceRecommendationService.currentOrigin;
+    final children = <Widget>[
+      const Text(
+        '自动推荐（标准音质）',
+        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+      ),
+      const SizedBox(height: 8),
+      const Text('按平台使用后台推荐的音源。选择一次后自动检查更新，更新不打断当前播放。'),
+      if (selected && !sameBackend) const Text('该选择来自原服务器，请使用当前服务器的自动推荐。'),
+    ];
+    if (sameBackend) {
+      for (final platform in const ['qq', 'netease']) {
+        final route = router?.routeFor(platform);
+        final target = router?.desired?.targets[platform];
+        final name = platform == 'qq' ? 'QQ 音乐' : '网易云';
+        children.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              route == null
+                  ? '$name：暂未就绪'
+                  : '$name：${route.target.name} · ${route.target.hash.substring(0, 12)}',
+            ),
+          ),
+        );
+        if (route != null) {
+          children.add(
+            Text('本机版本：${route.planId}', style: const TextStyle(fontSize: 12)),
+          );
+        }
+        if (target != null && target.hash != route?.target.hash) {
+          children.add(
+            Text(
+              '后台最新：${target.name}，正在等待应用',
+              style: const TextStyle(fontSize: 12),
+            ),
+          );
+        }
+        final status = router?.health[platform];
+        if (route != null &&
+            status is Map &&
+            status['targetSha256'] == route.target.hash) {
+          children.add(
+            Text(
+              '服务器检查：${status['p'] ?? 0}/${status['n'] ?? 0} 项符合资源检查条件'
+              '${status['stale'] == true ? ' · 已过期' : ''}，不代表全部歌曲可播放',
+              style: const TextStyle(fontSize: 12),
+            ),
+          );
+        }
+        if (router?.platformErrors[platform] case final String error) {
+          children.add(Text('更新待重试：${audioSourceErrorMessage(error)}'));
+        }
+      }
+      if (router?.updateError case final String error) {
+        children.add(Text('更新异常，保留已应用版本：${audioSourceErrorMessage(error)}'));
+      }
+    }
+    children.add(const SizedBox(height: 8));
+    children.add(
+      _candidateButton(
+        sameBackend ? '检查自动推荐更新' : '使用自动推荐',
+        _isSourceActionBusy
+            ? null
+            : () async {
+                await _runWithSourceActionLock(
+                  action: () async {
+                    try {
+                      await service.useAutomaticSource();
+                    } catch (error) {
+                      if (mounted) {
+                        _showActionError(audioSourceErrorMessage(error));
+                      }
+                    }
+                  },
+                );
+              },
+      ),
+    );
+    children.add(
+      _candidateButton(
+        _isRequestingAutomaticCheck ? '正在请求巡检…' : '请求后台巡检',
+        _isRequestingAutomaticCheck ? null : _requestAutomaticCheck,
+      ),
+    );
+    if (_automaticCheckNotice case final String notice) {
+      children.add(Text(notice, style: const TextStyle(fontSize: 12)));
+    }
+    children.add(
+      const Text(
+        '请求巡检会安排后台检测，不保证立即更换推荐；检查更新仅获取已发布结果。',
+        style: TextStyle(fontSize: 12),
+      ),
+    );
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0x55708080)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+
+  Future<void> _requestAutomaticCheck() async {
+    if (_isRequestingAutomaticCheck) return;
+    final revision = UrlService().backendRevision;
+    setState(() {
+      _isRequestingAutomaticCheck = true;
+      _automaticCheckNotice = null;
+    });
+    try {
+      final notice = await _recommendations.requestAutomaticCheck();
+      if (mounted && revision == UrlService().backendRevision) {
+        setState(() => _automaticCheckNotice = notice);
+      }
+    } catch (_) {
+      if (mounted && revision == UrlService().backendRevision) {
+        setState(() => _automaticCheckNotice = '巡检请求未确认，请检查网络或稍后重试');
+      }
+    } finally {
+      if (mounted) setState(() => _isRequestingAutomaticCheck = false);
+    }
   }
 
   Future<void> _runWithSourceActionLock({
@@ -996,12 +1136,13 @@ class _AudioSourceSettingsContentState
                   child: Text(isActive ? '重新加载' : '启用'),
                 ),
                 const SizedBox(width: 8),
-                fluent.IconButton(
-                  icon: const Icon(fluent.FluentIcons.edit),
-                  onPressed: _isSourceActionBusy
-                      ? null
-                      : () => _showEditSourceDialog(config),
-                ),
+                if (!config.isAutomaticRecommendation)
+                  fluent.IconButton(
+                    icon: const Icon(fluent.FluentIcons.edit),
+                    onPressed: _isSourceActionBusy
+                        ? null
+                        : () => _showEditSourceDialog(config),
+                  ),
                 const SizedBox(width: 4),
                 fluent.IconButton(
                   icon: const Icon(fluent.FluentIcons.delete),
@@ -1704,38 +1845,38 @@ class _AudioSourceSettingsContentState
                   child: Row(
                     children: [
                       // 编辑按钮
-                      Expanded(
-                        child: CupertinoButton(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          minimumSize: Size.zero,
-                          onPressed: _isSourceActionBusy
-                              ? null
-                              : () => _showEditSourceDialog(config),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                CupertinoIcons.pencil,
-                                size: 16,
-                                color: CupertinoColors.activeBlue.resolveFrom(
-                                  context,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '编辑',
-                                style: TextStyle(
-                                  fontSize: 14,
+                      if (!config.isAutomaticRecommendation)
+                        Expanded(
+                          child: CupertinoButton(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            minimumSize: Size.zero,
+                            onPressed: _isSourceActionBusy
+                                ? null
+                                : () => _showEditSourceDialog(config),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  CupertinoIcons.pencil,
+                                  size: 16,
                                   color: CupertinoColors.activeBlue.resolveFrom(
                                     context,
                                   ),
-                                  decoration: TextDecoration.none,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 6),
+                                Text(
+                                  '编辑',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: CupertinoColors.activeBlue
+                                        .resolveFrom(context),
+                                    decoration: TextDecoration.none,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
 
                       // 分割线
                       Container(width: 0.5, height: 20, color: separatorColor),
@@ -2145,13 +2286,14 @@ class _AudioSourceSettingsContentState
                   ? null
                   : () => _setActiveSource(config.id),
             ),
-          IconButton(
-            tooltip: '更新脚本',
-            icon: const Icon(Icons.edit_outlined, size: 20),
-            onPressed: _isSourceActionBusy
-                ? null
-                : () => _showEditSourceDialog(config),
-          ),
+          if (!config.isAutomaticRecommendation)
+            IconButton(
+              tooltip: '更新脚本',
+              icon: const Icon(Icons.edit_outlined, size: 20),
+              onPressed: _isSourceActionBusy
+                  ? null
+                  : () => _showEditSourceDialog(config),
+            ),
           IconButton(
             icon: Icon(
               Icons.delete_outline,
