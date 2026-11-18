@@ -85,6 +85,16 @@ class _Context {
   int leases = 0;
   bool retiring = false;
   bool disposing = false;
+
+  bool supports(String platform) {
+    final code = platform == 'qq' ? 'tx' : 'wy';
+    final info = runtime.currentScript;
+    return !disposing &&
+        runtime.isScriptReady &&
+        info != null &&
+        info.supportedSources.contains(code) &&
+        info.getQualitiesForPlatform(code).contains('128k');
+  }
 }
 
 /// Pins one platform's immutable resolver for the lifetime of the actual work.
@@ -169,11 +179,22 @@ class AutomaticRecommendationRouter extends ChangeNotifier
   Directory? _root;
   String get _storageKey =>
       'automatic_recommendation_v1_${sha256.convert(utf8.encode(origin))}';
-  bool get isReady => _active && _routes.isNotEmpty;
-  List<String> get platforms => _active ? _routes.keys.toList() : const [];
-  AutomaticRoute? routeFor(String platform) =>
-      _active ? _routes[platform] : null;
-  Map<String, AutomaticRoute> get routes => Map.unmodifiable(_routes);
+  bool get isReady => _routes.keys.any((p) => routeFor(p) != null);
+  List<String> get platforms =>
+      _routes.keys.where((p) => routeFor(p) != null).toList();
+  AutomaticRoute? routeFor(String platform) {
+    final route = _routes[platform];
+    return _active && route != null && route._context.supports(platform)
+        ? route
+        : null;
+  }
+  Map<String, AutomaticRoute> get routes =>
+      Map.unmodifiable({for (final p in platforms) p: _routes[p]!});
+
+  bool _waitingToRetry(String platform, DateTime now) {
+    final deadline = _retryAt[platform];
+    return deadline != null && now.isBefore(deadline);
+  }
 
   static Future<AutomaticHttpResponse> _http(
     String url,
@@ -346,8 +367,8 @@ class AutomaticRecommendationRouter extends ChangeNotifier
     final pending =
         desired?.targets.entries.any(
           (e) =>
-              _routes[e.key]?.target.hash != e.value.hash &&
-              !now.isBefore(_retryAt[e.key] ?? now),
+              routeFor(e.key)?.target.hash != e.value.hash &&
+              !_waitingToRetry(e.key, now),
         ) ??
         false;
     if (!force &&
@@ -408,9 +429,8 @@ class AutomaticRecommendationRouter extends ChangeNotifier
       updateError = null;
       for (final entry in desired!.targets.entries) {
         final platform = entry.key, target = entry.value;
-        if (_routes[platform]?.target.hash == target.hash) continue;
-        if (!force &&
-            DateTime.now().isBefore(_retryAt[platform] ?? DateTime.now())) {
+        if (routeFor(platform)?.target.hash == target.hash) continue;
+        if (!force && _waitingToRetry(platform, DateTime.now())) {
           continue;
         }
         try {
@@ -574,13 +594,17 @@ class AutomaticRecommendationRouter extends ChangeNotifier
     if (cached?.disposing == true) {
       throw StateError('正在等待旧解析上下文释放后更新');
     }
-    if (cached != null && !cached.disposing) {
+    if (cached != null && cached.runtime.isScriptReady) {
       cached.retiring = false;
       return cached;
     }
     _collect();
-    if (_contexts.length >= 4) throw StateError('正在等待旧解析完成后更新');
-    final context = _Context(target.hash, _factory());
+    if ((cached == null && _contexts.length >= 4) ||
+        (cached != null && cached.leases != 0)) {
+      throw StateError('正在等待旧解析完成后更新');
+    }
+    final context = cached ?? _Context(target.hash, _factory());
+    context.retiring = false;
     _contexts[target.hash] = context;
     context.leases++; // Preparation itself also owns a lease.
     try {
@@ -599,11 +623,7 @@ class AutomaticRecommendationRouter extends ChangeNotifier
   }
 
   void _validateCapabilities(_Context context, String platform) {
-    final code = platform == 'qq' ? 'tx' : 'wy';
-    final info = context.runtime.currentScript;
-    if (info == null ||
-        !info.supportedSources.contains(code) ||
-        !info.getQualitiesForPlatform(code).contains('128k')) {
+    if (!context.supports(platform)) {
       throw UnsupportedError('推荐脚本未声明支持该平台的标准音质');
     }
   }
