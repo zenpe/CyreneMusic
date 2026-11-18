@@ -5,13 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import '../../services/player_service.dart';
-import '../../services/playlist_service.dart';
-import '../../widgets/playlist_membership_state.dart';
+
+import '../../widgets/player_favorite_button.dart';
 import '../../services/netease_artist_service.dart';
 import '../../utils/theme_manager.dart';
 import '../../utils/image_utils.dart';
 import '../../models/lyric_line.dart';
-import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/search_widget.dart';
 import '../../widgets/player_error_banner.dart';
@@ -23,7 +22,7 @@ import 'player_fluid_cloud_lyrics_panel.dart';
 import 'player_fluid_cloud_queue_panel.dart';
 import 'player_fluid_cloud_song_wiki_panel.dart';
 import '../mobile_player_components/mobile_player_settings_sheet.dart';
-import 'player_dialogs.dart';
+
 
 /// 流体云全屏布局
 /// 模仿 Apple Music 的左右分栏设计
@@ -567,7 +566,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                               ),
                               if (track != null) ...[
                                 const SizedBox(width: 8),
-                                _FavoriteButton(track: track),
+                                PlayerFavoriteButton(track: track),
                               ],
                             ],
                           ),
@@ -789,7 +788,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
                     ),
                     if (track != null) ...[
                       const SizedBox(width: 8),
-                      _FavoriteButton(track: track),
+                      PlayerFavoriteButton(track: track),
                     ],
                   ],
                 ),
@@ -1380,152 +1379,7 @@ class _PlayerFluidCloudLayoutState extends State<PlayerFluidCloudLayout>
 }
 
 /// 收藏按钮组件
-/// 检测歌曲是否在用户歌单中，显示实心或空心爱心
-class _FavoriteButton extends StatefulWidget {
-  final Track track;
 
-  const _FavoriteButton({required this.track});
-
-  @override
-  State<_FavoriteButton> createState() => _FavoriteButtonState();
-}
-
-class _FavoriteButtonState extends State<_FavoriteButton>
-    with PlaylistMembershipState<_FavoriteButton> {
-  @override
-  Track get membershipTrack => widget.track;
-  bool get _isInPlaylist => membershipResult.inPlaylist;
-  bool get _isLoading => membershipLoading;
-  List<String> get _playlistNames => membershipResult.playlistNames;
-  List<int> get _playlistIds => membershipResult.playlistIds;
-
-  Future<void> _checkIfInPlaylist() => refreshMembership();
-
-  Future<void> _removeFromPlaylists() async {
-    if (_playlistIds.isEmpty) return;
-
-    final playlistService = PlaylistService();
-
-    final track = widget.track;
-    final contextIdentity = playlistService.membershipContext;
-    final membership = await playlistService.isTrackInAnyPlaylist(track);
-    if (!mounted || !membership.known || !membership.complete) return;
-    for (final match in membership.matches) {
-      if (playlistService.membershipContext != contextIdentity) return;
-      await playlistService.removeTrackMatch(match, track);
-    }
-
-    // 刷新状态
-    _checkIfInPlaylist();
-  }
-
-  void _showManageMenu(BuildContext context, Offset position) {
-    final RenderBox overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
-
-    showMenu<String>(
-      context: context,
-      position: RelativeRect.fromRect(
-        Rect.fromCenter(center: position, width: 0, height: 0),
-        Offset.zero & overlay.size,
-      ),
-      color: Colors.grey[850],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      items: [
-        PopupMenuItem<String>(
-          value: 'info',
-          enabled: false,
-          child: Text(
-            '已收藏到: ${_playlistNames.join(", ")}',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
-              fontSize: 12,
-            ),
-          ),
-        ),
-        const PopupMenuDivider(),
-        PopupMenuItem<String>(
-          value: 'remove',
-          child: Row(
-            children: [
-              Icon(
-                Icons.remove_circle_outline,
-                color: Colors.redAccent,
-                size: 18,
-              ),
-              const SizedBox(width: 8),
-              const Text('从所有歌单移除', style: TextStyle(color: Colors.white)),
-            ],
-          ),
-        ),
-        PopupMenuItem<String>(
-          value: 'add',
-          child: Row(
-            children: [
-              Icon(Icons.playlist_add, color: Colors.white70, size: 18),
-              const SizedBox(width: 8),
-              const Text('添加到其他歌单', style: TextStyle(color: Colors.white)),
-            ],
-          ),
-        ),
-      ],
-    ).then((value) {
-      if (value == 'remove') {
-        _removeFromPlaylists();
-      } else if (value == 'add') {
-        if (!context.mounted) return;
-        PlayerDialogs.showAddToPlaylist(context, widget.track);
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const SizedBox(
-        width: 32,
-        height: 32,
-        child: Padding(
-          padding: EdgeInsets.all(8.0),
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: Colors.white54,
-          ),
-        ),
-      );
-    }
-
-    if (!membershipResult.known) return buildUnknownMembershipButton();
-    final tooltip = _isInPlaylist
-        ? '已收藏到: ${_playlistNames.join(", ")}'
-        : '添加到歌单';
-
-    return GestureDetector(
-      onTapDown: (details) {
-        if (_isInPlaylist) {
-          _showManageMenu(context, details.globalPosition);
-        } else {
-          PlayerDialogs.showAddToPlaylist(context, widget.track);
-        }
-      },
-      child: Tooltip(
-        message: tooltip,
-        child: Container(
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          child: Icon(
-            _isInPlaylist ? Icons.favorite : Icons.favorite_border,
-            color: _isInPlaylist
-                ? Colors.redAccent
-                : Colors.white.withValues(alpha: 0.7),
-            size: 26,
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 /// Apple Music 风格的 Slider 组件
 /// 1. 默认隐藏滑块，鼠标悬停时显示

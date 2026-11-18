@@ -1,4 +1,5 @@
 import 'collection_play_controls.dart';
+import 'player_favorite_button.dart';
 
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -26,7 +27,12 @@ import 'playback_switch_ring.dart';
 /// 迷你播放器组件（底部播放栏）
 class MiniPlayer extends StatefulWidget {
   final bool transparent;
-  const MiniPlayer({super.key, this.transparent = false});
+  final bool desktopDock;
+  const MiniPlayer({
+    super.key,
+    this.transparent = false,
+    this.desktopDock = false,
+  });
 
   /// Use the resolved song's level, never the user's requested quality.
   /// Unknown/local metadata must not imply lossless playback.
@@ -713,6 +719,78 @@ class _MiniPlayerState extends State<MiniPlayer> {
         song: song,
         track: track,
         colorScheme: colorScheme,
+      );
+    }
+
+    if (widget.desktopDock && useAlignedLayout) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 640;
+          final controls = _buildAdaptiveControls(
+            player,
+            context,
+            colorScheme,
+            hideSkip: false,
+            compact: true,
+          );
+          final tools = Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (track is Track)
+                PlayerFavoriteButton(track: track, compact: true),
+              _buildPlaybackModeButton(context, colorScheme, compact: true),
+              _buildVolumeButton(context, colorScheme, player, compact: true),
+              _buildQueueButton(context, colorScheme, compact: true),
+            ],
+          );
+          final info = Row(
+            children: [
+              _buildCover(song, track, colorScheme, size: wide ? 46 : 36),
+              const SizedBox(width: 12),
+              Expanded(child: _buildSongInfo(context, singleLine: !wide)),
+            ],
+          );
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: wide
+                ? Row(
+                    children: [
+                      Expanded(child: info),
+                      SizedBox(
+                        width: (constraints.maxWidth * .42)
+                            .clamp(220.0, 520.0)
+                            .toDouble(),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            controls,
+                            _buildAlignedProgressRow(player, colorScheme),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: tools,
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: info),
+                          controls,
+                          tools,
+                        ],
+                      ),
+                      _buildAlignedProgressRow(player, colorScheme),
+                    ],
+                  ),
+          );
+        },
       );
     }
 

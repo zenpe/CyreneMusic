@@ -17,6 +17,7 @@ class FixedNavigationDock extends StatelessWidget {
   final List<FixedNavigationDockItem> items;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
+  final bool desktop;
   final double? width;
   final Color? backgroundColor;
   final Color? selectedBackgroundColor;
@@ -29,6 +30,7 @@ class FixedNavigationDock extends StatelessWidget {
     required this.items,
     required this.selectedIndex,
     required this.onSelected,
+    this.desktop = false,
     this.width,
     this.backgroundColor,
     this.selectedBackgroundColor,
@@ -46,12 +48,79 @@ class FixedNavigationDock extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final dockWidth = width ?? widthFor(context);
+    final expanded = desktop && MediaQuery.sizeOf(context).width >= 900;
     final background = backgroundColor ?? colorScheme.surfaceContainerLow;
     final selectedBackground =
         selectedBackgroundColor ?? colorScheme.secondaryContainer;
     final foreground = foregroundColor ?? colorScheme.onSurfaceVariant;
     final selectedForeground =
         selectedForegroundColor ?? colorScheme.onSecondaryContainer;
+
+    if (desktop) {
+      return ColoredBox(
+        color: background,
+        child: SizedBox(
+          width: expanded ? 120 : 68,
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(8, 12, 8, 14),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final selected = selectedIndex == index;
+              final color = selected ? selectedForeground : foreground;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Tooltip(
+                  message: expanded ? '' : item.label,
+                  child: Semantics(
+                    selected: selected,
+                    button: true,
+                    child: Material(
+                      color: selected ? selectedBackground : Colors.transparent,
+                      borderRadius: BorderRadius.circular(11),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () => onSelected(index),
+                        child: SizedBox(
+                          height: 44,
+                          child: Row(
+                            mainAxisAlignment: expanded
+                                ? MainAxisAlignment.start
+                                : MainAxisAlignment.center,
+                            children: [
+                              if (expanded) const SizedBox(width: 12),
+                              Icon(
+                                selected ? item.selectedIcon : item.icon,
+                                size: 21,
+                                color: color,
+                              ),
+                              if (expanded) ...[
+                                const SizedBox(width: 10),
+                                Flexible(
+                                  child: Text(
+                                    item.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: color,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
 
     return DecoratedBox(
       decoration: BoxDecoration(

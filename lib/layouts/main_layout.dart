@@ -1,5 +1,6 @@
 import '../widgets/feedback_boundary.dart';
 import '../services/structured_log_service.dart';
+
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -7,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+
 import '../widgets/custom_title_bar.dart';
 import '../widgets/cupertino/cupertino_bottom_nav.dart';
 import '../widgets/mini_player.dart';
@@ -201,6 +203,81 @@ class _MainLayoutState extends State<MainLayout>
     bool useFixedDock = false,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    if (Platform.isWindows && useFixedDock) {
+      return Scaffold(
+        backgroundColor: colorScheme.surface,
+        body: Column(
+          children: [
+            const CustomTitleBar(),
+            Expanded(
+              child: Row(
+                children: [
+                  _buildTabletNavigationDock(colorScheme),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 8, top: 4),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: AnimatedBuilder(
+                                animation: AuthOverlayService(),
+                                child: _pages[_selectedIndex],
+                                builder: (context, page) {
+                                  final overlay = AuthOverlayService();
+                                  return Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      page!,
+                                      if (overlay.isVisible)
+                                        Material(
+                                          color: colorScheme.surface,
+                                          child: Column(
+                                            children: [
+                                              Align(
+                                                alignment: Alignment.centerLeft,
+                                                child: IconButton(
+                                                  tooltip: '返回',
+                                                  icon: const Icon(
+                                                    Icons.arrow_back_rounded,
+                                                  ),
+                                                  onPressed: () =>
+                                                      overlay.hide(false),
+                                                ),
+                                              ),
+                                              Expanded(
+                                                child:
+                                                    PrimaryScrollController.none(
+                                                      child: AuthPage(
+                                                        initialTab:
+                                                            overlay.initialTab,
+                                                      ),
+                                                    ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                        const FeedbackAvoidance(
+                          child: MiniPlayer(desktopDock: true),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     final fixedDockWidth = useFixedDock
         ? FixedNavigationDock.widthFor(context)
         : null;
@@ -449,7 +526,9 @@ class _MainLayoutState extends State<MainLayout>
                       left: 0,
                       right: 0,
                       bottom: 0,
-                      child: FeedbackAvoidance(child: _buildCupertinoTabBar(context)),
+                      child: FeedbackAvoidance(
+                        child: _buildCupertinoTabBar(context),
+                      ),
                     ),
                   ] else if (isLandscape) ...[
                     Positioned(
@@ -1325,11 +1404,14 @@ class _MainLayoutState extends State<MainLayout>
       items: items,
       selectedIndex: _selectedIndex,
       onSelected: _selectDesktopDestination,
-      backgroundColor: colorScheme.surfaceContainerLow,
+      desktop: Platform.isWindows,
+      backgroundColor: Platform.isWindows
+          ? colorScheme.surface
+          : colorScheme.surfaceContainerLow,
       selectedBackgroundColor: colorScheme.secondaryContainer,
       foregroundColor: colorScheme.onSurfaceVariant,
       selectedForegroundColor: colorScheme.onSecondaryContainer,
-      dividerColor: colorScheme.outlineVariant,
+      dividerColor: Platform.isWindows ? null : colorScheme.outlineVariant,
     );
   }
 
