@@ -160,27 +160,30 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  test('ordinary check recovers a shared runtime and rechecks each platform', () async {
-    server.publish(plan('a', {'qq': 'shared', 'netease': 'shared'}));
-    final runtime = _ChangingCapabilities();
-    final r = router(factory: () => runtime);
-    await r.start('https://backend.example');
-    expect(runtime.isScriptReady, isTrue);
-    expect(r.platforms, containsAll(['qq', 'netease']));
-    runtime.qqOnly = true;
-    runtime.script = null;
-    expect(r.isReady, isFalse);
-    await r.check();
-    expect(server.conditional.last, '"${server.desired.id}"');
-    expect(runtime.isScriptReady, isTrue);
-    expect(r.platforms, ['qq']);
-    expect(r.routeFor('netease'), isNull);
-    expect(r.routes.keys, ['qq']);
-    expect(r.platformErrors, contains('netease'));
-    final requests = server.conditional.length;
-    await r.check();
-    expect(server.conditional.length, requests);
-  });
+  test(
+    'ordinary check recovers a shared runtime and rechecks each platform',
+    () async {
+      server.publish(plan('a', {'qq': 'shared', 'netease': 'shared'}));
+      final runtime = _ChangingCapabilities();
+      final r = router(factory: () => runtime);
+      await r.start('https://backend.example');
+      expect(runtime.isScriptReady, isTrue);
+      expect(r.platforms, containsAll(['qq', 'netease']));
+      runtime.qqOnly = true;
+      runtime.script = null;
+      expect(r.isReady, isFalse);
+      await r.check();
+      expect(server.conditional.last, '"${server.desired.id}"');
+      expect(runtime.isScriptReady, isTrue);
+      expect(r.platforms, ['qq']);
+      expect(r.routeFor('netease'), isNull);
+      expect(r.routes.keys, ['qq']);
+      expect(r.platformErrors, contains('netease'));
+      final requests = server.conditional.length;
+      await r.check();
+      expect(server.conditional.length, requests);
+    },
+  );
 
   test('host selection persists, target updates preserve revision, manual selection retires automatic mode', () async {
     final h = host();

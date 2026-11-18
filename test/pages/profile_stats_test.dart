@@ -126,7 +126,8 @@ void main() {
             () =>
                 PlaylistService().loadError != null &&
                 ListeningStatsService().lastError != null &&
-                !ListeningStatsService().isLoading,
+                !ListeningStatsService().isLoading &&
+                find.text('刷新').evaluate().isNotEmpty,
           );
           expect(find.text('暂无歌单'), findsNothing);
           expect(find.text('歌单加载失败'), findsOneWidget);
@@ -139,7 +140,8 @@ void main() {
             tester,
             () =>
                 PlaylistService().hasLoadedPlaylists &&
-                ListeningStatsService().statsData != null,
+                ListeningStatsService().statsData != null &&
+                find.text('刷新').evaluate().isNotEmpty,
           );
           expect(find.text('歌单加载失败'), findsNothing);
           expect(find.text('统计加载失败'), findsNothing);
