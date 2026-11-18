@@ -11,6 +11,7 @@ import '../../services/netease_artist_service.dart';
 import '../../utils/theme_manager.dart';
 import '../../utils/image_utils.dart';
 import '../../models/lyric_line.dart';
+import '../../models/track.dart' show MusicSource;
 import '../../models/song_detail.dart';
 import '../../widgets/search_widget.dart';
 import '../../widgets/player_error_banner.dart';
